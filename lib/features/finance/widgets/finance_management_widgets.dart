@@ -328,6 +328,7 @@ class FinanceAmountField extends StatelessWidget {
   final TextEditingController controller;
   final String label;
   final bool autofocus;
+  final bool allowZero;
   final ValueChanged<String>? onChanged;
 
   const FinanceAmountField({
@@ -335,6 +336,7 @@ class FinanceAmountField extends StatelessWidget {
     required this.controller,
     this.label = '金额',
     this.autofocus = false,
+    this.allowZero = false,
     this.onChanged,
   });
 
@@ -355,7 +357,11 @@ class FinanceAmountField extends StatelessWidget {
           .headlineMedium
           ?.copyWith(fontWeight: FontWeight.w700),
       validator: (value) =>
-          parseFinanceAmount(value ?? '') == null ? '请输入大于 0、最多两位小数的金额' : null,
+          parseFinanceAmount(value ?? '', allowZero: allowZero) == null
+              ? allowZero
+                  ? '请输入不小于 0、最多两位小数的金额'
+                  : '请输入大于 0、最多两位小数的金额'
+              : null,
       onChanged: onChanged,
     );
   }

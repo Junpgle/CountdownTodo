@@ -4,6 +4,7 @@ import '../../models.dart';
 import '../../services/pomodoro_service.dart';
 import '../../storage_service.dart';
 import '../../widgets/floating_glass_control.dart';
+import '../../utils/app_dialogs.dart';
 
 class RebindTagPage extends StatefulWidget {
   final String username;
@@ -176,14 +177,16 @@ class _RebindTagPageState extends State<RebindTagPage>
 
   Future<void> _applyRebind() async {
     if (_selectedOldTagUuids.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         const SnackBar(content: Text('请先选择要替换的旧标签')),
       );
       return;
     }
 
     if (_selectedNewTagUuid == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         const SnackBar(content: Text('请先选择要替换为的新标签')),
       );
       return;
@@ -193,14 +196,15 @@ class _RebindTagPageState extends State<RebindTagPage>
     final timeLogCount = _selectedTimeLogs.length;
 
     if (pomodoroCount == 0 && timeLogCount == 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         const SnackBar(content: Text('请先选择要重新绑定标签的记录')),
       );
       return;
     }
 
     // 确认对话框
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showAppDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('确认重新绑定'),
@@ -276,7 +280,8 @@ class _RebindTagPageState extends State<RebindTagPage>
 
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         SnackBar(
           content: Text('成功为 $pomodoroCount 条番茄钟和 $timeLogCount 条时间日志重新绑定标签'),
         ),
@@ -292,7 +297,8 @@ class _RebindTagPageState extends State<RebindTagPage>
       await _loadData();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         SnackBar(content: Text('保存失败: $e')),
       );
       setState(() => _isLoading = false);
@@ -536,7 +542,7 @@ class _RebindTagPageState extends State<RebindTagPage>
           Expanded(
             child: OutlinedButton.icon(
               onPressed: () async {
-                final range = await showDateRangePicker(
+                final range = await showAppDateRangePicker(
                   context: context,
                   firstDate: DateTime(2020),
                   lastDate: DateTime.now(),

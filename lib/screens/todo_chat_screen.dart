@@ -4,15 +4,27 @@ import 'dart:math' as math;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+
 import '../models.dart';
 import '../models/ai_todo_action.dart';
 import '../services/suggestion_feedback_service.dart';
 import '../models/chat_message.dart';
+import '../models/ai_context_mode.dart';
+import '../widgets/ai_chat_markdown.dart';
+import '../widgets/ai_chat_thinking_panel.dart';
+import '../widgets/ai_chat_composer.dart';
+import '../services/ai_query_tool_service.dart';
+import '../services/ai_tool_result_context.dart';
+import '../services/ai_tool_chat_runner.dart';
 import '../services/ai_action_parser.dart';
 import '../services/ai_chat_service.dart';
+import '../services/mimo_asr_service.dart';
+import '../widgets/quick_voice_chat_sheet.dart';
+import '../services/ai_chat_history_window.dart';
+import '../services/ai_native_tool_call_parser.dart';
+import '../services/ai_native_tool_definition_builder.dart';
 import '../services/ai_multimodal_message_builder.dart';
 import '../services/ai_todo_context_builder.dart';
 import '../services/ai_todo_action_executor.dart';
@@ -25,6 +37,7 @@ import '../services/pomodoro_control_service.dart';
 import '../services/pomodoro_service.dart';
 import '../services/power_save_mode_service.dart';
 import '../screens/ai_assistant_tutorial_screen.dart';
+import 'settings/pages/ai_assistant_settings_page.dart';
 import '../screens/settings/llm_config_page.dart';
 import '../storage_service.dart';
 import '../utils/page_transitions.dart';
@@ -38,6 +51,7 @@ import '../services/feature_tip_service.dart';
 import '../services/reminder_schedule_service.dart';
 import '../widgets/coach_mark_overlay.dart';
 import '../widgets/floating_glass_control.dart';
+import '../widgets/optional_liquid_glass_surface.dart';
 import '../features/finance/models/finance_models.dart';
 import '../features/finance/models/finance_ai_action.dart';
 import '../features/finance/screens/finance_entry_screen.dart';
@@ -45,16 +59,26 @@ import '../features/finance/services/finance_repository.dart';
 import '../features/finance/services/finance_ai_context_service.dart';
 import '../features/finance/services/finance_text_parser.dart';
 import '../features/finance/services/ai_usage_cost_service.dart';
+import '../features/habits/models/habit_goal.dart';
+import '../features/habits/repositories/habit_repository.dart';
+import '../features/habits/services/habit_ai_context_service.dart';
+import '../features/habits/services/habit_progress_calculator.dart';
+import '../utils/app_dialogs.dart';
 
 part 'todo_chat_screen_contract.dart';
 part 'todo_chat_screen_lifecycle.dart';
 part 'todo_chat_screen_send.dart';
+part 'todo_chat_screen_queries.dart';
 part 'todo_chat_screen_layout.dart';
 part 'todo_chat_screen_actions.dart';
 part 'todo_chat_screen_messages.dart';
 part 'todo_chat_screen_widgets.dart';
 
 class TodoChatScreen extends StatefulWidget {
+  /// A voice transcript prepared after session, settings, and context are ready.
+  final String? initialMessage;
+  final bool sendInitialMessage;
+  final ChatUsageSummary? initialVoiceUsageSummary;
   final String username;
   final List<Map<String, dynamic>> todos;
   final List<TodoGroup> todoGroups;
@@ -71,7 +95,7 @@ class TodoChatScreen extends StatefulWidget {
   final Function(List<TodoItem>)? onTodosBatchInserted;
   final Function(List<TodoItem>)? onTodosUpdated;
   final Function(List<TodoItem> inserted, List<TodoItem> updated)?
-      onTodosBatchAction;
+  onTodosBatchAction;
   final Function(List<TodoGroup> groups)? onTodoGroupsChanged;
   final Function(List<FixedScheduleItem> schedules)? onFixedSchedulesChanged;
 
@@ -79,6 +103,9 @@ class TodoChatScreen extends StatefulWidget {
     super.key,
     required this.username,
     required this.todos,
+    this.initialMessage,
+    this.sendInitialMessage = true,
+    this.initialVoiceUsageSummary,
     this.todoGroups = const [],
     this.courses = const [],
     this.timeLogs = const [],
@@ -105,6 +132,7 @@ class _TodoChatScreenState extends _TodoChatScreenStateBase
     with
         _TodoChatLifecycle,
         _TodoChatSend,
+        _TodoChatQueries,
         _TodoChatLayout,
         _TodoChatActions,
         _TodoChatMessages {}

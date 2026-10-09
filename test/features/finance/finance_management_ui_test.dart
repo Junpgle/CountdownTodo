@@ -68,20 +68,23 @@ FinanceAutomationManager _manager({
   Future<void> Function(FinanceRecurringRule)? onEdit,
   Future<void> Function(FinanceEntryTemplate)? onUse,
   Future<bool> Function()? onAdd,
+  List<FinanceRecurringRule>? rules,
+  List<FinanceEntryTemplate>? templates,
+  List<FinancePaymentMethod> paymentMethods = const [],
 }) =>
     FinanceAutomationManager(
-      rules: [
+      rules: rules ?? [
         _rule(),
         _rule(uuid: 'paused', enabled: false),
         _rule(uuid: 'deleted')..isDeleted = true
       ],
-      templates: [_template()],
+      templates: templates ?? [_template()],
       categories: _categories(),
-      paymentMethods: const [],
+      paymentMethods: paymentMethods,
       onAddRule: onAdd ?? () async => false,
       onAddTemplate: () async => false,
       onEditRule: onEdit ?? (_) async {},
-      onToggleRule: onToggle ?? (_, __) async {},
+      onToggleRule: onToggle ?? (_, _) async {},
       onDeleteRule: (_) async {},
       onEditTemplate: (_) async {},
       onUseTemplate: onUse ?? (_) async {},
@@ -144,6 +147,165 @@ void main() {
     expect(find.text('没有找到匹配项目'), findsOneWidget);
     await _tap(tester, find.text('清除筛选'));
     expect(_key('finance-automation-template-breakfast'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('快捷模板列表可区分同名模板并保留对应操作对象', (tester) async {
+    final templates = [
+      FinanceEntryTemplate(
+        uuid: 'duplicate-template-first',
+        name: '通勤',
+        amountMinor: 2500,
+        createdAt: 100,
+      ),
+      FinanceEntryTemplate(
+        uuid: 'duplicate-template-second',
+        name: '通勤',
+        amountMinor: 2500,
+        createdAt: 200,
+      ),
+    ];
+    FinanceEntryTemplate? used;
+    await _pump(
+      tester,
+      _manager(
+        rules: const [],
+        templates: templates,
+        onUse: (template) async => used = template,
+      ),
+    );
+
+    await _tap(tester, _key('finance-automation-tab-templates'));
+    expect(find.text('通勤（同名模板 1/2）'), findsOneWidget);
+    expect(find.text('通勤（同名模板 2/2）'), findsOneWidget);
+    await _tap(tester, _key('finance-automation-use-duplicate-template-second'));
+
+    expect(used?.uuid, 'duplicate-template-second');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('周期账单列表和开关读屏标签可区分同名规则', (tester) async {
+    final rules = [
+      FinanceRecurringRule(
+        uuid: 'duplicate-rule-first',
+        name: '月度订阅',
+        amountMinor: 2500,
+        startDate: '2026-01-01',
+        createdAt: 100,
+      ),
+      FinanceRecurringRule(
+        uuid: 'duplicate-rule-second',
+        name: '月度订阅',
+        amountMinor: 2500,
+        startDate: '2026-01-01',
+        createdAt: 200,
+      ),
+    ];
+    FinanceRecurringRule? toggled;
+    bool? enabled;
+    await _pump(
+      tester,
+      _manager(
+        rules: rules,
+        templates: const [],
+        onToggle: (rule, value) async {
+          toggled = rule;
+          enabled = value;
+        },
+      ),
+    );
+
+    expect(find.text('月度订阅（同名周期账单 1/2）'), findsOneWidget);
+    expect(find.text('月度订阅（同名周期账单 2/2）'), findsOneWidget);
+    expect(
+      find.bySemanticsLabel('暂停月度订阅（同名周期账单 1/2）'),
+      findsOneWidget,
+    );
+    expect(
+      find.bySemanticsLabel('暂停月度订阅（同名周期账单 2/2）'),
+      findsOneWidget,
+    );
+    await _tap(tester, _key('finance-automation-toggle-duplicate-rule-second'));
+
+    expect(toggled?.uuid, 'duplicate-rule-second');
+    expect(enabled, false);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('周期账单和模板都能按付款方式名称搜索', (tester) async {
+    final rule = _rule()..paymentMethodUuid = 'bank';
+    final template = _template()..paymentMethodUuid = 'bank';
+    await _pump(
+      tester,
+      _manager(
+        rules: [rule],
+        templates: [template],
+        paymentMethods: [FinancePaymentMethod(uuid: 'bank', name: '招商银行卡')],
+      ),
+    );
+
+    await tester.enterText(_key('finance-automation-search'), '招商银行卡');
+    await tester.pumpAndSettle();
+    expect(_key('finance-automation-rule-rent'), findsOneWidget);
+    expect(_key('finance-automation-rule-paused'), findsNothing);
+
+    await _tap(tester, _key('finance-automation-tab-templates'));
+    await tester.enterText(_key('finance-automation-search'), '招商银行卡');
+    await tester.pumpAndSettle();
+    expect(_key('finance-automation-template-breakfast'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('自动化卡片标记已归档分类并支持按状态搜索', (tester) async {
+    final rule = _rule()..categoryUuid = 'archived';
+    final template = _template()..categoryUuid = 'archived';
+    await _pump(
+      tester,
+      _manager(rules: [rule], templates: [template]),
+    );
+
+    expect(find.textContaining('旧分类（已归档）'), findsOneWidget);
+    await tester.enterText(_key('finance-automation-search'), '已归档');
+    await tester.pumpAndSettle();
+    expect(_key('finance-automation-rule-rent'), findsOneWidget);
+
+    await _tap(tester, _key('finance-automation-tab-templates'));
+    await tester.enterText(_key('finance-automation-search'), '已归档');
+    await tester.pumpAndSettle();
+    expect(_key('finance-automation-template-breakfast'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('自动化卡片按交易类型显示关联账户状态', (tester) async {
+    final unassignedIncome = _rule(uuid: 'unassigned-income')
+      ..type = FinanceTransactionType.income
+      ..categoryUuid = null;
+    final unknownIncome = _rule(uuid: 'unknown-income')
+      ..type = FinanceTransactionType.income
+      ..paymentMethodUuid = 'deleted-income-account';
+    final unknownExpense = _rule(uuid: 'unknown-expense')
+      ..paymentMethodUuid = 'deleted-expense-account';
+    final linkedIncome = _rule(uuid: 'linked-income')
+      ..type = FinanceTransactionType.income
+      ..paymentMethodUuid = 'bank';
+
+    await _pump(
+      tester,
+      _manager(
+        rules: [
+          unassignedIncome,
+          unknownIncome,
+          unknownExpense,
+          linkedIncome,
+        ],
+        paymentMethods: [FinancePaymentMethod(uuid: 'bank', name: '工资卡')],
+      ),
+    );
+
+    expect(find.textContaining('未指定到账账户（不更新余额）'), findsOneWidget);
+    expect(find.textContaining('已归档或未知到账账户'), findsOneWidget);
+    expect(find.textContaining('已归档或未知付款方式'), findsOneWidget);
+    expect(find.textContaining('到账账户 · 工资卡'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -221,6 +383,24 @@ void main() {
     expect(saved?.useCount, 5);
     expect(saved?.lastUsedAt, 123456);
     expect(template.type, FinanceTransactionType.expense);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('收入周期规则使用到账账户并提示未指定时不更新余额', (tester) async {
+    final rule = _rule()..type = FinanceTransactionType.income;
+    await _openEditor(
+      tester,
+      FinanceAutomationEditor.rule(
+        rule: rule,
+        categories: _categories(),
+        paymentMethods: const [],
+        onSave: (_) async {},
+      ),
+    );
+
+    expect(find.text('到账账户'), findsOneWidget);
+    expect(find.text('未指定（不更新账户余额）'), findsOneWidget);
+    expect(find.text('付款方式'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -338,6 +518,16 @@ void main() {
     expect(restores, 1);
     pending.complete();
     await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('回收站空状态说明包含所有可恢复类型', (tester) async {
+    await _pump(tester, const FinanceTrashManager(entries: []));
+
+    expect(
+      find.text('删除的账单、预算、贷款、周期账单和快捷模板会保留在这里。'),
+      findsOneWidget,
+    );
     expect(tester.takeException(), isNull);
   });
 

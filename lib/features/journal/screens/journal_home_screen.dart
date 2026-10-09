@@ -8,13 +8,16 @@ import '../services/journal_storage.dart';
 import '../../../widgets/floating_glass_control.dart';
 import 'journal_detail_screen.dart';
 import 'journal_editor_screen.dart';
+import '../../../utils/app_dialogs.dart';
 
 class JournalHomeScreen extends StatefulWidget {
   final String username;
+  final JournalStorage? storage;
 
   const JournalHomeScreen({
     super.key,
     required this.username,
+    this.storage,
   });
 
   @override
@@ -23,7 +26,7 @@ class JournalHomeScreen extends StatefulWidget {
 
 class _JournalHomeScreenState extends State<JournalHomeScreen> {
   static const _pageSize = 40;
-  final _storage = JournalStorage.instance;
+  JournalStorage get _storage => widget.storage ?? JournalStorage.instance;
   final _searchController = TextEditingController();
   final _scrollController = ScrollController();
   List<JournalEntry> _entries = const [];
@@ -268,7 +271,7 @@ class _JournalHomeScreenState extends State<JournalHomeScreen> {
 
   Future<void> _showSearch(BuildContext context) async {
     _searchController.text = _query;
-    final value = await showDialog<String>(
+    final value = await showAppDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('搜索日记'),
@@ -295,14 +298,14 @@ class _JournalHomeScreenState extends State<JournalHomeScreen> {
       ),
     );
     if (value != null && mounted) {
-      setState(() => _query = value);
+      setState(() => _query = value.trim());
       await _loadEntries();
     }
   }
 
   void _showMessage(String message) {
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(message)));
+    AppSnackBars.showSnackBar(
+        context, SnackBar(content: Text(message)));
   }
 
   Future<void> _recoverLostImagePick() async {

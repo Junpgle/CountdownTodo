@@ -1,5 +1,8 @@
 part of 'todo_chat_screen.dart';
+
 // ignore_for_file: annotate_overrides, unused_element, unused_element_parameter
+
+const double _todoChatWideSidebarWidth = 304.0;
 
 Widget _keepTodoChatButtonBackground(
   BuildContext context,
@@ -25,10 +28,7 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
           LayoutBuilder(
             builder: (context, constraints) {
               if (constraints.maxWidth >= 900) {
-                return _buildWideLayout(
-                  isDark,
-                  colorScheme,
-                );
+                return _buildWideLayout(isDark, colorScheme);
               }
               return _buildMobileLayout(isDark, colorScheme);
             },
@@ -39,14 +39,13 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
     );
   }
 
-  Widget _buildFloatingResponsiveAppBar(
-    bool isDark,
-    ColorScheme colorScheme,
-  ) {
+  Widget _buildFloatingResponsiveAppBar(bool isDark, ColorScheme colorScheme) {
     final topInset = MediaQuery.paddingOf(context).top;
-    return Positioned(
+    return AnimatedPositioned(
+      duration: const Duration(milliseconds: 320),
+      curve: Curves.easeOutCubic,
       top: 0,
-      left: 0,
+      left: _isWide && _sidebarVisible ? _todoChatWideSidebarWidth : 0,
       right: 0,
       child: SizedBox(
         height: floatingGlassTopBarHeight(context),
@@ -59,7 +58,9 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
   }
 
   PreferredSizeWidget _buildResponsiveAppBar(
-      bool isDark, ColorScheme colorScheme) {
+    bool isDark,
+    ColorScheme colorScheme,
+  ) {
     return FloatingGlassAppBar(
       primary: false,
       elevation: 0,
@@ -129,8 +130,8 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
           icon: Icon(
             _isWide
                 ? (_sidebarVisible
-                    ? Icons.keyboard_double_arrow_left_rounded
-                    : Icons.keyboard_double_arrow_right_rounded)
+                      ? Icons.keyboard_double_arrow_left_rounded
+                      : Icons.keyboard_double_arrow_right_rounded)
                 : Icons.history_rounded,
             size: 22,
           ),
@@ -156,17 +157,14 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
     );
   }
 
-  Widget _buildWideLayout(
-    bool isDark,
-    ColorScheme colorScheme,
-  ) {
+  Widget _buildWideLayout(bool isDark, ColorScheme colorScheme) {
     final useActionRail = _usesActionRail;
     return Row(
       children: [
         AnimatedContainer(
           duration: const Duration(milliseconds: 320),
           curve: Curves.easeOutCubic,
-          width: _sidebarVisible ? 304 : 0,
+          width: _sidebarVisible ? _todoChatWideSidebarWidth : 0,
           decoration: BoxDecoration(
             color: colorScheme.surface,
             border: Border(
@@ -182,7 +180,7 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
               alignment: Alignment.centerLeft,
               widthFactor: _sidebarVisible ? 1 : 0,
               child: SizedBox(
-                width: 304,
+                width: _todoChatWideSidebarWidth,
                 child: _buildHistorySidebarContent(context, isWideMode: true),
               ),
             ),
@@ -216,14 +214,17 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
                           switchOutCurve: Curves.easeInCubic,
                           transitionBuilder: (child, animation) =>
                               SizeTransition(
-                            sizeFactor: animation,
-                            alignment: AlignmentDirectional.bottomStart,
-                            child: FadeTransition(
-                              opacity: animation,
-                              child: child,
-                            ),
-                          ),
-                          child: _suggestions.isNotEmpty && !_isLoading
+                                sizeFactor: animation,
+                                alignment: AlignmentDirectional.bottomStart,
+                                child: FadeTransition(
+                                  opacity: animation,
+                                  child: child,
+                                ),
+                              ),
+                          child:
+                              _suggestions.isNotEmpty &&
+                                  !_isLoading &&
+                                  MediaQuery.viewInsetsOf(context).bottom == 0
                               ? _buildSuggestionsArea(colorScheme)
                               : const SizedBox.shrink(),
                         ),
@@ -236,10 +237,7 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
           ),
         ),
         if (useActionRail)
-          SizedBox(
-            width: 344,
-            child: _buildActionRail(isDark, colorScheme),
-          )
+          SizedBox(width: 344, child: _buildActionRail(isDark, colorScheme))
         else if (_shouldDetachActions)
           SizedBox(
             width: 48,
@@ -497,12 +495,12 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
           transitionBuilder: (child, animation) => SizeTransition(
             sizeFactor: animation,
             alignment: AlignmentDirectional.bottomStart,
-            child: FadeTransition(
-              opacity: animation,
-              child: child,
-            ),
+            child: FadeTransition(opacity: animation, child: child),
           ),
-          child: _suggestions.isNotEmpty && !_isLoading
+          child:
+              _suggestions.isNotEmpty &&
+                  !_isLoading &&
+                  MediaQuery.viewInsetsOf(context).bottom == 0
               ? _buildSuggestionsArea(colorScheme)
               : const SizedBox.shrink(),
         ),
@@ -518,10 +516,10 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
     return ListView.builder(
       controller: _scrollCtrl,
       padding: EdgeInsets.fromLTRB(
-        16,
-        floatingGlassTopBarHeight(context) + 18,
-        16,
-        20,
+        12,
+        floatingGlassTopBarHeight(context) + 12,
+        12,
+        12,
       ),
       itemCount: _messages.length + (_isLoading ? 1 : 0),
       itemBuilder: (context, index) {
@@ -540,10 +538,7 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
           builder: (context, value, child) {
             return Transform.translate(
               offset: Offset(0, 30 * (1 - value)),
-              child: Opacity(
-                opacity: value,
-                child: child,
-              ),
+              child: Opacity(opacity: value, child: child),
             );
           },
           child: _buildMessageBubble(msg, isDark),
@@ -568,8 +563,9 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
                     width: 72,
                     height: 72,
                     decoration: BoxDecoration(
-                      color:
-                          colorScheme.primaryContainer.withValues(alpha: 0.55),
+                      color: colorScheme.primaryContainer.withValues(
+                        alpha: 0.55,
+                      ),
                       shape: BoxShape.circle,
                     ),
                     child: Icon(
@@ -672,17 +668,15 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
         ),
       ),
       child: SizedBox(
-        height: 50,
+        height: 46,
         child: ListView.separated(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           scrollDirection: Axis.horizontal,
           physics: const BouncingScrollPhysics(),
           itemCount: _suggestions.length,
-          separatorBuilder: (_, __) => const SizedBox(width: 8),
-          itemBuilder: (context, index) => _buildQuickQuestion(
-            _suggestions[index],
-            compact: true,
-          ),
+          separatorBuilder: (_, _) => const SizedBox(width: 8),
+          itemBuilder: (context, index) =>
+              _buildQuickQuestion(_suggestions[index], compact: true),
         ),
       ),
     );
@@ -697,7 +691,8 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
   }
 
   void _showHistorySidebar() {
-    showGeneralDialog(
+    final historyPanelTopMargin = floatingGlassTopBarHeight(context) + 20;
+    showAppGeneralDialog(
       context: context,
       barrierDismissible: true,
       barrierLabel: '关闭',
@@ -707,37 +702,45 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
         return Stack(
           children: [
             ModalBarrier(
-              color: Colors.black.withValues(
-                alpha: 0.3 * anim1.value,
-              ),
+              color: Colors.black.withValues(alpha: 0.3 * anim1.value),
               dismissible: true,
             ),
             SlideTransition(
-              position: Tween<Offset>(
-                begin: const Offset(-1, 0),
-                end: Offset.zero,
-              ).animate(
-                CurvedAnimation(parent: anim1, curve: Curves.easeOutCubic),
-              ),
+              position:
+                  Tween<Offset>(
+                    begin: const Offset(-1, 0),
+                    end: Offset.zero,
+                  ).animate(
+                    CurvedAnimation(parent: anim1, curve: Curves.easeOutCubic),
+                  ),
               child: Material(
                 color: Colors.transparent,
-                child: Container(
+                child: OptionalLiquidGlassPanel(
                   width: MediaQuery.of(context).size.width * 0.75,
                   height: MediaQuery.of(context).size.height,
-                  margin: const EdgeInsets.only(top: kToolbarHeight + 20),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surface,
-                    borderRadius: const BorderRadius.only(
-                      topRight: Radius.circular(16),
-                      bottomRight: Radius.circular(16),
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.15),
-                        blurRadius: 16,
-                        offset: const Offset(4, 0),
+                  margin: EdgeInsets.only(top: historyPanelTopMargin),
+                  borderRadius: 16,
+                  highContrast: true,
+                  tint: Theme.of(context).colorScheme.surface,
+                  fallback: Container(
+                    width: MediaQuery.of(context).size.width * 0.75,
+                    height: MediaQuery.of(context).size.height,
+                    margin: EdgeInsets.only(top: historyPanelTopMargin),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surface,
+                      borderRadius: const BorderRadius.only(
+                        topRight: Radius.circular(16),
+                        bottomRight: Radius.circular(16),
                       ),
-                    ],
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.15),
+                          blurRadius: 16,
+                          offset: const Offset(4, 0),
+                        ),
+                      ],
+                    ),
+                    child: _buildHistorySidebarContent(ctx, isWideMode: false),
                   ),
                   child: _buildHistorySidebarContent(ctx, isWideMode: false),
                 ),
@@ -749,13 +752,20 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
     );
   }
 
-  Widget _buildHistorySidebarContent(BuildContext context,
-      {required bool isWideMode}) {
+  Widget _buildHistorySidebarContent(
+    BuildContext context, {
+    required bool isWideMode,
+  }) {
     final colorScheme = Theme.of(context).colorScheme;
+    final headerTopPadding = isWideMode && AppPlatform.isMacOS
+        ? MediaQuery.paddingOf(context).top
+        : isWideMode
+        ? 18.0
+        : 16.0;
     return Column(
       children: [
         Padding(
-          padding: EdgeInsets.fromLTRB(16, isWideMode ? 18 : 16, 12, 10),
+          padding: EdgeInsets.fromLTRB(16, headerTopPadding, 12, 10),
           child: Row(
             children: [
               Text(
@@ -798,8 +808,10 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
                 )
               : ListView.builder(
                   itemCount: _sessions.length,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 10,
+                  ),
                   itemBuilder: (context, index) {
                     final session = _sessions[index];
                     final isActive = session.id == _activeSessionId;
@@ -807,16 +819,19 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
                       padding: const EdgeInsets.only(bottom: 4),
                       child: Material(
                         color: isActive
-                            ? colorScheme.primaryContainer
-                                .withValues(alpha: 0.55)
+                            ? colorScheme.primaryContainer.withValues(
+                                alpha: 0.55,
+                              )
                             : Colors.transparent,
                         borderRadius: BorderRadius.circular(8),
                         child: ListTile(
                           dense: isWideMode,
                           minLeadingWidth: 24,
                           horizontalTitleGap: 10,
-                          contentPadding:
-                              const EdgeInsets.only(left: 12, right: 4),
+                          contentPadding: const EdgeInsets.only(
+                            left: 12,
+                            right: 4,
+                          ),
                           leading: Icon(
                             isActive
                                 ? Icons.chat_bubble_rounded
@@ -832,17 +847,16 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                               fontSize: 14,
-                              fontWeight:
-                                  isActive ? FontWeight.w700 : FontWeight.w500,
+                              fontWeight: isActive
+                                  ? FontWeight.w700
+                                  : FontWeight.w500,
                               color: isActive
                                   ? colorScheme.onPrimaryContainer
                                   : colorScheme.onSurface,
                             ),
                           ),
                           subtitle: Text(
-                            DateFormat('MM/dd HH:mm').format(
-                              session.updatedAt,
-                            ),
+                            DateFormat('MM/dd HH:mm').format(session.updatedAt),
                             style: TextStyle(
                               fontSize: 11,
                               color: colorScheme.onSurfaceVariant,
@@ -881,7 +895,7 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
   }
 
   Future<void> _deleteAllSessions(BuildContext sidebarCtx) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showAppDialog<bool>(
       context: sidebarCtx,
       builder: (ctx) => AlertDialog(
         title: const Text('彻底清空对话历史'),
@@ -913,7 +927,8 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
       });
       // 关闭侧边栏
       Navigator.pop(sidebarCtx);
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         const SnackBar(content: Text('已清空所有历史对话')),
       );
     }
@@ -929,13 +944,15 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
   };
 
   Widget _buildModelSelector() {
-    final inheritedModel =
-        _globalModelName.isNotEmpty ? _globalModelName : '未配置';
+    final inheritedModel = _globalModelName.isNotEmpty
+        ? _globalModelName
+        : '未配置';
     final inheritedProvider = _globalProvider.isNotEmpty
         ? providerLabels[_globalProvider] ?? _globalProvider
         : '';
-    final labelSuffix =
-        inheritedProvider.isNotEmpty ? ' ($inheritedProvider)' : '';
+    final labelSuffix = inheritedProvider.isNotEmpty
+        ? ' ($inheritedProvider)'
+        : '';
     final labelPrefix = _chatModel.isNotEmpty ? '' : '继承: ';
     String label = _chatModel.isNotEmpty
         ? _chatModel
@@ -958,11 +975,7 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                Icons.model_training_outlined,
-                size: 18,
-                color: modelColor,
-              ),
+              Icon(Icons.model_training_outlined, size: 18, color: modelColor),
               const SizedBox(width: 6),
               Flexible(
                 child: Text(
@@ -1063,7 +1076,8 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
     );
     if (!authorized) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           SnackBar(
             content: Text(
               MinorModeService.instance.authorizationFailureMessage(
@@ -1104,7 +1118,8 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
     );
     if (!authorized) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           SnackBar(
             content: Text(
               MinorModeService.instance.authorizationFailureMessage(
@@ -1127,14 +1142,15 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
     final apiUrlCtrl = TextEditingController(
       text: _chatApiUrl.isEmpty
           ? globalConfig?.apiUrl ??
-              'https://open.bigmodel.cn/api/paas/v4/chat/completions'
+                'https://open.bigmodel.cn/api/paas/v4/chat/completions'
           : _chatApiUrl,
     );
-    String customProvider =
-        _chatProvider.isNotEmpty ? _chatProvider : globalConfig?.provider ?? '';
+    String customProvider = _chatProvider.isNotEmpty
+        ? _chatProvider
+        : globalConfig?.provider ?? '';
     bool useCustom = _chatModel.isNotEmpty;
 
-    await showDialog(
+    await showAppDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
@@ -1189,8 +1205,7 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
                     enabled: useCustom,
                     decoration: InputDecoration(
                       labelText: 'API地址 (可选)',
-                      hintText:
-                          'https://open.bigmodel.cn/api/paas/v4/chat/completions',
+                      hintText: 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
@@ -1208,10 +1223,12 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
                       ),
                     ),
                     items: providerLabels.entries
-                        .map((e) => DropdownMenuItem(
-                              value: e.key,
-                              child: Text(e.value),
-                            ))
+                        .map(
+                          (e) => DropdownMenuItem(
+                            value: e.key,
+                            child: Text(e.value),
+                          ),
+                        )
                         .toList(),
                     onChanged: useCustom
                         ? (val) {
@@ -1263,14 +1280,16 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
                   ? () async {
                       if (modelCtrl.text.trim().isEmpty) {
                         if (!context.mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
+                        AppSnackBars.showSnackBar(
+                          context,
                           const SnackBar(content: Text('请输入模型名称')),
                         );
                         return;
                       }
                       if (apiKeyCtrl.text.trim().isEmpty) {
                         if (!context.mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
+                        AppSnackBars.showSnackBar(
+                          context,
                           const SnackBar(content: Text('请输入API密钥')),
                         );
                         return;
@@ -1328,8 +1347,9 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
 
     // 3. 基于待办状态
     if (widget.todos.isNotEmpty) {
-      final highPriority =
-          widget.todos.where((t) => (t['priority'] ?? 0) >= 2).length;
+      final highPriority = widget.todos
+          .where((t) => (t['priority'] ?? 0) >= 2)
+          .length;
       if (highPriority > 0) suggestions.add('列出所有高优先级任务');
 
       final overdue = widget.todos.where((t) {

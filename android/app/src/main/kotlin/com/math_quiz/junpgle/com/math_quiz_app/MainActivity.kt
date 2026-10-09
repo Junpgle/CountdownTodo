@@ -68,6 +68,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
     private val BACKGROUND_NOTIFICATION_CHANNEL = "com.math_quiz_app/background_notifications"
     private val APP_UPDATE_CHANNEL = "com.math_quiz.junpgle.com.math_quiz_app/app_update"
     private val DEVICE_CALENDAR_READ_CHANNEL = "countdown_todo/device_calendar_read"
+    private val DEVICE_IDENTITY_CHANNEL = "countdown_todo/device_identity"
     private val CALENDAR_PERMISSION_REQUEST = 2407
     private val LOCAL_NETWORK_PERMISSION_REQUEST = 2408
     private val CALENDAR_READ_PERMISSION_REQUEST = 2409
@@ -752,6 +753,10 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         private const val DEEP_LINK_DELIVERY_PREFS = "deep_link_delivery"
         private const val LAST_DELIVERED_DEEP_LINK_ID = "last_delivered_id"
     }
+
+    private fun getInstallationId(): String? =
+        Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID)
+            ?.takeIf { it.isNotBlank() }
 
     private fun handleShortcutFromIntent(intent: Intent?) {
         val action = intent?.action ?: return
@@ -1496,6 +1501,23 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                             result.success(readDeviceCalendarEvents(startMs, endMs))
                         }
                     }
+                }
+                else -> result.notImplemented()
+            }
+        }
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            DEVICE_IDENTITY_CHANNEL
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "getInstallationId" -> try {
+                    result.success(getInstallationId())
+                } catch (error: Exception) {
+                    result.error(
+                        "INSTALLATION_ID_UNAVAILABLE",
+                        error.message ?: "Unable to read installation identity",
+                        null
+                    )
                 }
                 else -> result.notImplemented()
             }
@@ -2578,6 +2600,9 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val todoTitle = args["todoTitle"] as? String ?: "待办事项"
         val todoRemark = (args["todoRemark"] as? String)?.trim() ?: ""
+        val bandTodoTitle = args["bandTodoTitle"] as? String ?: todoTitle
+        val bandTodoRemark =
+            (args["bandTodoRemark"] as? String)?.trim() ?: todoRemark
         val timeStr = args["timeStr"] as? String ?: ""
         val todoType = args["todoType"] as? String ?: "default"
         val imagePath = args["imagePath"] as? String
@@ -2636,9 +2661,15 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         )
 
         // 📳 同步发送到手环
-        // Keep the wearable notification on its existing masked copy.
-        val bandText = if (todoRemark.isNotEmpty()) todoRemark else "时间: $timeStr"
-        bandPlugin?.sendNotificationToBand(todoTitle, bandText, todoType, notifId)
+        // Keep the original pickup code readable on the wearable.
+        val bandText =
+            if (bandTodoRemark.isNotEmpty()) bandTodoRemark else "时间: $timeStr"
+        bandPlugin?.sendNotificationToBand(
+            bandTodoTitle,
+            bandText,
+            todoType,
+            notifId
+        )
     }
 
     // 负责"全天"待办的汇总显示

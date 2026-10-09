@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../models/habit_goal_rule.dart';
 import '../services/habit_adaptation_service.dart';
+import '../../../utils/app_dialogs.dart';
 
 /// 领域化建议面板：可用于新建/编辑页和习惯详情页。
 class HabitAdaptationPanel extends StatelessWidget {
@@ -1957,7 +1958,7 @@ Future<void> showHabitCitations(
   BuildContext context,
   HabitAdaptation adaptation,
 ) async {
-  await showDialog<void>(
+  await showAppDialog<void>(
     context: context,
     builder: (dialogContext) => AlertDialog(
       title: Row(
@@ -1998,7 +1999,8 @@ class _CitationTile extends StatelessWidget {
     final uri = Uri.parse(citation.url);
     if (await launchUrl(uri, mode: LaunchMode.platformDefault)) return;
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         const SnackBar(content: Text('无法打开参考文献链接')),
       );
     }

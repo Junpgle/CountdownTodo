@@ -1,7 +1,11 @@
 @TestOn('vm')
 library;
 
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:countdown_todo/features/finance/services/ai_usage_cost_service.dart';
+import 'package:countdown_todo/features/finance/services/finance_repository.dart';
 import 'package:countdown_todo/features/finance/services/finance_storage.dart';
 import 'package:countdown_todo/features/finance/services/finance_sync_service.dart';
 import 'package:countdown_todo/features/finance/models/finance_models.dart';
@@ -10,8 +14,2231 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+Map<String, dynamic> _balanceSyncResponse({bool supportsBalances = false}) => {
+      'sync_capabilities': {
+        'finance_v1': 1,
+        if (supportsBalances) 'finance_account_balances_v1': 1,
+      },
+      'server_finance_categories': <Map<String, dynamic>>[],
+      'server_finance_payment_methods': <Map<String, dynamic>>[],
+      'server_finance_transactions': <Map<String, dynamic>>[],
+      'server_finance_loans': <Map<String, dynamic>>[],
+      'server_finance_loan_installments': <Map<String, dynamic>>[],
+      'server_finance_budgets': <Map<String, dynamic>>[],
+      'server_finance_recurring_rules': <Map<String, dynamic>>[],
+      'server_finance_entry_templates': <Map<String, dynamic>>[],
+      'finance_acknowledged_changes': <Map<String, dynamic>>[],
+      'new_finance_sync_time': DateTime.now().millisecondsSinceEpoch,
+    };
+
 void main() {
   sqfliteFfiInit();
+
+  group('余额同步与还款账户', () {
+    late Database db;
+    const user = 'balance-sync-test';
+    const account = 'finance-system-payment-cash';
+
+    setUp(() async {
+      SharedPreferences.setMockInitialValues({'current_login_user': user});
+      db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+      FinanceStorage.databaseOverride = db;
+      await DatabaseHelper.ensureFinanceSchema(db);
+      await FinanceStorage.ensureReady();
+    });
+    tearDown(() async {
+      FinanceStorage.databaseOverride = null;
+      await db.close();
+    });
+
+    test('直接保存拒绝不存在的账单日期', () async {
+      final transaction = FinanceTransaction(
+        uuid: 'invalid-finance-date',
+        amountMinor: 100,
+        transactionDate: '2026-02-30',
+      );
+
+      await expectLater(
+        FinanceStorage.saveTransaction(transaction),
+        throwsArgumentError,
+      );
+      expect(await db.query('finance_transactions'), isEmpty);
+    });
+
+    test('余额流水查询只读取有快照账户，支持大量账户并跳过已删除流水', () async {
+      final snapshotAt = DateTime(2026, 9, 1).millisecondsSinceEpoch;
+      for (final transaction in [
+        FinanceTransaction(
+          uuid: 'balance-query-card-a',
+          amountMinor: 100,
+          paymentMethodUuid: 'card-a',
+          transactionDate: '2026-09-05',
+        ),
+        FinanceTransaction(
+          uuid: 'balance-query-card-b',
+          amountMinor: 200,
+          paymentMethodUuid: 'card-b',
+          transactionDate: '2026-09-06',
+        ),
+        FinanceTransaction(
+          uuid: 'balance-query-untracked-card',
+          amountMinor: 300,
+          paymentMethodUuid: 'card-without-snapshot',
+          transactionDate: '2026-09-07',
+        ),
+        FinanceTransaction(
+          uuid: 'balance-query-no-card',
+          amountMinor: 400,
+          transactionDate: '2026-09-08',
+        ),
+        FinanceTransaction(
+          uuid: 'balance-query-deleted',
+          amountMinor: 500,
+          paymentMethodUuid: 'card-a',
+          transactionDate: '2026-09-09',
+          isDeleted: true,
+        ),
+      ]) {
+        await db.insert('finance_transactions', transaction.toMap());
+      }
+
+      final trackedMethods = {
+        'card-a',
+        'card-b',
+        for (var index = 0; index < 400; index++) 'unused-card-$index',
+      };
+      final transactions = await FinanceStorage.getBalanceTransactions(
+        snapshotAt: snapshotAt,
+        before: DateTime(2026, 10, 1),
+        paymentMethodUuids: trackedMethods,
+      );
+
+      expect(
+        transactions.map((transaction) => transaction.uuid).toSet(),
+        {'balance-query-card-a', 'balance-query-card-b'},
+      );
+      final indexes = await db.rawQuery(
+        'PRAGMA index_list(finance_transactions)',
+      );
+      expect(
+        indexes.any(
+          (index) => index['name'] == 'idx_finance_transactions_balance',
+        ),
+        isTrue,
+      );
+      expect(
+        await FinanceStorage.getBalanceTransactions(
+          snapshotAt: snapshotAt,
+          before: DateTime(2026, 10, 1),
+          paymentMethodUuids: const {},
+        ),
+        isEmpty,
+      );
+    });
+
+    test('远程同步保留账单并将无效或缺失来源回退为手动', () async {
+      final invalidSource = FinanceTransaction(
+        uuid: 'remote-invalid-finance-source',
+        amountMinor: 100,
+        transactionDate: '2026-09-10',
+      ).toMap()..['source'] = 'unsupported';
+      expect(
+        await FinanceStorage.mergeRemoteBundle({
+          'transactions': [invalidSource],
+        }),
+        1,
+      );
+      final invalidSourceTransaction = (await FinanceStorage.getTransaction(
+        'remote-invalid-finance-source',
+      ))!;
+      expect(invalidSourceTransaction.amountMinor, 100);
+      expect(invalidSourceTransaction.source, FinanceEntrySource.manual);
+
+      final legacyTransaction = FinanceTransaction(
+        uuid: 'remote-missing-finance-source',
+        amountMinor: 100,
+        transactionDate: '2026-09-10',
+      ).toMap()..remove('source');
+      expect(
+        await FinanceStorage.mergeRemoteBundle({
+          'transactions': [legacyTransaction],
+        }),
+        1,
+      );
+      expect(
+        (await FinanceStorage.getTransaction(
+          'remote-missing-finance-source',
+        ))!.source,
+        FinanceEntrySource.manual,
+      );
+    });
+
+    test('备份恢复保留账单原始来源', () async {
+      for (final source in FinanceEntrySource.values) {
+        final transaction = FinanceTransaction(
+          uuid: 'backup-source-${source.name}',
+          amountMinor: 100,
+          transactionDate: '2026-09-10',
+          source: source,
+        );
+        final result = await FinanceStorage.importBundle({
+          'transactions': [transaction.toMap()],
+        });
+        expect(result['imported'], 1);
+        expect(
+          (await FinanceStorage.getTransaction(transaction.uuid))!.source,
+          source,
+        );
+      }
+    });
+
+    test('旧客户端同步备注不会把余额快照时间前移', () async {
+      final now = DateTime.now();
+      final month = DateTime(now.year, now.month - 1);
+      final snapshotAt = DateTime(
+        month.year,
+        month.month,
+        15,
+        10,
+      ).millisecondsSinceEpoch;
+      const paymentMethodUuid = 'legacy-client-sync-card';
+      await db.insert(
+        'finance_payment_methods',
+        FinancePaymentMethod(
+          uuid: paymentMethodUuid,
+          name: '旧客户端同步测试卡',
+        ).toMap(),
+      );
+
+      final budget = FinanceBudget(
+        monthKey: financeMonthKey(month),
+        paymentMethodUuid: paymentMethodUuid,
+        amountMinor: 10000,
+        balanceSnapshotAt: snapshotAt,
+        createdAt: snapshotAt - 1000,
+        updatedAt: snapshotAt,
+      );
+      await FinanceStorage.saveBudget(
+        budget,
+        balanceSnapshotAt: snapshotAt,
+      );
+      final saved = (await FinanceStorage.getBudget(budget.uuid))!;
+
+      final expenseAt = snapshotAt + const Duration(hours: 1).inMilliseconds;
+      final expense = FinanceTransaction(
+        uuid: 'legacy-client-sync-expense',
+        amountMinor: 1000,
+        paymentMethodUuid: paymentMethodUuid,
+        transactionDate: dateKey(
+          DateTime.fromMillisecondsSinceEpoch(expenseAt),
+        ),
+        occurredAt: expenseAt,
+        timezoneOffsetMinutes: DateTime.fromMillisecondsSinceEpoch(
+          expenseAt,
+        ).timeZoneOffset.inMinutes,
+        createdAt: expenseAt,
+      );
+      final oldClientEdit = FinanceBudget.fromMap(saved.toMap())
+        ..note = '旧客户端修改备注'
+        ..balanceSnapshotAt = null
+        ..updatedAt = expenseAt + const Duration(hours: 1).inMilliseconds
+        ..version = saved.version + 1
+        ..pendingSync = false;
+      await FinanceStorage.mergeRemoteBundle({
+        'budgets': [oldClientEdit.toMap()],
+      });
+
+      final synced = (await FinanceStorage.getBudget(saved.uuid))!;
+      expect(synced.effectiveBalanceSnapshotAt, snapshotAt);
+      expect(
+        FinanceRepository.paymentMethodBalanceAt(
+          snapshot: synced,
+          transactions: [expense],
+          loanRepayments: const [],
+          loanInterestTransactionUuids: const {},
+          asOfAt: now.millisecondsSinceEpoch,
+        ),
+        9000,
+      );
+
+      final amountChangedAt =
+          expenseAt + const Duration(hours: 2).inMilliseconds;
+      final oldClientAmountEdit = FinanceBudget.fromMap(synced.toMap())
+        ..amountMinor = 12000
+        ..balanceSnapshotAt = null
+        ..updatedAt = amountChangedAt
+        ..version = synced.version + 1
+        ..pendingSync = false;
+      await FinanceStorage.mergeRemoteBundle({
+        'budgets': [oldClientAmountEdit.toMap()],
+      });
+      final rebased = (await FinanceStorage.getBudget(synced.uuid))!;
+      expect(rebased.effectiveBalanceSnapshotAt, amountChangedAt);
+      expect(
+        FinanceRepository.paymentMethodBalanceAt(
+          snapshot: rebased,
+          transactions: [expense],
+          loanRepayments: const [],
+          loanInterestTransactionUuids: const {},
+          asOfAt: now.millisecondsSinceEpoch,
+        ),
+        12000,
+      );
+    });
+
+    test('旧备份备注更新不会覆盖本地付款余额快照时间', () async {
+      final now = DateTime.now();
+      final month = DateTime(now.year, now.month - 1);
+      final snapshotAt = DateTime(
+        month.year,
+        month.month,
+        15,
+        10,
+      ).millisecondsSinceEpoch;
+      const paymentMethodUuid = 'legacy-backup-card';
+      await db.insert(
+        'finance_payment_methods',
+        FinancePaymentMethod(
+          uuid: paymentMethodUuid,
+          name: '旧备份测试卡',
+        ).toMap(),
+      );
+      final budget = FinanceBudget(
+        monthKey: financeMonthKey(month),
+        paymentMethodUuid: paymentMethodUuid,
+        amountMinor: 10000,
+        balanceSnapshotAt: snapshotAt,
+        createdAt: snapshotAt - 1000,
+        updatedAt: snapshotAt,
+      );
+      await FinanceStorage.saveBudget(
+        budget,
+        balanceSnapshotAt: snapshotAt,
+      );
+      final saved = (await FinanceStorage.getBudget(budget.uuid))!;
+      final oldBackup = FinanceBudget.fromMap(saved.toMap())
+        ..note = '旧备份修改备注'
+        ..balanceSnapshotAt = null
+        ..updatedAt = snapshotAt + const Duration(hours: 1).inMilliseconds
+        ..version = saved.version + 1
+        ..pendingSync = false;
+
+      await FinanceStorage.importBundle({
+        'budgets': [oldBackup.toMap()],
+      });
+
+      final restored = (await FinanceStorage.getBudget(saved.uuid))!;
+      expect(restored.effectiveBalanceSnapshotAt, snapshotAt);
+    });
+
+    test('本地账单保存拒绝超过总期数的分期期次', () async {
+      final transaction = FinanceTransaction(
+        uuid: 'local-out-of-range-installment-index',
+        amountMinor: 600,
+        transactionDate: '2026-09-20',
+        installmentGroupUuid: 'local-out-of-range-installment-group',
+        installmentIndex: 3,
+        installmentCount: 2,
+        installmentTotalMinor: 1200,
+      );
+
+      await expectLater(
+        FinanceStorage.saveTransaction(transaction),
+        throwsArgumentError,
+      );
+      expect(await FinanceStorage.getTransaction(transaction.uuid), isNull);
+    });
+
+    test('本地保存和整组恢复都拒绝产生重复期号', () async {
+      final first = FinanceTransaction(
+        uuid: 'local-unique-installment-first',
+        amountMinor: 600,
+        transactionDate: '2026-09-20',
+        installmentGroupUuid: 'local-unique-installment-group',
+        installmentIndex: 1,
+        installmentCount: 2,
+        installmentTotalMinor: 1200,
+      );
+      await FinanceStorage.saveTransaction(first);
+      final duplicate = FinanceTransaction(
+        uuid: 'local-duplicate-installment-second',
+        amountMinor: 600,
+        transactionDate: '2026-09-20',
+        installmentGroupUuid: first.installmentGroupUuid,
+        installmentIndex: 1,
+        installmentCount: 2,
+        installmentTotalMinor: 1200,
+      );
+      await expectLater(
+        FinanceStorage.saveTransaction(duplicate),
+        throwsStateError,
+      );
+
+      const deletedGroup = 'deleted-duplicate-installment-group';
+      for (var index = 1; index <= 2; index++) {
+        await db.insert(
+          'finance_transactions',
+          FinanceTransaction(
+            uuid: 'deleted-duplicate-installment-$index',
+            amountMinor: 600,
+            transactionDate: '2026-09-20',
+            installmentGroupUuid: deletedGroup,
+            installmentIndex: 1,
+            installmentCount: 2,
+            isDeleted: true,
+          ).toMap(),
+        );
+      }
+      await expectLater(
+        FinanceStorage.restoreInstallmentGroup(deletedGroup),
+        throwsStateError,
+      );
+      expect(
+        (await FinanceStorage.getInstallmentGroup(
+          deletedGroup,
+          includeDeleted: true,
+        )).every((item) => item.isDeleted),
+        isTrue,
+      );
+    });
+
+    for (final source in ['backup', 'remote']) {
+      test('$source 拒绝会被截断的周期日期和提醒字段', () async {
+        final rules = [
+          FinanceRecurringRule(
+            uuid: 'fractional-$source-recurring-day',
+            name: '小数日期周期',
+            amountMinor: 100,
+            startDate: '2026-09-01',
+          ).toMap()
+            ..['day_of_month'] = 1.5,
+          FinanceRecurringRule(
+            uuid: 'fractional-$source-recurring-month',
+            name: '小数月份周期',
+            amountMinor: 100,
+            frequency: FinanceRecurringFrequency.yearly,
+            startDate: '2026-09-01',
+          ).toMap()
+            ..['month_of_year'] = 6.5,
+          FinanceRecurringRule(
+            uuid: 'fractional-$source-recurring-reminder',
+            name: '小数提醒周期',
+            amountMinor: 100,
+            startDate: '2026-09-01',
+          ).toMap()
+            ..['reminder_minutes'] = 60.5,
+        ];
+
+        if (source == 'backup') {
+          final result = await FinanceStorage.importBundle({
+            'recurring_rules': rules,
+          });
+          expect(result['skipped'], 3);
+        } else {
+          expect(
+            await FinanceStorage.mergeRemoteBundle({
+              'recurring_rules': rules,
+            }),
+            0,
+          );
+        }
+
+        expect(
+          await FinanceStorage.getRecurringRules(includeDeleted: true),
+          isEmpty,
+        );
+      });
+
+      test('$source 拒绝同组重复期号', () async {
+        final groupUuid = 'duplicate-$source-installment-group';
+        final transactions = [
+          for (var duplicate = 1; duplicate <= 2; duplicate++)
+            FinanceTransaction(
+              uuid: 'duplicate-$source-installment-$duplicate',
+              amountMinor: 600,
+              transactionDate: '2026-09-20',
+              installmentGroupUuid: groupUuid,
+              installmentIndex: 1,
+              installmentCount: 2,
+              installmentTotalMinor: 1200,
+            ).toMap(),
+        ];
+        Future<void> importTransactions(
+          List<Map<String, dynamic>> values,
+        ) async {
+          if (source == 'backup') {
+            await FinanceStorage.importBundle({'transactions': values});
+          } else {
+            await FinanceStorage.mergeRemoteBundle({'transactions': values});
+          }
+        }
+
+        await importTransactions(transactions);
+
+        expect(
+          await FinanceStorage.getInstallmentGroup(
+            groupUuid,
+            includeDeleted: true,
+          ),
+          isEmpty,
+        );
+
+        await importTransactions([transactions.first]);
+        await importTransactions([transactions.last]);
+        final group = await FinanceStorage.getInstallmentGroup(
+          groupUuid,
+          includeDeleted: true,
+        );
+        expect(group, hasLength(1));
+        expect(group.single.uuid, transactions.first['uuid']);
+      });
+
+      test('$source 拒绝超过期数范围的分期记录', () async {
+        final transaction = FinanceTransaction(
+          uuid: 'out-of-range-$source-installment-index',
+          amountMinor: 600,
+          transactionDate: '2026-09-20',
+          installmentGroupUuid: 'out-of-range-$source-installment-group',
+          installmentIndex: 3,
+          installmentCount: 2,
+          installmentTotalMinor: 1200,
+        );
+        final legacyInstallmentWithoutTotal = FinanceTransaction(
+          uuid: 'valid-$source-installment-without-total',
+          amountMinor: 600,
+          transactionDate: '2026-09-20',
+          installmentGroupUuid: 'valid-$source-installment-group',
+          installmentIndex: FinanceLoanCalculator.maxTermMonths,
+          installmentCount: FinanceLoanCalculator.maxTermMonths,
+        );
+        final transactions = [
+          transaction.toMap(),
+          legacyInstallmentWithoutTotal.toMap(),
+        ];
+
+        if (source == 'backup') {
+          await FinanceStorage.importBundle({
+            'transactions': transactions,
+          });
+        } else {
+          await FinanceStorage.mergeRemoteBundle({
+            'transactions': transactions,
+          });
+        }
+
+        expect(await FinanceStorage.getTransaction(transaction.uuid), isNull);
+        expect(
+          (await FinanceStorage.getTransaction(
+            legacyInstallmentWithoutTotal.uuid,
+          ))!.isInstallment,
+          isTrue,
+        );
+      });
+
+      test('$source 拒绝负数预算和余额快照', () async {
+        final snapshotAt = DateTime(2026, 10, 1).millisecondsSinceEpoch;
+        final budgets = [
+          FinanceBudget(
+            uuid: 'negative-$source-category-budget',
+            monthKey: '2026-10',
+            categoryUuid: 'expense-category',
+            amountMinor: -1200,
+          ).toMap(),
+          FinanceBudget(
+            uuid: 'negative-$source-balance-snapshot',
+            monthKey: '2026-10',
+            paymentMethodUuid: 'payment-card',
+            amountMinor: -5000,
+            balanceSnapshotAt: snapshotAt,
+          ).toMap(),
+        ];
+
+        if (source == 'backup') {
+          final result = await FinanceStorage.importBundle({
+            'budgets': budgets,
+          });
+          expect(result['skipped'], 2);
+        } else {
+          expect(
+            await FinanceStorage.mergeRemoteBundle({'budgets': budgets}),
+            0,
+          );
+        }
+
+        expect(
+          await FinanceStorage.getBudgets(includeDeleted: true),
+          isEmpty,
+        );
+      });
+
+      test('$source 拒绝负数周期模板贷款金额和超范围利率', () async {
+        final recurringRule = FinanceRecurringRule(
+          uuid: 'negative-$source-recurring-rule',
+          name: '负数周期账单',
+          amountMinor: -100,
+          startDate: '2026-09-01',
+        );
+        final template = FinanceEntryTemplate(
+          uuid: 'negative-$source-template',
+          name: '负数模板',
+          amountMinor: -100,
+        );
+        final loan = FinanceLoan(
+          uuid: 'negative-$source-loan',
+          name: '负数贷款',
+          principalMinor: -100,
+          termMonths: 1,
+          startDate: '2026-09-01',
+          repaymentDay: 1,
+        );
+        final outOfRangeRateLoan = FinanceLoan(
+          uuid: 'out-of-range-$source-loan-rate',
+          name: '超范围利率贷款',
+          principalMinor: 10000,
+          annualInterestRateBps:
+              FinanceLoanCalculator.maxAnnualInterestRateBps + 1,
+          termMonths: 1,
+          startDate: '2026-09-01',
+          repaymentDay: 1,
+        );
+        final installment = FinanceLoanInstallment(
+          uuid: 'negative-$source-installment',
+          loanUuid: loan.uuid,
+          installmentIndex: 1,
+          dueDate: '2026-10-01',
+          paymentMinor: -100,
+          principalMinor: -100,
+          interestMinor: 0,
+          remainingPrincipalMinor: 0,
+        );
+        final bundle = {
+          'recurring_rules': [recurringRule.toMap()],
+          'templates': [template.toMap()],
+          'loans': [loan.toMap(), outOfRangeRateLoan.toMap()],
+          'loan_installments': [installment.toMap()],
+        };
+
+        if (source == 'backup') {
+          final result = await FinanceStorage.importBundle(bundle);
+          expect(result['skipped'], 5);
+        } else {
+          expect(await FinanceStorage.mergeRemoteBundle(bundle), 0);
+        }
+
+        expect(
+          await FinanceStorage.getRecurringRules(includeDeleted: true),
+          isEmpty,
+        );
+        expect(
+          await FinanceStorage.getTemplates(includeDeleted: true),
+          isEmpty,
+        );
+        expect(await FinanceStorage.getLoans(includeDeleted: true), isEmpty);
+        expect(
+          await FinanceStorage.getLoanInstallments(
+            loan.uuid,
+            includeDeleted: true,
+          ),
+          isEmpty,
+        );
+      });
+
+      test('$source 拒绝无效的账户余额快照时间', () async {
+        final invalidSnapshotTimes = <num>[-1, 0, 9000000000000000, 1000.5];
+        final budgets = <Map<String, dynamic>>[];
+        for (var index = 0; index < invalidSnapshotTimes.length; index++) {
+          final paymentMethodUuid = 'invalid-snapshot-method-$source-$index';
+          await db.insert(
+            'finance_payment_methods',
+            FinancePaymentMethod(
+              uuid: paymentMethodUuid,
+              name: '快照时间测试账户 $index',
+            ).toMap(),
+          );
+          budgets.add(
+            FinanceBudget(
+              uuid: 'invalid-snapshot-budget-$source-$index',
+              monthKey: '2026-10',
+              paymentMethodUuid: paymentMethodUuid,
+              amountMinor: 1000,
+              balanceSnapshotAt: 1000,
+            ).toMap()..['balance_snapshot_at'] = invalidSnapshotTimes[index],
+          );
+        }
+
+        if (source == 'backup') {
+          final result = await FinanceStorage.importBundle({'budgets': budgets});
+          expect(result['skipped'], invalidSnapshotTimes.length);
+        } else {
+          expect(
+            await FinanceStorage.mergeRemoteBundle({'budgets': budgets}),
+            0,
+          );
+        }
+        expect(
+          await FinanceStorage.getBudgets(includeDeleted: true),
+          isEmpty,
+        );
+      });
+
+      test('$source 拒绝未来或月份不匹配的账户余额快照', () async {
+        final now = DateTime.now();
+        final futureAt = now.add(const Duration(days: 1));
+        final oldAt = now.subtract(const Duration(days: 40));
+        final scenarios = [
+          (
+            suffix: 'future',
+            monthKey: financeMonthKey(futureAt),
+            snapshotAt: futureAt,
+          ),
+          (
+            suffix: 'wrong-month',
+            monthKey: financeMonthKey(now),
+            snapshotAt: oldAt,
+          ),
+        ];
+        final budgets = <Map<String, dynamic>>[];
+        for (final scenario in scenarios) {
+          final paymentMethodUuid =
+              'invalid-balance-snapshot-method-$source-${scenario.suffix}';
+          await db.insert(
+            'finance_payment_methods',
+            FinancePaymentMethod(
+              uuid: paymentMethodUuid,
+              name: '无效余额快照账户 ${scenario.suffix}',
+            ).toMap(),
+          );
+          budgets.add(
+            FinanceBudget(
+              uuid: 'invalid-balance-snapshot-$source-${scenario.suffix}',
+              monthKey: scenario.monthKey,
+              paymentMethodUuid: paymentMethodUuid,
+              amountMinor: 1000,
+              balanceSnapshotAt: scenario.snapshotAt.millisecondsSinceEpoch,
+            ).toMap(),
+          );
+        }
+
+        if (source == 'backup') {
+          final result = await FinanceStorage.importBundle({
+            'budgets': budgets,
+          });
+          expect(result['imported'], 0);
+          expect(result['skipped'], 2);
+        } else {
+          expect(await FinanceStorage.mergeRemoteBundle({'budgets': budgets}), 0);
+        }
+        expect(
+          await FinanceStorage.getBudgets(includeDeleted: true),
+          isEmpty,
+        );
+      });
+    }
+
+    test('本地预算拒绝收入分类和不存在的关联项', () async {
+      await db.insert(
+        'finance_categories',
+        FinanceCategory(
+          uuid: 'income-budget-category',
+          name: '工资',
+          type: FinanceCategoryType.income,
+        ).toMap(),
+      );
+
+      await expectLater(
+        FinanceStorage.saveBudget(
+          FinanceBudget(
+            uuid: 'income-category-budget',
+            monthKey: '2026-10',
+            categoryUuid: 'income-budget-category',
+            amountMinor: 1000,
+          ),
+        ),
+        throwsArgumentError,
+      );
+      await expectLater(
+        FinanceStorage.saveBudget(
+          FinanceBudget(
+            uuid: 'missing-category-budget',
+            monthKey: '2026-10',
+            categoryUuid: 'missing-expense-category',
+            amountMinor: 1000,
+          ),
+        ),
+        throwsArgumentError,
+      );
+      await expectLater(
+        FinanceStorage.saveBudget(
+          FinanceBudget(
+            uuid: 'missing-method-budget',
+            monthKey: '2026-10',
+            paymentMethodUuid: 'missing-payment-method',
+            amountMinor: 1000,
+          ),
+        ),
+        throwsArgumentError,
+      );
+      expect(await FinanceStorage.getBudgets(includeDeleted: true), isEmpty);
+    });
+
+    for (final source in ['backup', 'remote']) {
+      test('$source 拒绝错误分类类型和孤立预算', () async {
+        await db.insert(
+          'finance_categories',
+          FinanceCategory(
+            uuid: 'income-$source-budget-category',
+            name: '工资',
+            type: FinanceCategoryType.income,
+          ).toMap(),
+        );
+        final budgets = [
+          FinanceBudget(
+            uuid: 'income-$source-category-budget',
+            monthKey: '2026-10',
+            categoryUuid: 'income-$source-budget-category',
+            amountMinor: 1000,
+          ).toMap(),
+          FinanceBudget(
+            uuid: 'orphan-$source-category-budget',
+            monthKey: '2026-10',
+            categoryUuid: 'missing-$source-category',
+            amountMinor: 2000,
+          ).toMap(),
+          FinanceBudget(
+            uuid: 'orphan-$source-payment-budget',
+            monthKey: '2026-10',
+            paymentMethodUuid: 'missing-$source-payment-method',
+            amountMinor: 3000,
+          ).toMap(),
+        ];
+
+        if (source == 'backup') {
+          final result = await FinanceStorage.importBundle({
+            'budgets': budgets,
+          });
+          expect(result['skipped'], 3);
+        } else {
+          expect(
+            await FinanceStorage.mergeRemoteBundle({'budgets': budgets}),
+            0,
+          );
+        }
+        expect(
+          await FinanceStorage.getBudgets(includeDeleted: true),
+          isEmpty,
+        );
+      });
+    }
+
+    for (final source in ['backup', 'remote']) {
+      test('$source 拒绝被归一化的无效分类类型', () async {
+        final numericType = FinanceCategory(
+          uuid: 'invalid-$source-numeric-category-type',
+          name: '数值越界分类',
+        ).toMap()
+          ..['type'] = 99;
+        final unknownType = FinanceCategory(
+          uuid: 'invalid-$source-string-category-type',
+          name: '未知类型分类',
+        ).toMap()
+          ..['type'] = 'unknown';
+        final bundle = {
+          'categories': [numericType, unknownType],
+        };
+
+        if (source == 'backup') {
+          final result = await FinanceStorage.importBundle(bundle);
+          expect(result['skipped'], 2);
+        } else {
+          expect(await FinanceStorage.mergeRemoteBundle(bundle), 0);
+        }
+
+        final categories = await FinanceStorage.getCategories(
+          includeArchived: true,
+        );
+        expect(
+          categories.map((category) => category.uuid),
+          isNot(contains('invalid-$source-numeric-category-type')),
+        );
+        expect(
+          categories.map((category) => category.uuid),
+          isNot(contains('invalid-$source-string-category-type')),
+        );
+      });
+    }
+
+    for (final source in ['backup', 'remote']) {
+      test('$source 忽略缺少标识的分类和付款方式', () async {
+        final category = FinanceCategory(
+          uuid: 'missing-$source-category-uuid',
+          name: '无标识分类',
+        ).toMap()
+          ..remove('uuid');
+        final paymentMethod = FinancePaymentMethod(
+          uuid: 'missing-$source-payment-uuid',
+          name: '无标识账户',
+        ).toMap()
+          ..remove('uuid');
+        final bundle = {
+          'categories': [category],
+          'payment_methods': [paymentMethod],
+        };
+
+        if (source == 'backup') {
+          final result = await FinanceStorage.importBundle(bundle);
+          expect(result['skipped'], 2);
+        } else {
+          expect(await FinanceStorage.mergeRemoteBundle(bundle), 0);
+        }
+
+        expect(
+          (await FinanceStorage.getCategories(includeArchived: true))
+              .where((item) => item.name == '无标识分类'),
+          isEmpty,
+        );
+        expect(
+          (await FinanceStorage.getPaymentMethods(includeArchived: true))
+              .where((item) => item.name == '无标识账户'),
+          isEmpty,
+        );
+      });
+    }
+
+    test('备份导入统计格式错误的财务数据行', () async {
+      final result = await FinanceStorage.importBundle({
+        'categories': [null, <dynamic, dynamic>{1: '非字符串键'}],
+        'payment_methods': '错误的数据段',
+      });
+
+      expect(result, {'imported': 0, 'skipped': 3, 'updated': 0});
+    });
+
+    for (final source in ['backup', 'remote']) {
+      test('$source 拒绝无法安全表示的交易时间字段', () async {
+        final transactions = [
+          FinanceTransaction(
+            uuid: 'out-of-range-occurrence-time-$source',
+            amountMinor: 500,
+            transactionDate: '2026-09-20',
+            occurredAt: 9000000000000000,
+          ).toMap(),
+          FinanceTransaction(
+            uuid: 'out-of-range-created-time-$source',
+            amountMinor: 500,
+            transactionDate: '2026-09-20',
+            createdAt: 9000000000000000,
+          ).toMap(),
+          FinanceTransaction(
+            uuid: 'out-of-range-updated-time-$source',
+            amountMinor: 500,
+            transactionDate: '2026-09-20',
+            updatedAt: 9000000000000000,
+          ).toMap(),
+          FinanceTransaction(
+            uuid: 'out-of-range-timezone-offset-$source',
+            amountMinor: 500,
+            transactionDate: '2026-09-20',
+            timezoneOffsetMinutes: 100000,
+          ).toMap(),
+        ];
+
+        if (source == 'backup') {
+          final result = await FinanceStorage.importBundle({
+            'transactions': transactions,
+          });
+          expect(result['skipped'], 4);
+        } else {
+          expect(
+            await FinanceStorage.mergeRemoteBundle({
+              'transactions': transactions,
+            }),
+            0,
+          );
+        }
+        for (final map in transactions) {
+          expect(
+            await FinanceStorage.getTransaction(map['uuid'] as String),
+            isNull,
+          );
+        }
+      });
+
+      test('$source 拒绝会被归一化的无效交易类型', () async {
+        final unknownType = FinanceTransaction(
+          uuid: 'unknown-$source-transaction-type',
+          amountMinor: 500,
+          transactionDate: '2026-09-20',
+        ).toMap()
+          ..['type'] = 'unknown';
+        final outOfRangeType = FinanceTransaction(
+          uuid: 'out-of-range-$source-transaction-type',
+          amountMinor: 500,
+          transactionDate: '2026-09-20',
+        ).toMap()
+          ..['type'] = 99;
+        final transactions = [unknownType, outOfRangeType];
+
+        if (source == 'backup') {
+          final result = await FinanceStorage.importBundle({
+            'transactions': transactions,
+          });
+          expect(result['skipped'], 2);
+        } else {
+          expect(
+            await FinanceStorage.mergeRemoteBundle({
+              'transactions': transactions,
+            }),
+            0,
+          );
+        }
+        expect(
+          await FinanceStorage.getTransaction(unknownType['uuid'] as String),
+          isNull,
+        );
+        expect(
+          await FinanceStorage.getTransaction(
+            outOfRangeType['uuid'] as String,
+          ),
+          isNull,
+        );
+      });
+
+      test('$source 拒绝会被归一化的周期、模板和贷款枚举', () async {
+        final recurringRules = [
+          FinanceRecurringRule(
+            uuid: 'invalid-$source-frequency-name',
+            name: '错误频率名称',
+            amountMinor: 100,
+            startDate: '2026-09-01',
+          ).toMap()
+            ..['frequency'] = 'unknown',
+          FinanceRecurringRule(
+            uuid: 'invalid-$source-frequency-number',
+            name: '错误频率数字',
+            amountMinor: 100,
+            startDate: '2026-09-01',
+          ).toMap()
+            ..['frequency'] = 99,
+          FinanceRecurringRule(
+            uuid: 'invalid-$source-recurring-type',
+            name: '错误周期类型',
+            amountMinor: 100,
+            startDate: '2026-09-01',
+          ).toMap()
+            ..['type'] = 'unknown',
+        ];
+        final templates = [
+          FinanceEntryTemplate(
+            uuid: 'invalid-$source-template-type-name',
+            name: '错误模板类型',
+            amountMinor: 100,
+          ).toMap()
+            ..['type'] = 'unknown',
+          FinanceEntryTemplate(
+            uuid: 'invalid-$source-template-type-number',
+            name: '错误模板类型数字',
+            amountMinor: 100,
+          ).toMap()
+            ..['type'] = 99,
+        ];
+        final loans = [
+          FinanceLoan(
+            uuid: 'invalid-$source-loan-method-name',
+            name: '错误还款方式名称',
+            principalMinor: 1000,
+            termMonths: 1,
+            startDate: '2026-09-01',
+            repaymentDay: 1,
+          ).toMap()
+            ..['repayment_method'] = 'unknown',
+          FinanceLoan(
+            uuid: 'invalid-$source-loan-method-number',
+            name: '错误还款方式数字',
+            principalMinor: 1000,
+            termMonths: 1,
+            startDate: '2026-09-01',
+            repaymentDay: 1,
+          ).toMap()
+            ..['repayment_method'] = 99,
+          FinanceLoan(
+            uuid: 'invalid-$source-loan-method-string-number',
+            name: '错误还款方式数字字符串',
+            principalMinor: 1000,
+            termMonths: 1,
+            startDate: '2026-09-01',
+            repaymentDay: 1,
+          ).toMap()
+            ..['repayment_method'] = '1',
+        ];
+
+        final bundle = {
+          'recurring_rules': recurringRules,
+          'templates': templates,
+          'loans': loans,
+        };
+        if (source == 'backup') {
+          final result = await FinanceStorage.importBundle(bundle);
+          expect(result['skipped'], 8);
+        } else {
+          expect(await FinanceStorage.mergeRemoteBundle(bundle), 0);
+        }
+        expect(
+          await FinanceStorage.getRecurringRules(includeDeleted: true),
+          isEmpty,
+        );
+        expect(
+          await FinanceStorage.getTemplates(includeDeleted: true),
+          isEmpty,
+        );
+        expect(await FinanceStorage.getLoans(includeDeleted: true), isEmpty);
+      });
+
+      test('$source 拒绝会导致周期游标计算溢出的时间戳', () async {
+        final rule = FinanceRecurringRule(
+          uuid: 'out-of-range-$source-recurring-timestamp',
+          name: '异常周期时间',
+          amountMinor: 100,
+          startDate: '2026-09-01',
+          updatedAt: 9000000000000000,
+          lastGeneratedPeriod: 'invalid-period',
+        );
+
+        if (source == 'backup') {
+          final result = await FinanceStorage.importBundle({
+            'recurring_rules': [rule.toMap()],
+          });
+          expect(result['skipped'], 1);
+        } else {
+          expect(
+            await FinanceStorage.mergeRemoteBundle({
+              'recurring_rules': [rule.toMap()],
+            }),
+            0,
+          );
+        }
+        expect(
+          await FinanceStorage.getRecurringRules(includeDeleted: true),
+          isEmpty,
+        );
+      });
+
+      test('$source 拒绝超出日期时间范围的贷款还款时刻', () async {
+        final loan = FinanceLoan(
+          uuid: 'loan-with-invalid-paid-at-$source',
+          name: '异常还款时刻贷款',
+          principalMinor: 1000,
+          termMonths: 1,
+          startDate: '2026-09-01',
+          repaymentDay: 1,
+        );
+        final installment = FinanceLoanInstallment(
+          uuid: 'invalid-paid-at-installment-$source',
+          loanUuid: loan.uuid,
+          installmentIndex: 1,
+          dueDate: '2026-10-01',
+          paymentMinor: 1000,
+          principalMinor: 1000,
+          interestMinor: 0,
+          remainingPrincipalMinor: 0,
+          isPaid: true,
+          paidAt: 9000000000000000,
+          paymentMethodUuid: 'finance-system-payment-cash',
+        );
+        final bundle = {
+          'loans': [loan.toMap()],
+          'loan_installments': [installment.toMap()],
+        };
+
+        if (source == 'backup') {
+          final result = await FinanceStorage.importBundle(bundle);
+          expect(result['imported'], 1);
+          expect(result['skipped'], 1);
+        } else {
+          expect(await FinanceStorage.mergeRemoteBundle(bundle), 1);
+        }
+        expect(
+          await FinanceStorage.getLoanInstallments(
+            loan.uuid,
+            includeDeleted: true,
+          ),
+          isEmpty,
+        );
+      });
+
+      test('$source 拒绝未来时间标记为已还的贷款期次', () async {
+        final loan = FinanceLoan(
+          uuid: 'future-paid-loan-$source',
+          name: '未来还款贷款',
+          principalMinor: 1000,
+          termMonths: 1,
+          startDate: '2026-09-01',
+          repaymentDay: 1,
+        );
+        final installment = FinanceLoanInstallment(
+          uuid: 'future-paid-installment-$source',
+          loanUuid: loan.uuid,
+          installmentIndex: 1,
+          dueDate: '2026-10-01',
+          paymentMinor: 1000,
+          principalMinor: 1000,
+          interestMinor: 0,
+          remainingPrincipalMinor: 0,
+          isPaid: true,
+          paidAt: DateTime.now()
+              .add(const Duration(days: 1))
+              .millisecondsSinceEpoch,
+          paymentMethodUuid: 'finance-system-payment-cash',
+        );
+        final bundle = {
+          'loans': [loan.toMap()],
+          'loan_installments': [installment.toMap()],
+        };
+
+        if (source == 'backup') {
+          final result = await FinanceStorage.importBundle(bundle);
+          expect(result['imported'], 1);
+          expect(result['skipped'], 1);
+        } else {
+          expect(await FinanceStorage.mergeRemoteBundle(bundle), 1);
+        }
+        expect(
+          await FinanceStorage.getLoanInstallments(
+            loan.uuid,
+            includeDeleted: true,
+          ),
+          isEmpty,
+        );
+      });
+
+      test('$source 拒绝与贷款计划不一致的还款期次', () async {
+        final loan = FinanceLoan(
+          uuid: 'mismatched-schedule-loan-$source',
+          name: '还款计划一致性贷款',
+          principalMinor: 1000,
+          termMonths: 1,
+          startDate: '2026-09-01',
+          repaymentDay: 1,
+        );
+        final installment = FinanceLoanInstallment(
+          uuid: 'mismatched-schedule-installment-$source',
+          loanUuid: loan.uuid,
+          installmentIndex: 1,
+          dueDate: '2026-10-01',
+          paymentMinor: 800,
+          principalMinor: 800,
+          interestMinor: 0,
+          remainingPrincipalMinor: 200,
+        );
+        final bundle = {
+          'loans': [loan.toMap()],
+          'loan_installments': [installment.toMap()],
+        };
+
+        if (source == 'backup') {
+          final result = await FinanceStorage.importBundle(bundle);
+          expect(result['imported'], 1);
+          expect(result['skipped'], 1);
+        } else {
+          expect(await FinanceStorage.mergeRemoteBundle(bundle), 1);
+        }
+        expect(
+          await FinanceStorage.getLoanInstallments(
+            loan.uuid,
+            includeDeleted: true,
+          ),
+          isEmpty,
+        );
+      });
+
+      test('$source 拒绝超过贷款期限的还款计划', () async {
+        final loan = FinanceLoan(
+          uuid: 'short-loan-$source',
+          name: '一个月贷款',
+          principalMinor: 1000,
+          termMonths: 1,
+          startDate: '2026-09-01',
+          repaymentDay: 1,
+        );
+        final installment = FinanceLoanInstallment(
+          uuid: 'out-of-term-installment-$source',
+          loanUuid: loan.uuid,
+          installmentIndex: 2,
+          dueDate: '2026-11-01',
+          paymentMinor: 1000,
+          principalMinor: 1000,
+          interestMinor: 0,
+          remainingPrincipalMinor: 0,
+        );
+        final bundle = {
+          'loans': [loan.toMap()],
+          'loan_installments': [installment.toMap()],
+        };
+
+        if (source == 'backup') {
+          final result = await FinanceStorage.importBundle(bundle);
+          expect(result['imported'], 1);
+          expect(result['skipped'], 1);
+        } else {
+          expect(await FinanceStorage.mergeRemoteBundle(bundle), 1);
+        }
+        expect(
+          await FinanceStorage.getLoanInstallments(
+            loan.uuid,
+            includeDeleted: true,
+          ),
+          isEmpty,
+        );
+      });
+
+      test('$source 相同期次只保留版本较新的还款计划', () async {
+        final loan = FinanceLoan(
+          uuid: 'duplicate-installment-loan-$source',
+          name: '重复期次贷款',
+          principalMinor: 1000,
+          termMonths: 2,
+          startDate: '2026-09-01',
+          repaymentDay: 1,
+        );
+        final older = FinanceLoanInstallment(
+          uuid: 'duplicate-installment-a-$source',
+          loanUuid: loan.uuid,
+          installmentIndex: 1,
+          dueDate: '2026-10-01',
+          paymentMinor: 500,
+          principalMinor: 400,
+          interestMinor: 100,
+          remainingPrincipalMinor: 600,
+          version: 1,
+          updatedAt: 100,
+        );
+        final newer = FinanceLoanInstallment(
+          uuid: 'duplicate-installment-b-$source',
+          loanUuid: loan.uuid,
+          installmentIndex: 1,
+          dueDate: '2026-10-01',
+          paymentMinor: 500,
+          principalMinor: 500,
+          interestMinor: 0,
+          remainingPrincipalMinor: 500,
+          version: 2,
+          updatedAt: 200,
+        );
+        final bundle = {
+          'loans': [loan.toMap()],
+          'loan_installments': [older.toMap(), newer.toMap()],
+        };
+
+        if (source == 'backup') {
+          final result = await FinanceStorage.importBundle(bundle);
+          expect(result['imported'], 2);
+          expect(result['skipped'], 1);
+        } else {
+          expect(await FinanceStorage.mergeRemoteBundle(bundle), 2);
+        }
+        final installments = await FinanceStorage.getLoanInstallments(
+          loan.uuid,
+        );
+        expect(installments, hasLength(1));
+        expect(installments.single.uuid, newer.uuid);
+      });
+
+      test('$source 不改写已还期次对应的贷款条款和金额', () async {
+        final loan = FinanceLoan(
+          uuid: 'paid-loan-terms-$source',
+          name: '已有还款的贷款',
+          principalMinor: 10000,
+          annualInterestRateBps: 1200,
+          termMonths: 2,
+          startDate: '2026-09-01',
+          repaymentDay: 1,
+        );
+        await FinanceStorage.saveLoan(loan);
+        final installments = await FinanceStorage.getLoanInstallments(loan.uuid);
+        final paidInstallment = installments.first;
+        await FinanceStorage.setLoanInstallmentPaid(
+          paidInstallment.uuid,
+          true,
+          paymentMethodUuid: 'finance-system-payment-cash',
+        );
+        final currentLoan = (await FinanceStorage.getLoan(loan.uuid))!;
+        final currentInstallment =
+            (await FinanceStorage.getLoanInstallment(paidInstallment.uuid))!;
+        final changedLoan = FinanceLoan.fromMap(currentLoan.toMap())
+          ..annualInterestRateBps = 0
+          ..version = currentLoan.version + 1
+          ..updatedAt = currentLoan.updatedAt + 100;
+        final changedAllocation = FinanceLoanCalculator.generate(
+          principalMinor: changedLoan.principalMinor,
+          annualInterestRateBps: changedLoan.annualInterestRateBps,
+          termMonths: changedLoan.termMonths,
+          startDate: dateFromKey(changedLoan.startDate),
+          repaymentDay: changedLoan.repaymentDay,
+          repaymentMethod: changedLoan.repaymentMethod,
+        ).first;
+        final changedInstallment = FinanceLoanInstallment.fromMap(
+          currentInstallment.toMap(),
+        )
+          ..paymentMinor = changedAllocation.paymentMinor
+          ..principalMinor = changedAllocation.principalMinor
+          ..interestMinor = changedAllocation.interestMinor
+          ..remainingPrincipalMinor = changedAllocation.remainingPrincipalMinor
+          ..version = currentInstallment.version + 1
+          ..updatedAt = currentInstallment.updatedAt + 100;
+        final bundle = {
+          'loans': [changedLoan.toMap()],
+          'loan_installments': [changedInstallment.toMap()],
+        };
+
+        if (source == 'backup') {
+          final result = await FinanceStorage.importBundle(bundle);
+          expect(result['updated'], 0);
+          expect(result['skipped'], 2);
+        } else {
+          expect(await FinanceStorage.mergeRemoteBundle(bundle), 0);
+        }
+        final storedLoan = (await FinanceStorage.getLoan(loan.uuid))!;
+        final storedInstallment =
+            (await FinanceStorage.getLoanInstallment(paidInstallment.uuid))!;
+        expect(storedLoan.annualInterestRateBps, 1200);
+        expect(storedInstallment.paymentMinor, paidInstallment.paymentMinor);
+        expect(storedInstallment.principalMinor, paidInstallment.principalMinor);
+        expect(storedInstallment.interestMinor, paidInstallment.interestMinor);
+      });
+
+      test('$source 拒绝缺少账期和还款期次的记录', () async {
+        final transaction = FinanceTransaction(
+          uuid: 'missing-transaction-date-$source',
+          amountMinor: 100,
+          transactionDate: '2026-09-01',
+        ).toMap()
+          ..remove('transaction_date');
+        final budget = FinanceBudget(
+          uuid: 'missing-budget-month-$source',
+          monthKey: '2026-09',
+          amountMinor: 500,
+        ).toMap()
+          ..remove('month_key');
+        final recurringRule = FinanceRecurringRule(
+          uuid: 'missing-recurring-start-$source',
+          name: '缺少开始日的周期规则',
+          amountMinor: 100,
+          startDate: '2026-09-01',
+        ).toMap()
+          ..remove('start_date');
+        final loans = [
+          FinanceLoan(
+            uuid: 'missing-loan-start-$source',
+            name: '缺少开始日贷款',
+            principalMinor: 1000,
+            termMonths: 1,
+            startDate: '2026-09-01',
+            repaymentDay: 1,
+          ).toMap()
+            ..remove('start_date'),
+          FinanceLoan(
+            uuid: 'missing-loan-term-$source',
+            name: '缺少期限贷款',
+            principalMinor: 1000,
+            termMonths: 2,
+            startDate: '2026-09-01',
+            repaymentDay: 1,
+          ).toMap()
+            ..remove('term_months'),
+          FinanceLoan(
+            uuid: 'missing-loan-repayment-day-$source',
+            name: '缺少还款日贷款',
+            principalMinor: 1000,
+            termMonths: 2,
+            startDate: '2026-09-01',
+            repaymentDay: 1,
+          ).toMap()
+            ..remove('repayment_day'),
+        ];
+        final parentLoan = FinanceLoan(
+          uuid: 'valid-parent-loan-$source',
+          name: '有效父贷款',
+          principalMinor: 1000,
+          termMonths: 2,
+          startDate: '2026-09-01',
+          repaymentDay: 1,
+        );
+        final installments = [
+          FinanceLoanInstallment(
+            uuid: 'missing-installment-date-$source',
+            loanUuid: parentLoan.uuid,
+            installmentIndex: 1,
+            dueDate: '2026-10-01',
+            paymentMinor: 1000,
+            principalMinor: 1000,
+            interestMinor: 0,
+            remainingPrincipalMinor: 0,
+          ).toMap()
+            ..remove('due_date'),
+          FinanceLoanInstallment(
+            uuid: 'missing-installment-index-$source',
+            loanUuid: parentLoan.uuid,
+            installmentIndex: 2,
+            dueDate: '2026-11-01',
+            paymentMinor: 500,
+            principalMinor: 500,
+            interestMinor: 0,
+            remainingPrincipalMinor: 500,
+          ).toMap()
+            ..remove('installment_index'),
+        ];
+        final bundle = {
+          'transactions': [transaction],
+          'budgets': [budget],
+          'recurring_rules': [recurringRule],
+          'loans': [...loans, parentLoan.toMap()],
+          'loan_installments': installments,
+        };
+
+        if (source == 'backup') {
+          final result = await FinanceStorage.importBundle(bundle);
+          expect(result['imported'], 1);
+          expect(result['skipped'], 8);
+        } else {
+          expect(await FinanceStorage.mergeRemoteBundle(bundle), 1);
+        }
+        expect(await FinanceStorage.getTransactions(), isEmpty);
+        expect(await FinanceStorage.getBudgets(includeDeleted: true), isEmpty);
+        expect(await FinanceStorage.getRecurringRules(includeDeleted: true), isEmpty);
+        expect(
+          await FinanceStorage.getLoans(includeDeleted: true),
+          hasLength(1),
+        );
+        expect(
+          await FinanceStorage.getLoanInstallments(
+            parentLoan.uuid,
+            includeDeleted: true,
+          ),
+          isEmpty,
+        );
+      });
+
+      test('$source 拒绝缺少名称的记账记录', () async {
+        final category = FinanceCategory(
+          uuid: 'missing-name-category-$source',
+          name: '残缺分类',
+        ).toMap()
+          ..remove('name');
+        final paymentMethod = FinancePaymentMethod(
+          uuid: 'missing-name-method-$source',
+          name: '残缺账户',
+        ).toMap()
+          ..remove('name');
+        final recurringRule = FinanceRecurringRule(
+          uuid: 'missing-name-rule-$source',
+          name: '残缺周期规则',
+          amountMinor: 100,
+          startDate: '2026-09-01',
+        ).toMap()
+          ..remove('name');
+        final template = FinanceEntryTemplate(
+          uuid: 'missing-name-template-$source',
+          name: '残缺模板',
+          amountMinor: 100,
+        ).toMap()
+          ..remove('name');
+        final loan = FinanceLoan(
+          uuid: 'missing-name-loan-$source',
+          name: '残缺贷款',
+          principalMinor: 1000,
+          termMonths: 1,
+          startDate: '2026-09-01',
+          repaymentDay: 1,
+        ).toMap()
+          ..remove('name');
+        final bundle = {
+          'categories': [category],
+          'payment_methods': [paymentMethod],
+          'recurring_rules': [recurringRule],
+          'templates': [template],
+          'loans': [loan],
+        };
+
+        if (source == 'backup') {
+          final result = await FinanceStorage.importBundle(bundle);
+          expect(result['imported'], 0);
+          expect(result['skipped'], 5);
+        } else {
+          expect(await FinanceStorage.mergeRemoteBundle(bundle), 0);
+        }
+        expect(
+          (await FinanceStorage.getCategories(includeArchived: true))
+              .where((item) => item.uuid == category['uuid']),
+          isEmpty,
+        );
+        expect(
+          (await FinanceStorage.getPaymentMethods(includeArchived: true))
+              .where((item) => item.uuid == paymentMethod['uuid']),
+          isEmpty,
+        );
+        expect(
+          await FinanceStorage.getRecurringRules(includeDeleted: true),
+          isEmpty,
+        );
+        expect(
+          await FinanceStorage.getTemplates(includeDeleted: true),
+          isEmpty,
+        );
+        expect(await FinanceStorage.getLoans(includeDeleted: true), isEmpty);
+      });
+
+      test('$source 拒绝无效的快捷模板使用次数', () async {
+        final templates = [
+          FinanceEntryTemplate(
+            uuid: 'invalid-template-negative-use-count-$source',
+            name: '负数使用次数',
+            amountMinor: 100,
+            useCount: -3,
+          ).toMap(),
+          FinanceEntryTemplate(
+            uuid: 'invalid-template-overflow-use-count-$source',
+            name: '溢出使用次数',
+            amountMinor: 100,
+            useCount: 0x80000000,
+          ).toMap(),
+        ];
+
+        if (source == 'backup') {
+          final result = await FinanceStorage.importBundle({
+            'templates': templates,
+          });
+          expect(result['imported'], 0);
+          expect(result['skipped'], 2);
+        } else {
+          expect(
+            await FinanceStorage.mergeRemoteBundle({'templates': templates}),
+            0,
+          );
+        }
+        expect(await FinanceStorage.getTemplates(includeDeleted: true), isEmpty);
+      });
+    }
+
+    test('本地保存拒绝超范围的快捷模板使用次数', () async {
+      for (final useCount in [-3, 0x80000000]) {
+        await expectLater(
+          FinanceStorage.saveTemplate(
+            FinanceEntryTemplate(
+              name: '超范围使用次数',
+              amountMinor: 100,
+              useCount: useCount,
+            ),
+          ),
+          throwsArgumentError,
+        );
+      }
+    });
+
+    test('本地已有的超期活跃还款期次不显示、不影响余额且不能还款', () async {
+      final loan = FinanceLoan(
+        uuid: 'existing-short-loan',
+        name: '一个月贷款',
+        principalMinor: 1000,
+        termMonths: 1,
+        startDate: '2026-09-01',
+        repaymentDay: 1,
+      );
+      final installment = FinanceLoanInstallment(
+        uuid: 'existing-out-of-term-installment',
+        loanUuid: loan.uuid,
+        installmentIndex: 2,
+        dueDate: '2026-11-01',
+        paymentMinor: 1000,
+        principalMinor: 1000,
+        interestMinor: 0,
+        remainingPrincipalMinor: 0,
+        isPaid: true,
+        paidAt: DateTime.now().millisecondsSinceEpoch,
+        paymentMethodUuid: 'finance-system-payment-cash',
+      );
+      await db.insert('finance_loans', loan.toMap());
+      await db.insert('finance_loan_installments', installment.toMap());
+
+      expect(await FinanceStorage.getLoanInstallments(loan.uuid), isEmpty);
+      expect(await FinanceStorage.getPaidLoanInstallments(), isEmpty);
+      await expectLater(
+        FinanceStorage.setLoanInstallmentPaid(installment.uuid, true),
+        throwsStateError,
+      );
+    });
+
+    test('本地保存、服务端合并和备份导入拒绝不安全的大额账单', () async {
+      final unsafeTransaction = FinanceTransaction(
+        uuid: 'unsafe-large-transaction',
+        amountMinor: maxFinanceAmountMinor + 1,
+        transactionDate: '2026-09-01',
+      );
+      await expectLater(
+        FinanceStorage.saveTransaction(unsafeTransaction),
+        throwsArgumentError,
+      );
+      expect(
+        await FinanceStorage.mergeRemoteBundle({
+          'transactions': [unsafeTransaction.toMap()],
+        }),
+        0,
+      );
+      final negativeTransaction = FinanceTransaction(
+        uuid: 'negative-remote-transaction',
+        amountMinor: -100,
+        transactionDate: '2026-09-01',
+      );
+      expect(
+        await FinanceStorage.mergeRemoteBundle({
+          'transactions': [negativeTransaction.toMap()],
+        }),
+        0,
+      );
+      final transactionImport = await FinanceStorage.importBundle({
+        'transactions': [
+          unsafeTransaction.toMap(),
+          negativeTransaction.toMap(),
+        ],
+      });
+      expect(transactionImport['imported'], 0);
+      expect(transactionImport['skipped'], 2);
+      expect(
+        await FinanceStorage.getTransaction(unsafeTransaction.uuid),
+        isNull,
+      );
+
+      final unsafeBalance = FinanceBudget(
+        uuid: 'unsafe-large-balance',
+        monthKey: '2026-09',
+        paymentMethodUuid: account,
+        amountMinor: maxFinanceAmountMinor + 1,
+      );
+      await expectLater(
+        FinanceStorage.saveBudget(unsafeBalance),
+        throwsArgumentError,
+      );
+      final balanceImport = await FinanceStorage.importBundle({
+        'budgets': [unsafeBalance.toMap()],
+      });
+      expect(balanceImport['imported'], 0);
+      expect(balanceImport['skipped'], 1);
+      expect(await FinanceStorage.getBudget(unsafeBalance.uuid), isNull);
+    });
+
+    test('V56本地余额升级时只排队一次，保留零余额及快照时刻', () async {
+      final snapshotAt = DateTime(2026, 9, 20).millisecondsSinceEpoch;
+      await db.insert(
+        'finance_budgets',
+        FinanceBudget(
+          uuid: 'legacy-balance',
+          monthKey: '2026-09',
+          amountMinor: 0,
+          paymentMethodUuid: account,
+          balanceSnapshotAt: snapshotAt,
+        ).toMap(),
+      );
+      await db.execute(
+        'ALTER TABLE finance_loan_installments DROP COLUMN payment_method_uuid',
+      );
+      await DatabaseHelper.ensureFinanceSchema(db);
+      final migrated = (await db.query('finance_budgets')).single;
+      expect(migrated['pending_sync'], 1);
+      expect(migrated['amount_minor'], 0);
+      expect(migrated['balance_snapshot_at'], snapshotAt);
+      await db.update('finance_budgets', {'pending_sync': 0});
+      await DatabaseHelper.ensureFinanceSchema(db);
+      expect((await db.query('finance_budgets')).single['pending_sync'], 0);
+    });
+
+    test('零余额使用专用同步字段，旧服务不确认，新服务明确确认后保留快照', () async {
+      final snapshotAt = DateTime(2026, 9, 20).millisecondsSinceEpoch;
+      await FinanceStorage.saveBudget(
+        FinanceBudget(
+          uuid: 'zero-balance',
+          monthKey: '2026-09',
+          amountMinor: 0,
+          paymentMethodUuid: account,
+          balanceSnapshotAt: snapshotAt,
+        ),
+        balanceSnapshotAt: snapshotAt,
+      );
+      final first = await FinanceSyncService.prepare(
+        username: user,
+        forceFullSync: false,
+      );
+      expect(first.payload['finance_budgets_changes'], isEmpty);
+      expect(
+        (first.payload['finance_balance_snapshots_changes'] as List)
+            .single['uuid'],
+        FinanceBudget.stableUuid('2026-09', null, paymentMethodUuid: account),
+      );
+      await FinanceSyncService.finish(
+        request: first,
+        response: _balanceSyncResponse(),
+        supported: true,
+      );
+      expect((await db.query('finance_budgets')).single['pending_sync'], 1);
+      expect(await FinanceSyncService.balanceSyncSupport(), false);
+
+      final second = await FinanceSyncService.prepare(
+        username: user,
+        forceFullSync: false,
+      );
+      final pending =
+          (second.payload['finance_balance_snapshots_changes'] as List).single
+              as Map;
+      final ackAt = (pending['updated_at'] as int) + 100;
+      final response = _balanceSyncResponse(supportsBalances: true);
+      response['finance_acknowledged_changes'] = [
+        {
+          'table': 'budgets',
+          'uuid': pending['uuid'],
+          'version': pending['version'],
+          'updated_at': ackAt,
+        },
+      ];
+      final result = await FinanceSyncService.finish(
+        request: second,
+        response: response,
+        supported: true,
+      );
+      expect(result.acknowledgedChangeCount, 1);
+      final acknowledged = (await db.query('finance_budgets')).single;
+      expect(acknowledged['pending_sync'], 0);
+      expect(acknowledged['updated_at'], ackAt);
+      expect(acknowledged['balance_snapshot_at'], snapshotAt);
+      expect(await FinanceSyncService.balanceSyncSupport(), true);
+
+      // Capability discovery requests a full pull, including older balances
+      // whose timestamps are already below the ordinary finance cursor.
+      final bootstrap = await FinanceSyncService.prepare(
+        username: user,
+        forceFullSync: false,
+      );
+      expect(bootstrap.fullSync, true);
+      await FinanceSyncService.finish(
+        request: bootstrap,
+        response: _balanceSyncResponse(supportsBalances: true),
+        supported: true,
+      );
+      expect(
+        (await FinanceSyncService.prepare(
+          username: user,
+          forceFullSync: false,
+        )).fullSync,
+        false,
+      );
+
+      final other = await databaseFactoryFfi.openDatabase(
+        inMemoryDatabasePath,
+        options: OpenDatabaseOptions(singleInstance: false),
+      );
+      try {
+        await DatabaseHelper.ensureFinanceSchema(other);
+        FinanceStorage.databaseOverride = other;
+        expect(
+          await FinanceStorage.mergeRemoteBundle({
+            'budgets': [acknowledged],
+          }),
+          1,
+        );
+        final downloaded = (await other.query('finance_budgets')).single;
+        expect(downloaded['amount_minor'], 0);
+        expect(downloaded['payment_method_uuid'], account);
+        expect(downloaded['balance_snapshot_at'], snapshotAt);
+        expect(downloaded['pending_sync'], 0);
+      } finally {
+        FinanceStorage.databaseOverride = db;
+        await other.close();
+      }
+    });
+
+    test('无息还款记录账户，删除保留已发生扣款、撤销才移除', () async {
+      final loan = FinanceLoan(
+        uuid: 'zero-interest-loan',
+        name: '无息借款',
+        principalMinor: 10000,
+        annualInterestRateBps: 0,
+        termMonths: 2,
+        startDate: '2026-09-01',
+        repaymentDay: 1,
+      );
+      await FinanceStorage.saveLoan(loan);
+      final installment = (await FinanceStorage.getLoanInstallments(loan.uuid))
+          .first;
+      final paidAt = DateTime.now().subtract(const Duration(hours: 1));
+      await FinanceStorage.setLoanInstallmentPaid(
+        installment.uuid,
+        true,
+        paymentMethodUuid: account,
+        paidAt: paidAt,
+      );
+      expect(
+        (await FinanceStorage.getPaidLoanInstallments()).single.paymentMinor,
+        5000,
+      );
+      expect(await db.query('finance_transactions'), isEmpty);
+      final request = await FinanceSyncService.prepare(
+        username: user,
+        forceFullSync: false,
+      );
+      expect(
+        (request.payload['finance_loan_account_changes'] as List)
+            .single['uuid'],
+        installment.uuid,
+      );
+      final local = (await FinanceStorage.getLoanInstallment(
+        installment.uuid,
+      ))!;
+      final response = _balanceSyncResponse();
+      final legacy = local.toMap()..remove('payment_method_uuid');
+      legacy['version'] = local.version + 10;
+      legacy['updated_at'] = local.updatedAt + 100;
+      response['server_finance_loan_installments'] = [legacy];
+      await FinanceSyncService.finish(
+        request: request,
+        response: response,
+        supported: true,
+      );
+      expect(
+        (await FinanceStorage.getLoanInstallment(installment.uuid))!
+            .paymentMethodUuid,
+        account,
+      );
+      expect(
+        (await db.query(
+          'finance_loan_installments',
+          where: 'uuid = ?',
+          whereArgs: [installment.uuid],
+        )).single['pending_sync'],
+        1,
+      );
+      await FinanceStorage.deleteLoan(loan.uuid);
+      expect(
+        (await FinanceStorage.getPaidLoanInstallments()).single.paymentMinor,
+        5000,
+      );
+      final deletedBundle = await FinanceStorage.getExportBundle();
+      for (final restoreFromCloud in [true, false]) {
+        final other = await databaseFactoryFfi.openDatabase(
+          inMemoryDatabasePath,
+          options: OpenDatabaseOptions(singleInstance: false),
+        );
+        try {
+          await DatabaseHelper.ensureFinanceSchema(other);
+          FinanceStorage.databaseOverride = other;
+          if (restoreFromCloud) {
+            await FinanceStorage.mergeRemoteBundle(deletedBundle);
+          } else {
+            await FinanceStorage.importBundle(deletedBundle);
+          }
+          expect(
+            (await FinanceStorage.getPaidLoanInstallments())
+                .single
+                .paymentMinor,
+            5000,
+            reason: restoreFromCloud ? '云端恢复已删除贷款的扣款' : '备份恢复已删除贷款的扣款',
+          );
+          expect(
+            (await FinanceStorage.getLoan(
+              loan.uuid,
+              includeDeleted: true,
+            ))!.isDeleted,
+            true,
+          );
+        } finally {
+          FinanceStorage.databaseOverride = db;
+          await other.close();
+        }
+      }
+      await FinanceStorage.restoreLoan(loan.uuid);
+      expect(
+        (await FinanceStorage.getPaidLoanInstallments()).single.paidAt,
+        paidAt.millisecondsSinceEpoch,
+      );
+      await FinanceStorage.setLoanInstallmentPaid(installment.uuid, false);
+      expect(await FinanceStorage.getPaidLoanInstallments(), isEmpty);
+      final undone = (await FinanceStorage.getLoanInstallment(
+        installment.uuid,
+      ))!;
+      expect(undone.paymentMethodUuid, isNull);
+      expect(undone.paidAt, isNull);
+    });
+
+    test('利息已有退款时撤销还款回滚，先删除退款后可正常撤销', () async {
+      final loan = FinanceLoan(
+        uuid: 'refunded-interest-loan',
+        name: '带息借款',
+        principalMinor: 10000,
+        annualInterestRateBps: 1200,
+        termMonths: 1,
+        startDate: '2026-08-01',
+        repaymentDay: 1,
+      );
+      await FinanceStorage.saveLoan(loan);
+      final installment = (await FinanceStorage.getLoanInstallments(loan.uuid))
+          .single;
+      await FinanceStorage.setLoanInstallmentPaid(
+        installment.uuid,
+        true,
+        paymentMethodUuid: account,
+        paidAt: DateTime.now().subtract(const Duration(hours: 1)),
+      );
+      final paid = (await FinanceStorage.getLoanInstallment(installment.uuid))!;
+      await FinanceStorage.saveTransaction(
+        FinanceTransaction(
+          uuid: 'refunded-interest',
+          type: FinanceTransactionType.refund,
+          amountMinor: paid.interestMinor,
+          paymentMethodUuid: account,
+          transactionDate: dateKey(DateTime.now()),
+          relatedTransactionUuid: paid.interestTransactionUuid,
+        ),
+      );
+      await expectLater(
+        FinanceStorage.setLoanInstallmentPaid(paid.uuid, false),
+        throwsA(isA<StateError>()),
+      );
+      final preserved = (await FinanceStorage.getLoanInstallment(paid.uuid))!;
+      expect(preserved.toMap(), paid.toMap());
+      expect(
+        (await FinanceStorage.getTransaction(paid.interestTransactionUuid!))!
+            .isDeleted,
+        false,
+      );
+      expect(
+        (await FinanceStorage.getTransaction('refunded-interest'))!.isDeleted,
+        false,
+      );
+      await FinanceStorage.deleteTransaction('refunded-interest');
+      await FinanceStorage.setLoanInstallmentPaid(paid.uuid, false);
+      expect(
+        (await FinanceStorage.getLoanInstallment(paid.uuid))!.isPaid,
+        false,
+      );
+      expect(
+        (await FinanceStorage.getTransaction(paid.interestTransactionUuid!))!
+            .isDeleted,
+        true,
+      );
+      expect(await FinanceStorage.getPaidLoanInstallments(), isEmpty);
+    });
+
+    test('云同步修改周期账单规则后报告提醒需要重排', () async {
+      final rule = FinanceRecurringRule(
+        uuid: 'remote-reminder-rule',
+        name: '旧周期账单名称',
+        amountMinor: 1200,
+        startDate: '2026-01-01',
+      );
+      await FinanceStorage.saveRecurringRule(rule);
+      final request = await FinanceSyncService.prepare(
+        username: user,
+        forceFullSync: false,
+      );
+      final remoteRule = FinanceRecurringRule.fromMap(rule.toMap())
+        ..name = '同步后的周期账单名称'
+        ..version = rule.version + 1
+        ..updatedAt = rule.updatedAt + 10000
+        ..pendingSync = false;
+      final response = _balanceSyncResponse(supportsBalances: true)
+        ..['server_finance_recurring_rules'] = [remoteRule.toMap()];
+
+      final result = await FinanceSyncService.finish(
+        request: request,
+        response: response,
+        supported: true,
+      );
+
+      expect(result.recurringRulesChanged, true);
+      expect(
+        (await FinanceStorage.getRecurringRule(rule.uuid))!.name,
+        '同步后的周期账单名称',
+      );
+
+      final unchangedRequest = await FinanceSyncService.prepare(
+        username: user,
+        forceFullSync: false,
+      );
+      final unchangedResult = await FinanceSyncService.finish(
+        request: unchangedRequest,
+        response: response,
+        supported: true,
+      );
+      expect(unchangedResult.recurringRulesChanged, false);
+    });
+
+    test('同步同批原单和退款墓碑完整应用，两种返回顺序都不漏删除', () async {
+      for (final reverse in [false, true]) {
+        final suffix = reverse ? 'reversed' : 'ordered';
+        final original = FinanceTransaction(
+          uuid: 'deleted-original-$suffix',
+          amountMinor: 10000,
+          transactionDate: '2026-09-01',
+          createdAt: 10,
+          updatedAt: 10,
+        );
+        final refund = FinanceTransaction(
+          uuid: 'deleted-refund-$suffix',
+          type: FinanceTransactionType.refund,
+          amountMinor: 1000,
+          transactionDate: '2026-09-02',
+          relatedTransactionUuid: original.uuid,
+          createdAt: 20,
+          updatedAt: 20,
+        );
+        await db.insert('finance_transactions', original.toMap());
+        await db.insert('finance_transactions', refund.toMap());
+        final request = await FinanceSyncService.prepare(
+          username: user,
+          forceFullSync: false,
+        );
+        final records = [
+          {
+            ...original.toMap(),
+            'is_deleted': 1,
+            'updated_at': 200,
+            'version': 2,
+          },
+          {...refund.toMap(), 'is_deleted': 1, 'updated_at': 199, 'version': 2},
+        ];
+        final response = _balanceSyncResponse(supportsBalances: true);
+        response['server_finance_transactions'] = reverse
+            ? records.reversed.toList()
+            : records;
+        final result = await FinanceSyncService.finish(
+          request: request,
+          response: response,
+          supported: true,
+        );
+        expect(
+          (await FinanceStorage.getTransaction(original.uuid))!.isDeleted,
+          true,
+        );
+        expect(
+          (await FinanceStorage.getTransaction(refund.uuid))!.isDeleted,
+          true,
+        );
+        expect(result.remoteChangeCount, 2);
+        expect(result.remoteChangesDeferred, false);
+        expect(result.cursorAdvanced, true);
+      }
+    });
+
+    test('旧版本已经推进游标后，升级仍会全量补回遗漏的原单删除', () async {
+      final prefs = await SharedPreferences.getInstance();
+      final initial = await FinanceSyncService.prepare(
+        username: user,
+        forceFullSync: false,
+      );
+      await prefs.setBool(
+        initial.bootstrapKey.replaceFirst(
+          RegExp(r'finance_sync_v\d+_'),
+          'finance_sync_v1_',
+        ),
+        true,
+      );
+      await prefs.setBool(initial.balanceCapabilityKey, true);
+      await prefs.setBool(initial.balanceBootstrapKey, true);
+      await prefs.setInt(initial.cursorKey, 500);
+      final original = FinanceTransaction(
+        uuid: 'previously-skipped-original',
+        amountMinor: 10000,
+        transactionDate: '2026-09-01',
+        createdAt: 10,
+        updatedAt: 10,
+      );
+      await db.insert('finance_transactions', original.toMap());
+      final request = await FinanceSyncService.prepare(
+        username: user,
+        forceFullSync: false,
+      );
+      expect(request.fullSync, true);
+      final response = _balanceSyncResponse(supportsBalances: true);
+      response['server_finance_transactions'] = [
+        {...original.toMap(), 'is_deleted': 1, 'updated_at': 200, 'version': 2},
+      ];
+      await FinanceSyncService.finish(
+        request: request,
+        response: response,
+        supported: true,
+      );
+      expect(
+        (await FinanceStorage.getTransaction(original.uuid))!.isDeleted,
+        true,
+      );
+      expect(
+        (await FinanceSyncService.prepare(
+          username: user,
+          forceFullSync: false,
+        )).fullSync,
+        false,
+      );
+    });
+
+    test('缺少退款原单时保留同步游标，下一轮全量补齐关联后再前移', () async {
+      final prefs = await SharedPreferences.getInstance();
+      final initial = await FinanceSyncService.prepare(
+        username: user,
+        forceFullSync: false,
+      );
+      await prefs.setBool(initial.bootstrapKey, true);
+      await prefs.setBool(initial.balanceCapabilityKey, true);
+      await prefs.setBool(initial.balanceBootstrapKey, true);
+      await prefs.setInt(initial.cursorKey, 100);
+      final original = FinanceTransaction(
+        uuid: 'deferred-original',
+        amountMinor: 10000,
+        transactionDate: '2026-09-01',
+        createdAt: 10,
+        updatedAt: 99,
+      );
+      final refund = FinanceTransaction(
+        uuid: 'deferred-refund',
+        type: FinanceTransactionType.refund,
+        amountMinor: 1000,
+        transactionDate: '2026-09-02',
+        relatedTransactionUuid: original.uuid,
+        createdAt: 20,
+        updatedAt: 200,
+      );
+      final request = await FinanceSyncService.prepare(
+        username: user,
+        forceFullSync: false,
+      );
+      expect(request.fullSync, false);
+      final response = _balanceSyncResponse(supportsBalances: true);
+      response['server_finance_transactions'] = [refund.toMap()];
+      final result = await FinanceSyncService.finish(
+        request: request,
+        response: response,
+        supported: true,
+      );
+      expect(result.remoteChangesDeferred, true);
+      expect(result.cursorAdvanced, false);
+      expect(prefs.getInt(initial.cursorKey), 100);
+      final retry = await FinanceSyncService.prepare(
+        username: user,
+        forceFullSync: false,
+      );
+      expect(retry.fullSync, true);
+      response['server_finance_transactions'] = [
+        refund.toMap(),
+        original.toMap(),
+      ];
+      final retried = await FinanceSyncService.finish(
+        request: retry,
+        response: response,
+        supported: true,
+      );
+      expect(retried.remoteChangesDeferred, false);
+      expect(retried.cursorAdvanced, true);
+      expect(
+        (await FinanceStorage.getTransaction(refund.uuid))!
+            .relatedTransactionUuid,
+        original.uuid,
+      );
+    });
+  });
 
   FinanceTransaction refundTestExpense({
     String uuid = 'original-expense',
@@ -85,6 +2312,7 @@ void main() {
         'month_key',
         'category_uuid',
         'payment_method_uuid',
+        'balance_snapshot_at',
         'amount_minor',
         'is_deleted',
         'version',
@@ -159,6 +2387,309 @@ void main() {
     expect(
       categoryColumns.map((row) => row['name']),
       contains('name_customized'),
+    );
+  });
+
+  test('旧付款方式余额升级时保留原有快照时间', () async {
+    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    addTearDown(db.close);
+    await db.execute('''
+      CREATE TABLE finance_budgets (
+        uuid TEXT NOT NULL UNIQUE,
+        month_key TEXT NOT NULL,
+        category_uuid TEXT,
+        payment_method_uuid TEXT,
+        amount_minor INTEGER NOT NULL,
+        currency_code TEXT NOT NULL,
+        note TEXT,
+        is_deleted INTEGER NOT NULL,
+        version INTEGER NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        device_id TEXT,
+        pending_sync INTEGER NOT NULL
+      )
+    ''');
+    await db.insert('finance_budgets', {
+      'uuid': 'legacy-card',
+      'month_key': '2026-09',
+      'payment_method_uuid': 'card',
+      'amount_minor': 10000,
+      'currency_code': 'CNY',
+      'is_deleted': 0,
+      'version': 1,
+      'created_at': 100,
+      'updated_at': 200,
+      'pending_sync': 0,
+    });
+
+    await DatabaseHelper.ensureFinanceSchema(db);
+    await DatabaseHelper.ensureFinanceSchema(db);
+
+    final rows = await db.query('finance_budgets');
+    expect(rows.single['balance_snapshot_at'], 200);
+  });
+
+  test('付款余额修改备注和恢复时保留快照，改金额可设为零', () async {
+    SharedPreferences.setMockInitialValues({
+      'current_login_user': 'balance-snapshot-test',
+    });
+    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    addTearDown(() async {
+      FinanceStorage.databaseOverride = null;
+      await db.close();
+    });
+    await DatabaseHelper.ensureFinanceSchema(db);
+    FinanceStorage.databaseOverride = db;
+    await db.insert(
+      'finance_payment_methods',
+      FinancePaymentMethod(uuid: 'card', name: '测试银行卡').toMap(),
+    );
+
+    final balance = FinanceBudget(
+      monthKey: '2026-09',
+      paymentMethodUuid: 'card',
+      amountMinor: 10000,
+    );
+    await FinanceStorage.saveBudget(balance);
+    await db.update(
+      'finance_budgets',
+      {'balance_snapshot_at': 200},
+      where: 'uuid = ?',
+      whereArgs: [balance.uuid],
+    );
+    final edited = (await FinanceStorage.getBudget(balance.uuid))!
+      ..note = '只修改备注';
+    edited.markAsChanged();
+    await FinanceStorage.saveBudget(edited);
+    expect((await FinanceStorage.getBudget(balance.uuid))!.balanceSnapshotAt, 200);
+
+    final recalibrated = (await FinanceStorage.getBudget(balance.uuid))!;
+    recalibrated.markAsChanged();
+    await FinanceStorage.saveBudget(
+      recalibrated,
+      resetBalanceSnapshot: true,
+    );
+    expect(
+      (await FinanceStorage.getBudget(balance.uuid))!.balanceSnapshotAt,
+      greaterThan(200),
+      reason: '余额数值未变时，也需要能主动重新记录当前余额',
+    );
+
+    await db.update(
+      'finance_budgets',
+      {'balance_snapshot_at': 200},
+      where: 'uuid = ?',
+      whereArgs: [balance.uuid],
+    );
+
+    await FinanceStorage.deleteBudget(balance.uuid);
+    await FinanceStorage.restoreBudget(balance.uuid);
+    expect((await FinanceStorage.getBudget(balance.uuid))!.balanceSnapshotAt, 200);
+
+    final zero = (await FinanceStorage.getBudget(balance.uuid))!
+      ..amountMinor = 0;
+    zero.markAsChanged();
+    await FinanceStorage.saveBudget(zero);
+    final stored = (await FinanceStorage.getBudget(balance.uuid))!;
+    expect(stored.amountMinor, 0);
+    expect(stored.balanceSnapshotAt, greaterThan(200));
+  });
+
+  test('付款方式余额备份恢复保留快照时间和关联账单', () async {
+    SharedPreferences.setMockInitialValues({
+      'current_login_user': 'balance-backup-test',
+    });
+    final originalDb =
+        await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    final restoredDb =
+        await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    addTearDown(() async {
+      FinanceStorage.databaseOverride = null;
+      await originalDb.close();
+      await restoredDb.close();
+    });
+    await DatabaseHelper.ensureFinanceSchema(originalDb);
+    await DatabaseHelper.ensureFinanceSchema(restoredDb);
+    FinanceStorage.databaseOverride = originalDb;
+    await FinanceStorage.ensureReady();
+
+    final now = DateTime.now();
+    final snapshotAt = now
+        .subtract(const Duration(minutes: 5))
+        .millisecondsSinceEpoch;
+    await originalDb.insert(
+      'finance_payment_methods',
+      FinancePaymentMethod(uuid: 'backup-card', name: '备份银行卡').toMap(),
+    );
+    final balance = FinanceBudget(
+      monthKey: financeMonthKey(now),
+      paymentMethodUuid: 'backup-card',
+      amountMinor: 10000,
+    );
+    await FinanceStorage.saveBudget(balance);
+    await originalDb.update(
+      'finance_budgets',
+      {'balance_snapshot_at': snapshotAt},
+      where: 'uuid = ?',
+      whereArgs: [balance.uuid],
+    );
+    await FinanceStorage.saveTransaction(FinanceTransaction(
+      uuid: 'backup-income',
+      type: FinanceTransactionType.income,
+      amountMinor: 2500,
+      paymentMethodUuid: 'backup-card',
+      transactionDate: dateKey(now),
+    ));
+
+    final backup = await FinanceStorage.getExportBundle();
+    FinanceStorage.databaseOverride = restoredDb;
+    await FinanceStorage.importBundle(backup);
+
+    final restoredBalance = (await FinanceStorage.getBudget(balance.uuid))!;
+    final restoredIncome =
+        (await FinanceStorage.getTransaction('backup-income'))!;
+    expect(restoredBalance.balanceSnapshotAt, snapshotAt);
+    expect(restoredBalance.amountMinor, 10000);
+    expect(restoredIncome.paymentMethodUuid, 'backup-card');
+    expect(restoredIncome.amountMinor, 2500);
+  });
+
+  test('历史月份余额可指定对应时间，修改金额仍保留所选时间', () async {
+    SharedPreferences.setMockInitialValues({
+      'current_login_user': 'historical-balance-time-test',
+    });
+    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    addTearDown(() async {
+      FinanceStorage.databaseOverride = null;
+      await db.close();
+    });
+    await DatabaseHelper.ensureFinanceSchema(db);
+    FinanceStorage.databaseOverride = db;
+    await db.insert(
+      'finance_payment_methods',
+      FinancePaymentMethod(
+        uuid: 'historical-card',
+        name: '历史银行卡',
+      ).toMap(),
+    );
+
+    final now = DateTime.now();
+    final pastMonth = DateTime(now.year, now.month - 1);
+    final snapshotAt = DateTime(
+      pastMonth.year,
+      pastMonth.month,
+      15,
+      9,
+      30,
+    ).millisecondsSinceEpoch;
+    final balance = FinanceBudget(
+      monthKey: financeMonthKey(pastMonth),
+      paymentMethodUuid: 'historical-card',
+      amountMinor: 10000,
+    );
+    await FinanceStorage.saveBudget(
+      balance,
+      balanceSnapshotAt: snapshotAt,
+    );
+    expect((await FinanceStorage.getBudget(balance.uuid))!.balanceSnapshotAt,
+        snapshotAt);
+
+    final corrected = (await FinanceStorage.getBudget(balance.uuid))!
+      ..amountMinor = 12000;
+    corrected.markAsChanged();
+    await FinanceStorage.saveBudget(
+      corrected,
+      balanceSnapshotAt: snapshotAt,
+    );
+    expect((await FinanceStorage.getBudget(balance.uuid))!.balanceSnapshotAt,
+        snapshotAt);
+
+    await expectLater(
+      FinanceStorage.saveBudget(
+        corrected,
+        balanceSnapshotAt: DateTime.now()
+            .add(const Duration(minutes: 1))
+            .millisecondsSinceEpoch,
+      ),
+      throwsArgumentError,
+    );
+  });
+
+  test('旧余额表单改金额时保留同步后更新的快照时间', () async {
+    SharedPreferences.setMockInitialValues({
+      'current_login_user': 'stale-balance-snapshot-edit-test',
+    });
+    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    addTearDown(() async {
+      FinanceStorage.databaseOverride = null;
+      await db.close();
+    });
+    await DatabaseHelper.ensureFinanceSchema(db);
+    FinanceStorage.databaseOverride = db;
+    await FinanceStorage.ensureReady();
+    await db.insert(
+      'finance_payment_methods',
+      FinancePaymentMethod(
+        uuid: 'stale-snapshot-card',
+        name: '同步中的银行卡',
+      ).toMap(),
+    );
+
+    final now = DateTime.now();
+    final month = DateTime(now.year, now.month - 1);
+    final firstSnapshotAt = DateTime(
+      month.year,
+      month.month,
+      10,
+      10,
+    ).millisecondsSinceEpoch;
+    final synchronizedSnapshotAt = DateTime(
+      month.year,
+      month.month,
+      11,
+      10,
+    ).millisecondsSinceEpoch;
+    final original = FinanceBudget(
+      monthKey: financeMonthKey(month),
+      paymentMethodUuid: 'stale-snapshot-card',
+      amountMinor: 10000,
+      createdAt: firstSnapshotAt - 1000,
+      updatedAt: firstSnapshotAt,
+    );
+    await FinanceStorage.saveBudget(
+      original,
+      balanceSnapshotAt: firstSnapshotAt,
+    );
+    final staleOriginal = FinanceBudget.fromMap(
+      (await FinanceStorage.getBudget(original.uuid))!.toMap(),
+    );
+
+    final remoteEdit = FinanceBudget.fromMap(staleOriginal.toMap())
+      ..amountMinor = 15000
+      ..balanceSnapshotAt = synchronizedSnapshotAt
+      ..updatedAt = synchronizedSnapshotAt
+      ..version = staleOriginal.version + 1
+      ..pendingSync = false;
+    await FinanceStorage.mergeRemoteBundle({
+      'budgets': [remoteEdit.toMap()],
+    });
+
+    final localEdit = FinanceBudget.fromMap(staleOriginal.toMap())
+      ..amountMinor = 12000
+      ..markAsChanged();
+    await FinanceStorage.saveBudget(
+      localEdit,
+      original: staleOriginal,
+      balanceSnapshotAt: firstSnapshotAt,
+    );
+
+    final saved = (await FinanceStorage.getBudget(original.uuid))!;
+    expect(saved.amountMinor, 12000, reason: '保留本地实际修改的余额数值');
+    expect(
+      saved.balanceSnapshotAt,
+      synchronizedSnapshotAt,
+      reason: '本地没有改对应时间时，保留同步期间更新的快照时间',
     );
   });
 
@@ -563,6 +3094,10 @@ void main() {
     });
     await DatabaseHelper.ensureFinanceSchema(db);
     FinanceStorage.databaseOverride = db;
+    await db.insert(
+      'finance_categories',
+      FinanceCategory(uuid: 'category-food', name: '餐饮').toMap(),
+    );
 
     final local = FinanceBudget(
       monthKey: '2026-09',
@@ -602,7 +3137,7 @@ void main() {
     expect(budgets.single.amountMinor, 50000);
   });
 
-  test('付款方式额度按月和付款方式独立保存且不进入云同步', () async {
+  test('付款方式余额按月和账户独立保存并进入独立同步字段', () async {
     SharedPreferences.setMockInitialValues({
       'current_login_user': 'payment-budget-scope-test',
     });
@@ -613,6 +3148,12 @@ void main() {
     });
     await DatabaseHelper.ensureFinanceSchema(db);
     FinanceStorage.databaseOverride = db;
+    for (final uuid in ['payment-card', 'payment-wallet']) {
+      await db.insert(
+        'finance_payment_methods',
+        FinancePaymentMethod(uuid: uuid, name: uuid).toMap(),
+      );
+    }
 
     final card = FinanceBudget(
       monthKey: '2026-09',
@@ -636,8 +3177,8 @@ void main() {
       ),
     );
     expect(wallet.uuid, isNot(card.uuid));
-    expect((await FinanceStorage.getBudget(card.uuid))!.pendingSync, isFalse);
-    expect((await FinanceStorage.getBudget(wallet.uuid))!.pendingSync, isFalse);
+    expect((await FinanceStorage.getBudget(card.uuid))!.pendingSync, isTrue);
+    expect((await FinanceStorage.getBudget(wallet.uuid))!.pendingSync, isTrue);
 
     await FinanceStorage.mergeRemoteBundle({
       'budgets': [
@@ -676,8 +3217,9 @@ void main() {
     );
     expect(
       syncChanges['budgets']!.map((item) => item['uuid']),
-      ['overall-budget'],
+      unorderedEquals(['overall-budget', card.uuid]),
     );
+    expect(syncChanges['balance_snapshots']!.single['uuid'], card.uuid);
   });
 
   test('远端较新预算墓碑会压住同范围的历史活动副本', () async {
@@ -691,6 +3233,10 @@ void main() {
     });
     await DatabaseHelper.ensureFinanceSchema(db);
     FinanceStorage.databaseOverride = db;
+    await db.insert(
+      'finance_categories',
+      FinanceCategory(uuid: 'category-food', name: '餐饮').toMap(),
+    );
 
     await FinanceStorage.mergeRemoteBundle({
       'budgets': [
@@ -798,11 +3344,14 @@ void main() {
     expect(await db.query('finance_loan_installments'), isEmpty);
   });
 
-  test('历史退款分类迁移到支出侧的专用分类', () async {
+  test('运行中导入和云端合并的历史退款会迁移到支出侧专用分类', () async {
     SharedPreferences.setMockInitialValues({
       'current_login_user': 'refund-migration-test',
     });
-    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    final db = await databaseFactoryFfi.openDatabase(
+      inMemoryDatabasePath,
+      options: OpenDatabaseOptions(singleInstance: false),
+    );
     addTearDown(() async {
       FinanceStorage.databaseOverride = null;
       await db.close();
@@ -811,8 +3360,8 @@ void main() {
     FinanceStorage.databaseOverride = db;
     await FinanceStorage.ensureReady();
     final oldUpdatedAt = DateTime(2026, 1, 1).millisecondsSinceEpoch;
-    await db.insert('finance_transactions', {
-      'uuid': 'legacy-refund',
+    Map<String, Object?> legacyRefund(String uuid, int updatedAt) => {
+      'uuid': uuid,
       'type': 'refund',
       'amount_minor': 1200,
       'currency_code': 'CNY',
@@ -823,20 +3372,47 @@ void main() {
       'is_deleted': 0,
       'version': 1,
       'created_at': oldUpdatedAt,
-      'updated_at': oldUpdatedAt,
+      'updated_at': updatedAt,
       'pending_sync': 0,
-    });
+    };
 
-    final transactions = await FinanceStorage.getTransactions();
+    final revisionBeforeRepair = FinanceStorage.revision.value;
+    final importResult = await FinanceStorage.importBundle({
+      'transactions': [legacyRefund('imported-legacy-refund', oldUpdatedAt)],
+    });
+    expect(importResult['imported'], 1);
+    expect(FinanceStorage.revision.value, revisionBeforeRepair + 1);
+    final importedRefund = (await FinanceStorage.getTransaction(
+      'imported-legacy-refund',
+    ))!;
+    expect(importedRefund.categoryUuid, 'finance-system-category-refund');
+    expect(importedRefund.pendingSync, isTrue);
+
+    final revisionBeforeMerge = FinanceStorage.revision.value;
+    expect(
+      await FinanceStorage.mergeRemoteBundle({
+        'transactions': [
+          legacyRefund('remote-legacy-refund', oldUpdatedAt + 1),
+        ],
+      }),
+      2,
+    );
+    expect(FinanceStorage.revision.value, revisionBeforeMerge + 1);
+    final remoteRefund = (await FinanceStorage.getTransaction(
+      'remote-legacy-refund',
+    ))!;
+    expect(remoteRefund.categoryUuid, 'finance-system-category-refund');
+    expect(remoteRefund.pendingSync, isTrue);
+
     final refundCategory = await db.query(
       'finance_categories',
       where: 'uuid = ?',
       whereArgs: ['finance-system-category-refund'],
     );
-
-    expect(transactions.single.categoryUuid, 'finance-system-category-refund');
-    expect(transactions.single.pendingSync, isTrue);
     expect(refundCategory.single['type'], 'expense');
+
+    await FinanceStorage.ensureReady();
+    expect(FinanceStorage.revision.value, revisionBeforeMerge + 1);
   });
 
   test('贷款保存还款计划，已还利息进入支出并支持删除恢复', () async {
@@ -990,6 +3566,14 @@ void main() {
       everyElement(predicate<FinanceTransaction>(
           (item) => item.isDeleted || item.installmentCount == 2)),
     );
+    await expectLater(
+      FinanceStorage.restoreTransaction(saved.last.uuid),
+      throwsA(isA<StateError>()),
+    );
+    expect(
+      (await FinanceStorage.getTransaction(saved.last.uuid))!.isDeleted,
+      isTrue,
+    );
 
     await FinanceStorage.deleteInstallmentGroup(groupUuid);
     expect(await FinanceStorage.getInstallmentGroup(groupUuid), isEmpty);
@@ -1000,6 +3584,249 @@ void main() {
 
     await FinanceStorage.restoreInstallmentGroup(groupUuid);
     expect(await FinanceStorage.getInstallmentGroup(groupUuid), hasLength(2));
+  });
+
+  test('编辑分期组不会恢复单独删除的期次', () async {
+    SharedPreferences.setMockInitialValues({
+      'current_login_user': 'installment-edit-deleted-test',
+    });
+    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    addTearDown(() async {
+      FinanceStorage.databaseOverride = null;
+      await db.close();
+    });
+    await DatabaseHelper.ensureFinanceSchema(db);
+    FinanceStorage.databaseOverride = db;
+
+    final saved = await FinanceStorage.saveInstallmentPlan(
+      transaction: FinanceTransaction(
+        uuid: 'installment-edit-deleted-first',
+        amountMinor: 12000,
+        transactionDate: '2026-01-31',
+        merchant: '分期账单',
+      ),
+      totalAmountMinor: 12000,
+      installmentCount: 3,
+      startDate: DateTime(2026, 1, 31),
+    );
+    final groupUuid = saved.first.installmentGroupUuid!;
+    await FinanceStorage.deleteTransaction(saved[1].uuid);
+    final existing = await FinanceStorage.getInstallmentGroup(
+      groupUuid,
+      includeDeleted: true,
+    );
+    final original = (await FinanceStorage.getTransaction(saved.first.uuid))!;
+    final edited = FinanceTransaction.fromMap(original.toMap())
+      ..note = '更新整组备注'
+      ..markAsChanged();
+
+    await FinanceStorage.saveInstallmentPlan(
+      transaction: edited,
+      original: original,
+      totalAmountMinor: 12000,
+      installmentCount: 3,
+      startDate: DateTime(2026, 1, 31),
+      existingInstallments: existing,
+    );
+
+    expect(
+      (await FinanceStorage.getTransaction(saved[1].uuid))!.isDeleted,
+      isTrue,
+    );
+  });
+
+  test('已存在重复期号的分期组编辑会安全失败', () async {
+    SharedPreferences.setMockInitialValues({
+      'current_login_user': 'installment-edit-duplicate-test',
+    });
+    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    addTearDown(() async {
+      FinanceStorage.databaseOverride = null;
+      await db.close();
+    });
+    await DatabaseHelper.ensureFinanceSchema(db);
+    FinanceStorage.databaseOverride = db;
+
+    final saved = await FinanceStorage.saveInstallmentPlan(
+      transaction: FinanceTransaction(
+        uuid: 'installment-edit-duplicate-first',
+        amountMinor: 12000,
+        transactionDate: '2026-01-31',
+        merchant: '分期账单',
+      ),
+      totalAmountMinor: 12000,
+      installmentCount: 3,
+      startDate: DateTime(2026, 1, 31),
+    );
+    final duplicate = FinanceTransaction.fromMap(saved.first.toMap())
+      ..uuid = 'installment-edit-duplicate-copy'
+      ..markAsChanged();
+    await db.insert('finance_transactions', duplicate.toMap());
+
+    final groupUuid = saved.first.installmentGroupUuid!;
+    final existing = await FinanceStorage.getInstallmentGroup(
+      groupUuid,
+      includeDeleted: true,
+    );
+    final original = (await FinanceStorage.getTransaction(saved.first.uuid))!;
+    final edited = FinanceTransaction.fromMap(original.toMap())
+      ..note = '更新整组备注'
+      ..markAsChanged();
+    await expectLater(
+      FinanceStorage.saveInstallmentPlan(
+        transaction: edited,
+        original: original,
+        totalAmountMinor: 12000,
+        installmentCount: 3,
+        startDate: DateTime(2026, 1, 31),
+        existingInstallments: existing,
+      ),
+      throwsA(isA<StateError>()),
+    );
+
+    expect(
+      (await FinanceStorage.getInstallmentGroup(groupUuid)).length,
+      4,
+    );
+    expect(
+      (await FinanceStorage.getTransaction(saved.first.uuid))!.note,
+      isNull,
+    );
+  });
+
+  test('扩展已缩短的分期计划会恢复超出旧期数的期次', () async {
+    SharedPreferences.setMockInitialValues({
+      'current_login_user': 'installment-expand-shortened-test',
+    });
+    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    addTearDown(() async {
+      FinanceStorage.databaseOverride = null;
+      await db.close();
+    });
+    await DatabaseHelper.ensureFinanceSchema(db);
+    FinanceStorage.databaseOverride = db;
+
+    final saved = await FinanceStorage.saveInstallmentPlan(
+      transaction: FinanceTransaction(
+        uuid: 'installment-expand-shortened-first',
+        amountMinor: 12000,
+        transactionDate: '2026-01-31',
+        merchant: '分期账单',
+      ),
+      totalAmountMinor: 12000,
+      installmentCount: 3,
+      startDate: DateTime(2026, 1, 31),
+    );
+    final groupUuid = saved.first.installmentGroupUuid!;
+    var existing = await FinanceStorage.getInstallmentGroup(
+      groupUuid,
+      includeDeleted: true,
+    );
+    var original = (await FinanceStorage.getTransaction(saved.first.uuid))!;
+    final reduced = await FinanceStorage.saveInstallmentPlan(
+      transaction: original,
+      original: original,
+      totalAmountMinor: 12000,
+      installmentCount: 2,
+      startDate: DateTime(2026, 1, 31),
+      existingInstallments: existing,
+    );
+    expect(
+      (await FinanceStorage.getTransaction(saved.last.uuid))!.isDeleted,
+      isTrue,
+    );
+
+    existing = await FinanceStorage.getInstallmentGroup(
+      groupUuid,
+      includeDeleted: true,
+    );
+    original = (await FinanceStorage.getTransaction(reduced.first.uuid))!;
+    final extended = await FinanceStorage.saveInstallmentPlan(
+      transaction: original,
+      original: original,
+      totalAmountMinor: 12000,
+      installmentCount: 3,
+      startDate: DateTime(2026, 1, 31),
+      existingInstallments: existing,
+    );
+
+    expect(
+      extended.singleWhere((item) => item.installmentIndex == 3).isDeleted,
+      isFalse,
+    );
+  });
+
+  test('旧内置Flash价格缓存迁移到新价且设置只保留用户覆盖', () async {
+    const oldFlashPrice = AiUsagePricing(
+      provider: 'deepseek',
+      model: 'deepseek-v4-flash',
+      cachedInputMicrosPerMillion: 50000,
+      inputMicrosPerMillion: 1500000,
+      outputMicrosPerMillion: 4500000,
+      peakCachedInputMicrosPerMillion: 100000,
+      peakInputMicrosPerMillion: 3000000,
+      peakOutputMicrosPerMillion: 9000000,
+    );
+    const oldVisionPrice = AiUsagePricing(
+      provider: 'deepseek',
+      model: 'deepseek-v4-flash-vision-exp',
+      cachedInputMicrosPerMillion: 50000,
+      inputMicrosPerMillion: 1500000,
+      outputMicrosPerMillion: 4500000,
+      peakCachedInputMicrosPerMillion: 100000,
+      peakInputMicrosPerMillion: 3000000,
+      peakOutputMicrosPerMillion: 9000000,
+      imageTokensIncluded: true,
+    );
+    const settingsKey = 'ai_usage_cost_settings_deepseek-pricing-migration';
+    SharedPreferences.setMockInitialValues({
+      'current_login_user': 'deepseek-pricing-migration',
+      settingsKey: jsonEncode({
+        'auto_ledger': true,
+        'prices': [oldFlashPrice.toJson(), oldVisionPrice.toJson()],
+      }),
+    });
+
+    var pricing = await AiUsageCostService.getPricing();
+    for (final model in <String>[
+      'deepseek-v4-flash',
+      'deepseek-v4-flash-vision-exp',
+    ]) {
+      final item = pricing.firstWhere(
+        (value) => value.provider == 'deepseek' && value.model == model,
+      );
+      expect(item.cachedInputMicrosPerMillion, 20000);
+      expect(item.inputMicrosPerMillion, 1000000);
+      expect(item.outputMicrosPerMillion, 4000000);
+      expect(item.peakCachedInputMicrosPerMillion, 40000);
+      expect(item.peakInputMicrosPerMillion, 2000000);
+      expect(item.peakOutputMicrosPerMillion, 8000000);
+      expect(item.imageTokensIncluded, isTrue);
+    }
+
+    await AiUsageCostService.setAutoLedgerEnabled(false);
+    final preferences = await SharedPreferences.getInstance();
+    var storedSettings =
+        jsonDecode(preferences.getString(settingsKey)!) as Map<String, dynamic>;
+    expect(storedSettings['prices'], isEmpty);
+
+    await AiUsageCostService.savePricing(
+      const AiUsagePricing(
+        provider: 'deepseek',
+        model: 'deepseek-v4-flash',
+        inputMicrosPerMillion: 123456,
+      ),
+    );
+    pricing = await AiUsageCostService.getPricing();
+    expect(
+      pricing
+          .firstWhere((item) => item.id == 'deepseek::deepseek-v4-flash')
+          .inputMicrosPerMillion,
+      123456,
+    );
+    storedSettings =
+        jsonDecode(preferences.getString(settingsKey)!) as Map<String, dynamic>;
+    expect(storedSettings['prices'], hasLength(1));
   });
 
   test('priced AI usage is aggregated into one personal finance transaction',
@@ -1049,6 +3876,168 @@ void main() {
       transactions.single['category_uuid'],
       'finance-system-category-ai-service',
     );
+  });
+
+  test('AI usage ledgers from different devices use distinct transaction UUIDs',
+      () async {
+    const username = 'ai-cost-multi-device-ledger-test';
+    final devicePreferenceKey = 'app_device_uuid_$username';
+    SharedPreferences.setMockInitialValues({
+      'current_login_user': username,
+      devicePreferenceKey: 'device-a',
+    });
+    final tempDirectory = await Directory.systemTemp.createTemp(
+      'countdown_ai_ledger_multi_device_',
+    );
+    final deviceADb = await databaseFactoryFfi.openDatabase(
+      '${tempDirectory.path}/device-a.sqlite',
+    );
+    final deviceBDb = await databaseFactoryFfi.openDatabase(
+      '${tempDirectory.path}/device-b.sqlite',
+    );
+    addTearDown(() async {
+      AiUsageCostService.databaseOverride = null;
+      FinanceStorage.databaseOverride = null;
+      await deviceADb.close();
+      await deviceBDb.close();
+      await tempDirectory.delete(recursive: true);
+    });
+    await DatabaseHelper.ensureFinanceSchema(deviceADb);
+    await DatabaseHelper.ensureAiUsageSchema(deviceADb);
+    await DatabaseHelper.ensureFinanceSchema(deviceBDb);
+    await DatabaseHelper.ensureAiUsageSchema(deviceBDb);
+    await AiUsageCostService.savePricing(
+      const AiUsagePricing(
+        provider: 'custom',
+        model: 'multi-device-ledger-test',
+        inputMicrosPerMillion: 1000000,
+      ),
+    );
+
+    AiUsageCostService.databaseOverride = deviceADb;
+    FinanceStorage.databaseOverride = deviceADb;
+    await AiUsageCostService.recordUsage(
+      provider: 'custom',
+      model: 'multi-device-ledger-test',
+      operation: 'chat',
+      promptTokens: 1000000,
+      completionTokens: 0,
+      totalTokens: 1000000,
+      now: DateTime(2026, 8, 30, 10),
+    );
+    final deviceATransaction =
+        (await deviceADb.query('finance_transactions')).single;
+
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setString(devicePreferenceKey, 'device-b');
+    AiUsageCostService.databaseOverride = deviceBDb;
+    FinanceStorage.databaseOverride = deviceBDb;
+    await AiUsageCostService.recordUsage(
+      provider: 'custom',
+      model: 'multi-device-ledger-test',
+      operation: 'chat',
+      promptTokens: 1000000,
+      completionTokens: 0,
+      totalTokens: 1000000,
+      now: DateTime(2026, 8, 30, 10),
+    );
+    final deviceBTransaction =
+        (await deviceBDb.query('finance_transactions')).single;
+
+    expect(deviceATransaction['uuid'], isNot(deviceBTransaction['uuid']));
+    expect(deviceATransaction['amount_minor'], 100);
+    expect(deviceBTransaction['amount_minor'], 100);
+    expect(deviceATransaction['device_id'], 'device-a');
+    expect(deviceBTransaction['device_id'], 'device-b');
+    expect(deviceATransaction['pending_sync'], 1);
+    expect(deviceBTransaction['pending_sync'], 1);
+  });
+
+  test('reenabling AI auto ledger reconciles unposted current-month usage',
+      () async {
+    SharedPreferences.setMockInitialValues({
+      'current_login_user': 'ai-cost-reenable-ledger-test',
+    });
+    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    addTearDown(() async {
+      AiUsageCostService.databaseOverride = null;
+      FinanceStorage.databaseOverride = null;
+      await db.close();
+    });
+    await DatabaseHelper.ensureFinanceSchema(db);
+    await DatabaseHelper.ensureAiUsageSchema(db);
+    AiUsageCostService.databaseOverride = db;
+    FinanceStorage.databaseOverride = db;
+    await AiUsageCostService.setAutoLedgerEnabled(false);
+    await AiUsageCostService.savePricing(
+      const AiUsagePricing(
+        provider: 'custom',
+        model: 'reenable-ledger-test',
+        inputMicrosPerMillion: 1000000,
+      ),
+    );
+    await AiUsageCostService.recordUsage(
+      provider: 'custom',
+      model: 'reenable-ledger-test',
+      operation: 'chat',
+      promptTokens: 1000000,
+      completionTokens: 0,
+      totalTokens: 1000000,
+      now: DateTime.now(),
+    );
+    expect(await db.query('finance_transactions'), isEmpty);
+
+    await AiUsageCostService.setAutoLedgerEnabled(true);
+    final transactions = await db.query('finance_transactions');
+    expect(transactions, hasLength(1));
+    expect(transactions.single['amount_minor'], 100);
+  });
+
+  test('AI ledger keeps working after its monthly bill is deleted', () async {
+    SharedPreferences.setMockInitialValues({
+      'current_login_user': 'ai-cost-deleted-ledger-test',
+    });
+    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    addTearDown(() async {
+      AiUsageCostService.databaseOverride = null;
+      FinanceStorage.databaseOverride = null;
+      await db.close();
+    });
+    await DatabaseHelper.ensureFinanceSchema(db);
+    await DatabaseHelper.ensureAiUsageSchema(db);
+    AiUsageCostService.databaseOverride = db;
+    FinanceStorage.databaseOverride = db;
+    await AiUsageCostService.savePricing(
+      const AiUsagePricing(
+        provider: 'custom',
+        model: 'ledger-delete-test',
+        inputMicrosPerMillion: 1000000,
+      ),
+    );
+
+    Future<void> recordCall() async {
+      await AiUsageCostService.recordUsage(
+        provider: 'custom',
+        model: 'ledger-delete-test',
+        operation: 'chat',
+        promptTokens: 1000000,
+        completionTokens: 0,
+        totalTokens: 1000000,
+        now: DateTime(2026, 8, 30, 10),
+      );
+    }
+
+    await recordCall();
+    final originalBill = (await db.query('finance_transactions')).single;
+    await FinanceRepository.deleteTransaction(originalBill['uuid'] as String);
+
+    await recordCall();
+
+    final bills = await db.query('finance_transactions');
+    expect(bills.where((row) => row['is_deleted'] == 1), hasLength(1));
+    final activeBills = bills.where((row) => row['is_deleted'] == 0).toList();
+    expect(activeBills, hasLength(1));
+    expect(activeBills.single['amount_minor'], 200);
   });
 
   test('pricing settings preserve tier and peak metadata', () {
@@ -1103,6 +4092,16 @@ void main() {
     expect(mimoPricing.cachedInputMicrosPerMillion, 20000);
     expect(mimoPricing.inputMicrosPerMillion, 1000000);
     expect(mimoPricing.outputMicrosPerMillion, 2000000);
+
+    final ultraSpeedPricing = (await AiUsageCostService.getPricing()).firstWhere(
+      (item) =>
+          item.provider == 'mimo' &&
+          item.model == 'mimo-v2.6-pro-ultraspeed',
+    );
+    expect(ultraSpeedPricing.cachedInputMicrosPerMillion, 250000);
+    expect(ultraSpeedPricing.inputMicrosPerMillion, 30000000);
+    expect(ultraSpeedPricing.outputMicrosPerMillion, 60000000);
+    expect(ultraSpeedPricing.imageTokensIncluded, isTrue);
 
     await AiUsageCostService.recordUsage(
       provider: 'mimo',
@@ -1168,6 +4167,80 @@ void main() {
     // 4 seconds * ¥0.5/hour = ¥0.000555..., rounded to 556 micro-yuan.
     expect(records.single.costMicros, 556);
     expect(records.single.isPriced, isTrue);
+  });
+
+  test('same model name from another provider keeps its token pricing',
+      () async {
+    SharedPreferences.setMockInitialValues({
+      'current_login_user': 'custom-asr-model-cost-test',
+    });
+    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    addTearDown(() async {
+      AiUsageCostService.databaseOverride = null;
+      FinanceStorage.databaseOverride = null;
+      await db.close();
+    });
+    await DatabaseHelper.ensureFinanceSchema(db);
+    await DatabaseHelper.ensureAiUsageSchema(db);
+    AiUsageCostService.databaseOverride = db;
+    FinanceStorage.databaseOverride = db;
+    await AiUsageCostService.savePricing(
+      const AiUsagePricing(
+        provider: 'custom',
+        model: 'mimo-v2.5-asr',
+        inputMicrosPerMillion: 1000000,
+        outputMicrosPerMillion: 2000000,
+      ),
+    );
+
+    await AiUsageCostService.recordUsage(
+      provider: 'custom',
+      model: 'mimo-v2.5-asr',
+      operation: 'audio_chat',
+      promptTokens: 1000,
+      completionTokens: 500,
+      totalTokens: 1500,
+      audioSeconds: 4,
+      now: DateTime(2026, 8, 30, 10),
+    );
+
+    final record = (await AiUsageCostService.getRecords()).single;
+    expect(record.isPriced, isTrue);
+    expect(record.costMicros, 2000);
+  });
+
+  test('MiMo token-priced audio usage keeps token pricing when seconds exist',
+      () async {
+    SharedPreferences.setMockInitialValues({
+      'current_login_user': 'mimo-audio-token-cost-test',
+    });
+    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    addTearDown(() async {
+      AiUsageCostService.databaseOverride = null;
+      FinanceStorage.databaseOverride = null;
+      await db.close();
+    });
+    await DatabaseHelper.ensureFinanceSchema(db);
+    await DatabaseHelper.ensureAiUsageSchema(db);
+    AiUsageCostService.databaseOverride = db;
+    FinanceStorage.databaseOverride = db;
+
+    await AiUsageCostService.recordUsage(
+      provider: 'mimo',
+      model: 'mimo-v2.5',
+      operation: 'audio_chat',
+      promptTokens: 10000,
+      completionTokens: 2000,
+      totalTokens: 12000,
+      cachedPromptTokens: 8000,
+      audioTokens: 100,
+      audioSeconds: 4,
+      now: DateTime(2026, 8, 30, 10),
+    );
+
+    final record = (await AiUsageCostService.getRecords()).single;
+    expect(record.isPriced, isTrue);
+    expect(record.costMicros, 6160);
   });
 
   test('Zhipu pricing applies prompt and completion token tiers', () async {
@@ -1302,9 +4375,62 @@ void main() {
     expect(
         records.map((item) => item.costMicros),
         containsAll(<int?>[
-          1370000,
-          2740000,
+          1008000,
+          2016000,
         ]));
+  });
+
+  test('DeepSeek V4.1 Flash IDs use current rates and include image tokens',
+      () async {
+    SharedPreferences.setMockInitialValues({
+      'current_login_user': 'deepseek-v41-flash-cost-test',
+    });
+    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    addTearDown(() async {
+      AiUsageCostService.databaseOverride = null;
+      FinanceStorage.databaseOverride = null;
+      await db.close();
+    });
+    await DatabaseHelper.ensureFinanceSchema(db);
+    await DatabaseHelper.ensureAiUsageSchema(db);
+    AiUsageCostService.databaseOverride = db;
+    FinanceStorage.databaseOverride = db;
+
+    final pricing = await AiUsageCostService.getPricing();
+    for (final model in <String>[
+      'deepseek-flash',
+      'deepseek-v4-flash',
+      'deepseek-v4-flash-vision-exp',
+    ]) {
+      final modelPricing = pricing.firstWhere(
+        (item) => item.provider == 'deepseek' && item.model == model,
+      );
+      expect(modelPricing.cachedInputMicrosPerMillion, 20000);
+      expect(modelPricing.inputMicrosPerMillion, 1000000);
+      expect(modelPricing.outputMicrosPerMillion, 4000000);
+      expect(modelPricing.peakCachedInputMicrosPerMillion, 40000);
+      expect(modelPricing.peakInputMicrosPerMillion, 2000000);
+      expect(modelPricing.peakOutputMicrosPerMillion, 8000000);
+      expect(modelPricing.imageTokensIncluded, isTrue);
+
+      await AiUsageCostService.recordUsage(
+        provider: 'deepseek',
+        model: model,
+        operation: 'vision_todo',
+        promptTokens: 1000000,
+        completionTokens: 100000,
+        totalTokens: 1100000,
+        cachedPromptTokens: 400000,
+        imageTokens: 50000,
+        imageCount: 1,
+        now: DateTime.utc(2026, 8, 31, 0),
+      );
+    }
+
+    final records = await AiUsageCostService.getRecords();
+    expect(records, hasLength(3));
+    expect(records.every((item) => item.isPriced), isTrue);
+    expect(records.map((item) => item.costMicros), everyElement(1008000));
   });
 
   test('free provider models are priced at zero when usage is available',
@@ -1473,12 +4599,25 @@ void main() {
           'created_at': 10,
           'updated_at': 10,
         },
+        {
+          'uuid': 'legacy-numeric-string-income',
+          'type': '1',
+          'amount_minor': 881,
+          'transaction_date': '2026-08-31',
+          'created_at': 10,
+          'updated_at': 10,
+        },
       ],
     });
-    expect(result['imported'], 1);
+    expect(result['imported'], 2);
     expect(
       (await FinanceStorage.getTransaction('legacy-numeric-refund'))!.type,
       FinanceTransactionType.refund,
+    );
+    expect(
+      (await FinanceStorage.getTransaction('legacy-numeric-string-income'))!
+          .type,
+      FinanceTransactionType.income,
     );
   });
 
@@ -1599,6 +4738,10 @@ void main() {
     });
     await DatabaseHelper.ensureFinanceSchema(db);
     FinanceStorage.databaseOverride = db;
+    await db.insert(
+      'finance_categories',
+      FinanceCategory(uuid: 'category-food', name: '餐饮').toMap(),
+    );
 
     final first = FinanceBudget(
       monthKey: '2026-09',

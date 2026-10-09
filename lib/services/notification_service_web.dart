@@ -82,15 +82,11 @@ class NotificationService {
     try {
       final bridge = _browserBridge;
       if (bridge == null) return false;
-      final result = bridge.callMethodVarArgs<JSAny?>(
+      final result = bridge.callMethodVarArgs<JSPromise<JSBoolean>>(
         'show'.toJS,
-        <JSAny?>[
-          title.toJS,
-          body.toJS,
-          (tag ?? '').toJS,
-        ],
+        <JSAny?>[title.toJS, body.toJS, (tag ?? '').toJS],
       );
-      return result?.dartify() == true;
+      return (await result.toDart).toDart;
     } catch (_) {
       return false;
     }
@@ -164,13 +160,13 @@ class NotificationService {
     await _showNormalNotification(title, body);
   }
 
-  static Future<void> showFinanceBudgetAlert({
+  static Future<bool> showFinanceBudgetAlert({
     required String title,
     required String body,
     required String alertKey,
   }) async {
-    if (!await AppSettingsStorage.isFinanceBudgetAlertEnabled()) return;
-    await _showNormalNotification(title, body, tag: alertKey);
+    if (!await AppSettingsStorage.isFinanceBudgetAlertEnabled()) return false;
+    return _showNormalNotification(title, body, tag: alertKey);
   }
 
   static Future<void> updateTodoNotification(List<TodoItem> todos) async {}
@@ -247,7 +243,7 @@ class NotificationService {
         replaceSource: replaceSource,
       ),
     );
-    _scheduleQueue = operation.then<void>((_) {}, onError: (_, __) {});
+    _scheduleQueue = operation.then<void>((_) {}, onError: (_, _) {});
     return operation;
   }
 
@@ -423,7 +419,7 @@ class NotificationService {
     final specialTodoEnabled =
         await AppSettingsStorage.isSpecialTodoNotificationEnabled();
     final financeEnabled =
-        await AppSettingsStorage.isFinanceBudgetAlertEnabled();
+        await AppSettingsStorage.isFinanceRecurringReminderEnabled();
     final pomodoroEndEnabled =
         await AppSettingsStorage.isPomodoroEndNotificationEnabled();
 

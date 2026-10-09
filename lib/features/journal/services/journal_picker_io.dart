@@ -15,15 +15,12 @@ Future<List<XFile>> pickJournalImages() async {
     return ImagePicker().pickMultiImage(imageQuality: 88, maxWidth: 2400);
   }
 
-  final result = await FilePicker.platform.pickFiles(
-    allowMultiple: true,
+  final files = await FilePicker.pickFiles(
     type: FileType.image,
     // Desktop platforms return a file path. Avoid eagerly putting every
     // selected original image into RAM; the importer reads one file at a time.
-    withData: false,
   );
-  if (result == null) return [];
-  return result.files
+  return files
       .where((file) => file.path != null && file.path!.isNotEmpty)
       .map((file) => XFile(file.path!))
       .toList();

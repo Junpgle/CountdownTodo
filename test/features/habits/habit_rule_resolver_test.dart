@@ -33,6 +33,8 @@ void main() {
       expect(key, '2026-08-01');
       expect(HabitRuleResolver.parseDayKey(key), date);
       expect(HabitRuleResolver.parseDayKey('bad'), isNull);
+      expect(HabitRuleResolver.parseDayKey('2026-02-30'), isNull);
+      expect(HabitRuleResolver.parseDayKey('2026-13-01'), isNull);
     });
   });
 
@@ -124,6 +126,18 @@ void main() {
       );
       expect(HabitRuleResolver.isPlannedDay(rule, DateTime(2026, 8, 1)), true);
     });
+
+    test('自定义间隔跨夏令时仍按日历天计算', () {
+      final rule = HabitGoalRuleRevision(
+        habitUuid: habitUuid,
+        periodType: HabitPeriodType.custom,
+        customIntervalDays: 2,
+        effectiveFromDate: '2026-03-07',
+      );
+
+      expect(HabitRuleResolver.isPlannedDay(rule, DateTime(2026, 3, 9)), true);
+      expect(HabitRuleResolver.isPlannedDay(rule, DateTime(2026, 3, 10)), false);
+    });
   });
 
   group('HabitRuleResolver 周期计算', () {
@@ -177,6 +191,48 @@ void main() {
       );
     });
 
+    test('周/月累计目标只在周期最后一天计入每日热力图', () {
+      final weekly = rule(HabitPeriodType.weekly);
+      expect(
+        HabitRuleResolver.isDailyHeatmapCompletionDay(
+          weekly,
+          DateTime(2026, 8, 3),
+        ),
+        false,
+      );
+      expect(
+        HabitRuleResolver.isDailyHeatmapCompletionDay(
+          weekly,
+          DateTime(2026, 8, 9),
+        ),
+        true,
+      );
+
+      final monthly = rule(HabitPeriodType.monthly);
+      expect(
+        HabitRuleResolver.isDailyHeatmapCompletionDay(
+          monthly,
+          DateTime(2026, 8, 30),
+        ),
+        false,
+      );
+      expect(
+        HabitRuleResolver.isDailyHeatmapCompletionDay(
+          monthly,
+          DateTime(2026, 8, 31),
+        ),
+        true,
+      );
+
+      expect(
+        HabitRuleResolver.isDailyHeatmapCompletionDay(
+          rule(HabitPeriodType.daily),
+          DateTime(2026, 8, 31),
+        ),
+        true,
+      );
+    });
+
     test('周期结束判断', () {
       final daily = rule(HabitPeriodType.daily);
       expect(
@@ -199,6 +255,85 @@ void main() {
       expect(
         HabitRuleResolver.isPeriodFinished(
             weekly, DateTime(2026, 8, 5), DateTime(2026, 8, 10, 0, 0, 1)),
+        true,
+      );
+    });
+
+    test('周期结束时间遵循日期分界', () {
+      final cases = [
+        (
+          HabitPeriodType.daily,
+          DateTime(2026, 8, 5),
+          DateTime(2026, 8, 6, 3, 59),
+          DateTime(2026, 8, 6, 4),
+        ),
+        (
+          HabitPeriodType.weekly,
+          DateTime(2026, 8, 5),
+          DateTime(2026, 8, 10, 3, 59),
+          DateTime(2026, 8, 10, 4),
+        ),
+        (
+          HabitPeriodType.monthly,
+          DateTime(2026, 8, 5),
+          DateTime(2026, 9, 1, 3, 59),
+          DateTime(2026, 9, 1, 4),
+        ),
+      ];
+
+      for (final (type, logicalDate, justBeforeEnd, atEnd) in cases) {
+        final boundaryRule = HabitGoalRuleRevision(
+          habitUuid: 'h1',
+          periodType: type,
+          dayBoundaryMinute: 4 * 60,
+        );
+        expect(
+          HabitRuleResolver.isPeriodFinished(
+              boundaryRule, logicalDate, justBeforeEnd),
+          false,
+        );
+        expect(
+          HabitRuleResolver.isPeriodFinished(boundaryRule, logicalDate, atEnd),
+          true,
+        );
+      }
+    });
+
+    test('跨夏令时周期仍在本地午夜结束', () {
+      expect(
+        HabitRuleResolver.periodEndExclusive(
+          rule(HabitPeriodType.daily),
+          DateTime(2026, 3, 8),
+        ),
+        DateTime(2026, 3, 9),
+      );
+      expect(
+        HabitRuleResolver.periodEndExclusive(
+          rule(HabitPeriodType.weekly),
+          DateTime(2026, 3, 4),
+        ),
+        DateTime(2026, 3, 9),
+      );
+
+      final boundaryRule = HabitGoalRuleRevision(
+        habitUuid: 'h1',
+        periodType: HabitPeriodType.daily,
+        dayBoundaryMinute: 4 * 60,
+      );
+      expect(
+        HabitRuleResolver.isPeriodFinished(
+          boundaryRule,
+          DateTime(2026, 3, 7),
+          DateTime(2026, 3, 8, 3, 59),
+        ),
+        false,
+      );
+      expect(
+        HabitRuleResolver.isPeriodFinished(
+          boundaryRule,
+          DateTime(2026, 3, 7),
+          DateTime(2026, 3, 8, 4),
+        ),
         true,
       );
     });

@@ -3,6 +3,7 @@ import '../../../services/ai_chat_service.dart';
 import '../../../services/llm_service.dart';
 import '../../../services/minor_mode_policy.dart';
 import '../../../services/minor_mode_service.dart';
+import '../../../utils/app_dialogs.dart';
 
 class LLMConfigDialog extends StatefulWidget {
   const LLMConfigDialog({super.key});
@@ -82,7 +83,8 @@ class _LLMConfigDialogState extends State<LLMConfigDialog> {
 
       final result = await LLMService.testConnection();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           SnackBar(
             content: Text(
                 '连接成功！响应: ${result.substring(0, result.length > 50 ? 50 : result.length)}...'),
@@ -92,7 +94,8 @@ class _LLMConfigDialogState extends State<LLMConfigDialog> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           SnackBar(
             content: Text('连接失败: $e'),
             backgroundColor: Colors.red,
@@ -109,7 +112,8 @@ class _LLMConfigDialogState extends State<LLMConfigDialog> {
       MinorModeAction.llmConfiguration,
     );
     if (!authorized && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         SnackBar(
           content: Text(
             MinorModeService.instance.authorizationFailureMessage(
@@ -331,7 +335,8 @@ class _LLMConfigDialogState extends State<LLMConfigDialog> {
             await LLMService.clearConfig();
             if (context.mounted) {
               Navigator.pop(context, true);
-              ScaffoldMessenger.of(context).showSnackBar(
+              AppSnackBars.showSnackBar(
+                context,
                 const SnackBar(content: Text('已清除大模型配置')),
               );
             }
@@ -345,7 +350,8 @@ class _LLMConfigDialogState extends State<LLMConfigDialog> {
             if (!context.mounted) return;
             if (_apiKeyCtrl.text.trim().isEmpty ||
                 _modelCtrl.text.trim().isEmpty) {
-              ScaffoldMessenger.of(context).showSnackBar(
+              AppSnackBars.showSnackBar(
+                context,
                 const SnackBar(content: Text('请填写API Key和模型名称')),
               );
               return;
@@ -372,7 +378,8 @@ class _LLMConfigDialogState extends State<LLMConfigDialog> {
             await LLMService.saveConfig(config);
             if (context.mounted) {
               Navigator.pop(context, true);
-              ScaffoldMessenger.of(context).showSnackBar(
+              AppSnackBars.showSnackBar(
+                context,
                 const SnackBar(content: Text('大模型配置已保存')),
               );
             }

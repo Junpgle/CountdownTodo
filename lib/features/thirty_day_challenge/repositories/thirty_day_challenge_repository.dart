@@ -13,31 +13,47 @@ import '../models/thirty_day_challenge.dart';
 /// 目前不接入云端同步；数据格式独立，后续可以在不改动页面的前提下扩展同步。
 abstract final class ThirtyDayChallengeRepository {
   static const String _storageKey = 'thirty_day_self_challenge_v1';
+  static const String _corruptBackupSuffix = '_corrupt_backup';
   static final ValueNotifier<int> activityRevision = ValueNotifier<int>(0);
 
-  static Future<ThirtyDayChallengeState> load() async {
+  static Future<ThirtyDayChallengeState> load({String? username}) async {
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(await _scopedKey());
+    final raw = prefs.getString(await _scopedKey(username));
     if (raw == null || raw.isEmpty) {
       final state = ThirtyDayChallengeState.initial();
-      await _save(prefs, state);
+      await _save(prefs, state, username: username);
       return state;
     }
 
     try {
-      return ThirtyDayChallengeState.fromJson(
-        Map<String, dynamic>.from(jsonDecode(raw) as Map),
-      );
+      final json = Map<String, dynamic>.from(jsonDecode(raw) as Map);
+      final rawTasks = json['tasks'];
+      if (rawTasks is! List || rawTasks.any((task) => task is! Map)) {
+        throw const FormatException('挑战任务列表格式无效');
+      }
+      if (json.containsKey('challenge_title') && rawTasks.isEmpty) {
+        throw const FormatException('自定义挑战任务列表不能为空');
+      }
+      final state = ThirtyDayChallengeState.fromJson(json);
+      if (json.containsKey('challenge_title') &&
+          state.tasks.length != rawTasks.length) {
+        throw const FormatException('挑战任务记录不完整');
+      }
+      return state;
     } catch (_) {
+      final backupKey = await _scopedCorruptBackupKey(username);
+      if (!prefs.containsKey(backupKey)) {
+        await prefs.setString(backupKey, raw);
+      }
       final state = ThirtyDayChallengeState.initial();
-      await _save(prefs, state);
+      await _save(prefs, state, username: username);
       return state;
     }
   }
 
-  static Future<bool> hasSeenIntro() async {
+  static Future<bool> hasSeenIntro({String? username}) async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(await _scopedIntroKey()) ?? false;
+    return prefs.getBool(await _scopedIntroKey(username)) ?? false;
   }
 
   static Future<void> markIntroSeen() async {
@@ -48,26 +64,123 @@ abstract final class ThirtyDayChallengeRepository {
     activityRevision.value++;
   }
 
-  static Future<bool> hasStarted() async {
+  static Future<bool> hasStarted({String? username}) async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(await _scopedStartedKey()) ??
-        prefs.getBool(await _scopedIntroKey()) ??
+    return prefs.getBool(await _scopedStartedKey(username)) ??
+        prefs.getBool(await _scopedIntroKey(username)) ??
         false;
   }
 
-  static Future<bool> isPaused() async {
+  static Future<bool> isPaused({String? username}) async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(await _scopedPausedKey()) ?? false;
+    return prefs.getBool(await _scopedPausedKey(username)) ?? false;
   }
 
-  static Future<bool> isHabitCenterPromotionDismissed() async {
+  static Future<bool> isHabitCenterPromotionDismissed({String? username}) async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(await _scopedHabitCenterPromotionKey()) ?? false;
+    return prefs.getBool(await _scopedHabitCenterPromotionKey(username)) ??
+        false;
+  }
+
+  static Future<String?> getCorruptStateBackup({String? username}) async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(await _scopedCorruptBackupKey(username));
   }
 
   static Future<void> dismissHabitCenterPromotion() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(await _scopedHabitCenterPromotionKey(), true);
+  }
+
+  static Future<Map<String, dynamic>?> exportBackup({String? username}) async {
+    final hasStartedChallenge = await hasStarted(username: username);
+    var corruptStateBackup =
+        await getCorruptStateBackup(username: username);
+    ThirtyDayChallengeState? state;
+    if (!hasStartedChallenge && corruptStateBackup == null) {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(await _scopedKey(username));
+      if (raw == null || raw.isEmpty) return null;
+      state = await load(username: username);
+      corruptStateBackup = await getCorruptStateBackup(username: username);
+      if (corruptStateBackup == null) return null;
+    }
+    state ??= await load(username: username);
+    if (!hasStartedChallenge && corruptStateBackup == null) return null;
+    final bundle = <String, dynamic>{
+      'state': state.toJson(),
+      'intro_seen': await hasSeenIntro(username: username),
+      'started': await hasStarted(username: username),
+      'paused': await isPaused(username: username),
+      'habit_center_promotion_dismissed':
+          await isHabitCenterPromotionDismissed(username: username),
+    };
+    if (corruptStateBackup != null) {
+      bundle['corrupt_state_backup'] = corruptStateBackup;
+    }
+    return bundle;
+  }
+
+  static Future<int> importBackup(
+    Map<String, dynamic> bundle, {
+    String? username,
+  }) async {
+    final rawState = bundle['state'];
+    if (rawState is! Map) {
+      throw const FormatException('thirty_day_challenge.state 必须是对象');
+    }
+    final stateJson = Map<String, dynamic>.from(rawState);
+    final corruptStateBackup = bundle['corrupt_state_backup'];
+    if (bundle.containsKey('corrupt_state_backup') &&
+        corruptStateBackup is! String) {
+      throw const FormatException(
+        'thirty_day_challenge.corrupt_state_backup 必须是字符串',
+      );
+    }
+    final rawTasks = stateJson['tasks'];
+    if (rawTasks is! List ||
+        rawTasks.isEmpty ||
+        rawTasks.any((task) => task is! Map)) {
+      throw const FormatException('thirty_day_challenge.state.tasks 格式无效');
+    }
+    final state = ThirtyDayChallengeState.fromJson(stateJson);
+    final hasCorruptStateBackup =
+        corruptStateBackup is String && corruptStateBackup.isNotEmpty;
+    if (state.tasks.length != rawTasks.length ||
+        (bundle['started'] == false && !hasCorruptStateBackup)) {
+      throw const FormatException('thirty_day_challenge 记录不完整');
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    await _save(prefs, state, username: username);
+    await prefs.setBool(
+      await _scopedIntroKey(username),
+      bundle['intro_seen'] != false,
+    );
+    await prefs.setBool(
+      await _scopedStartedKey(username),
+      bundle['started'] != false,
+    );
+    await prefs.setBool(
+      await _scopedPausedKey(username),
+      bundle['paused'] == true,
+    );
+    await prefs.setBool(
+      await _scopedHabitCenterPromotionKey(username),
+      bundle['habit_center_promotion_dismissed'] == true,
+    );
+    final corruptBackupKey = await _scopedCorruptBackupKey(username);
+    // An omitted field preserves target-only recovery data; an explicit empty
+    // string clears it.
+    if (bundle.containsKey('corrupt_state_backup')) {
+      if (corruptStateBackup is String && corruptStateBackup.isNotEmpty) {
+        await prefs.setString(corruptBackupKey, corruptStateBackup);
+      } else {
+        await prefs.remove(corruptBackupKey);
+      }
+    }
+    activityRevision.value++;
+    return state.tasks.length;
   }
 
   static Future<void> setPaused(bool paused) async {
@@ -83,6 +196,7 @@ abstract final class ThirtyDayChallengeRepository {
     await prefs.remove(await _scopedIntroKey());
     await prefs.remove(await _scopedStartedKey());
     await prefs.remove(await _scopedPausedKey());
+    await prefs.remove(await _scopedCorruptBackupKey());
     activityRevision.value++;
   }
 
@@ -101,12 +215,27 @@ abstract final class ThirtyDayChallengeRepository {
       taskTitles: taskTitles,
     );
     final prefs = await SharedPreferences.getInstance();
+    await _activateChallenge(prefs, state);
+    return state;
+  }
+
+  /// 开启经典挑战，并保留其类型标记以便后续恢复正确的页面说明。
+  static Future<ThirtyDayChallengeState> startBuiltInChallenge() async {
+    final state = ThirtyDayChallengeState.initial();
+    final prefs = await SharedPreferences.getInstance();
+    await _activateChallenge(prefs, state);
+    return state;
+  }
+
+  static Future<void> _activateChallenge(
+    SharedPreferences prefs,
+    ThirtyDayChallengeState state,
+  ) async {
     await _save(prefs, state);
     await prefs.setBool(await _scopedIntroKey(), true);
     await prefs.setBool(await _scopedStartedKey(), true);
     await prefs.setBool(await _scopedPausedKey(), false);
     activityRevision.value++;
-    return state;
   }
 
   static Future<void> updateTask(
@@ -162,32 +291,42 @@ abstract final class ThirtyDayChallengeRepository {
     activityRevision.value++;
   }
 
-  static Future<String> _scopedKey() async {
-    final username = await UserSessionStorage.getCurrentUsername();
-    return StorageKeyScope.scoped(_storageKey, username);
+  static Future<String> _scopedKey([String? username]) async {
+    final scope = username ?? await UserSessionStorage.getCurrentUsername();
+    return StorageKeyScope.scoped(_storageKey, scope);
   }
 
-  static Future<String> _scopedIntroKey() async {
-    return '${await _scopedKey()}_intro_seen';
+  static Future<String> _scopedIntroKey([String? username]) async {
+    return '${await _scopedKey(username)}_intro_seen';
   }
 
-  static Future<String> _scopedStartedKey() async {
-    return '${await _scopedKey()}_started';
+  static Future<String> _scopedStartedKey([String? username]) async {
+    return '${await _scopedKey(username)}_started';
   }
 
-  static Future<String> _scopedPausedKey() async {
-    return '${await _scopedKey()}_paused';
+  static Future<String> _scopedPausedKey([String? username]) async {
+    return '${await _scopedKey(username)}_paused';
   }
 
-  static Future<String> _scopedHabitCenterPromotionKey() async {
-    return '${await _scopedKey()}_habit_center_promotion_dismissed';
+  static Future<String> _scopedHabitCenterPromotionKey([
+    String? username,
+  ]) async {
+    return '${await _scopedKey(username)}_habit_center_promotion_dismissed';
+  }
+
+  static Future<String> _scopedCorruptBackupKey([String? username]) async {
+    return '${await _scopedKey(username)}$_corruptBackupSuffix';
   }
 
   static Future<void> _save(
     SharedPreferences prefs,
-    ThirtyDayChallengeState state,
-  ) async {
-    await prefs.setString(await _scopedKey(), jsonEncode(state.toJson()));
+    ThirtyDayChallengeState state, {
+    String? username,
+  }) async {
+    await prefs.setString(
+      await _scopedKey(username),
+      jsonEncode(state.toJson()),
+    );
   }
 
   static ThirtyDayChallengeTask? _findTask(

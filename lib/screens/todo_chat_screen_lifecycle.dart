@@ -1,4 +1,5 @@
 part of 'todo_chat_screen.dart';
+
 // ignore_for_file: annotate_overrides, unused_element, unused_element_parameter
 
 mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
@@ -7,21 +8,52 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
     super.initState();
     _inputCtrl.addListener(_handleInputChanged);
     AiRecognitionChatBridge.changes.addListener(_handleRecognitionChatChanged);
-    _initSessions();
-    _loadPromptSettings();
-    _loadChatConfig();
-    _loadDeepThinking();
-    _loadCategoryDefaults();
-    _loadPlanBlocks();
     _fixedSchedules = List<FixedScheduleItem>.from(widget.fixedSchedules);
+    _pendingVoiceUsageSummary = widget.initialVoiceUsageSummary;
+
+    if (widget.initialMessage?.trim().isNotEmpty ?? false) {
+      _initializeVoiceChat();
+    } else {
+      _initSessions();
+      _loadPromptSettings();
+      _loadChatConfig();
+      _loadDeepThinking();
+      _loadCategoryDefaults();
+      _loadPlanBlocks();
+      _loadHabitGoals();
+    }
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkCoachMarks();
     });
   }
 
+  Future<void> _initializeVoiceChat() async {
+    try {
+      await Future.wait([
+        _initSessions(),
+        _loadPromptSettings(),
+        _loadChatConfig(),
+        _loadDeepThinking(),
+        _loadCategoryDefaults(),
+        _loadPlanBlocks(),
+        _loadHabitGoals(),
+      ]);
+      if (!mounted) return;
+      _inputCtrl.text = widget.initialMessage!.trim();
+      if (widget.sendInitialMessage) await _sendMessage();
+    } catch (_) {
+      if (!mounted) return;
+      _inputCtrl.text = widget.initialMessage!.trim();
+      AppSnackBars.showSnackBar(
+        context,
+        const SnackBar(content: Text('语音内容已保留，请重试发送')),
+      );
+    }
+  }
+
   void _checkCoachMarks() async {
-    if (!mounted || _showCoachMarks) return;
+    if (!mounted || _showCoachMarks || widget.initialMessage != null) return;
 
     final hasShown = await FeatureTipService.hasTipBeenShown('todo_chat_guide');
     if (hasShown || !mounted) return;
@@ -55,8 +87,7 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
         CoachMarkStep(
           targetKey: _inputKey,
           title: '智能输入区',
-          description:
-              '你可以用自然语言输入需求（比如“明天上午9点有个组会”），AI 助手会自动判断它应是习惯、日程、待办还是规划块；周期性事项类型不明确时会先询问。',
+          description: '你可以用自然语言输入需求（比如“明天上午9点有个组会”），AI 助手会自动判断它应是习惯、日程、待办还是规划块；周期性事项类型不明确时会先询问。',
         ),
       ],
       onFinish: () {
@@ -96,11 +127,23 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
     });
   }
 
+  Future<void> _loadHabitGoals() async {
+    try {
+      final goals = await HabitRepository.getActiveGoals();
+      if (!mounted) return;
+      setState(() => _habitGoals = goals);
+      _handleInputChanged();
+    } catch (_) {
+      // Habit context is optional; keep chat usable if local storage is busy.
+    }
+  }
+
   @override
   void dispose() {
     _inputCtrl.removeListener(_handleInputChanged);
-    AiRecognitionChatBridge.changes
-        .removeListener(_handleRecognitionChatChanged);
+    AiRecognitionChatBridge.changes.removeListener(
+      _handleRecognitionChatChanged,
+    );
     _inputCtrl.dispose();
     _scrollCtrl.dispose();
     super.dispose();
@@ -132,42 +175,82 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
   }
 
   String _buildSmartContextPreview(String userText) {
-    if (!_smartContext || userText.isEmpty) return '';
+    if (!_usesContextInjection || userText.isEmpty) return '';
     final contextQueryText = _buildContextQueryText(userText);
-    return AiTodoContextBuilder.buildContextInjectionSummary(
-          userMessage: contextQueryText,
-          courses: widget.courses,
-          timeLogs: widget.timeLogs,
-          todoGroups: widget.todoGroups,
-          pomodoroRecords: widget.pomodoroRecords,
-          planBlocks: _planBlocks,
-          todos: widget.todos,
-          countdowns: widget.countdowns,
-          pomodoroTags: widget.pomodoroTags,
-          fixedSchedules: _fixedSchedules,
-          conflicts: widget.conflicts,
-          teams: widget.teams,
-          now: DateTime.now(),
-        ) ??
-        '';
+    final now = DateTime.now();
+    final conversationContext = _recentConversationTextForContext();
+    final previousUserMessage = _latestUserTextFromHistory();
+    final summaries =
+        [
+              AiTodoContextBuilder.buildContextInjectionSummary(
+                userMessage: contextQueryText,
+                previousUserMessage: previousUserMessage,
+                courses: widget.courses,
+                timeLogs: widget.timeLogs,
+                todoGroups: widget.todoGroups,
+                pomodoroRecords: widget.pomodoroRecords,
+                planBlocks: _planBlocks,
+                todos: widget.todos,
+                countdowns: widget.countdowns,
+                pomodoroTags: widget.pomodoroTags,
+                fixedSchedules: _fixedSchedules,
+                conflicts: widget.conflicts,
+                teams: widget.teams,
+                expandFocusContext: _injectMoreContext,
+                now: now,
+              ),
+              FinanceAiContextService.buildContextInjectionSummary(
+                userMessage: contextQueryText,
+                conversationContext: conversationContext,
+                previousUserMessage: previousUserMessage,
+                dateRangeOverride: _financeContextDateRangeOverride(),
+                now: now,
+              ),
+              HabitAiContextService.buildContextInjectionSummary(
+                userMessage: contextQueryText,
+                conversationContext: conversationContext,
+                previousUserMessage: previousUserMessage,
+                goals: _habitGoals,
+                now: now,
+              ),
+            ]
+            .whereType<String>()
+            .map((summary) {
+              return summary.replaceFirst(RegExp(r'^将注入：'), '');
+            })
+            .where((summary) => summary.isNotEmpty)
+            .toList();
+    if (summaries.isEmpty) return '';
+    return '将注入：${summaries.join('、')}';
+  }
+
+  String _recentConversationTextForContext({String? excludingMessageId}) {
+    return _messages.reversed
+        .where(
+          (message) =>
+              message.id != excludingMessageId &&
+              message.content.trim().isNotEmpty,
+        )
+        .take(6)
+        .map((message) => message.content.trim())
+        .join('\n');
   }
 
   String _buildContextQueryText(String userText) {
-    if (_useCustomInjectRange &&
-        _customInjectStart != null &&
-        _customInjectEnd != null) {
-      final start = DateFormat('yyyy-MM-dd').format(_customInjectStart!);
-      final end = DateFormat('yyyy-MM-dd').format(_customInjectEnd!);
-      return '$userText，并使用自定义注入范围 $start 至 $end';
-    }
-    if (!_injectMoreContext) return userText;
-    if (userText.contains('未来30天')) return userText;
-    return '$userText，并扩大到未来30天范围';
+    return AiTodoContextBuilder.buildContextQueryText(
+      userMessage: userText,
+      customStart: _useCustomInjectRange ? _customInjectStart : null,
+      customEnd: _useCustomInjectRange ? _customInjectEnd : null,
+      injectMoreContext: _injectMoreContext,
+    );
   }
 
   String _buildActionProtocolPreview(String userText) {
     if (userText.isEmpty) return '';
-    final prompt = AiTodoContextBuilder.buildActionProtocolPrompt(userText);
+    final prompt = AiTodoContextBuilder.buildActionProtocolPrompt(
+      userText,
+      previousUserMessage: _latestUserTextFromHistory(),
+    );
     final categories = <String>[];
     void addIf(bool cond, String label) {
       if (cond && !categories.contains(label)) categories.add(label);
@@ -233,7 +316,7 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
     final now = DateTime.now();
     final first = DateTime(now.year - 2, 1, 1);
     final last = DateTime(now.year + 2, 12, 31);
-    final start = await showDatePicker(
+    final start = await showAppDatePicker(
       context: context,
       initialDate: _customInjectStart ?? now,
       firstDate: first,
@@ -241,7 +324,7 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
       helpText: '选择注入开始日期',
     );
     if (start == null || !mounted) return;
-    final end = await showDatePicker(
+    final end = await showAppDatePicker(
       context: context,
       initialDate: _customInjectEnd ?? start,
       firstDate: start,
@@ -253,20 +336,26 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
       _useCustomInjectRange = true;
       _customInjectStart = DateTime(start.year, start.month, start.day);
       _customInjectEnd = DateTime(end.year, end.month, end.day);
-      _injectMoreContext = false;
-      _liveSmartContextPreview =
-          _buildSmartContextPreview(_inputCtrl.text.trim());
-      _liveActionProtocolPreview =
-          _buildActionProtocolPreview(_inputCtrl.text.trim());
-      _liveEstimatedTokens =
-          _estimateTokensForPendingInput(_inputCtrl.text.trim());
+      _liveSmartContextPreview = _buildSmartContextPreview(
+        _inputCtrl.text.trim(),
+      );
+      _liveActionProtocolPreview = _buildActionProtocolPreview(
+        _inputCtrl.text.trim(),
+      );
+      _liveEstimatedTokens = _estimateTokensForPendingInput(
+        _inputCtrl.text.trim(),
+      );
     });
   }
 
   int _estimateTokensForPendingInput(String text) {
-    if (text.isEmpty) return 0;
+    final estimatedText = AiMultimodalMessageBuilder.requestTextForAttachment(
+      text: text,
+      attachmentKind: _pendingAttachment?.kind,
+    );
+    if (estimatedText.isEmpty) return 0;
     final messages = _buildApiMessages(
-      pendingUserText: text,
+      pendingUserText: estimatedText,
       trackSmartContext: false,
     );
     return _estimateRequestTokens(messages);
@@ -292,28 +381,14 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
   }
 
   Future<void> _initSessions() async {
-    var sessions = await ChatStorageService.loadSessions();
-    final activeId = await ChatStorageService.getActiveSessionId();
-
-    if (sessions.isEmpty) {
-      final newSession = await ChatStorageService.createSession();
-      sessions = [newSession];
-      if (mounted) {
-        setState(() {
-          _sessions = sessions;
-          _activeSessionId = newSession.id;
-        });
-        _loadHistory();
-      }
-    } else {
-      if (mounted) {
-        setState(() {
-          _sessions = sessions;
-          _activeSessionId = activeId ?? sessions.first.id;
-        });
-        _loadHistory();
-      }
-    }
+    final session = await ChatStorageService.openEmptySession();
+    final sessions = await ChatStorageService.loadSessions();
+    if (!mounted) return;
+    setState(() {
+      _sessions = sessions;
+      _activeSessionId = session.id;
+    });
+    await _loadHistory();
   }
 
   Future<void> _switchSession(String sessionId) async {
@@ -396,19 +471,24 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
     }
     _classificationSuggestionInjected = true;
     final actions = widget.initialCategorizationActions;
-    final lines = actions.map((action) {
-      final groupName = action.metadata['groupName']?.toString() ??
-          _getGroupName(action.groupId);
-      final priority = action.metadata['priorityLabel']?.toString();
-      final tags = action.metadata['tags'] is List
-          ? (action.metadata['tags'] as List).map((e) => e.toString()).toList()
-          : const <String>[];
-      final extra = [
-        if (priority != null && priority.isNotEmpty) priority,
-        if (tags.isNotEmpty) tags.join('、'),
-      ].join(' · ');
-      return '- ${action.title ?? '未命名待办'} -> $groupName${extra.isEmpty ? '' : ' ($extra)'}';
-    }).join('\n');
+    final lines = actions
+        .map((action) {
+          final groupName =
+              action.metadata['groupName']?.toString() ??
+              _getGroupName(action.groupId);
+          final priority = action.metadata['priorityLabel']?.toString();
+          final tags = action.metadata['tags'] is List
+              ? (action.metadata['tags'] as List)
+                    .map((e) => e.toString())
+                    .toList()
+              : const <String>[];
+          final extra = [
+            if (priority != null && priority.isNotEmpty) priority,
+            if (tags.isNotEmpty) tags.join('、'),
+          ].join(' · ');
+          return '- ${action.title ?? '未命名待办'} -> $groupName${extra.isEmpty ? '' : ' ($extra)'}';
+        })
+        .join('\n');
 
     _messages.add(
       ChatMessage(
@@ -424,6 +504,7 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
     final prompt = await ChatStorageService.getCustomPrompt();
     final enabled = await ChatStorageService.isPromptEnabled();
     final smartContext = await ChatStorageService.isSmartContextEnabled();
+    final contextMode = await ChatStorageService.getContextMode();
     final showContextPreview =
         await ChatStorageService.shouldShowContextPreview();
     final injectMoreContext =
@@ -433,6 +514,7 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
         _customPrompt = prompt;
         _promptEnabled = enabled;
         _smartContext = smartContext;
+        _contextMode = contextMode;
         _showInjectedContextPreview = showContextPreview;
         _injectMoreContext = injectMoreContext;
       });
@@ -487,10 +569,16 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
     });
   }
 
-  String _buildSystemPrompt() {
+  String _buildSystemPrompt({bool nativeToolCalls = false, bool? queryTools}) {
     return AiTodoContextBuilder.buildLeanSystemPrompt(
       customPrompt: _customPrompt,
       promptEnabled: _promptEnabled,
+      nativeToolCalls: nativeToolCalls,
+      queryTools:
+          queryTools ??
+          (nativeToolCalls &&
+              _smartContext &&
+              _contextMode == AiContextMode.functionCalling),
     );
   }
 
@@ -500,18 +588,48 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
     String? pendingUserText,
     bool trackSmartContext = true,
     String financeContext = '',
+    String habitContext = '',
+    bool nativeToolCalls = false,
+    bool includeReasoningContent = false,
+    bool? contextInjection,
+    bool? queryTools,
   }) {
     final List<Map<String, dynamic>> apiMessages = [
-      {'role': 'system', 'content': _buildSystemPrompt()},
+      {
+        'role': 'system',
+        'content': _buildSystemPrompt(
+          nativeToolCalls: nativeToolCalls,
+          queryTools: queryTools,
+        ),
+      },
     ];
     final protocolSourceText = pendingUserText?.trim().isNotEmpty == true
         ? pendingUserText!.trim()
         : _latestUserTextFromHistory();
-    if (protocolSourceText.isNotEmpty) {
+    if (queryTools ??
+        (nativeToolCalls &&
+            _smartContext &&
+            _contextMode == AiContextMode.functionCalling)) {
+      apiMessages.add({
+        'role': 'system',
+        'content': AiQueryToolService.systemPrompt,
+      });
+    }
+    final currentUserMessageId = pendingUserText?.trim().isNotEmpty == true
+        ? null
+        : _messages.reversed
+              .where((message) => message.role == ChatRole.user)
+              .firstOrNull
+              ?.id;
+    final previousUserMessage = _latestUserTextFromHistory(
+      excludingMessageId: currentUserMessageId,
+    );
+    if (protocolSourceText.isNotEmpty && !nativeToolCalls) {
       apiMessages.add({
         'role': 'system',
         'content': AiTodoContextBuilder.buildActionProtocolPrompt(
           protocolSourceText,
+          previousUserMessage: previousUserMessage,
         ),
       });
     }
@@ -521,20 +639,40 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
       if (pendingUserText != null && pendingUserText.trim().isNotEmpty)
         ChatMessage(role: ChatRole.user, content: pendingUserText.trim()),
     ];
+    final queryHistoryIds = sourceMessages.reversed
+        .where(
+          (message) =>
+              message.nativeToolCalls?.any(
+                (call) => call.name.startsWith('query_') && call.result != null,
+              ) ??
+              false,
+        )
+        .take(AiToolResultContext.historyMessages)
+        .map((message) => message.id)
+        .toSet();
 
     if (sourceMessages.length <= _maxContextMessages) {
       for (final msg in sourceMessages) {
-        apiMessages.add({
+        final message = <String, dynamic>{
           'role': msg.role == ChatRole.user ? 'user' : 'assistant',
-          'content': msg.toLLMMessage(),
+          'content': msg.toLLMMessage(
+            toolHistoryBudget: queryHistoryIds.contains(msg.id)
+                ? AiToolResultContext.maxHistoryChars
+                : 0,
+          ),
           '_messageId': msg.id,
-        });
+        };
+        // Past completed reasoning is kept for the user, not resent each turn.
+        // Provider-required reasoning for current tool rounds is handled by
+        // AiToolChatRunner, alongside the corresponding tool_calls.
+        apiMessages.add(message);
       }
     } else {
-      final firstUserMsg = sourceMessages.firstWhere(
-        (m) => m.role == ChatRole.user,
-        orElse: () => sourceMessages.first,
+      final historyWindow = AiChatHistoryWindow.selectRecentMessages(
+        sourceMessages,
+        maxContextMessages: _maxContextMessages,
       );
+      final firstUserMsg = historyWindow.firstUserMessage;
       apiMessages.add({
         'role': 'user',
         'content': firstUserMsg.content,
@@ -543,29 +681,30 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
 
       final summaryMsg = _buildContextSummary();
       if (summaryMsg.isNotEmpty) {
-        apiMessages.add({
-          'role': 'assistant',
-          'content': summaryMsg,
-        });
+        apiMessages.add({'role': 'assistant', 'content': summaryMsg});
       }
 
-      final recentCount = _maxContextMessages - 2;
-      final startIndex = sourceMessages.length - recentCount;
-      final recentMessages =
-          sourceMessages.sublist(startIndex > 0 ? startIndex : 0);
-      for (final msg in recentMessages) {
-        if (msg.content == firstUserMsg.content) continue;
-        apiMessages.add({
+      for (final msg in historyWindow.recentMessages) {
+        final message = <String, dynamic>{
           'role': msg.role == ChatRole.user ? 'user' : 'assistant',
-          'content': msg.toLLMMessage(),
+          'content': msg.toLLMMessage(
+            toolHistoryBudget: queryHistoryIds.contains(msg.id)
+                ? AiToolResultContext.maxHistoryChars
+                : 0,
+          ),
           '_messageId': msg.id,
-        });
+        };
+        apiMessages.add(message);
       }
     }
 
-    final smartContext = _injectContext(apiMessages);
+    final smartContext = _injectContext(apiMessages, enabled: contextInjection);
+    final additionalContexts = [
+      financeContext,
+      habitContext,
+    ].map((item) => item.trim()).where((item) => item.isNotEmpty).toList();
     var combinedContext = smartContext;
-    if (financeContext.trim().isNotEmpty) {
+    if (additionalContexts.isNotEmpty) {
       int lastUserIndex = -1;
       for (int i = apiMessages.length - 1; i >= 0; i--) {
         if (apiMessages[i]['role'] == 'user') {
@@ -578,11 +717,12 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
         apiMessages[lastUserIndex] = {
           ...apiMessages[lastUserIndex],
           'role': 'user',
-          'content': '${financeContext.trim()}\n\n$currentUserContent',
+          'content':
+              '${additionalContexts.join('\n\n')}\n\n$currentUserContent',
         };
         combinedContext = [
           smartContext,
-          financeContext.trim(),
+          ...additionalContexts,
         ].where((item) => item.isNotEmpty).join('\n\n');
       }
     }
@@ -592,9 +732,10 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
     return apiMessages;
   }
 
-  String _latestUserTextFromHistory() {
+  String _latestUserTextFromHistory({String? excludingMessageId}) {
     for (int i = _messages.length - 1; i >= 0; i--) {
-      if (_messages[i].role == ChatRole.user &&
+      if (_messages[i].id != excludingMessageId &&
+          _messages[i].role == ChatRole.user &&
           _messages[i].content.trim().isNotEmpty) {
         return _messages[i].content.trim();
       }
@@ -603,8 +744,11 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
   }
 
   /// 根据最后一条用户消息的关键词，按需注入课程/时间日志/冲突/团队上下文。
-  String _injectContext(List<Map<String, dynamic>> apiMessages) {
-    if (!_smartContext) return '';
+  String _injectContext(
+    List<Map<String, dynamic>> apiMessages, {
+    bool? enabled,
+  }) {
+    if (!(enabled ?? _usesContextInjection)) return '';
     // 找到最后一条 user 消息
     int lastUserIdx = -1;
     for (int i = apiMessages.length - 1; i >= 0; i--) {
@@ -617,8 +761,21 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
 
     final userText = apiMessages[lastUserIdx]['content']?.toString() ?? '';
     final contextQueryText = _buildContextQueryText(userText);
+    final now = DateTime.now();
+    final focusRecordPriorityRange = _useCustomInjectRange
+        ? AiTodoContextBuilder.resolveCustomInjectionDateRange(
+            customStart: _customInjectStart,
+            customEnd: _customInjectEnd,
+            now: now,
+          )
+        : null;
+    final currentUserMessageId = apiMessages[lastUserIdx]['_messageId']
+        ?.toString();
     final injection = AiTodoContextBuilder.buildContextInjection(
       userMessage: contextQueryText,
+      previousUserMessage: _latestUserTextFromHistory(
+        excludingMessageId: currentUserMessageId,
+      ),
       courses: widget.courses,
       timeLogs: widget.timeLogs,
       todoGroups: widget.todoGroups,
@@ -630,7 +787,9 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
       fixedSchedules: _fixedSchedules,
       conflicts: widget.conflicts,
       teams: widget.teams,
-      now: DateTime.now(),
+      expandFocusContext: _injectMoreContext,
+      focusRecordPriorityRange: focusRecordPriorityRange,
+      now: now,
     );
     if (injection != null) {
       apiMessages[lastUserIdx] = {

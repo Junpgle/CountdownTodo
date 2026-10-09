@@ -19,6 +19,7 @@ import 'habit_archived_screen.dart';
 import 'habit_calendar_tab.dart';
 import 'habit_edit_screen.dart';
 import 'habit_today_tab.dart';
+import '../../../utils/app_dialogs.dart';
 
 /// 习惯中心：今日 / 日历 / 分析 三个标签页。
 class HabitCenterScreen extends StatefulWidget {
@@ -136,7 +137,7 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
       await _openSleepLogMigration();
       return;
     }
-    await showDialog<void>(
+    await showAppDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Row(
@@ -164,7 +165,7 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
     if (proposal == null) return;
     var timeSelection = HabitSleepLogTimeSelection.startTime;
     var sleepKind = HabitSleepLogKind.fullSleep;
-    final options = await showDialog<HabitSleepLogMigrationOptions>(
+    final options = await showAppDialog<HabitSleepLogMigrationOptions>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) {
@@ -365,7 +366,8 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
         _sleepLogMigration = null;
         _reloadTick++;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         SnackBar(
           content: Text(
             '已创建 ${result.createdGoals.length} 个习惯，导入 ${result.totalImported} 条节点，生成 ${result.generatedSleepDurationCount} 条睡眠时长',
@@ -374,7 +376,8 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         SnackBar(content: Text('迁移失败：$e')),
       );
     }

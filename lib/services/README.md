@@ -1,11 +1,11 @@
 # Services
 
-Last reviewed: 2026-09-26.
+Last reviewed: 2026-09-30.
 
 ## Core areas
 
 - `database_helper.dart`: per-user SQLite schema (version tracked in
-  `database_schema_history.dart`, currently v55), migrations, FTS fallback and
+  `database_schema_history.dart`, currently v56), migrations, FTS fallback and
   data access.
 - `api_service.dart`, `environment_service.dart`: backend URL/environment and
   authenticated HTTP selection.

@@ -4,6 +4,7 @@ import '../../../widgets/floating_glass_control.dart';
 import '../models/finance_models.dart';
 import '../services/finance_repository.dart';
 import 'finance_management_widgets.dart';
+import '../../../utils/app_dialogs.dart';
 
 enum _AutomationTab { rules, templates }
 
@@ -71,8 +72,8 @@ class _FinanceAutomationManagerState extends State<FinanceAutomationManager> {
       await action();
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('操作失败：$error')));
+        AppSnackBars.showSnackBar(context,
+            SnackBar(content: Text('操作失败：$error')));
       }
     } finally {
       _busy.remove(key);
@@ -96,27 +97,52 @@ class _FinanceAutomationManagerState extends State<FinanceAutomationManager> {
   String _categoryName(String? uuid) {
     for (final category in widget.categories) {
       if (category.uuid == uuid) {
-        return '${category.icon} ${financeCategoryDisplayName(category, widget.categories)}';
+        return '${category.icon} ${financeCategoryDisplayName(category, widget.categories)}'
+            '${category.isArchived ? '（已归档）' : ''}';
       }
     }
     return uuid == null ? '未指定分类' : '已归档或未知分类';
   }
 
-  String _paymentName(String? uuid) {
-    for (final method in widget.paymentMethods) {
-      if (method.uuid == uuid) return method.name;
+  String _paymentName(String? uuid, FinanceTransactionType type) {
+    final label = type == FinanceTransactionType.income ? '到账账户' : '付款方式';
+    if (uuid == null || uuid.trim().isEmpty) {
+      return type == FinanceTransactionType.income
+          ? '未指定到账账户（不更新余额）'
+          : '未指定付款方式';
     }
-    return '';
+    for (final method in widget.paymentMethods) {
+      if (method.uuid == uuid) {
+        final name = financePaymentMethodDisplayName(
+          method,
+          widget.paymentMethods,
+        );
+        final archivedLabel = method.isArchived ? '（已归档）' : '';
+        return '$label · $name$archivedLabel';
+      }
+    }
+    return type == FinanceTransactionType.income
+        ? '已归档或未知到账账户'
+        : '已归档或未知付款方式';
   }
 
-  bool _matches(String name, String? merchant, String? note, String? category) {
+  bool _matches(
+    String name,
+    String? merchant,
+    String? note,
+    String? category,
+    String? paymentMethod,
+    FinanceTransactionType type,
+  ) {
     final query = _search.text.trim().toLowerCase();
     return query.isEmpty ||
-        [name, merchant, note, _categoryName(category)]
-            .whereType<String>()
-            .join(' ')
-            .toLowerCase()
-            .contains(query);
+        [
+          name,
+          merchant,
+          note,
+          _categoryName(category),
+          _paymentName(paymentMethod, type),
+        ].whereType<String>().join(' ').toLowerCase().contains(query);
   }
 
   @override
@@ -124,14 +150,31 @@ class _FinanceAutomationManagerState extends State<FinanceAutomationManager> {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
     final rules = _rules
-        .where((rule) =>
-            (_filter == _RuleFilter.all ||
-                rule.isEnabled == (_filter == _RuleFilter.enabled)) &&
-            _matches(rule.name, rule.merchant, rule.note, rule.categoryUuid))
+        .where(
+          (rule) =>
+              (_filter == _RuleFilter.all ||
+                  rule.isEnabled == (_filter == _RuleFilter.enabled)) &&
+              _matches(
+                rule.name,
+                rule.merchant,
+                rule.note,
+                rule.categoryUuid,
+                rule.paymentMethodUuid,
+                rule.type,
+              ),
+        )
         .toList();
     final templates = _templates
-        .where((template) => _matches(template.name, template.merchant,
-            template.note, template.categoryUuid))
+        .where(
+          (template) => _matches(
+            template.name,
+            template.merchant,
+            template.note,
+            template.categoryUuid,
+            template.paymentMethodUuid,
+            template.type,
+          ),
+        )
         .toList();
     final count = _isRules ? rules.length : templates.length;
     final total = _isRules ? _rules.length : _templates.length;
@@ -329,14 +372,19 @@ class _FinanceAutomationManagerState extends State<FinanceAutomationManager> {
     );
   }
 
-  Widget _metadata(String? category, String? payment, {String? extra}) {
+  Widget _metadata(
+    String? category,
+    String? payment,
+    FinanceTransactionType type, {
+    String? extra,
+  }) {
     return Padding(
       padding: const EdgeInsets.only(top: 12),
       child: Text(
           [
             _categoryName(category),
-            if (_paymentName(payment).isNotEmpty) _paymentName(payment),
-            if (extra != null) extra,
+            _paymentName(payment, type),
+            ?extra,
           ].join(' · '),
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
               color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -347,6 +395,7 @@ class _FinanceAutomationManagerState extends State<FinanceAutomationManager> {
   Widget _ruleCard(FinanceRecurringRule rule) {
     final key = 'rule-${rule.uuid}';
     final busy = _busy.contains(key);
+    final displayName = financeRecurringRuleDisplayName(rule, _rules);
     void edit() => _run(key, () => widget.onEditRule(rule));
     final schedule = rule.frequency == FinanceRecurringFrequency.yearly
         ? '每年 ${rule.monthOfYear} 月 ${rule.dayOfMonth} 日'
@@ -355,7 +404,7 @@ class _FinanceAutomationManagerState extends State<FinanceAutomationManager> {
       key: ValueKey('finance-automation-rule-${rule.uuid}'),
       onTap: busy ? null : edit,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        _heading(rule.name, Icons.event_repeat_outlined, key, edit,
+        _heading(displayName, Icons.event_repeat_outlined, key, edit,
             () => _run(key, () => widget.onDeleteRule(rule))),
         _amount(rule.amountMinor, rule.type),
         Wrap(spacing: 8, runSpacing: 8, children: [
@@ -374,7 +423,7 @@ class _FinanceAutomationManagerState extends State<FinanceAutomationManager> {
                       : Icons.edit_outlined,
               highlighted: rule.isEnabled),
         ]),
-        _metadata(rule.categoryUuid, rule.paymentMethodUuid,
+        _metadata(rule.categoryUuid, rule.paymentMethodUuid, rule.type,
             extra: rule.endDate == null ? null : '至 ${rule.endDate}'),
         const Padding(
             padding: EdgeInsets.symmetric(vertical: 10),
@@ -384,7 +433,7 @@ class _FinanceAutomationManagerState extends State<FinanceAutomationManager> {
               child: Text(rule.isEnabled ? '已启用' : '已暂停',
                   style: Theme.of(context).textTheme.labelLarge)),
           Semantics(
-            label: '${rule.isEnabled ? '暂停' : '启用'}${rule.name}',
+            label: '${rule.isEnabled ? '暂停' : '启用'}$displayName',
             child: LiquidGlassSwitch(
               key: ValueKey('finance-automation-toggle-${rule.uuid}'),
               value: rule.isEnabled,
@@ -414,10 +463,19 @@ class _FinanceAutomationManagerState extends State<FinanceAutomationManager> {
       key: ValueKey('finance-automation-template-${template.uuid}'),
       onTap: busy ? null : use,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        _heading(template.name, Icons.bolt_outlined, key, edit,
-            () => _run(key, () => widget.onDeleteTemplate(template))),
+        _heading(
+          financeEntryTemplateDisplayName(template, _templates),
+          Icons.bolt_outlined,
+          key,
+          edit,
+          () => _run(key, () => widget.onDeleteTemplate(template)),
+        ),
         _amount(template.amountMinor, template.type),
-        _metadata(template.categoryUuid, template.paymentMethodUuid),
+        _metadata(
+          template.categoryUuid,
+          template.paymentMethodUuid,
+          template.type,
+        ),
         const Padding(
             padding: EdgeInsets.symmetric(vertical: 14),
             child: Divider(height: 1)),

@@ -21,6 +21,7 @@ import '../screens/settings/pages/data_export_page.dart';
 import '../screens/settings/pages/data_import_page.dart';
 import '../utils/navigator_utils.dart';
 import '../utils/page_transitions.dart';
+import '../utils/app_dialogs.dart';
 
 /// macOS 原生菜单栏包裹组件。
 /// 在 macOS 上为 MaterialApp 添加 PlatformMenuBar；其它平台原样返回 child。
@@ -260,7 +261,7 @@ class MacosMenuBar extends StatelessWidget {
     String? selectedTeamUuid;
     String? selectedTeamName;
 
-    showDialog(
+    showAppDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
@@ -290,7 +291,7 @@ class MacosMenuBar extends StatelessWidget {
                   ),
                   trailing: const Icon(Icons.calendar_today, size: 20),
                   onTap: () async {
-                    final picked = await showDatePicker(
+                    final picked = await showAppDatePicker(
                       context: context,
                       firstDate: DateTime.now(),
                       lastDate: DateTime(2100),
@@ -475,7 +476,8 @@ class MacosMenuBar extends StatelessWidget {
   static void _showSnackBar(String message) {
     final context = appNavigatorKey.currentContext;
     if (context == null) return;
-    ScaffoldMessenger.of(context).showSnackBar(
+    AppSnackBars.showSnackBar(
+      context,
       SnackBar(
         content: Text(message),
         duration: const Duration(seconds: 2),

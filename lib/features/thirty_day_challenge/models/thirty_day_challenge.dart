@@ -86,22 +86,74 @@ class ThirtyDayChallengeTask {
 }
 
 class ThirtyDayChallengeState {
-  static const int currentVersion = 2;
+  static const int currentVersion = 3;
   static const String defaultTitle = '30天找到全新自我';
+  static const List<String> _builtInTaskTitles = [
+    '去一间从来没去过的餐厅',
+    '换一个平时不常用的交通工具回家',
+    '跟一个一年（以及以上）没联系的老友聊天',
+    '一口气读完一本新的书',
+    '选一天，离开网络',
+    '比平常早起一个小时，吃丰盛的早餐',
+    '请家人外出吃饭（自己做一顿大餐）',
+    '点一杯从来没喝过的饮料',
+    '一个人看一场电影',
+    '看隔壁桌吃什么自己就点什么',
+    '写一封信给三年后的自己',
+    '做一项手工（折纸、乐高、编织等）',
+    '去海边或者森林亲近大自然',
+    '和一个陌生人聊 3 句',
+    '翻看老照片、旧日记',
+    '整理房间',
+    '慢跑 30 分钟',
+    '十点半睡觉',
+    '跟家人说“我爱你”',
+    '买一束花放在家里',
+    '和好朋友去野餐',
+    '拒绝别人',
+    '跟朋友一起唱一场主题限定 KTV',
+    '不加班',
+    '认识一个新朋友',
+    '给好朋友/家人送一个礼物',
+    '在好朋友家过夜聊八卦',
+    '一个人逛街大采购',
+    '化一个最完美的妆 + 拍照',
+    '把这 30 天的感受记下来',
+  ];
 
   final int version;
   final String challengeTitle;
   final DateTime startedAt;
   final List<ThirtyDayChallengeTask> tasks;
+  final bool isClassicChallenge;
 
   ThirtyDayChallengeState({
     required this.startedAt,
     required this.tasks,
     this.challengeTitle = defaultTitle,
     this.version = currentVersion,
+    this.isClassicChallenge = false,
   });
 
-  bool get isBuiltIn => challengeTitle == defaultTitle && tasks.length == 30;
+  bool get isBuiltIn =>
+      isClassicChallenge && _matchesBuiltInTasks(challengeTitle, tasks);
+
+  static bool _matchesBuiltInTasks(
+    String challengeTitle,
+    List<ThirtyDayChallengeTask> tasks,
+  ) {
+    if (challengeTitle != defaultTitle ||
+        tasks.length != _builtInTaskTitles.length) {
+      return false;
+    }
+    for (var index = 0; index < tasks.length; index++) {
+      if (tasks[index].id != index + 1 ||
+          tasks[index].originalTitle != _builtInTaskTitles[index]) {
+        return false;
+      }
+    }
+    return true;
+  }
 
   int get completedCount => tasks.where((task) => task.isCompleted).length;
 
@@ -123,6 +175,7 @@ class ThirtyDayChallengeState {
         'challenge_title': challengeTitle,
         'started_at': startedAt.toIso8601String(),
         'tasks': tasks.map((task) => task.toJson()).toList(),
+        'is_built_in': isBuiltIn,
       };
 
   factory ThirtyDayChallengeState.fromJson(Map<String, dynamic> json) {
@@ -147,16 +200,24 @@ class ThirtyDayChallengeState {
         ? ThirtyDayChallengeState.initial().tasks
         : normalizedTasks;
     final rawTitle = json['challenge_title']?.toString().trim();
+    final challengeTitle = rawTitle == null || rawTitle.isEmpty
+        ? defaultTitle
+        : rawTitle;
+    final matchesBuiltIn = _matchesBuiltInTasks(challengeTitle, safeTasks);
+    final rawIsBuiltIn = json['is_built_in'];
+    final isBuiltIn = rawIsBuiltIn is bool
+        ? rawIsBuiltIn && matchesBuiltIn
+        : matchesBuiltIn;
 
     return ThirtyDayChallengeState(
       version: json['version'] is int
           ? json['version'] as int
           : int.tryParse(json['version']?.toString() ?? '') ?? currentVersion,
-      challengeTitle:
-          rawTitle == null || rawTitle.isEmpty ? defaultTitle : rawTitle,
+      challengeTitle: challengeTitle,
       startedAt: DateTime.tryParse(json['started_at']?.toString() ?? '') ??
           DateTime.now(),
       tasks: safeTasks,
+      isClassicChallenge: isBuiltIn,
     );
   }
 
@@ -230,45 +291,16 @@ class ThirtyDayChallengeState {
   }
 
   static ThirtyDayChallengeState initial({DateTime? startedAt}) {
-    const titles = [
-      '去一间从来没去过的餐厅',
-      '换一个平时不常用的交通工具回家',
-      '跟一个一年（以及以上）没联系的老友聊天',
-      '一口气读完一本新的书',
-      '选一天，离开网络',
-      '比平常早起一个小时，吃丰盛的早餐',
-      '请家人外出吃饭（自己做一顿大餐）',
-      '点一杯从来没喝过的饮料',
-      '一个人看一场电影',
-      '看隔壁桌吃什么自己就点什么',
-      '写一封信给三年后的自己',
-      '做一项手工（折纸、乐高、编织等）',
-      '去海边或者森林亲近大自然',
-      '和一个陌生人聊 3 句',
-      '翻看老照片、旧日记',
-      '整理房间',
-      '慢跑 30 分钟',
-      '十点半睡觉',
-      '跟家人说“我爱你”',
-      '买一束花放在家里',
-      '和好朋友去野餐',
-      '拒绝别人',
-      '跟朋友一起唱一场主题限定 KTV',
-      '不加班',
-      '认识一个新朋友',
-      '给好朋友/家人送一个礼物',
-      '在好朋友家过夜聊八卦',
-      '一个人逛街大采购',
-      '化一个最完美的妆 + 拍照',
-      '把这 30 天的感受记下来',
-    ];
-
     return ThirtyDayChallengeState(
       challengeTitle: defaultTitle,
       startedAt: startedAt ?? DateTime.now(),
+      isClassicChallenge: true,
       tasks: [
-        for (var index = 0; index < titles.length; index++)
-          ThirtyDayChallengeTask(id: index + 1, originalTitle: titles[index]),
+        for (var index = 0; index < _builtInTaskTitles.length; index++)
+          ThirtyDayChallengeTask(
+            id: index + 1,
+            originalTitle: _builtInTaskTitles[index],
+          ),
       ],
     );
   }

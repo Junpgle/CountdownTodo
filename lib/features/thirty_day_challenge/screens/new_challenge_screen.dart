@@ -12,6 +12,7 @@ import '../services/challenge_share_codec.dart';
 import '../services/clipboard_share_detector.dart';
 import '../services/challenge_text_parser.dart';
 import 'cloud_challenge_picker_screen.dart';
+import '../../../utils/app_dialogs.dart';
 
 class NewChallengeScreen extends StatefulWidget {
   final ChallengeDraft? initialDraft;
@@ -65,7 +66,8 @@ class _NewChallengeScreenState extends State<NewChallengeScreen> {
     final title = _titleController.text.trim();
     final tasks = _taskTitles;
     if (title.isEmpty || tasks.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         const SnackBar(content: Text('请先填写挑战名称和至少一项任务，再分享挑战')),
       );
       return;
@@ -80,14 +82,16 @@ class _NewChallengeScreenState extends State<NewChallengeScreen> {
       );
       await ClipboardSharePayload.markLocallyGenerated(sharedText);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         const SnackBar(
           content: Text('已复制分享内容，朋友可在新建挑战页点击“识别剪贴板”导入'),
         ),
       );
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         const SnackBar(content: Text('分享内容复制失败，请稍后再试')),
       );
     }
@@ -101,7 +105,8 @@ class _NewChallengeScreenState extends State<NewChallengeScreen> {
     final sharedDraft = ChallengeShareCodec.tryDecode(text);
     if (sharedDraft != null) {
       _applyDraft(sharedDraft);
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         SnackBar(content: Text('已识别并导入挑战「${sharedDraft.title}」')),
       );
       return;
@@ -111,7 +116,8 @@ class _NewChallengeScreenState extends State<NewChallengeScreen> {
     _tasksController.selection = TextSelection.collapsed(
       offset: _tasksController.text.length,
     );
-    ScaffoldMessenger.of(context).showSnackBar(
+    AppSnackBars.showSnackBar(
+      context,
       const SnackBar(content: Text('已从剪贴板粘贴任务清单')),
     );
   }
@@ -120,22 +126,23 @@ class _NewChallengeScreenState extends State<NewChallengeScreen> {
     if (_isImporting) return;
     setState(() => _isImporting = true);
     try {
-      final result = await FilePicker.platform.pickFiles(
+      final pickedFile = await FilePicker.pickFile(
         type: FileType.custom,
         allowedExtensions: ['txt', 'md', 'csv', 'json'],
-        withData: true,
       );
-      if (!mounted || result == null || result.files.isEmpty) return;
+      if (!mounted || pickedFile == null) return;
 
-      final bytes = result.files.single.bytes;
-      if (bytes == null || bytes.isEmpty) {
+      final bytes = await pickedFile.readAsBytes();
+      if (!mounted) return;
+      if (bytes.isEmpty) {
         throw StateError('文件内容为空或当前平台无法读取文件');
       }
       final text = utf8.decode(bytes, allowMalformed: true);
       final sharedDraft = ChallengeShareCodec.tryDecode(text);
       if (sharedDraft != null) {
         _applyDraft(sharedDraft);
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           SnackBar(content: Text('已导入挑战「${sharedDraft.title}」')),
         );
       } else {
@@ -143,13 +150,15 @@ class _NewChallengeScreenState extends State<NewChallengeScreen> {
         _tasksController.selection = TextSelection.collapsed(
           offset: _tasksController.text.length,
         );
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           SnackBar(content: Text('已导入 ${_taskTitles.length} 项任务')),
         );
       }
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         const SnackBar(content: Text('文本导入失败，请选择 UTF-8 编码的文本文件')),
       );
     } finally {
@@ -165,7 +174,8 @@ class _NewChallengeScreenState extends State<NewChallengeScreen> {
     if (selected == null || !mounted) return;
 
     _applyDraft(selected.toDraft());
-    ScaffoldMessenger.of(context).showSnackBar(
+    AppSnackBars.showSnackBar(
+      context,
       SnackBar(content: Text('已填入云端挑战「${selected.title}」')),
     );
   }

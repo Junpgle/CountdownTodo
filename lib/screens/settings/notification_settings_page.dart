@@ -7,6 +7,7 @@ import '../../services/reminder_schedule_service.dart';
 import '../../services/notification_service.dart';
 import '../../services/scheduled_reminder_registry.dart';
 import '../../services/storage/app_settings_storage.dart';
+import '../../features/finance/services/finance_automation_service.dart';
 import '../../utils/app_dialogs.dart';
 import '../../utils/app_platform.dart';
 import '../../utils/time_utils.dart';
@@ -40,6 +41,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
   bool _pomodoroEndEnabled = true;
   bool _reminderEnabled = true;
   bool _financeBudgetEnabled = true;
+  bool _financeRecurringEnabled = true;
 
   int _courseReminderMinutes = 15;
   List<TodoGroup> _todoGroups = [];
@@ -79,6 +81,8 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
         await AppSettingsStorage.isReminderNotificationEnabled();
     final financeBudgetEnabled =
         await AppSettingsStorage.isFinanceBudgetAlertEnabled();
+    final financeRecurringEnabled =
+        await AppSettingsStorage.isFinanceRecurringReminderEnabled();
     final reminderMinutes = await AppSettingsStorage.getCourseReminderMinutes();
 
     if (!mounted) return;
@@ -95,6 +99,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
       _pomodoroEndEnabled = pomodoroEndEnabled;
       _reminderEnabled = reminderEnabled;
       _financeBudgetEnabled = financeBudgetEnabled;
+      _financeRecurringEnabled = financeRecurringEnabled;
       _courseReminderMinutes = reminderMinutes;
     });
 
@@ -213,18 +218,21 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
           _pomodoroEndEnabled = false;
           _reminderEnabled = false;
           _financeBudgetEnabled = false;
+          _financeRecurringEnabled = false;
         }
       });
     }
     if (enabled) {
       await AppSettingsStorage.setPomodoroEndNotificationEnabled(true);
       await AppSettingsStorage.setReminderNotificationEnabled(true);
-      await AppSettingsStorage.setFinanceBudgetAlertEnabled(true);
+      await FinanceAutomationService.setBudgetAlertsEnabled(true);
+      await AppSettingsStorage.setFinanceRecurringReminderEnabled(true);
       await _triggerReschedule();
     } else {
       await AppSettingsStorage.setPomodoroEndNotificationEnabled(false);
       await AppSettingsStorage.setReminderNotificationEnabled(false);
-      await AppSettingsStorage.setFinanceBudgetAlertEnabled(false);
+      await FinanceAutomationService.setBudgetAlertsEnabled(false);
+      await AppSettingsStorage.setFinanceRecurringReminderEnabled(false);
       await _clearScheduledSource(ScheduledReminderSources.reminderSchedule);
       await _clearScheduledSource(ScheduledReminderSources.pomodoro);
       await _clearScheduledSource(ScheduledReminderSources.habit);
@@ -233,14 +241,18 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
 
   Future<void> _toggleSubNotification(String key, bool value,
       Function(bool) setStateCallback, Function(bool) storageCallback) async {
-    await storageCallback(value);
+    if (key == 'finance_budget') {
+      await FinanceAutomationService.setBudgetAlertsEnabled(value);
+    } else {
+      await storageCallback(value);
+    }
     if (mounted) setState(() => setStateCallback(value));
     const schedulingKeys = {
       'course',
       'special_todo',
       'todo_live',
       'reminder',
-      'finance_budget',
+      'finance_recurring',
     };
     if (schedulingKeys.contains(key)) {
       await _triggerReschedule();
@@ -467,6 +479,19 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                         AppSettingsStorage.setFinanceBudgetAlertEnabled,
                       ),
                     ),
+                    _buildSwitchTile(
+                      title: '周期账单提醒',
+                      subtitle: '在周期账单到期前提醒',
+                      icon: Icons.event_repeat_outlined,
+                      value: _financeRecurringEnabled,
+                      isDesktop: isDesktop,
+                      onChanged: (v) => _toggleSubNotification(
+                        'finance_recurring',
+                        v,
+                        (val) => _financeRecurringEnabled = val,
+                        AppSettingsStorage.setFinanceRecurringReminderEnabled,
+                      ),
+                    ),
                     if (_reminderEnabled) ...[
                       _buildCourseReminderTile(),
                     ],
@@ -649,6 +674,19 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                         v,
                         (val) => _financeBudgetEnabled = val,
                         AppSettingsStorage.setFinanceBudgetAlertEnabled,
+                      ),
+                    ),
+                    _buildSwitchTile(
+                      title: '周期账单提醒',
+                      subtitle: '在周期账单到期前弹出浏览器通知',
+                      icon: Icons.event_repeat_outlined,
+                      value: _financeRecurringEnabled,
+                      isDesktop: isDesktop,
+                      onChanged: (v) => _toggleSubNotification(
+                        'finance_recurring',
+                        v,
+                        (val) => _financeRecurringEnabled = val,
+                        AppSettingsStorage.setFinanceRecurringReminderEnabled,
                       ),
                     ),
                     if (_reminderEnabled) _buildCourseReminderTile(),

@@ -3,13 +3,15 @@ part of 'storage_service.dart';
 
 mixin _StorageSync on _StorageServiceBase {
   Future<void> saveTimeLogs(String username, List<TimeLogItem> items,
-          {bool sync = true}) =>
-      PomodoroStorage.saveTimeLogs(
-        username,
-        items,
-        sync: sync,
-        requestSync: requestSync,
-      );
+          {bool sync = true}) async {
+    await PomodoroStorage.saveTimeLogs(
+      username,
+      items,
+      sync: sync,
+      requestSync: requestSync,
+    );
+    triggerRefresh({DataRefreshDomain.timeLogs});
+  }
   Future<List<TimeLogItem>> getTimeLogs(String username, {int? limit}) =>
       PomodoroStorage.getTimeLogs(
         username,
@@ -1576,6 +1578,13 @@ mixin _StorageSync on _StorageServiceBase {
           supported: financeSupported,
         );
         if (financeResult.hasChanges) hasChanges = true;
+        if (financeResult.recurringRulesChanged) {
+          unawaited(
+            ReminderScheduleService.scheduleCurrentUser().catchError((error) {
+              debugPrint('⚠️ [记账同步] 刷新周期账单提醒失败: $error');
+            }),
+          );
+        }
         financeConflicts = financeResult.rejectedChanges;
         if (financeResult.localChangesDuringRequest) {
           debugPrint('🛡️ [记账同步] 请求期间发生本地修改，本轮不前移记账水位线');

@@ -111,7 +111,7 @@ class FocusDoNotDisturbService {
         await prefs.remove(_sessionPreferenceKey);
       }
     });
-    _operationTail = operation.then<void>((_) {}, onError: (_, __) {});
+    _operationTail = operation.then<void>((_) {}, onError: (_, _) {});
     return operation;
   }
 
@@ -146,7 +146,7 @@ class FocusDoNotDisturbService {
     try {
       await _channel.invokeMethod<void>('setSystemDoNotDisturb', {
         'enabled': active,
-        if (untilMs != null) 'untilMs': untilMs,
+        'untilMs': ?untilMs,
       });
     } catch (_) {}
   }

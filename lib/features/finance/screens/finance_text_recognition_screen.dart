@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../utils/app_dialogs.dart';
 import '../../../widgets/floating_glass_control.dart';
 import '../models/finance_models.dart';
 import '../services/finance_text_parser.dart';
@@ -84,9 +85,9 @@ class _FinanceTextRecognitionScreenState
 
   void _showMessage(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(message)));
+    final messenger = ScaffoldMessenger.of(context);
+    AppSnackBars.hideCurrent(messenger);
+    AppSnackBars.showSnackBar(context, SnackBar(content: Text(message)));
   }
 
   @override

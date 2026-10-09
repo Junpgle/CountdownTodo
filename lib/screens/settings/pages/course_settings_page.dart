@@ -16,8 +16,9 @@ import '../../../course_import/widgets/course_time_repair_dialog.dart';
 import '../../course_calendar_adjustment_screen.dart';
 import '../../../models.dart';
 import '../../../utils/app_platform.dart';
-import '../../../utils/page_transitions.dart';
+import '../../../utils/settings_navigation.dart';
 import '../../../widgets/floating_glass_control.dart';
+import '../../../utils/app_dialogs.dart';
 
 class CourseSettingsPage extends StatefulWidget {
   final String? initialTarget;
@@ -67,6 +68,26 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
   Future<void>? _loadingDialogFuture;
   Future<void>? _loadingDialogReady;
   NavigatorState? _loadingDialogNavigator;
+
+  GlobalKey _navigationKey(String id) => _itemKeys.putIfAbsent(
+        id,
+        () => GlobalKey(debugLabel: 'settings-$id'),
+      );
+
+  Future<T?> _openSettingsPage<T>(
+    String id,
+    Widget page, {
+    RouteSettings? settings,
+    bool rootNavigator = false,
+  }) =>
+      SettingsNavigation.push<T>(
+        context: context,
+        page: page,
+        sourceKey: _navigationKey(id),
+        isEmbedded: widget.isEmbedded,
+        rootNavigator: rootNavigator,
+        settings: settings,
+      );
 
   @override
   void initState() {
@@ -139,8 +160,8 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
       onRescheduleReminders: _rescheduleReminders,
       showMessage: (msg) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(msg)));
+        AppSnackBars.showSnackBar(
+            context, SnackBar(content: Text(msg)));
       },
     );
 
@@ -245,12 +266,12 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
 
   Future<void> _uploadCoursesToCloud() async {
     if (_userId == null || _username.isEmpty) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('请先登录账号')));
+      AppSnackBars.showSnackBar(context,
+          const SnackBar(content: Text('请先登录账号')));
       return;
     }
 
-    bool confirm = await showDialog<bool>(
+    bool confirm = await showAppDialog<bool>(
           context: context,
           builder: (ctx) => AlertDialog(
             title: const Text("上传课表到云端"),
@@ -301,19 +322,19 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
 
       if (!mounted) return;
       if (result['success'] == true) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('✅ 课表已成功同步到云端')));
+        AppSnackBars.showSnackBar(context,
+            const SnackBar(content: Text('✅ 课表已成功同步到云端')));
       } else if (result['isLimitExceeded'] == true) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(context,
             SnackBar(content: Text(result['message'] ?? '今日同步次数已达上限')));
       } else {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(result['message'] ?? '同步失败')));
+        AppSnackBars.showSnackBar(context,
+            SnackBar(content: Text(result['message'] ?? '同步失败')));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('同步失败: $e')));
+        AppSnackBars.showSnackBar(
+            context, SnackBar(content: Text('同步失败: $e')));
       }
     } finally {
       await _closeLoadingDialog();
@@ -337,8 +358,8 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
 
   Future<void> _fetchCoursesFromCloud() async {
     if (_userId == null) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('请先登录账号')));
+      AppSnackBars.showSnackBar(context,
+          const SnackBar(content: Text('请先登录账号')));
       return;
     }
 
@@ -371,7 +392,8 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
           final cloudSemesters = <SemesterInfo>[];
           for (final rawSemester in rawSemesters) {
             if (rawSemester is! Map) {
-              ScaffoldMessenger.of(context).showSnackBar(
+              AppSnackBars.showSnackBar(
+                context,
                 const SnackBar(content: Text('❌ 云端学期设置格式错误，未导入课表')),
               );
               return;
@@ -396,7 +418,8 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
             CourseScheduleSemantics.canonicalSemesterId(semester.id);
         if (!CourseImportPreflight.hasUsableSemester(semester) ||
             !importedSemesterIds.add(semesterId)) {
-          ScaffoldMessenger.of(context).showSnackBar(
+          AppSnackBars.showSnackBar(
+            context,
             const SnackBar(content: Text('❌ 存在无效或重复的学期设置，请修正后再导入')),
           );
           return;
@@ -404,8 +427,8 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
       }
 
       if (data.isEmpty) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('❌ 获取失败，云端暂无课表数据')));
+        AppSnackBars.showSnackBar(context,
+            const SnackBar(content: Text('❌ 获取失败，云端暂无课表数据')));
         return;
       }
 
@@ -499,7 +522,8 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
       }
 
       if (skippedCourses > 0) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           SnackBar(
             content: Text(
               '⚠️ 云端有 $skippedCourses 条课程无法确定所属学期开学日期或数据格式，已全部取消导入；请先配置学期',
@@ -509,8 +533,8 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
         return;
       }
       if (courses.isEmpty) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('❌ 云端课表没有可导入的课程')));
+        AppSnackBars.showSnackBar(context,
+            const SnackBar(content: Text('❌ 云端课表没有可导入的课程')));
         return;
       }
 
@@ -523,7 +547,7 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
         courses = repaired;
         if (courses
             .any((course) => !CourseScheduleSemantics.hasUsableTime(course))) {
-          ScaffoldMessenger.of(context).showSnackBar(
+          AppSnackBars.showSnackBar(context,
               const SnackBar(content: Text('❌ 仍有课程缺少有效时间，已取消导入')));
           return;
         }
@@ -590,12 +614,14 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
 
       final modeText = mode == ImportMode.merge ? '合并' : '同步';
       final suffix = settingsSyncFailed ? '，但学期设置保存失败' : '';
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('✅ 成功从云端$modeText ${courses.length} 条课程$suffix')));
+      AppSnackBars.showSnackBar(
+          context,
+          SnackBar(
+              content: Text('✅ 成功从云端$modeText ${courses.length} 条课程$suffix')));
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('❌ 发生错误: $e')));
+        AppSnackBars.showSnackBar(context,
+            SnackBar(content: Text('❌ 发生错误: $e')));
       }
     } finally {
       await _closeLoadingDialog();
@@ -607,7 +633,7 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
       List<CourseItem> newCourses, List<CourseItem> conflicts) async {
     if (conflicts.isNotEmpty) {
       // 有冲突：提示用户
-      final confirmed = await showDialog<bool>(
+      final confirmed = await showAppDialog<bool>(
         context: context,
         builder: (ctx) {
           final conflictSummary = <String, int>{};
@@ -678,7 +704,7 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
       return ImportMode.merge;
     } else {
       // 无冲突：让用户选择
-      final mode = await showDialog<ImportMode>(
+      final mode = await showAppDialog<ImportMode>(
         context: context,
         builder: (ctx) {
           final colorScheme = Theme.of(ctx).colorScheme;
@@ -908,13 +934,12 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
                 subtitle: const Text('设置停课日期，以及补哪一天的课'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () async {
-                  await Navigator.push(
-                    context,
-                    PageTransitions.slideHorizontal(
-                      CourseCalendarAdjustmentScreen(
-                          isEmbedded: widget.isEmbedded),
-                      settings: const RouteSettings(name: '校历偏移动态调整'),
+                  await _openSettingsPage(
+                    'course_calendar_adjustment',
+                    CourseCalendarAdjustmentScreen(
+                      isEmbedded: widget.isEmbedded,
                     ),
+                    settings: const RouteSettings(name: '校历偏移动态调整'),
                   );
                   _rescheduleReminders();
                 },
@@ -949,7 +974,10 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
                     title: isWeb ? '打开教务网页' : '在线教务导入',
                     subtitle: isWeb ? '导出文件后导入' : '推荐方式',
                     color: Colors.teal,
-                    onTap: _courseImportHandler.importFromWebView,
+                    onTap: () => _courseImportHandler.importFromWebView(
+                      sourceKey: _navigationKey('webview_import'),
+                      isEmbedded: widget.isEmbedded,
+                    ),
                   ),
                   _buildActionCard(
                     id: 'smart_import',
@@ -1041,12 +1069,10 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
                           fontWeight: FontWeight.bold)),
                 ),
                 onTap: () {
-                  Navigator.push(
-                    context,
-                    PageTransitions.slideHorizontal(
-                      CourseAdaptationScreen(isEmbedded: widget.isEmbedded),
-                      settings: const RouteSettings(name: '课程表适配机制'),
-                    ),
+                  _openSettingsPage(
+                    'course_adapt',
+                    CourseAdaptationScreen(isEmbedded: widget.isEmbedded),
+                    settings: const RouteSettings(name: '课程表适配机制'),
                   );
                 },
               ),
@@ -1376,7 +1402,8 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
     }
 
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         SnackBar(content: Text('已切换到: ${semester.name}')),
       );
     }
@@ -1387,7 +1414,7 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
     DateTime? startDate = semester.startDate;
     DateTime? endDate = semester.endDate;
 
-    final result = await showDialog<SemesterInfo>(
+    final result = await showAppDialog<SemesterInfo>(
       context: context,
       builder: (ctx) {
         return StatefulBuilder(
@@ -1416,7 +1443,7 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
                         label: Text(
                             '开学日期: ${DateFormat('yyyy/MM/dd').format(startDate!)}'),
                         onPressed: () async {
-                          final picked = await showDatePicker(
+                          final picked = await showAppDatePicker(
                             context: context,
                             initialDate: startDate!,
                             firstDate: DateTime(2020),
@@ -1440,7 +1467,7 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
                               : '选择放假日期 (可选)',
                         ),
                         onPressed: () async {
-                          final picked = await showDatePicker(
+                          final picked = await showAppDatePicker(
                             context: context,
                             initialDate: endDate ??
                                 startDate!.add(const Duration(days: 120)),
@@ -1464,7 +1491,8 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
                 FilledButton(
                   onPressed: () {
                     if (nameController.text.isEmpty || startDate == null) {
-                      ScaffoldMessenger.of(context).showSnackBar(
+                      AppSnackBars.showSnackBar(
+                        context,
                         const SnackBar(content: Text('请填写学期名称和开学日期')),
                       );
                       return;
@@ -1513,7 +1541,8 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
       await _syncSemestersToServer();
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           const SnackBar(content: Text('学期已更新')),
         );
       }
@@ -1521,7 +1550,7 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
   }
 
   Future<void> _deleteSemester(SemesterInfo semester) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showAppDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -1556,7 +1585,8 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
       await _syncSemestersToServer();
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           SnackBar(content: Text('已删除: ${semester.name}')),
         );
       }
@@ -1609,7 +1639,7 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
     DateTime? startDate;
     DateTime? endDate;
 
-    final result = await showDialog<SemesterInfo>(
+    final result = await showAppDialog<SemesterInfo>(
       context: context,
       builder: (ctx) {
         return StatefulBuilder(
@@ -1633,7 +1663,7 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
                               : '选择开学日期',
                         ),
                         onPressed: () async {
-                          final picked = await showDatePicker(
+                          final picked = await showAppDatePicker(
                             context: context,
                             initialDate: DateTime.now(),
                             firstDate: DateTime(2020),
@@ -1664,7 +1694,7 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
                               : '选择放假日期 (可选)',
                         ),
                         onPressed: () async {
-                          final picked = await showDatePicker(
+                          final picked = await showAppDatePicker(
                             context: context,
                             initialDate:
                                 startDate?.add(const Duration(days: 120)) ??
@@ -1699,7 +1729,8 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
                 FilledButton(
                   onPressed: () {
                     if (nameController.text.isEmpty || startDate == null) {
-                      ScaffoldMessenger.of(context).showSnackBar(
+                      AppSnackBars.showSnackBar(
+                        context,
                         const SnackBar(content: Text('请选择开学日期')),
                       );
                       return;
@@ -1741,7 +1772,8 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
       await _syncSemestersToServer();
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           SnackBar(content: Text('已添加: ${result.name}')),
         );
       }
@@ -1752,7 +1784,7 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
     if (_semesters.isEmpty) return;
 
     // 显示学期选择对话框
-    final selectedSemester = await showDialog<SemesterInfo>(
+    final selectedSemester = await showAppDialog<SemesterInfo>(
       context: context,
       builder: (ctx) {
         final colorScheme = Theme.of(ctx).colorScheme;
@@ -1830,7 +1862,7 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
     if (selectedSemester == null || !mounted) return;
 
     // 确认删除
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showAppDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -1861,13 +1893,15 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
       await _rescheduleReminders();
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           SnackBar(content: Text('已清除 "${selectedSemester.name}" 的课程数据')),
         );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           SnackBar(content: Text('清除失败: $e')),
         );
       }

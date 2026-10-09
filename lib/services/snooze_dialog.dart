@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../utils/app_dialogs.dart';
 
 /// Predefined snooze durations in minutes
 class SnoozePresets {
@@ -15,7 +16,7 @@ class SnoozeDialog extends StatefulWidget {
 
   /// Show the snooze dialog and return the selected minutes (or null if cancelled)
   static Future<int?> show(BuildContext context) {
-    return showDialog<int>(
+    return showAppDialog<int>(
       context: context,
       builder: (_) => const SnoozeDialog(),
     );

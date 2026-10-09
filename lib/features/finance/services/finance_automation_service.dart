@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 
@@ -25,6 +27,9 @@ abstract final class FinanceAutomationService {
   static const int recurringNotificationBaseId = 52001;
   static const int recurringNotificationRange = 7999;
   static const int maxRecurringCatchUpPeriods = 12;
+  static final Set<String> _budgetAlertInFlight = {};
+  static Timer? _autoGenerationTimer;
+  static int _autoGenerationTimerRevision = 0;
 
   /// 计算规则在指定年月的发生时间。
   ///
@@ -34,23 +39,201 @@ abstract final class FinanceAutomationService {
     FinanceRecurringRule rule,
     int year,
     int month,
-  ) {
-    if (month < 1 || month > 12) return null;
-    if (rule.frequency == FinanceRecurringFrequency.yearly &&
-        month != rule.monthOfYear) {
-      return null;
-    }
-    final lastDay = DateTime(year, month + 1, 0).day;
-    final day = rule.dayOfMonth.clamp(1, lastDay);
-    final due = DateTime(year, month, day, 9);
-    if (!_isWithinRule(rule, due)) return null;
-    return due;
-  }
+  ) => rule.dueDateFor(year, month);
 
   static String periodKeyFor(FinanceRecurringRule rule, DateTime dueAt) {
     return rule.frequency == FinanceRecurringFrequency.yearly
         ? dueAt.year.toString()
         : financeMonthKey(dueAt);
+  }
+
+  /// Returns the next future due time that should materialize an automatic
+  /// bill while the app remains open.
+  static DateTime? nextAutoGenerationDueAfter(
+    Iterable<FinanceRecurringRule> rules, {
+    required DateTime now,
+  }) {
+    DateTime? nextDue;
+    for (final rule in rules) {
+      if (rule.isDeleted || !rule.isEnabled || !rule.autoGenerate) continue;
+
+      final start = dateFromKey(rule.startDate);
+      final lastGenerated = rule.effectiveLastGeneratedPeriod;
+      DateTime? due;
+      if (rule.frequency == FinanceRecurringFrequency.yearly) {
+        var year = now.year > start.year ? now.year : start.year;
+        final lastYear = int.tryParse(lastGenerated ?? '');
+        if (lastYear != null && year <= lastYear) year = lastYear + 1;
+        final endYear = rule.endDate == null
+            ? null
+            : dateFromKey(rule.endDate!).year;
+        var attempts = 0;
+        while (year <= 9999 &&
+            attempts < 2 &&
+            (endYear == null || year <= endYear)) {
+          final candidate = dueDateFor(rule, year, rule.monthOfYear);
+          if (candidate != null && candidate.isAfter(now)) {
+            due = candidate;
+            break;
+          }
+          year++;
+          attempts++;
+        }
+      } else {
+        var cursor = DateTime(now.year, now.month);
+        final startMonth = DateTime(start.year, start.month);
+        if (cursor.isBefore(startMonth)) cursor = startMonth;
+        if (RegExp(r'^\d{4}-(0[1-9]|1[0-2])$').hasMatch(lastGenerated ?? '')) {
+          final parts = lastGenerated!.split('-');
+          final monthAfterLast = DateTime(
+            int.parse(parts[0]),
+            int.parse(parts[1]) + 1,
+          );
+          if (cursor.isBefore(monthAfterLast)) cursor = monthAfterLast;
+        }
+        final end = rule.endDate == null ? null : dateFromKey(rule.endDate!);
+        while (cursor.year <= 9999) {
+          final candidate = dueDateFor(rule, cursor.year, cursor.month);
+          if (candidate != null && candidate.isAfter(now)) {
+            due = candidate;
+            break;
+          }
+          if (end != null &&
+              (cursor.year > end.year ||
+                  (cursor.year == end.year && cursor.month >= end.month))) {
+            break;
+          }
+          cursor = DateTime(cursor.year, cursor.month + 1);
+        }
+      }
+
+      if (due != null && (nextDue == null || due.isBefore(nextDue))) {
+        nextDue = due;
+      }
+    }
+    return nextDue;
+  }
+
+  /// Keeps automatic bills materialized while the app is open, even when the
+  /// finance screen is not the active route.
+  static Future<void> scheduleNextAutoGeneration({
+    DateTime? now,
+    DateTime Function()? clock,
+  }) async {
+    final current = now ?? clock?.call() ?? DateTime.now();
+    final revision = ++_autoGenerationTimerRevision;
+    _autoGenerationTimer?.cancel();
+    _autoGenerationTimer = null;
+    try {
+      final rules = await FinanceStorage.getRecurringRules(enabledOnly: true);
+      if (revision != _autoGenerationTimerRevision) return;
+      scheduleAutoGenerationForRules(rules, now: current, clock: clock);
+    } catch (_) {
+      if (revision == _autoGenerationTimerRevision) {
+        _scheduleAutoGenerationRetry(clock: clock);
+      }
+    }
+  }
+
+  /// Reconciles elapsed due bills before calculating the next future timer.
+  /// Called when the app starts or returns to the foreground.
+  static Future<void> resumeAutoGenerationSchedule({
+    DateTime Function()? clock,
+  }) async {
+    try {
+      await reconcileCurrentPeriod(now: clock?.call());
+    } catch (_) {
+      _scheduleAutoGenerationRetry(clock: clock);
+      return;
+    }
+    await scheduleNextAutoGeneration(clock: clock);
+  }
+
+  /// Arms the shared timer from a loaded rule list. Kept separate so callers
+  /// that already loaded rules can avoid a second database query.
+  static void scheduleAutoGenerationForRules(
+    Iterable<FinanceRecurringRule> rules, {
+    required DateTime now,
+    DateTime Function()? clock,
+    Duration retryBaseDelay = const Duration(minutes: 1),
+  }) {
+    final revision = ++_autoGenerationTimerRevision;
+    _autoGenerationTimer?.cancel();
+    _autoGenerationTimer = null;
+    final dueAt = nextAutoGenerationDueAfter(rules, now: now);
+    if (dueAt == null) return;
+
+    final delayMs =
+        (dueAt.millisecondsSinceEpoch - now.millisecondsSinceEpoch + 1)
+            .clamp(1, const Duration(days: 24).inMilliseconds)
+            .toInt();
+    _autoGenerationTimer = Timer(Duration(milliseconds: delayMs), () {
+      _autoGenerationTimer = null;
+      if (revision != _autoGenerationTimerRevision) return;
+      unawaited(_runScheduledAutoGeneration(
+        revision,
+        clock: clock,
+        retryBaseDelay: retryBaseDelay,
+      ));
+    });
+  }
+
+  static void cancelScheduledAutoGeneration() {
+    _autoGenerationTimerRevision++;
+    _autoGenerationTimer?.cancel();
+    _autoGenerationTimer = null;
+  }
+
+  static void _scheduleAutoGenerationRetry({
+    DateTime Function()? clock,
+    Duration delay = const Duration(minutes: 1),
+  }) {
+    final revision = ++_autoGenerationTimerRevision;
+    _autoGenerationTimer?.cancel();
+    _autoGenerationTimer = Timer(delay, () {
+      _autoGenerationTimer = null;
+      if (revision != _autoGenerationTimerRevision) return;
+      unawaited(resumeAutoGenerationSchedule(clock: clock));
+    });
+  }
+
+  static Future<void> _runScheduledAutoGeneration(
+    int revision, {
+    DateTime Function()? clock,
+    int retryAttempt = 0,
+    Duration retryBaseDelay = const Duration(minutes: 1),
+  }) async {
+    try {
+      await reconcileCurrentPeriod(now: clock?.call());
+    } catch (_) {
+      if (revision != _autoGenerationTimerRevision) return;
+      if (retryAttempt < 3) {
+        _autoGenerationTimer = Timer(
+          retryBaseDelay * (1 << retryAttempt),
+          () {
+            _autoGenerationTimer = null;
+            if (revision != _autoGenerationTimerRevision) return;
+            unawaited(_runScheduledAutoGeneration(
+              revision,
+              clock: clock,
+              retryAttempt: retryAttempt + 1,
+              retryBaseDelay: retryBaseDelay,
+            ));
+          },
+        );
+        return;
+      }
+      // Keep the current due period pending after transient failures. Scheduling
+      // only the next future due here would otherwise skip this period until
+      // the app is opened again.
+      _scheduleAutoGenerationRetry(
+        clock: clock,
+        delay: retryBaseDelay * 15,
+      );
+      return;
+    }
+    if (revision != _autoGenerationTimerRevision) return;
+    await scheduleNextAutoGeneration(now: clock?.call(), clock: clock);
   }
 
   /// 返回当前周期的到期项；尚未到 09:00 时不生成账单。
@@ -86,14 +269,15 @@ abstract final class FinanceAutomationService {
     final current = now ?? DateTime.now();
     final start = dateFromKey(rule.startDate);
     final result = <FinanceRecurringDue>[];
+    final lastPeriod = rule.effectiveLastGeneratedPeriod;
 
-    if (rule.lastGeneratedPeriod == null) {
+    if (lastPeriod == null) {
       final due = currentDueFor(rule, now: current);
       return due == null ? const [] : [due];
     }
 
     if (rule.frequency == FinanceRecurringFrequency.yearly) {
-      final lastYear = int.tryParse(rule.lastGeneratedPeriod!);
+      final lastYear = int.tryParse(lastPeriod);
       final firstYear = lastYear == null ? start.year : lastYear + 1;
       for (var year = firstYear; year <= current.year; year++) {
         final due = dueDateFor(rule, year, rule.monthOfYear);
@@ -109,9 +293,7 @@ abstract final class FinanceAutomationService {
     }
 
     var cursor = DateTime(start.year, start.month);
-    final lastPeriod = rule.lastGeneratedPeriod;
-    if (lastPeriod != null &&
-        RegExp(r'^\d{4}-(0[1-9]|1[0-2])$').hasMatch(lastPeriod)) {
+    if (RegExp(r'^\d{4}-(0[1-9]|1[0-2])$').hasMatch(lastPeriod)) {
       final parts = lastPeriod.split('-');
       cursor = DateTime(int.parse(parts[0]), int.parse(parts[1]) + 1);
     }
@@ -215,27 +397,86 @@ abstract final class FinanceAutomationService {
   }) async {
     final current = now ?? DateTime.now();
     final end = limit ?? current.add(const Duration(days: 7));
-    final rules = await FinanceStorage.getRecurringRules(enabledOnly: true);
-    final dues = upcoming(rules: rules, now: current, limit: end);
-    return [
-      for (final due in dues)
-        if (due.rule.reminderMinutes > 0)
-          _buildReminder(due, current: current, limit: end),
-    ];
+    if (!end.isAfter(current)) return const [];
+    final allRules = await FinanceStorage.getRecurringRules();
+    final enabledRules = allRules.where((rule) => rule.isEnabled);
+    final reminders = <Map<String, dynamic>>[];
+    for (final rule in enabledRules) {
+      if (rule.reminderMinutes <= 0) continue;
+      final calendarLeadDays = (rule.reminderMinutes + 1439) ~/ 1440;
+      // The due time is later than its reminder trigger. Scan the current
+      // window plus the lead, then filter by the exact trigger below.
+      final dues = upcoming(
+        rules: [rule],
+        now: current,
+        limit: _calendarDateTimeOffset(end, calendarLeadDays + 1),
+      );
+      for (final due in dues) {
+        final reminder = _buildReminder(
+          due,
+          rules: allRules,
+          current: current,
+          limit: end,
+        );
+        if (reminder['withinWindow'] == true) reminders.add(reminder);
+      }
+    }
+    _resolveRecurringNotificationIdCollisions(reminders);
+    reminders.sort(
+      (left, right) =>
+          (left['triggerAtMs'] as int).compareTo(right['triggerAtMs'] as int),
+    );
+    return reminders;
+  }
+
+  static void _resolveRecurringNotificationIdCollisions(
+    List<Map<String, dynamic>> reminders,
+  ) {
+    final assignmentOrder = [...reminders]
+      ..sort((left, right) {
+        final leftKey =
+            '${left['financeRuleUuid']}|${left['financePeriodKey']}';
+        final rightKey =
+            '${right['financeRuleUuid']}|${right['financePeriodKey']}';
+        return leftKey.compareTo(rightKey);
+      });
+    final assigned = <int>{};
+    for (final reminder in assignmentOrder) {
+      final hashedId = (reminder['notifId'] as num).toInt();
+      final startOffset = hashedId - recurringNotificationBaseId;
+      for (var probe = 0; probe < recurringNotificationRange; probe++) {
+        final candidate = recurringNotificationBaseId +
+            (startOffset + probe) % recurringNotificationRange;
+        if (!assigned.add(candidate)) continue;
+        reminder['notifId'] = candidate;
+        break;
+      }
+    }
   }
 
   static Map<String, dynamic> _buildReminder(
     FinanceRecurringDue due, {
+    required Iterable<FinanceRecurringRule> rules,
     required DateTime current,
     required DateTime limit,
   }) {
-    final triggerAt = due.dueAt.subtract(
-      Duration(minutes: due.rule.reminderMinutes),
+    final usesCalendarDays = due.rule.reminderMinutes % 1440 == 0;
+    final calendarLeadDays =
+        usesCalendarDays ? due.rule.reminderMinutes ~/ 1440 : 0;
+    final remainingLeadMinutes =
+        usesCalendarDays ? 0 : due.rule.reminderMinutes;
+    final localTriggerAt = _calendarDateTimeOffset(
+      due.dueAt,
+      -calendarLeadDays,
+    );
+    final triggerAt = localTriggerAt.subtract(
+      Duration(minutes: remainingLeadMinutes),
     );
     return {
       'triggerAtMs': triggerAt.toUtc().millisecondsSinceEpoch,
       'startAtMs': due.dueAt.toUtc().millisecondsSinceEpoch,
-      'title': '💳 周期账单：${due.rule.name}',
+      'title':
+          '💳 周期账单：${financeRecurringRuleDisplayName(due.rule, rules)}',
       'text': '${dateKey(due.dueAt)} · ${_formatAmount(due.rule.amountMinor)}'
           '${due.rule.autoGenerate ? ' · 到期自动记账' : ' · 请确认是否记账'}',
       'notifId': notificationIdFor(due.rule.uuid, due.periodKey),
@@ -244,9 +485,33 @@ abstract final class FinanceAutomationService {
       'financePeriodKey': due.periodKey,
       'financeAutoGenerate': due.rule.autoGenerate,
       'financeDueAtMs': due.dueAt.toUtc().millisecondsSinceEpoch,
-      // 保留参数语义，调用方若扩展调度窗口可直接复用该构造器。
-      'withinWindow': due.dueAt.isAfter(current) && due.dueAt.isBefore(limit),
+      'withinWindow': triggerAt.isAfter(current) && triggerAt.isBefore(limit),
     };
+  }
+
+  static DateTime _calendarDateTimeOffset(DateTime value, int days) {
+    if (value.isUtc) {
+      return DateTime.utc(
+        value.year,
+        value.month,
+        value.day + days,
+        value.hour,
+        value.minute,
+        value.second,
+        value.millisecond,
+        value.microsecond,
+      );
+    }
+    return DateTime(
+      value.year,
+      value.month,
+      value.day + days,
+      value.hour,
+      value.minute,
+      value.second,
+      value.millisecond,
+      value.microsecond,
+    );
   }
 
   /// 检查本月预算的 80% 和 100% 阈值，并按预算版本去重通知。
@@ -258,9 +523,13 @@ abstract final class FinanceAutomationService {
     final monthKey = financeMonthKey(current);
     final budgets = await FinanceStorage.getBudgets(monthKey: monthKey);
     if (budgets.isEmpty) return;
-    final summary = await FinanceStorage.getSummary(
+    final transactions = await FinanceStorage.getTransactions(
       from: DateTime(current.year, current.month),
       to: DateTime(current.year, current.month + 1),
+    );
+    final summary = FinanceSummary.fromTransactions(
+      transactions,
+      asOfAt: current.millisecondsSinceEpoch,
     );
     final categories = await FinanceStorage.getCategories(
       includeArchived: true,
@@ -275,10 +544,7 @@ abstract final class FinanceAutomationService {
 
     for (final budget in budgets) {
       if (budget.isPaymentMethod) continue;
-      final used = (budget.categoryUuid == null
-              ? summary.netExpenseMinor
-              : summary.expenseByCategory[budget.categoryUuid] ?? 0)
-          .clamp(0, 0x7fffffff);
+      final used = summary.spendingForBudget(budget, categories);
       if (used <= 0 || budget.amountMinor <= 0) continue;
       final ratio = used / budget.amountMinor;
       final threshold = ratio >= 1
@@ -290,7 +556,10 @@ abstract final class FinanceAutomationService {
 
       final alertKey =
           'finance-budget-v1-$accountKey-${budget.uuid}-${budget.monthKey}-${budget.version}-$threshold';
-      if (prefs.getBool(alertKey) == true) continue;
+      if (prefs.getBool(alertKey) == true ||
+          !_budgetAlertInFlight.add(alertKey)) {
+        continue;
+      }
       final scope = budget.categoryUuid == null
           ? '本月总支出'
           : '${categoryNames[budget.categoryUuid] ?? '分类'}支出';
@@ -298,34 +567,37 @@ abstract final class FinanceAutomationService {
       final body = '$scope ${_formatAmount(used)} / '
           '${_formatAmount(budget.amountMinor)}';
       try {
-        await NotificationService.showFinanceBudgetAlert(
+        final delivered = await NotificationService.showFinanceBudgetAlert(
           title: title,
           body: body,
           alertKey: alertKey,
         );
-        await prefs.setBool(alertKey, true);
+        if (delivered) await prefs.setBool(alertKey, true);
       } catch (_) {
         // 系统通知不可用时保留下一次重试机会，但不影响记账流程。
+      } finally {
+        _budgetAlertInFlight.remove(alertKey);
       }
     }
   }
 
-  static bool _isWithinRule(FinanceRecurringRule rule, DateTime date) {
-    final start = dateFromKey(rule.startDate);
-    if (date.isBefore(DateTime(start.year, start.month, start.day))) {
-      return false;
+  /// Turns budget reminders on and immediately evaluates the current month.
+  /// A failed notification must not undo the user's preference change.
+  static Future<void> setBudgetAlertsEnabled(bool enabled) async {
+    await AppSettingsStorage.setFinanceBudgetAlertEnabled(enabled);
+    if (!enabled) return;
+    try {
+      await checkBudgetAlerts();
+    } catch (_) {
+      // The next finance mutation or app launch will retry the alert check.
     }
-    if (rule.endDate != null) {
-      final end = dateFromKey(rule.endDate!);
-      if (date.isAfter(DateTime(end.year, end.month, end.day, 23, 59, 59))) {
-        return false;
-      }
-    }
-    return true;
   }
 
   static String _formatAmount(int amountMinor) {
-    final value = NumberFormat('#,##0.00', 'zh_CN').format(amountMinor / 100);
-    return '¥$value';
+    final absolute = amountMinor.abs();
+    final whole = NumberFormat('#,##0', 'zh_CN').format(absolute ~/ 100);
+    final cents = (absolute % 100).toString().padLeft(2, '0');
+    final sign = amountMinor < 0 ? '-' : '';
+    return '¥$sign$whole.$cents';
   }
 }

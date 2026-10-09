@@ -111,7 +111,7 @@ void main() {
             paymentMethods: const {},
             keyword: '',
             filterType: null,
-            onOpenDetail: (_, __) {},
+            onOpenDetail: (_, _) {},
             onKeywordChanged: (_) {},
             onFilterChanged: (_) {},
             onEdit: (_) {},
@@ -132,7 +132,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('记账概览支持月、周、日三种时间视图', (tester) async {
+  testWidgets('概览支持月周日视图并禁用超出选中月的导航', (tester) async {
     final transaction = FinanceTransaction(
       uuid: 'overview-transaction',
       amountMinor: 1200,
@@ -168,7 +168,7 @@ void main() {
     );
 
     expect(find.text('月视图'), findsOneWidget);
-    expect(find.text('每日支出'), findsOneWidget);
+    expect(find.text('每日净支出'), findsOneWidget);
     expect(find.text('2026 年 9 月'), findsOneWidget);
 
     await tester.tap(
@@ -180,12 +180,46 @@ void main() {
     await tester.tap(find.text('周视图'));
     await tester.pumpAndSettle();
     expect(find.text('周一至周日'), findsOneWidget);
-    expect(find.text('本周每日支出'), findsOneWidget);
+    expect(find.text('8月31日 - 9月6日每日净支出'), findsOneWidget);
+    expect(
+      tester
+          .widget<IconButton>(
+            find.byKey(const ValueKey('finance-overview-period-previous')),
+          )
+          .onPressed,
+      isNull,
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('finance-overview-period-next')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('9月7日 - 13日每日净支出'), findsOneWidget);
+    expect(
+      tester
+          .widget<IconButton>(
+            find.byKey(const ValueKey('finance-overview-period-previous')),
+          )
+          .onPressed,
+      isNotNull,
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('finance-overview-period-previous')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('8月31日 - 9月6日每日净支出'), findsOneWidget);
 
     await tester.tap(find.text('日视图'));
     await tester.pumpAndSettle();
     expect(find.text('选择具体日期'), findsOneWidget);
-    expect(find.text('当天时段支出'), findsOneWidget);
+    expect(find.text('9月1日 周二时段净支出'), findsOneWidget);
+    expect(
+      tester
+          .widget<IconButton>(
+            find.byKey(const ValueKey('finance-overview-period-previous')),
+          )
+          .onPressed,
+      isNull,
+    );
     expect(tester.takeException(), isNull);
   });
 
@@ -193,6 +227,7 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     String? selectedCategoryUuid;
     GlobalKey? selectedSourceKey;
+    List<FinanceTransaction>? selectedTransactions;
     final transactions = [
       FinanceTransaction(
         uuid: 'overview-milk-tea',
@@ -261,9 +296,10 @@ void main() {
           onAdd: () {},
           addActionKey: GlobalKey(),
           onRefresh: () async {},
-          onCategorySelected: (value, sourceKey) async {
+          onCategorySelected: (value, sourceKey, periodTransactions) async {
             selectedCategoryUuid = value;
             selectedSourceKey = sourceKey;
+            selectedTransactions = periodTransactions;
           },
         ),
       ),
@@ -274,8 +310,20 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('餐饮 - 奶茶'), findsNothing);
-    expect(find.textContaining('餐饮'), findsOneWidget);
-    expect(find.text('¥25.00'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('finance-overview-category-food')),
+        matching: find.textContaining('餐饮'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('finance-overview-category-food')),
+        matching: find.text('¥25.00'),
+      ),
+      findsOneWidget,
+    );
 
     await tester.tap(
       find.byKey(const ValueKey('finance-overview-category-food')),
@@ -283,8 +331,8 @@ void main() {
     await tester.pump(const Duration(milliseconds: 20));
     await tester.pumpAndSettle();
     expect(find.text('支出分类详情'), findsOneWidget);
-    expect(find.text('奶茶'), findsOneWidget);
-    expect(find.text('咖啡'), findsOneWidget);
+    expect(find.text('餐饮 - 奶茶'), findsOneWidget);
+    expect(find.text('餐饮 - 咖啡'), findsOneWidget);
     final directCategoryItem = find.byKey(
       const ValueKey('finance-category-detail-food'),
     );
@@ -300,6 +348,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(selectedCategoryUuid, 'milk-tea');
     expect(selectedSourceKey?.currentContext, isNotNull);
+    expect(
+      selectedTransactions?.map((transaction) => transaction.uuid),
+      containsAll(transactions.map((transaction) => transaction.uuid)),
+    );
     expect(find.text('支出分类详情'), findsOneWidget);
   });
 
@@ -347,7 +399,7 @@ void main() {
             keyword: '',
             filterType: null,
             categoryUuid: categoryFilter,
-            onOpenDetail: (_, __) {},
+            onOpenDetail: (_, _) {},
             onKeywordChanged: (_) {},
             onFilterChanged: (_) {},
             onCategoryChanged: (value) =>

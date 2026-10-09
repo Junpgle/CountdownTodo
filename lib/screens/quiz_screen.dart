@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models.dart';
 import '../storage_service.dart';
 import '../services/notification_service.dart';
+import '../utils/app_dialogs.dart';
 
 // 新增：用于保存会话状态的类
 class QuizSession {
@@ -112,7 +113,8 @@ class _QuizScreenState extends State<QuizScreen>
         isLoading = false;
         questions = [];
       });
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         const SnackBar(content: Text('生成的题目为空，请检查设置范围是否合理')),
       );
       return;
@@ -324,7 +326,7 @@ class _QuizScreenState extends State<QuizScreen>
 
     if (!mounted) return;
 
-    showDialog(
+    showAppDialog(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
@@ -443,7 +445,7 @@ class _QuizScreenState extends State<QuizScreen>
             icon: const Icon(Icons.refresh),
             tooltip: "重新开始",
             onPressed: () async {
-              bool? confirm = await showDialog(
+              bool? confirm = await showAppDialog(
                 context: context,
                 builder: (ctx) => AlertDialog(
                   title: const Text("重新开始？"),

@@ -240,7 +240,7 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
                   child: ListView.separated(
                     shrinkWrap: true,
                     itemCount: selected.length,
-                    separatorBuilder: (_, __) => const Divider(height: 16),
+                    separatorBuilder: (_, _) => const Divider(height: 16),
                     itemBuilder: (context, index) {
                       final entry = selected[index];
                       return ListTile(
@@ -294,7 +294,7 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
   }
 
   Future<void> _clearAll() async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showAppDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('清除已写入日历'),
@@ -340,8 +340,8 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
 
   void _showMessage(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(message)));
+    AppSnackBars.showSnackBar(
+        context, SnackBar(content: Text(message)));
   }
 
   @override

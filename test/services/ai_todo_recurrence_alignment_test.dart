@@ -34,71 +34,75 @@ void main() {
   }
 
   group('AI recurring todo alignment', () {
-    test('chat context exposes occurrence and series identities separately',
-        () {
-      final current = occurrence(
-        id: 'occurrence-current',
-        day: 20,
-        recurrence: RecurrenceType.daily,
-      );
-      final future = occurrence(
-        id: 'occurrence-future',
-        day: 21,
-        recurrence: RecurrenceType.none,
-      );
+    test(
+      'chat context exposes occurrence and series identities separately',
+      () {
+        final current = occurrence(
+          id: 'occurrence-current',
+          day: 20,
+          recurrence: RecurrenceType.daily,
+        );
+        final future = occurrence(
+          id: 'occurrence-future',
+          day: 21,
+          recurrence: RecurrenceType.none,
+        );
 
-      final maps = AiTodoChatLauncher.toChatTodoMaps([current, future]);
-      final futureMap = maps.singleWhere(
-        (todo) => todo['id'] == 'occurrence-future',
-      );
+        final maps = AiTodoChatLauncher.toChatTodoMaps([current, future]);
+        final futureMap = maps.singleWhere(
+          (todo) => todo['id'] == 'occurrence-future',
+        );
 
-      expect(futureMap['recurrence'], 'none');
-      expect(futureMap['recurrenceRule'], 'daily');
-      expect(futureMap['recurrenceSeriesId'], 'series-water');
-      expect(futureMap['recurrenceRole'], 'occurrence');
-      expect(futureMap['timeMode'], 'dateOnly');
-      expect(futureMap['dueDate'], endsWith('23:59'));
+        expect(futureMap['recurrence'], 'none');
+        expect(futureMap['recurrenceRule'], 'daily');
+        expect(futureMap['recurrenceSeriesId'], 'series-water');
+        expect(futureMap['recurrenceRole'], 'occurrence');
+        expect(futureMap['timeMode'], 'dateOnly');
+        expect(futureMap['dueDate'], endsWith('23:59'));
 
-      final prompt = AiTodoContextBuilder.buildSystemPrompt(
-        customPrompt: '{todos}',
-        promptEnabled: true,
-        todos: maps,
-        todoGroups: const [],
-        now: DateTime(2026, 7, 20, 12),
-      );
-      expect(prompt, contains('期次todoId: occurrence-future'));
-      expect(prompt, contains('系列ID: series-water'));
-      expect(prompt, contains('系列规则: daily'));
-      expect(prompt, contains('目标日期: 2026-07-20'));
-      expect(prompt, isNot(contains('日期锚点:')));
-    });
+        final prompt = AiTodoContextBuilder.buildSystemPrompt(
+          customPrompt: '{todos}',
+          promptEnabled: true,
+          todos: maps,
+          todoGroups: const [],
+          now: DateTime(2026, 7, 20, 12),
+        );
+        expect(prompt, contains('期次todoId: occurrence-future'));
+        expect(prompt, contains('系列ID: series-water'));
+        expect(prompt, contains('系列规则: daily'));
+        expect(prompt, contains('目标日期: 2026-07-20'));
+        expect(prompt, isNot(contains('日期锚点:')));
+      },
+    );
 
-    test('parser preserves explicit null and recurrence scope patch intent',
-        () {
-      const response = '''
+    test(
+      'parser preserves explicit null and recurrence scope patch intent',
+      () {
+        const response = '''
 [ACTION_START]
 [{"action":"update_todo","updates":[{"todoId":"occurrence-current","timeMode":"unscheduled","dueDate":null,"recurrence":"none","recurrenceSeriesId":"series-water","recurrenceScope":"future"}]}]
 [ACTION_END]
 ''';
 
-      final action = AiActionParser.extractTodoActions(
-        response,
-        originalText: '从本期开始结束循环并清空日期',
-      ).single;
+        final action = AiActionParser.extractTodoActions(
+          response,
+          originalText: '从本期开始结束循环并清空日期',
+        ).single;
 
-      expect(action.hasDueDate, isTrue);
-      expect(action.dueDate, isNull);
-      expect(action.hasTimeMode, isTrue);
-      expect(action.hasRecurrence, isTrue);
-      expect(action.recurrence, 'none');
-      expect(action.recurrenceSeriesId, 'series-water');
-      expect(action.appliesToFutureOccurrences, isTrue);
+        expect(action.hasDueDate, isTrue);
+        expect(action.dueDate, isNull);
+        expect(action.hasTimeMode, isTrue);
+        expect(action.hasRecurrence, isTrue);
+        expect(action.recurrence, 'none');
+        expect(action.recurrenceSeriesId, 'series-water');
+        expect(action.appliesToFutureOccurrences, isTrue);
 
-      final restored = AiTodoAction.fromJson(action.toJson());
-      expect(restored.hasDueDate, isTrue);
-      expect(restored.hasRecurrence, isTrue);
-      expect(restored.appliesToFutureOccurrences, isTrue);
-    });
+        final restored = AiTodoAction.fromJson(action.toJson());
+        expect(restored.hasDueDate, isTrue);
+        expect(restored.hasRecurrence, isTrue);
+        expect(restored.appliesToFutureOccurrences, isTrue);
+      },
+    );
 
     test('omitted recurrence keeps active rule and full todo metadata', () {
       final current = occurrence(
@@ -152,19 +156,21 @@ void main() {
 
       final result = AiTodoActionExecutor.execute(
         actions: [action],
-        existingTodos:
-            AiTodoChatLauncher.toChatTodoMaps([past, current, future]),
+        existingTodos: AiTodoChatLauncher.toChatTodoMaps([
+          past,
+          current,
+          future,
+        ]),
       );
 
+      expect(result.updatedTodos.map((todo) => todo.id).toSet(), {
+        'occurrence-current',
+        'occurrence-future',
+      });
       expect(
-        result.updatedTodos.map((todo) => todo.id).toSet(),
-        {'occurrence-current', 'occurrence-future'},
+        result.updatedTodos,
+        everyElement(predicate<TodoItem>((todo) => todo.title == '补充水分')),
       );
-      expect(
-          result.updatedTodos,
-          everyElement(predicate<TodoItem>(
-            (todo) => todo.title == '补充水分',
-          )));
       expect(
         result.updatedTodos
             .singleWhere((todo) => todo.id == 'occurrence-current')
@@ -179,33 +185,35 @@ void main() {
       );
     });
 
-    test('complete remains occurrence-only even if model emits future scope',
-        () {
-      final current = occurrence(
-        id: 'occurrence-current',
-        day: 20,
-        recurrence: RecurrenceType.daily,
-      );
-      final future = occurrence(
-        id: 'occurrence-future',
-        day: 21,
-        recurrence: RecurrenceType.none,
-      );
-      final action = AiTodoAction(
-        type: AiTodoActionType.completeTodo,
-        todoId: current.id,
-        recurrenceScope: 'future',
-      );
+    test(
+      'complete remains occurrence-only even if model emits future scope',
+      () {
+        final current = occurrence(
+          id: 'occurrence-current',
+          day: 20,
+          recurrence: RecurrenceType.daily,
+        );
+        final future = occurrence(
+          id: 'occurrence-future',
+          day: 21,
+          recurrence: RecurrenceType.none,
+        );
+        final action = AiTodoAction(
+          type: AiTodoActionType.completeTodo,
+          todoId: current.id,
+          recurrenceScope: 'future',
+        );
 
-      final result = AiTodoActionExecutor.execute(
-        actions: [action],
-        existingTodos: AiTodoChatLauncher.toChatTodoMaps([current, future]),
-      );
+        final result = AiTodoActionExecutor.execute(
+          actions: [action],
+          existingTodos: AiTodoChatLauncher.toChatTodoMaps([current, future]),
+        );
 
-      expect(result.updatedTodos, hasLength(1));
-      expect(result.updatedTodos.single.id, 'occurrence-current');
-      expect(result.updatedTodos.single.isDone, isTrue);
-    });
+        expect(result.updatedTodos, hasLength(1));
+        expect(result.updatedTodos.single.id, 'occurrence-current');
+        expect(result.updatedTodos.single.isDone, isTrue);
+      },
+    );
 
     test('ending recurrence keeps target and tombstones generated future', () {
       final current = occurrence(
@@ -299,38 +307,41 @@ void main() {
       expect(rejected.newTodos, isEmpty);
       expect(missingAnchor.isAdded, isFalse);
       expect(accepted.newTodos, hasLength(1));
-      expect(accepted.newTodos.single.recurrenceSeriesId,
-          accepted.newTodos.single.id);
+      expect(
+        accepted.newTodos.single.recurrenceSeriesId,
+        accepted.newTodos.single.id,
+      );
       expect(accepted.newTodos.single.isDateOnly, isTrue);
     });
 
     test(
-        'legacy plan_todos schedules an existing todo instead of duplicating it',
-        () {
-      const response = '''
+      'legacy plan_todos schedules an existing todo instead of duplicating it',
+      () {
+        const response = '''
 [ACTION_START]
 [{"action":"plan_todos","todos":[{"title":"复习高数","startTime":"2026-07-20 19:00","dueDate":"2026-07-20 20:00"}]}]
 [ACTION_END]
 ''';
 
-      final actions = AiActionParser.extractTodoActions(
-        response,
-        originalText: '帮我规划今天的待办',
-        existingTodoTitles: const {'todo-math': '复习高数'},
-      );
-      final result = AiTodoActionExecutor.execute(
-        actions: actions,
-        existingTodos: const [
-          {'id': 'todo-math', 'title': '复习高数'},
-        ],
-      );
+        final actions = AiActionParser.extractTodoActions(
+          response,
+          originalText: '帮我规划今天的待办',
+          existingTodoTitles: const {'todo-math': '复习高数'},
+        );
+        final result = AiTodoActionExecutor.execute(
+          actions: actions,
+          existingTodos: const [
+            {'id': 'todo-math', 'title': '复习高数'},
+          ],
+        );
 
-      expect(actions.single.type, AiTodoActionType.createPlanBlock);
-      expect(actions.single.todoId, 'todo-math');
-      expect(result.newTodos, isEmpty);
-      expect(result.newPlanBlocks, hasLength(1));
-      expect(result.newPlanBlocks.single.todoId, 'todo-math');
-    });
+        expect(actions.single.type, AiTodoActionType.createPlanBlock);
+        expect(actions.single.todoId, 'todo-math');
+        expect(result.newTodos, isEmpty);
+        expect(result.newPlanBlocks, hasLength(1));
+        expect(result.newPlanBlocks.single.todoId, 'todo-math');
+      },
+    );
 
     test('unmatched legacy plan_todos cannot create a duplicate todo', () {
       const response = '''
@@ -348,31 +359,33 @@ void main() {
       expect(actions, isEmpty);
     });
 
-    test('actionless planning payload resolves an exact existing todo only',
-        () {
-      const response = '''
+    test(
+      'actionless planning payload resolves an exact existing todo only',
+      () {
+        const response = '''
 [ACTION_START]
 [{"todos":[{"title":"复习高数","startTime":"2026-07-20 19:00","endTime":"2026-07-20 20:00"}]}]
 [ACTION_END]
 ''';
 
-      final actions = AiActionParser.extractTodoActions(
-        response,
-        originalText: '帮我规划今天的待办',
-        existingTodoTitles: const {'todo-math': '复习高数'},
-      );
-      final result = AiTodoActionExecutor.execute(
-        actions: actions,
-        existingTodos: const [
-          {'id': 'todo-math', 'title': '复习高数'},
-        ],
-      );
+        final actions = AiActionParser.extractTodoActions(
+          response,
+          originalText: '帮我规划今天的待办',
+          existingTodoTitles: const {'todo-math': '复习高数'},
+        );
+        final result = AiTodoActionExecutor.execute(
+          actions: actions,
+          existingTodos: const [
+            {'id': 'todo-math', 'title': '复习高数'},
+          ],
+        );
 
-      expect(actions.single.type, AiTodoActionType.createPlanBlock);
-      expect(actions.single.todoId, 'todo-math');
-      expect(result.newTodos, isEmpty);
-      expect(result.newPlanBlocks, hasLength(1));
-    });
+        expect(actions.single.type, AiTodoActionType.createPlanBlock);
+        expect(actions.single.todoId, 'todo-math');
+        expect(result.newTodos, isEmpty);
+        expect(result.newPlanBlocks, hasLength(1));
+      },
+    );
 
     test('actionless todo payload is rejected instead of creating a todo', () {
       const response = '''
@@ -395,23 +408,24 @@ void main() {
     });
 
     test(
-        'executor rejects a legacy plan_todos action without a resolved target',
-        () {
-      final action = AiTodoAction(
-        type: AiTodoActionType.planTodos,
-        title: '复习高数',
-        startTime: '2026-07-20 19:00',
-        dueDate: '2026-07-20 20:00',
-      );
+      'executor rejects a legacy plan_todos action without a resolved target',
+      () {
+        final action = AiTodoAction(
+          type: AiTodoActionType.planTodos,
+          title: '复习高数',
+          startTime: '2026-07-20 19:00',
+          dueDate: '2026-07-20 20:00',
+        );
 
-      final result = AiTodoActionExecutor.execute(
-        actions: [action],
-        existingTodos: const [],
-      );
+        final result = AiTodoActionExecutor.execute(
+          actions: [action],
+          existingTodos: const [],
+        );
 
-      expect(result.newTodos, isEmpty);
-      expect(action.isAdded, isFalse);
-    });
+        expect(result.newTodos, isEmpty);
+        expect(action.isAdded, isFalse);
+      },
+    );
 
     test('action protocol documents recurrence occurrence safety', () {
       final prompt = AiTodoContextBuilder.buildActionProtocolPrompt('修改循环待办');
@@ -423,8 +437,9 @@ void main() {
     });
 
     test('planning protocol prioritizes plan blocks over todo creation', () {
-      final prompt =
-          AiTodoContextBuilder.buildActionProtocolPrompt('帮我规划今天的待办');
+      final prompt = AiTodoContextBuilder.buildActionProtocolPrompt(
+        '帮我规划今天的待办',
+      );
 
       expect(prompt, contains('- create_plan_block:'));
       expect(prompt, contains('禁止用create_todo复制已有待办'));
@@ -511,27 +526,30 @@ void main() {
       expect(prompt, isNot(contains('要创建成习惯，还是循环待办')));
     });
 
-    test('automatic classification selects one active series representative',
-        () {
-      final current = occurrence(
-        id: 'occurrence-current',
-        day: 20,
-        recurrence: RecurrenceType.daily,
-      );
-      final future = occurrence(
-        id: 'occurrence-future',
-        day: 21,
-        recurrence: RecurrenceType.none,
-      );
+    test(
+      'automatic classification selects one active series representative',
+      () {
+        final current = occurrence(
+          id: 'occurrence-current',
+          day: 20,
+          recurrence: RecurrenceType.daily,
+        );
+        final future = occurrence(
+          id: 'occurrence-future',
+          day: 21,
+          recurrence: RecurrenceType.none,
+        );
 
-      final representatives =
-          TodoClassificationService.seriesRepresentativesForTest(
-        [future, current],
-      );
+        final representatives =
+            TodoClassificationService.seriesRepresentativesForTest([
+              future,
+              current,
+            ]);
 
-      expect(representatives, hasLength(1));
-      expect(representatives.single.id, 'occurrence-current');
-    });
+        expect(representatives, hasLength(1));
+        expect(representatives.single.id, 'occurrence-current');
+      },
+    );
   });
 
   group('AI fixed schedule alignment', () {
@@ -595,51 +613,64 @@ void main() {
 
       expect(created.date, '2026-07-20');
       expect(
-          created.startTime, DateTime(2026, 7, 20, 10).millisecondsSinceEpoch);
+        created.startTime,
+        DateTime(2026, 7, 20, 10).millisecondsSinceEpoch,
+      );
       expect(created.endTime, isNull);
       expect(created.source, FixedScheduleSource.ai);
       expect(created.location, '第一会议室');
       expect(created.reminderMinutes, [15, 60]);
     });
 
-    test('materializes recurring schedules into independently addressed dates',
-        () {
-      final action = AiTodoAction.fromJson({
-        'action': 'create_schedule',
-        'title': '晨会',
-        'date': '2026-07-20',
-        'startTime': '2026-07-20 09:00',
-        'endTime': '2026-07-20 09:30',
-        'recurrence': 'daily',
-        'recurrenceEndDate': '2026-07-22',
-      });
+    test(
+      'materializes recurring schedules into independently addressed dates',
+      () {
+        final action = AiTodoAction.fromJson({
+          'action': 'create_schedule',
+          'title': '晨会',
+          'date': '2026-07-20',
+          'startTime': '2026-07-20 09:00',
+          'endTime': '2026-07-20 09:30',
+          'recurrence': 'daily',
+          'recurrenceEndDate': '2026-07-22',
+        });
 
-      final result = AiTodoActionExecutor.execute(
-        actions: [action],
-        existingTodos: const [],
-      );
+        final result = AiTodoActionExecutor.execute(
+          actions: [action],
+          existingTodos: const [],
+        );
 
-      expect(result.newFixedSchedules, hasLength(3));
-      expect(
-        result.newFixedSchedules.map((item) => item.date),
-        ['2026-07-20', '2026-07-21', '2026-07-22'],
-      );
-      expect(
-        result.newFixedSchedules.map((item) => item.id).toSet(),
-        hasLength(3),
-      );
-      expect(
-        result.newFixedSchedules.map((item) => item.recurrenceSeriesId).toSet(),
-        hasLength(1),
-      );
-    });
+        expect(result.newFixedSchedules, hasLength(3));
+        expect(result.newFixedSchedules.map((item) => item.date), [
+          '2026-07-20',
+          '2026-07-21',
+          '2026-07-22',
+        ]);
+        expect(
+          result.newFixedSchedules.map((item) => item.id).toSet(),
+          hasLength(3),
+        );
+        expect(
+          result.newFixedSchedules
+              .map((item) => item.recurrenceSeriesId)
+              .toSet(),
+          hasLength(1),
+        );
+      },
+    );
 
     test('future cancellation does not touch past schedule occurrences', () {
-      final past =
-          schedule(id: 'past', day: 19, recurrence: RecurrenceType.none);
+      final past = schedule(
+        id: 'past',
+        day: 19,
+        recurrence: RecurrenceType.none,
+      );
       final current = schedule(id: 'current', day: 20);
-      final future =
-          schedule(id: 'future', day: 21, recurrence: RecurrenceType.none);
+      final future = schedule(
+        id: 'future',
+        day: 21,
+        recurrence: RecurrenceType.none,
+      );
       final action = AiTodoAction(
         type: AiTodoActionType.cancelFixedSchedule,
         scheduleId: current.id,
@@ -653,15 +684,17 @@ void main() {
         existingFixedSchedules: [past, current, future],
       );
 
-      expect(
-        result.updatedFixedSchedules.map((item) => item.id).toSet(),
-        {'current', 'future'},
-      );
+      expect(result.updatedFixedSchedules.map((item) => item.id).toSet(), {
+        'current',
+        'future',
+      });
       expect(
         result.updatedFixedSchedules,
-        everyElement(predicate<FixedScheduleItem>(
-          (item) => item.status == FixedScheduleStatus.cancelled,
-        )),
+        everyElement(
+          predicate<FixedScheduleItem>(
+            (item) => item.status == FixedScheduleStatus.cancelled,
+          ),
+        ),
       );
       expect(past.status, FixedScheduleStatus.scheduled);
     });
@@ -706,32 +739,1535 @@ void main() {
       );
     });
 
-    test('recognition prompts enforce current item and recurrence semantics',
-        () {
-      expect(LLMConfig.defaultTextPrompt, contains('location'));
-      expect(LLMConfig.defaultTextPrompt, contains('不得默认今天'));
-      expect(LLMConfig.defaultTextPrompt, contains('fixedSchedule默认15'));
-      expect(
-          LLMConfig.defaultTextPrompt, contains('普通todo只输出timeMode和dueDate'));
-      expect(
-          LLMConfig.defaultTextPrompt, isNot(contains('普通todo禁止输出startTime')));
-      expect(LLMConfig.defaultVisionPrompt, contains('保留recurrence'));
-      expect(
-        LLMConfig.itemSemanticGuardrailPrompt,
-        allOf(
-          contains('CDT_RECOGNITION_PROTOCOL_V2'),
-          contains('优先于前文'),
-          contains('禁止默认今天'),
-          contains('fixedSchedule地点使用location字段'),
+    test(
+      'recognition prompts enforce current item and recurrence semantics',
+      () {
+        expect(LLMConfig.defaultTextPrompt, contains('location'));
+        expect(LLMConfig.defaultTextPrompt, contains('不得默认今天'));
+        expect(LLMConfig.defaultTextPrompt, contains('fixedSchedule默认15'));
+        expect(
+          LLMConfig.defaultTextPrompt,
+          contains('普通todo只输出timeMode和dueDate'),
+        );
+        expect(
+          LLMConfig.defaultTextPrompt,
+          isNot(contains('普通todo禁止输出startTime')),
+        );
+        expect(LLMConfig.defaultVisionPrompt, contains('保留recurrence'));
+        expect(
+          LLMConfig.itemSemanticGuardrailPrompt,
+          allOf(
+            contains('CDT_RECOGNITION_PROTOCOL_V2'),
+            contains('优先于前文'),
+            contains('禁止默认今天'),
+            contains('fixedSchedule地点使用location字段'),
+          ),
+        );
+        expect(ChatStorageService.defaultPrompt, isNot(contains('plan_todos')));
+        final migratedPrompt = ChatStorageService.ensureCurrentPromptProtocol(
+          '自定义提示词：请帮助用户安排事项\n旧协议：plan_todos',
+        );
+        expect(migratedPrompt, contains('CDT_CHAT_PROTOCOL_V2'));
+        expect(migratedPrompt, contains('create_plan_block'));
+        expect(migratedPrompt, isNot(contains('plan_todos')));
+      },
+    );
+
+    test('image prompt adds compact island content to saved prompts', () {
+      final config = LLMConfig(
+        apiKey: 'test-key',
+        model: 'test-model',
+        visionPrompt: '自定义图片识别：按{now}判断日期。\nCDT_RECOGNITION_PROTOCOL_V2',
+      );
+
+      final prompt = LLMService.buildTodoVisionPrompt(
+        config,
+        now: '2026-09-30 13:01',
+      );
+
+      expect(prompt, startsWith('自定义图片识别：按2026-09-30 13:01判断日期。'));
+      expect(prompt, endsWith(LLMConfig.visionTodoConcisenessPrompt));
+      expect(prompt, contains('remark会作为灵动岛内容展示'));
+      expect(prompt, contains('有码时只写'));
+      expect(prompt, contains('没有明确待办或日程时返回[]'));
+      expect(prompt, isNot(contains('{now}')));
+    });
+
+    test('注入更多不覆盖明确的上个月效率范围', () {
+      final now = DateTime(2026, 10, 1, 12);
+      final timeLogs = [
+        for (var day in [7, 14, 21])
+          TimeLogItem(
+            id: 'last-month-log-$day',
+            title: '上月专注 $day 日',
+            startTime: DateTime(2026, 9, day, 9).millisecondsSinceEpoch,
+            endTime: DateTime(2026, 9, day, 10).millisecondsSinceEpoch,
+          ),
+        TimeLogItem(
+          id: 'future-log',
+          title: '未来专注记录',
+          startTime: DateTime(2026, 10, 5, 9).millisecondsSinceEpoch,
+          endTime: DateTime(2026, 10, 5, 10).millisecondsSinceEpoch,
         ),
+      ];
+      final planBlocks = [
+        for (var day in [7, 14, 21])
+          TodoPlanBlock(
+            id: 'last-month-plan-$day',
+            todoId: 'todo-$day',
+            titleSnapshot: '上月计划任务 $day 日',
+            startTime: DateTime(2026, 9, day, 9).millisecondsSinceEpoch,
+            endTime: DateTime(2026, 9, day, 10).millisecondsSinceEpoch,
+            plannedMinutes: 60,
+          ),
+        TodoPlanBlock(
+          id: 'future-plan',
+          todoId: 'todo-future',
+          titleSnapshot: '未来计划任务',
+          startTime: DateTime(2026, 10, 5, 9).millisecondsSinceEpoch,
+          endTime: DateTime(2026, 10, 5, 10).millisecondsSinceEpoch,
+          plannedMinutes: 60,
+        ),
+      ];
+
+      String buildContext(String userMessage) =>
+          AiTodoContextBuilder.buildContextInjection(
+            userMessage: userMessage,
+            courses: const [],
+            timeLogs: timeLogs,
+            planBlocks: planBlocks,
+            conflicts: const [],
+            teams: const [],
+            now: now,
+          )!;
+
+      final regular = buildContext('分析我上个月的效率');
+      final expanded = buildContext('分析我上个月的效率，并扩大到未来30天范围');
+
+      expect(regular, contains('last-month-log-7'));
+      expect(regular, contains('last-month-plan-7'));
+      expect(regular, isNot(contains('future-log')));
+      expect(regular, isNot(contains('future-plan')));
+      expect(expanded, equals(regular));
+    });
+
+    test('日期范围待办上下文仅按截止日期筛选', () {
+      final context = AiTodoContextBuilder.buildContextInjection(
+        userMessage: '查看上个月的待办',
+        courses: const [],
+        timeLogs: const [],
+        todos: [
+          {
+            'id': 'due-last-month',
+            'title': '上个月到期的待办',
+            'startTime': '2026-10-01T09:00:00',
+            'dueDate': '2026-09-15T18:00:00',
+            'timeMode': 'deadline',
+          },
+          {
+            'id': 'created-last-month-unscheduled',
+            'title': '上个月创建但未安排的待办',
+            'startTime': '2026-09-15T09:00:00',
+            'dueDate': null,
+            'timeMode': 'unscheduled',
+          },
+        ],
+        conflicts: const [],
+        teams: const [],
+        now: DateTime(2026, 10, 2, 12),
+      )!;
+
+      expect(context, contains('due-last-month'));
+      expect(context, isNot(contains('created-last-month-unscheduled')));
+    });
+
+    test('注入更多扩展自定义范围而不丢失原范围', () {
+      final now = DateTime(2026, 10, 2, 12);
+      final customStart = DateTime(2026, 8, 1);
+      final customEnd = DateTime(2026, 9, 30);
+      final regularRange = AiTodoContextBuilder.resolveCustomInjectionDateRange(
+        customStart: customStart,
+        customEnd: customEnd,
+        now: now,
+      )!;
+      final expandedRange = AiTodoContextBuilder.resolveCustomInjectionDateRange(
+        customStart: customStart,
+        customEnd: customEnd,
+        injectMoreContext: true,
+        now: now,
+      )!;
+
+      expect(regularRange.start, DateTime(2026, 8, 1));
+      expect(regularRange.endExclusive, DateTime(2026, 10, 1));
+      expect(expandedRange.start, regularRange.start);
+      expect(expandedRange.endExclusive, DateTime(2026, 11, 1));
+
+      final regularQuery = AiTodoContextBuilder.buildContextQueryText(
+        userMessage: '分析我上个月的效率',
+        customStart: customStart,
+        customEnd: customEnd,
+        now: now,
       );
-      expect(ChatStorageService.defaultPrompt, isNot(contains('plan_todos')));
-      final migratedPrompt = ChatStorageService.ensureCurrentPromptProtocol(
-        '自定义提示词：请帮助用户安排事项\n旧协议：plan_todos',
+      final expandedQuery = AiTodoContextBuilder.buildContextQueryText(
+        userMessage: '分析我上个月的效率',
+        customStart: customStart,
+        customEnd: customEnd,
+        injectMoreContext: true,
+        now: now,
       );
-      expect(migratedPrompt, contains('CDT_CHAT_PROTOCOL_V2'));
-      expect(migratedPrompt, contains('create_plan_block'));
-      expect(migratedPrompt, isNot(contains('plan_todos')));
+      expect(regularQuery, contains('2026-08-01 至 2026-09-30'));
+      expect(expandedQuery, contains('2026-08-01 至 2026-10-31'));
+
+      final timeLogs = [
+        TimeLogItem(
+          id: 'custom-range-log',
+          title: '自定义范围专注',
+          startTime: DateTime(2026, 8, 15, 9).millisecondsSinceEpoch,
+          endTime: DateTime(2026, 8, 15, 10).millisecondsSinceEpoch,
+        ),
+        TimeLogItem(
+          id: 'previous-month-log',
+          title: '上个月专注',
+          startTime: DateTime(2026, 9, 15, 9).millisecondsSinceEpoch,
+          endTime: DateTime(2026, 9, 15, 10).millisecondsSinceEpoch,
+        ),
+        TimeLogItem(
+          id: 'future-log',
+          title: '未来专注',
+          startTime: DateTime(2026, 10, 15, 9).millisecondsSinceEpoch,
+          endTime: DateTime(2026, 10, 15, 10).millisecondsSinceEpoch,
+        ),
+      ];
+
+      String contextFor(String userMessage) =>
+          AiTodoContextBuilder.buildContextInjection(
+            userMessage: userMessage,
+            courses: const [],
+            timeLogs: timeLogs,
+            conflicts: const [],
+            teams: const [],
+            now: now,
+          )!;
+
+      final regularContext = contextFor(regularQuery);
+      final expandedContext = contextFor(expandedQuery);
+      expect(regularContext, contains('custom-range-log'));
+      expect(regularContext, contains('previous-month-log'));
+      expect(regularContext, isNot(contains('future-log')));
+      expect(expandedContext, contains('custom-range-log'));
+      expect(expandedContext, contains('previous-month-log'));
+      expect(expandedContext, contains('future-log'));
+      expect(expandedContext.length, greaterThan(regularContext.length));
+    });
+
+    test('注入更多先保留自定义范围记录再补充扩展范围', () {
+      final now = DateTime(2026, 10, 2, 12);
+      final customStart = DateTime(2026, 9, 1);
+      final customEnd = DateTime(2026, 9, 30);
+      final focusRecordPriorityRange =
+          AiTodoContextBuilder.resolveCustomInjectionDateRange(
+            customStart: customStart,
+            customEnd: customEnd,
+            now: now,
+          );
+      final regularQuery = AiTodoContextBuilder.buildContextQueryText(
+        userMessage: '分析我上个月的效率',
+        customStart: customStart,
+        customEnd: customEnd,
+        now: now,
+      );
+      final expandedQuery = AiTodoContextBuilder.buildContextQueryText(
+        userMessage: '分析我上个月的效率',
+        customStart: customStart,
+        customEnd: customEnd,
+        injectMoreContext: true,
+        now: now,
+      );
+      final timeLogs = [
+        for (var day = 1; day <= 30; day++)
+          TimeLogItem(
+            id: 'selected-$day',
+            title: List.filled(20, '用户选择范围专注记录第 $day 天，完成重要工作').join('；'),
+            startTime: DateTime(2026, 9, day, 9).millisecondsSinceEpoch,
+            endTime: DateTime(2026, 9, day, 10).millisecondsSinceEpoch,
+          ),
+        for (var offset = 1; offset <= 23; offset++)
+          for (var slot = 1; slot <= 3; slot++)
+            TimeLogItem(
+              id: 'future-$offset-$slot',
+              title: '短记',
+              startTime: DateTime(
+                2026,
+                10,
+                2 + offset,
+                8 + slot,
+              ).millisecondsSinceEpoch,
+              endTime: DateTime(
+                2026,
+                10,
+                2 + offset,
+                9 + slot,
+              ).millisecondsSinceEpoch,
+            ),
+      ];
+
+      String contextFor(
+        String userMessage, {
+        bool expandFocusContext = false,
+      }) => AiTodoContextBuilder.buildContextInjection(
+        userMessage: userMessage,
+        courses: const [],
+        timeLogs: timeLogs,
+        conflicts: const [],
+        teams: const [],
+        expandFocusContext: expandFocusContext,
+        focusRecordPriorityRange: focusRecordPriorityRange,
+        now: now,
+      )!;
+
+      final regularContext = contextFor(regularQuery);
+      final expandedContext = contextFor(
+        expandedQuery,
+        expandFocusContext: true,
+      );
+
+      expect(regularContext, contains('selected-1'));
+      expect(expandedContext, contains('selected-1'));
+      expect(expandedContext, contains('selected-30'));
+      expect(expandedContext, contains('future-23-3'));
+      expect(expandedContext.length, greaterThan(regularContext.length));
+    });
+
+    test('效率上下文标明按上限截断的明细数量', () {
+      final now = DateTime(2026, 10, 2, 12);
+      final timeLogs = [
+        for (var index = 0; index < 61; index++)
+          TimeLogItem(
+            id: 'selected-$index',
+            title: '专注记录 $index',
+            startTime: DateTime(
+              2026,
+              9,
+              index % 30 + 1,
+              8 + index ~/ 30,
+            ).millisecondsSinceEpoch,
+            endTime: DateTime(
+              2026,
+              9,
+              index % 30 + 1,
+              9 + index ~/ 30,
+            ).millisecondsSinceEpoch,
+          ),
+        TimeLogItem(
+          id: 'deleted-record',
+          title: '已删除记录',
+          startTime: DateTime(2026, 9, 30, 23).millisecondsSinceEpoch,
+          endTime: DateTime(2026, 10, 1).millisecondsSinceEpoch,
+          isDeleted: true,
+        ),
+      ];
+
+      final context = AiTodoContextBuilder.buildContextInjection(
+        userMessage: '分析自定义范围内的效率 2026-09-01 至 2026-09-30',
+        courses: const [],
+        timeLogs: timeLogs,
+        expandFocusContext: true,
+        focusRecordPriorityRange: AiContextDateRange(
+          DateTime(2026, 9, 1),
+          DateTime(2026, 10, 1),
+        ),
+        conflicts: const [],
+        teams: const [],
+        now: now,
+      )!;
+      final preview = AiTodoContextBuilder.buildContextInjectionSummary(
+        userMessage: '分析自定义范围内的效率 2026-09-01 至 2026-09-30',
+        courses: const [],
+        timeLogs: timeLogs,
+        conflicts: const [],
+        teams: const [],
+        expandFocusContext: true,
+        now: now,
+      )!;
+
+      expect(context, contains('展示 60/61 条'));
+      expect(context, contains('合计基于全部记录'));
+      expect(context, isNot(contains('selected-0')));
+      expect(context, contains('selected-60'));
+      expect(preview, contains('明细60/61条'));
+    });
+
+    test('效率和时间块共享一份计划块上下文', () {
+      final planBlocks = [
+        TodoPlanBlock(
+          id: 'monthly-plan-block',
+          todoId: 'todo-1',
+          titleSnapshot: '月度计划',
+          startTime: DateTime(2026, 9, 15, 9).millisecondsSinceEpoch,
+          endTime: DateTime(2026, 9, 15, 10).millisecondsSinceEpoch,
+          plannedMinutes: 60,
+        ),
+      ];
+      final context = AiTodoContextBuilder.buildContextInjection(
+        userMessage: '分析上个月的效率并查看时间块',
+        courses: const [],
+        timeLogs: const [],
+        planBlocks: planBlocks,
+        conflicts: const [],
+        teams: const [],
+        now: DateTime(2026, 10, 2, 12),
+      )!;
+      final preview = AiTodoContextBuilder.buildContextInjectionSummary(
+        userMessage: '分析上个月的效率并查看时间块',
+        courses: const [],
+        timeLogs: const [],
+        planBlocks: planBlocks,
+        conflicts: const [],
+        teams: const [],
+        now: DateTime(2026, 10, 2, 12),
+      )!;
+
+      expect(
+        context.split('待办规划（按时间范围筛选').length - 1,
+        1,
+      );
+      expect(preview.split('规划块').length - 1, 1);
+    });
+
+    test('注入更多优先保留自选未来范围内的计划块', () {
+      final now = DateTime(2026, 10, 2, 12);
+      final customStart = DateTime(2026, 11, 15);
+      final customEnd = DateTime(2026, 11, 20);
+      final selectedRange = AiTodoContextBuilder.resolveCustomInjectionDateRange(
+        customStart: customStart,
+        customEnd: customEnd,
+        now: now,
+      )!;
+      final expandedQuery = AiTodoContextBuilder.buildContextQueryText(
+        userMessage: '分析我上个月的效率',
+        customStart: customStart,
+        customEnd: customEnd,
+        injectMoreContext: true,
+        now: now,
+      );
+      final planBlocks = [
+        for (var index = 0; index < 61; index++)
+          TodoPlanBlock(
+            id: 'expanded-plan-$index',
+            todoId: 'todo-$index',
+            titleSnapshot: '扩展期计划 $index',
+            startTime: DateTime(
+              2026,
+              10,
+              2 + index ~/ 3,
+              8 + (index % 3) * 2,
+            ).millisecondsSinceEpoch,
+            endTime: DateTime(
+              2026,
+              10,
+              2 + index ~/ 3,
+              9 + (index % 3) * 2,
+            ).millisecondsSinceEpoch,
+            plannedMinutes: 60,
+          ),
+        TodoPlanBlock(
+          id: 'selected-plan',
+          todoId: 'selected-todo',
+          titleSnapshot: '用户所选范围计划',
+          startTime: DateTime(2026, 11, 17, 9).millisecondsSinceEpoch,
+          endTime: DateTime(2026, 11, 17, 10).millisecondsSinceEpoch,
+          plannedMinutes: 60,
+        ),
+      ];
+
+      final context = AiTodoContextBuilder.buildContextInjection(
+        userMessage: expandedQuery,
+        courses: const [],
+        timeLogs: const [],
+        planBlocks: planBlocks,
+        focusRecordPriorityRange: selectedRange,
+        conflicts: const [],
+        teams: const [],
+        now: now,
+      )!;
+
+      expect(context, contains('selected-plan'));
+      expect(context, contains('展示 60/62 条，优先用户所选范围'));
+    });
+
+    test('最近七天范围一致筛选待办与倒计时日期', () {
+      final now = DateTime(2026, 10, 3, 12);
+      final todos = [
+        {
+          'id': 'outside-seven-days-todo',
+          'title': '七天范围外待办',
+          'startTime': '2026-09-26T09:00:00',
+          'dueDate': '2026-09-26T18:00:00',
+          'timeMode': 'deadline',
+        },
+        {
+          'id': 'first-day-seven-days-todo',
+          'title': '七天首日待办',
+          'startTime': '2026-09-27T09:00:00',
+          'dueDate': '2026-09-27T18:00:00',
+          'timeMode': 'deadline',
+        },
+        {
+          'id': 'today-seven-days-todo',
+          'title': '今天到期待办',
+          'startTime': '2026-10-03T09:00:00',
+          'dueDate': '2026-10-03T18:00:00',
+          'timeMode': 'deadline',
+        },
+        {
+          'id': 'future-seven-days-todo',
+          'title': '未来待办',
+          'startTime': '2026-10-04T09:00:00',
+          'dueDate': '2026-10-04T18:00:00',
+          'timeMode': 'deadline',
+        },
+      ];
+      final countdowns = [
+        CountdownItem(
+          id: 'outside-seven-days-countdown',
+          title: '七天范围外倒计时',
+          targetDate: DateTime(2026, 9, 26),
+        ),
+        CountdownItem(
+          id: 'first-day-seven-days-countdown',
+          title: '七天首日倒计时',
+          targetDate: DateTime(2026, 9, 27),
+        ),
+        CountdownItem(
+          id: 'today-seven-days-countdown',
+          title: '今天倒计时',
+          targetDate: DateTime(2026, 10, 3),
+        ),
+        CountdownItem(
+          id: 'future-seven-days-countdown',
+          title: '未来倒计时',
+          targetDate: DateTime(2026, 10, 4),
+        ),
+      ];
+
+      final todoContext = AiTodoContextBuilder.buildContextInjection(
+        userMessage: '最近七天有哪些待办',
+        courses: const [],
+        timeLogs: const [],
+        todos: todos,
+        conflicts: const [],
+        teams: const [],
+        now: now,
+      )!;
+      final countdownContext = AiTodoContextBuilder.buildContextInjection(
+        userMessage: '最近七天有哪些倒计时',
+        courses: const [],
+        timeLogs: const [],
+        countdowns: countdowns,
+        conflicts: const [],
+        teams: const [],
+        now: now,
+      )!;
+
+      expect(todoContext, contains('first-day-seven-days-todo'));
+      expect(todoContext, contains('today-seven-days-todo'));
+      expect(todoContext, isNot(contains('outside-seven-days-todo')));
+      expect(todoContext, isNot(contains('future-seven-days-todo')));
+      expect(countdownContext, contains('七天首日倒计时'));
+      expect(countdownContext, contains('今天倒计时'));
+      expect(countdownContext, isNot(contains('七天范围外倒计时')));
+      expect(countdownContext, isNot(contains('未来倒计时')));
+    });
+
+    test('过去半年待办按滚动自然月范围筛选到期日期', () {
+      final now = DateTime(2026, 10, 3, 12);
+      final todos = [
+        {
+          'id': 'outside-half-year-todo',
+          'title': '范围外待办',
+          'startTime': '2026-04-02T09:00:00',
+          'dueDate': '2026-04-02T18:00:00',
+          'timeMode': 'deadline',
+        },
+        {
+          'id': 'first-day-half-year-todo',
+          'title': '范围首日待办',
+          'startTime': '2026-04-03T09:00:00',
+          'dueDate': '2026-04-03T18:00:00',
+          'timeMode': 'deadline',
+        },
+        {
+          'id': 'today-half-year-todo',
+          'title': '今天到期待办',
+          'startTime': '2026-10-03T09:00:00',
+          'dueDate': '2026-10-03T18:00:00',
+          'timeMode': 'deadline',
+        },
+        {
+          'id': 'future-half-year-todo',
+          'title': '未来待办',
+          'startTime': '2026-10-04T09:00:00',
+          'dueDate': '2026-10-04T18:00:00',
+          'timeMode': 'deadline',
+        },
+      ];
+
+      final context = AiTodoContextBuilder.buildContextInjection(
+        userMessage: '过去半年有哪些待办',
+        courses: const [],
+        timeLogs: const [],
+        todos: todos,
+        conflicts: const [],
+        teams: const [],
+        now: now,
+      )!;
+
+      expect(context, contains('first-day-half-year-todo'));
+      expect(context, contains('today-half-year-todo'));
+      expect(context, isNot(contains('outside-half-year-todo')));
+      expect(context, isNot(contains('future-half-year-todo')));
+    });
+
+    test('最近半年倒计时按滚动自然月范围筛选目标日期', () {
+      final now = DateTime(2026, 10, 3, 12);
+      final countdowns = [
+        CountdownItem(
+          id: 'outside-half-year-countdown',
+          title: '半年范围外倒计时',
+          targetDate: DateTime(2026, 4, 2),
+        ),
+        CountdownItem(
+          id: 'first-day-half-year-countdown',
+          title: '半年范围首日倒计时',
+          targetDate: DateTime(2026, 4, 3),
+        ),
+        CountdownItem(
+          id: 'today-half-year-countdown',
+          title: '今天倒计时',
+          targetDate: DateTime(2026, 10, 3),
+        ),
+        CountdownItem(
+          id: 'future-half-year-countdown',
+          title: '未来倒计时',
+          targetDate: DateTime(2026, 10, 4),
+        ),
+      ];
+
+      final context = AiTodoContextBuilder.buildContextInjection(
+        userMessage: '最近半年有哪些倒计时',
+        courses: const [],
+        timeLogs: const [],
+        countdowns: countdowns,
+        conflicts: const [],
+        teams: const [],
+        now: now,
+      )!;
+
+      expect(context, contains('半年范围首日倒计时'));
+      expect(context, contains('今天倒计时'));
+      expect(context, isNot(contains('半年范围外倒计时')));
+      expect(context, isNot(contains('未来倒计时')));
+    });
+
+    test('过去半年效率按含今天的滚动自然月范围筛选记录', () {
+      final now = DateTime(2026, 10, 3, 12);
+      final timeLogs = [
+        TimeLogItem(
+          id: 'outside-half-year',
+          title: '半年范围外专注',
+          startTime: DateTime(2026, 4, 2, 9).millisecondsSinceEpoch,
+          endTime: DateTime(2026, 4, 2, 10).millisecondsSinceEpoch,
+        ),
+        TimeLogItem(
+          id: 'first-day-half-year',
+          title: '半年范围首日专注',
+          startTime: DateTime(2026, 4, 3, 9).millisecondsSinceEpoch,
+          endTime: DateTime(2026, 4, 3, 10).millisecondsSinceEpoch,
+        ),
+        TimeLogItem(
+          id: 'today-half-year',
+          title: '今天专注',
+          startTime: DateTime(2026, 10, 3, 9).millisecondsSinceEpoch,
+          endTime: DateTime(2026, 10, 3, 10).millisecondsSinceEpoch,
+        ),
+        TimeLogItem(
+          id: 'future-half-year',
+          title: '未来专注',
+          startTime: DateTime(2026, 10, 4, 9).millisecondsSinceEpoch,
+          endTime: DateTime(2026, 10, 4, 10).millisecondsSinceEpoch,
+        ),
+      ];
+
+      final context = AiTodoContextBuilder.buildContextInjection(
+        userMessage: '分析过去半年的效率',
+        courses: const [],
+        timeLogs: timeLogs,
+        conflicts: const [],
+        teams: const [],
+        now: now,
+      )!;
+      final preview = AiTodoContextBuilder.buildContextInjectionSummary(
+        userMessage: '分析过去半年的效率',
+        courses: const [],
+        timeLogs: timeLogs,
+        conflicts: const [],
+        teams: const [],
+        now: now,
+      )!;
+      final customQuery = AiTodoContextBuilder.buildContextQueryText(
+        userMessage: '分析过去半年的效率',
+        customStart: DateTime(2026, 8, 1),
+        customEnd: DateTime(2026, 8, 31),
+        now: now,
+      );
+      final twoMonthPreview =
+          AiTodoContextBuilder.buildContextInjectionSummary(
+            userMessage: '分析过去两个月的效率',
+            courses: const [],
+            timeLogs: timeLogs,
+            conflicts: const [],
+            teams: const [],
+            now: now,
+          )!;
+
+      expect(context, contains('first-day-half-year'));
+      expect(context, contains('today-half-year'));
+      expect(context, isNot(contains('outside-half-year')));
+      expect(context, isNot(contains('future-half-year')));
+      expect(preview, contains('专注记录20260403-20261003'));
+      expect(preview, isNot(contains('最近30条')));
+      expect(customQuery, contains('2026-08-01 至 2026-08-31'));
+      expect(customQuery, isNot(contains('过去半年')));
+      expect(twoMonthPreview, contains('专注记录20260803-20261003'));
+    });
+
+    test('上周效率只汇总上一自然周，不混入本周记录', () {
+      final now = DateTime(2026, 10, 2, 12);
+      final timeLogs = [
+        TimeLogItem(
+          id: 'last-week-monday',
+          title: '上周周一专注',
+          startTime: DateTime(2026, 9, 21, 9).millisecondsSinceEpoch,
+          endTime: DateTime(2026, 9, 21, 10).millisecondsSinceEpoch,
+        ),
+        TimeLogItem(
+          id: 'last-week-sunday',
+          title: '上周周日专注',
+          startTime: DateTime(2026, 9, 27, 10).millisecondsSinceEpoch,
+          endTime: DateTime(2026, 9, 27, 11).millisecondsSinceEpoch,
+        ),
+        TimeLogItem(
+          id: 'this-week',
+          title: '本周专注',
+          startTime: DateTime(2026, 10, 1, 11).millisecondsSinceEpoch,
+          endTime: DateTime(2026, 10, 1, 12).millisecondsSinceEpoch,
+        ),
+      ];
+
+      final context = AiTodoContextBuilder.buildContextInjection(
+        userMessage: '分析上周的效率',
+        courses: const [],
+        timeLogs: timeLogs,
+        conflicts: const [],
+        teams: const [],
+        now: now,
+      )!;
+      final preview = AiTodoContextBuilder.buildContextInjectionSummary(
+        userMessage: '分析上周的效率',
+        courses: const [],
+        timeLogs: timeLogs,
+        conflicts: const [],
+        teams: const [],
+        now: now,
+      )!;
+
+      expect(context, contains('上周合计'));
+      expect(context, contains('last-week-monday'));
+      expect(context, contains('last-week-sunday'));
+      expect(context, isNot(contains('this-week')));
+      expect(preview, contains('专注记录20260921-20260927'));
+      expect(preview, isNot(contains('最近30条')));
+    });
+
+    test('最近七天效率按含今天的滚动自然日范围汇总', () {
+      final now = DateTime(2026, 10, 2, 12);
+      final timeLogs = [
+        TimeLogItem(
+          id: 'outside-seven-days',
+          title: '七天前专注',
+          startTime: DateTime(2026, 9, 25, 9).millisecondsSinceEpoch,
+          endTime: DateTime(2026, 9, 25, 10).millisecondsSinceEpoch,
+        ),
+        TimeLogItem(
+          id: 'first-day-in-range',
+          title: '范围首日专注',
+          startTime: DateTime(2026, 9, 26, 9).millisecondsSinceEpoch,
+          endTime: DateTime(2026, 9, 26, 10).millisecondsSinceEpoch,
+        ),
+        TimeLogItem(
+          id: 'inside-seven-days',
+          title: '本周专注',
+          startTime: DateTime(2026, 10, 1, 11).millisecondsSinceEpoch,
+          endTime: DateTime(2026, 10, 1, 12).millisecondsSinceEpoch,
+        ),
+        TimeLogItem(
+          id: 'future-log',
+          title: '未来专注',
+          startTime: DateTime(2026, 10, 3, 9).millisecondsSinceEpoch,
+          endTime: DateTime(2026, 10, 3, 10).millisecondsSinceEpoch,
+        ),
+      ];
+
+      final context = AiTodoContextBuilder.buildContextInjection(
+        userMessage: '分析最近七天的效率',
+        courses: const [],
+        timeLogs: timeLogs,
+        conflicts: const [],
+        teams: const [],
+        now: now,
+      )!;
+      final preview = AiTodoContextBuilder.buildContextInjectionSummary(
+        userMessage: '分析最近七天的效率',
+        courses: const [],
+        timeLogs: timeLogs,
+        conflicts: const [],
+        teams: const [],
+        now: now,
+      )!;
+
+      expect(context, contains('最近7天合计'));
+      expect(context, isNot(contains('outside-seven-days')));
+      expect(context, contains('first-day-in-range'));
+      expect(context, contains('inside-seven-days'));
+      expect(context, isNot(contains('future-log')));
+      expect(preview, contains('专注记录20260926-20261002'));
+
+      final thirtyDayContext = AiTodoContextBuilder.buildContextInjection(
+        userMessage: '分析最近30天的效率',
+        courses: const [],
+        timeLogs: timeLogs,
+        conflicts: const [],
+        teams: const [],
+        now: now,
+      )!;
+      final thirtyDayPreview =
+          AiTodoContextBuilder.buildContextInjectionSummary(
+            userMessage: '分析最近30天的效率',
+            courses: const [],
+            timeLogs: timeLogs,
+            conflicts: const [],
+            teams: const [],
+            now: now,
+          )!;
+
+      expect(thirtyDayContext, contains('最近30天合计'));
+      expect(thirtyDayContext, contains('outside-seven-days'));
+      expect(thirtyDayContext, isNot(contains('future-log')));
+      expect(thirtyDayPreview, contains('专注记录20260903-20261002'));
+    });
+
+    test('过去两周范围同时筛选效率、待办和倒计时', () {
+      final now = DateTime(2026, 10, 2, 12);
+      final timeLogs = [
+        TimeLogItem(
+          id: 'outside-two-weeks-log',
+          title: '两周前专注',
+          startTime: DateTime(2026, 9, 18, 9).millisecondsSinceEpoch,
+          endTime: DateTime(2026, 9, 18, 10).millisecondsSinceEpoch,
+        ),
+        TimeLogItem(
+          id: 'inside-two-weeks-log',
+          title: '两周内专注',
+          startTime: DateTime(2026, 9, 19, 9).millisecondsSinceEpoch,
+          endTime: DateTime(2026, 9, 19, 10).millisecondsSinceEpoch,
+        ),
+      ];
+      final todos = [
+        {
+          'id': 'outside-two-weeks-todo',
+          'title': '两周前待办',
+          'dueDate': '2026-09-18T18:00:00',
+          'timeMode': 'deadline',
+        },
+        {
+          'id': 'inside-two-weeks-todo',
+          'title': '两周内待办',
+          'dueDate': '2026-09-19T18:00:00',
+          'timeMode': 'deadline',
+        },
+      ];
+      final countdowns = [
+        CountdownItem(
+          id: 'outside-two-weeks-countdown',
+          title: '两周前倒计时',
+          targetDate: DateTime(2026, 9, 18),
+        ),
+        CountdownItem(
+          id: 'inside-two-weeks-countdown',
+          title: '两周内倒计时',
+          targetDate: DateTime(2026, 9, 19),
+        ),
+      ];
+
+      final timeContext = AiTodoContextBuilder.buildContextInjection(
+        userMessage: '分析过去两周的效率',
+        courses: const [],
+        timeLogs: timeLogs,
+        conflicts: const [],
+        teams: const [],
+        now: now,
+      )!;
+      final timePreview = AiTodoContextBuilder.buildContextInjectionSummary(
+        userMessage: '分析过去两周的效率',
+        courses: const [],
+        timeLogs: timeLogs,
+        conflicts: const [],
+        teams: const [],
+        now: now,
+      )!;
+      final todoContext = AiTodoContextBuilder.buildContextInjection(
+        userMessage: '过去两周有哪些待办',
+        courses: const [],
+        timeLogs: const [],
+        todos: todos,
+        conflicts: const [],
+        teams: const [],
+        now: now,
+      )!;
+      final countdownContext = AiTodoContextBuilder.buildContextInjection(
+        userMessage: '过去两周有哪些倒计时',
+        courses: const [],
+        timeLogs: const [],
+        countdowns: countdowns,
+        conflicts: const [],
+        teams: const [],
+        now: now,
+      )!;
+
+      expect(timeContext, contains('最近14天合计'));
+      expect(timeContext, contains('inside-two-weeks-log'));
+      expect(timeContext, isNot(contains('outside-two-weeks-log')));
+      expect(timePreview, contains('专注记录20260919-20261002'));
+      expect(todoContext, contains('inside-two-weeks-todo'));
+      expect(todoContext, isNot(contains('outside-two-weeks-todo')));
+      expect(countdownContext, contains('两周内倒计时'));
+      expect(countdownContext, isNot(contains('两周前倒计时')));
+    });
+
+    test('相对日期区间比较不会静默只注入一个周期', () {
+      final now = DateTime(2026, 10, 2, 12);
+      final timeLogs = [
+        TimeLogItem(
+          id: 'last-week',
+          title: '上周专注',
+          startTime: DateTime(2026, 9, 21, 9).millisecondsSinceEpoch,
+          endTime: DateTime(2026, 9, 21, 10).millisecondsSinceEpoch,
+        ),
+        TimeLogItem(
+          id: 'recent-days',
+          title: '最近七天专注',
+          startTime: DateTime(2026, 10, 1, 9).millisecondsSinceEpoch,
+          endTime: DateTime(2026, 10, 1, 10).millisecondsSinceEpoch,
+        ),
+      ];
+
+      for (final prompt in [
+        '比较最近7天和上周的效率',
+        '比较最近7天与最近30天的效率',
+        '比较本周和上周的效率',
+        '比较上个月和上周的效率',
+        '比较过去半年和最近七天的效率',
+        '比较2026-09-01至2026-09-30与上周的效率',
+        '比较上季度和本季度的效率',
+        '比较去年和今年的效率',
+        '比较今天和昨天的效率',
+      ]) {
+        expect(
+          AiTodoContextBuilder.buildContextInjection(
+            userMessage: prompt,
+            courses: const [],
+            timeLogs: timeLogs,
+            conflicts: const [],
+            teams: const [],
+            now: now,
+          ),
+          isNull,
+          reason: prompt,
+        );
+        expect(
+          AiTodoContextBuilder.buildContextInjectionSummary(
+            userMessage: prompt,
+            courses: const [],
+            timeLogs: timeLogs,
+            conflicts: const [],
+            teams: const [],
+            now: now,
+          ),
+          isNull,
+          reason: prompt,
+        );
+      }
+    });
+
+    test('自定义注入范围覆盖原提示的相对日期区间', () {
+      final now = DateTime(2026, 10, 2, 12);
+      final query = AiTodoContextBuilder.buildContextQueryText(
+        userMessage: '分析最近7天的效率',
+        customStart: DateTime(2026, 8, 1),
+        customEnd: DateTime(2026, 8, 31),
+        now: now,
+      );
+      final timeLogs = [
+        TimeLogItem(
+          id: 'selected-custom-range',
+          title: '自定义范围专注',
+          startTime: DateTime(2026, 8, 15, 9).millisecondsSinceEpoch,
+          endTime: DateTime(2026, 8, 15, 10).millisecondsSinceEpoch,
+        ),
+        TimeLogItem(
+          id: 'original-relative-range',
+          title: '原提示相对范围专注',
+          startTime: DateTime(2026, 10, 1, 9).millisecondsSinceEpoch,
+          endTime: DateTime(2026, 10, 1, 10).millisecondsSinceEpoch,
+        ),
+      ];
+
+      expect(query, isNot(contains('最近7天')));
+      final context = AiTodoContextBuilder.buildContextInjection(
+        userMessage: query,
+        courses: const [],
+        timeLogs: timeLogs,
+        conflicts: const [],
+        teams: const [],
+        now: now,
+      );
+      final preview = AiTodoContextBuilder.buildContextInjectionSummary(
+        userMessage: query,
+        courses: const [],
+        timeLogs: timeLogs,
+        conflicts: const [],
+        teams: const [],
+        now: now,
+      );
+
+      expect(context, contains('selected-custom-range'));
+      expect(context, isNot(contains('original-relative-range')));
+      expect(preview, contains('专注记录20260801-20260831'));
+    });
+
+    test('效率分析按去年、今年和上一自然季度筛选记录', () {
+      final now = DateTime(2026, 10, 2, 12);
+      final timeLogs =
+          [
+                ('last-year', DateTime(2025, 12, 31, 9)),
+                ('this-year-start', DateTime(2026, 1, 1, 9)),
+                ('previous-quarter', DateTime(2026, 6, 30, 9)),
+                ('last-quarter-start', DateTime(2026, 7, 1, 9)),
+                ('last-quarter-end', DateTime(2026, 9, 30, 9)),
+                ('this-quarter', DateTime(2026, 10, 1, 9)),
+                ('future', DateTime(2026, 10, 3, 9)),
+              ]
+              .map(
+                (entry) => TimeLogItem(
+                  id: entry.$1,
+                  title: entry.$1,
+                  startTime: entry.$2.millisecondsSinceEpoch,
+                  endTime: entry.$2
+                      .add(const Duration(hours: 1))
+                      .millisecondsSinceEpoch,
+                ),
+              )
+              .toList();
+
+      String contextFor(String prompt) =>
+          AiTodoContextBuilder.buildContextInjection(
+            userMessage: prompt,
+            courses: const [],
+            timeLogs: timeLogs,
+            conflicts: const [],
+            teams: const [],
+            now: now,
+          )!;
+      String previewFor(String prompt) =>
+          AiTodoContextBuilder.buildContextInjectionSummary(
+            userMessage: prompt,
+            courses: const [],
+            timeLogs: timeLogs,
+            conflicts: const [],
+            teams: const [],
+            now: now,
+          )!;
+
+      final lastQuarter = contextFor('分析上季度的效率');
+      expect(lastQuarter, contains('上季度合计'));
+      expect(lastQuarter, contains('last-quarter-start'));
+      expect(lastQuarter, contains('last-quarter-end'));
+      expect(lastQuarter, isNot(contains('previous-quarter')));
+      expect(lastQuarter, isNot(contains('this-quarter')));
+      expect(lastQuarter, isNot(contains('future')));
+      expect(previewFor('分析上季度的效率'), contains('专注记录20260701-20260930'));
+
+      final thisYear = contextFor('分析今年的效率');
+      expect(thisYear, contains('今年合计'));
+      expect(thisYear, contains('this-year-start'));
+      expect(thisYear, contains('this-quarter'));
+      expect(thisYear, isNot(contains('last-year')));
+      expect(thisYear, isNot(contains('future')));
+      expect(previewFor('分析今年的效率'), contains('专注记录20260101-20261002'));
+
+      final lastYear = contextFor('分析去年效率');
+      expect(lastYear, contains('去年合计'));
+      expect(lastYear, contains('last-year'));
+      expect(lastYear, isNot(contains('this-year-start')));
+      expect(previewFor('分析去年效率'), contains('专注记录20250101-20251231'));
+    });
+
+    test('本周和本月效率范围截止今天，不包含未来日志', () {
+      final now = DateTime(2026, 10, 2, 12);
+      final timeLogs = [
+        ('last-week', DateTime(2026, 9, 27, 9)),
+        ('current-week', DateTime(2026, 10, 1, 9)),
+        ('future', DateTime(2026, 10, 3, 9)),
+      ].map((entry) => TimeLogItem(
+        id: entry.$1,
+        title: entry.$1,
+        startTime: entry.$2.millisecondsSinceEpoch,
+        endTime: entry.$2.add(const Duration(hours: 1)).millisecondsSinceEpoch,
+      )).toList();
+
+      String contextFor(String prompt) =>
+          AiTodoContextBuilder.buildContextInjection(
+            userMessage: prompt,
+            courses: const [],
+            timeLogs: timeLogs,
+            conflicts: const [],
+            teams: const [],
+            now: now,
+          )!;
+      String previewFor(String prompt) =>
+          AiTodoContextBuilder.buildContextInjectionSummary(
+            userMessage: prompt,
+            courses: const [],
+            timeLogs: timeLogs,
+            conflicts: const [],
+            teams: const [],
+            now: now,
+          )!;
+
+      final thisWeek = contextFor('分析本周的效率');
+      expect(thisWeek, contains('本周合计'));
+      expect(thisWeek, contains('current-week'));
+      expect(thisWeek, isNot(contains('last-week')));
+      expect(thisWeek, isNot(contains('future')));
+      expect(previewFor('分析本周的效率'), contains('专注记录20260928-20261002'));
+
+      final thisMonth = contextFor('分析本月的效率');
+      expect(thisMonth, contains('本月合计'));
+      expect(thisMonth, contains('current-week'));
+      expect(thisMonth, isNot(contains('future')));
+      expect(previewFor('分析本月的效率'), contains('专注记录20261001-20261002'));
+    });
+
+    test('指定年份和最近一年效率查询使用完整对应日期范围', () {
+      final now = DateTime(2026, 10, 2, 12);
+      final timeLogs = [
+        ('year-2024', DateTime(2024, 12, 31, 9)),
+        ('year-2025-start', DateTime(2025, 1, 1, 9)),
+        ('rolling-outside', DateTime(2025, 10, 1, 9)),
+        ('rolling-start', DateTime(2025, 10, 2, 9)),
+        ('year-2025-end', DateTime(2025, 12, 31, 9)),
+        ('year-2026', DateTime(2026, 1, 1, 9)),
+        ('future', DateTime(2026, 10, 3, 9)),
+      ].map((entry) => TimeLogItem(
+        id: entry.$1,
+        title: entry.$1,
+        startTime: entry.$2.millisecondsSinceEpoch,
+        endTime: entry.$2.add(const Duration(hours: 1)).millisecondsSinceEpoch,
+      )).toList();
+
+      String contextFor(String prompt) =>
+          AiTodoContextBuilder.buildContextInjection(
+            userMessage: prompt,
+            courses: const [],
+            timeLogs: timeLogs,
+            conflicts: const [],
+            teams: const [],
+            now: now,
+          )!;
+      String previewFor(String prompt) =>
+          AiTodoContextBuilder.buildContextInjectionSummary(
+            userMessage: prompt,
+            courses: const [],
+            timeLogs: timeLogs,
+            conflicts: const [],
+            teams: const [],
+            now: now,
+          )!;
+
+      final year2025 = contextFor('分析2025年效率');
+      expect(year2025, contains('2025年合计'));
+      expect(year2025, contains('year-2025-start'));
+      expect(year2025, contains('year-2025-end'));
+      expect(year2025, isNot(contains('year-2024')));
+      expect(year2025, isNot(contains('year-2026')));
+      expect(previewFor('分析2025年效率'), contains('专注记录20250101-20251231'));
+
+      final recentYear = contextFor('分析最近一年的效率');
+      expect(recentYear, contains('最近一年合计'));
+      expect(recentYear, contains('rolling-start'));
+      expect(recentYear, contains('year-2025-end'));
+      expect(recentYear, isNot(contains('rolling-outside')));
+      expect(recentYear, isNot(contains('year-2024')));
+      expect(recentYear, isNot(contains('future')));
+      expect(previewFor('分析最近一年的效率'), contains('专注记录20251002-20261002'));
+    });
+
+    test('明确年月和去年某月效率查询不会回退到最近30条', () {
+      final now = DateTime(2026, 10, 2, 12);
+      final timeLogs = [
+        ('before-month', DateTime(2025, 8, 31, 9)),
+        ('month-start', DateTime(2025, 9, 1, 9)),
+        ('month-end', DateTime(2025, 9, 30, 9)),
+        ('after-month', DateTime(2025, 10, 1, 9)),
+      ].map((entry) => TimeLogItem(
+        id: entry.$1,
+        title: entry.$1,
+        startTime: entry.$2.millisecondsSinceEpoch,
+        endTime: entry.$2.add(const Duration(hours: 1)).millisecondsSinceEpoch,
+      )).toList();
+
+      String contextFor(String prompt) =>
+          AiTodoContextBuilder.buildContextInjection(
+            userMessage: prompt,
+            courses: const [],
+            timeLogs: timeLogs,
+            conflicts: const [],
+            teams: const [],
+            now: now,
+          )!;
+      String previewFor(String prompt) =>
+          AiTodoContextBuilder.buildContextInjectionSummary(
+            userMessage: prompt,
+            courses: const [],
+            timeLogs: timeLogs,
+            conflicts: const [],
+            teams: const [],
+            now: now,
+          )!;
+
+      final explicitMonth = contextFor('分析2025年9月效率');
+      expect(explicitMonth, contains('2025年9月合计'));
+      expect(explicitMonth, contains('month-start'));
+      expect(explicitMonth, contains('month-end'));
+      expect(explicitMonth, isNot(contains('before-month')));
+      expect(explicitMonth, isNot(contains('after-month')));
+      expect(previewFor('分析2025年9月效率'), contains('专注记录20250901-20250930'));
+
+      final relativeMonth = contextFor('分析去年9月效率');
+      expect(relativeMonth, contains('2025年9月合计'));
+      expect(relativeMonth, contains('month-start'));
+      expect(relativeMonth, isNot(contains('before-month')));
+      expect(relativeMonth, isNot(contains('after-month')));
+    });
+
+    test('自然语言具体季度效率查询筛选正确的季度和年份', () {
+      final now = DateTime(2026, 10, 2, 12);
+      final timeLogs = [
+        ('2025-q2', DateTime(2025, 6, 30, 9)),
+        ('2025-q3-start', DateTime(2025, 7, 1, 9)),
+        ('2025-q3-end', DateTime(2025, 9, 30, 9)),
+        ('2025-q4', DateTime(2025, 10, 1, 9)),
+        ('2026-q3-start', DateTime(2026, 7, 1, 9)),
+        ('2026-q3-end', DateTime(2026, 9, 30, 9)),
+        ('2026-q4', DateTime(2026, 10, 1, 9)),
+      ].map((entry) => TimeLogItem(
+        id: entry.$1,
+        title: entry.$1,
+        startTime: entry.$2.millisecondsSinceEpoch,
+        endTime: entry.$2.add(const Duration(hours: 1)).millisecondsSinceEpoch,
+      )).toList();
+
+      String contextFor(String prompt) =>
+          AiTodoContextBuilder.buildContextInjection(
+            userMessage: prompt,
+            courses: const [],
+            timeLogs: timeLogs,
+            conflicts: const [],
+            teams: const [],
+            now: now,
+          )!;
+      String previewFor(String prompt) =>
+          AiTodoContextBuilder.buildContextInjectionSummary(
+            userMessage: prompt,
+            courses: const [],
+            timeLogs: timeLogs,
+            conflicts: const [],
+            teams: const [],
+            now: now,
+          )!;
+
+      final explicitQuarter = contextFor('分析2025年第三季度效率');
+      expect(explicitQuarter, contains('2025年第3季度合计'));
+      expect(explicitQuarter, contains('2025-q3-start'));
+      expect(explicitQuarter, contains('2025-q3-end'));
+      expect(explicitQuarter, isNot(contains('2025-q2')));
+      expect(explicitQuarter, isNot(contains('2025-q4')));
+      expect(previewFor('分析2025年第三季度效率'), contains('专注记录20250701-20250930'));
+
+      final relativeQuarter = contextFor('分析今年第三季度效率');
+      expect(relativeQuarter, contains('2026年第3季度合计'));
+      expect(relativeQuarter, contains('2026-q3-start'));
+      expect(relativeQuarter, contains('2026-q3-end'));
+      expect(relativeQuarter, isNot(contains('2026-q4')));
+      expect(previewFor('分析第三季度效率'), contains('专注记录20260701-20260930'));
+    });
+
+    test('显式单日效率查询只汇总指定日期', () {
+      final now = DateTime(2026, 10, 2, 12);
+      final timeLogs = [
+        ('previous-day', DateTime(2026, 9, 30, 9)),
+        ('selected-day', DateTime(2026, 10, 1, 9)),
+        ('today', DateTime(2026, 10, 2, 9)),
+        ('future-day', DateTime(2026, 10, 3, 9)),
+      ].map((entry) => TimeLogItem(
+        id: entry.$1,
+        title: entry.$1,
+        startTime: entry.$2.millisecondsSinceEpoch,
+        endTime: entry.$2.add(const Duration(hours: 1)).millisecondsSinceEpoch,
+      )).toList();
+
+      final context = AiTodoContextBuilder.buildContextInjection(
+        userMessage: '分析2026-10-01的效率',
+        courses: const [],
+        timeLogs: timeLogs,
+        conflicts: const [],
+        teams: const [],
+        now: now,
+      )!;
+      final preview = AiTodoContextBuilder.buildContextInjectionSummary(
+        userMessage: '分析2026-10-01的效率',
+        courses: const [],
+        timeLogs: timeLogs,
+        conflicts: const [],
+        teams: const [],
+        now: now,
+      )!;
+
+      expect(context, contains('2026-10-01合计'));
+      expect(context, contains('selected-day'));
+      expect(context, isNot(contains('previous-day')));
+      expect(context, isNot(contains('today')));
+      expect(context, isNot(contains('future-day')));
+      expect(preview, contains('专注记录20261001'));
+    });
+
+    test('具体年月日和月日效率范围优先于整月匹配', () {
+      final now = DateTime(2026, 10, 2, 12);
+      final timeLogs = [
+        ('last-year-september-first', DateTime(2025, 9, 1, 9)),
+        ('last-year-september-last', DateTime(2025, 9, 30, 9)),
+        ('current-october-first', DateTime(2026, 10, 1, 9)),
+        ('today', DateTime(2026, 10, 2, 9)),
+        ('future', DateTime(2026, 10, 3, 9)),
+      ].map((entry) => TimeLogItem(
+        id: entry.$1,
+        title: entry.$1,
+        startTime: entry.$2.millisecondsSinceEpoch,
+        endTime: entry.$2.add(const Duration(hours: 1)).millisecondsSinceEpoch,
+      )).toList();
+
+      String contextFor(String prompt) =>
+          AiTodoContextBuilder.buildContextInjection(
+            userMessage: prompt,
+            courses: const [],
+            timeLogs: timeLogs,
+            conflicts: const [],
+            teams: const [],
+            now: now,
+          )!;
+      String previewFor(String prompt) =>
+          AiTodoContextBuilder.buildContextInjectionSummary(
+            userMessage: prompt,
+            courses: const [],
+            timeLogs: timeLogs,
+            conflicts: const [],
+            teams: const [],
+            now: now,
+          )!;
+
+      final explicitDay = contextFor('分析2025年9月1日效率');
+      expect(explicitDay, contains('2025-09-01合计'));
+      expect(explicitDay, contains('last-year-september-first'));
+      expect(explicitDay, isNot(contains('last-year-september-last')));
+      expect(previewFor('分析2025年9月1日效率'), contains('专注记录20250901'));
+
+      final relativeDay = contextFor('分析去年9月1日效率');
+      expect(relativeDay, contains('last-year-september-first'));
+      expect(relativeDay, isNot(contains('last-year-september-last')));
+
+      final monthDay = contextFor('分析10月1日效率');
+      expect(monthDay, contains('2026-10-01合计'));
+      expect(monthDay, contains('current-october-first'));
+      expect(monthDay, isNot(contains('today')));
+      expect(monthDay, isNot(contains('future')));
+      expect(previewFor('分析10月1日效率'), contains('专注记录20261001'));
+    });
+
+    test('前后相对日效率范围只筛选对应自然日', () {
+      final now = DateTime(2026, 10, 2, 12);
+      final cases = [
+        ('大前天', DateTime(2026, 9, 29), '大前天'),
+        ('前天', DateTime(2026, 9, 30), '前天'),
+        ('昨天', DateTime(2026, 10, 1), '昨日'),
+        ('今天', DateTime(2026, 10, 2), '今日'),
+        ('明天', DateTime(2026, 10, 3), '明天'),
+        ('后天', DateTime(2026, 10, 4), '后天'),
+        ('大后天', DateTime(2026, 10, 5), '大后天'),
+      ];
+      final timeLogs = [
+        for (final (phrase, date, _) in cases)
+          TimeLogItem(
+            id: 'log-$phrase',
+            title: phrase,
+            startTime: DateTime(date.year, date.month, date.day, 9)
+                .millisecondsSinceEpoch,
+            endTime: DateTime(date.year, date.month, date.day, 10)
+                .millisecondsSinceEpoch,
+          ),
+      ];
+
+      for (final (phrase, date, label) in cases) {
+        final prompt = '分析$phrase的效率';
+        final context = AiTodoContextBuilder.buildContextInjection(
+          userMessage: prompt,
+          courses: const [],
+          timeLogs: timeLogs,
+          conflicts: const [],
+          teams: const [],
+          now: now,
+        )!;
+        final preview = AiTodoContextBuilder.buildContextInjectionSummary(
+          userMessage: prompt,
+          courses: const [],
+          timeLogs: timeLogs,
+          conflicts: const [],
+          teams: const [],
+          now: now,
+        )!;
+
+        expect(context, contains('$label合计'), reason: prompt);
+        expect(context, contains('log-$phrase'), reason: prompt);
+        for (final (otherPhrase, _, _) in cases.where(
+          (item) => item.$1 != phrase,
+        )) {
+          expect(context, isNot(contains('log-$otherPhrase')), reason: prompt);
+        }
+        final month = date.month.toString().padLeft(2, '0');
+        final day = date.day.toString().padLeft(2, '0');
+        final dateKey = '${date.year}$month$day';
+        expect(preview, contains('专注记录$dateKey'), reason: prompt);
+      }
+    });
+    test('上上周和上上个月效率范围不会匹配上一期', () {
+      final now = DateTime(2026, 10, 2, 12);
+      final timeLogs = [
+        ('two-months-prior', DateTime(2026, 8, 31, 9)),
+        ('last-month', DateTime(2026, 9, 30, 9)),
+        ('two-weeks-prior', DateTime(2026, 9, 18, 9)),
+        ('last-week', DateTime(2026, 9, 25, 9)),
+        ('this-week', DateTime(2026, 9, 29, 9)),
+      ].map((entry) => TimeLogItem(
+        id: entry.$1,
+        title: entry.$1,
+        startTime: entry.$2.millisecondsSinceEpoch,
+        endTime: entry.$2.add(const Duration(hours: 1)).millisecondsSinceEpoch,
+      )).toList();
+
+      String contextFor(String prompt) =>
+          AiTodoContextBuilder.buildContextInjection(
+            userMessage: prompt,
+            courses: const [],
+            timeLogs: timeLogs,
+            conflicts: const [],
+            teams: const [],
+            now: now,
+          )!;
+      String previewFor(String prompt) =>
+          AiTodoContextBuilder.buildContextInjectionSummary(
+            userMessage: prompt,
+            courses: const [],
+            timeLogs: timeLogs,
+            conflicts: const [],
+            teams: const [],
+            now: now,
+          )!;
+
+      final twoMonths = contextFor('分析上上个月效率');
+      expect(twoMonths, contains('上上个月合计'));
+      expect(twoMonths, contains('two-months-prior'));
+      expect(twoMonths, isNot(contains('last-month')));
+      expect(
+        previewFor('分析上上个月效率'),
+        contains('专注记录20260801-20260831'),
+      );
+
+      final twoWeeks = contextFor('分析上上周效率');
+      expect(twoWeeks, contains('上上周合计'));
+      expect(twoWeeks, contains('two-weeks-prior'));
+      expect(twoWeeks, isNot(contains('last-week')));
+      expect(twoWeeks, isNot(contains('this-week')));
+      expect(
+        previewFor('分析上上周效率'),
+        contains('专注记录20260914-20260920'),
+      );
+    });
+
+    test('上上季度效率范围不会命中上一季度', () {
+      final now = DateTime(2026, 10, 2, 12);
+      final timeLogs = [
+        ('two-quarters-prior', DateTime(2026, 4, 15, 9)),
+        ('last-quarter', DateTime(2026, 7, 15, 9)),
+        ('this-quarter', DateTime(2026, 10, 1, 9)),
+      ].map((entry) => TimeLogItem(
+        id: entry.$1,
+        title: entry.$1,
+        startTime: entry.$2.millisecondsSinceEpoch,
+        endTime: entry.$2.add(const Duration(hours: 1)).millisecondsSinceEpoch,
+      )).toList();
+
+      String contextFor(String prompt) =>
+          AiTodoContextBuilder.buildContextInjection(
+            userMessage: prompt,
+            courses: const [],
+            timeLogs: timeLogs,
+            conflicts: const [],
+            teams: const [],
+            now: now,
+          )!;
+      String previewFor(String prompt) =>
+          AiTodoContextBuilder.buildContextInjectionSummary(
+            userMessage: prompt,
+            courses: const [],
+            timeLogs: timeLogs,
+            conflicts: const [],
+            teams: const [],
+            now: now,
+          )!;
+
+      for (final phrase in ['上上季度', '上上个季度']) {
+        final prompt = '分析$phrase效率';
+        final context = contextFor(prompt);
+        expect(context, contains('上上季度合计'), reason: prompt);
+        expect(context, contains('two-quarters-prior'), reason: prompt);
+        expect(context, isNot(contains('last-quarter')), reason: prompt);
+        expect(context, isNot(contains('this-quarter')), reason: prompt);
+        expect(
+          previewFor(prompt),
+          contains('专注记录20260401-20260630'),
+          reason: prompt,
+        );
+      }
     });
   });
+
 }

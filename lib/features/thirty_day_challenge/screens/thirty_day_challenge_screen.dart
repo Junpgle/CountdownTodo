@@ -20,6 +20,7 @@ import '../repositories/thirty_day_challenge_repository.dart';
 import '../services/challenge_share_codec.dart';
 import '../services/clipboard_share_detector.dart';
 import 'new_challenge_screen.dart';
+import '../../../utils/app_dialogs.dart';
 
 String _safeFileName(String value) {
   final sanitized = value
@@ -97,6 +98,8 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
     final isPaused = widget.showBuiltInIntroduction
         ? false
         : await ThirtyDayChallengeRepository.isPaused();
+    final hasCorruptBackup = !widget.showBuiltInIntroduction &&
+        await ThirtyDayChallengeRepository.getCorruptStateBackup() != null;
     if (!mounted) return;
     setState(() {
       _state = state;
@@ -104,6 +107,19 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
       _isPaused = isPaused;
     });
     _entranceController.forward();
+    if (hasCorruptBackup) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        AppSnackBars.showSnackBar(
+          context,
+          const SnackBar(
+            content: Text(
+              '旧挑战记录无法读取，原始副本已保留。请在“数据导出”中备份“30 天挑战”数据。',
+            ),
+          ),
+        );
+      });
+    }
   }
 
   Future<void> _openNewChallenge() async {
@@ -129,7 +145,7 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
           ? await ThirtyDayChallengeRepository.load()
           : _state;
       if (!mounted) return;
-      final shouldReplace = await showDialog<bool>(
+      final shouldReplace = await showAppDialog<bool>(
         context: context,
         builder: (dialogContext) => AlertDialog(
           icon: const Icon(Icons.auto_awesome_rounded),
@@ -170,12 +186,14 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
           _pageController.jumpToPage(0);
         }
       });
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         SnackBar(content: Text('已开启「${state.challengeTitle}」')),
       );
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         const SnackBar(content: Text('新挑战创建失败，请稍后再试')),
       );
     }
@@ -184,7 +202,7 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
   Future<void> _enterChallenge() async {
     final challengeTitle =
         _state?.challengeTitle ?? ThirtyDayChallengeState.defaultTitle;
-    final shouldStart = await showDialog<bool>(
+    final shouldStart = await showAppDialog<bool>(
       context: context,
       builder: (dialogContext) {
         final scheme = Theme.of(dialogContext).colorScheme;
@@ -217,7 +235,7 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
         if (hasExistingChallenge) {
           final currentState = await ThirtyDayChallengeRepository.load();
           if (!mounted) return;
-          final shouldReplace = await showDialog<bool>(
+          final shouldReplace = await showAppDialog<bool>(
             context: context,
             builder: (dialogContext) => AlertDialog(
               icon: const Icon(Icons.auto_awesome_rounded),
@@ -240,11 +258,7 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
           if (shouldReplace != true || !mounted) return;
         }
 
-        final builtInState = ThirtyDayChallengeState.initial();
-        final state = await ThirtyDayChallengeRepository.startNewChallenge(
-          title: builtInState.challengeTitle,
-          taskTitles: builtInState.tasks.map((task) => task.title),
-        );
+        final state = await ThirtyDayChallengeRepository.startBuiltInChallenge();
         if (!mounted) return;
         setState(() {
           _state = state;
@@ -269,7 +283,8 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
       });
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         const SnackBar(content: Text('欢迎页保存失败，请稍后再试')),
       );
     }
@@ -278,7 +293,8 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
   Future<void> _deferChallenge() async {
     final didPop = await Navigator.of(context).maybePop();
     if (!didPop && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         const SnackBar(content: Text('可以稍后从帮助与反馈再次进入挑战')),
       );
     }
@@ -291,7 +307,8 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
       await ThirtyDayChallengeRepository.setPaused(nextPaused);
       if (!mounted) return;
       setState(() => _isPaused = nextPaused);
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         SnackBar(
           content: Text(
             nextPaused ? '已暂停首页活动 Banner，记录仍然保留' : '已恢复参与，首页 Banner 已显示',
@@ -300,7 +317,8 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
       );
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         const SnackBar(content: Text('操作失败，请稍后再试')),
       );
     }
@@ -314,7 +332,7 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
     final challengeTitle =
         state?.challengeTitle ?? ThirtyDayChallengeState.defaultTitle;
 
-    final shouldAbandon = await showDialog<bool>(
+    final shouldAbandon = await showAppDialog<bool>(
       context: context,
       builder: (dialogContext) {
         final scheme = Theme.of(dialogContext).colorScheme;
@@ -358,7 +376,8 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
       }
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         const SnackBar(content: Text('放弃失败，请稍后再试')),
       );
     }
@@ -368,7 +387,7 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
     final state = _state;
     if (state == null || _isShuffling) return;
 
-    final shouldReset = await showDialog<bool>(
+    final shouldReset = await showAppDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         icon: const Icon(Icons.restart_alt_rounded),
@@ -399,12 +418,14 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
           _pageController.jumpToPage(0);
         }
       });
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         const SnackBar(content: Text('已重置全部打卡状态，记录内容仍然保留')),
       );
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         const SnackBar(content: Text('重置失败，请稍后再试')),
       );
     }
@@ -414,7 +435,6 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
     if (_isExportingReport) return;
 
     setState(() => _isExportingReport = true);
-    final messenger = ScaffoldMessenger.of(context);
     final posterKey = GlobalKey();
     OverlayEntry? entry;
 
@@ -490,7 +510,8 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
       );
 
       if (!mounted) return;
-      messenger.showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         SnackBar(
           content: Text(
             kIsWeb ? '报告长图已下载' : '报告长图已生成，已打开分享面板',
@@ -499,7 +520,8 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
       );
     } catch (error) {
       if (!mounted) return;
-      messenger.showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         SnackBar(content: Text('报告长图生成失败：$error')),
       );
     } finally {
@@ -527,14 +549,16 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
       );
       await ClipboardSharePayload.markLocallyGenerated(sharedText);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         const SnackBar(
           content: Text('已复制挑战分享内容，朋友可通过剪贴板识别并导入'),
         ),
       );
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         const SnackBar(content: Text('分享内容复制失败，请稍后再试')),
       );
     }
@@ -556,13 +580,15 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
         final message = state.isCompleted
             ? '${state.tasks.length} 项挑战全部完成了，恭喜你遇见新的自己！'
             : '已完成 ${state.completedCount}/${state.tasks.length}，继续感受生活吧';
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           SnackBar(content: Text(message)),
         );
       }
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         const SnackBar(content: Text('保存失败，请稍后再试')),
       );
     }
@@ -581,7 +607,8 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
       if (mounted) setState(() {});
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         const SnackBar(content: Text('感受保存失败，请稍后再试')),
       );
     }
@@ -628,7 +655,8 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
       if (mounted) setState(() {});
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         const SnackBar(content: Text('图片保存失败，请重新选择')),
       );
     } finally {
@@ -637,7 +665,7 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
   }
 
   Future<void> _editTask(ThirtyDayChallengeTask task) async {
-    final editedTitle = await showDialog<String>(
+    final editedTitle = await showAppDialog<String>(
       context: context,
       builder: (_) => _ChallengeTaskEditDialog(
         task: task,
@@ -659,7 +687,8 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
 
     final task = state.randomUnfinishedTask();
     if (task == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         const SnackBar(content: Text('所有任务都完成了，去回味一下你的记录吧')),
       );
       return;
@@ -2795,7 +2824,7 @@ class _ShuffleCardStackState extends State<_ShuffleCardStack>
                           fit: StackFit.expand,
                           children: [
                             ...previousChildren,
-                            if (currentChild != null) currentChild,
+                            ?currentChild,
                           ],
                         ),
                         transitionBuilder: (child, animation) {

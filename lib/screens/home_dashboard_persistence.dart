@@ -283,7 +283,7 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
         } else {
           msg = "同步失败: 获取数据异常";
         }
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(context,
             SnackBar(content: Text(msg), backgroundColor: Colors.redAccent));
       }
     } finally {
@@ -306,7 +306,7 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
 
   /// 🚀 Uni-Sync 4.0: 链路可视化诊断报告
   Future<void> _showLinkDiagnostics() async {
-    showDialog(
+    showAppDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => StatefulBuilder(
@@ -472,7 +472,7 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
         await AppSettingsStorage.isFinanceCloudSyncEnabled(widget.username);
     if (!mounted) return;
 
-    showDialog(
+    showAppDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(builder: (context, setDialogState) {
         return AlertDialog(

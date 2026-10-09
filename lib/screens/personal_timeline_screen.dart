@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
@@ -61,6 +62,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
   bool _isExportingPoster = false;
   bool _isLoadingAllTimeMedals = false;
   int _loadGeneration = 0;
+  Timer? _financeOccurrenceRefreshTimer;
   late AnimationController _animationController;
   late final ScrollController _timelineScrollController;
   final ValueNotifier<double> _timelineTitleProgress =
@@ -135,6 +137,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
   @override
   void dispose() {
     FinanceStorage.revision.removeListener(_onFinanceChanged);
+    _financeOccurrenceRefreshTimer?.cancel();
     _timelineScrollController.dispose();
     _timelineTitleProgress.dispose();
     _animationController.dispose();
@@ -146,6 +149,8 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
   }
 
   Future<void> _loadData() async {
+    _financeOccurrenceRefreshTimer?.cancel();
+    _financeOccurrenceRefreshTimer = null;
     final loadGeneration = ++_loadGeneration;
     setState(() {
       _isLoading = true;
@@ -192,16 +197,23 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
 
       FinanceSummary financeSummary = const FinanceSummary();
       List<FinanceTransaction> financeTransactions = const [];
+      List<FinanceTransaction> allFinanceTransactions = const [];
       List<FinanceCategory> financeCategories = const [];
+      DateTime? financeAsOf;
       try {
         final financeData = await Future.wait<dynamic>([
-          FinanceRepository.getSummary(from: start, to: end),
           FinanceRepository.getTransactions(from: start, to: end),
           FinanceRepository.getCategories(includeArchived: true),
         ]);
-        financeSummary = financeData[0] as FinanceSummary;
-        financeTransactions = financeData[1] as List<FinanceTransaction>;
-        financeCategories = financeData[2] as List<FinanceCategory>;
+        allFinanceTransactions = financeData[0] as List<FinanceTransaction>;
+        financeCategories = financeData[1] as List<FinanceCategory>;
+        financeAsOf = DateTime.now();
+        financeTransactions = TimelineService.financeTransactionsThroughNow(
+          transactions: allFinanceTransactions,
+          periodStart: start,
+          now: financeAsOf,
+        );
+        financeSummary = FinanceSummary.fromTransactions(financeTransactions);
       } catch (error) {
         debugPrint('❌ get timeline finance data error: $error');
       }
@@ -409,6 +421,14 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
           _isLoading = false;
         });
 
+        if (financeAsOf != null) {
+          _scheduleFinanceOccurrenceRefresh(
+            transactions: allFinanceTransactions,
+            periodStart: start,
+            now: financeAsOf,
+          );
+        }
+
         // Async ML insights generation
         TimelineMLService.instance
             .generateInsights(
@@ -477,6 +497,38 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
         setState(() => _isLoading = false);
       }
     }
+  }
+
+  void _scheduleFinanceOccurrenceRefresh({
+    required Iterable<FinanceTransaction> transactions,
+    required DateTime periodStart,
+    required DateTime now,
+  }) {
+    _financeOccurrenceRefreshTimer?.cancel();
+    _financeOccurrenceRefreshTimer = null;
+    if (periodStart.isAfter(now)) return;
+
+    final nowAt = now.millisecondsSinceEpoch;
+    int? nextEventAt;
+    for (final transaction in transactions) {
+      final eventAt = transaction.balanceEventAt();
+      if (eventAt > nowAt &&
+          (nextEventAt == null || eventAt < nextEventAt)) {
+        nextEventAt = eventAt;
+      }
+    }
+    if (nextEventAt == null) return;
+
+    final delayMs = (nextEventAt - nowAt + 1)
+        .clamp(1, const Duration(days: 24).inMilliseconds)
+        .toInt();
+    _financeOccurrenceRefreshTimer = Timer(
+      Duration(milliseconds: delayMs),
+      () {
+        _financeOccurrenceRefreshTimer = null;
+        if (mounted) unawaited(_loadData());
+      },
+    );
   }
 
   Future<void> _openFinanceEntry() async {
@@ -622,7 +674,8 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
   void _navigateToMedalWall() {
     // 勋章墙必须展示全纪录统计，不能受当前时段切换影响
     if (_allTimeRecommendation == null || _allTimeSummary == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         const SnackBar(content: Text('正在汇总全纪录数据，请稍候...')),
       );
       return;
@@ -789,7 +842,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
         return StatefulBuilder(
           builder: (context, setModalState) {
             Future<void> pickPeriod() async {
-              final picked = await showDatePicker(
+              final picked = await showAppDatePicker(
                 context: context,
                 initialDate: selectedDate,
                 firstDate: DateTime(2020),
@@ -1197,11 +1250,13 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
             text: 'CountDownTodo ${_getPeriodName()} 总结',
           );
         } catch (e) {
-          messenger.showSnackBar(
+          AppSnackBars.showSnackBarFromMessenger(
+            messenger,
             SnackBar(content: Text('打开分享失败：$e')),
           );
         }
-        messenger.showSnackBar(
+        AppSnackBars.showSnackBarFromMessenger(
+          messenger,
           SnackBar(content: Text('长图已保存，可从本地文件继续使用：$filePath')),
         );
       }
@@ -1212,7 +1267,8 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
             'path': filePath,
           });
         }
-        messenger.showSnackBar(
+        AppSnackBars.showSnackBarFromMessenger(
+          messenger,
           SnackBar(
             content: Text(!kIsWeb && AppPlatform.isAndroid
                 ? '长图已保存到相册'
@@ -1229,7 +1285,8 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
     } catch (e) {
       // debugPrint('保存时间线长图失败: $e');
       if (mounted) {
-        messenger.showSnackBar(
+        AppSnackBars.showSnackBarFromMessenger(
+          messenger,
           SnackBar(content: Text('保存长图失败：$e')),
         );
       }
@@ -3079,9 +3136,6 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
         summary.expenseByDate.values.where((value) => value > 0).length;
     final averagePerDay =
         spendingDays == 0 ? 0 : summary.netExpenseMinor ~/ spendingDays;
-    final averagePerTransaction = summary.transactionCount == 0
-        ? 0
-        : summary.netExpenseMinor ~/ summary.transactionCount;
     final peakDay = summary.expenseByDate.entries
         .where((entry) => entry.value > 0)
         .fold<MapEntry<String, int>?>(
@@ -3101,6 +3155,10 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
         .where(
             (transaction) => transaction.type == FinanceTransactionType.refund)
         .length;
+    final outflowTransactionCount = expenseCount + refundCount;
+    final averagePerTransaction = outflowTransactionCount == 0
+        ? 0
+        : summary.netExpenseMinor ~/ outflowTransactionCount;
     final hasTransactions = summary.transactionCount > 0;
     final financeAccent = summary.netExpenseMinor > 0 ? cs.error : cs.primary;
 
@@ -4038,7 +4096,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 24),
         itemCount: _mlInsights.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 12),
+        separatorBuilder: (_, _) => const SizedBox(width: 12),
         itemBuilder: (_, index) => SizedBox(
           width: 260,
           child: _buildInsightItem(_mlInsights[index], cs),

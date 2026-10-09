@@ -2,6 +2,8 @@
     xmlns:tools="http://schemas.android.com/tools">
     <!-- 权限声明 -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
     <!-- Android 17+：局域网同步需要在运行时获得局域网访问权限。 -->
     <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
     <uses-permission android:name="android.permission.VIBRATE"/>
@@ -127,6 +129,11 @@
                 android:name="android.app.shortcuts"
                 android:resource="@xml/shortcuts" />
         </activity>
+
+        <activity
+            android:name="com.yalantis.ucrop.UCropActivity"
+            android:screenOrientation="portrait"
+            android:theme="@style/Ucrop.CropTheme" />
 
         <!-- 外部分享按用途拆成三个独立目标。代理 Activity 会把原始内容
              转交给 MainActivity，并用私有 MIME 类型标记用户选择的用途。 -->

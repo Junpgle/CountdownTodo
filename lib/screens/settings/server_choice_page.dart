@@ -10,6 +10,7 @@ import '../../services/minor_mode_service.dart';
 import '../../services/pomodoro_sync_service.dart';
 import '../../storage_service.dart';
 import '../../widgets/floating_glass_control.dart';
+import '../../utils/app_dialogs.dart';
 
 class ServerChoicePage extends StatefulWidget {
   final String initialServerChoice;
@@ -248,7 +249,7 @@ class _ServerChoicePageState extends State<ServerChoicePage> {
       return;
     }
 
-    final confirm = await showDialog<bool>(
+    final confirm = await showAppDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('切换接口线路'),
@@ -275,7 +276,8 @@ class _ServerChoicePageState extends State<ServerChoicePage> {
     );
     if (!authorized) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           SnackBar(
             content: Text(
               MinorModeService.instance.authorizationFailureMessage(
@@ -293,7 +295,8 @@ class _ServerChoicePageState extends State<ServerChoicePage> {
     unawaited(_refreshBackgroundNotificationPoll());
 
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         SnackBar(content: Text('已切换到 $_selectedRouteTitle')),
       );
       Navigator.pop(context);

@@ -19,12 +19,31 @@ class ShareTodoSection extends StatefulWidget {
   State<ShareTodoSection> createState() => _ShareTodoSectionState();
 }
 
+class _ShareTodoDisplayItem {
+  final TodoItem? todo;
+  final TodoGroup? group;
+  final List<TodoItem> groupTodos;
+  final DateTime? date;
+  final bool isDone;
+  final double progress;
+
+  const _ShareTodoDisplayItem({
+    this.todo,
+    this.group,
+    this.groupTodos = const [],
+    this.date,
+    required this.isDone,
+    this.progress = 0,
+  });
+}
+
 class _ShareTodoSectionState extends State<ShareTodoSection> {
   bool _isWholeListExpanded = true;
   bool _isPastTodosExpanded = false;
   bool _isTodayExpanded = true;
   bool _isTodayManuallyExpanded = false;
   bool _isFutureExpanded = true;
+  final Map<String, bool> _expandedFolders = {};
 
   @override
   Widget build(BuildContext context) {
@@ -35,33 +54,23 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
     final DateTime now = DateTime.now();
     final DateTime today = DateTime(now.year, now.month, now.day);
 
-    // 分类
-    final pastItems = <TodoItem>[];
-    final todayItems = <TodoItem>[];
-    final futureItems = <TodoItem>[];
+    final displayItems = _buildSortedDisplayItems(now, today);
+    final pastItems = displayItems
+        .where((item) => _isBeforeDay(item.date, today))
+        .toList();
+    final todayItems = displayItems
+        .where((item) => !_isBeforeDay(item.date, today) &&
+            !_isAfterDay(item.date, today))
+        .toList();
+    final futureItems = displayItems
+        .where((item) => _isAfterDay(item.date, today))
+        .toList();
 
-    for (final t in widget.todos) {
-      if (t.isDone) continue;
-      if (t.dueDate != null) {
-        final d = DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day);
-        if (d.isBefore(today)) {
-          pastItems.add(t);
-        } else if (d.isAfter(today)) {
-          futureItems.add(t);
-        } else {
-          todayItems.add(t);
-        }
-      } else {
-        todayItems.add(t);
-      }
-    }
+    final int undoneCount = widget.todos
+        .where((todo) => !todo.isDeleted && !todo.isDone)
+        .length;
 
-    final int undoneCount =
-        pastItems.length + todayItems.length + futureItems.length;
-
-    if (undoneCount == 0 && widget.todos.isEmpty) {
-      return const SizedBox.shrink();
-    }
+    if (displayItems.isEmpty) return const SizedBox.shrink();
 
     // 标题栏
     final header = Row(
@@ -108,7 +117,7 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
           expanded: _isPastTodosExpanded,
           child: Column(
             children: pastItems
-                .map((t) => _buildTodoCard(context, t, isOverdue: true))
+                .map((item) => _buildDisplayItem(context, item, today))
                 .toList(),
           ),
         ),
@@ -117,7 +126,7 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
 
     // 今日
     final bool allTodayDone =
-        todayItems.isNotEmpty && todayItems.every((t) => t.isDone);
+        todayItems.isNotEmpty && todayItems.every((item) => item.isDone);
     final bool showTodayItems =
         _isTodayManuallyExpanded || (!allTodayDone && _isTodayExpanded);
 
@@ -208,7 +217,7 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
                               Text(
                                 allTodayDone
                                     ? "今日任务已完成 🎉"
-                                    : "今日还有 ${todayItems.where((t) => !t.isDone).length} 个待办",
+                                    : "今日还有 ${todayItems.where((item) => !item.isDone).length} 个待办",
                                 style: TextStyle(
                                   fontWeight: FontWeight.bold,
                                   fontSize: 15,
@@ -264,7 +273,8 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
                         });
                       },
                     ),
-                    ...todayItems.map((t) => _buildTodoCard(context, t)),
+                    ...todayItems.map(
+                        (item) => _buildDisplayItem(context, item, today)),
                   ],
                 ],
               ),
@@ -286,7 +296,7 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
           expanded: _isFutureExpanded,
           child: Column(
             children: futureItems
-                .map((t) => _buildTodoCard(context, t, isFuture: true))
+                .map((item) => _buildDisplayItem(context, item, today))
                 .toList(),
           ),
         ),
@@ -491,6 +501,285 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
       child: expanded
           ? Container(key: const ValueKey('expanded_content'), child: child)
           : const SizedBox.shrink(key: ValueKey('collapsed_empty')),
+    );
+  }
+
+  List<_ShareTodoDisplayItem> _buildSortedDisplayItems(
+    DateTime now,
+    DateTime today,
+  ) {
+    final groupById = <String, TodoGroup>{
+      for (final group in widget.todoGroups)
+        if (!group.isDeleted) group.id: group,
+    };
+    final todosByGroup = <String, List<TodoItem>>{};
+    final standaloneTodos = <TodoItem>[];
+    final visibleTodos = widget.todos
+        .where((todo) => !todo.isDeleted && !_isHistoricalTodo(todo, today))
+        .toList();
+
+    for (final todo in visibleTodos) {
+      final groupId = todo.groupId;
+      if (groupId != null &&
+          groupId.isNotEmpty &&
+          groupById.containsKey(groupId)) {
+        todosByGroup.putIfAbsent(groupId, () => []).add(todo);
+      } else {
+        standaloneTodos.add(todo);
+      }
+    }
+
+    final items = <_ShareTodoDisplayItem>[];
+    for (final group in groupById.values) {
+      final groupTodos = todosByGroup[group.id];
+      if (groupTodos == null || groupTodos.isEmpty) continue;
+      _sortFolderTodos(groupTodos);
+
+      DateTime? groupDate;
+      for (final todo in groupTodos) {
+        if (todo.isDone || todo.dueDate == null) continue;
+        if (groupDate == null || todo.dueDate!.isBefore(groupDate)) {
+          groupDate = todo.dueDate;
+        }
+      }
+      if (groupDate == null) {
+        for (final todo in groupTodos) {
+          if (todo.dueDate != null &&
+              (groupDate == null || todo.dueDate!.isBefore(groupDate))) {
+            groupDate = todo.dueDate;
+          }
+        }
+      }
+
+      var groupProgress = 0.0;
+      for (final todo in groupTodos) {
+        if (!todo.isDone) {
+          final todoProgress = _todoProgress(todo, now);
+          if (todoProgress > groupProgress) groupProgress = todoProgress;
+        }
+      }
+
+      items.add(_ShareTodoDisplayItem(
+        group: group,
+        groupTodos: groupTodos,
+        date: groupDate,
+        isDone: groupTodos.every((todo) => todo.isDone),
+        progress: groupProgress,
+      ));
+    }
+
+    for (final todo in standaloneTodos) {
+      items.add(_ShareTodoDisplayItem(
+        todo: todo,
+        date: todo.dueDate,
+        isDone: todo.isDone,
+        progress: _todoProgress(todo, now),
+      ));
+    }
+
+    // Keep the same urgency order as TodoSectionWidget: unfinished first,
+    // then progress descending, then the nearest deadline.
+    int compareItems(_ShareTodoDisplayItem a, _ShareTodoDisplayItem b) {
+      if (a.isDone != b.isDone) return a.isDone ? 1 : -1;
+      final progressOrder = b.progress.compareTo(a.progress);
+      if (progressOrder != 0) return progressOrder;
+      if (a.date != null && b.date != null) return a.date!.compareTo(b.date!);
+      if (a.date != null) return -1;
+      if (b.date != null) return 1;
+      return 0;
+    }
+
+    items.sort(compareItems);
+    return items;
+  }
+
+  void _sortFolderTodos(List<TodoItem> todos) {
+    todos.sort((a, b) {
+      if (a.isDone != b.isDone) return a.isDone ? 1 : -1;
+      if (a.dueDate == null && b.dueDate == null) return 0;
+      if (a.dueDate == null) return 1;
+      if (b.dueDate == null) return -1;
+      return a.dueDate!.compareTo(b.dueDate!);
+    });
+  }
+
+  double _todoProgress(TodoItem todo, DateTime now) {
+    final createdAt = DateTime.fromMillisecondsSinceEpoch(
+      todo.createdDate ?? todo.createdAt,
+      isUtc: true,
+    ).toLocal();
+    final end = todo.dueDate ??
+        DateTime(createdAt.year, createdAt.month, createdAt.day, 23, 59, 59);
+    final totalMinutes = end.difference(createdAt).inMinutes;
+    if (totalMinutes <= 0 || !now.isAfter(createdAt)) return 0;
+    return (now.difference(createdAt).inMinutes / totalMinutes)
+        .clamp(0.0, 1.0)
+        .toDouble();
+  }
+
+  bool _isHistoricalTodo(TodoItem todo, DateTime today) {
+    if (!todo.isDone) return false;
+    if (todo.dueDate != null) return _isBeforeDay(todo.dueDate, today);
+    final createdAt = DateTime.fromMillisecondsSinceEpoch(
+      todo.createdDate ?? todo.createdAt,
+      isUtc: true,
+    ).toLocal();
+    return _isBeforeDay(createdAt, today);
+  }
+
+  bool _isBeforeDay(DateTime? date, DateTime today) {
+    if (date == null) return false;
+    return DateTime(date.year, date.month, date.day).isBefore(today);
+  }
+
+  bool _isAfterDay(DateTime? date, DateTime today) {
+    if (date == null) return false;
+    return DateTime(date.year, date.month, date.day).isAfter(today);
+  }
+
+  Widget _buildDisplayItem(
+    BuildContext context,
+    _ShareTodoDisplayItem item,
+    DateTime today,
+  ) {
+    final todo = item.todo;
+    if (todo != null) {
+      return _buildTodoCard(
+        context,
+        todo,
+        isOverdue: _isBeforeDay(todo.dueDate, today),
+        isFuture: _isAfterDay(todo.dueDate, today),
+      );
+    }
+    return _buildFolderCard(context, item, today);
+  }
+
+  Widget _buildFolderCard(
+    BuildContext context,
+    _ShareTodoDisplayItem item,
+    DateTime today,
+  ) {
+    final group = item.group!;
+    final colorScheme = Theme.of(context).colorScheme;
+    final expanded = _expandedFolders[group.id] ?? group.isExpanded;
+    final doneCount = item.groupTodos.where((todo) => todo.isDone).length;
+    final totalCount = item.groupTodos.length;
+    final nearestDeadline = item.groupTodos
+        .where((todo) => !todo.isDone && todo.dueDate != null)
+        .map((todo) => todo.dueDate!)
+        .fold<DateTime?>(
+          null,
+          (nearest, date) =>
+              nearest == null || date.isBefore(nearest) ? date : nearest,
+        );
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: colorScheme.outlineVariant.withValues(alpha: 0.65),
+        ),
+      ),
+      child: Column(
+        children: [
+          InkWell(
+            onTap: () => setState(() {
+              _expandedFolders[group.id] = !expanded;
+            }),
+            borderRadius: BorderRadius.circular(18),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+              child: Row(
+                children: [
+                  Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color:
+                          colorScheme.primaryContainer.withValues(alpha: 0.7),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(
+                      expanded
+                          ? Icons.folder_open_rounded
+                          : Icons.folder_rounded,
+                      size: 19,
+                      color: colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          group.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          item.isDone
+                              ? '全部任务已完成 ✨'
+                              : '$doneCount/$totalCount 已完成',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (nearestDeadline != null && !expanded) ...[
+                    const SizedBox(width: 8),
+                    Text(
+                      DateFormat('MM/dd').format(nearestDeadline),
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: colorScheme.secondary,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(width: 6),
+                  Icon(
+                    expanded
+                        ? Icons.keyboard_arrow_up_rounded
+                        : Icons.keyboard_arrow_down_rounded,
+                    size: 20,
+                    color: colorScheme.onSurfaceVariant.withValues(alpha: 0.65),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 240),
+            curve: Curves.easeInOut,
+            alignment: Alignment.topCenter,
+            child: expanded
+                ? Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                    child: Column(
+                      children: item.groupTodos.map((todo) {
+                        return _buildTodoCard(
+                          context,
+                          todo,
+                          isOverdue: _isBeforeDay(todo.dueDate, today),
+                          isFuture: _isAfterDay(todo.dueDate, today),
+                        );
+                      }).toList(),
+                    ),
+                  )
+                : const SizedBox.shrink(),
+          ),
+        ],
+      ),
     );
   }
 
@@ -738,8 +1027,15 @@ class ShareScheduleSection extends StatelessWidget {
     if (schedules.isEmpty) return const SizedBox.shrink();
 
     final colorScheme = Theme.of(context).colorScheme;
+    final now = DateTime.now();
     final sorted = schedules.where((item) => !item.isDeleted).toList()
       ..sort(_compareSchedules);
+    final endedSchedules = sorted
+        .where((item) => item.phaseAt(now) == FixedSchedulePhase.ended)
+        .toList();
+    final notEndedSchedules = sorted
+        .where((item) => item.phaseAt(now) != FixedSchedulePhase.ended)
+        .toList();
 
     if (sorted.isEmpty) return const SizedBox.shrink();
 
@@ -748,7 +1044,11 @@ class ShareScheduleSection extends StatelessWidget {
       children: [
         _buildHeader(context, colorScheme),
         const SizedBox(height: 14),
-        ...sorted.map((item) => _buildScheduleCard(context, item)),
+        ...notEndedSchedules.map((item) => _buildScheduleCard(context, item)),
+        if (endedSchedules.isNotEmpty) ...[
+          _buildEndedGroupHeader(context, colorScheme, endedSchedules.length),
+          ...endedSchedules.map((item) => _buildScheduleCard(context, item)),
+        ],
       ],
     );
   }
@@ -791,6 +1091,38 @@ class ShareScheduleSection extends StatelessWidget {
         ),
         _buildCountChip(colorScheme),
       ],
+    );
+  }
+
+  Widget _buildEndedGroupHeader(
+    BuildContext context,
+    ColorScheme colorScheme,
+    int count,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 8, bottom: 10, left: 4, right: 4),
+      child: Row(
+        children: [
+          Icon(Icons.history_rounded,
+              size: 17, color: colorScheme.onSurfaceVariant),
+          const SizedBox(width: 7),
+          Text(
+            '已结束',
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w700,
+                ),
+          ),
+          const Spacer(),
+          Text(
+            '$count 项',
+            style: TextStyle(
+              fontSize: 12,
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
     );
   }
 

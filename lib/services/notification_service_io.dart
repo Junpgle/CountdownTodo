@@ -293,16 +293,19 @@ class NotificationService {
     );
   }
 
-  static Future<void> showFinanceBudgetAlert({
+  static Future<bool> showFinanceBudgetAlert({
     required String title,
     required String body,
     required String alertKey,
   }) async {
-    if (FocusDoNotDisturbService.isActive) return;
-    if (!await AppSettingsStorage.isFinanceBudgetAlertEnabled()) return;
-    if (!await AppSettingsStorage.isNormalNotificationEnabled()) return;
-    if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported) return;
+    if (FocusDoNotDisturbService.isActive) return false;
+    if (!await AppSettingsStorage.isFinanceBudgetAlertEnabled()) return false;
+    if (!await AppSettingsStorage.isNormalNotificationEnabled()) return false;
+    if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported) {
+      return false;
+    }
     await ensureInitialized();
+    if (!await _hasFinanceBudgetAlertPermission()) return false;
     final id = _stableNotificationId(alertKey, base: 52000, range: 9000);
 
     if (_isDesktopSupported) {
@@ -312,7 +315,7 @@ class NotificationService {
         body: body,
         notificationDetails: _desktopNotificationDetails,
       );
-      return;
+      return true;
     }
 
     if (Platform.isAndroid) {
@@ -331,6 +334,7 @@ class NotificationService {
         body: body,
         notificationDetails: details,
       );
+      return true;
     } else if (Platform.isIOS) {
       const details = NotificationDetails(
         iOS: DarwinNotificationDetails(),
@@ -341,7 +345,38 @@ class NotificationService {
         body: body,
         notificationDetails: details,
       );
+      return true;
     }
+    return false;
+  }
+
+  static Future<bool> _hasFinanceBudgetAlertPermission() async {
+    if (Platform.isAndroid) {
+      final platformPlugin = _plugin
+          .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin
+          >();
+      return await platformPlugin?.areNotificationsEnabled() ?? false;
+    }
+    if (Platform.isIOS) {
+      final platformPlugin = _plugin
+          .resolvePlatformSpecificImplementation<
+            IOSFlutterLocalNotificationsPlugin
+          >();
+      final permissions = await platformPlugin?.checkPermissions();
+      return permissions?.isEnabled == true ||
+          permissions?.isProvisionalEnabled == true;
+    }
+    if (Platform.isMacOS) {
+      final platformPlugin = _plugin
+          .resolvePlatformSpecificImplementation<
+            MacOSFlutterLocalNotificationsPlugin
+          >();
+      final permissions = await platformPlugin?.checkPermissions();
+      return permissions?.isEnabled == true ||
+          permissions?.isProvisionalEnabled == true;
+    }
+    return true;
   }
 
   static int _stableNotificationId(
@@ -521,6 +556,8 @@ class NotificationService {
         'timeStr': timeStr,
         'todoType': todoType,
         'notificationId': notifId,
+        if (isSpecialTodo) 'bandTodoTitle': todo.title,
+        if (isSpecialTodo) 'bandTodoRemark': todo.remark ?? '',
         // Android needs the originals for the expanded special-todo card:
         // HyperOS may render it from the notification's standard text fields
         // instead of the custom miui.focus payload.
@@ -671,7 +708,7 @@ class NotificationService {
         replaceSource: replaceSource,
       ),
     );
-    _scheduleQueue = operation.then<void>((_) {}, onError: (_, __) {});
+    _scheduleQueue = operation.then<void>((_) {}, onError: (_, _) {});
     return operation;
   }
 
@@ -806,7 +843,7 @@ class NotificationService {
     final specialTodoEnabled =
         await AppSettingsStorage.isSpecialTodoNotificationEnabled();
     final financeEnabled =
-        await AppSettingsStorage.isFinanceBudgetAlertEnabled();
+        await AppSettingsStorage.isFinanceRecurringReminderEnabled();
     final pomodoroEndEnabled =
         await AppSettingsStorage.isPomodoroEndNotificationEnabled();
 

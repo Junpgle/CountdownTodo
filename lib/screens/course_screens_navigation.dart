@@ -127,7 +127,7 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
   void _showWeekJumpDialog() {
     final TextEditingController controller =
         TextEditingController(text: '$_currentWeek');
-    showDialog(
+    showAppDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('跳转到指定周'),

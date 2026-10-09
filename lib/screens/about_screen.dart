@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import '../../utils/page_transitions.dart';
 import '../utils/app_performance_monitor.dart';
 import '../utils/app_platform.dart';
+import '../utils/settings_navigation.dart';
 import '../utils/app_dialogs.dart';
 import 'settings/device_version_detail_page.dart';
 import 'login_screen.dart';
@@ -31,6 +32,7 @@ class AboutScreen extends StatefulWidget {
 class _AboutScreenState extends State<AboutScreen> {
   static const _appIconAsset = 'assets/icon/app_icon.png';
   static final GitHubResourceService _resourceService = GitHubResourceService();
+  final Map<String, GlobalKey> _navigationKeys = {};
   String _version = '加载中...';
   List<ChangelogEntry> _changelogEntries = [];
   bool _isLoadingChangelog = true;
@@ -61,6 +63,26 @@ class _AboutScreenState extends State<AboutScreen> {
 
   static const String privacyRawUrl =
       'https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master/PRIVACY_POLICY.md';
+
+  GlobalKey _navigationKey(String id) => _navigationKeys.putIfAbsent(
+        id,
+        () => GlobalKey(debugLabel: 'settings-$id'),
+      );
+
+  Future<T?> _openSettingsPage<T>(
+    String id,
+    Widget page, {
+    RouteSettings? settings,
+    bool rootNavigator = false,
+  }) =>
+      SettingsNavigation.push<T>(
+        context: context,
+        page: page,
+        sourceKey: _navigationKey(id),
+        isEmbedded: widget.isEmbedded,
+        rootNavigator: rootNavigator,
+        settings: settings,
+      );
 
   @override
   void initState() {
@@ -116,9 +138,9 @@ class _AboutScreenState extends State<AboutScreen> {
           _migrationErrors = p.errors;
           _migrationSuccessCount = p.totalSuccess;
           if (p.isCompleted) {
-            _migrationCompleted = true;
             _isMigrating = false;
-            _needsMigration = false;
+            _migrationCompleted = p.errors.isEmpty;
+            _needsMigration = p.errors.isNotEmpty;
           }
         });
       }
@@ -282,7 +304,8 @@ class _AboutScreenState extends State<AboutScreen> {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     } else {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           SnackBar(content: Text('无法打开链接: $url')),
         );
       }
@@ -290,22 +313,20 @@ class _AboutScreenState extends State<AboutScreen> {
   }
 
   Future<void> _showPrivacyPolicyPage() async {
-    await Navigator.push(
-      context,
-      PageTransitions.slideHorizontal(
-        PrivacyPolicyPage(
-          content: _privacyPolicyContent,
-          date: _privacyPolicyDate,
-          isLoading: _isLoadingPrivacy,
-          isEmbedded: widget.isEmbedded,
-        ),
-        settings: const RouteSettings(name: '隐私政策'),
+    await _openSettingsPage(
+      'privacy',
+      PrivacyPolicyPage(
+        content: _privacyPolicyContent,
+        date: _privacyPolicyDate,
+        isLoading: _isLoadingPrivacy,
+        isEmbedded: widget.isEmbedded,
       ),
+      settings: const RouteSettings(name: '隐私政策'),
     );
   }
 
   Future<void> _showWithdrawConfirmation() async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showAppDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('撤回隐私同意'),
@@ -345,7 +366,7 @@ class _AboutScreenState extends State<AboutScreen> {
   }
 
   Future<void> _runDeduplication() async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showAppDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('课程去重'),
@@ -364,13 +385,13 @@ class _AboutScreenState extends State<AboutScreen> {
 
     if (confirmed == true) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('正在执行数据库深度清理...')));
+      AppSnackBars.showSnackBar(context,
+          const SnackBar(content: Text('正在执行数据库深度清理...')));
 
       final count = await DatabaseHelper.instance.deduplicateCourses();
 
       if (mounted) {
-        showDialog(
+        showAppDialog(
           context: context,
           builder: (ctx) => AlertDialog(
             title: const Text('清理完成'),
@@ -519,17 +540,17 @@ class _AboutScreenState extends State<AboutScreen> {
                                 'https://github.com/Junpgle/math_quiz_app/issues'),
                           ),
                           _LinkItem(
+                            sourceKey: _navigationKey('device_versions'),
                             icon: Icons.devices_other_outlined,
                             title: '设备版本明细',
                             subtitle: '查看在线设备与历史版本分布',
                             onTap: () {
-                              Navigator.push(
-                                context,
-                                PageTransitions.slideHorizontal(
-                                  DeviceVersionDetailPage(
-                                      isEmbedded: widget.isEmbedded),
-                                  settings: const RouteSettings(name: '设备版本明细'),
+                              _openSettingsPage(
+                                'device_versions',
+                                DeviceVersionDetailPage(
+                                  isEmbedded: widget.isEmbedded,
                                 ),
+                                settings: const RouteSettings(name: '设备版本明细'),
                               );
                             },
                           ),
@@ -656,16 +677,15 @@ class _AboutScreenState extends State<AboutScreen> {
                     'https://github.com/Junpgle/math_quiz_app/issues'),
               ),
               _LinkItem(
+                sourceKey: _navigationKey('device_versions'),
                 icon: Icons.devices_other_outlined,
                 title: '设备版本明细',
                 subtitle: '查看在线设备与历史版本分布',
                 onTap: () {
-                  Navigator.push(
-                    context,
-                    PageTransitions.slideHorizontal(
-                      DeviceVersionDetailPage(isEmbedded: widget.isEmbedded),
-                      settings: const RouteSettings(name: '设备版本明细'),
-                    ),
+                  _openSettingsPage(
+                    'device_versions',
+                    DeviceVersionDetailPage(isEmbedded: widget.isEmbedded),
+                    settings: const RouteSettings(name: '设备版本明细'),
                   );
                 },
               ),
@@ -736,7 +756,7 @@ class _AboutScreenState extends State<AboutScreen> {
                 shrinkWrap: true,
                 padding: EdgeInsets.zero,
                 itemCount: _syncFailures.length > 5 ? 5 : _syncFailures.length,
-                separatorBuilder: (_, __) => const Divider(height: 1),
+                separatorBuilder: (_, _) => const Divider(height: 1),
                 itemBuilder: (context, index) {
                   final failure = _syncFailures[index];
                   return ListTile(
@@ -779,7 +799,7 @@ class _AboutScreenState extends State<AboutScreen> {
 
     return ValueListenableBuilder<int>(
       valueListenable: AppPerformanceMonitor.changes,
-      builder: (context, _, __) {
+      builder: (context, _, _) {
         final monitor = AppPerformanceMonitor.snapshot;
         final colorScheme = Theme.of(context).colorScheme;
         final events = monitor.events.take(8).toList();
@@ -1001,6 +1021,7 @@ class _AboutScreenState extends State<AboutScreen> {
         child: Column(
           children: [
             ListTile(
+              key: _navigationKey('privacy'),
               leading: Icon(Icons.privacy_tip_outlined,
                   color: Theme.of(context).colorScheme.primary),
               title: const Text('隐私政策'),
@@ -1196,6 +1217,7 @@ class _AboutScreenState extends State<AboutScreen> {
             return Column(
               children: [
                 ListTile(
+                  key: item.sourceKey,
                   leading: Icon(item.icon,
                       color: Theme.of(context).colorScheme.primary),
                   title: Text(item.title),
@@ -1422,17 +1444,45 @@ class _AboutScreenState extends State<AboutScreen> {
             ),
             const SizedBox(height: 16),
             if (!_isMigrating && !_migrationCompleted) ...[
-              const Text(
-                '您的数据目前存储在旧版引擎中。升级到 Uni-Sync 4.0 (SQLite) 将获得极速搜索、离线同步和更稳定的数据保护。',
-                style: TextStyle(fontSize: 13, height: 1.4),
+              Text(
+                _migrationErrors.isEmpty
+                    ? '您的数据目前存储在旧版引擎中。升级到 Uni-Sync 4.0 (SQLite) 将获得极速搜索、离线同步和更稳定的数据保护。'
+                    : '上次迁移有 ${_migrationErrors.length} 条异常，旧数据仍保留。修复问题后可以重试。',
+                style: TextStyle(
+                  fontSize: 13,
+                  height: 1.4,
+                  color: colorScheme.onSurface,
+                ),
               ),
+              if (_migrationErrors.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(
+                  '成功: $_migrationSuccessCount | 失败: ${_migrationErrors.length}',
+                  style: TextStyle(fontSize: 11, color: colorScheme.error),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  _migrationErrors.take(3).join('\n'),
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: colorScheme.error,
+                    fontFamily: 'monospace',
+                  ),
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
               const SizedBox(height: 20),
               SizedBox(
                 width: double.infinity,
                 child: FilledButton.icon(
                   onPressed: _startMigration,
                   icon: const Icon(Icons.rocket_launch_rounded),
-                  label: const Text('立即开始极速迁移'),
+                  label: Text(
+                    _migrationErrors.isEmpty
+                        ? '立即开始极速迁移'
+                        : '重试未完成迁移',
+                  ),
                   style: FilledButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     shape: RoundedRectangleBorder(
@@ -1471,7 +1521,7 @@ class _AboutScreenState extends State<AboutScreen> {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Colors.orange.withValues(alpha: 0.1),
+                    color: colorScheme.errorContainer,
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Column(
@@ -1479,31 +1529,38 @@ class _AboutScreenState extends State<AboutScreen> {
                     children: [
                       Row(
                         children: [
-                          const Icon(Icons.warning_amber_rounded,
-                              color: Colors.orange, size: 16),
+                          Icon(
+                            Icons.warning_amber_rounded,
+                            color: colorScheme.onErrorContainer,
+                            size: 16,
+                          ),
                           const SizedBox(width: 8),
                           Text(
                             '迁移发现 ${_migrationErrors.length} 条异常',
-                            style: const TextStyle(
-                                color: Colors.orange,
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold),
+                            style: TextStyle(
+                              color: colorScheme.onErrorContainer,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ],
                       ),
                       const SizedBox(height: 4),
                       Text(
                         _migrationErrors.take(3).join('\n'),
-                        style: const TextStyle(
-                            color: Colors.orange,
-                            fontSize: 10,
-                            fontFamily: 'monospace'),
+                        style: TextStyle(
+                          color: colorScheme.onErrorContainer,
+                          fontSize: 10,
+                          fontFamily: 'monospace',
+                        ),
                         maxLines: 3,
                         overflow: TextOverflow.ellipsis,
                       ),
                       if (_migrationErrors.length > 3)
-                        const Text('...',
-                            style: TextStyle(color: Colors.orange)),
+                        Text(
+                          '...',
+                          style: TextStyle(color: colorScheme.onErrorContainer),
+                        ),
                     ],
                   ),
                 ),
@@ -1524,12 +1581,14 @@ class _AboutScreenState extends State<AboutScreen> {
 }
 
 class _LinkItem {
+  final GlobalKey? sourceKey;
   final IconData icon;
   final String title;
   final String subtitle;
   final VoidCallback onTap;
 
   _LinkItem({
+    this.sourceKey,
     required this.icon,
     required this.title,
     required this.subtitle,
@@ -1611,7 +1670,7 @@ class _DatabaseChangelogSheet extends StatelessWidget {
           child: ListView.separated(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
             itemCount: DatabaseSchemaHistory.changes.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 8),
+            separatorBuilder: (_, _) => const SizedBox(height: 8),
             itemBuilder: (context, index) {
               final entry = DatabaseSchemaHistory.changes[index];
               final isCurrent = entry.version == currentVersion;

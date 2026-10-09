@@ -14,6 +14,10 @@ import '../models/finance_models.dart';
 /// 该类不依赖用户名参数：DatabaseHelper 会根据当前登录用户打开隔离的
 /// `uni_sync_<username>.db`，因此记账数据天然按账号隔离。
 abstract final class FinanceStorage {
+  static const int _maxDateTimeMillis = 8640000000000000;
+  static const int _maxFinanceTimezoneOffsetMinutes = 14 * 60;
+  static const int _maxTemplateUseCount = 0x7fffffff;
+
   static final ValueNotifier<int> revision = ValueNotifier<int>(0);
   @visibleForTesting
   static Database? databaseOverride;
@@ -27,29 +31,19 @@ abstract final class FinanceStorage {
   /// acknowledges the exact request snapshot. Remote merges use
   /// [_remoteValues] so a downloaded row can never become a new local upload.
   static Map<String, dynamic> _localValues(Map<String, dynamic> values) => {
-        ...values,
-        'pending_sync': 1,
-      };
+    ...values,
+    'pending_sync': 1,
+  };
 
   static Map<String, dynamic> _remoteValues(Map<String, dynamic> values) => {
-        ...values,
-        'pending_sync': 0,
-      };
-
-  static Map<String, dynamic> _budgetValues(
-    FinanceBudget budget, {
-    required bool sync,
-  }) =>
-      {
-        ...budget.toMap(),
-        'pending_sync': sync ? 1 : 0,
-      };
+    ...values,
+    'pending_sync': 0,
+  };
 
   static Future<void> ensureReady() async {
     final db = await _database;
     if (identical(_readyDatabase, db)) {
       await _readyFuture;
-      await _repairLegacyRefundCategories(db);
       return;
     }
 
@@ -58,7 +52,6 @@ abstract final class FinanceStorage {
     _readyFuture = ready;
     try {
       await ready;
-      await _repairLegacyRefundCategories(db);
     } catch (_) {
       if (identical(_readyDatabase, db) && identical(_readyFuture, ready)) {
         _readyDatabase = null;
@@ -72,27 +65,23 @@ abstract final class FinanceStorage {
     await db.transaction((txn) async {
       for (final raw in FinanceDefaults.categories) {
         final now = DateTime.now().millisecondsSinceEpoch;
-        await txn.insert(
-          'finance_categories',
-          {
-            'uuid': raw['uuid'],
-            'name': raw['name'],
-            'type': raw['type'],
-            'icon': raw['icon'],
-            'icon_customized': 0,
-            'name_customized': 0,
-            'parent_uuid': raw['parent_uuid'],
-            'is_system': 1,
-            'is_archived': 0,
-            'is_deleted': 0,
-            'sort_order': raw['sort_order'],
-            'version': 1,
-            'created_at': now,
-            'updated_at': now,
-            'pending_sync': 0,
-          },
-          conflictAlgorithm: ConflictAlgorithm.ignore,
-        );
+        await txn.insert('finance_categories', {
+          'uuid': raw['uuid'],
+          'name': raw['name'],
+          'type': raw['type'],
+          'icon': raw['icon'],
+          'icon_customized': 0,
+          'name_customized': 0,
+          'parent_uuid': raw['parent_uuid'],
+          'is_system': 1,
+          'is_archived': 0,
+          'is_deleted': 0,
+          'sort_order': raw['sort_order'],
+          'version': 1,
+          'created_at': now,
+          'updated_at': now,
+          'pending_sync': 0,
+        }, conflictAlgorithm: ConflictAlgorithm.ignore);
         await txn.rawUpdate(
           '''
           UPDATE finance_categories
@@ -115,30 +104,29 @@ abstract final class FinanceStorage {
       }
       for (final raw in FinanceDefaults.paymentMethods) {
         final now = DateTime.now().millisecondsSinceEpoch;
-        await txn.insert(
-          'finance_payment_methods',
-          {
-            'uuid': raw['uuid'],
-            'name': raw['name'],
-            'icon': raw['icon'],
-            'is_system': 1,
-            'is_archived': 0,
-            'is_deleted': 0,
-            'sort_order': raw['sort_order'],
-            'version': 1,
-            'created_at': now,
-            'updated_at': now,
-            'pending_sync': 0,
-          },
-          conflictAlgorithm: ConflictAlgorithm.ignore,
-        );
+        await txn.insert('finance_payment_methods', {
+          'uuid': raw['uuid'],
+          'name': raw['name'],
+          'icon': raw['icon'],
+          'is_system': 1,
+          'is_archived': 0,
+          'is_deleted': 0,
+          'sort_order': raw['sort_order'],
+          'version': 1,
+          'created_at': now,
+          'updated_at': now,
+          'pending_sync': 0,
+        }, conflictAlgorithm: ConflictAlgorithm.ignore);
       }
     });
+    // Keep the migration inside the shared readiness future so concurrent
+    // readers cannot proceed after catalog setup but before legacy repair.
+    if (await _repairLegacyRefundCategories(db) > 0) _notifyChanged();
   }
 
-  static Future<void> _repairLegacyRefundCategories(Database db) async {
+  static Future<int> _repairLegacyRefundCategories(Database db) async {
     final migrationNow = DateTime.now().millisecondsSinceEpoch;
-    await db.rawUpdate(
+    final repairedCount = await db.rawUpdate(
       '''
       UPDATE finance_transactions
       SET category_uuid = ?,
@@ -153,12 +141,9 @@ abstract final class FinanceStorage {
           SELECT uuid FROM finance_categories WHERE type = 'income'
         )
       ''',
-      [
-        'finance-system-category-refund',
-        migrationNow,
-        migrationNow,
-      ],
+      ['finance-system-category-refund', migrationNow, migrationNow],
     );
+    return repairedCount;
   }
 
   static Future<List<FinanceTransaction>> getTransactions({
@@ -211,6 +196,56 @@ abstract final class FinanceStorage {
       orderBy: 'transaction_date DESC, occurred_at DESC, updated_at DESC',
       limit: limit,
     );
+    return rows.map(FinanceTransaction.fromMap).toList();
+  }
+
+  static Future<List<FinanceTransaction>> getBalanceTransactions({
+    required int snapshotAt,
+    required DateTime before,
+    required Iterable<String> paymentMethodUuids,
+  }) async {
+    final methodUuids = paymentMethodUuids
+        .map((uuid) => uuid.trim())
+        .where((uuid) => uuid.isNotEmpty)
+        .toSet()
+        .toList(growable: false);
+    if (methodUuids.isEmpty) return const [];
+
+    await ensureReady();
+    final db = await _database;
+    // Stay below SQLite's bind-variable limit even if a user has created an
+    // unusually large number of payment methods. Balance aggregation does not
+    // depend on row order, so avoid sorting the historical result set.
+    const batchSize = 400;
+    final rows = <Map<String, Object?>>[];
+    for (var offset = 0; offset < methodUuids.length; offset += batchSize) {
+      final nextOffset = offset + batchSize;
+      final end = nextOffset < methodUuids.length
+          ? nextOffset
+          : methodUuids.length;
+      final batch = methodUuids.sublist(offset, end);
+      rows.addAll(
+        await db.query(
+          'finance_transactions',
+          where: 'is_deleted = 0 AND payment_method_uuid IN '
+              '(${List.filled(batch.length, '?').join(',')}) AND '
+              'transaction_date < ? AND '
+              '(transaction_date >= ? OR created_at > ?)',
+          // Stored ledger dates belong to their recorded timezone. The largest
+          // difference between two supported offsets is 28 hours; widen the
+          // date bounds and let balanceEventAt apply the exact instant cutoff.
+          whereArgs: [
+            ...batch,
+            dateKey(before.add(const Duration(days: 2))),
+            dateKey(
+              DateTime.fromMillisecondsSinceEpoch(snapshotAt)
+                  .subtract(const Duration(days: 2)),
+            ),
+            snapshotAt,
+          ],
+        ),
+      );
+    }
     return rows.map(FinanceTransaction.fromMap).toList();
   }
 
@@ -282,24 +317,94 @@ abstract final class FinanceStorage {
     return rows.map(FinanceTransaction.fromMap).toList();
   }
 
-  static Future<void> saveTransaction(FinanceTransaction transaction) async {
-    if (transaction.amountMinor <= 0) {
+  static Future<void> saveTransaction(
+    FinanceTransaction transaction, {
+    FinanceTransaction? original,
+  }) async {
+    if (!transaction.isDeleted &&
+        !isFinanceDateKey(transaction.transactionDate)) {
+      throw ArgumentError.value(
+        transaction.transactionDate,
+        'transactionDate',
+        '账单日期无效',
+      );
+    }
+    if (!transaction.isDeleted && !_hasValidInstallmentFields(transaction)) {
+      throw ArgumentError.value(
+        transaction,
+        'transaction',
+        '分期期数或总金额无效',
+      );
+    }
+    if (!isSafeFinanceAmountMinor(transaction.amountMinor) ||
+        transaction.amountMinor == 0) {
       throw ArgumentError.value(
         transaction.amountMinor,
         'amountMinor',
         '金额必须大于 0',
       );
     }
+    final installmentTotalMinor = transaction.installmentTotalMinor;
+    if (installmentTotalMinor != null &&
+        (!isSafeFinanceAmountMinor(installmentTotalMinor) ||
+            installmentTotalMinor == 0)) {
+      throw ArgumentError.value(
+        installmentTotalMinor,
+        'installmentTotalMinor',
+        '分期总额超出可保存范围',
+      );
+    }
+    if (original != null && original.uuid != transaction.uuid) {
+      throw ArgumentError.value(original.uuid, 'original', '账单标识不匹配');
+    }
     transaction.pendingSync = true;
     await ensureReady();
     final db = await _database;
     await db.transaction((txn) async {
+      final existingRow = await _findByUuid(
+        txn,
+        'finance_transactions',
+        transaction.uuid,
+      );
+      if (existingRow != null) {
+        final existing = FinanceTransaction.fromMap(existingRow);
+        if (original != null &&
+            (existing.version != original.version ||
+                existing.updatedAt != original.updatedAt)) {
+          throw StateError('账单已同步更新，请重新打开后再保存');
+        }
+        if (original == null &&
+            (existing.version > transaction.version ||
+                existing.updatedAt > transaction.updatedAt)) {
+          throw StateError('账单已更新，请重新加载后再保存');
+        }
+        final changesDeletedState =
+            original != null && transaction.isDeleted != original.isDeleted;
+        if (existing.isDeleted && !changesDeletedState) {
+          throw StateError('账单已删除，请重新加载后再编辑');
+        }
+        if (existing.isDeleted &&
+            changesDeletedState &&
+            !transaction.isDeleted) {
+          await _validateInstallmentRestore(txn, existing);
+        }
+        transaction
+          ..createdAt = existing.createdAt
+          ..deviceId = existing.deviceId;
+      } else if (original != null) {
+        throw StateError('账单已不存在，请重新加载后再保存');
+      }
+      if (await _hasInstallmentIndexConflict(txn, transaction)) {
+        throw StateError('该分期组已存在相同期号的账单');
+      }
+      await _validateLoanInterestEdit(txn, transaction);
       await _validateTransactionRefundState(txn, transaction);
       await txn.insert(
         'finance_transactions',
         _localValues(transaction.toMap()),
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
+      await _alignLinkedRefunds(txn, originalUuids: [transaction.uuid]);
     });
     _notifyChanged();
   }
@@ -310,11 +415,15 @@ abstract final class FinanceStorage {
   /// 沿用现有路径；分期字段只负责把这些交易重新识别为同一组。
   static Future<List<FinanceTransaction>> saveInstallmentPlan({
     required FinanceTransaction transaction,
+    FinanceTransaction? original,
     required int totalAmountMinor,
     required int installmentCount,
     required DateTime startDate,
     List<FinanceTransaction> existingInstallments = const [],
   }) async {
+    if (original != null && original.uuid != transaction.uuid) {
+      throw ArgumentError.value(original.uuid, 'original', '分期账单标识不匹配');
+    }
     final allocations = FinanceInstallmentCalculator.split(
       totalMinor: totalAmountMinor,
       count: installmentCount,
@@ -329,13 +438,15 @@ abstract final class FinanceStorage {
         includeDeleted: true,
       );
     }
+    final isNewPlan = original == null && existing.isEmpty;
     final existingByIndex = <int, FinanceTransaction>{};
     for (final item in existing) {
       final index = item.installmentIndex;
       if (index != null && index > 0) existingByIndex[index] = item;
     }
 
-    final groupUuid = transaction.installmentGroupUuid ??
+    final groupUuid =
+        transaction.installmentGroupUuid ??
         existing
             .map((item) => item.installmentGroupUuid)
             .whereType<String>()
@@ -346,8 +457,91 @@ abstract final class FinanceStorage {
     final db = await _database;
 
     await db.transaction((txn) async {
+      final currentRows = await txn.query(
+        'finance_transactions',
+        where: 'installment_group_uuid = ?',
+        whereArgs: [groupUuid],
+      );
+      final currentByUuid = <String, FinanceTransaction>{};
+      for (final row in currentRows) {
+        final current = FinanceTransaction.fromMap(row);
+        currentByUuid[current.uuid] = current;
+      }
+      final staleGroup = existing.length != currentByUuid.length ||
+          existing.any((baseline) {
+            final current = currentByUuid[baseline.uuid];
+            return current == null ||
+                current.version != baseline.version ||
+                current.updatedAt != baseline.updatedAt;
+          });
+      final staleEditedItem = original != null &&
+          (currentByUuid[original.uuid]?.version != original.version ||
+              currentByUuid[original.uuid]?.updatedAt != original.updatedAt);
+      if (staleGroup || staleEditedItem) {
+        throw StateError('分期组已同步更新，请重新打开整组编辑后再保存');
+      }
+      final activeInstallmentIndexes = <int>{};
+      for (final current in currentByUuid.values.where(
+        (item) => !item.isDeleted,
+      )) {
+        if (!_hasValidInstallmentFields(current)) {
+          throw StateError('分期组包含无效期次，请先删除无效记录后再编辑');
+        }
+        final index = current.installmentIndex;
+        if (index != null && !activeInstallmentIndexes.add(index)) {
+          throw StateError('分期组存在重复期号，请先删除重复账单后再编辑');
+        }
+      }
+      final activeInstallmentCounts = currentByUuid.values
+          .where((item) => !item.isDeleted)
+          .map((item) => item.installmentCount)
+          .whereType<int>()
+          .where((count) => count > 1)
+          .toList();
+      final currentActiveInstallmentCount = activeInstallmentCounts.isEmpty
+          ? null
+          : activeInstallmentCounts.reduce(
+              (left, right) => left < right ? left : right,
+            );
       for (final allocation in allocations) {
         final old = existingByIndex[allocation.index];
+        final oldOccurrence = old?.occurrenceLocalTime;
+        DateTime? previousOccurrence;
+        if (old != null &&
+            oldOccurrence != null &&
+            dateKey(oldOccurrence) == old.transactionDate) {
+          previousOccurrence = oldOccurrence;
+        } else {
+          final transactionOccurrence = transaction.occurrenceLocalTime;
+          previousOccurrence = transactionOccurrence != null &&
+                  dateKey(transactionOccurrence) == transaction.transactionDate
+              ? transactionOccurrence
+              : null;
+        }
+        final localOccurrence = previousOccurrence == null
+            ? null
+            : DateTime(
+                allocation.date.year,
+                allocation.date.month,
+                allocation.date.day,
+                previousOccurrence.hour,
+                previousOccurrence.minute,
+              );
+        final timezoneOffsetMinutes = localOccurrence != null && isNewPlan
+            ? localOccurrence.timeZoneOffset.inMinutes
+            : old?.timezoneOffsetMinutes ?? transaction.timezoneOffsetMinutes;
+        final occurrenceAt = localOccurrence == null
+            ? null
+            : DateTime.utc(
+                localOccurrence.year,
+                localOccurrence.month,
+                localOccurrence.day,
+                localOccurrence.hour,
+                localOccurrence.minute,
+                localOccurrence.second,
+                localOccurrence.millisecond,
+              ).millisecondsSinceEpoch -
+                timezoneOffsetMinutes * 60000;
         final item = FinanceTransaction(
           uuid: old?.uuid ?? (allocation.index == 1 ? transaction.uuid : null),
           type: transaction.type,
@@ -356,8 +550,8 @@ abstract final class FinanceStorage {
           categoryUuid: transaction.categoryUuid,
           paymentMethodUuid: transaction.paymentMethodUuid,
           transactionDate: dateKey(allocation.date),
-          occurredAt: old?.occurredAt ?? transaction.occurredAt,
-          timezoneOffsetMinutes: transaction.timezoneOffsetMinutes,
+          occurredAt: occurrenceAt,
+          timezoneOffsetMinutes: timezoneOffsetMinutes,
           merchant: transaction.merchant,
           note: transaction.note,
           source: transaction.source,
@@ -368,16 +562,24 @@ abstract final class FinanceStorage {
           installmentIndex: allocation.index,
           installmentCount: allocation.count,
           installmentTotalMinor: totalAmountMinor,
-          isDeleted: false,
+          // 保留组内单独删除的期次。若该期次仅因旧计划缩短而删除，
+          // 当前有效期数会小于它的序号；扩期时再将它恢复。
+          isDeleted: old?.isDeleted == true &&
+              (currentActiveInstallmentCount == null ||
+                  allocation.index <= currentActiveInstallmentCount),
           version: old?.version ?? 1,
-          createdAt: old?.createdAt ??
+          createdAt:
+              old?.createdAt ??
               (allocation.index == 1 ? transaction.createdAt : now),
-          updatedAt: old?.updatedAt ??
+          updatedAt:
+              old?.updatedAt ??
               (allocation.index == 1 ? transaction.updatedAt : now),
           deviceId: transaction.deviceId,
         );
+        if (occurrenceAt == null) item.occurredAt = null;
         if (old != null) item.markAsChanged();
         item.pendingSync = true;
+        await _validateLoanInterestEdit(txn, item);
         await _validateTransactionRefundState(txn, item);
         await txn.insert(
           'finance_transactions',
@@ -396,6 +598,7 @@ abstract final class FinanceStorage {
         }
         old.isDeleted = true;
         old.markAsChanged();
+        await _validateLoanInterestEdit(txn, old);
         await _validateTransactionRefundState(txn, old);
         await txn.update(
           'finance_transactions',
@@ -404,6 +607,10 @@ abstract final class FinanceStorage {
           whereArgs: [old.uuid],
         );
       }
+      await _alignLinkedRefunds(
+        txn,
+        originalUuids: saved.map((item) => item.uuid),
+      );
     });
     _notifyChanged();
     return saved;
@@ -428,13 +635,22 @@ abstract final class FinanceStorage {
   }
 
   static Future<void> deleteInstallmentGroup(String groupUuid) async {
-    final group = await getInstallmentGroup(groupUuid);
-    if (group.isEmpty) return;
+    await ensureReady();
     final db = await _database;
-    await db.transaction((txn) async {
+    final changed = await db.transaction<bool>((txn) async {
+      final rows = await txn.query(
+        'finance_transactions',
+        where: 'installment_group_uuid = ? AND is_deleted = 0',
+        whereArgs: [groupUuid],
+        orderBy: 'installment_index ASC, transaction_date ASC, occurred_at ASC',
+      );
+      if (rows.isEmpty) return false;
+
+      final group = rows.map(FinanceTransaction.fromMap);
       for (final transaction in group) {
         transaction.isDeleted = true;
         transaction.markAsChanged();
+        await _validateLoanInterestEdit(txn, transaction);
         await _validateTransactionRefundState(txn, transaction);
         await txn.update(
           'finance_transactions',
@@ -443,37 +659,51 @@ abstract final class FinanceStorage {
           whereArgs: [transaction.uuid],
         );
       }
+      return true;
     });
-    _notifyChanged();
+    if (changed) _notifyChanged();
   }
 
   static Future<void> restoreInstallmentGroup(String groupUuid) async {
-    final group = await getInstallmentGroup(
-      groupUuid,
-      includeDeleted: true,
-    );
-    final deleted = group.where((item) => item.isDeleted).toList();
-    if (deleted.isEmpty) return;
-    final counts = group
-        .map((item) => item.installmentCount)
-        .whereType<int>()
-        .where((count) => count > 1)
-        .toList();
-    final currentCount = counts.isEmpty
-        ? null
-        : counts.reduce((left, right) => left < right ? left : right);
-    final restorable = currentCount == null
-        ? deleted
-        : deleted.where((item) {
-            final index = item.installmentIndex;
-            return index == null || index <= currentCount;
-          }).toList();
-    if (restorable.isEmpty) return;
+    await ensureReady();
     final db = await _database;
-    await db.transaction((txn) async {
+    final changed = await db.transaction<bool>((txn) async {
+      final rows = await txn.query(
+        'finance_transactions',
+        where: 'installment_group_uuid = ?',
+        whereArgs: [groupUuid],
+        orderBy: 'installment_index ASC, transaction_date ASC, occurred_at ASC',
+      );
+      final group = rows.map(FinanceTransaction.fromMap).toList();
+      final deleted = group.where((item) => item.isDeleted).toList();
+      if (deleted.isEmpty) return false;
+
+      final counts = group
+          .map((item) => item.installmentCount)
+          .whereType<int>()
+          .where((count) => count > 1)
+          .toList();
+      final currentCount = counts.isEmpty
+          ? null
+          : counts.reduce((left, right) => left < right ? left : right);
+      final restorable = currentCount == null
+          ? deleted
+          : deleted.where((item) {
+              final index = item.installmentIndex;
+              return index == null || index <= currentCount;
+            }).toList();
+      if (restorable.isEmpty) return false;
+
       for (final transaction in restorable) {
         transaction.isDeleted = false;
+        if (!_hasValidInstallmentFields(transaction)) {
+          throw StateError('分期记录无效，无法恢复整组分期');
+        }
+        if (await _hasInstallmentIndexConflict(txn, transaction)) {
+          throw StateError('同一期已存在账单，无法恢复整组分期');
+        }
         transaction.markAsChanged();
+        await _validateLoanInterestEdit(txn, transaction);
         await _validateTransactionRefundState(txn, transaction);
         await txn.update(
           'finance_transactions',
@@ -482,8 +712,9 @@ abstract final class FinanceStorage {
           whereArgs: [transaction.uuid],
         );
       }
+      return true;
     });
-    _notifyChanged();
+    if (changed) _notifyChanged();
   }
 
   static Future<List<FinanceLoan>> getLoans({
@@ -522,12 +753,21 @@ abstract final class FinanceStorage {
   }) async {
     await ensureReady();
     final db = await _database;
+    final loanRow = await _findByUuid(db, 'finance_loans', loanUuid);
+    if (loanRow == null) return const [];
+    final loan = FinanceLoan.fromMap(loanRow);
     final where = <String>['loan_uuid = ?'];
-    if (!includeDeleted) where.add('is_deleted = 0');
+    final args = <Object?>[loanUuid];
+    if (!includeDeleted) {
+      where
+        ..add('is_deleted = 0')
+        ..add('installment_index <= ?');
+      args.add(loan.termMonths);
+    }
     final rows = await db.query(
       'finance_loan_installments',
       where: where.join(' AND '),
-      whereArgs: [loanUuid],
+      whereArgs: args,
       orderBy: 'installment_index ASC, due_date ASC',
     );
     return rows.map(FinanceLoanInstallment.fromMap).toList();
@@ -551,48 +791,71 @@ abstract final class FinanceStorage {
   }
 
   /// 保存贷款并在同一事务中生成或重算整套还款计划。
-  static Future<void> saveLoan(FinanceLoan loan) async {
+  static Future<void> saveLoan(
+    FinanceLoan loan, {
+    FinanceLoan? original,
+  }) async {
     _validateLoan(loan);
+    if (original != null && original.uuid != loan.uuid) {
+      throw ArgumentError.value(original.uuid, 'original', '贷款标识不匹配');
+    }
     await ensureReady();
     final db = await _database;
-    final existing = await getLoan(loan.uuid, includeDeleted: true);
-    final existingInstallments = existing == null
-        ? <FinanceLoanInstallment>[]
-        : await getLoanInstallments(loan.uuid, includeDeleted: true);
-    final hasPaidInstallment =
-        existingInstallments.any((item) => item.isPaid && !item.isDeleted);
-    if (existing != null &&
-        hasPaidInstallment &&
-        _loanTermsDiffer(existing, loan)) {
-      throw StateError('已有还款记录后不能修改本金、利率、期限或还款方式');
-    }
-
-    final allocations = FinanceLoanCalculator.generate(
-      principalMinor: loan.principalMinor,
-      annualInterestRateBps: loan.annualInterestRateBps,
-      termMonths: loan.termMonths,
-      startDate: dateFromKey(loan.startDate),
-      repaymentDay: loan.repaymentDay,
-      repaymentMethod: loan.repaymentMethod,
-    );
-    final existingByIndex = <int, FinanceLoanInstallment>{};
-    for (final item in existingInstallments) {
-      if (item.installmentIndex > 0) {
-        existingByIndex[item.installmentIndex] = item;
-      }
-    }
-
-    final now = DateTime.now().millisecondsSinceEpoch;
-    if (existing != null) {
-      loan.version = existing.version;
-      loan.createdAt = existing.createdAt;
-      loan.updatedAt = existing.updatedAt;
-      loan.markAsChanged();
-    } else {
-      loan.pendingSync = true;
-    }
-
     await db.transaction((txn) async {
+      final existingRow = await _findByUuid(txn, 'finance_loans', loan.uuid);
+      final existing = existingRow == null
+          ? null
+          : FinanceLoan.fromMap(existingRow);
+      if (existing != null) {
+        if (original != null &&
+            (existing.version != original.version ||
+                existing.updatedAt != original.updatedAt)) {
+          _mergeLoanEdits(existing, original, loan);
+          _validateLoan(loan);
+        } else if (original == null &&
+            (existing.version > loan.version ||
+                existing.updatedAt > loan.updatedAt)) {
+          throw StateError('贷款已更新，请重新加载后再保存');
+        }
+        if (existing.isDeleted) {
+          throw StateError('贷款已删除，请先恢复后再编辑');
+        }
+      } else if (original != null) {
+        throw StateError('贷款已不存在，请重新加载后再保存');
+      }
+      final existingInstallments = existing == null
+          ? <FinanceLoanInstallment>[]
+          : await _loanInstallmentsInTransaction(txn, loan.uuid);
+      final hasPaidInstallment = existingInstallments.any((item) => item.isPaid);
+      if (existing != null &&
+          hasPaidInstallment &&
+          _loanTermsDiffer(existing, loan)) {
+        throw StateError('已有还款记录后不能修改本金、币种、利率、期限、借款日期、还款日或还款方式');
+      }
+      final allocations = FinanceLoanCalculator.generate(
+        principalMinor: loan.principalMinor,
+        annualInterestRateBps: loan.annualInterestRateBps,
+        termMonths: loan.termMonths,
+        startDate: dateFromKey(loan.startDate),
+        repaymentDay: loan.repaymentDay,
+        repaymentMethod: loan.repaymentMethod,
+      );
+      final existingByIndex = <int, FinanceLoanInstallment>{};
+      for (final item in existingInstallments) {
+        if (item.installmentIndex > 0) {
+          existingByIndex[item.installmentIndex] = item;
+        }
+      }
+      final now = DateTime.now().millisecondsSinceEpoch;
+      if (existing != null) {
+        loan.version = existing.version;
+        loan.createdAt = existing.createdAt;
+        loan.updatedAt = existing.updatedAt;
+        loan.deviceId = existing.deviceId;
+        loan.markAsChanged();
+      } else {
+        loan.pendingSync = true;
+      }
       await txn.insert(
         'finance_loans',
         _localValues(loan.toMap()),
@@ -611,6 +874,7 @@ abstract final class FinanceStorage {
           remainingPrincipalMinor: allocation.remainingPrincipalMinor,
           isPaid: old?.isPaid ?? false,
           paidAt: old?.paidAt,
+          paymentMethodUuid: old?.paymentMethodUuid,
           interestTransactionUuid: old?.interestTransactionUuid,
           isDeleted: false,
           version: old?.version ?? 1,
@@ -643,27 +907,213 @@ abstract final class FinanceStorage {
     _notifyChanged();
   }
 
-  /// 标记一期已还或撤销已还。标记已还时只把利息写入支出账单，
-  /// 本金通过贷款剩余本金体现，不重复计入消费统计。
+  /// Cash movements are stored on repayment records, separately from interest
+  /// expenses, so even a zero-interest repayment changes the account balance.
+  /// Recycling a loan or its plan does not undo an actual payment.
+  static Future<List<FinanceLoanInstallment>> getPaidLoanInstallments() async {
+    await ensureReady();
+    final db = await _database;
+    final rows = await db.rawQuery('''
+      SELECT installment.* FROM finance_loan_installments AS installment
+      JOIN finance_loans AS loan ON loan.uuid = installment.loan_uuid
+      WHERE installment.is_paid = 1 AND installment.paid_at > 0
+        AND installment.payment_method_uuid IS NOT NULL
+        AND (
+          installment.is_deleted = 1
+          OR installment.installment_index <= loan.term_months
+        )
+    ''');
+    return rows.map(FinanceLoanInstallment.fromMap).toList();
+  }
+
+  /// Includes recycled and canceled repayments so their interest bills remain
+  /// managed through the repayment even after its current bill pointer clears.
+  static Future<FinanceLoanInstallment?> getRepaymentForInterestTransaction(
+    String transactionUuid,
+  ) async {
+    await ensureReady();
+    return _findRepaymentForInterestTransaction(
+      await _database,
+      transactionUuid,
+    );
+  }
+
+  static Future<FinanceLoanInstallment?> _findRepaymentForInterestTransaction(
+    DatabaseExecutor db,
+    String transactionUuid,
+  ) async {
+    final rows = await db.rawQuery('''
+      SELECT installment.* FROM finance_loan_installments AS installment
+      WHERE installment.interest_transaction_uuid = ?
+        OR installment.uuid = (
+          SELECT related_transaction_uuid FROM finance_transactions WHERE uuid = ?
+        )
+      ORDER BY CASE WHEN installment.interest_transaction_uuid = ? THEN 0 ELSE 1 END
+      LIMIT 1
+    ''', [transactionUuid, transactionUuid, transactionUuid]);
+    return rows.isEmpty ? null : FinanceLoanInstallment.fromMap(rows.single);
+  }
+
+  static Future<void> _validateLoanInterestEdit(
+    DatabaseExecutor db,
+    FinanceTransaction transaction,
+  ) async {
+    final repayment = await _findRepaymentForInterestTransaction(
+      db,
+      transaction.uuid,
+    );
+    if (repayment == null) return;
+    if (!repayment.isPaid ||
+        repayment.interestTransactionUuid != transaction.uuid) {
+      // Canceled or replaced bills may be deleted to clean up legacy data,
+      // but only the repayment operation can activate its current interest.
+      if (!transaction.isDeleted) {
+        throw StateError(
+          repayment.isPaid
+              ? '这笔利息已由新的还款账单替代，请在贷款还款中查看当前账单'
+              : '关联还款已撤销，不能单独恢复利息账单；请在贷款还款中重新标记已还款',
+        );
+      }
+      return;
+    }
+    if (transaction.isDeleted) {
+      throw StateError('贷款利息账单由还款记录管理，请在贷款还款中修改或撤销还款');
+    }
+    final existing = await _findByUuid(
+      db,
+      'finance_transactions',
+      transaction.uuid,
+    );
+    final values = transaction.toMap();
+    const repaymentFields = [
+      'type',
+      'amount_minor',
+      'currency_code',
+      'category_uuid',
+      'payment_method_uuid',
+      'transaction_date',
+      'occurred_at',
+      'timezone_offset_minutes',
+      'related_transaction_uuid',
+      'installment_group_uuid',
+      'installment_index',
+      'installment_count',
+      'installment_total_minor',
+    ];
+    if (existing == null ||
+        repaymentFields.any((key) => existing[key] != values[key])) {
+      throw StateError('贷款利息账单由还款记录管理，请在贷款还款中修改或撤销还款');
+    }
+  }
+
+  static Future<void> _validateInstallmentRestore(
+    DatabaseExecutor db,
+    FinanceTransaction transaction,
+  ) async {
+    final groupUuid = transaction.installmentGroupUuid;
+    final installmentIndex = transaction.installmentIndex;
+    if (!transaction.isInstallment ||
+        groupUuid == null ||
+        installmentIndex == null) {
+      return;
+    }
+
+    final rows = await db.query(
+      'finance_transactions',
+      where: 'installment_group_uuid = ?',
+      whereArgs: [groupUuid],
+    );
+    int? currentCount;
+    for (final row in rows) {
+      final count = FinanceTransaction.fromMap(row).installmentCount;
+      if (count != null &&
+          count > 1 &&
+          (currentCount == null || count < currentCount)) {
+        currentCount = count;
+      }
+    }
+    if (currentCount != null && installmentIndex > currentCount) {
+      throw StateError('此期已超出当前分期计划，请先调整分期期数后再恢复');
+    }
+  }
+
+  /// Only interest enters consumption statistics. The full repayment amount
+  /// reduces the selected account at paidAt through getPaidLoanInstallments.
   static Future<void> setLoanInstallmentPaid(
     String installmentUuid,
-    bool paid,
-  ) async {
-    final installment = await getLoanInstallment(installmentUuid);
-    if (installment == null || installment.isDeleted) return;
-    final loan = await getLoan(installment.loanUuid);
-    if (loan == null) throw StateError('关联的贷款不存在或已删除');
-    if (installment.isPaid == paid) return;
-
+    bool paid, {
+    String? paymentMethodUuid,
+    DateTime? paidAt,
+  }) async {
+    await ensureReady();
     final db = await _database;
-    final now = DateTime.now().millisecondsSinceEpoch;
-    await db.transaction((txn) async {
+    final changed = await db.transaction<bool>((txn) async {
+      final row = await _findByUuid(
+        txn,
+        'finance_loan_installments',
+        installmentUuid,
+      );
+      if (row == null) return false;
+      final installment = FinanceLoanInstallment.fromMap(row);
+      if (installment.isDeleted) return false;
+      final loanRow = await _findByUuid(
+        txn,
+        'finance_loans',
+        installment.loanUuid,
+      );
+      if (loanRow == null || FinanceLoan.fromMap(loanRow).isDeleted) {
+        throw StateError('关联的贷款不存在或已删除');
+      }
+      final loan = FinanceLoan.fromMap(loanRow);
+      if (installment.installmentIndex > loan.termMonths) {
+        throw StateError('还款期次超出贷款期限');
+      }
+      if (installment.isPaid == paid &&
+          paymentMethodUuid == null &&
+          paidAt == null) {
+        return false;
+      }
       if (paid) {
+        final paymentDate = paidAt ?? DateTime.now();
+        if (paymentDate.isAfter(DateTime.now()) || paymentDate.year < 2000) {
+          throw ArgumentError('还款时间必须在 2000 年之后且不晚于现在');
+        }
+        if (dateKey(paymentDate).compareTo(loan.startDate) < 0) {
+          throw ArgumentError('还款时间不能早于贷款借款日期');
+        }
+        final methodUuid = paymentMethodUuid?.trim();
+        if (methodUuid != null && methodUuid.isNotEmpty) {
+          final method = await _findByUuid(
+            txn,
+            'finance_payment_methods',
+            methodUuid,
+          );
+          if (method == null ||
+              FinancePaymentMethod.fromMap(method).isDeleted) {
+            throw StateError('还款账户不存在或已删除');
+          }
+          if (FinancePaymentMethod.fromMap(method).isArchived &&
+              methodUuid != installment.paymentMethodUuid) {
+            throw StateError('请选择未归档的还款账户');
+          }
+        }
         installment.isPaid = true;
-        installment.paidAt = now;
-        if (installment.interestMinor > 0 &&
-            installment.interestTransactionUuid == null) {
-          final stableUuid = _loanInterestTransactionUuid(installment.uuid);
+        installment.paidAt = paymentDate.millisecondsSinceEpoch;
+        installment.paymentMethodUuid = methodUuid?.isNotEmpty == true
+            ? methodUuid
+            : null;
+        if (installment.interestMinor > 0) {
+          final loanRows = await txn.query(
+            'finance_loans',
+            where: 'is_deleted = 0',
+          );
+          final loanDisplayName = financeLoanDisplayName(
+            loan,
+            loanRows.map(FinanceLoan.fromMap),
+          );
+          final stableUuid =
+              installment.interestTransactionUuid ??
+              _loanInterestTransactionUuid(installment.uuid);
           final existingRow = await _findByUuid(
             txn,
             'finance_transactions',
@@ -676,11 +1126,11 @@ abstract final class FinanceStorage {
                   amountMinor: installment.interestMinor,
                   currencyCode: loan.currencyCode,
                   categoryUuid: 'finance-system-category-loan-interest',
-                  transactionDate: installment.dueDate,
-                  occurredAt: now,
-                  timezoneOffsetMinutes:
-                      DateTime.now().timeZoneOffset.inMinutes,
-                  merchant: '贷款利息 · ${loan.name}',
+                  paymentMethodUuid: installment.paymentMethodUuid,
+                  transactionDate: dateKey(paymentDate),
+                  occurredAt: installment.paidAt,
+                  timezoneOffsetMinutes: paymentDate.timeZoneOffset.inMinutes,
+                  merchant: '贷款利息 · $loanDisplayName',
                   note:
                       '第 ${installment.installmentIndex}/${loan.termMonths} 期利息；同步归还本金',
                   source: FinanceEntrySource.automation,
@@ -695,8 +1145,11 @@ abstract final class FinanceStorage {
               ..amountMinor = installment.interestMinor
               ..currencyCode = loan.currencyCode
               ..categoryUuid = 'finance-system-category-loan-interest'
-              ..transactionDate = installment.dueDate
-              ..merchant = '贷款利息 · ${loan.name}'
+              ..paymentMethodUuid = installment.paymentMethodUuid
+              ..transactionDate = dateKey(paymentDate)
+              ..occurredAt = installment.paidAt
+              ..timezoneOffsetMinutes = paymentDate.timeZoneOffset.inMinutes
+              ..merchant = '贷款利息 · $loanDisplayName'
               ..note =
                   '第 ${installment.installmentIndex}/${loan.termMonths} 期利息；同步归还本金'
               ..source = FinanceEntrySource.automation
@@ -705,6 +1158,7 @@ abstract final class FinanceStorage {
               ..markAsChanged();
           }
           installment.interestTransactionUuid = interestTransaction.uuid;
+          await _validateTransactionRefundState(txn, interestTransaction);
           await txn.insert(
             'finance_transactions',
             _localValues(interestTransaction.toMap()),
@@ -721,8 +1175,10 @@ abstract final class FinanceStorage {
           );
           if (row != null) {
             final interestTransaction = FinanceTransaction.fromMap(row);
-            if (!interestTransaction.isDeleted) {
-              interestTransaction.isDeleted = true;
+            final wasDeleted = interestTransaction.isDeleted;
+            interestTransaction.isDeleted = true;
+            await _validateTransactionRefundState(txn, interestTransaction);
+            if (!wasDeleted) {
               interestTransaction.markAsChanged();
               await txn.update(
                 'finance_transactions',
@@ -735,6 +1191,7 @@ abstract final class FinanceStorage {
         }
         installment.isPaid = false;
         installment.paidAt = null;
+        installment.paymentMethodUuid = null;
         installment.interestTransactionUuid = null;
       }
       installment.markAsChanged();
@@ -744,8 +1201,9 @@ abstract final class FinanceStorage {
         where: 'uuid = ?',
         whereArgs: [installment.uuid],
       );
+      return true;
     });
-    _notifyChanged();
+    if (changed) _notifyChanged();
   }
 
   static String _loanInterestTransactionUuid(String installmentUuid) {
@@ -756,42 +1214,37 @@ abstract final class FinanceStorage {
   }
 
   static Future<void> deleteLoan(String uuid) async {
-    final loan = await getLoan(uuid);
-    if (loan == null) return;
-    final installments = await getLoanInstallments(uuid, includeDeleted: true);
-    loan.isDeleted = true;
-    loan.markAsChanged();
-    final db = await _database;
-    await db.transaction((txn) async {
-      await txn.update(
-        'finance_loans',
-        _localValues(loan.toMap()),
-        where: 'uuid = ?',
-        whereArgs: [uuid],
-      );
-      for (final installment in installments) {
-        if (installment.isDeleted) continue;
-        installment.isDeleted = true;
-        installment.markAsChanged();
-        await txn.update(
-          'finance_loan_installments',
-          _localValues(installment.toMap()),
-          where: 'uuid = ?',
-          whereArgs: [installment.uuid],
-        );
-      }
-    });
-    _notifyChanged();
+    await _setLoanDeleted(uuid, true);
   }
 
   static Future<void> restoreLoan(String uuid) async {
-    final loan = await getLoan(uuid, includeDeleted: true);
-    if (loan == null || !loan.isDeleted) return;
-    final installments = await getLoanInstallments(uuid, includeDeleted: true);
-    loan.isDeleted = false;
-    loan.markAsChanged();
+    await _setLoanDeleted(uuid, false);
+  }
+
+  static Future<List<FinanceLoanInstallment>> _loanInstallmentsInTransaction(
+    DatabaseExecutor db,
+    String loanUuid,
+  ) async {
+    final rows = await db.query(
+      'finance_loan_installments',
+      where: 'loan_uuid = ?',
+      whereArgs: [loanUuid],
+      orderBy: 'installment_index ASC, due_date ASC',
+    );
+    return rows.map(FinanceLoanInstallment.fromMap).toList();
+  }
+
+  static Future<void> _setLoanDeleted(String uuid, bool deleted) async {
+    await ensureReady();
     final db = await _database;
-    await db.transaction((txn) async {
+    final changed = await db.transaction<bool>((txn) async {
+      final row = await _findByUuid(txn, 'finance_loans', uuid);
+      if (row == null) return false;
+      final loan = FinanceLoan.fromMap(row);
+      if (loan.isDeleted == deleted) return false;
+      final installments = await _loanInstallmentsInTransaction(txn, uuid);
+      loan.isDeleted = deleted;
+      loan.markAsChanged();
       await txn.update(
         'finance_loans',
         _localValues(loan.toMap()),
@@ -799,11 +1252,11 @@ abstract final class FinanceStorage {
         whereArgs: [uuid],
       );
       for (final installment in installments) {
-        if (!installment.isDeleted ||
-            installment.installmentIndex > loan.termMonths) {
+        if (installment.isDeleted == deleted ||
+            (!deleted && installment.installmentIndex > loan.termMonths)) {
           continue;
         }
-        installment.isDeleted = false;
+        installment.isDeleted = deleted;
         installment.markAsChanged();
         await txn.update(
           'finance_loan_installments',
@@ -812,24 +1265,27 @@ abstract final class FinanceStorage {
           whereArgs: [installment.uuid],
         );
       }
+      return true;
     });
-    _notifyChanged();
+    if (changed) _notifyChanged();
   }
 
   static Future<void> deleteTransaction(String uuid) async {
     final transaction = await getTransaction(uuid);
     if (transaction == null || transaction.isDeleted) return;
+    final original = FinanceTransaction.fromMap(transaction.toMap());
     transaction.isDeleted = true;
     transaction.markAsChanged();
-    await saveTransaction(transaction);
+    await saveTransaction(transaction, original: original);
   }
 
   static Future<void> restoreTransaction(String uuid) async {
     final transaction = await getTransaction(uuid);
     if (transaction == null || !transaction.isDeleted) return;
+    final original = FinanceTransaction.fromMap(transaction.toMap());
     transaction.isDeleted = false;
     transaction.markAsChanged();
-    await saveTransaction(transaction);
+    await saveTransaction(transaction, original: original);
   }
 
   static Future<List<FinanceCategory>> getCategories({
@@ -845,7 +1301,12 @@ abstract final class FinanceStorage {
       where.add('is_deleted = 0');
     }
     if (!includeArchived) {
-      where.add('is_archived = 0');
+      where.add(
+        'is_archived = 0 AND NOT EXISTS ('
+        'SELECT 1 FROM finance_categories AS parent '
+        'WHERE parent.uuid = finance_categories.parent_uuid '
+        'AND parent.is_archived = 1 AND parent.is_deleted = 0)',
+      );
     }
     if (type != null) {
       where.add('type = ?');
@@ -860,179 +1321,318 @@ abstract final class FinanceStorage {
     return rows.map(FinanceCategory.fromMap).toList();
   }
 
-  static Future<void> saveCategory(FinanceCategory category) async {
+  static Future<void> saveCategory(
+    FinanceCategory category, {
+    FinanceCategory? original,
+  }) async {
     if (category.name.trim().isEmpty) {
       throw ArgumentError.value(category.name, 'name', '分类名称不能为空');
     }
+    if (original != null && original.uuid != category.uuid) {
+      throw ArgumentError.value(original.uuid, 'original', '分类标识不匹配');
+    }
     final parentUuid = category.parentUuid?.trim();
-    category.parentUuid =
-        parentUuid == null || parentUuid.isEmpty ? null : parentUuid;
+    category.parentUuid = parentUuid == null || parentUuid.isEmpty
+        ? null
+        : parentUuid;
     await ensureReady();
     final db = await _database;
-    final existingRows = await db.query(
-      'finance_categories',
-      where: 'uuid = ?',
-      whereArgs: [category.uuid],
-      limit: 1,
-    );
-    if (existingRows.isNotEmpty) {
-      final existing = FinanceCategory.fromMap(existingRows.first);
-      if (existing.isSystem) {
-        // System categories keep their built-in identity and hierarchy while
-        // name and icon overrides remain user-owned fields.
-        final defaults = FinanceDefaults.categories.firstWhere(
-          (item) => item['uuid'] == existing.uuid,
-          orElse: () => const <String, dynamic>{},
-        );
-        category
-          ..isSystem = true
-          ..type = existing.type
-          ..colorValue = existing.colorValue
-          ..parentUuid = existing.parentUuid
-          ..sortOrder = existing.sortOrder
-          ..isArchived = false
-          ..isDeleted = false
-          ..nameCustomized = defaults.isEmpty
-              ? category.name != existing.name || existing.nameCustomized
-              : category.name != defaults['name'] || existing.nameCustomized
-          ..iconCustomized = defaults.isEmpty
-              ? category.icon != existing.icon || existing.iconCustomized
-              : category.icon != defaults['icon'] || existing.iconCustomized;
-        if (category.version <= existing.version ||
-            category.updatedAt <= existing.updatedAt) {
-          category
-            ..uuid = existing.uuid
-            ..createdAt = existing.createdAt
-            ..version = existing.version
-            ..updatedAt = existing.updatedAt
-            ..markAsChanged();
-        }
-      }
-    } else if (category.isSystem || _isSystemUuid(category.uuid)) {
-      throw ArgumentError.value(
-        category.uuid,
-        'uuid',
-        '系统分类只能使用内置分类标识',
-      );
-    }
-    if (category.parentUuid != null) {
-      if (category.parentUuid == category.uuid) {
-        throw ArgumentError.value(
-          category.parentUuid,
-          'parentUuid',
-          '分类不能将自己设置为上级大类',
-        );
-      }
-      final parentRows = await db.query(
+    await db.transaction((txn) async {
+      final existingRows = await txn.query(
         'finance_categories',
-        where: 'uuid = ? AND is_deleted = 0',
-        whereArgs: [category.parentUuid],
+        where: 'uuid = ?',
+        whereArgs: [category.uuid],
         limit: 1,
       );
-      if (parentRows.isEmpty) {
-        throw ArgumentError.value(
-          category.parentUuid,
-          'parentUuid',
-          '上级大类不存在',
-        );
+      if (existingRows.isNotEmpty) {
+        final existing = FinanceCategory.fromMap(existingRows.first);
+        if (existing.isDeleted) {
+          throw StateError('分类已删除，请重新加载后再编辑');
+        }
+        final baselineChanged =
+            original != null &&
+            (existing.version != original.version ||
+                existing.updatedAt != original.updatedAt);
+        if (baselineChanged) {
+          _mergeCategoryEdits(existing, original, category);
+          category
+            ..version = existing.version
+            ..updatedAt = existing.updatedAt
+            ..createdAt = existing.createdAt
+            ..markAsChanged();
+        } else if (original == null &&
+            (category.version < existing.version ||
+                category.updatedAt < existing.updatedAt)) {
+          throw StateError('分类已更新，请重新加载后再保存');
+        }
+        if (existing.isSystem) {
+          // System categories keep their built-in identity and hierarchy while
+          // name and icon overrides remain user-owned fields.
+          final defaults = FinanceDefaults.categories.firstWhere(
+            (item) => item['uuid'] == existing.uuid,
+            orElse: () => const <String, dynamic>{},
+          );
+          category
+            ..isSystem = true
+            ..type = existing.type
+            ..colorValue = existing.colorValue
+            ..parentUuid = existing.parentUuid
+            ..sortOrder = existing.sortOrder
+            ..isArchived = false
+            ..isDeleted = false
+            ..nameCustomized = defaults.isEmpty
+                ? category.name != existing.name || existing.nameCustomized
+                : category.name != defaults['name'] || existing.nameCustomized
+            ..iconCustomized = defaults.isEmpty
+                ? category.icon != existing.icon || existing.iconCustomized
+                : category.icon != defaults['icon'] || existing.iconCustomized;
+          if (category.version <= existing.version ||
+              category.updatedAt <= existing.updatedAt) {
+            category
+              ..uuid = existing.uuid
+              ..createdAt = existing.createdAt
+              ..version = existing.version
+              ..updatedAt = existing.updatedAt
+              ..markAsChanged();
+          }
+        } else {
+          category
+            ..isSystem = false
+            ..createdAt = existing.createdAt;
+        }
+      } else if (category.isSystem || _isSystemUuid(category.uuid)) {
+        throw ArgumentError.value(category.uuid, 'uuid', '系统分类只能使用内置分类标识');
       }
-      final parent = FinanceCategory.fromMap(parentRows.first);
-      if (parent.type != category.type ||
-          parent.parentUuid?.trim().isNotEmpty == true) {
-        throw ArgumentError.value(
-          category.parentUuid,
-          'parentUuid',
-          '上级分类必须是同一收支类型的一级分类',
+      if (category.parentUuid != null) {
+        if (category.parentUuid == category.uuid) {
+          throw ArgumentError.value(
+            category.parentUuid,
+            'parentUuid',
+            '分类不能将自己设置为上级大类',
+          );
+        }
+        final parentRows = await txn.query(
+          'finance_categories',
+          where: 'uuid = ? AND is_deleted = 0',
+          whereArgs: [category.parentUuid],
+          limit: 1,
         );
+        if (parentRows.isEmpty) {
+          throw ArgumentError.value(category.parentUuid, 'parentUuid', '上级大类不存在');
+        }
+        final parent = FinanceCategory.fromMap(parentRows.first);
+        if (parent.type != category.type ||
+            parent.parentUuid?.trim().isNotEmpty == true) {
+          throw ArgumentError.value(
+            category.parentUuid,
+            'parentUuid',
+            '上级分类必须是同一收支类型的一级分类',
+          );
+        }
+        if (parent.isArchived && !category.isArchived) {
+          throw ArgumentError.value(
+            category.parentUuid,
+            'parentUuid',
+            '上级分类已归档，请先恢复后再添加二级分类',
+          );
+        }
       }
-    }
-    category.pendingSync = true;
-    await db.insert(
-      'finance_categories',
-      _localValues(category.toMap()),
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+      if (category.parentUuid != null) {
+        final children = await txn.query(
+          'finance_categories',
+          columns: ['uuid'],
+          where: 'parent_uuid = ? AND is_deleted = 0',
+          whereArgs: [category.uuid],
+          limit: 1,
+        );
+        if (children.isNotEmpty) {
+          throw ArgumentError.value(
+            category.parentUuid,
+            'parentUuid',
+            '已有二级分类，请先移动二级分类后再调整上级',
+          );
+        }
+      }
+      category.pendingSync = true;
+      await txn.insert(
+        'finance_categories',
+        _localValues(category.toMap()),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+
+    });
     _notifyChanged();
+  }
+
+  static void _mergeCategoryEdits(
+    FinanceCategory current,
+    FinanceCategory original,
+    FinanceCategory incoming,
+  ) {
+    if (incoming.name == original.name) incoming.name = current.name;
+    if (incoming.type == original.type) incoming.type = current.type;
+    if (incoming.icon == original.icon) incoming.icon = current.icon;
+    if (incoming.iconCustomized == original.iconCustomized) {
+      incoming.iconCustomized = current.iconCustomized;
+    }
+    if (incoming.nameCustomized == original.nameCustomized) {
+      incoming.nameCustomized = current.nameCustomized;
+    }
+    if (incoming.colorValue == original.colorValue) {
+      incoming.colorValue = current.colorValue;
+    }
+    if (incoming.parentUuid == original.parentUuid) {
+      incoming.parentUuid = current.parentUuid;
+    }
+    if (incoming.isSystem == original.isSystem) {
+      incoming.isSystem = current.isSystem;
+    }
+    if (incoming.isArchived == original.isArchived) {
+      incoming.isArchived = current.isArchived;
+    }
+    if (incoming.isDeleted == original.isDeleted) {
+      incoming.isDeleted = current.isDeleted;
+    }
+    if (incoming.sortOrder == original.sortOrder) {
+      incoming.sortOrder = current.sortOrder;
+    }
   }
 
   static Future<void> archiveCategory(String uuid) async {
     await ensureReady();
     final db = await _database;
-    final existing = await db.query(
-      'finance_categories',
-      where: 'uuid = ?',
-      whereArgs: [uuid],
-      limit: 1,
-    );
-    if (existing.isEmpty) return;
-    final category = FinanceCategory.fromMap(existing.first);
-    if (category.isSystem || category.isArchived) return;
-    category.isArchived = true;
-    category.markAsChanged();
-    await db.update(
-      'finance_categories',
-      _localValues(category.toMap()),
-      where: 'uuid = ?',
-      whereArgs: [uuid],
-    );
-    final children = await db.query(
-      'finance_categories',
-      where: 'parent_uuid = ? AND is_deleted = 0 AND is_archived = 0',
-      whereArgs: [uuid],
-    );
-    for (final raw in children) {
-      final child = FinanceCategory.fromMap(raw);
-      if (child.isSystem) continue;
-      child.isArchived = true;
-      child.markAsChanged();
-      await db.update(
+    final changed = await db.transaction<bool>((txn) async {
+      final existing = await txn.query(
         'finance_categories',
-        _localValues(child.toMap()),
-        where: 'uuid = ?',
-        whereArgs: [child.uuid],
+        where: 'uuid = ? AND is_deleted = 0',
+        whereArgs: [uuid],
+        limit: 1,
       );
-    }
-    _notifyChanged();
+      if (existing.isEmpty) return false;
+      final category = FinanceCategory.fromMap(existing.first);
+      if (category.isSystem || category.isArchived) return false;
+      final children = await txn.query(
+        'finance_categories',
+        where: 'parent_uuid = ? AND is_deleted = 0',
+        whereArgs: [uuid],
+      );
+      category
+        ..isArchived = true
+        ..markAsChanged();
+      var cascadeUpdatedAt = category.updatedAt;
+      for (final raw in children) {
+        final child = FinanceCategory.fromMap(raw);
+        if (child.updatedAt >= cascadeUpdatedAt) {
+          cascadeUpdatedAt = child.updatedAt + 1;
+        }
+      }
+      // The shared timestamp identifies children archived as part of this
+      // parent operation, so a later restore can preserve older child archives.
+      category.updatedAt = cascadeUpdatedAt;
+      await txn.update(
+        'finance_categories',
+        _localValues(category.toMap()),
+        where: 'uuid = ?',
+        whereArgs: [uuid],
+      );
+      for (final raw in children) {
+        final child = FinanceCategory.fromMap(raw);
+        if (child.isSystem || child.isArchived) continue;
+        child
+          ..isArchived = true
+          ..markAsChanged();
+        child.updatedAt = cascadeUpdatedAt;
+        await txn.update(
+          'finance_categories',
+          _localValues(child.toMap()),
+          where: 'uuid = ?',
+          whereArgs: [child.uuid],
+        );
+      }
+      return true;
+    });
+    if (changed) _notifyChanged();
   }
 
-  static Future<void> unarchiveCategory(String uuid) async {
+  static Future<bool> unarchiveCategory(String uuid) async {
     await ensureReady();
     final db = await _database;
-    final existing = await db.query(
-      'finance_categories',
-      where: 'uuid = ?',
-      whereArgs: [uuid],
-      limit: 1,
-    );
-    if (existing.isEmpty) return;
-    final category = FinanceCategory.fromMap(existing.first);
-    if (!category.isArchived) return;
-    category.isArchived = false;
-    category.markAsChanged();
-    await db.update(
-      'finance_categories',
-      _localValues(category.toMap()),
-      where: 'uuid = ?',
-      whereArgs: [uuid],
-    );
-    final children = await db.query(
-      'finance_categories',
-      where: 'parent_uuid = ? AND is_deleted = 0 AND is_archived = 1',
-      whereArgs: [uuid],
-    );
-    for (final raw in children) {
-      final child = FinanceCategory.fromMap(raw);
-      if (child.isSystem) continue;
-      child.isArchived = false;
-      child.markAsChanged();
-      await db.update(
+    final restored = await db.transaction<bool>((txn) async {
+      final existing = await txn.query(
         'finance_categories',
-        _localValues(child.toMap()),
         where: 'uuid = ?',
-        whereArgs: [child.uuid],
+        whereArgs: [uuid],
+        limit: 1,
       );
-    }
-    _notifyChanged();
+      if (existing.isEmpty) return false;
+      final category = FinanceCategory.fromMap(existing.first);
+      if (category.isSystem || category.isDeleted) return false;
+
+      FinanceCategory? archivedParent;
+      final parentUuid = _normalizeCategoryParentUuid(category.parentUuid);
+      if (parentUuid != null) {
+        final parentRows = await txn.query(
+          'finance_categories',
+          where: 'uuid = ? AND is_deleted = 0',
+          whereArgs: [parentUuid],
+          limit: 1,
+        );
+        if (parentRows.isEmpty) return false;
+        final parent = FinanceCategory.fromMap(parentRows.first);
+        if (parent.type != category.type ||
+            _normalizeCategoryParentUuid(parent.parentUuid) != null) {
+          return false;
+        }
+        if (parent.isArchived) {
+          archivedParent = parent;
+        } else if (!category.isArchived) {
+          return false;
+        }
+      } else if (!category.isArchived) {
+        return false;
+      }
+
+      final categoryToRestore = archivedParent ?? category;
+      if (categoryToRestore.isSystem || !categoryToRestore.isArchived) {
+        return false;
+      }
+      final cascadeUpdatedAt = categoryToRestore.updatedAt;
+      categoryToRestore
+        ..isArchived = false
+        ..markAsChanged();
+      await txn.update(
+        'finance_categories',
+        _localValues(categoryToRestore.toMap()),
+        where: 'uuid = ?',
+        whereArgs: [categoryToRestore.uuid],
+      );
+      final children = await txn.query(
+        'finance_categories',
+        where: 'parent_uuid = ? AND is_deleted = 0 AND is_archived = 1',
+        whereArgs: [categoryToRestore.uuid],
+      );
+      for (final raw in children) {
+        final child = FinanceCategory.fromMap(raw);
+        final isRequestedChild =
+            archivedParent != null && child.uuid == category.uuid;
+        if (child.isSystem ||
+            (child.updatedAt != cascadeUpdatedAt && !isRequestedChild)) {
+          continue;
+        }
+        child
+          ..isArchived = false
+          ..markAsChanged();
+        await txn.update(
+          'finance_categories',
+          _localValues(child.toMap()),
+          where: 'uuid = ?',
+          whereArgs: [child.uuid],
+        );
+      }
+      return true;
+    });
+    if (restored) _notifyChanged();
+    return restored;
   }
 
   static Future<bool> hasTransactionsForCategory(String uuid) async {
@@ -1063,65 +1663,140 @@ abstract final class FinanceStorage {
     return rows.map(FinancePaymentMethod.fromMap).toList();
   }
 
-  static Future<void> savePaymentMethod(FinancePaymentMethod method) async {
+  static Future<void> savePaymentMethod(
+    FinancePaymentMethod method, {
+    FinancePaymentMethod? original,
+  }) async {
     if (method.name.trim().isEmpty) {
       throw ArgumentError.value(method.name, 'name', '付款方式名称不能为空');
     }
-    method.pendingSync = true;
+    if (original != null && original.uuid != method.uuid) {
+      throw ArgumentError.value(original.uuid, 'original', '付款方式标识不匹配');
+    }
     await ensureReady();
     final db = await _database;
-    await db.insert(
-      'finance_payment_methods',
-      _localValues(method.toMap()),
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await db.transaction((txn) async {
+      final existingRows = await txn.query(
+        'finance_payment_methods',
+        where: 'uuid = ?',
+        whereArgs: [method.uuid],
+        limit: 1,
+      );
+      var itemToSave = FinancePaymentMethod.fromMap(method.toMap());
+      if (existingRows.isNotEmpty) {
+        final existing = FinancePaymentMethod.fromMap(existingRows.first);
+        final baselineChanged = original != null &&
+            (existing.version != original.version ||
+                existing.updatedAt != original.updatedAt);
+        if (baselineChanged) {
+          _mergePaymentMethodEdits(existing, original, itemToSave);
+          itemToSave
+            ..version = existing.version
+            ..updatedAt = existing.updatedAt
+            ..createdAt = existing.createdAt;
+          itemToSave.markAsChanged();
+        } else if (original == null &&
+            (existing.version > itemToSave.version ||
+                existing.updatedAt > itemToSave.updatedAt)) {
+          throw StateError('付款方式已更新，请重新加载后再保存');
+        }
+        if (existing.isDeleted) {
+          throw StateError('付款方式已删除，请重新加载后再编辑');
+        }
+        if (existing.isSystem) {
+          throw StateError('系统付款方式不能编辑');
+        }
+        itemToSave.createdAt = existing.createdAt;
+      }
+      if (itemToSave.name.trim().isEmpty) {
+        throw ArgumentError.value(itemToSave.name, 'name', '付款方式名称不能为空');
+      }
+      itemToSave.pendingSync = true;
+      await txn.insert(
+        'finance_payment_methods',
+        _localValues(itemToSave.toMap()),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    });
     _notifyChanged();
+  }
+
+  static void _mergePaymentMethodEdits(
+    FinancePaymentMethod current,
+    FinancePaymentMethod original,
+    FinancePaymentMethod incoming,
+  ) {
+    if (incoming.name == original.name) incoming.name = current.name;
+    if (incoming.icon == original.icon) incoming.icon = current.icon;
+    if (incoming.colorValue == original.colorValue) {
+      incoming.colorValue = current.colorValue;
+    }
+    if (incoming.isSystem == original.isSystem) {
+      incoming.isSystem = current.isSystem;
+    }
+    if (incoming.isArchived == original.isArchived) {
+      incoming.isArchived = current.isArchived;
+    }
+    if (incoming.isDeleted == original.isDeleted) {
+      incoming.isDeleted = current.isDeleted;
+    }
+    if (incoming.sortOrder == original.sortOrder) {
+      incoming.sortOrder = current.sortOrder;
+    }
   }
 
   static Future<void> archivePaymentMethod(String uuid) async {
     await ensureReady();
     final db = await _database;
-    final existing = await db.query(
-      'finance_payment_methods',
-      where: 'uuid = ?',
-      whereArgs: [uuid],
-      limit: 1,
-    );
-    if (existing.isEmpty) return;
-    final method = FinancePaymentMethod.fromMap(existing.first);
-    if (method.isSystem || method.isArchived) return;
-    method.isArchived = true;
-    method.markAsChanged();
-    await db.update(
-      'finance_payment_methods',
-      _localValues(method.toMap()),
-      where: 'uuid = ?',
-      whereArgs: [uuid],
-    );
-    _notifyChanged();
+    final changed = await db.transaction<bool>((txn) async {
+      final existing = await txn.query(
+        'finance_payment_methods',
+        where: 'uuid = ? AND is_deleted = 0',
+        whereArgs: [uuid],
+        limit: 1,
+      );
+      if (existing.isEmpty) return false;
+      final method = FinancePaymentMethod.fromMap(existing.first);
+      if (method.isSystem || method.isArchived) return false;
+      method
+        ..isArchived = true
+        ..markAsChanged();
+      await txn.update(
+        'finance_payment_methods',
+        _localValues(method.toMap()),
+        where: 'uuid = ?',
+        whereArgs: [uuid],
+      );
+      return true;
+    });
+    if (changed) _notifyChanged();
   }
 
   static Future<void> unarchivePaymentMethod(String uuid) async {
     await ensureReady();
     final db = await _database;
-    final existing = await db.query(
-      'finance_payment_methods',
-      where: 'uuid = ?',
-      whereArgs: [uuid],
-      limit: 1,
-    );
-    if (existing.isEmpty) return;
-    final method = FinancePaymentMethod.fromMap(existing.first);
-    if (!method.isArchived) return;
-    method.isArchived = false;
-    method.markAsChanged();
-    await db.update(
-      'finance_payment_methods',
-      _localValues(method.toMap()),
-      where: 'uuid = ?',
-      whereArgs: [uuid],
-    );
-    _notifyChanged();
+    final changed = await db.transaction<bool>((txn) async {
+      final existing = await txn.query(
+        'finance_payment_methods',
+        where: 'uuid = ? AND is_deleted = 0',
+        whereArgs: [uuid],
+        limit: 1,
+      );
+      if (existing.isEmpty) return false;
+      final method = FinancePaymentMethod.fromMap(existing.first);
+      if (method.isSystem || !method.isArchived) return false;
+      method
+        ..isArchived = false
+        ..markAsChanged();
+      await txn.update(
+        'finance_payment_methods',
+        _localValues(method.toMap()),
+        where: 'uuid = ?',
+        whereArgs: [uuid],
+      );
+      return true;
+    });
+    if (changed) _notifyChanged();
   }
 
   static Future<List<FinanceBudget>> getBudgets({
@@ -1161,12 +1836,18 @@ abstract final class FinanceStorage {
     return rows.isEmpty ? null : FinanceBudget.fromMap(rows.first);
   }
 
-  static Future<void> saveBudget(FinanceBudget budget) async {
-    if (budget.amountMinor <= 0) {
+  static Future<void> saveBudget(
+    FinanceBudget budget, {
+    FinanceBudget? original,
+    bool resetBalanceSnapshot = false,
+    int? balanceSnapshotAt,
+  }) async {
+    if (!isSafeFinanceAmountMinor(budget.amountMinor) ||
+        (!budget.isPaymentMethod && budget.amountMinor == 0)) {
       throw ArgumentError.value(
         budget.amountMinor,
         'amountMinor',
-        '预算金额必须大于 0',
+        budget.isPaymentMethod ? '余额不能为负数' : '预算金额必须大于 0',
       );
     }
     if (!RegExp(r'^\d{4}-(0[1-9]|1[0-2])$').hasMatch(budget.monthKey)) {
@@ -1175,17 +1856,98 @@ abstract final class FinanceStorage {
     if (budget.categoryUuid != null && budget.paymentMethodUuid != null) {
       throw ArgumentError('预算只能对应一个分类或付款方式');
     }
+    if (original != null && original.uuid != budget.uuid) {
+      throw ArgumentError.value(original.uuid, 'original', '预算标识不匹配');
+    }
+    if (balanceSnapshotAt != null) {
+      if (!budget.isPaymentMethod ||
+          balanceSnapshotAt <= 0 ||
+          balanceSnapshotAt > DateTime.now().millisecondsSinceEpoch ||
+          !_isBalanceSnapshotForMonth(budget.monthKey, balanceSnapshotAt)) {
+        throw ArgumentError.value(
+          balanceSnapshotAt,
+          'balanceSnapshotAt',
+          '余额对应时间必须在所选月份内且不晚于现在',
+        );
+      }
+    }
     await ensureReady();
     final db = await _database;
-    var requestSync = !budget.isPaymentMethod;
     await db.transaction((txn) async {
+      if (!await _hasValidBudgetScope(txn, budget)) {
+        throw ArgumentError.value(
+          budget,
+          'budget',
+          '预算必须关联有效的支出分类或付款方式',
+        );
+      }
       final existingByUuid = await _findByUuid(
         txn,
         'finance_budgets',
         budget.uuid,
       );
-      var current =
-          existingByUuid == null ? null : FinanceBudget.fromMap(existingByUuid);
+      var current = existingByUuid == null
+          ? null
+          : FinanceBudget.fromMap(existingByUuid);
+      if (current != null) {
+        final changesDeletedState =
+            original != null && budget.isDeleted != original.isDeleted;
+        final baselineChanged = original != null &&
+            (current.version != original.version ||
+                current.updatedAt != original.updatedAt);
+        if (baselineChanged) {
+          _mergeBudgetEdits(current, original, budget);
+          final snapshotTimeUnchanged =
+              balanceSnapshotAt == original.effectiveBalanceSnapshotAt;
+          final currentSnapshotStillMatchesScope =
+              current.isPaymentMethod &&
+              budget.isPaymentMethod &&
+              current.monthKey == original.monthKey &&
+              current.paymentMethodUuid == original.paymentMethodUuid &&
+              budget.monthKey == current.monthKey &&
+              budget.paymentMethodUuid == current.paymentMethodUuid;
+          if (snapshotTimeUnchanged &&
+              currentSnapshotStillMatchesScope &&
+              current.effectiveBalanceSnapshotAt !=
+                  original.effectiveBalanceSnapshotAt) {
+            // A stale amount edit must not restore the old snapshot instant
+            // when another device has updated that instant in the meantime.
+            balanceSnapshotAt = current.effectiveBalanceSnapshotAt;
+          }
+          budget
+            ..version = current.version
+            ..updatedAt = current.updatedAt
+            ..createdAt = current.createdAt
+            ..deviceId = current.deviceId
+            ..markAsChanged();
+        } else if (original == null &&
+            (current.version > budget.version ||
+                current.updatedAt > budget.updatedAt)) {
+          throw StateError('预算已更新，请重新加载后再保存');
+        }
+        if (current.isDeleted && !changesDeletedState) {
+          throw StateError('预算已删除，请重新加载后再编辑');
+        }
+        budget
+          ..createdAt = current.createdAt
+          ..deviceId = current.deviceId;
+      } else if (original != null) {
+        throw StateError('预算已不存在，请重新加载后再保存');
+      }
+      if (budget.isPaymentMethod) {
+        final sameBalance =
+            current != null &&
+            current.monthKey == budget.monthKey &&
+            current.paymentMethodUuid == budget.paymentMethodUuid &&
+            current.amountMinor == budget.amountMinor;
+        budget.balanceSnapshotAt =
+            balanceSnapshotAt ??
+            (sameBalance && !resetBalanceSnapshot
+                ? current.effectiveBalanceSnapshotAt
+                : DateTime.now().millisecondsSinceEpoch);
+      } else {
+        budget.balanceSnapshotAt = null;
+      }
       if (current != null &&
           (current.monthKey != budget.monthKey ||
               current.categoryUuid != budget.categoryUuid ||
@@ -1195,11 +1957,10 @@ abstract final class FinanceStorage {
           ..markAsChanged();
         await txn.update(
           'finance_budgets',
-          _budgetValues(current, sync: !current.isPaymentMethod),
+          _localValues(current.toMap()),
           where: 'uuid = ?',
           whereArgs: [current.uuid],
         );
-        requestSync = requestSync || !current.isPaymentMethod;
 
         final now = DateTime.now().millisecondsSinceEpoch;
         budget
@@ -1238,11 +1999,7 @@ abstract final class FinanceStorage {
                 : budget.updatedAt;
         }
       }
-      final where = <String>[
-        'month_key = ?',
-        'is_deleted = 0',
-        'uuid != ?',
-      ];
+      final where = <String>['month_key = ?', 'is_deleted = 0', 'uuid != ?'];
       final args = <Object?>[budget.monthKey, budget.uuid];
       if (budget.paymentMethodUuid != null) {
         where
@@ -1268,32 +2025,58 @@ abstract final class FinanceStorage {
       if (duplicates.isNotEmpty) {
         throw StateError('该月份的预算范围已经存在');
       }
-      // Payment-method monthly limits are local-only until the server budget
-      // contract includes payment_method_uuid.
-      budget.pendingSync = !budget.isPaymentMethod;
+      budget.pendingSync = true;
       await txn.insert(
         'finance_budgets',
-        _budgetValues(budget, sync: !budget.isPaymentMethod),
+        _localValues(budget.toMap()),
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
     });
-    _notifyChanged(requestSync: requestSync);
+    _notifyChanged();
+  }
+
+  static void _mergeBudgetEdits(
+    FinanceBudget current,
+    FinanceBudget original,
+    FinanceBudget incoming,
+  ) {
+    if (incoming.monthKey == original.monthKey) {
+      incoming.monthKey = current.monthKey;
+    }
+    if (incoming.categoryUuid == original.categoryUuid) {
+      incoming.categoryUuid = current.categoryUuid;
+    }
+    if (incoming.paymentMethodUuid == original.paymentMethodUuid) {
+      incoming.paymentMethodUuid = current.paymentMethodUuid;
+    }
+    if (incoming.amountMinor == original.amountMinor) {
+      incoming.amountMinor = current.amountMinor;
+    }
+    if (incoming.currencyCode == original.currencyCode) {
+      incoming.currencyCode = current.currencyCode;
+    }
+    if (incoming.note == original.note) incoming.note = current.note;
+    if (incoming.isDeleted == original.isDeleted) {
+      incoming.isDeleted = current.isDeleted;
+    }
   }
 
   static Future<void> deleteBudget(String uuid) async {
     final budget = await getBudget(uuid);
     if (budget == null || budget.isDeleted) return;
+    final original = FinanceBudget.fromMap(budget.toMap());
     budget.isDeleted = true;
     budget.markAsChanged();
-    await saveBudget(budget);
+    await saveBudget(budget, original: original);
   }
 
   static Future<void> restoreBudget(String uuid) async {
     final budget = await getBudget(uuid);
     if (budget == null || !budget.isDeleted) return;
+    final original = FinanceBudget.fromMap(budget.toMap());
     budget.isDeleted = false;
     budget.markAsChanged();
-    await saveBudget(budget);
+    await saveBudget(budget, original: original);
   }
 
   static Future<List<FinanceRecurringRule>> getRecurringRules({
@@ -1327,8 +2110,14 @@ abstract final class FinanceStorage {
     return rows.isEmpty ? null : FinanceRecurringRule.fromMap(rows.first);
   }
 
-  static Future<void> saveRecurringRule(FinanceRecurringRule rule) async {
+  static Future<void> saveRecurringRule(
+    FinanceRecurringRule rule, {
+    FinanceRecurringRule? original,
+  }) async {
     _validateRecurringRule(rule);
+    if (original != null && original.uuid != rule.uuid) {
+      throw ArgumentError.value(original.uuid, 'original', '周期账单标识不匹配');
+    }
     rule.pendingSync = true;
     await ensureReady();
     final db = await _database;
@@ -1339,21 +2128,43 @@ abstract final class FinanceStorage {
         whereArgs: [rule.uuid],
         limit: 1,
       );
+      var itemToSave = rule;
       if (existingRows.isNotEmpty) {
         final existing = FinanceRecurringRule.fromMap(existingRows.first);
-        // 生成标记是幂等状态，不属于编辑表单的可回退字段。编辑页或
-        // 并发请求拿到旧快照时，不能把已生成的较新周期覆盖掉。
-        final latestPeriod = _latestGeneratedPeriod(
-          existing.lastGeneratedPeriod,
-          rule.lastGeneratedPeriod,
-        );
-        if (latestPeriod != rule.lastGeneratedPeriod) {
-          rule.lastGeneratedPeriod = latestPeriod;
+        if (existing.isDeleted &&
+            (original == null || rule.isDeleted == original.isDeleted)) {
+          throw StateError('周期账单已删除，请重新加载后再编辑');
         }
+        final baselineChanged = original != null &&
+            (existing.version != original.version ||
+                existing.updatedAt != original.updatedAt);
+        if (baselineChanged) {
+          itemToSave = _mergeRecurringRuleEdits(existing, original, rule);
+          itemToSave.lastGeneratedPeriod = _editedRecurringGenerationPeriod(
+            existing,
+            itemToSave,
+          );
+          itemToSave.markAsChanged();
+          _validateRecurringRule(itemToSave);
+        } else {
+          if (rule.version <= existing.version ||
+              rule.updatedAt <= existing.updatedAt) {
+            throw StateError('周期账单已更新，请重新加载后再保存');
+          }
+          itemToSave.lastGeneratedPeriod = _editedRecurringGenerationPeriod(
+            existing,
+            rule,
+          );
+        }
+      } else {
+        if (original != null) {
+          throw StateError('周期账单已不存在，请重新加载后再保存');
+        }
+        itemToSave.lastGeneratedPeriod = rule.effectiveLastGeneratedPeriod;
       }
       await txn.insert(
         'finance_recurring_rules',
-        _localValues(rule.toMap()),
+        _localValues(itemToSave.toMap()),
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
     });
@@ -1363,30 +2174,28 @@ abstract final class FinanceStorage {
   static Future<void> deleteRecurringRule(String uuid) async {
     final rule = await getRecurringRule(uuid);
     if (rule == null || rule.isDeleted) return;
+    final original = FinanceRecurringRule.fromMap(rule.toMap());
     rule.isDeleted = true;
-    rule.isEnabled = false;
     rule.markAsChanged();
-    await saveRecurringRule(rule);
+    await saveRecurringRule(rule, original: original);
   }
 
   static Future<void> restoreRecurringRule(String uuid) async {
     final rule = await getRecurringRule(uuid);
     if (rule == null || !rule.isDeleted) return;
+    final original = FinanceRecurringRule.fromMap(rule.toMap());
     rule.isDeleted = false;
-    rule.isEnabled = true;
     rule.markAsChanged();
-    await saveRecurringRule(rule);
+    await saveRecurringRule(rule, original: original);
   }
 
-  static Future<void> setRecurringRuleEnabled(
-    String uuid,
-    bool enabled,
-  ) async {
+  static Future<void> setRecurringRuleEnabled(String uuid, bool enabled) async {
     final rule = await getRecurringRule(uuid);
     if (rule == null || rule.isDeleted || rule.isEnabled == enabled) return;
+    final original = FinanceRecurringRule.fromMap(rule.toMap());
     rule.isEnabled = enabled;
     rule.markAsChanged();
-    await saveRecurringRule(rule);
+    await saveRecurringRule(rule, original: original);
   }
 
   static Future<bool> materializeRecurringRule(
@@ -1397,6 +2206,7 @@ abstract final class FinanceStorage {
     if (periodKey.trim().isEmpty) return false;
     await ensureReady();
     final db = await _database;
+    var repairedGenerationMarker = false;
     final generated = await db.transaction<bool>((txn) async {
       final rows = await txn.query(
         'finance_recurring_rules',
@@ -1406,9 +2216,21 @@ abstract final class FinanceStorage {
       );
       if (rows.isEmpty) return false;
       final current = FinanceRecurringRule.fromMap(rows.first);
+      current.lastGeneratedPeriod = current.effectiveLastGeneratedPeriod;
+      final expectedDueAt = current.dueDateFor(dueAt.year, dueAt.month);
+      final expectedPeriod = current.frequency == FinanceRecurringFrequency.yearly
+          ? '${dueAt.year}'
+          : financeMonthKey(dueAt);
       if (current.isDeleted ||
           !current.isEnabled ||
-          current.lastGeneratedPeriod == periodKey) {
+          !current.autoGenerate ||
+          current.frequency != rule.frequency ||
+          expectedDueAt == null ||
+          !expectedDueAt.isAtSameMomentAs(dueAt) ||
+          periodKey != expectedPeriod ||
+          (current.lastGeneratedPeriod != null &&
+              _generatedPeriodOrder(current.lastGeneratedPeriod!) >=
+                  _generatedPeriodOrder(periodKey))) {
         return false;
       }
 
@@ -1431,6 +2253,7 @@ abstract final class FinanceStorage {
           periodKey,
         );
         current.markAsChanged();
+        repairedGenerationMarker = true;
         await txn.update(
           'finance_recurring_rules',
           _localValues(current.toMap()),
@@ -1440,9 +2263,17 @@ abstract final class FinanceStorage {
         return false;
       }
 
+      final siblingRuleRows = await txn.query(
+        'finance_recurring_rules',
+        where: 'is_deleted = 0',
+      );
+      final displayName = financeRecurringRuleDisplayName(
+        current,
+        siblingRuleRows.map(FinanceRecurringRule.fromMap),
+      );
       final detail = <String>[
         if (current.note?.trim().isNotEmpty == true) current.note!.trim(),
-        '自动生成 · ${current.name}',
+        '自动生成 · $displayName',
       ].join(' · ');
       final transaction = FinanceTransaction(
         uuid: stableTransactionUuid,
@@ -1456,7 +2287,7 @@ abstract final class FinanceStorage {
         timezoneOffsetMinutes: dueAt.timeZoneOffset.inMinutes,
         merchant: current.merchant?.trim().isNotEmpty == true
             ? current.merchant!.trim()
-            : current.name,
+            : displayName,
         note: detail,
         source: FinanceEntrySource.automation,
         deviceId: current.deviceId,
@@ -1479,7 +2310,7 @@ abstract final class FinanceStorage {
       );
       return true;
     });
-    if (generated) _notifyChanged();
+    if (generated || repairedGenerationMarker) _notifyChanged();
     return generated;
   }
 
@@ -1497,6 +2328,199 @@ abstract final class FinanceStorage {
         : current;
   }
 
+  static String? _mergeRecurringGenerationPeriod(
+    FinanceRecurringRule current,
+    FinanceRecurringRule incoming,
+  ) {
+    if (current.frequency != incoming.frequency) {
+      final marker = incoming.effectiveLastGeneratedPeriod;
+      final barrier = _recurringProgressBeforeCurrentCycle(
+        incoming,
+        DateTime.now(),
+      );
+      if (marker == null) return barrier;
+      return _latestGeneratedPeriod(marker, barrier);
+    }
+    // Generation progress cannot be rolled back by a stale edit or backup.
+    final latest = _latestGeneratedPeriod(
+      current.effectiveLastGeneratedPeriod,
+      incoming.effectiveLastGeneratedPeriod,
+    );
+    if (!_hasRecurringScheduleChanged(current, incoming)) return latest;
+    // A schedule change must not create a bill dated earlier this period just
+    // because the previous rule had not yet been materialized.
+    final passedPeriod = _recurringPastDueCurrentPeriod(
+      incoming,
+      DateTime.now(),
+    );
+    if (passedPeriod == null) return latest;
+    return _latestGeneratedPeriod(latest, passedPeriod);
+  }
+
+  static String? _editedRecurringGenerationPeriod(
+    FinanceRecurringRule current,
+    FinanceRecurringRule incoming,
+  ) {
+    if (current.frequency != incoming.frequency) {
+      return _recurringProgressBeforeCurrentCycle(incoming, DateTime.now());
+    }
+    final latest = _mergeRecurringGenerationPeriod(current, incoming);
+    if (current.isEnabled != incoming.isEnabled ||
+        current.autoGenerate != incoming.autoGenerate ||
+        current.isDeleted != incoming.isDeleted) {
+      return _latestGeneratedPeriod(
+        latest,
+        incoming.generationPeriodBefore(DateTime.now()),
+      );
+    }
+    return latest;
+  }
+
+  static bool _hasRecurringScheduleChanged(
+    FinanceRecurringRule current,
+    FinanceRecurringRule incoming,
+  ) =>
+      current.frequency != incoming.frequency ||
+      current.dayOfMonth != incoming.dayOfMonth ||
+      current.monthOfYear != incoming.monthOfYear ||
+      current.startDate != incoming.startDate ||
+      current.endDate != incoming.endDate;
+
+  static String _recurringProgressBeforeCurrentCycle(
+    FinanceRecurringRule rule,
+    DateTime now,
+  ) {
+    final due = rule.dueDateFor(
+      now.year,
+      rule.frequency == FinanceRecurringFrequency.yearly
+          ? rule.monthOfYear
+          : now.month,
+    );
+    if (due != null && !due.isAfter(now)) {
+      return _recurringPeriodKeyFor(rule, due);
+    }
+    return rule.frequency == FinanceRecurringFrequency.yearly
+        ? '${now.year - 1}'
+        : financeMonthKey(DateTime(now.year, now.month - 1));
+  }
+
+  static String? _recurringPastDueCurrentPeriod(
+    FinanceRecurringRule rule,
+    DateTime now,
+  ) {
+    final due = rule.dueDateFor(
+      now.year,
+      rule.frequency == FinanceRecurringFrequency.yearly
+          ? rule.monthOfYear
+          : now.month,
+    );
+    if (due == null || due.isAfter(now)) return null;
+    return _recurringPeriodKeyFor(rule, due);
+  }
+
+  static String _recurringPeriodKeyFor(
+    FinanceRecurringRule rule,
+    DateTime dueAt,
+  ) =>
+      rule.frequency == FinanceRecurringFrequency.yearly
+          ? dueAt.year.toString()
+          : financeMonthKey(dueAt);
+
+  static FinanceRecurringRule _mergeRecurringRuleEdits(
+    FinanceRecurringRule current,
+    FinanceRecurringRule original,
+    FinanceRecurringRule incoming,
+  ) {
+    final merged = FinanceRecurringRule.fromMap(current.toMap());
+    if (incoming.name != original.name) merged.name = incoming.name;
+    if (incoming.type != original.type) merged.type = incoming.type;
+    if (incoming.amountMinor != original.amountMinor) {
+      merged.amountMinor = incoming.amountMinor;
+    }
+    if (incoming.currencyCode != original.currencyCode) {
+      merged.currencyCode = incoming.currencyCode;
+    }
+    if (incoming.categoryUuid != original.categoryUuid) {
+      merged.categoryUuid = incoming.categoryUuid;
+    }
+    if (incoming.paymentMethodUuid != original.paymentMethodUuid) {
+      merged.paymentMethodUuid = incoming.paymentMethodUuid;
+    }
+    if (incoming.merchant != original.merchant) {
+      merged.merchant = incoming.merchant;
+    }
+    if (incoming.note != original.note) merged.note = incoming.note;
+    if (incoming.frequency != original.frequency) {
+      merged.frequency = incoming.frequency;
+    }
+    if (incoming.dayOfMonth != original.dayOfMonth) {
+      merged.dayOfMonth = incoming.dayOfMonth;
+    }
+    if (incoming.monthOfYear != original.monthOfYear) {
+      merged.monthOfYear = incoming.monthOfYear;
+    }
+    if (incoming.startDate != original.startDate) {
+      merged.startDate = incoming.startDate;
+    }
+    if (incoming.endDate != original.endDate) {
+      merged.endDate = incoming.endDate;
+    }
+    if (incoming.reminderMinutes != original.reminderMinutes) {
+      merged.reminderMinutes = incoming.reminderMinutes;
+    }
+    if (incoming.autoGenerate != original.autoGenerate) {
+      merged.autoGenerate = incoming.autoGenerate;
+    }
+    if (incoming.isEnabled != original.isEnabled) {
+      merged.isEnabled = incoming.isEnabled;
+    }
+    if (incoming.isDeleted != original.isDeleted) {
+      merged.isDeleted = incoming.isDeleted;
+    }
+    return merged;
+  }
+
+  static FinanceEntryTemplate _mergeTemplateEdits(
+    FinanceEntryTemplate current,
+    FinanceEntryTemplate original,
+    FinanceEntryTemplate incoming,
+  ) {
+    final merged = FinanceEntryTemplate.fromMap(current.toMap());
+    if (incoming.name != original.name) merged.name = incoming.name;
+    if (incoming.type != original.type) merged.type = incoming.type;
+    if (incoming.amountMinor != original.amountMinor) {
+      merged.amountMinor = incoming.amountMinor;
+    }
+    if (incoming.currencyCode != original.currencyCode) {
+      merged.currencyCode = incoming.currencyCode;
+    }
+    if (incoming.categoryUuid != original.categoryUuid) {
+      merged.categoryUuid = incoming.categoryUuid;
+    }
+    if (incoming.paymentMethodUuid != original.paymentMethodUuid) {
+      merged.paymentMethodUuid = incoming.paymentMethodUuid;
+    }
+    if (incoming.merchant != original.merchant) {
+      merged.merchant = incoming.merchant;
+    }
+    if (incoming.note != original.note) merged.note = incoming.note;
+    if (incoming.isDeleted != original.isDeleted) {
+      merged.isDeleted = incoming.isDeleted;
+    }
+    if (incoming.useCount != original.useCount) {
+      merged.useCount =
+          (current.useCount + incoming.useCount - original.useCount)
+              .clamp(0, 0x7fffffff)
+              .toInt();
+    }
+    if (incoming.lastUsedAt != null &&
+        (current.lastUsedAt == null ||
+            incoming.lastUsedAt! > current.lastUsedAt!)) {
+      merged.lastUsedAt = incoming.lastUsedAt;
+    }
+    return merged;
+  }
+
   static int _generatedPeriodOrder(String value) {
     final parts = value.split('-');
     final year = int.tryParse(parts.first) ?? -1;
@@ -1512,7 +2536,8 @@ abstract final class FinanceStorage {
     final rows = await db.query(
       'finance_entry_templates',
       where: includeDeleted ? null : 'is_deleted = 0',
-      orderBy: 'use_count DESC, last_used_at DESC, updated_at DESC, '
+      orderBy:
+          'use_count DESC, last_used_at DESC, updated_at DESC, '
           'name COLLATE NOCASE ASC',
     );
     return rows.map(FinanceEntryTemplate.fromMap).toList();
@@ -1530,42 +2555,81 @@ abstract final class FinanceStorage {
     return rows.isEmpty ? null : FinanceEntryTemplate.fromMap(rows.first);
   }
 
-  static Future<void> saveTemplate(FinanceEntryTemplate template) async {
+  static Future<void> saveTemplate(
+    FinanceEntryTemplate template, {
+    FinanceEntryTemplate? original,
+  }) async {
     _validateTemplate(template);
-    template.pendingSync = true;
+    if (original != null && original.uuid != template.uuid) {
+      throw ArgumentError.value(original.uuid, 'original', '模板标识不匹配');
+    }
     await ensureReady();
     final db = await _database;
-    await db.insert(
-      'finance_entry_templates',
-      _localValues(template.toMap()),
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await db.transaction((txn) async {
+      final existingRows = await txn.query(
+        'finance_entry_templates',
+        where: 'uuid = ?',
+        whereArgs: [template.uuid],
+        limit: 1,
+      );
+      var itemToSave = FinanceEntryTemplate.fromMap(template.toMap());
+      if (existingRows.isNotEmpty) {
+        final existing = FinanceEntryTemplate.fromMap(existingRows.first);
+        if (existing.isDeleted &&
+            (original == null || itemToSave.isDeleted == original.isDeleted)) {
+          throw StateError('快捷模板已删除，请重新加载后再编辑');
+        }
+        final baselineChanged =
+            original != null &&
+            (existing.version != original.version ||
+                existing.updatedAt != original.updatedAt);
+        if (baselineChanged) {
+          itemToSave = _mergeTemplateEdits(existing, original, itemToSave);
+          itemToSave.markAsChanged();
+          _validateTemplate(itemToSave);
+        } else if (itemToSave.version <= existing.version ||
+            itemToSave.updatedAt <= existing.updatedAt) {
+          throw StateError('快捷模板已更新，请重新加载后再保存');
+        }
+      } else if (original != null) {
+        throw StateError('快捷模板已不存在，请重新加载后再保存');
+      }
+      itemToSave.pendingSync = true;
+      await txn.insert(
+        'finance_entry_templates',
+        _localValues(itemToSave.toMap()),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    });
     _notifyChanged();
   }
 
   static Future<void> deleteTemplate(String uuid) async {
     final template = await getTemplate(uuid);
     if (template == null || template.isDeleted) return;
+    final original = FinanceEntryTemplate.fromMap(template.toMap());
     template.isDeleted = true;
     template.markAsChanged();
-    await saveTemplate(template);
+    await saveTemplate(template, original: original);
   }
 
   static Future<void> restoreTemplate(String uuid) async {
     final template = await getTemplate(uuid);
     if (template == null || !template.isDeleted) return;
+    final original = FinanceEntryTemplate.fromMap(template.toMap());
     template.isDeleted = false;
     template.markAsChanged();
-    await saveTemplate(template);
+    await saveTemplate(template, original: original);
   }
 
   static Future<void> markTemplateUsed(String uuid) async {
     final template = await getTemplate(uuid);
     if (template == null || template.isDeleted) return;
+    final original = FinanceEntryTemplate.fromMap(template.toMap());
     template.useCount++;
     template.lastUsedAt = DateTime.now().millisecondsSinceEpoch;
     template.markAsChanged();
-    await saveTemplate(template);
+    await saveTemplate(template, original: original);
   }
 
   static void _validateRecurringRule(FinanceRecurringRule rule) {
@@ -1575,7 +2639,7 @@ abstract final class FinanceStorage {
     if (rule.type == FinanceTransactionType.refund) {
       throw ArgumentError.value(rule.type, 'type', '周期规则不支持退款类型');
     }
-    if (rule.amountMinor <= 0) {
+    if (!isSafeFinanceAmountMinor(rule.amountMinor) || rule.amountMinor == 0) {
       throw ArgumentError.value(rule.amountMinor, 'amountMinor', '金额必须大于 0');
     }
     if (!_isDateKey(rule.startDate)) {
@@ -1590,12 +2654,18 @@ abstract final class FinanceStorage {
     }
     if (rule.dayOfMonth < 1 || rule.dayOfMonth > 31) {
       throw ArgumentError.value(
-          rule.dayOfMonth, 'dayOfMonth', '日期必须在 1 到 31 之间');
+        rule.dayOfMonth,
+        'dayOfMonth',
+        '日期必须在 1 到 31 之间',
+      );
     }
     if (rule.frequency == FinanceRecurringFrequency.yearly &&
         (rule.monthOfYear < 1 || rule.monthOfYear > 12)) {
       throw ArgumentError.value(
-          rule.monthOfYear, 'monthOfYear', '月份必须在 1 到 12 之间');
+        rule.monthOfYear,
+        'monthOfYear',
+        '月份必须在 1 到 12 之间',
+      );
     }
     if (rule.reminderMinutes < 0 || rule.reminderMinutes > 10080) {
       throw ArgumentError.value(
@@ -1613,15 +2683,25 @@ abstract final class FinanceStorage {
     if (template.type == FinanceTransactionType.refund) {
       throw ArgumentError.value(template.type, 'type', '模板不支持退款类型');
     }
-    if (template.amountMinor <= 0) {
+    if (!isSafeFinanceAmountMinor(template.amountMinor) ||
+        template.amountMinor == 0) {
       throw ArgumentError.value(
-          template.amountMinor, 'amountMinor', '金额必须大于 0');
+        template.amountMinor,
+        'amountMinor',
+        '金额必须大于 0',
+      );
+    }
+    if (template.useCount < 0 || template.useCount > _maxTemplateUseCount) {
+      throw ArgumentError.value(
+        template.useCount,
+        'useCount',
+        '使用次数必须在 0 到 $_maxTemplateUseCount 之间',
+      );
     }
   }
 
   static bool _isDateKey(String value) {
-    final parsed = DateTime.tryParse(value);
-    return parsed != null && dateKey(parsed) == value;
+    return isFinanceDateKey(value);
   }
 
   static Future<FinanceSummary> getSummary({
@@ -1695,13 +2775,15 @@ abstract final class FinanceStorage {
     await ensureReady();
     final database = await _database;
     final result = await database.transaction(
-      (txn) => _importBundleInTransaction(
-        txn,
-        bundle,
-        remapUuid: remapUuid,
-      ),
+      (txn) => _importBundleInTransaction(txn, bundle, remapUuid: remapUuid),
     );
-    if ((result['imported'] ?? 0) > 0 || (result['updated'] ?? 0) > 0) {
+    final incomingTransactions = bundle['transactions'];
+    final repairedLegacyRefunds = _hasIncomingRefund(incomingTransactions)
+        ? await _repairLegacyRefundCategories(database)
+        : 0;
+    if ((result['imported'] ?? 0) > 0 ||
+        (result['updated'] ?? 0) > 0 ||
+        repairedLegacyRefunds > 0) {
       _notifyChanged();
     }
     return result;
@@ -1717,8 +2799,17 @@ abstract final class FinanceStorage {
     var skipped = 0;
     var updated = 0;
 
-    final categoryMaps = _listOfMaps(bundle['categories']);
+    final categoryCandidates = <String, FinanceCategory>{};
+    final categoryInput = _importListOfMaps(bundle, 'categories');
+    skipped += categoryInput.invalidCount;
+    final categoryMaps = categoryInput.maps;
     for (final map in categoryMaps) {
+      if (!_hasRawFinanceUuid(map) ||
+          !_hasValidRawCategoryType(map) ||
+          !_hasValidRawFinanceName(map)) {
+        skipped++;
+        continue;
+      }
       final item = FinanceCategory.fromMap(map);
       final oldUuid = item.uuid;
       if (_isSystemUuid(oldUuid)) {
@@ -1729,11 +2820,7 @@ abstract final class FinanceStorage {
           skipped++;
           continue;
         }
-        final existing = await _findByUuid(
-          db,
-          'finance_categories',
-          oldUuid,
-        );
+        final existing = await _findByUuid(db, 'finance_categories', oldUuid);
         if (existing == null ||
             (!item.iconCustomized && !item.nameCustomized)) {
           skipped++;
@@ -1771,37 +2858,60 @@ abstract final class FinanceStorage {
         continue;
       }
       item.uuid = remap(oldUuid);
-      item.parentUuid = _remapNullable(item.parentUuid, remap);
-      final existing = await _findByUuid(
-        db,
-        'finance_categories',
-        item.uuid,
+      item.parentUuid = _normalizeCategoryParentUuid(
+        _remapNullable(item.parentUuid, remap),
       );
+      if (_isSystemUuid(item.uuid)) {
+        skipped++;
+        continue;
+      }
+      final existing = await _findByUuid(db, 'finance_categories', item.uuid);
+      if (existing != null &&
+          item.updatedAt <= FinanceCategory.fromMap(existing).updatedAt) {
+        skipped++;
+        continue;
+      }
+      final previous = categoryCandidates[item.uuid];
+      if (previous != null && item.updatedAt <= previous.updatedAt) {
+        skipped++;
+        continue;
+      }
+      if (previous != null) skipped++;
+      categoryCandidates[item.uuid] = item;
+    }
+
+    final invalidCategoryUuids = await _invalidCategoryHierarchyUuids(
+      db,
+      categoryCandidates.values,
+    );
+    for (final item in categoryCandidates.values) {
+      if (invalidCategoryUuids.contains(item.uuid)) {
+        skipped++;
+        continue;
+      }
+      final existing = await _findByUuid(db, 'finance_categories', item.uuid);
       if (existing == null) {
-        await db.insert(
-          'finance_categories',
-          item.isSystem
-              ? _remoteValues(item.toMap())
-              : _localValues(item.toMap()),
-        );
+        await db.insert('finance_categories', _localValues(item.toMap()));
         imported++;
-      } else if (item.updatedAt > FinanceCategory.fromMap(existing).updatedAt) {
+      } else {
         await db.update(
           'finance_categories',
-          item.isSystem
-              ? _remoteValues(item.toMap())
-              : _localValues(item.toMap()),
+          _localValues(item.toMap()),
           where: 'uuid = ?',
           whereArgs: [item.uuid],
         );
         updated++;
-      } else {
-        skipped++;
       }
     }
 
-    final paymentMaps = _listOfMaps(bundle['payment_methods']);
+    final paymentInput = _importListOfMaps(bundle, 'payment_methods');
+    skipped += paymentInput.invalidCount;
+    final paymentMaps = paymentInput.maps;
     for (final map in paymentMaps) {
+      if (!_hasRawFinanceUuid(map) || !_hasValidRawFinanceName(map)) {
+        skipped++;
+        continue;
+      }
       final item = FinancePaymentMethod.fromMap(map);
       if (item.isSystem || _isSystemUuid(item.uuid)) {
         skipped++;
@@ -1841,8 +2951,21 @@ abstract final class FinanceStorage {
       }
     }
 
-    final recurringRuleMaps = _listOfMaps(bundle['recurring_rules']);
+    final recurringRuleInput = _importListOfMaps(bundle, 'recurring_rules');
+    skipped += recurringRuleInput.invalidCount;
+    final recurringRuleMaps = recurringRuleInput.maps;
     for (final map in recurringRuleMaps) {
+      if (!_hasRawFinanceUuid(map) ||
+          !_hasSafeRawFinanceAmount(map, 'amount_minor', 'amountMinor') ||
+          !_hasValidRawFinanceName(map) ||
+          !_hasValidRawOptionalTransactionType(map) ||
+          !_hasValidRawRecurringFrequency(map) ||
+          !_hasValidRawRecurringScheduleFields(map) ||
+          !_hasValidRawFinanceDateKey(map, 'start_date', 'startDate') ||
+          !_hasSafeRawFinanceTimestamps(map)) {
+        skipped++;
+        continue;
+      }
       final item = FinanceRecurringRule.fromMap(map);
       item.uuid = remap(item.uuid);
       item.categoryUuid = _remapNullable(item.categoryUuid, remap);
@@ -1863,13 +2986,15 @@ abstract final class FinanceStorage {
         item.uuid,
       );
       if (existing == null) {
-        await db.insert(
-          'finance_recurring_rules',
-          _localValues(item.toMap()),
-        );
+        item.lastGeneratedPeriod = item.effectiveLastGeneratedPeriod;
+        await db.insert('finance_recurring_rules', _localValues(item.toMap()));
         imported++;
       } else if (item.updatedAt >
           FinanceRecurringRule.fromMap(existing).updatedAt) {
+        item.lastGeneratedPeriod = _mergeRecurringGenerationPeriod(
+          FinanceRecurringRule.fromMap(existing),
+          item,
+        );
         await db.update(
           'finance_recurring_rules',
           _localValues(item.toMap()),
@@ -1882,8 +3007,18 @@ abstract final class FinanceStorage {
       }
     }
 
-    final templateMaps = _listOfMaps(bundle['templates']);
+    final templateInput = _importListOfMaps(bundle, 'templates');
+    skipped += templateInput.invalidCount;
+    final templateMaps = templateInput.maps;
     for (final map in templateMaps) {
+      if (!_hasRawFinanceUuid(map) ||
+          !_hasSafeRawFinanceAmount(map, 'amount_minor', 'amountMinor') ||
+          !_hasValidRawFinanceName(map) ||
+          !_hasSafeRawTemplateUseCount(map) ||
+          !_hasValidRawOptionalTransactionType(map)) {
+        skipped++;
+        continue;
+      }
       final item = FinanceEntryTemplate.fromMap(map);
       item.uuid = remap(item.uuid);
       item.categoryUuid = _remapNullable(item.categoryUuid, remap);
@@ -1904,10 +3039,7 @@ abstract final class FinanceStorage {
         item.uuid,
       );
       if (existing == null) {
-        await db.insert(
-          'finance_entry_templates',
-          _localValues(item.toMap()),
-        );
+        await db.insert('finance_entry_templates', _localValues(item.toMap()));
         imported++;
       } else if (item.updatedAt >
           FinanceEntryTemplate.fromMap(existing).updatedAt) {
@@ -1923,110 +3055,204 @@ abstract final class FinanceStorage {
       }
     }
 
-    final transactionMaps = _listOfMaps(bundle['transactions'])
+    final transactionInput = _importListOfMaps(bundle, 'transactions');
+    skipped += transactionInput.invalidCount;
+    final transactionMaps = transactionInput.maps
       ..sort((left, right) {
-        final leftRefund = _isRawRefundType(left['type']) ? 1 : 0;
-        final rightRefund = _isRawRefundType(right['type']) ? 1 : 0;
-        return leftRefund.compareTo(rightRefund);
+        return _transactionMergePriority(FinanceTransaction.fromMap(left))
+            .compareTo(
+              _transactionMergePriority(FinanceTransaction.fromMap(right)),
+            );
       });
+    final changedOriginalUuids = <String>{};
+    var pendingTransactions = <FinanceTransaction>[];
     for (final map in transactionMaps) {
       final item = FinanceTransaction.fromMap(map);
       item.uuid = remap(item.uuid);
       item.categoryUuid = _remapNullable(item.categoryUuid, remap);
       item.paymentMethodUuid = _remapNullable(item.paymentMethodUuid, remap);
-      item.relatedTransactionUuid =
-          _remapNullable(item.relatedTransactionUuid, remap);
+      item.relatedTransactionUuid = _remapNullable(
+        item.relatedTransactionUuid,
+        remap,
+      );
       item.relatedTodoUuid = _remapNullable(item.relatedTodoUuid, remap);
-      item.relatedPlanBlockUuid =
-          _remapNullable(item.relatedPlanBlockUuid, remap);
-      item.installmentGroupUuid =
-          _remapNullable(item.installmentGroupUuid, remap);
-      item.source = FinanceEntrySource.import;
+      item.relatedPlanBlockUuid = _remapNullable(
+        item.relatedPlanBlockUuid,
+        remap,
+      );
+      item.installmentGroupUuid = _remapNullable(
+        item.installmentGroupUuid,
+        remap,
+      );
       if (!_isValidImportedTransaction(map, item)) {
         skipped++;
         continue;
       }
-      try {
-        await _validateTransactionRefundState(db, item);
-      } on StateError {
+      pendingTransactions.add(item);
+    }
+    final duplicateInstallmentKeys = _duplicateInstallmentIndexKeys(
+      pendingTransactions,
+    );
+    final skippedDuplicateInstallments = pendingTransactions.where((item) {
+      final key = _installmentIndexKey(item);
+      return !item.isDeleted &&
+          key != null &&
+          duplicateInstallmentKeys.contains(key);
+    }).length;
+    skipped += skippedDuplicateInstallments;
+    pendingTransactions.removeWhere((item) {
+      final key = _installmentIndexKey(item);
+      return !item.isDeleted &&
+          key != null &&
+          duplicateInstallmentKeys.contains(key);
+    });
+    while (pendingTransactions.isNotEmpty) {
+      final deferred = <FinanceTransaction>[];
+      var applied = 0;
+      for (final item in pendingTransactions) {
+        if (await _hasInstallmentIndexConflict(db, item)) {
+          skipped++;
+          continue;
+        }
+        final existing = await _findByUuid(db, 'finance_transactions', item.uuid);
+        if (existing != null &&
+            item.updatedAt <= FinanceTransaction.fromMap(existing).updatedAt) {
+          skipped++;
+          continue;
+        }
+        try {
+          await _validateTransactionRefundState(db, item, alignCategory: false);
+        } on StateError {
+          deferred.add(item);
+          continue;
+        }
+        if (existing == null) {
+          await db.insert('finance_transactions', _localValues(item.toMap()));
+          imported++;
+        } else {
+          await db.update(
+            'finance_transactions',
+            _localValues(item.toMap()),
+            where: 'uuid = ?',
+            whereArgs: [item.uuid],
+          );
+          updated++;
+        }
+        applied++;
+        changedOriginalUuids.add(item.uuid);
+        if (item.type == FinanceTransactionType.refund &&
+            item.relatedTransactionUuid != null) {
+          changedOriginalUuids.add(item.relatedTransactionUuid!);
+        }
+      }
+      // A refund decrease/deletion can unblock an earlier expense decrease or
+      // another refund increase. Retry only while this batch makes progress.
+      if (applied == 0) {
+        skipped += deferred.length;
+        break;
+      }
+      pendingTransactions = deferred;
+    }
+    final repairedRefunds = <String>{};
+    await _alignLinkedRefunds(
+      db,
+      originalUuids: changedOriginalUuids,
+      repairedUuids: repairedRefunds,
+    );
+    updated += repairedRefunds
+        .where((uuid) => !changedOriginalUuids.contains(uuid))
+        .length;
+
+    final importedBudgets = <FinanceBudget>[];
+    final budgetInput = _importListOfMaps(bundle, 'budgets');
+    skipped += budgetInput.invalidCount;
+    for (final map in budgetInput.maps) {
+      if (!_hasRawFinanceUuid(map) ||
+          !_isSafeRawFinanceAmount(map['amount_minor'] ?? map['amountMinor']) ||
+          !_hasValidRawFinanceMonthKey(map) ||
+          !_hasValidRawBalanceSnapshot(map)) {
         skipped++;
         continue;
       }
-      final existing = await _findByUuid(
-        db,
-        'finance_transactions',
-        item.uuid,
-      );
-      if (existing == null) {
-        await db.insert(
-          'finance_transactions',
-          _localValues(item.toMap()),
-        );
-        imported++;
-      } else if (item.updatedAt >
-          FinanceTransaction.fromMap(existing).updatedAt) {
-        await db.update(
-          'finance_transactions',
-          _localValues(item.toMap()),
-          where: 'uuid = ?',
-          whereArgs: [item.uuid],
-        );
-        updated++;
-      } else {
-        skipped++;
-      }
-    }
-
-    final budgetMaps = _listOfMaps(bundle['budgets']);
-    for (final map in budgetMaps) {
       final item = FinanceBudget.fromMap(map);
       item.uuid = remap(item.uuid);
       item.categoryUuid = _remapNullable(item.categoryUuid, remap);
       item.paymentMethodUuid = _remapNullable(item.paymentMethodUuid, remap);
-      item.amountMinor = item.amountMinor.abs();
-      if (item.amountMinor <= 0 ||
-          !RegExp(r'^\d{4}-(0[1-9]|1[0-2])$').hasMatch(item.monthKey)) {
+      if (!_isValidBudget(item) || !await _hasValidBudgetScope(db, item)) {
         skipped++;
         continue;
       }
+      importedBudgets.add(item);
+    }
+    final budgets = _latestBudgetsByScope(importedBudgets);
+    skipped += importedBudgets.length - budgets.length;
+    for (final item in budgets) {
       final existing = await _findByUuid(db, 'finance_budgets', item.uuid);
-      final existingScope =
-          existing == null ? await _findBudgetByScope(db, item) : null;
-      if (existing == null && existingScope != null) {
-        final current = FinanceBudget.fromMap(existingScope);
-        if (item.updatedAt <= current.updatedAt) {
+      if (existing != null) {
+        final current = FinanceBudget.fromMap(existing);
+        if (_budgetScopeKey(current) != _budgetScopeKey(item) &&
+            !_isIncomingBudgetWinner(item, current)) {
           skipped++;
           continue;
         }
-        item.uuid = current.uuid;
-        await db.update(
-          'finance_budgets',
-          _budgetValues(item, sync: !item.isPaymentMethod),
-          where: 'uuid = ?',
-          whereArgs: [current.uuid],
-        );
-        updated++;
-      } else if (existing == null) {
-        await db.insert(
-          'finance_budgets',
-          _budgetValues(item, sync: !item.isPaymentMethod),
-        );
-        imported++;
-      } else if (item.updatedAt > FinanceBudget.fromMap(existing).updatedAt) {
-        await db.update(
-          'finance_budgets',
-          _budgetValues(item, sync: !item.isPaymentMethod),
-          where: 'uuid = ?',
-          whereArgs: [item.uuid],
-        );
-        updated++;
-      } else {
+      }
+      final scopeRows = await _findAllBudgetsByScope(db, item);
+      final current = scopeRows.isEmpty
+          ? null
+          : _latestBudgetsByScope(
+              scopeRows.map(FinanceBudget.fromMap).toList(),
+            ).single;
+      if (current != null && !_isIncomingBudgetWinner(item, current)) {
+        // Repair duplicates left by older importers without overwriting the
+        // newest local value with a stale backup.
+        if (scopeRows.length > 1) {
+          await _deleteOtherBudgetsInScope(db, current);
+          updated++;
+        }
         skipped++;
+        continue;
+      }
+      if (current != null) {
+        _preserveBalanceSnapshotForUnchangedAmount(item, current);
+      }
+      await _deleteOtherBudgetsInScope(db, item);
+      await db.insert(
+        'finance_budgets',
+        _localValues(item.toMap()),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+      if (existing == null && scopeRows.isEmpty) {
+        imported++;
+      } else {
+        updated++;
       }
     }
 
-    final loanMaps = _listOfMaps(bundle['loans']);
+    final loanInput = _importListOfMaps(bundle, 'loans');
+    skipped += loanInput.invalidCount;
+    final loanMaps = loanInput.maps;
     for (final map in loanMaps) {
+      if (!_hasRawFinanceUuid(map) ||
+          !_hasSafeRawFinanceAmount(
+            map,
+            'principal_minor',
+            'principalMinor',
+          ) ||
+          !_hasSafeRawLoanInterestRate(map) ||
+          !_hasValidRawLoanRepaymentMethod(map) ||
+          !_hasValidRawFinanceName(map) ||
+          !_hasValidRawFinanceDateKey(map, 'start_date', 'startDate') ||
+          !_hasSafeRawIntegerRange(
+            map,
+            'term_months',
+            'termMonths',
+            FinanceLoanCalculator.minTermMonths,
+            FinanceLoanCalculator.maxTermMonths,
+          ) ||
+          !_hasSafeRawIntegerRange(map, 'repayment_day', 'repaymentDay', 1, 31)) {
+        skipped++;
+        continue;
+      }
       final item = FinanceLoan.fromMap(map);
       item.uuid = remap(item.uuid);
       if (!_isValidLoan(item)) {
@@ -2037,7 +3263,17 @@ abstract final class FinanceStorage {
       if (existing == null) {
         await db.insert('finance_loans', _localValues(item.toMap()));
         imported++;
-      } else if (item.updatedAt > FinanceLoan.fromMap(existing).updatedAt) {
+      } else {
+        final current = FinanceLoan.fromMap(existing);
+        if (item.updatedAt <= current.updatedAt) {
+          skipped++;
+          continue;
+        }
+        if (_loanTermsDiffer(current, item) &&
+            await _hasPaidLoanInstallments(db, item.uuid)) {
+          skipped++;
+          continue;
+        }
         await db.update(
           'finance_loans',
           _localValues(item.toMap()),
@@ -2045,13 +3281,27 @@ abstract final class FinanceStorage {
           whereArgs: [item.uuid],
         );
         updated++;
-      } else {
-        skipped++;
       }
     }
 
-    final loanInstallmentMaps = _listOfMaps(bundle['loan_installments']);
+    final loanInstallmentInput = _importListOfMaps(
+      bundle,
+      'loan_installments',
+    );
+    skipped += loanInstallmentInput.invalidCount;
+    final loanInstallmentMaps = loanInstallmentInput.maps
+      ..sort(_compareRawLoanInstallmentMaps);
+    final seenActiveLoanInstallments = <String>{};
+    final loanScheduleCache =
+        <String, List<FinanceLoanScheduleAllocation>>{};
     for (final map in loanInstallmentMaps) {
+      if (!_hasRawFinanceUuid(map) ||
+          !_hasSafeRawLoanInstallmentAmounts(map) ||
+          !_hasValidRawLoanInstallmentScheduleFields(map) ||
+          !_hasSafeRawFinanceTimestamps(map)) {
+        skipped++;
+        continue;
+      }
       final item = FinanceLoanInstallment.fromMap(map);
       item.uuid = remap(item.uuid);
       item.loanUuid = remap(item.loanUuid);
@@ -2059,14 +3309,46 @@ abstract final class FinanceStorage {
         item.interestTransactionUuid,
         remap,
       );
+      item.paymentMethodUuid = _remapNullable(
+        item.paymentMethodUuid,
+        remap,
+      );
       if (!_isValidLoanInstallment(item)) {
         skipped++;
         continue;
       }
       final parentLoan = await _findByUuid(db, 'finance_loans', item.loanUuid);
-      if (parentLoan == null || FinanceLoan.fromMap(parentLoan).isDeleted) {
+      final loan = parentLoan == null
+          ? null
+          : FinanceLoan.fromMap(parentLoan);
+      if (loan == null ||
+          (loan.isDeleted && !item.isDeleted) ||
+          (!item.isDeleted &&
+              !_matchesLoanInstallmentSchedule(
+                loan,
+                item,
+                loanScheduleCache,
+              ))) {
         skipped++;
         continue;
+      }
+      final scheduleKey = '${item.loanUuid}\u0000${item.installmentIndex}';
+      if (!item.isDeleted && !seenActiveLoanInstallments.add(scheduleKey)) {
+        skipped++;
+        continue;
+      }
+      if (!item.isDeleted) {
+        final duplicateSchedules = await db.query(
+          'finance_loan_installments',
+          columns: ['uuid'],
+          where:
+              'loan_uuid = ? AND installment_index = ? AND is_deleted = 0',
+          whereArgs: [item.loanUuid, item.installmentIndex],
+        );
+        if (duplicateSchedules.any((row) => row['uuid'] != item.uuid)) {
+          skipped++;
+          continue;
+        }
       }
       final existing = await _findByUuid(
         db,
@@ -2079,8 +3361,13 @@ abstract final class FinanceStorage {
           _localValues(item.toMap()),
         );
         imported++;
-      } else if (item.updatedAt >
-          FinanceLoanInstallment.fromMap(existing).updatedAt) {
+      } else {
+        final current = FinanceLoanInstallment.fromMap(existing);
+        if (item.updatedAt <= current.updatedAt ||
+            (current.isPaid && !_sameLoanInstallmentSchedule(current, item))) {
+          skipped++;
+          continue;
+        }
         await db.update(
           'finance_loan_installments',
           _localValues(item.toMap()),
@@ -2088,8 +3375,6 @@ abstract final class FinanceStorage {
           whereArgs: [item.uuid],
         );
         updated++;
-      } else {
-        skipped++;
       }
     }
 
@@ -2104,52 +3389,139 @@ abstract final class FinanceStorage {
   static Future<int> mergeRemoteBundle(
     Map<String, dynamic> bundle, {
     Set<String> forceRemoteKeys = const {},
+    Set<String>? deferredTransactionUuids,
+    Set<String>? changedSections,
   }) async {
     await ensureReady();
     final categories = _listOfMaps(bundle['categories'])
-        .map(FinanceCategory.fromMap)
+        .where(_hasRawFinanceUuid)
+        .where(_hasValidRawFinanceName)
+        .where(_hasValidRawCategoryType)
+        .map((map) {
+          final item = FinanceCategory.fromMap(map);
+          item.parentUuid = _normalizeCategoryParentUuid(item.parentUuid);
+          return item;
+        })
         .where((item) {
-      if (!_isValidName(item.name)) return false;
-      if (_isSystemUuid(item.uuid)) {
-        if (!_isSystemCategoryUuid(item.uuid)) return false;
-        return item.isSystem && (item.iconCustomized || item.nameCustomized);
-      }
-      return !item.isSystem;
-    }).toList(growable: false);
+          if (!_isValidName(item.name)) return false;
+          if (_isSystemUuid(item.uuid)) {
+            if (!_isSystemCategoryUuid(item.uuid)) return false;
+            return item.isSystem &&
+                (item.iconCustomized || item.nameCustomized);
+          }
+          return !item.isSystem;
+        })
+        .toList(growable: false);
     final paymentMethods = _listOfMaps(bundle['payment_methods'])
+        .where(_hasRawFinanceUuid)
+        .where(_hasValidRawFinanceName)
         .map(FinancePaymentMethod.fromMap)
-        .where((item) =>
-            !item.isSystem &&
-            !_isSystemUuid(item.uuid) &&
-            _isValidName(item.name))
+        .where(
+          (item) =>
+              !item.isSystem &&
+              !_isSystemUuid(item.uuid) &&
+              _isValidName(item.name),
+        )
         .toList(growable: false);
     final transactions = _listOfMaps(bundle['transactions'])
+        .where(
+          (map) =>
+              _hasRawFinanceUuid(map) &&
+              _isValidRawTransactionType(map) &&
+              _hasValidRawFinanceDateKey(
+                map,
+                'transaction_date',
+                'transactionDate',
+              ) &&
+              _hasSafeRawFinanceTimestamps(map) &&
+              _hasValidRawInstallmentFields(map) &&
+              _isSafeRawFinanceAmount(
+                map['amount_minor'] ?? map['amountMinor'],
+              ),
+        )
+        .map(_normalizeRemoteFinanceEntrySource)
         .map(FinanceTransaction.fromMap)
         .where(_isValidTransaction)
         .toList(growable: false);
-    final budgets = _latestBudgetsByScope(_listOfMaps(bundle['budgets'])
-        .map(FinanceBudget.fromMap)
-        .where(_isValidBudget)
-        .toList(growable: false));
+    final budgets = _latestBudgetsByScope(
+      _listOfMaps(bundle['budgets'])
+          .where(
+            (map) =>
+                _hasRawFinanceUuid(map) &&
+                _isSafeRawFinanceAmount(
+                  map['amount_minor'] ?? map['amountMinor'],
+                ) &&
+                _hasValidRawFinanceMonthKey(map) &&
+                _hasValidRawBalanceSnapshot(map),
+          )
+          .map(FinanceBudget.fromMap)
+          .where(_isValidBudget)
+          .toList(growable: false),
+    );
     final recurringRules = _listOfMaps(bundle['recurring_rules'])
+        .where(
+          (map) => _hasRawFinanceUuid(map) &&
+              _hasValidRawFinanceName(map) &&
+              _hasSafeRawFinanceAmount(map, 'amount_minor', 'amountMinor') &&
+              _hasValidRawOptionalTransactionType(map) &&
+              _hasValidRawRecurringFrequency(map) &&
+              _hasValidRawRecurringScheduleFields(map) &&
+              _hasValidRawFinanceDateKey(map, 'start_date', 'startDate') &&
+              _hasSafeRawFinanceTimestamps(map),
+        )
         .map(FinanceRecurringRule.fromMap)
         .where(_isValidRecurringRule)
         .toList(growable: false);
     final templates = _listOfMaps(bundle['templates'])
+        .where(
+          (map) => _hasRawFinanceUuid(map) &&
+              _hasValidRawFinanceName(map) &&
+              _hasSafeRawFinanceAmount(map, 'amount_minor', 'amountMinor') &&
+              _hasSafeRawTemplateUseCount(map) &&
+              _hasValidRawOptionalTransactionType(map),
+        )
         .map(FinanceEntryTemplate.fromMap)
         .where(_isValidTemplate)
         .toList(growable: false);
     final loans = _listOfMaps(bundle['loans'])
+        .where(
+          (map) =>
+              _hasRawFinanceUuid(map) &&
+              _hasValidRawFinanceName(map) &&
+              _hasSafeRawFinanceAmount(
+                map,
+                'principal_minor',
+                'principalMinor',
+              ) &&
+              _hasSafeRawLoanInterestRate(map) &&
+              _hasValidRawLoanRepaymentMethod(map) &&
+              _hasValidRawFinanceDateKey(map, 'start_date', 'startDate') &&
+              _hasSafeRawIntegerRange(
+                map,
+                'term_months',
+                'termMonths',
+                FinanceLoanCalculator.minTermMonths,
+                FinanceLoanCalculator.maxTermMonths,
+              ) &&
+              _hasSafeRawIntegerRange(map, 'repayment_day', 'repaymentDay', 1, 31),
+        )
         .map(FinanceLoan.fromMap)
         .where(_isValidLoan)
         .toList(growable: false);
-    final loanInstallments = _listOfMaps(bundle['loan_installments'])
-        .map(FinanceLoanInstallment.fromMap)
-        .where(_isValidLoanInstallment)
-        .toList(growable: false);
+    final loanInstallments = _deduplicateActiveLoanInstallments(
+      _listOfMaps(bundle['loan_installments'])
+          .where(_hasRawFinanceUuid)
+          .where(_hasSafeRawLoanInstallmentAmounts)
+          .where(_hasValidRawLoanInstallmentScheduleFields)
+          .where(_hasSafeRawFinanceTimestamps)
+          .map(FinanceLoanInstallment.fromMap)
+          .where(_isValidLoanInstallment)
+          .toList(growable: false),
+    );
 
     final db = await _database;
     var changed = 0;
+    final repairedRefundUuids = <String>{};
     await db.transaction((txn) async {
       changed += await _mergeCategories(
         txn,
@@ -2165,6 +3537,8 @@ abstract final class FinanceStorage {
         txn,
         transactions,
         forceRemoteKeys: forceRemoteKeys,
+        deferredTransactionUuids: deferredTransactionUuids,
+        repairedRefundUuids: repairedRefundUuids,
       );
       changed += await _mergeLoans(
         txn,
@@ -2181,18 +3555,33 @@ abstract final class FinanceStorage {
         budgets,
         forceRemoteKeys: forceRemoteKeys,
       );
-      changed += await _mergeRecurringRules(
+      final recurringRuleChanges = await _mergeRecurringRules(
         txn,
         recurringRules,
         forceRemoteKeys: forceRemoteKeys,
       );
+      changed += recurringRuleChanges;
+      if (recurringRuleChanges > 0) {
+        changedSections?.add('recurring_rules');
+      }
       changed += await _mergeTemplates(
         txn,
         templates,
         forceRemoteKeys: forceRemoteKeys,
       );
     });
-    if (changed > 0) _notifyChanged(requestSync: false);
+    final repairedLegacyRefunds = !transactions.any(
+      (item) => item.type == FinanceTransactionType.refund,
+    )
+        ? 0
+        : await _repairLegacyRefundCategories(db);
+    changed += repairedLegacyRefunds;
+    if (changed > 0) {
+      _notifyChanged(
+        requestSync:
+            repairedRefundUuids.isNotEmpty || repairedLegacyRefunds > 0,
+      );
+    }
     return changed;
   }
 
@@ -2215,25 +3604,33 @@ abstract final class FinanceStorage {
       'recurring_rules': 'finance_recurring_rules',
       'templates': 'finance_entry_templates',
     };
-    const sectionByTableKey = <String, String>{
-      'categories': 'finance_categories_changes',
-      'payment_methods': 'finance_payment_methods_changes',
-      'transactions': 'finance_transactions_changes',
-      'loans': 'finance_loans_changes',
-      'loan_installments': 'finance_loan_installments_changes',
-      'budgets': 'finance_budgets_changes',
-      'recurring_rules': 'finance_recurring_rules_changes',
-      'templates': 'finance_entry_templates_changes',
+    const sectionsByTableKey = <String, List<String>>{
+      'categories': ['finance_categories_changes'],
+      'payment_methods': ['finance_payment_methods_changes'],
+      'transactions': ['finance_transactions_changes'],
+      'loans': ['finance_loans_changes'],
+      'loan_installments': [
+        'finance_loan_installments_changes',
+        'finance_loan_account_changes',
+      ],
+      'budgets': [
+        'finance_budgets_changes',
+        'finance_balance_snapshots_changes',
+      ],
+      'recurring_rules': ['finance_recurring_rules_changes'],
+      'templates': ['finance_entry_templates_changes'],
     };
     final requestedByKey = <String, Map<String, dynamic>>{};
-    for (final entry in sectionByTableKey.entries) {
-      final raw = requestPayload[entry.value];
-      if (raw is! List) continue;
-      for (final value in raw.whereType<Map>()) {
-        final item = Map<String, dynamic>.from(value);
-        final uuid = item['uuid']?.toString() ?? item['id']?.toString() ?? '';
-        if (uuid.isNotEmpty) {
-          requestedByKey['${entry.value}:$uuid'] = item;
+    for (final entry in sectionsByTableKey.entries) {
+      for (final section in entry.value) {
+        final raw = requestPayload[section];
+        if (raw is! List) continue;
+        for (final value in raw.whereType<Map>()) {
+          final item = Map<String, dynamic>.from(value);
+          final uuid = item['uuid']?.toString() ?? item['id']?.toString() ?? '';
+          if (uuid.isNotEmpty) {
+            requestedByKey['${entry.key}:$uuid'] = item;
+          }
         }
       }
     }
@@ -2244,11 +3641,10 @@ abstract final class FinanceStorage {
       for (final value in acknowledgements.whereType<Map>()) {
         final tableKey = value['table']?.toString() ?? '';
         final table = tableByKey[tableKey];
-        final section = sectionByTableKey[tableKey];
-        if (table == null || section == null) continue;
+        if (table == null) continue;
         final uuid = value['uuid']?.toString() ?? value['id']?.toString() ?? '';
         if (uuid.isEmpty) continue;
-        final requested = requestedByKey['$section:$uuid'];
+        final requested = requestedByKey['$tableKey:$uuid'];
         if (requested == null) continue;
         final requestedUpdatedAt = _asInt(
           requested['updated_at'] ?? requested['updatedAt'],
@@ -2279,8 +3675,7 @@ abstract final class FinanceStorage {
         final count = await txn.update(
           table,
           update,
-          where:
-              'uuid = ? AND pending_sync = 1 AND updated_at = ? AND version = ?',
+          where: 'uuid = ? AND pending_sync = 1 AND updated_at = ? AND version = ?',
           whereArgs: [uuid, requestedUpdatedAt, requestedVersion],
         );
         acknowledged += count;
@@ -2289,13 +3684,169 @@ abstract final class FinanceStorage {
     return acknowledged;
   }
 
+  /// Filters category writes that would leave the local catalog with a broken
+  /// or deeper-than-two-level hierarchy. Validate the projected batch instead
+  /// of its input order so a valid root/child pair still imports when the
+  /// child appears first in a backup or sync response.
+  static Future<Set<String>> _invalidCategoryHierarchyUuids(
+    DatabaseExecutor db,
+    Iterable<FinanceCategory> candidates,
+  ) async {
+    final candidateByUuid = <String, FinanceCategory>{
+      for (final item in candidates)
+        if (!item.isSystem && !_isSystemUuid(item.uuid)) item.uuid: item,
+    };
+    if (candidateByUuid.isEmpty) return <String>{};
+
+    final rows = await db.query('finance_categories');
+    final currentByUuid = <String, FinanceCategory>{
+      for (final row in rows)
+        FinanceCategory.fromMap(row).uuid: FinanceCategory.fromMap(row),
+    };
+    final structuralCandidates = <String>{};
+    for (final entry in candidateByUuid.entries) {
+      final current = currentByUuid[entry.key];
+      final incoming = entry.value;
+      if (current == null ||
+          _normalizeCategoryParentUuid(current.parentUuid) !=
+              _normalizeCategoryParentUuid(incoming.parentUuid) ||
+          current.type != incoming.type ||
+          current.isDeleted != incoming.isDeleted ||
+          current.isArchived != incoming.isArchived) {
+        structuralCandidates.add(entry.key);
+      }
+    }
+    if (structuralCandidates.isEmpty) return <String>{};
+
+    final rejected = <String>{};
+    while (true) {
+      final projected = Map<String, FinanceCategory>.from(currentByUuid);
+      for (final entry in candidateByUuid.entries) {
+        if (!rejected.contains(entry.key)) projected[entry.key] = entry.value;
+      }
+
+      final newlyRejected = <String>{};
+      for (final start in projected.values.where((item) => !item.isDeleted)) {
+        final path = <FinanceCategory>[];
+        final pathIndex = <String, int>{};
+        var cursor = start;
+        var reachedRoot = false;
+        var foundBrokenEdge = false;
+
+        while (true) {
+          final cycleStart = pathIndex[cursor.uuid];
+          if (cycleStart != null) {
+            final cycleUuids = path
+                .skip(cycleStart)
+                .map((item) => item.uuid)
+                .where(structuralCandidates.contains)
+                .where((uuid) => !rejected.contains(uuid))
+                .toList();
+            if (cycleUuids.isNotEmpty) {
+              cycleUuids.sort((left, right) {
+                final byTimestamp = candidateByUuid[left]!.updatedAt.compareTo(
+                  candidateByUuid[right]!.updatedAt,
+                );
+                return byTimestamp != 0 ? byTimestamp : left.compareTo(right);
+              });
+              newlyRejected.add(cycleUuids.first);
+            }
+            foundBrokenEdge = true;
+            break;
+          }
+
+          pathIndex[cursor.uuid] = path.length;
+          path.add(cursor);
+          final parentUuid = _normalizeCategoryParentUuid(cursor.parentUuid);
+          if (parentUuid == null) {
+            reachedRoot = true;
+            break;
+          }
+
+          final parent = projected[parentUuid];
+          if (parent == null ||
+              parent.isDeleted ||
+              (parent.isArchived && !cursor.isArchived) ||
+              parent.type != cursor.type) {
+            if (structuralCandidates.contains(cursor.uuid) &&
+                !rejected.contains(cursor.uuid)) {
+              newlyRejected.add(cursor.uuid);
+            } else if (structuralCandidates.contains(parentUuid) &&
+                !rejected.contains(parentUuid)) {
+              newlyRejected.add(parentUuid);
+            }
+            foundBrokenEdge = true;
+            break;
+          }
+          cursor = parent;
+        }
+
+        if (reachedRoot && !foundBrokenEdge && path.length > 2) {
+          // `path` runs from the current category toward its root. The node
+          // and its parent at each level are the two incoming edges that can
+          // have introduced a third level. Prefer rejecting the deepest
+          // incoming category so the valid parent hierarchy can be retained.
+          for (var index = 0; index + 2 < path.length; index++) {
+            final child = path[index];
+            final parent = path[index + 1];
+            if (structuralCandidates.contains(child.uuid) &&
+                !rejected.contains(child.uuid)) {
+              newlyRejected.add(child.uuid);
+              break;
+            }
+            if (structuralCandidates.contains(parent.uuid) &&
+                !rejected.contains(parent.uuid)) {
+              newlyRejected.add(parent.uuid);
+              break;
+            }
+          }
+        }
+      }
+
+      if (newlyRejected.isEmpty) break;
+      rejected.addAll(newlyRejected);
+    }
+    return rejected;
+  }
+
+  static String? _normalizeCategoryParentUuid(String? value) {
+    final normalized = value?.trim();
+    return normalized == null || normalized.isEmpty ? null : normalized;
+  }
+
   static Future<int> _mergeCategories(
     DatabaseExecutor db,
     List<FinanceCategory> items, {
     Set<String> forceRemoteKeys = const {},
   }) async {
+    final hierarchyCandidates = <FinanceCategory>[];
+    for (final item in items.where((item) => !item.isSystem)) {
+      final existing = await _findByUuid(db, 'finance_categories', item.uuid);
+      if (existing == null) {
+        hierarchyCandidates.add(item);
+        continue;
+      }
+      final current = FinanceCategory.fromMap(existing);
+      if (forceRemoteKeys.contains('categories:${item.uuid}') ||
+          _isIncomingWinner(
+            item.updatedAt,
+            item.version,
+            current.updatedAt,
+            current.version,
+          )) {
+        hierarchyCandidates.add(item);
+      }
+    }
+    final invalidCategoryUuids = await _invalidCategoryHierarchyUuids(
+      db,
+      hierarchyCandidates,
+    );
+
     var changed = 0;
     for (final item in items) {
+      if (!item.isSystem && invalidCategoryUuids.contains(item.uuid)) {
+        continue;
+      }
       final existing = await _findByUuid(db, 'finance_categories', item.uuid);
       if (existing == null) {
         await db.insert('finance_categories', _remoteValues(item.toMap()));
@@ -2303,7 +3854,8 @@ abstract final class FinanceStorage {
         continue;
       }
       final current = FinanceCategory.fromMap(existing);
-      final isSystemOverride = item.isSystem &&
+      final isSystemOverride =
+          item.isSystem &&
           _isSystemCategoryUuid(item.uuid) &&
           (item.iconCustomized || item.nameCustomized);
       if (isSystemOverride && current.isSystem) {
@@ -2329,8 +3881,12 @@ abstract final class FinanceStorage {
               !current.iconCustomized &&
               !current.nameCustomized &&
               !current.pendingSync) &&
-          !_isIncomingWinner(item.updatedAt, item.version, current.updatedAt,
-              current.version)) {
+          !_isIncomingWinner(
+            item.updatedAt,
+            item.version,
+            current.updatedAt,
+            current.version,
+          )) {
         continue;
       }
       await db.update(
@@ -2351,20 +3907,24 @@ abstract final class FinanceStorage {
   }) async {
     var changed = 0;
     for (final item in items) {
-      final existing =
-          await _findByUuid(db, 'finance_payment_methods', item.uuid);
+      final existing = await _findByUuid(
+        db,
+        'finance_payment_methods',
+        item.uuid,
+      );
       if (existing == null) {
-        await db.insert(
-          'finance_payment_methods',
-          _remoteValues(item.toMap()),
-        );
+        await db.insert('finance_payment_methods', _remoteValues(item.toMap()));
         changed++;
         continue;
       }
       final current = FinancePaymentMethod.fromMap(existing);
       if (!forceRemoteKeys.contains('payment_methods:${item.uuid}') &&
-          !_isIncomingWinner(item.updatedAt, item.version, current.updatedAt,
-              current.version)) {
+          !_isIncomingWinner(
+            item.updatedAt,
+            item.version,
+            current.updatedAt,
+            current.version,
+          )) {
         continue;
       }
       await db.update(
@@ -2382,48 +3942,95 @@ abstract final class FinanceStorage {
     DatabaseExecutor db,
     List<FinanceTransaction> items, {
     Set<String> forceRemoteKeys = const {},
+    Set<String>? deferredTransactionUuids,
+    Set<String>? repairedRefundUuids,
   }) async {
     var changed = 0;
-    final orderedItems = [...items]..sort((left, right) {
-        final leftRefund = left.type == FinanceTransactionType.refund ? 1 : 0;
-        final rightRefund = right.type == FinanceTransactionType.refund ? 1 : 0;
-        return leftRefund.compareTo(rightRefund);
+    final changedOriginalUuids = <String>{};
+    final duplicateInstallmentKeys = _duplicateInstallmentIndexKeys(items);
+    final orderedItems = items
+      .where((item) {
+        final key = _installmentIndexKey(item);
+        return item.isDeleted ||
+            key == null ||
+            !duplicateInstallmentKeys.contains(key);
+      })
+      .toList()
+      ..sort((left, right) {
+        // Create/restore originals before active refunds, but remove refunds
+        // before deleting or changing the type of their originals.
+        return _transactionMergePriority(left)
+            .compareTo(_transactionMergePriority(right));
       });
-    for (final item in orderedItems) {
-      final existing = await _findByUuid(db, 'finance_transactions', item.uuid);
-      if (existing == null) {
+    var pending = orderedItems;
+    while (pending.isNotEmpty) {
+      final deferred = <FinanceTransaction>[];
+      final changedBeforeRound = changed;
+      for (final item in pending) {
+        if (await _hasInstallmentIndexConflict(db, item)) continue;
+        final existing = await _findByUuid(db, 'finance_transactions', item.uuid);
+        if (existing != null) {
+          final current = FinanceTransaction.fromMap(existing);
+          if (!forceRemoteKeys.contains('transactions:${item.uuid}') &&
+              !_isIncomingWinner(
+                item.updatedAt,
+                item.version,
+                current.updatedAt,
+                current.version,
+              )) {
+            continue;
+          }
+        }
         try {
-          await _validateTransactionRefundState(db, item);
+          await _validateTransactionRefundState(db, item, alignCategory: false);
         } on StateError {
+          deferred.add(item);
           continue;
         }
-        await db.insert(
-          'finance_transactions',
-          _remoteValues(item.toMap()),
-        );
+        if (existing == null) {
+          await db.insert('finance_transactions', _remoteValues(item.toMap()));
+        } else {
+          await db.update(
+            'finance_transactions',
+            _remoteValues(item.toMap()),
+            where: 'uuid = ?',
+            whereArgs: [item.uuid],
+          );
+        }
+        changedOriginalUuids.add(item.uuid);
+        if (item.type == FinanceTransactionType.refund &&
+            item.relatedTransactionUuid != null) {
+          changedOriginalUuids.add(item.relatedTransactionUuid!);
+        }
         changed++;
-        continue;
       }
-      final current = FinanceTransaction.fromMap(existing);
-      if (!forceRemoteKeys.contains('transactions:${item.uuid}') &&
-          !_isIncomingWinner(item.updatedAt, item.version, current.updatedAt,
-              current.version)) {
-        continue;
+      if (changed == changedBeforeRound) {
+        deferredTransactionUuids?.addAll(deferred.map((item) => item.uuid));
+        break;
       }
-      try {
-        await _validateTransactionRefundState(db, item);
-      } on StateError {
-        continue;
-      }
-      await db.update(
-        'finance_transactions',
-        _remoteValues(item.toMap()),
-        where: 'uuid = ?',
-        whereArgs: [item.uuid],
-      );
-      changed++;
+      pending = deferred;
     }
+    final repairedRefunds = <String>{};
+    await _alignLinkedRefunds(
+      db,
+      originalUuids: changedOriginalUuids,
+      repairedUuids: repairedRefunds,
+    );
+    changed += repairedRefunds
+        .where((uuid) => !changedOriginalUuids.contains(uuid))
+        .length;
+    repairedRefundUuids?.addAll(repairedRefunds);
     return changed;
+  }
+
+  static int _transactionMergePriority(FinanceTransaction item) {
+    if (item.type == FinanceTransactionType.expense && !item.isDeleted) {
+      return 0;
+    }
+    if (item.type == FinanceTransactionType.refund) {
+      return item.isDeleted ? 1 : 2;
+    }
+    return 3;
   }
 
   static Future<int> _mergeLoans(
@@ -2449,6 +4056,10 @@ abstract final class FinanceStorage {
           )) {
         continue;
       }
+      if (_loanTermsDiffer(current, item) &&
+          await _hasPaidLoanInstallments(db, item.uuid)) {
+        continue;
+      }
       await db.update(
         'finance_loans',
         _remoteValues(item.toMap()),
@@ -2466,13 +4077,40 @@ abstract final class FinanceStorage {
     Set<String> forceRemoteKeys = const {},
   }) async {
     var changed = 0;
+    final loanScheduleCache =
+        <String, List<FinanceLoanScheduleAllocation>>{};
     for (final item in items) {
       final parentLoan = await _findByUuid(db, 'finance_loans', item.loanUuid);
-      if (parentLoan == null || FinanceLoan.fromMap(parentLoan).isDeleted) {
+      final loan = parentLoan == null
+          ? null
+          : FinanceLoan.fromMap(parentLoan);
+      if (loan == null ||
+          (loan.isDeleted && !item.isDeleted) ||
+          (!item.isDeleted &&
+              !_matchesLoanInstallmentSchedule(
+                loan,
+                item,
+                loanScheduleCache,
+              ))) {
         continue;
       }
-      final existing =
-          await _findByUuid(db, 'finance_loan_installments', item.uuid);
+      if (!item.isDeleted) {
+        final duplicateSchedules = await db.query(
+          'finance_loan_installments',
+          columns: ['uuid'],
+          where:
+              'loan_uuid = ? AND installment_index = ? AND is_deleted = 0',
+          whereArgs: [item.loanUuid, item.installmentIndex],
+        );
+        if (duplicateSchedules.any((row) => row['uuid'] != item.uuid)) {
+          continue;
+        }
+      }
+      final existing = await _findByUuid(
+        db,
+        'finance_loan_installments',
+        item.uuid,
+      );
       if (existing == null) {
         await db.insert(
           'finance_loan_installments',
@@ -2488,7 +4126,10 @@ abstract final class FinanceStorage {
             item.version,
             current.updatedAt,
             current.version,
-          )) {
+      )) {
+        continue;
+      }
+      if (current.isPaid && !_sameLoanInstallmentSchedule(current, item)) {
         continue;
       }
       await db.update(
@@ -2509,6 +4150,7 @@ abstract final class FinanceStorage {
   }) async {
     var changed = 0;
     for (final item in items) {
+      if (!await _hasValidBudgetScope(db, item)) continue;
       final scopeRows = await _findAllBudgetsByScope(db, item);
       if (scopeRows.isEmpty) {
         await db.insert('finance_budgets', _remoteValues(item.toMap()));
@@ -2519,27 +4161,19 @@ abstract final class FinanceStorage {
       var current = FinanceBudget.fromMap(scopeRows.first);
       for (final row in scopeRows.skip(1)) {
         final candidate = FinanceBudget.fromMap(row);
-        if (_isIncomingWinner(
-          candidate.updatedAt,
-          candidate.version,
-          current.updatedAt,
-          current.version,
-        )) {
+        if (_isIncomingBudgetWinner(candidate, current)) {
           current = candidate;
         }
       }
       final forceIncoming = forceRemoteKeys.contains('budgets:${item.uuid}');
-      final sameWinner = current.uuid == item.uuid &&
+      final sameWinner =
+          current.uuid == item.uuid &&
           current.updatedAt == item.updatedAt &&
           current.version == item.version;
-      final incomingWins = forceIncoming ||
+      final incomingWins =
+          forceIncoming ||
           sameWinner ||
-          _isIncomingWinner(
-            item.updatedAt,
-            item.version,
-            current.updatedAt,
-            current.version,
-          );
+          _isIncomingBudgetWinner(item, current);
       if (!incomingWins) {
         if (scopeRows.length > 1) {
           await _deleteOtherBudgetsInScope(db, current);
@@ -2547,6 +4181,7 @@ abstract final class FinanceStorage {
         }
         continue;
       }
+      _preserveBalanceSnapshotForUnchangedAmount(item, current);
       await _deleteBudgetsInScope(db, item);
       await db.insert('finance_budgets', _remoteValues(item.toMap()));
       changed++;
@@ -2554,24 +4189,48 @@ abstract final class FinanceStorage {
     return changed;
   }
 
-  static List<FinanceBudget> _latestBudgetsByScope(
-    List<FinanceBudget> items,
-  ) {
+  static List<FinanceBudget> _latestBudgetsByScope(List<FinanceBudget> items) {
     final latest = <String, FinanceBudget>{};
     for (final item in items) {
       final key = _budgetScopeKey(item);
       final current = latest[key];
-      if (current == null ||
-          _isIncomingWinner(
-            item.updatedAt,
-            item.version,
-            current.updatedAt,
-            current.version,
-          )) {
+      if (current == null || _isIncomingBudgetWinner(item, current)) {
         latest[key] = item;
       }
     }
     return latest.values.toList(growable: false);
+  }
+
+  static bool _isIncomingBudgetWinner(
+    FinanceBudget incoming,
+    FinanceBudget current,
+  ) {
+    if (incoming.updatedAt != current.updatedAt) {
+      return incoming.updatedAt > current.updatedAt;
+    }
+    if (incoming.uuid != current.uuid &&
+        incoming.isDeleted != current.isDeleted) {
+      // Replacing a scope retires its old UUID at the replacement timestamp.
+      // The old row's bumped version must not beat the active replacement.
+      return !incoming.isDeleted;
+    }
+    return incoming.version > current.version;
+  }
+
+  static void _preserveBalanceSnapshotForUnchangedAmount(
+    FinanceBudget incoming,
+    FinanceBudget current,
+  ) {
+    if (incoming.isPaymentMethod &&
+        current.isPaymentMethod &&
+        incoming.balanceSnapshotAt == null &&
+        incoming.monthKey == current.monthKey &&
+        incoming.paymentMethodUuid == current.paymentMethodUuid &&
+        incoming.amountMinor == current.amountMinor) {
+      // Older clients and backups omit the snapshot time. A note or deletion
+      // update must not turn their update time into a new balance baseline.
+      incoming.balanceSnapshotAt = current.effectiveBalanceSnapshotAt;
+    }
   }
 
   static Future<int> _mergeRecurringRules(
@@ -2581,31 +4240,28 @@ abstract final class FinanceStorage {
   }) async {
     var changed = 0;
     for (final item in items) {
-      final existing =
-          await _findByUuid(db, 'finance_recurring_rules', item.uuid);
+      final existing = await _findByUuid(
+        db,
+        'finance_recurring_rules',
+        item.uuid,
+      );
       if (existing == null) {
-        await db.insert(
-          'finance_recurring_rules',
-          _remoteValues(item.toMap()),
-        );
+        item.lastGeneratedPeriod = item.effectiveLastGeneratedPeriod;
+        await db.insert('finance_recurring_rules', _remoteValues(item.toMap()));
         changed++;
         continue;
       }
       final current = FinanceRecurringRule.fromMap(existing);
       if (!forceRemoteKeys.contains('recurring_rules:${item.uuid}') &&
-          !_isIncomingWinner(item.updatedAt, item.version, current.updatedAt,
-              current.version)) {
+          !_isIncomingWinner(
+            item.updatedAt,
+            item.version,
+            current.updatedAt,
+            current.version,
+          )) {
         continue;
       }
-      final latestPeriod = _latestGeneratedPeriod(
-        current.lastGeneratedPeriod,
-        item.lastGeneratedPeriod,
-      );
-      if (latestPeriod != item.lastGeneratedPeriod) {
-        // 服务端/旧设备返回的编辑快照可能带着较旧的运行时生成标记；
-        // 该标记只能向前保留，否则下一次调度会把同一周期再次记账。
-        item.lastGeneratedPeriod = latestPeriod;
-      }
+      item.lastGeneratedPeriod = _mergeRecurringGenerationPeriod(current, item);
       await db.update(
         'finance_recurring_rules',
         _remoteValues(item.toMap()),
@@ -2624,20 +4280,24 @@ abstract final class FinanceStorage {
   }) async {
     var changed = 0;
     for (final item in items) {
-      final existing =
-          await _findByUuid(db, 'finance_entry_templates', item.uuid);
+      final existing = await _findByUuid(
+        db,
+        'finance_entry_templates',
+        item.uuid,
+      );
       if (existing == null) {
-        await db.insert(
-          'finance_entry_templates',
-          _remoteValues(item.toMap()),
-        );
+        await db.insert('finance_entry_templates', _remoteValues(item.toMap()));
         changed++;
         continue;
       }
       final current = FinanceEntryTemplate.fromMap(existing);
       if (!forceRemoteKeys.contains('templates:${item.uuid}') &&
-          !_isIncomingWinner(item.updatedAt, item.version, current.updatedAt,
-              current.version)) {
+          !_isIncomingWinner(
+            item.updatedAt,
+            item.version,
+            current.updatedAt,
+            current.version,
+          )) {
         continue;
       }
       await db.update(
@@ -2664,8 +4324,164 @@ abstract final class FinanceStorage {
 
   static bool _isValidTransaction(FinanceTransaction item) {
     return item.uuid.trim().isNotEmpty &&
+        isSafeFinanceAmountMinor(item.amountMinor) &&
         item.amountMinor > 0 &&
+        (item.isDeleted || _hasValidInstallmentFields(item)) &&
+        (item.installmentTotalMinor == null ||
+            (isSafeFinanceAmountMinor(item.installmentTotalMinor!) &&
+                item.installmentTotalMinor! > 0)) &&
         _isDateKey(item.transactionDate);
+  }
+
+  static bool _hasValidInstallmentFields(FinanceTransaction item) {
+    final groupUuid = item.installmentGroupUuid?.trim();
+    final hasInstallmentFields =
+        (groupUuid?.isNotEmpty ?? false) ||
+        item.installmentIndex != null ||
+        item.installmentCount != null ||
+        item.installmentTotalMinor != null;
+    if (!hasInstallmentFields) return true;
+    final index = item.installmentIndex;
+    final count = item.installmentCount;
+    final total = item.installmentTotalMinor;
+    return item.type == FinanceTransactionType.expense &&
+        groupUuid?.isNotEmpty == true &&
+        index != null &&
+        index >= 1 &&
+        count != null &&
+        count >= FinanceInstallmentCalculator.minCount &&
+        count <= FinanceLoanCalculator.maxTermMonths &&
+        index <= count &&
+        (total == null ||
+            (isSafeFinanceAmountMinor(total) &&
+                total >= item.amountMinor));
+  }
+
+  static bool _hasValidRawInstallmentFields(Map<String, dynamic> raw) {
+    final isDeleted = raw['is_deleted'] ?? raw['isDeleted'];
+    if (isDeleted == true || isDeleted == 1 || isDeleted == '1') return true;
+    final groupValue =
+        raw['installment_group_uuid'] ?? raw['installmentGroupUuid'];
+    final indexValue = raw['installment_index'] ?? raw['installmentIndex'];
+    final countValue = raw['installment_count'] ?? raw['installmentCount'];
+    final totalValue =
+        raw['installment_total_minor'] ?? raw['installmentTotalMinor'];
+    final hasGroupValue = groupValue != null &&
+        (groupValue is! String || groupValue.trim().isNotEmpty);
+    if (!hasGroupValue &&
+        indexValue == null &&
+        countValue == null &&
+        totalValue == null) {
+      return true;
+    }
+    if (groupValue is! String || groupValue.trim().isEmpty) return false;
+    final index = _rawFinanceInteger(indexValue);
+    final count = _rawFinanceInteger(countValue);
+    if (index == null ||
+        index < 1 ||
+        count == null ||
+        count < FinanceInstallmentCalculator.minCount ||
+        count > FinanceLoanCalculator.maxTermMonths ||
+        index > count) {
+      return false;
+    }
+    if (totalValue == null) return true;
+    final amountValue = raw['amount_minor'] ?? raw['amountMinor'];
+    if (!_isSafeRawFinanceAmount(totalValue) ||
+        !_isSafeRawFinanceAmount(amountValue)) {
+      return false;
+    }
+    final total = _asInt(totalValue);
+    final amount = _asInt(amountValue);
+    return total > 0 && amount > 0 && total >= amount;
+  }
+
+  static String? _installmentIndexKey(FinanceTransaction item) {
+    if (!item.isInstallment) return null;
+    return '${item.installmentGroupUuid}\u0000${item.installmentIndex}';
+  }
+
+  static Set<String> _duplicateInstallmentIndexKeys(
+    Iterable<FinanceTransaction> items,
+  ) {
+    final uuidsByKey = <String, Set<String>>{};
+    for (final item in items) {
+      if (item.isDeleted) continue;
+      final key = _installmentIndexKey(item);
+      if (key == null) continue;
+      uuidsByKey.putIfAbsent(key, () => <String>{}).add(item.uuid);
+    }
+    return uuidsByKey.entries
+        .where((entry) => entry.value.length > 1)
+        .map((entry) => entry.key)
+        .toSet();
+  }
+
+  static Future<bool> _hasInstallmentIndexConflict(
+    DatabaseExecutor db,
+    FinanceTransaction item,
+  ) async {
+    final groupUuid = item.installmentGroupUuid;
+    final installmentIndex = item.installmentIndex;
+    if (item.isDeleted ||
+        !item.isInstallment ||
+        groupUuid == null ||
+        installmentIndex == null) {
+      return false;
+    }
+    final rows = await db.query(
+      'finance_transactions',
+      columns: ['uuid'],
+      where: 'installment_group_uuid = ? AND installment_index = ? '
+          'AND uuid != ? AND is_deleted = 0',
+      whereArgs: [groupUuid, installmentIndex, item.uuid],
+      limit: 1,
+    );
+    return rows.isNotEmpty;
+  }
+
+  /// Linked refunds inherit classification from their original. Repair after
+  /// the whole batch so this derived edit cannot block a newer refund amount.
+  static Future<int> _alignLinkedRefunds(
+    DatabaseExecutor db, {
+    required Iterable<String> originalUuids,
+    Set<String>? repairedUuids,
+  }) async {
+    final uuids = originalUuids.toSet().toList();
+    if (uuids.isEmpty) return 0;
+    var repaired = 0;
+    // Older Android SQLite builds allow only 999 bound variables per query.
+    for (var offset = 0; offset < uuids.length; offset += 500) {
+      final end = offset + 500;
+      final chunk = uuids.sublist(offset, end > uuids.length ? uuids.length : end);
+      final placeholders = List.filled(chunk.length, '?').join(',');
+      final rows = await db.rawQuery('''
+      SELECT refund.*, original.category_uuid AS original_category_uuid,
+        original.currency_code AS original_currency_code
+      FROM finance_transactions AS refund
+      JOIN finance_transactions AS original
+        ON original.uuid = refund.related_transaction_uuid
+      WHERE refund.type = 'refund' AND original.type = 'expense'
+        AND original.is_deleted = 0 AND original.uuid IN ($placeholders)
+        AND (refund.category_uuid IS NOT original.category_uuid
+          OR refund.currency_code IS NOT original.currency_code)
+    ''', chunk);
+      for (final row in rows) {
+        final refund = FinanceTransaction.fromMap(row)
+          ..categoryUuid = row['original_category_uuid'] as String?
+          ..currencyCode = row['original_currency_code'] as String;
+        refund.markAsChanged();
+        await db.update(
+          'finance_transactions',
+          _localValues(refund.toMap()),
+          where: 'uuid = ?',
+          whereArgs: [refund.uuid],
+        );
+        repairedUuids?.add(refund.uuid);
+      }
+      repaired += rows.length;
+    }
+    return repaired;
   }
 
   static Future<int> _activeRefundedMinor(
@@ -2691,10 +4507,47 @@ abstract final class FinanceStorage {
     return _asInt(rows.first['total']);
   }
 
+  static Future<List<FinanceTransaction>> _getActiveRefundsForTransaction(
+    DatabaseExecutor db,
+    String originalUuid,
+  ) async {
+    final rows = await db.query(
+      'finance_transactions',
+      where: "type = 'refund' AND related_transaction_uuid = ? "
+          'AND is_deleted = 0',
+      whereArgs: [originalUuid],
+    );
+    return rows.map(FinanceTransaction.fromMap).toList(growable: false);
+  }
+
+  static bool _refundPrecedesOriginal(
+    FinanceTransaction refund,
+    FinanceTransaction original,
+  ) {
+    final dateOrder = refund.transactionDate.compareTo(
+      original.transactionDate,
+    );
+    if (dateOrder != 0) return dateOrder < 0;
+
+    final refundOccurrence = refund.occurrenceLocalTime;
+    final originalOccurrence = original.occurrenceLocalTime;
+    if (refund.occurredAt == null ||
+        original.occurredAt == null ||
+        refundOccurrence == null ||
+        originalOccurrence == null ||
+        dateKey(refundOccurrence) != refund.transactionDate ||
+        dateKey(originalOccurrence) != original.transactionDate) {
+      return false;
+    }
+    // The entry editor displays and preserves occurrence times to the minute.
+    return (refund.occurredAt! ~/ 60000) < (original.occurredAt! ~/ 60000);
+  }
+
   static Future<void> _validateTransactionRefundState(
     DatabaseExecutor db,
-    FinanceTransaction transaction,
-  ) async {
+    FinanceTransaction transaction, {
+    bool alignCategory = true,
+  }) async {
     final originalUuid = transaction.relatedTransactionUuid?.trim();
     if (transaction.type == FinanceTransactionType.refund &&
         !transaction.isDeleted &&
@@ -2713,6 +4566,9 @@ abstract final class FinanceStorage {
           original.type != FinanceTransactionType.expense) {
         throw StateError('只能对未删除的支出账单发起退款');
       }
+      if (_refundPrecedesOriginal(transaction, original)) {
+        throw StateError('退款时间不能早于原支出时间');
+      }
       final refunded = await _activeRefundedMinor(
         db,
         original.uuid,
@@ -2723,9 +4579,11 @@ abstract final class FinanceStorage {
         final remainingMinor = remaining.clamp(0, original.amountMinor).toInt();
         throw StateError('退款金额超过剩余可退金额 $remainingMinor 分');
       }
-      transaction
-        ..currencyCode = original.currencyCode
-        ..categoryUuid = original.categoryUuid;
+      if (alignCategory) {
+        transaction
+          ..currencyCode = original.currencyCode
+          ..categoryUuid = original.categoryUuid;
+      }
     }
 
     final activeRefunded = await _activeRefundedMinor(db, transaction.uuid);
@@ -2734,6 +4592,18 @@ abstract final class FinanceStorage {
             transaction.type != FinanceTransactionType.expense ||
             transaction.amountMinor < activeRefunded)) {
       throw StateError('该账单已关联退款，请先处理退款记录');
+    }
+    if (activeRefunded > 0 &&
+        transaction.type == FinanceTransactionType.expense) {
+      final refunds = await _getActiveRefundsForTransaction(
+        db,
+        transaction.uuid,
+      );
+      if (refunds.any(
+        (refund) => _refundPrecedesOriginal(refund, transaction),
+      )) {
+        throw StateError('原支出时间不能晚于关联退款时间');
+      }
     }
   }
 
@@ -2744,19 +4614,425 @@ abstract final class FinanceStorage {
     final rawUuid = raw['uuid'] ?? raw['id'];
     final rawDate = raw['transaction_date'] ?? raw['transactionDate'];
     final rawAmount = raw['amount_minor'] ?? raw['amountMinor'];
-    final rawType = raw['type'];
-    final validType = const {'expense', 'income', 'refund'}.contains(rawType) ||
-        const {0, 1, 2, '0', '1', '2'}.contains(rawType);
     return rawUuid?.toString().trim().isNotEmpty == true &&
         rawDate is String &&
         _isDateKey(rawDate) &&
+        _isSafeRawFinanceAmount(rawAmount) &&
         _asInt(rawAmount) > 0 &&
-        validType &&
+        _isValidRawTransactionType(raw) &&
+        _hasSafeRawFinanceTimestamps(raw) &&
+        _hasValidRawInstallmentFields(raw) &&
         _isValidTransaction(item);
   }
 
-  static bool _isRawRefundType(Object? rawType) =>
-      rawType == 'refund' || rawType == 2 || rawType == '2';
+  static bool _isValidRawTransactionType(Map<String, dynamic> raw) {
+    final value = raw['type'];
+    return const {'expense', 'income', 'refund'}.contains(value) ||
+        const {0, 1, 2, '0', '1', '2'}.contains(value);
+  }
+
+  static Map<String, dynamic> _normalizeRemoteFinanceEntrySource(
+    Map<String, dynamic> raw,
+  ) {
+    final value = raw['source'];
+    if (value == null ||
+        const {'manual', 'import', 'ai', 'automation'}.contains(value)) {
+      return raw;
+    }
+    // Keep the transaction itself when an older server has malformed source
+    // metadata; losing the ledger row would also lose its amount and date.
+    return {...raw, 'source': 'manual'};
+  }
+
+  static bool _hasIncomingRefund(Object? rawTransactions) {
+    if (rawTransactions is! List) return false;
+    return rawTransactions.any((raw) {
+      if (raw is! Map) return false;
+      final type = raw['type'];
+      return type == 'refund' || type == 2 || type == '2';
+    });
+  }
+
+  static bool _hasValidRawOptionalTransactionType(
+    Map<String, dynamic> raw,
+  ) {
+    final value = raw['type'];
+    return value == null || _isValidRawTransactionType(raw);
+  }
+
+  static bool _hasValidRawRecurringFrequency(Map<String, dynamic> raw) {
+    final value = raw['frequency'];
+    return value == null ||
+        _isValidRawEnumValue(
+          value,
+          FinanceRecurringFrequency.values.map((item) => item.name),
+          FinanceRecurringFrequency.values.length,
+        );
+  }
+
+  static bool _hasValidRawLoanRepaymentMethod(Map<String, dynamic> raw) {
+    final value = raw['repayment_method'] ?? raw['repaymentMethod'];
+    return value == null ||
+        _isValidRawEnumValue(
+          value,
+          FinanceLoanRepaymentMethod.values.map((item) => item.name),
+          FinanceLoanRepaymentMethod.values.length,
+        );
+  }
+
+  static bool _isValidRawEnumValue(
+    dynamic value,
+    Iterable<String> names,
+    int valueCount,
+  ) {
+    if (value is num) {
+      return value.isFinite &&
+          value >= 0 &&
+          value < valueCount &&
+          value == value.roundToDouble();
+    }
+    return value is String && names.contains(value);
+  }
+
+  static bool _hasSafeRawFinanceTimestamps(Map<String, dynamic> raw) {
+    final createdAtRaw = raw['created_at'] ?? raw['createdAt'];
+    final updatedAtRaw = raw['updated_at'] ?? raw['updatedAt'];
+    final occurredAtRaw = raw['occurred_at'] ?? raw['occurredAt'];
+    final paidAtRaw = raw['paid_at'] ?? raw['paidAt'];
+    final timezoneOffsetRaw =
+        raw['timezone_offset_minutes'] ?? raw['timezoneOffsetMinutes'];
+
+    final createdAt = _rawFinanceTimestampMillis(
+      createdAtRaw,
+      allowDateString: true,
+    );
+    final updatedAt = _rawFinanceTimestampMillis(
+      updatedAtRaw,
+      allowDateString: true,
+    );
+    final occurredAt = _rawFinanceTimestampMillis(occurredAtRaw);
+    final paidAt = _rawFinanceTimestampMillis(paidAtRaw);
+    if ((createdAtRaw != null && createdAt == null) ||
+        (updatedAtRaw != null && updatedAt == null) ||
+        (occurredAtRaw != null && occurredAt == null) ||
+        (paidAtRaw != null && paidAt == null)) {
+      return false;
+    }
+
+    final timezoneOffset = timezoneOffsetRaw == null
+        ? 0
+        : _rawFinanceInteger(timezoneOffsetRaw);
+    if (timezoneOffset == null ||
+        timezoneOffset < -_maxFinanceTimezoneOffsetMinutes ||
+        timezoneOffset > _maxFinanceTimezoneOffsetMinutes) {
+      return false;
+    }
+
+    try {
+      for (final timestamp in [createdAt, occurredAt]) {
+        if (timestamp == null || timestamp <= 0) continue;
+        DateTime.fromMillisecondsSinceEpoch(timestamp, isUtc: true).add(
+          Duration(minutes: timezoneOffset),
+        );
+      }
+    } catch (_) {
+      return false;
+    }
+    return true;
+  }
+
+  static int? _rawFinanceTimestampMillis(
+    dynamic value, {
+    bool allowDateString = false,
+  }) {
+    final timestamp = _rawFinanceInteger(value);
+    if (timestamp != null) {
+      return timestamp >= -_maxDateTimeMillis &&
+              timestamp <= _maxDateTimeMillis
+          ? timestamp
+          : null;
+    }
+    if (allowDateString && value is String) {
+      final parsed = DateTime.tryParse(value.trim());
+      if (parsed != null) {
+        final millis = parsed.toUtc().millisecondsSinceEpoch;
+        if (millis >= -_maxDateTimeMillis && millis <= _maxDateTimeMillis) {
+          return millis;
+        }
+      }
+    }
+    return null;
+  }
+
+  static int? _rawFinanceInteger(dynamic value) {
+    if (value is int) return value;
+    if (value is num &&
+        value.isFinite &&
+        value >= -_maxDateTimeMillis &&
+        value <= _maxDateTimeMillis &&
+        value == value.roundToDouble()) {
+      return value.toInt();
+    }
+    if (value is String) {
+      final parsed = BigInt.tryParse(value.trim());
+      if (parsed != null &&
+          parsed >= BigInt.from(-_maxDateTimeMillis) &&
+          parsed <= BigInt.from(_maxDateTimeMillis)) {
+        return parsed.toInt();
+      }
+    }
+    return null;
+  }
+
+  static bool _isSafeRawFinanceAmount(dynamic value) {
+    if (value is int) return isSafeFinanceAmountMinor(value);
+    if (value is num) {
+      return value.isFinite &&
+          value >= 0 &&
+          value <= maxFinanceAmountMinor &&
+          value == value.roundToDouble();
+    }
+    if (value is String) {
+      final parsed = BigInt.tryParse(value.trim());
+      return parsed != null &&
+          parsed >= BigInt.zero &&
+          parsed <= BigInt.from(maxFinanceAmountMinor);
+    }
+    return false;
+  }
+
+  static bool _isSafeRawFinanceCount(dynamic value, int maximum) {
+    if (value == null) return true;
+    if (value is int) return value >= 0 && value <= maximum;
+    if (value is num) {
+      return value.isFinite &&
+          value >= 0 &&
+          value <= maximum &&
+          value == value.roundToDouble();
+    }
+    if (value is String) {
+      final parsed = BigInt.tryParse(value.trim());
+      return parsed != null &&
+          parsed >= BigInt.zero &&
+          parsed <= BigInt.from(maximum);
+    }
+    return false;
+  }
+
+  static bool _hasValidRawFinanceDateKey(
+    Map<String, dynamic> map,
+    String snakeCaseKey,
+    String camelCaseKey,
+  ) {
+    final value = map[snakeCaseKey] ?? map[camelCaseKey];
+    return value is String && _isDateKey(value);
+  }
+
+  static bool _hasValidRawFinanceMonthKey(Map<String, dynamic> map) {
+    final value = map['month_key'] ?? map['monthKey'];
+    return value is String &&
+        RegExp(r'^\d{4}-(0[1-9]|1[0-2])$').hasMatch(value);
+  }
+
+  static bool _hasSafeRawIntegerRange(
+    Map<String, dynamic> map,
+    String snakeCaseKey,
+    String camelCaseKey,
+    int minimum,
+    int maximum,
+  ) {
+    final value = map[snakeCaseKey] ?? map[camelCaseKey];
+    final parsed = _rawFinanceInteger(value);
+    return parsed != null && parsed >= minimum && parsed <= maximum;
+  }
+
+  static bool _hasValidRawRecurringScheduleFields(
+    Map<String, dynamic> map,
+  ) {
+    return _hasSafeOptionalRawIntegerRange(
+          map,
+          'day_of_month',
+          'dayOfMonth',
+          1,
+          31,
+        ) &&
+        _hasSafeOptionalRawIntegerRange(
+          map,
+          'month_of_year',
+          'monthOfYear',
+          1,
+          12,
+        ) &&
+        _hasSafeOptionalRawIntegerRange(
+          map,
+          'reminder_minutes',
+          'reminderMinutes',
+          0,
+          10080,
+        );
+  }
+
+  static bool _hasSafeOptionalRawIntegerRange(
+    Map<String, dynamic> map,
+    String snakeCaseKey,
+    String camelCaseKey,
+    int minimum,
+    int maximum,
+  ) {
+    final value = map[snakeCaseKey] ?? map[camelCaseKey];
+    return value == null ||
+        _hasSafeRawIntegerRange(
+          map,
+          snakeCaseKey,
+          camelCaseKey,
+          minimum,
+          maximum,
+        );
+  }
+
+  static bool _hasValidRawLoanInstallmentScheduleFields(
+    Map<String, dynamic> map,
+  ) =>
+      _hasValidRawFinanceDateKey(map, 'due_date', 'dueDate') &&
+      _hasSafeRawIntegerRange(
+        map,
+        'installment_index',
+        'installmentIndex',
+        1,
+        FinanceLoanCalculator.maxTermMonths,
+      );
+
+  static int _compareRawLoanInstallmentMaps(
+    Map<String, dynamic> left,
+    Map<String, dynamic> right,
+  ) {
+    final leftLoan =
+        (left['loan_uuid'] ?? left['loanUuid'])?.toString() ?? '';
+    final rightLoan =
+        (right['loan_uuid'] ?? right['loanUuid'])?.toString() ?? '';
+    final byLoan = leftLoan.compareTo(rightLoan);
+    if (byLoan != 0) return byLoan;
+
+    final leftIndex = _rawFinanceInteger(
+      left['installment_index'] ?? left['installmentIndex'],
+    ) ?? 0;
+    final rightIndex = _rawFinanceInteger(
+      right['installment_index'] ?? right['installmentIndex'],
+    ) ?? 0;
+    final byIndex = leftIndex.compareTo(rightIndex);
+    if (byIndex != 0) return byIndex;
+
+    final leftUpdatedAt = _rawFinanceTimestampMillis(
+      left['updated_at'] ?? left['updatedAt'],
+      allowDateString: true,
+    ) ?? 0;
+    final rightUpdatedAt = _rawFinanceTimestampMillis(
+      right['updated_at'] ?? right['updatedAt'],
+      allowDateString: true,
+    ) ?? 0;
+    final byUpdatedAt = rightUpdatedAt.compareTo(leftUpdatedAt);
+    if (byUpdatedAt != 0) return byUpdatedAt;
+
+    final leftVersion = _rawFinanceInteger(left['version']) ?? 0;
+    final rightVersion = _rawFinanceInteger(right['version']) ?? 0;
+    final byVersion = rightVersion.compareTo(leftVersion);
+    if (byVersion != 0) return byVersion;
+
+    final leftUuid = (left['uuid'] ?? left['id'])?.toString() ?? '';
+    final rightUuid = (right['uuid'] ?? right['id'])?.toString() ?? '';
+    return leftUuid.compareTo(rightUuid);
+  }
+
+  static List<FinanceLoanInstallment> _deduplicateActiveLoanInstallments(
+    List<FinanceLoanInstallment> items,
+  ) {
+    final deleted = <FinanceLoanInstallment>[];
+    final activeBySchedule = <String, FinanceLoanInstallment>{};
+    for (final item in items) {
+      if (item.isDeleted) {
+        deleted.add(item);
+        continue;
+      }
+      final key = '${item.loanUuid}\u0000${item.installmentIndex}';
+      final current = activeBySchedule[key];
+      if (current == null ||
+          item.updatedAt > current.updatedAt ||
+          (item.updatedAt == current.updatedAt &&
+              item.version > current.version) ||
+          (item.updatedAt == current.updatedAt &&
+              item.version == current.version &&
+              item.uuid.compareTo(current.uuid) < 0)) {
+        activeBySchedule[key] = item;
+      }
+    }
+    return [...deleted, ...activeBySchedule.values];
+  }
+
+  static bool _hasSafeRawTemplateUseCount(Map<String, dynamic> map) =>
+      _isSafeRawFinanceCount(
+        map['use_count'] ?? map['useCount'],
+        _maxTemplateUseCount,
+      );
+
+  static bool _hasValidRawCategoryType(Map<String, dynamic> map) {
+    final value = map['type'] ?? map['category_type'];
+    if (value == null) return true;
+    if (value is num) {
+      return value.isFinite &&
+          value >= 0 &&
+          value < FinanceCategoryType.values.length &&
+          value == value.roundToDouble();
+    }
+    final type = value.toString().trim().toLowerCase();
+    return type == FinanceCategoryType.expense.name ||
+        type == FinanceCategoryType.income.name;
+  }
+
+  static bool _hasRawFinanceUuid(Map<String, dynamic> map) {
+    final raw = map['uuid'] ?? map['id'];
+    final value = raw?.toString().trim();
+    return value != null && value.isNotEmpty && value != 'null';
+  }
+
+  static bool _hasSafeRawFinanceAmount(
+    Map<String, dynamic> map,
+    String snakeCaseKey,
+    String camelCaseKey,
+  ) =>
+      _isSafeRawFinanceAmount(map[snakeCaseKey] ?? map[camelCaseKey]);
+
+  static bool _hasSafeRawLoanInterestRate(Map<String, dynamic> map) {
+    final value =
+        map['annual_interest_rate_bps'] ?? map['annualInterestRateBps'];
+    if (value == null) return true;
+    if (value is int) {
+      return value >= 0 &&
+          value <= FinanceLoanCalculator.maxAnnualInterestRateBps;
+    }
+    if (value is num) {
+      return value.isFinite &&
+          value >= 0 &&
+          value <= FinanceLoanCalculator.maxAnnualInterestRateBps &&
+          value == value.roundToDouble();
+    }
+    if (value is String) {
+      final parsed = BigInt.tryParse(value.trim());
+      return parsed != null &&
+          parsed >= BigInt.zero &&
+          parsed <= BigInt.from(FinanceLoanCalculator.maxAnnualInterestRateBps);
+    }
+    return false;
+  }
+
+  static bool _hasSafeRawLoanInstallmentAmounts(Map<String, dynamic> map) =>
+      _hasSafeRawFinanceAmount(map, 'payment_minor', 'paymentMinor') &&
+      _hasSafeRawFinanceAmount(map, 'principal_minor', 'principalMinor') &&
+      _hasSafeRawFinanceAmount(map, 'interest_minor', 'interestMinor') &&
+      _hasSafeRawFinanceAmount(
+        map,
+        'remaining_principal_minor',
+        'remainingPrincipalMinor',
+      );
 
   static bool _isValidLoan(FinanceLoan item) {
     if (item.uuid.trim().isEmpty ||
@@ -2797,15 +5073,75 @@ abstract final class FinanceStorage {
   }
 
   static bool _isValidLoanInstallment(FinanceLoanInstallment item) {
+    final paidAt = item.paidAt;
     return item.uuid.trim().isNotEmpty &&
         item.loanUuid.trim().isNotEmpty &&
         item.installmentIndex > 0 &&
         _isDateKey(item.dueDate) &&
+        isSafeFinanceAmountMinor(item.paymentMinor) &&
         item.paymentMinor > 0 &&
+        isSafeFinanceAmountMinor(item.principalMinor) &&
         item.principalMinor > 0 &&
-        item.interestMinor >= 0 &&
+        isSafeFinanceAmountMinor(item.interestMinor) &&
+        item.principalMinor <= maxFinanceAmountMinor - item.interestMinor &&
         item.paymentMinor == item.principalMinor + item.interestMinor &&
-        item.remainingPrincipalMinor >= 0;
+        isSafeFinanceAmountMinor(item.remainingPrincipalMinor) &&
+        (paidAt == null || paidAt <= DateTime.now().millisecondsSinceEpoch) &&
+        (item.paymentMethodUuid == null ||
+            (item.isPaid && (paidAt ?? 0) > 0));
+  }
+
+  static Future<bool> _hasPaidLoanInstallments(
+    DatabaseExecutor db,
+    String loanUuid,
+  ) async {
+    final rows = await db.query(
+      'finance_loan_installments',
+      columns: ['uuid'],
+      where: 'loan_uuid = ? AND is_paid = 1',
+      whereArgs: [loanUuid],
+      limit: 1,
+    );
+    return rows.isNotEmpty;
+  }
+
+  static bool _sameLoanInstallmentSchedule(
+    FinanceLoanInstallment left,
+    FinanceLoanInstallment right,
+  ) =>
+      left.loanUuid == right.loanUuid &&
+      left.installmentIndex == right.installmentIndex &&
+      left.dueDate == right.dueDate &&
+      left.paymentMinor == right.paymentMinor &&
+      left.principalMinor == right.principalMinor &&
+      left.interestMinor == right.interestMinor &&
+      left.remainingPrincipalMinor == right.remainingPrincipalMinor;
+
+  static bool _matchesLoanInstallmentSchedule(
+    FinanceLoan loan,
+    FinanceLoanInstallment installment,
+    Map<String, List<FinanceLoanScheduleAllocation>> scheduleCache,
+  ) {
+    final index = installment.installmentIndex;
+    if (index < 1 || index > loan.termMonths) return false;
+    final schedule = scheduleCache.putIfAbsent(
+      loan.uuid,
+      () => FinanceLoanCalculator.generate(
+        principalMinor: loan.principalMinor,
+        annualInterestRateBps: loan.annualInterestRateBps,
+        termMonths: loan.termMonths,
+        startDate: dateFromKey(loan.startDate),
+        repaymentDay: loan.repaymentDay,
+        repaymentMethod: loan.repaymentMethod,
+      ),
+    );
+    final expected = schedule[index - 1];
+    return installment.dueDate == expected.dueDate &&
+        installment.paymentMinor == expected.paymentMinor &&
+        installment.principalMinor == expected.principalMinor &&
+        installment.interestMinor == expected.interestMinor &&
+        installment.remainingPrincipalMinor ==
+            expected.remainingPrincipalMinor;
   }
 
   static bool _loanTermsDiffer(FinanceLoan left, FinanceLoan right) {
@@ -2818,11 +5154,103 @@ abstract final class FinanceStorage {
         left.repaymentMethod != right.repaymentMethod;
   }
 
+  static void _mergeLoanEdits(
+    FinanceLoan current,
+    FinanceLoan original,
+    FinanceLoan incoming,
+  ) {
+    if (incoming.name == original.name) incoming.name = current.name;
+    if (incoming.lender == original.lender) incoming.lender = current.lender;
+    if (incoming.principalMinor == original.principalMinor) {
+      incoming.principalMinor = current.principalMinor;
+    }
+    if (incoming.currencyCode == original.currencyCode) {
+      incoming.currencyCode = current.currencyCode;
+    }
+    if (incoming.annualInterestRateBps == original.annualInterestRateBps) {
+      incoming.annualInterestRateBps = current.annualInterestRateBps;
+    }
+    if (incoming.termMonths == original.termMonths) {
+      incoming.termMonths = current.termMonths;
+    }
+    if (incoming.startDate == original.startDate) {
+      incoming.startDate = current.startDate;
+    }
+    if (incoming.repaymentDay == original.repaymentDay) {
+      incoming.repaymentDay = current.repaymentDay;
+    }
+    if (incoming.repaymentMethod == original.repaymentMethod) {
+      incoming.repaymentMethod = current.repaymentMethod;
+    }
+    if (incoming.note == original.note) incoming.note = current.note;
+    if (incoming.isDeleted == original.isDeleted) {
+      incoming.isDeleted = current.isDeleted;
+    }
+  }
+
   static bool _isValidBudget(FinanceBudget item) {
+    final balanceSnapshotAt = item.balanceSnapshotAt;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final hasValidBalanceSnapshot = item.isPaymentMethod
+        ? balanceSnapshotAt == null ||
+              (balanceSnapshotAt > 0 &&
+                  balanceSnapshotAt <= _maxDateTimeMillis &&
+                  balanceSnapshotAt <= now &&
+                  _isBalanceSnapshotForMonth(
+                    item.monthKey,
+                    balanceSnapshotAt,
+                  ))
+        : balanceSnapshotAt == null;
     return item.uuid.trim().isNotEmpty &&
         !(item.categoryUuid != null && item.paymentMethodUuid != null) &&
-        item.amountMinor > 0 &&
+        isSafeFinanceAmountMinor(item.amountMinor) &&
+        (item.isPaymentMethod ? item.amountMinor >= 0 : item.amountMinor > 0) &&
+        hasValidBalanceSnapshot &&
         RegExp(r'^\d{4}-(0[1-9]|1[0-2])$').hasMatch(item.monthKey);
+  }
+
+  static bool _isBalanceSnapshotForMonth(String monthKey, int snapshotAt) {
+    if (!RegExp(r'^\d{4}-(0[1-9]|1[0-2])$').hasMatch(monthKey)) return false;
+    final parts = monthKey.split('-');
+    final year = int.parse(parts[0]);
+    final month = int.parse(parts[1]);
+    final monthStart = DateTime(year, month);
+    final nextMonth = DateTime(year, month + 1);
+    final snapshot = DateTime.fromMillisecondsSinceEpoch(snapshotAt);
+    // Snapshot timestamps do not store their source timezone. Allow the
+    // maximum offset difference between devices around month boundaries.
+    const timezoneDrift = Duration(hours: 28);
+    return !snapshot.isBefore(monthStart.subtract(timezoneDrift)) &&
+        snapshot.isBefore(nextMonth.add(timezoneDrift));
+  }
+
+  static bool _hasValidRawBalanceSnapshot(Map<String, dynamic> map) {
+    final raw = map['balance_snapshot_at'] ?? map['balanceSnapshotAt'];
+    if (raw == null) return true;
+    final timestamp = _rawFinanceTimestampMillis(raw);
+    return timestamp != null && timestamp > 0;
+  }
+
+  static Future<bool> _hasValidBudgetScope(
+    DatabaseExecutor db,
+    FinanceBudget budget,
+  ) async {
+    final categoryUuid = budget.categoryUuid;
+    if (categoryUuid != null) {
+      final row = await _findByUuid(db, 'finance_categories', categoryUuid);
+      return row != null &&
+          FinanceCategory.fromMap(row).type == FinanceCategoryType.expense;
+    }
+    final paymentMethodUuid = budget.paymentMethodUuid;
+    if (paymentMethodUuid != null) {
+      return await _findByUuid(
+            db,
+            'finance_payment_methods',
+            paymentMethodUuid,
+          ) !=
+          null;
+    }
+    return true;
   }
 
   static bool _isValidRecurringRule(FinanceRecurringRule item) {
@@ -2847,10 +5275,20 @@ abstract final class FinanceStorage {
 
   static bool _isValidName(String value) => value.trim().isNotEmpty;
 
+  static bool _hasValidRawFinanceName(Map<String, dynamic> map) {
+    final value = map['name'];
+    return value is String && value.trim().isNotEmpty;
+  }
+
   static bool _isSystemUuid(String uuid) => uuid.startsWith('finance-system-');
 
+  static final Set<String> _systemCategoryUuids = FinanceDefaults.categories
+      .map((category) => category['uuid'])
+      .whereType<String>()
+      .toSet();
+
   static bool _isSystemCategoryUuid(String uuid) =>
-      uuid.startsWith('finance-system-category-');
+      _systemCategoryUuids.contains(uuid);
 
   static int _asInt(dynamic value) {
     if (value is num) return value.toInt();
@@ -2871,35 +5309,6 @@ abstract final class FinanceStorage {
     return rows.isEmpty ? null : rows.first;
   }
 
-  static Future<Map<String, dynamic>?> _findBudgetByScope(
-    DatabaseExecutor db,
-    FinanceBudget budget,
-  ) async {
-    final where = <String>['month_key = ?', 'is_deleted = 0'];
-    final args = <Object?>[budget.monthKey];
-    if (budget.paymentMethodUuid != null) {
-      where
-        ..add('category_uuid IS NULL')
-        ..add('payment_method_uuid = ?');
-      args.add(budget.paymentMethodUuid);
-    } else {
-      where.add('payment_method_uuid IS NULL');
-      if (budget.categoryUuid == null) {
-        where.add('category_uuid IS NULL');
-      } else {
-        where.add('category_uuid = ?');
-        args.add(budget.categoryUuid);
-      }
-    }
-    final rows = await db.query(
-      'finance_budgets',
-      where: where.join(' AND '),
-      whereArgs: args,
-      limit: 1,
-    );
-    return rows.isEmpty ? null : rows.first;
-  }
-
   static String _budgetScopeKey(FinanceBudget budget) {
     final scope = budget.paymentMethodUuid == null
         ? 'category:${budget.categoryUuid ?? ''}'
@@ -2914,16 +5323,14 @@ abstract final class FinanceStorage {
     if (budget.paymentMethodUuid != null) {
       return db.query(
         'finance_budgets',
-        where:
-            'month_key = ? AND category_uuid IS NULL AND payment_method_uuid = ?',
+        where: 'month_key = ? AND category_uuid IS NULL AND payment_method_uuid = ?',
         whereArgs: [budget.monthKey, budget.paymentMethodUuid],
       );
     }
     if (budget.categoryUuid == null) {
       return db.query(
         'finance_budgets',
-        where:
-            'month_key = ? AND category_uuid IS NULL AND payment_method_uuid IS NULL',
+        where: 'month_key = ? AND category_uuid IS NULL AND payment_method_uuid IS NULL',
         whereArgs: [budget.monthKey],
       );
     }
@@ -2942,8 +5349,7 @@ abstract final class FinanceStorage {
     if (budget.paymentMethodUuid != null) {
       await db.delete(
         'finance_budgets',
-        where:
-            'month_key = ? AND category_uuid IS NULL AND payment_method_uuid = ?',
+        where: 'month_key = ? AND category_uuid IS NULL AND payment_method_uuid = ?',
         whereArgs: [budget.monthKey, budget.paymentMethodUuid],
       );
       return;
@@ -2951,8 +5357,7 @@ abstract final class FinanceStorage {
     if (budget.categoryUuid == null) {
       await db.delete(
         'finance_budgets',
-        where:
-            'month_key = ? AND category_uuid IS NULL AND payment_method_uuid IS NULL',
+        where: 'month_key = ? AND category_uuid IS NULL AND payment_method_uuid IS NULL',
         whereArgs: [budget.monthKey],
       );
       return;
@@ -2972,8 +5377,7 @@ abstract final class FinanceStorage {
     if (winner.paymentMethodUuid != null) {
       await db.delete(
         'finance_budgets',
-        where:
-            'month_key = ? AND category_uuid IS NULL AND payment_method_uuid = ? AND uuid != ?',
+        where: 'month_key = ? AND category_uuid IS NULL AND payment_method_uuid = ? AND uuid != ?',
         whereArgs: [winner.monthKey, winner.paymentMethodUuid, winner.uuid],
       );
       return;
@@ -2981,16 +5385,14 @@ abstract final class FinanceStorage {
     if (winner.categoryUuid == null) {
       await db.delete(
         'finance_budgets',
-        where:
-            'month_key = ? AND category_uuid IS NULL AND payment_method_uuid IS NULL AND uuid != ?',
+        where: 'month_key = ? AND category_uuid IS NULL AND payment_method_uuid IS NULL AND uuid != ?',
         whereArgs: [winner.monthKey, winner.uuid],
       );
       return;
     }
     await db.delete(
       'finance_budgets',
-      where:
-          'month_key = ? AND category_uuid = ? AND payment_method_uuid IS NULL AND uuid != ?',
+      where: 'month_key = ? AND category_uuid = ? AND payment_method_uuid IS NULL AND uuid != ?',
       whereArgs: [winner.monthKey, winner.categoryUuid, winner.uuid],
     );
   }
@@ -2998,6 +5400,41 @@ abstract final class FinanceStorage {
   static List<Map<String, dynamic>> _listOfMaps(dynamic raw) {
     if (raw is! List) return <Map<String, dynamic>>[];
     return raw.whereType<Map>().map(Map<String, dynamic>.from).toList();
+  }
+
+  static ({List<Map<String, dynamic>> maps, int invalidCount})
+  _importListOfMaps(Map<String, dynamic> bundle, String key) {
+    final raw = bundle[key];
+    if (raw is! List) {
+      return (
+        maps: <Map<String, dynamic>>[],
+        invalidCount: raw == null ? 0 : 1,
+      );
+    }
+
+    final maps = <Map<String, dynamic>>[];
+    var invalidCount = 0;
+    for (final item in raw) {
+      if (item is! Map) {
+        invalidCount++;
+        continue;
+      }
+      final map = <String, dynamic>{};
+      var hasOnlyStringKeys = true;
+      for (final entry in item.entries) {
+        if (entry.key is! String) {
+          hasOnlyStringKeys = false;
+          break;
+        }
+        map[entry.key as String] = entry.value;
+      }
+      if (hasOnlyStringKeys) {
+        maps.add(map);
+      } else {
+        invalidCount++;
+      }
+    }
+    return (maps: maps, invalidCount: invalidCount);
   }
 
   static String? _remapNullable(

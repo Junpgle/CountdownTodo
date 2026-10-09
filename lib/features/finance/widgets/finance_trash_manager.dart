@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../services/finance_repository.dart';
 import 'finance_management_widgets.dart';
+import '../../../utils/app_dialogs.dart';
 
 enum FinanceTrashKind {
   transaction('账单', Icons.receipt_long_outlined),
@@ -69,7 +70,7 @@ class _FinanceTrashManagerState extends State<FinanceTrashManager> {
       await entry.onRestore();
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(context,
             SnackBar(content: Text('恢复${entry.kind.label}失败：$error')));
       }
     } finally {
@@ -102,7 +103,7 @@ class _FinanceTrashManagerState extends State<FinanceTrashManager> {
         const FinanceEmptyState(
           icon: Icons.inventory_2_outlined,
           title: '回收站是空的',
-          description: '删除的账单、预算、贷款和模板会保留在这里。',
+          description: '删除的账单、预算、贷款、周期账单和快捷模板会保留在这里。',
         )
       else ...[
         TextField(

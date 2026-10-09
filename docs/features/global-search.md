@@ -1,11 +1,40 @@
 # Global search
 
-Last reconciled with the client and Alibaba server source trees: 2026-09-26.
+Search client reconciled: 2026-10-07. Remote/server notes retained from the
+2026-09-26 source audit; live deployment has not been rechecked.
 
 Global search combines indexed app data, feature-owned local stores, static
 settings/actions and a small set of remote catalogs. The query is matched in the
 client; it is not sent as a server-side search term. Search queries are saved in
 the local `search_history` table for search suggestions and usage statistics.
+Changing scope, refreshing after remote warmup, retrying or returning from a
+result does not record the same query again within the open search session.
+
+## Search scopes
+
+`SearchScope` maps each business result type to one scope. The common choices
+are All, Todos, Schedule, Finance and Focus/time; More contains Countdowns,
+Habits, Challenges, Screen time, Teams, Journal, AI chat and Settings/actions.
+Schedule covers courses, fixed schedules and plan blocks. Finance includes
+transactions and every existing finance subtype. Focus/time covers Pomodoro,
+time logs and tags. Habits and challenges include their check-ins/tasks; cached
+cloud templates belong to Challenges, while announcements and system messages
+belong to Teams.
+
+Scope selection keeps the query and immediately replaces the previous results.
+Clearing keeps the scope; reopening resets to All. An empty query in a restricted
+scope shows an input hint without loading all records. A restricted search with
+no matches offers Search all while keeping the query. Returning from details
+keeps both query and scope. A request sequence invalidates stale completions,
+including the debounce window and A → B → A scope changes.
+
+`SearchService.search` defaults to All for existing callers. Scope selection is
+applied before calling local source adapters, including the independent branches
+of combined adapters. A final type filter also applies to local and cached
+remote results. Remote prewarming and the five-minute account cache retain their
+existing behavior; scope selection does not promise fewer network requests.
+`onSourceQueried` observes logical source adapters for diagnostics, not individual
+SQL statements. `recordHistory: false` supports non-user-initiated refreshes.
 
 ## Searchable sources
 
@@ -74,5 +103,16 @@ source geometry is unavailable.
 - Source of truth: `lib/services/search_service.dart`,
   `lib/services/global_search_extra_service.dart`,
   `lib/widgets/global_search_overlay.dart`,
+  `lib/models/search_scope.dart`,
   `lib/screens/search_record_detail_screen.dart` and
   `lib/utils/page_transitions.dart`.
+
+## Verification
+
+The 2026-10-07 change has isolated storage/adapter tests in
+`test/services/search_scope_test.dart` and visible-flow tests in
+`test/widgets/global_search_overlay_test.dart`, plus the existing search and
+page-transition regressions. The acceptance report is
+[global search scopes](../reports/2026-10-07-global-search-scopes-acceptance.md).
+The browser preview uses the actual search widget with synthetic adapters; it
+is not a native-device or full-app data-path verification.

@@ -12,6 +12,7 @@ import '../services/habit_source_resolver.dart';
 import '../services/habit_sleep_duration_service.dart';
 import '../widgets/habit_checkin_editor.dart';
 import '../widgets/habit_format.dart';
+import '../../../utils/app_dialogs.dart';
 
 /// 习惯历史：打卡记录 + 目标修改历史。
 ///
@@ -78,7 +79,7 @@ class _HabitHistoryScreenState extends State<HabitHistoryScreen> {
   }
 
   Future<void> _deleteCheckIn(HabitCheckIn checkIn) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showAppDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('删除打卡'),
@@ -107,7 +108,8 @@ class _HabitHistoryScreenState extends State<HabitHistoryScreen> {
     final rule = _ruleFor(checkIn.ruleRevisionUuid);
     if (rule == null) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         const SnackBar(content: Text('找不到这条记录对应的目标规则')),
       );
       return;

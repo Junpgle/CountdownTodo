@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models.dart';
 import 'package:intl/intl.dart';
+import '../utils/app_dialogs.dart';
 
 class ConflictAlertDialog extends StatelessWidget {
   final List<ConflictInfo> conflicts;
@@ -11,7 +12,7 @@ class ConflictAlertDialog extends StatelessWidget {
   static Future<bool?> show(
       BuildContext context, List<ConflictInfo> conflicts) {
     if (conflicts.isEmpty) return Future.value(null);
-    return showDialog<bool>(
+    return showAppDialog<bool>(
       context: context,
       builder: (context) => ConflictAlertDialog(conflicts: conflicts),
     );
@@ -32,7 +33,7 @@ class ConflictAlertDialog extends StatelessWidget {
         child: ListView.separated(
           shrinkWrap: true,
           itemCount: conflicts.length,
-          separatorBuilder: (_, __) => Divider(),
+          separatorBuilder: (_, _) => Divider(),
           itemBuilder: (context, index) {
             final c = conflicts[index];
             return Column(

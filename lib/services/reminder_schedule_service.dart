@@ -107,6 +107,7 @@ class ReminderScheduleService {
     } catch (_) {
       // 记账自动化是可选能力，数据库异常不应阻断待办和课程提醒。
     }
+    await FinanceAutomationService.scheduleNextAutoGeneration(now: now);
 
     // ── 待办提醒（普通 + 特殊）──────────────────────────────────────────
     for (int i = 0; i < todos.length && i < 999; i++) {
@@ -359,6 +360,7 @@ class ReminderScheduleService {
   static Future<void> clearScheduledReminders() {
     _lastScheduleTime = 0;
     _lastScheduleAccountKey = null;
+    FinanceAutomationService.cancelScheduledAutoGeneration();
     return NotificationService.scheduleReminders(
       const [],
       clearFirst: false,

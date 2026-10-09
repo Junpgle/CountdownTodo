@@ -15,6 +15,7 @@ import 'home_dashboard.dart';
 import '../utils/page_transitions.dart';
 import '../utils/theme_color_tokens.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
+import '../utils/app_dialogs.dart';
 
 // ─────────────────────────────────────────────
 //  Adaptive color tokens
@@ -755,8 +756,8 @@ class _LoginScreenState extends State<LoginScreen>
         _userCtrl.text = legacyUser;
         _isRegisterMode = true;
       });
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('检测到本地存档，注册后自动同步数据')));
+      AppSnackBars.showSnackBar(context,
+          const SnackBar(content: Text('检测到本地存档，注册后自动同步数据')));
     }
   }
 
@@ -1023,11 +1024,12 @@ class _LoginScreenState extends State<LoginScreen>
 
   void _snack(String msg) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    AppSnackBars.showSnackBar(
+        context, SnackBar(content: Text(msg)));
   }
 
   void _showPrivacyDialog(BuildContext context) {
-    showDialog(
+    showAppDialog(
       context: context,
       barrierDismissible: true,
       builder: (dialogContext) => PrivacyPolicyDialog(

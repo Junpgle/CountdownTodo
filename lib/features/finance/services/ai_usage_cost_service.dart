@@ -11,8 +11,9 @@ import '../models/finance_models.dart';
 import 'finance_repository.dart';
 
 int _readNonNegativeInt(Object? value) {
-  final parsed =
-      value is num ? value.toInt() : int.tryParse(value?.toString() ?? '') ?? 0;
+  final parsed = value is num
+      ? value.toInt()
+      : int.tryParse(value?.toString() ?? '') ?? 0;
   return parsed < 0 ? 0 : parsed;
 }
 
@@ -43,10 +44,7 @@ class AiUsagePriceTier {
     this.outputMicrosPerMillion = 0,
   });
 
-  bool matches({
-    required int promptTokens,
-    required int completionTokens,
-  }) {
+  bool matches({required int promptTokens, required int completionTokens}) {
     return promptTokens >= minPromptTokens &&
         (maxPromptTokens == null || promptTokens < maxPromptTokens!) &&
         completionTokens >= minCompletionTokens &&
@@ -55,31 +53,32 @@ class AiUsagePriceTier {
   }
 
   Map<String, dynamic> toJson() => {
-        'min_prompt_tokens': minPromptTokens,
-        'max_prompt_tokens': maxPromptTokens,
-        'min_completion_tokens': minCompletionTokens,
-        'max_completion_tokens': maxCompletionTokens,
-        'cached_input_micros_per_million': cachedInputMicrosPerMillion,
-        'input_micros_per_million': inputMicrosPerMillion,
-        'output_micros_per_million': outputMicrosPerMillion,
-      };
+    'min_prompt_tokens': minPromptTokens,
+    'max_prompt_tokens': maxPromptTokens,
+    'min_completion_tokens': minCompletionTokens,
+    'max_completion_tokens': maxCompletionTokens,
+    'cached_input_micros_per_million': cachedInputMicrosPerMillion,
+    'input_micros_per_million': inputMicrosPerMillion,
+    'output_micros_per_million': outputMicrosPerMillion,
+  };
 
   factory AiUsagePriceTier.fromJson(Map<String, dynamic> json) =>
       AiUsagePriceTier(
         minPromptTokens: _readNonNegativeInt(json['min_prompt_tokens']),
-        maxPromptTokens: _readNullableNonNegativeInt(
-          json['max_prompt_tokens'],
-        ),
+        maxPromptTokens: _readNullableNonNegativeInt(json['max_prompt_tokens']),
         minCompletionTokens: _readNonNegativeInt(json['min_completion_tokens']),
         maxCompletionTokens: _readNullableNonNegativeInt(
           json['max_completion_tokens'],
         ),
-        cachedInputMicrosPerMillion:
-            _readNonNegativeInt(json['cached_input_micros_per_million']),
-        inputMicrosPerMillion:
-            _readNonNegativeInt(json['input_micros_per_million']),
-        outputMicrosPerMillion:
-            _readNonNegativeInt(json['output_micros_per_million']),
+        cachedInputMicrosPerMillion: _readNonNegativeInt(
+          json['cached_input_micros_per_million'],
+        ),
+        inputMicrosPerMillion: _readNonNegativeInt(
+          json['input_micros_per_million'],
+        ),
+        outputMicrosPerMillion: _readNonNegativeInt(
+          json['output_micros_per_million'],
+        ),
       );
 }
 
@@ -117,49 +116,55 @@ class AiUsagePricing {
   String get id => '$provider::$model';
 
   Map<String, dynamic> toJson() => {
-        'provider': provider,
-        'model': model,
-        'cached_input_micros_per_million': cachedInputMicrosPerMillion,
-        'input_micros_per_million': inputMicrosPerMillion,
-        'output_micros_per_million': outputMicrosPerMillion,
-        'image_micros_per_image': imageMicrosPerImage,
-        'audio_micros_per_hour': audioMicrosPerHour,
-        'peak_cached_input_micros_per_million': peakCachedInputMicrosPerMillion,
-        'peak_input_micros_per_million': peakInputMicrosPerMillion,
-        'peak_output_micros_per_million': peakOutputMicrosPerMillion,
-        'image_tokens_included': imageTokensIncluded,
-        'is_free': isFree,
-        'tiers': tiers.map((item) => item.toJson()).toList(),
-      };
+    'provider': provider,
+    'model': model,
+    'cached_input_micros_per_million': cachedInputMicrosPerMillion,
+    'input_micros_per_million': inputMicrosPerMillion,
+    'output_micros_per_million': outputMicrosPerMillion,
+    'image_micros_per_image': imageMicrosPerImage,
+    'audio_micros_per_hour': audioMicrosPerHour,
+    'peak_cached_input_micros_per_million': peakCachedInputMicrosPerMillion,
+    'peak_input_micros_per_million': peakInputMicrosPerMillion,
+    'peak_output_micros_per_million': peakOutputMicrosPerMillion,
+    'image_tokens_included': imageTokensIncluded,
+    'is_free': isFree,
+    'tiers': tiers.map((item) => item.toJson()).toList(),
+  };
 
   factory AiUsagePricing.fromJson(Map<String, dynamic> json) {
     final rawTiers = json['tiers'];
     final tiers = rawTiers is List
         ? rawTiers
-            .whereType<Map>()
-            .map((item) => AiUsagePriceTier.fromJson(
-                  Map<String, dynamic>.from(item),
-                ))
-            .toList()
+              .whereType<Map>()
+              .map(
+                (item) =>
+                    AiUsagePriceTier.fromJson(Map<String, dynamic>.from(item)),
+              )
+              .toList()
         : const <AiUsagePriceTier>[];
     return AiUsagePricing(
       provider: json['provider']?.toString() ?? '',
       model: json['model']?.toString() ?? '',
-      cachedInputMicrosPerMillion:
-          _readNonNegativeInt(json['cached_input_micros_per_million']),
-      inputMicrosPerMillion:
-          _readNonNegativeInt(json['input_micros_per_million']),
-      outputMicrosPerMillion:
-          _readNonNegativeInt(json['output_micros_per_million']),
+      cachedInputMicrosPerMillion: _readNonNegativeInt(
+        json['cached_input_micros_per_million'],
+      ),
+      inputMicrosPerMillion: _readNonNegativeInt(
+        json['input_micros_per_million'],
+      ),
+      outputMicrosPerMillion: _readNonNegativeInt(
+        json['output_micros_per_million'],
+      ),
       imageMicrosPerImage: _readNonNegativeInt(json['image_micros_per_image']),
       audioMicrosPerHour: _readNonNegativeInt(json['audio_micros_per_hour']),
       peakCachedInputMicrosPerMillion: _readNonNegativeInt(
         json['peak_cached_input_micros_per_million'],
       ),
-      peakInputMicrosPerMillion:
-          _readNonNegativeInt(json['peak_input_micros_per_million']),
-      peakOutputMicrosPerMillion:
-          _readNonNegativeInt(json['peak_output_micros_per_million']),
+      peakInputMicrosPerMillion: _readNonNegativeInt(
+        json['peak_input_micros_per_million'],
+      ),
+      peakOutputMicrosPerMillion: _readNonNegativeInt(
+        json['peak_output_micros_per_million'],
+      ),
       imageTokensIncluded: json['image_tokens_included'] == true,
       isFree: json['is_free'] == true,
       tiers: tiers,
@@ -236,8 +241,9 @@ class AiUsageRecord {
       promptTokens: promptTokens,
       completionTokens: _readNonNegativeInt(map['completion_tokens']),
       totalTokens: _readNonNegativeInt(map['total_tokens']),
-      cachedPromptTokens:
-          cachedPromptTokens > promptTokens ? promptTokens : cachedPromptTokens,
+      cachedPromptTokens: cachedPromptTokens > promptTokens
+          ? promptTokens
+          : cachedPromptTokens,
       imageTokens: _readNonNegativeInt(map['image_tokens']),
       audioTokens: _readNonNegativeInt(map['audio_tokens']),
       videoTokens: _readNonNegativeInt(map['video_tokens']),
@@ -304,17 +310,21 @@ abstract final class AiUsageCostService {
   static const _settingsPrefix = 'ai_usage_cost_settings';
   static const _aiCategoryUuid = 'finance-system-category-ai-service';
   static const _otherPaymentMethodUuid = 'finance-system-payment-other';
-  static const _monthlyLedgerKeyPrefix = 'finance-ai-month-v2';
+  static const _deviceMonthlyLedgerKeyPrefix = 'finance-ai-device-month-v1';
   static const _ledgerUuidNamespace = '6ba7b810-9dad-11d1-80b4-00c04fd430c8';
   static const _microsPerYuan = 1000000;
   static const _microsPerFen = 10000;
   static const _tokensPerMillion = 1000000;
 
-  // Prices are stored as micro-yuan per million tokens. The Zhipu and
-  // DeepSeek entries below were checked against their official domestic
-  // pricing pages on 2026-08-31. NIM is deliberately not included: NVIDIA's
-  // hosted models do not have one universal public per-token price.
-  // Sources: https://bigmodel.cn/pricing and
+  // Prices are stored as micro-yuan per million tokens. The Zhipu entries
+  // below were checked against their official domestic pricing pages on
+  // 2026-08-31; DeepSeek V4.1 Flash prices use the official rates effective
+  // 2026-09-10. NIM is deliberately not included: NVIDIA's hosted models do
+  // not have one universal public per-token price.
+  // MiMo V2.6 rates are sourced from the official model pages:
+  // https://mimo.mi.com/models/zh-CN/mimo-v2.6-flash and
+  // https://mimo.mi.com/models/zh-CN/mimo-v2.6-pro.
+  // Other sources: https://bigmodel.cn/pricing and
   // https://api-docs.deepseek.com/zh-cn/quick_start/pricing/
   //
   // Domestic MiMo pay-as-you-go prices are included, while Token Plan is
@@ -327,6 +337,30 @@ abstract final class AiUsageCostService {
       cachedInputMicrosPerMillion: 20000,
       inputMicrosPerMillion: 1000000,
       outputMicrosPerMillion: 2000000,
+      imageTokensIncluded: true,
+    ),
+    AiUsagePricing(
+      provider: 'mimo',
+      model: 'mimo-v2.6-flash',
+      cachedInputMicrosPerMillion: 20000,
+      inputMicrosPerMillion: 1000000,
+      outputMicrosPerMillion: 2000000,
+      imageTokensIncluded: true,
+    ),
+    AiUsagePricing(
+      provider: 'mimo',
+      model: 'mimo-v2.6-pro',
+      cachedInputMicrosPerMillion: 25000,
+      inputMicrosPerMillion: 3000000,
+      outputMicrosPerMillion: 6000000,
+      imageTokensIncluded: true,
+    ),
+    AiUsagePricing(
+      provider: 'mimo',
+      model: 'mimo-v2.6-pro-ultraspeed',
+      cachedInputMicrosPerMillion: 250000,
+      inputMicrosPerMillion: 30000000,
+      outputMicrosPerMillion: 60000000,
       imageTokensIncluded: true,
     ),
     AiUsagePricing(
@@ -471,21 +505,13 @@ abstract final class AiUsageCostService {
         ),
       ],
     ),
-    AiUsagePricing(
-      provider: 'zhipu',
-      model: 'glm-4.7-flash',
-      isFree: true,
-    ),
+    AiUsagePricing(provider: 'zhipu', model: 'glm-4.7-flash', isFree: true),
     AiUsagePricing(
       provider: 'zhipu',
       model: 'glm-4-flash-250414',
       isFree: true,
     ),
-    AiUsagePricing(
-      provider: 'zhipu',
-      model: 'glm-4.5-flash',
-      isFree: true,
-    ),
+    AiUsagePricing(provider: 'zhipu', model: 'glm-4.5-flash', isFree: true),
     AiUsagePricing(
       provider: 'zhipu',
       model: 'glm-4.6v-flash',
@@ -516,12 +542,24 @@ abstract final class AiUsageCostService {
     AiUsagePricing(
       provider: 'deepseek',
       model: 'deepseek-v4-flash',
-      cachedInputMicrosPerMillion: 50000,
-      inputMicrosPerMillion: 1500000,
-      outputMicrosPerMillion: 4500000,
-      peakCachedInputMicrosPerMillion: 100000,
-      peakInputMicrosPerMillion: 3000000,
-      peakOutputMicrosPerMillion: 9000000,
+      cachedInputMicrosPerMillion: 20000,
+      inputMicrosPerMillion: 1000000,
+      outputMicrosPerMillion: 4000000,
+      peakCachedInputMicrosPerMillion: 40000,
+      peakInputMicrosPerMillion: 2000000,
+      peakOutputMicrosPerMillion: 8000000,
+      imageTokensIncluded: true,
+    ),
+    AiUsagePricing(
+      provider: 'deepseek',
+      model: 'deepseek-flash',
+      cachedInputMicrosPerMillion: 20000,
+      inputMicrosPerMillion: 1000000,
+      outputMicrosPerMillion: 4000000,
+      peakCachedInputMicrosPerMillion: 40000,
+      peakInputMicrosPerMillion: 2000000,
+      peakOutputMicrosPerMillion: 8000000,
+      imageTokensIncluded: true,
     ),
     AiUsagePricing(
       provider: 'deepseek',
@@ -536,12 +574,12 @@ abstract final class AiUsageCostService {
     AiUsagePricing(
       provider: 'deepseek',
       model: 'deepseek-v4-flash-vision-exp',
-      cachedInputMicrosPerMillion: 50000,
-      inputMicrosPerMillion: 1500000,
-      outputMicrosPerMillion: 4500000,
-      peakCachedInputMicrosPerMillion: 100000,
-      peakInputMicrosPerMillion: 3000000,
-      peakOutputMicrosPerMillion: 9000000,
+      cachedInputMicrosPerMillion: 20000,
+      inputMicrosPerMillion: 1000000,
+      outputMicrosPerMillion: 4000000,
+      peakCachedInputMicrosPerMillion: 40000,
+      peakInputMicrosPerMillion: 2000000,
+      peakOutputMicrosPerMillion: 8000000,
       imageTokensIncluded: true,
     ),
   ];
@@ -560,7 +598,7 @@ abstract final class AiUsageCostService {
   }
 
   static Future<({bool autoLedger, List<AiUsagePricing> prices})>
-      _loadSettings() async {
+  _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(await _settingsKey());
     if (raw == null || raw.isEmpty) {
@@ -570,13 +608,14 @@ abstract final class AiUsageCostService {
       final json = jsonDecode(raw) as Map<String, dynamic>;
       final values = (json['prices'] as List? ?? const [])
           .whereType<Map>()
-          .map((item) =>
-              AiUsagePricing.fromJson(Map<String, dynamic>.from(item)))
+          .map(
+            (item) => AiUsagePricing.fromJson(Map<String, dynamic>.from(item)),
+          )
           .where((item) => item.provider.isNotEmpty && item.model.isNotEmpty)
           .toList();
       return (
         autoLedger: json['auto_ledger'] != false,
-        prices: _withBuiltInPricing(values),
+        prices: _withBuiltInPricing(_settingsOverrides(values)),
       );
     } catch (_) {
       return (autoLedger: true, prices: _withBuiltInPricing(const []));
@@ -596,6 +635,38 @@ abstract final class AiUsageCostService {
     return values;
   }
 
+  static List<AiUsagePricing> _settingsOverrides(List<AiUsagePricing> prices) {
+    return prices.where((pricing) {
+      final builtIn = _builtInPricing
+          .where((item) => item.id == pricing.id)
+          .firstOrNull;
+      if (builtIn == null) return true;
+      if (jsonEncode(pricing.toJson()) == jsonEncode(builtIn.toJson())) {
+        return false;
+      }
+      return !_isLegacyDeepSeekFlashDefault(pricing);
+    }).toList();
+  }
+
+  static bool _isLegacyDeepSeekFlashDefault(AiUsagePricing pricing) {
+    final isVisionAlias = pricing.model == 'deepseek-v4-flash-vision-exp';
+    if (pricing.provider != 'deepseek' ||
+        (!isVisionAlias && pricing.model != 'deepseek-v4-flash')) {
+      return false;
+    }
+    return pricing.cachedInputMicrosPerMillion == 50000 &&
+        pricing.inputMicrosPerMillion == 1500000 &&
+        pricing.outputMicrosPerMillion == 4500000 &&
+        pricing.peakCachedInputMicrosPerMillion == 100000 &&
+        pricing.peakInputMicrosPerMillion == 3000000 &&
+        pricing.peakOutputMicrosPerMillion == 9000000 &&
+        pricing.imageMicrosPerImage == 0 &&
+        pricing.audioMicrosPerHour == 0 &&
+        pricing.imageTokensIncluded == isVisionAlias &&
+        !pricing.isFree &&
+        pricing.tiers.isEmpty;
+  }
+
   static bool isBuiltInPricing(AiUsagePricing pricing) =>
       _builtInPricing.any((item) => item.id == pricing.id);
 
@@ -604,11 +675,12 @@ abstract final class AiUsageCostService {
     required List<AiUsagePricing> prices,
   }) async {
     final prefs = await SharedPreferences.getInstance();
+    final overrides = _settingsOverrides(prices);
     await prefs.setString(
       await _settingsKey(),
       jsonEncode({
         'auto_ledger': autoLedger,
-        'prices': prices.map((item) => item.toJson()).toList(),
+        'prices': overrides.map((item) => item.toJson()).toList(),
       }),
     );
   }
@@ -688,8 +760,8 @@ abstract final class AiUsageCostService {
     final normalizedImageCount = _readNonNegativeInt(imageCount);
     final clampedCachedPromptTokens =
         normalizedCachedPromptTokens > normalizedPromptTokens
-            ? normalizedPromptTokens
-            : normalizedCachedPromptTokens;
+        ? normalizedPromptTokens
+        : normalizedCachedPromptTokens;
     final timestamp = now ?? DateTime.now();
     final settings = await _loadSettings();
     final pricing = settings.prices
@@ -709,9 +781,17 @@ abstract final class AiUsageCostService {
             at: timestamp,
           )
         : null;
-    final ledgerKey = costMicros == null
+    final deviceId = costMicros == null
         ? null
-        : _monthlyLedgerKey(financeMonthKey(timestamp), provider, model);
+        : await UserSessionStorage.getDeviceId();
+    final ledgerKey = costMicros == null || deviceId == null
+        ? null
+        : _deviceMonthlyLedgerKey(
+            financeMonthKey(timestamp),
+            provider,
+            model,
+            deviceId,
+          );
     final uuid = const Uuid().v4();
     final record = AiUsageRecord(
       uuid: uuid,
@@ -761,41 +841,108 @@ abstract final class AiUsageCostService {
         monthEnd: DateTime(timestamp.year, timestamp.month + 1),
         provider: provider,
         model: model,
+        deviceId: deviceId!,
       );
     }
     return record;
   }
 
-  /// 将本月已记录的、可计价的调用重新汇总到个人账本。
+  /// Reprice newly supported calls, then sync priced calls to the ledger.
   ///
-  /// 这一步既覆盖自动记账关闭期间积累的明细，也会把旧版本按日生成的
-  /// AI 账单合并为本月账单，避免低于 1 分的 MiMo 调用永远无法出现在账本。
+  /// This also upgrades older records that were retained as unpriced when
+  /// their model did not yet have a built-in or configured rate. Records
+  /// without token or audio usage are left unpriced rather than guessed.
   static Future<bool> reconcileCurrentMonth({DateTime? now}) async {
     final settings = await _loadSettings();
-    if (!settings.autoLedger) return false;
-
     final current = now ?? DateTime.now();
     final monthStart = DateTime(current.year, current.month);
     final monthEnd = DateTime(current.year, current.month + 1);
+    final deviceId = await UserSessionStorage.getDeviceId();
     final db = await _database;
     await DatabaseHelper.ensureFinanceSchema(db);
     await DatabaseHelper.ensureAiUsageSchema(db);
-    final providersAndModels = await db.rawQuery(
-      'SELECT DISTINCT provider, model FROM ai_usage_records '
-      'WHERE is_priced = 1 AND created_at >= ? AND created_at < ?',
-      [monthStart.millisecondsSinceEpoch, monthEnd.millisecondsSinceEpoch],
-    );
     var changed = false;
+    final unpricedRows = await db.query(
+      'ai_usage_records',
+      where: 'is_priced = 0 AND created_at >= ? AND created_at < ?',
+      whereArgs: [
+        monthStart.millisecondsSinceEpoch,
+        monthEnd.millisecondsSinceEpoch,
+      ],
+    );
+    for (final row in unpricedRows) {
+      final record = AiUsageRecord.fromMap(row);
+      if (record.promptTokens + record.completionTokens <= 0 &&
+          record.audioSeconds <= 0) {
+        continue;
+      }
+      final pricing = settings.prices
+          .where(
+            (item) =>
+                item.provider == record.provider && item.model == record.model,
+          )
+          .firstOrNull;
+      final costMicros = _calculateCostMicros(
+        pricing,
+        provider: record.provider,
+        model: record.model,
+        promptTokens: record.promptTokens,
+        completionTokens: record.completionTokens,
+        cachedPromptTokens: record.cachedPromptTokens,
+        imageTokens: record.imageTokens,
+        audioSeconds: record.audioSeconds,
+        imageCount: record.imageCount,
+        at: record.createdAt,
+      );
+      if (costMicros == null) continue;
+      await db.update(
+        'ai_usage_records',
+        {
+          'cost_micros': costMicros,
+          'is_priced': 1,
+          'ledger_key': _deviceMonthlyLedgerKey(
+            financeMonthKey(record.createdAt),
+            record.provider,
+            record.model,
+            deviceId,
+          ),
+        },
+        where: 'uuid = ? AND is_priced = 0',
+        whereArgs: [record.uuid],
+      );
+      changed = true;
+    }
+    if (!settings.autoLedger) return changed;
+
+    final providersAndModels = await db.rawQuery(
+      'SELECT DISTINCT provider, model, ledger_key FROM ai_usage_records '
+      'WHERE is_priced = 1 AND created_at >= ? AND created_at < ? '
+      'AND ledger_key LIKE ?',
+      [
+        monthStart.millisecondsSinceEpoch,
+        monthEnd.millisecondsSinceEpoch,
+        '$_deviceMonthlyLedgerKeyPrefix|%',
+      ],
+    );
     for (final row in providersAndModels) {
       final provider = row['provider']?.toString() ?? '';
       final model = row['model']?.toString() ?? '';
       if (provider.isEmpty || model.isEmpty) continue;
-      changed = await _syncLedgerAggregate(
+      final ledgerKey = _deviceMonthlyLedgerKey(
+        financeMonthKey(monthStart),
+        provider,
+        model,
+        deviceId,
+      );
+      if (row['ledger_key'] != ledgerKey) continue;
+      changed =
+          await _syncLedgerAggregate(
             db: db,
             monthStart: monthStart,
             monthEnd: monthEnd,
             provider: provider,
             model: model,
+            deviceId: deviceId,
           ) ||
           changed;
     }
@@ -837,8 +984,10 @@ abstract final class AiUsageCostService {
     if (rates == null) return null;
 
     // MiMo ASR is billed by audio duration, not by the token fields in the
-    // response. A missing duration must remain unpriced instead of guessing.
-    if (model == 'mimo-v2.5-asr' || audioSeconds > 0) {
+    // response. Other models use duration pricing only when an hourly rate is
+    // configured; a duration metadata field alone must not discard token cost.
+    if ((isMimo && model == 'mimo-v2.5-asr') ||
+        (audioSeconds > 0 && rates.audioMicrosPerHour > 0)) {
       if (audioSeconds <= 0 || rates.audioMicrosPerHour <= 0) return null;
       return _roundProduct(audioSeconds, rates.audioMicrosPerHour, 3600);
     }
@@ -869,15 +1018,20 @@ abstract final class AiUsageCostService {
     // MiMo, Zhipu vision, and DeepSeek vision report media as parts of the
     // prompt token total. Do not add a per-image fee on top of those tokens.
     // For other providers, retain the existing optional fixed image fee.
-    final tokenNumerator = uncachedTokens * rates.inputMicrosPerMillion +
-        cachedTokens * cachedInputRate +
-        normalizedCompletionTokens * rates.outputMicrosPerMillion;
+    final tokenNumerator =
+        BigInt.from(uncachedTokens) * BigInt.from(rates.inputMicrosPerMillion) +
+        BigInt.from(cachedTokens) * BigInt.from(cachedInputRate) +
+        BigInt.from(normalizedCompletionTokens) *
+            BigInt.from(rates.outputMicrosPerMillion);
     final tokenCostMicros =
-        (tokenNumerator + (_tokensPerMillion ~/ 2)) ~/ _tokensPerMillion;
-    return tokenCostMicros +
-        (imageTokensIncluded || isMimo
-            ? 0
-            : imageCount * rates.imageMicrosPerImage);
+        (tokenNumerator + BigInt.from(_tokensPerMillion ~/ 2)) ~/
+        BigInt.from(_tokensPerMillion);
+    final imageCostMicros = imageTokensIncluded || isMimo
+        ? BigInt.zero
+        : BigInt.from(imageCount) * BigInt.from(rates.imageMicrosPerImage);
+    final totalCostMicros = tokenCostMicros + imageCostMicros;
+    if (totalCostMicros > BigInt.from(maxFinanceAmountMinor)) return null;
+    return totalCostMicros.toInt();
   }
 
   static _AiUsageRates? _ratesFor(
@@ -900,7 +1054,8 @@ abstract final class AiUsageCostService {
       if (tier == null) return null;
     }
 
-    var cachedInputMicrosPerMillion = tier?.cachedInputMicrosPerMillion ??
+    var cachedInputMicrosPerMillion =
+        tier?.cachedInputMicrosPerMillion ??
         pricing.cachedInputMicrosPerMillion;
     var inputMicrosPerMillion =
         tier?.inputMicrosPerMillion ?? pricing.inputMicrosPerMillion;
@@ -935,9 +1090,12 @@ abstract final class AiUsageCostService {
         (minute >= 14 * 60 && minute < 18 * 60);
   }
 
-  static int _roundProduct(int value, int microsPerUnit, int divisor) {
-    final numerator = value * microsPerUnit;
-    return (numerator + (divisor ~/ 2)) ~/ divisor;
+  static int? _roundProduct(int value, int microsPerUnit, int divisor) {
+    final numerator = BigInt.from(value) * BigInt.from(microsPerUnit);
+    final rounded =
+        (numerator + BigInt.from(divisor ~/ 2)) ~/ BigInt.from(divisor);
+    if (rounded > BigInt.from(maxFinanceAmountMinor)) return null;
+    return rounded.toInt();
   }
 
   static Future<bool> _syncLedgerAggregate({
@@ -946,36 +1104,51 @@ abstract final class AiUsageCostService {
     required DateTime monthEnd,
     required String provider,
     required String model,
+    required String deviceId,
   }) async {
     final monthKey = financeMonthKey(monthStart);
-    final ledgerKey = _monthlyLedgerKey(monthKey, provider, model);
-    final totalMicros = Sqflite.firstIntValue(await db.rawQuery(
-          'SELECT COALESCE(SUM(cost_micros), 0) FROM ai_usage_records '
-          'WHERE provider = ? AND model = ? AND is_priced = 1 '
-          'AND created_at >= ? AND created_at < ?',
-          [
-            provider,
-            model,
-            monthStart.millisecondsSinceEpoch,
-            monthEnd.millisecondsSinceEpoch,
-          ],
-        )) ??
+    final ledgerKey = _deviceMonthlyLedgerKey(
+      monthKey,
+      provider,
+      model,
+      deviceId,
+    );
+    final totalMicros =
+        Sqflite.firstIntValue(
+          await db.rawQuery(
+            'SELECT COALESCE(SUM(cost_micros), 0) FROM ai_usage_records '
+            'WHERE provider = ? AND model = ? AND is_priced = 1 '
+            'AND created_at >= ? AND created_at < ? AND ledger_key = ?',
+            [
+              provider,
+              model,
+              monthStart.millisecondsSinceEpoch,
+              monthEnd.millisecondsSinceEpoch,
+              ledgerKey,
+            ],
+          ),
+        ) ??
         0;
     final amountMinor = (totalMicros + (_microsPerFen ~/ 2)) ~/ _microsPerFen;
     if (amountMinor <= 0) return false;
 
-    final allLinks = await db.query(
+    final links = await db.query(
       'ai_usage_ledger_links',
+      where: 'ledger_key = ?',
+      whereArgs: [ledgerKey],
     );
-    final links = allLinks.where((row) {
-      final key = row['ledger_key']?.toString() ?? '';
-      return key == ledgerKey ||
-          _isLegacyDailyLedgerKey(key, monthKey, provider, model);
-    }).toList(growable: false);
-    final linkedUuids = links
-        .map((row) => row['finance_transaction_uuid']?.toString() ?? '')
-        .where((uuid) => uuid.isNotEmpty)
-        .toSet();
+    final stableTransactionUuid = _deviceMonthlyLedgerTransactionUuid(
+      monthKey,
+      provider,
+      model,
+      deviceId,
+    );
+    final linkedUuids = {
+      ...links
+          .map((row) => row['finance_transaction_uuid']?.toString() ?? '')
+          .where((uuid) => uuid.isNotEmpty),
+      stableTransactionUuid,
+    };
     final linkedTransactions = <String, FinanceTransaction>{};
     if (linkedUuids.isNotEmpty) {
       final placeholders = List.filled(linkedUuids.length, '?').join(',');
@@ -990,11 +1163,15 @@ abstract final class AiUsageCostService {
       }
     }
 
-    final existing =
-        linkedTransactions.values.where((item) => !item.isDeleted).firstOrNull;
-    final transaction = existing ??
+    final existing = linkedTransactions.values
+        .where((item) => !item.isDeleted)
+        .firstOrNull;
+    final transaction =
+        existing ??
         FinanceTransaction(
-          uuid: _monthlyLedgerTransactionUuid(monthKey, provider, model),
+          uuid: linkedTransactions[stableTransactionUuid]?.isDeleted == true
+              ? const Uuid().v4()
+              : stableTransactionUuid,
           type: FinanceTransactionType.expense,
           amountMinor: amountMinor,
           categoryUuid: _aiCategoryUuid,
@@ -1003,6 +1180,7 @@ abstract final class AiUsageCostService {
           merchant: '$provider · $model',
           note: 'AI 调用费用自动汇总（$monthKey）',
           source: FinanceEntrySource.ai,
+          deviceId: deviceId,
         );
     final shouldSaveTransaction =
         existing == null || existing.amountMinor != amountMinor;
@@ -1015,58 +1193,37 @@ abstract final class AiUsageCostService {
       await FinanceRepository.saveTransaction(transaction);
     }
 
-    // 同一月份的旧按日账单已包含在本次月度总额中，保留一笔即可。
+    // Device-scoped aggregates remain independent on finance sync, allowing
+    // usage from separate local databases to add up without overwriting.
     for (final duplicate in linkedTransactions.values) {
       if (duplicate.uuid == transaction.uuid || duplicate.isDeleted) continue;
       await FinanceRepository.deleteTransaction(duplicate.uuid);
       changed = true;
     }
-    for (final link in links) {
-      final key = link['ledger_key']?.toString() ?? '';
-      if (key != ledgerKey) {
-        await db.delete(
-          'ai_usage_ledger_links',
-          where: 'ledger_key = ?',
-          whereArgs: [key],
-        );
-      }
-    }
-    await db.insert(
-      'ai_usage_ledger_links',
-      {
-        'ledger_key': ledgerKey,
-        'finance_transaction_uuid': transaction.uuid,
-        'updated_at': DateTime.now().millisecondsSinceEpoch,
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await db.insert('ai_usage_ledger_links', {
+      'ledger_key': ledgerKey,
+      'finance_transaction_uuid': transaction.uuid,
+      'updated_at': DateTime.now().millisecondsSinceEpoch,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
     return changed;
   }
 
-  static String _monthlyLedgerKey(
+  static String _deviceMonthlyLedgerKey(
     String monthKey,
     String provider,
     String model,
-  ) =>
-      '$_monthlyLedgerKeyPrefix|$monthKey|$provider|$model';
+    String deviceId,
+  ) => '$_deviceMonthlyLedgerKeyPrefix|$monthKey|$provider|$model|$deviceId';
 
-  static bool _isLegacyDailyLedgerKey(
-    String key,
+  static String _deviceMonthlyLedgerTransactionUuid(
     String monthKey,
     String provider,
     String model,
-  ) {
-    return key.startsWith('$monthKey-') && key.endsWith('|$provider|$model');
-  }
-
-  static String _monthlyLedgerTransactionUuid(
-    String monthKey,
-    String provider,
-    String model,
+    String deviceId,
   ) {
     return const Uuid().v5(
       _ledgerUuidNamespace,
-      'countdown-todo/finance-ai-ledger/v2/$monthKey/$provider/$model',
+      'countdown-todo/finance-ai-ledger/device-v1/$deviceId/$monthKey/$provider/$model',
     );
   }
 
@@ -1142,8 +1299,10 @@ abstract final class AiUsageCostService {
 
   static int yuanToMicros(String value) {
     final parsed = double.tryParse(value.trim());
-    if (parsed == null || parsed < 0) return 0;
-    return (parsed * _microsPerYuan).round();
+    if (parsed == null || !parsed.isFinite || parsed < 0) return 0;
+    final micros = parsed * _microsPerYuan;
+    if (!micros.isFinite || micros > maxFinanceAmountMinor) return 0;
+    return micros.round();
   }
 
   static String microsToYuan(int micros) =>

@@ -1,5 +1,3 @@
-import '../utils/json_value_parser.dart';
-
 enum AiTodoActionType {
   createTodo,
   createHabit,
@@ -100,6 +98,7 @@ class AiTodoAction {
     bool? hasGroupId,
     bool? hasReminderMinutes,
     bool? hasReminderMinutesList,
+    bool? hasTagUuids,
     Map<String, dynamic>? metadata,
   })  : hasRemark = hasRemark ?? remark != null,
         hasStartTime = hasStartTime ?? startTime != null,
@@ -117,6 +116,7 @@ class AiTodoAction {
         hasReminderMinutes = hasReminderMinutes ?? reminderMinutes != null,
         hasReminderMinutesList =
             hasReminderMinutesList ?? reminderMinutesList.isNotEmpty,
+        hasTagUuids = hasTagUuids ?? tagUuids.isNotEmpty,
         metadata = metadata ?? {};
 
   AiTodoActionType type;
@@ -182,6 +182,7 @@ class AiTodoAction {
   bool hasGroupId;
   bool hasReminderMinutes;
   bool hasReminderMinutesList;
+  bool hasTagUuids;
   Map<String, dynamic> metadata;
 
   bool get appliesToFutureOccurrences => recurrenceScope == 'future';
@@ -328,6 +329,7 @@ class AiTodoAction {
         'hasGroupId': hasGroupId,
         'hasReminderMinutes': hasReminderMinutes,
         'hasReminderMinutesList': hasReminderMinutesList,
+        'hasTagUuids': hasTagUuids,
         'metadata': metadata,
       };
 
@@ -489,6 +491,11 @@ class AiTodoAction {
             'hasReminderMinutesList',
           ) ||
           json['reminderMinutes'] is List,
+      hasTagUuids: _fieldWasProvidedAny(
+        json,
+        const ['tagUuids', 'tagIds'],
+        'hasTagUuids',
+      ),
       metadata: json['metadata'] is Map
           ? Map<String, dynamic>.from(json['metadata'] as Map)
           : {},
@@ -595,7 +602,13 @@ class AiTodoAction {
   }
 
   static int? _parseInt(dynamic value) {
-    return JsonValueParser.toNullableInt(value);
+    if (value is int) return value;
+    if (value is num) {
+      if (!value.isFinite || value % 1 != 0) return null;
+      return value.toInt();
+    }
+    if (value is String) return int.tryParse(value.trim());
+    return null;
   }
 
   static double? _parseDouble(dynamic value) {

@@ -1,4 +1,4 @@
-import 'dart:async' show TimeoutException, Timer;
+import 'dart:async' show TimeoutException, Timer, unawaited;
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -11,7 +11,7 @@ import '../screens/home_settings_screen.dart';
 import '../utils/page_transitions.dart';
 import '../utils/navigator_utils.dart';
 
-class WindowService extends WindowListener with TrayListener {
+class WindowService extends WindowListener {
   static const _keyX = 'main_window_x';
   static const _keyY = 'main_window_y';
   static const _keyW = 'main_window_w';
@@ -30,6 +30,10 @@ class WindowService extends WindowListener with TrayListener {
   static bool _macIslandInitialized = false;
 
   static final WindowService _instance = WindowService._internal();
+  static TrayIcon? _trayIcon;
+  static Menu? _trayMenu;
+  static MenuItem? _trayAutoLaunchMenuItem;
+  static final List<MenuItem> _trayMenuItems = [];
 
   WindowService._internal();
 
@@ -197,18 +201,24 @@ class WindowService extends WindowListener with TrayListener {
     try {
       debugPrint(
           '[WindowService] _initTray: starting, iconPath=${Platform.isWindows ? 'assets/icon/app_icon.ico' : 'assets/icon/app_icon.png'}');
-      trayManager.addListener(_instance);
+      final trayIcon = TrayIcon.create();
+      if (trayIcon == null) {
+        throw StateError('Failed to create the Windows system tray icon');
+      }
+      _trayIcon = trayIcon;
+      trayIcon.setTooltip('CountDownTodo');
+      trayIcon.setContextMenuTrigger(ContextMenuTrigger.rightClicked);
+      trayIcon.addListener((event) {
+        if (event is TrayIconClickedEvent) {
+          unawaited(_showWindowFromTray());
+        }
+      });
       await _setTrayIcon();
       debugPrint('[WindowService] _initTray: setIcon done');
-      await trayManager.setToolTip('CountDownTodo');
+      _createTrayMenu();
       await _updateTrayMenu();
-      if (Platform.isMacOS) {
-        Future<void>.delayed(const Duration(milliseconds: 800), () async {
-          await _setTrayIcon();
-          await trayManager.setToolTip('CountDownTodo');
-          await _updateTrayMenu();
-          debugPrint('[WindowService] _initTray: macOS delayed refresh done');
-        });
+      if (!trayIcon.setVisible(true)) {
+        throw StateError('Failed to show the Windows system tray icon');
       }
       debugPrint('[WindowService] _initTray: complete');
     } catch (e) {
@@ -216,49 +226,121 @@ class WindowService extends WindowListener with TrayListener {
     }
   }
 
-  static Future<void> _setTrayIcon() {
-    if (Platform.isMacOS) {
-      return trayManager.setIcon('assets/icon/app_icon.png');
+  static Future<void> _setTrayIcon() async {
+    final trayIcon = _trayIcon;
+    if (trayIcon == null) {
+      throw StateError('The Windows system tray icon has not been created');
     }
-    return trayManager.setIcon(
-      'assets/icon/app_icon.ico',
-      iconSize: 18,
+    trayIcon.icon = ImageAsset.fromAsset(
+      Platform.isWindows ? 'assets/icon/app_icon.ico' : 'assets/icon/app_icon.png',
     );
+    if (Platform.isWindows) trayIcon.iconSize = const Size(18, 18);
+  }
+
+  static void _createTrayMenu() {
+    final menu = Menu.create();
+    final openSettingsItem = MenuItem.createWithLabelAndType(
+      '打开设置',
+      MenuItemType.normal,
+    );
+    final autoLaunchItem = MenuItem.createWithLabelAndType(
+      '开机自启动: 已关闭',
+      MenuItemType.normal,
+    );
+    final showWindowItem = MenuItem.createWithLabelAndType(
+      '显示程序',
+      MenuItemType.normal,
+    );
+    final exitItem = MenuItem.createWithLabelAndType(
+      '退出程序',
+      MenuItemType.normal,
+    );
+    if (menu == null ||
+        openSettingsItem == null ||
+        autoLaunchItem == null ||
+        showWindowItem == null ||
+        exitItem == null) {
+      throw StateError('Failed to create the Windows system tray menu');
+    }
+
+    openSettingsItem.addListener((event) {
+      if (event is MenuItemClickedEvent) {
+        unawaited(_openSettingsFromTray());
+      }
+    });
+    autoLaunchItem.addListener((event) {
+      if (event is MenuItemClickedEvent) {
+        unawaited(_toggleLaunchAtStartupFromTray());
+      }
+    });
+    showWindowItem.addListener((event) {
+      if (event is MenuItemClickedEvent) {
+        unawaited(_showWindowFromTray());
+      }
+    });
+    exitItem.addListener((event) {
+      if (event is MenuItemClickedEvent) exit(0);
+    });
+
+    menu.addItem(openSettingsItem);
+    menu.addItem(autoLaunchItem);
+    menu.addSeparator();
+    menu.addItem(showWindowItem);
+    menu.addItem(exitItem);
+
+    _trayMenu = menu;
+    _trayAutoLaunchMenuItem = autoLaunchItem;
+    _trayMenuItems
+      ..clear()
+      ..addAll([openSettingsItem, autoLaunchItem, showWindowItem, exitItem]);
   }
 
   static Future<void> _updateTrayMenu() async {
     try {
-      bool isLaunchAtStartup = false;
+      final menu = _trayMenu;
+      final trayIcon = _trayIcon;
+      final autoLaunchItem = _trayAutoLaunchMenuItem;
+      if (menu == null ||
+          trayIcon == null ||
+          autoLaunchItem == null ||
+          _trayMenuItems.isEmpty) {
+        return;
+      }
+      bool isLaunchAtStartup;
       try {
         isLaunchAtStartup = await launchAtStartup.isEnabled();
       } catch (_) {
         // macOS 可能不支持 isEnabled
+        isLaunchAtStartup = false;
       }
-      Menu menu = Menu(
-        items: [
-          MenuItem(
-            key: 'open_settings',
-            label: '打开设置',
-          ),
-          MenuItem(
-            key: 'auto_launch',
-            label: isLaunchAtStartup ? '开机自启动: 已开启' : '开机自启动: 已关闭',
-          ),
-          MenuItem.separator(),
-          MenuItem(
-            key: 'show_window',
-            label: '显示程序',
-          ),
-          MenuItem(
-            key: 'exit_app',
-            label: '退出程序',
-          ),
-        ],
-      );
-      await trayManager.setContextMenu(menu);
+      autoLaunchItem.label =
+          isLaunchAtStartup ? '开机自启动: 已开启' : '开机自启动: 已关闭';
+      trayIcon.setContextMenu(menu);
     } catch (e) {
       debugPrint('[WindowService] updateTrayMenu error: $e');
     }
+  }
+
+  static Future<void> _showWindowFromTray() async {
+    await windowManager.show();
+    await windowManager.focus();
+  }
+
+  static Future<void> _openSettingsFromTray() async {
+    await _showWindowFromTray();
+    appNavigatorKey.currentState?.push(
+      PageTransitions.slideHorizontal(const SettingsPage()),
+    );
+  }
+
+  static Future<void> _toggleLaunchAtStartupFromTray() async {
+    final isEnabled = await launchAtStartup.isEnabled();
+    if (isEnabled) {
+      await launchAtStartup.disable();
+    } else {
+      await launchAtStartup.enable();
+    }
+    await _updateTrayMenu();
   }
 
   static Future<dynamic> _handleMacStatusBarCall(MethodCall call) async {
@@ -385,52 +467,6 @@ class WindowService extends WindowListener with TrayListener {
   @override
   void onWindowResize() {
     _scheduleSave();
-  }
-
-  @override
-  void onTrayIconMouseDown() {
-    windowManager.show();
-    windowManager.focus();
-  }
-
-  @override
-  void onTrayIconRightMouseDown() async {
-    await _updateTrayMenu();
-    await trayManager.popUpContextMenu();
-  }
-
-  @override
-  void onTrayIconRightMouseUp() async {
-    await _updateTrayMenu();
-    await trayManager.popUpContextMenu();
-  }
-
-  @override
-  void onTrayMenuItemClick(MenuItem menuItem) async {
-    switch (menuItem.key) {
-      case 'show_window':
-        await windowManager.show();
-        await windowManager.focus();
-        break;
-      case 'open_settings':
-        await windowManager.show();
-        await windowManager.focus();
-        appNavigatorKey.currentState?.push(
-          PageTransitions.slideHorizontal(const SettingsPage()),
-        );
-        break;
-      case 'auto_launch':
-        bool isEnabled = await launchAtStartup.isEnabled();
-        if (isEnabled) {
-          await launchAtStartup.disable();
-        } else {
-          await launchAtStartup.enable();
-        }
-        _updateTrayMenu();
-        break;
-      case 'exit_app':
-        exit(0);
-    }
   }
 
   bool _isHandlingClose = false;

@@ -8,7 +8,7 @@ import 'island_config.dart';
 // ── Win32 Window Utilities ────────────────────────────────────────────────
 
 /// Cached HWND for the island window
-int? _islandHwndCache;
+HWND? _islandHwndCache;
 
 /// Clear the cached HWND (call on new window creation)
 void clearIslandHwndCache() {
@@ -17,7 +17,7 @@ void clearIslandHwndCache() {
 
 /// Get the smallest Flutter window HWND owned by current process.
 /// Returns null if not on Windows or no window found.
-int? getSmallestFlutterWindow() {
+HWND? getSmallestFlutterWindow() {
   if (!Platform.isWindows) return null;
   final cached = _islandHwndCache;
   if (cached != null) {
@@ -27,22 +27,23 @@ int? getSmallestFlutterWindow() {
 
   try {
     final currentPid = GetCurrentProcessId();
-    final foundHwnds = <int>[];
-    final emptyTitleHwnds = <int>[];
+    final foundHwnds = <HWND>[];
+    final emptyTitleHwnds = <HWND>[];
 
-    final lpEnumFunc =
-        NativeCallable<WNDENUMPROC>.isolateLocal((int hwnd, int lParam) {
+    final lpEnumFunc = NativeCallable<WNDENUMPROC>.isolateLocal(
+        (Pointer hwndPointer, int lParam) {
+      final hwnd = HWND(hwndPointer);
       using((arena) {
         final pidPtr = arena<Uint32>();
         GetWindowThreadProcessId(hwnd, pidPtr);
         final pid = pidPtr.value;
 
-        if (pid == currentPid && IsWindowVisible(hwnd) != 0) {
+        if (pid == currentPid && IsWindowVisible(hwnd)) {
           bool isIgnored = false;
           try {
-            final classNamePtr = arena<Uint16>(256).cast<Utf16>();
-            GetClassName(hwnd, classNamePtr, 256);
-            final className = classNamePtr.toDartString();
+            final classNamePtr = arena<Uint16>(256);
+            GetClassName(hwnd, PWSTR(classNamePtr.cast<Utf16>()), 256);
+            final className = classNamePtr.cast<Utf16>().toDartString();
             final lowerClass = className.toLowerCase();
 
             if (!lowerClass.contains('flutter') &&
@@ -60,7 +61,7 @@ int? getSmallestFlutterWindow() {
             foundHwnds.add(hwnd);
             try {
               final titleLen = GetWindowTextLength(hwnd);
-              if (titleLen == 0) {
+              if (titleLen.value == 0) {
                 emptyTitleHwnds.add(hwnd);
               }
             } catch (_) {}
@@ -71,7 +72,7 @@ int? getSmallestFlutterWindow() {
     }, exceptionalReturn: 0);
 
     try {
-      EnumWindows(lpEnumFunc.nativeFunction, 0);
+      EnumWindows(lpEnumFunc.nativeFunction, LPARAM(0));
     } finally {
       lpEnumFunc.close();
     }
@@ -80,12 +81,12 @@ int? getSmallestFlutterWindow() {
         emptyTitleHwnds.isNotEmpty ? emptyTitleHwnds : foundHwnds;
 
     if (candidates.isNotEmpty) {
-      int? bestHwnd;
+      HWND? bestHwnd;
       int minArea = 999999999;
       for (final h in candidates) {
         using((arena) {
           final rectPtr = arena<RECT>();
-          if (GetWindowRect(h, rectPtr) != 0) {
+          if (GetWindowRect(h, rectPtr).value) {
             final w = rectPtr.ref.right - rectPtr.ref.left;
             final hSize = rectPtr.ref.bottom - rectPtr.ref.top;
             final area = w * hSize;
@@ -106,10 +107,10 @@ int? getSmallestFlutterWindow() {
 }
 
 /// Get the DPI scale factor for a window
-double getIslandScaleFactor(int hwnd) {
+double getIslandScaleFactor(HWND hwnd) {
   try {
     final hdc = GetDC(hwnd);
-    final dpi = GetDeviceCaps(hdc, 88); // LOGPIXELSX
+    final dpi = GetDeviceCaps(hdc, LOGPIXELSX);
     ReleaseDC(hwnd, hdc);
     if (dpi > 0) return dpi / 96.0;
   } catch (_) {}
@@ -120,7 +121,7 @@ double getIslandScaleFactor(int hwnd) {
 ///
 /// The island is repeatedly moved/resized after creation, so the topmost bit
 /// must be restored together with the frameless/transparent styles.
-void applyFramelessTransparent(int hwnd) {
+void applyFramelessTransparent(HWND hwnd) {
   try {
     const wsCaption = 0x00C00000;
     const wsThickframe = 0x00040000;
@@ -128,7 +129,7 @@ void applyFramelessTransparent(int hwnd) {
     const wsMinimizebox = 0x00020000;
     const wsMaximizebox = 0x00010000;
 
-    var style = GetWindowLongPtr(hwnd, GWL_STYLE);
+    var style = GetWindowLongPtr(hwnd, GWL_STYLE).value;
     style &= ~wsCaption;
     style &= ~wsThickframe;
     style &= ~wsSysmenu;
@@ -136,11 +137,11 @@ void applyFramelessTransparent(int hwnd) {
     style &= ~wsMaximizebox;
     SetWindowLongPtr(hwnd, GWL_STYLE, style);
 
-    var exStyle = GetWindowLongPtr(hwnd, GWL_EXSTYLE);
+    var exStyle = GetWindowLongPtr(hwnd, GWL_EXSTYLE).value;
     exStyle |= WS_EX_LAYERED | WS_EX_TOPMOST;
     SetWindowLongPtr(hwnd, GWL_EXSTYLE, exStyle);
 
-    SetLayeredWindowAttributes(hwnd, 0, 0, LWA_COLORKEY);
+    SetLayeredWindowAttributes(hwnd, COLORREF(0), 0, LWA_COLORKEY);
     SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0,
         SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED);
   } catch (e) {
@@ -163,7 +164,7 @@ Future<void> initFfiTransparent() async {
     if (hwnd != null) {
       using((arena) {
         final rectPtr = arena<RECT>();
-        if (GetWindowRect(hwnd, rectPtr) != 0) {
+        if (GetWindowRect(hwnd, rectPtr).value) {
           final w = rectPtr.ref.right - rectPtr.ref.left;
           final hSize = rectPtr.ref.bottom - rectPtr.ref.top;
 
@@ -199,7 +200,7 @@ void resizeCurrentWindow(int targetW, int targetH) {
 
     using((arena) {
       final rectPtr = arena<RECT>();
-      if (GetWindowRect(hwnd, rectPtr) != 0) {
+      if (GetWindowRect(hwnd, rectPtr).value) {
         final curX = rectPtr.ref.left;
         final curY = rectPtr.ref.top;
         final curW = rectPtr.ref.right - rectPtr.ref.left;
@@ -230,7 +231,7 @@ void moveCurrentWindow(int targetX, int targetY) {
 
     using((arena) {
       final rectPtr = arena<RECT>();
-      if (GetWindowRect(hwnd, rectPtr) != 0) {
+      if (GetWindowRect(hwnd, rectPtr).value) {
         final curW = rectPtr.ref.right - rectPtr.ref.left;
         final curH = rectPtr.ref.bottom - rectPtr.ref.top;
 
@@ -251,7 +252,7 @@ Map<String, double>? getWindowRect() {
       RECT? result;
       using((arena) {
         final rectPtr = arena<RECT>();
-        if (GetWindowRect(hwnd, rectPtr) != 0) {
+        if (GetWindowRect(hwnd, rectPtr).value) {
           result = rectPtr.ref;
         }
       });
@@ -280,7 +281,12 @@ void startWindowDragging() {
       const int wmNclbuttondown = 0x00A1;
       const int htCaption = 2;
       ReleaseCapture();
-      PostMessage(hwnd, wmNclbuttondown, htCaption, 0);
+      PostMessage(
+        hwnd,
+        wmNclbuttondown,
+        WPARAM(htCaption),
+        LPARAM(0),
+      );
     }
   } catch (e) {
     debugPrint('[IslandWin32] startWindowDragging error: $e');
@@ -314,6 +320,6 @@ void setWindowPosition(int left, int top, int width, int height) {
 }
 
 /// Check if window is still valid
-bool isWindowValid(int hwnd) {
-  return IsWindow(hwnd) != 0;
+bool isWindowValid(HWND hwnd) {
+  return IsWindow(hwnd);
 }

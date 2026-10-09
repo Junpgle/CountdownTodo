@@ -17,6 +17,7 @@ import '../utils/page_transitions.dart';
 
 // 引入服务和模型
 import '../models.dart';
+import '../models/chat_message.dart';
 import '../storage_service.dart';
 import '../update_service.dart';
 import '../services/api_service.dart';
@@ -30,10 +31,12 @@ import '../services/permission_request_coordinator.dart';
 import '../services/macos_pomodoro_status_bar_service.dart';
 import '../services/course_service.dart';
 import '../services/course_calendar_adjustment_service.dart';
+import '../utils/semester_week_context.dart';
 import '../services/external_share_handler.dart';
 import '../services/browser_file_service.dart';
 import '../services/island_todo_snapshot.dart';
 import '../services/wallpaper_cache_service.dart';
+import '../services/wallpaper_url_selector.dart';
 import '../services/pomodoro_service.dart';
 import '../services/pomodoro_control_service.dart';
 import '../services/pomodoro_sync_service.dart';
@@ -46,6 +49,13 @@ import '../services/storage/app_settings_storage.dart';
 import '../services/conflict_visibility_service.dart';
 import '../services/ai_todo_action_executor.dart';
 import '../services/ai_todo_chat_launcher.dart';
+import '../services/llm_service.dart';
+import '../services/mimo_asr_service.dart';
+import '../services/minor_mode_service.dart';
+import '../widgets/quick_voice_chat_sheet.dart';
+import '../widgets/quick_voice_chat_guide.dart';
+import '../widgets/quick_voice_gesture.dart';
+import 'settings/llm_config_page.dart';
 import '../services/ai_recognition_chat_bridge.dart';
 import '../services/chat_storage_service.dart';
 import '../services/recognized_todo_adapter.dart';
@@ -83,6 +93,7 @@ import '../features/habits/screens/habit_center_screen.dart';
 import '../features/finance/screens/finance_home_screen.dart';
 import '../features/finance/screens/finance_entry_screen.dart';
 import '../features/finance/models/finance_models.dart';
+import '../features/finance/services/finance_automation_service.dart';
 import '../features/finance/widgets/finance_today_section.dart';
 import '../features/habits/services/habit_reminder_service.dart';
 import '../features/habits/widgets/habit_today_section.dart';
@@ -108,6 +119,7 @@ import '../services/device_calendar_read_service.dart';
 import '../services/home_layout_service.dart';
 import '../widgets/floating_bottom_bar.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
+import '../utils/app_dialogs.dart';
 
 part 'home_dashboard_ai.dart';
 part 'home_dashboard_contract.dart';
@@ -168,6 +180,7 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
   bool _semesterEnabled = false;
   DateTime? _semesterStart;
   DateTime? _semesterEnd;
+  int? _currentSemesterWeek;
   Map<String, dynamic> _homeTextConfig = {};
 
   List<String> _leftSections = ['courses', 'todos', 'math'];

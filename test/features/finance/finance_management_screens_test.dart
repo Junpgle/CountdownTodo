@@ -5,15 +5,28 @@ import 'package:countdown_todo/features/finance/models/finance_models.dart';
 import 'package:countdown_todo/features/finance/screens/finance_automation_screen.dart';
 import 'package:countdown_todo/features/finance/screens/finance_budget_entry_screen.dart';
 import 'package:countdown_todo/features/finance/screens/finance_budget_screen.dart';
+import 'package:countdown_todo/features/finance/screens/finance_category_detail_screen.dart';
 import 'package:countdown_todo/features/finance/screens/finance_entry_screen.dart';
+import 'package:countdown_todo/features/finance/screens/finance_home_screen.dart';
 import 'package:countdown_todo/features/finance/screens/finance_loan_entry_screen.dart';
 import 'package:countdown_todo/features/finance/screens/finance_loan_screen.dart';
+import 'package:countdown_todo/features/finance/screens/finance_settings_screen.dart';
+import 'package:countdown_todo/features/finance/screens/finance_transaction_detail_screen.dart';
 import 'package:countdown_todo/features/finance/screens/finance_trash_screen.dart';
 import 'package:countdown_todo/features/finance/services/finance_storage.dart';
+import 'package:countdown_todo/features/finance/services/finance_repository.dart';
+import 'package:countdown_todo/features/finance/widgets/finance_amount_calculator.dart';
+import 'package:countdown_todo/features/finance/widgets/finance_automation_editor.dart';
+import 'package:countdown_todo/features/finance/widgets/finance_automation_manager.dart';
 import 'package:countdown_todo/features/finance/widgets/finance_catalog_editor.dart';
+import 'package:countdown_todo/features/finance/widgets/finance_loan_payment_dialog.dart';
+import 'package:countdown_todo/features/finance/widgets/finance_management_widgets.dart';
+import 'package:countdown_todo/features/finance/widgets/finance_today_section.dart';
+import 'package:countdown_todo/features/finance/widgets/finance_widgets.dart';
 import 'package:countdown_todo/services/database_helper.dart';
 import 'package:countdown_todo/widgets/floating_glass_control.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -21,22 +34,23 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 final _month = DateTime(2026, 9);
 
 FinanceLoan _loan() => FinanceLoan(
-      uuid: 'test-loan',
-      name: '电脑分期',
-      lender: '测试出借方',
-      principalMinor: 120000,
-      annualInterestRateBps: 400,
-      termMonths: 3,
-      startDate: '2026-09-01',
-      repaymentDay: 15,
-      note: '备注保留',
-    );
+  uuid: 'test-loan',
+  name: '电脑分期',
+  lender: '测试出借方',
+  principalMinor: 120000,
+  annualInterestRateBps: 400,
+  termMonths: 3,
+  startDate: '2026-09-01',
+  repaymentDay: 15,
+  note: '备注保留',
+);
 
 FinanceBudget _budget() => FinanceBudget(
-    uuid: 'test-budget',
-    monthKey: '2026-09',
-    amountMinor: 500000,
-    note: '本月总预算');
+  uuid: 'test-budget',
+  monthKey: '2026-09',
+  amountMinor: 500000,
+  note: '本月总预算',
+);
 
 Finder _key(String value) => find.byKey(ValueKey(value));
 Finder _field(String value) =>
@@ -47,87 +61,98 @@ bool _hasFocusedEditable(WidgetTester tester) => tester
     .any((field) => field.focusNode.hasFocus);
 
 Future<Database> _seed(WidgetTester tester) async {
-  SharedPreferences.setMockInitialValues({});
+  SharedPreferences.setMockInitialValues({
+    'tip_shown_coach_finance_intro': true,
+  });
   final db = (await tester.runAsync(() async {
     final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
     await DatabaseHelper.ensureFinanceSchema(db);
     FinanceStorage.databaseOverride = db;
     await FinanceStorage.ensureReady();
-    await db.insert('finance_categories',
-        FinanceCategory(uuid: 'test-food', name: '日常餐饮', icon: '🍜').toMap());
+    await db.insert(
+      'finance_categories',
+      FinanceCategory(uuid: 'test-food', name: '日常餐饮', icon: '🍜').toMap(),
+    );
     await db.insert('finance_budgets', _budget().toMap());
     await db.insert(
-        'finance_budgets',
-        FinanceBudget(
-                uuid: 'test-category-budget',
-                monthKey: '2026-09',
-                categoryUuid: 'test-food',
-                amountMinor: 120000)
-            .toMap());
+      'finance_budgets',
+      FinanceBudget(
+        uuid: 'test-category-budget',
+        monthKey: '2026-09',
+        categoryUuid: 'test-food',
+        amountMinor: 120000,
+      ).toMap(),
+    );
     await db.insert(
-        'finance_budgets',
-        FinanceBudget(
-                uuid: 'deleted-budget',
-                monthKey: '2026-08',
-                amountMinor: 400000,
-                isDeleted: true)
-            .toMap());
+      'finance_budgets',
+      FinanceBudget(
+        uuid: 'deleted-budget',
+        monthKey: '2026-08',
+        amountMinor: 400000,
+        isDeleted: true,
+      ).toMap(),
+    );
     final loan = _loan();
     await db.insert('finance_loans', loan.toMap());
     final schedule = FinanceLoanCalculator.generate(
-        principalMinor: loan.principalMinor,
-        annualInterestRateBps: loan.annualInterestRateBps,
-        termMonths: loan.termMonths,
-        startDate: dateFromKey(loan.startDate),
-        repaymentDay: loan.repaymentDay);
+      principalMinor: loan.principalMinor,
+      annualInterestRateBps: loan.annualInterestRateBps,
+      termMonths: loan.termMonths,
+      startDate: dateFromKey(loan.startDate),
+      repaymentDay: loan.repaymentDay,
+    );
     for (final item in schedule) {
       await db.insert(
-          'finance_loan_installments',
-          FinanceLoanInstallment(
-            uuid: 'test-installment-${item.index}',
-            loanUuid: loan.uuid,
-            installmentIndex: item.index,
-            dueDate: item.dueDate,
-            paymentMinor: item.paymentMinor,
-            principalMinor: item.principalMinor,
-            interestMinor: item.interestMinor,
-            remainingPrincipalMinor: item.remainingPrincipalMinor,
-            isPaid: item.index == 1,
-          ).toMap());
+        'finance_loan_installments',
+        FinanceLoanInstallment(
+          uuid: 'test-installment-${item.index}',
+          loanUuid: loan.uuid,
+          installmentIndex: item.index,
+          dueDate: item.dueDate,
+          paymentMinor: item.paymentMinor,
+          principalMinor: item.principalMinor,
+          interestMinor: item.interestMinor,
+          remainingPrincipalMinor: item.remainingPrincipalMinor,
+          isPaid: item.index == 1,
+        ).toMap(),
+      );
     }
     await db.insert(
-        'finance_recurring_rules',
-        FinanceRecurringRule(
-                uuid: 'test-rent',
-                name: '每月房租',
-                amountMinor: 250000,
-                dayOfMonth: 15,
-                startDate: '2026-01-01')
-            .toMap());
+      'finance_recurring_rules',
+      FinanceRecurringRule(
+        uuid: 'test-rent',
+        name: '每月房租',
+        amountMinor: 250000,
+        dayOfMonth: 15,
+        startDate: '2026-01-01',
+      ).toMap(),
+    );
     await db.insert(
-        'finance_entry_templates',
-        FinanceEntryTemplate(
-                uuid: 'test-breakfast',
-                name: '工作日早餐',
-                amountMinor: 1800,
-                categoryUuid: 'test-food')
-            .toMap());
+      'finance_entry_templates',
+      FinanceEntryTemplate(
+        uuid: 'test-breakfast',
+        name: '工作日早餐',
+        amountMinor: 1800,
+        categoryUuid: 'test-food',
+      ).toMap(),
+    );
     for (var i = 1; i <= 2; i++) {
       await db.insert(
-          'finance_transactions',
-          FinanceTransaction(
-            uuid: 'deleted-installment-$i',
-            type: FinanceTransactionType.expense,
-            amountMinor: 6000,
-            categoryUuid: 'test-food',
-            transactionDate: '2026-09-01',
-            merchant: '旧分期账单',
-            installmentGroupUuid: 'deleted-group',
-            installmentIndex: i,
-            installmentCount: 2,
-            installmentTotalMinor: 12000,
-            isDeleted: true,
-          ).toMap());
+        'finance_transactions',
+        FinanceTransaction(
+          uuid: 'deleted-installment-$i',
+          type: FinanceTransactionType.expense,
+          amountMinor: 6000,
+          categoryUuid: 'test-food',
+          transactionDate: '2026-09-01',
+          merchant: '旧分期账单',
+          installmentGroupUuid: 'deleted-group',
+          installmentIndex: i,
+          installmentCount: 2,
+          installmentTotalMinor: 12000,
+          isDeleted: true,
+        ).toMap(),
+      );
     }
     return db;
   }))!;
@@ -140,8 +165,9 @@ Future<Database> _seed(WidgetTester tester) async {
 
 Future<void> _waitFor(WidgetTester tester, bool Function() ready) async {
   for (var i = 0; i < 250; i++) {
-    await tester
-        .runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 20)),
+    );
     await tester.pump(const Duration(milliseconds: 20));
     if (ready()) {
       await tester.pumpAndSettle();
@@ -151,30 +177,59 @@ Future<void> _waitFor(WidgetTester tester, bool Function() ready) async {
   fail('页面未在限定时间内完成数据库操作');
 }
 
-Future<void> _pump(WidgetTester tester, Widget screen,
-    {Size size = const Size(390, 844),
-    double scale = 1,
-    Brightness brightness = Brightness.light,
-    double keyboard = 0}) async {
+Future<List<Map<String, Object?>>> _waitForSavedTransactions(
+  WidgetTester tester,
+  Database db,
+) async {
+  var rows = <Map<String, Object?>>[];
+  for (var attempt = 0; attempt < 100; attempt++) {
+    rows = (await tester.runAsync(
+      () => db.query('finance_transactions', where: 'is_deleted = 0'),
+    ))!;
+    if (rows.isNotEmpty) return rows;
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 20)),
+    );
+    await tester.pump(const Duration(milliseconds: 20));
+  }
+  fail('账单未能保存');
+}
+
+Future<void> _pump(
+  WidgetTester tester,
+  Widget screen, {
+  Size size = const Size(390, 844),
+  double scale = 1,
+  Brightness brightness = Brightness.light,
+  double keyboard = 0,
+}) async {
   await tester.pumpWidget(const SizedBox.shrink());
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
-  await tester.pumpWidget(MaterialApp(
-    theme: ThemeData(
+  await tester.pumpWidget(
+    MaterialApp(
+      theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
-            seedColor: Colors.teal, brightness: brightness)),
-    builder: (context, child) => MediaQuery(
-      data: MediaQuery.of(context).copyWith(
+          seedColor: Colors.teal,
+          brightness: brightness,
+        ),
+      ),
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(
           textScaler: TextScaler.linear(scale),
-          viewInsets: EdgeInsets.only(bottom: keyboard)),
-      child: child!,
+          viewInsets: EdgeInsets.only(bottom: keyboard),
+        ),
+        child: child!,
+      ),
+      home: screen,
     ),
-    home: screen,
-  ));
+  );
   await _waitFor(
-      tester, () => find.byType(CircularProgressIndicator).evaluate().isEmpty);
+    tester,
+    () => find.byType(CircularProgressIndicator).evaluate().isEmpty,
+  );
 }
 
 Future<void> _tap(WidgetTester tester, Finder finder) async {
@@ -206,8 +261,60 @@ Future<void> _top(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
+DateTime? _upcomingTimezoneOffsetChangeDate() {
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  for (var day = 1; day <= 370; day++) {
+    final candidate = today.add(Duration(days: day));
+    final localNoon = DateTime(
+      candidate.year,
+      candidate.month,
+      candidate.day,
+      12,
+    );
+    if (localNoon.timeZoneOffset != now.timeZoneOffset) {
+      // Avoid testing on the transition day itself, where the selected time
+      // may be skipped or repeated.
+      return localNoon.add(const Duration(days: 3));
+    }
+  }
+  return null;
+}
+
 void main() {
   sqfliteFfiInit();
+
+  testWidgets('快速重复点保存不会创建重复账单', (tester) async {
+    final db = await _seed(tester);
+    await _pump(
+      tester,
+      FinanceEntryScreen(
+        initialDraft: FinanceEntryDraft(
+          amountMinor: 1200,
+          transactionDate: dateKey(DateTime.now()),
+        ),
+      ),
+    );
+
+    final saveButton = find.text('保存账单');
+    await tester.ensureVisible(saveButton);
+    await tester.pump();
+    await tester.tap(saveButton);
+    await tester.tap(saveButton);
+    var rows = <Map<String, Object?>>[];
+    for (var attempt = 0; attempt < 100; attempt++) {
+      rows = (await tester.runAsync(
+        () => db.query('finance_transactions', where: 'is_deleted = 0'),
+      ))!;
+      if (rows.isNotEmpty) break;
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 20)),
+      );
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+    await tester.pump(const Duration(milliseconds: 150));
+    expect(rows, hasLength(1));
+  });
 
   testWidgets('记账分类先选大类，再选小类并支持现场新增', (tester) async {
     final db = await _seed(tester);
@@ -220,8 +327,9 @@ void main() {
     expect(find.byType(FloatingGlassTopBarContentFade), findsOneWidget);
     expect(entryPadding.top, greaterThan(kToolbarHeight));
 
-    const categoryField =
-        ValueKey('finance-category-FinanceTransactionType.expense-test-food');
+    const categoryField = ValueKey(
+      'finance-category-FinanceTransactionType.expense-test-food',
+    );
     await _tap(tester, find.byKey(categoryField));
     expect(find.text('选择大类'), findsOneWidget);
     expect(find.text('奶茶'), findsNothing);
@@ -236,14 +344,19 @@ void main() {
     expect(find.text('餐饮 - 奶茶'), findsOneWidget);
 
     const milkTeaField = ValueKey(
-        'finance-category-FinanceTransactionType.expense-finance-system-category-food-milk-tea');
+      'finance-category-FinanceTransactionType.expense-finance-system-category-food-milk-tea',
+    );
     await _tap(tester, find.byKey(milkTeaField));
     await _tap(tester, find.text('餐饮').last);
     await _tap(tester, find.byTooltip('新增小类'));
     expect(
-        find.byKey(const ValueKey('finance-catalog-parent')), findsOneWidget);
+      find.byKey(const ValueKey('finance-catalog-parent')),
+      findsOneWidget,
+    );
     await tester.enterText(
-        find.byKey(const ValueKey('finance-catalog-name')), '夜宵');
+      find.byKey(const ValueKey('finance-catalog-name')),
+      '夜宵',
+    );
     await _tap(tester, find.byKey(const ValueKey('finance-catalog-save')));
     await _waitFor(
       tester,
@@ -252,11 +365,10 @@ void main() {
           find.byTooltip('新增小类').evaluate().isEmpty,
     );
     expect(find.text('餐饮 - 夜宵'), findsOneWidget);
-    final rows = (await tester.runAsync(() => db.query(
-          'finance_categories',
-          where: 'name = ?',
-          whereArgs: ['夜宵'],
-        )))!;
+    final rows = (await tester.runAsync(
+      () =>
+          db.query('finance_categories', where: 'name = ?', whereArgs: ['夜宵']),
+    ))!;
     expect(rows.single['parent_uuid'], 'finance-system-category-food');
     expect(tester.takeException(), isNull);
   });
@@ -270,14 +382,1097 @@ void main() {
     await tester.pump();
     expect(_hasFocusedEditable(tester), isTrue);
 
-    const categoryField =
-        ValueKey('finance-category-FinanceTransactionType.expense-test-food');
+    const categoryField = ValueKey(
+      'finance-category-FinanceTransactionType.expense-test-food',
+    );
     await _tap(tester, find.byKey(categoryField));
     await _tap(tester, find.text('餐饮').last);
     await _tap(tester, find.text('奶茶'));
     await tester.pumpAndSettle();
 
     expect(_hasFocusedEditable(tester), isFalse);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('分期表单改选收入模板后不应把收入保存成分期', (tester) async {
+    final db = await _seed(tester);
+    await tester.runAsync(
+      () => db.insert(
+        'finance_entry_templates',
+        FinanceEntryTemplate(
+          uuid: 'income-template',
+          name: '工资收入',
+          type: FinanceTransactionType.income,
+          amountMinor: 300000,
+        ).toMap(),
+      ),
+    );
+    await _pump(tester, const FinanceEntryScreen());
+
+    await _tap(tester, find.text('分期付款'));
+    await _tap(tester, find.text('快捷模板'));
+    await _tap(tester, find.text('工资收入'));
+    expect(find.text('分期付款'), findsNothing);
+
+    await _tap(tester, find.text('保存账单'));
+    await _waitFor(
+      tester,
+      () => find.byType(FinanceEntryScreen).evaluate().isEmpty,
+    );
+    final rows = await tester.runAsync(
+      () => db.query(
+        'finance_transactions',
+        where: 'type = ? AND is_deleted = 0',
+        whereArgs: [FinanceTransactionType.income.name],
+      ),
+    );
+    expect(rows, hasLength(1));
+    expect(rows!.single['installment_group_uuid'], isNull);
+    expect(rows.single['installment_count'], isNull);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('快捷模板不会把已归档分类或账户带入新账单', (tester) async {
+    final db = await _seed(tester);
+    final archivedCategory = FinanceCategory(
+      uuid: 'archived-template-category',
+      name: '已归档分类',
+      isArchived: true,
+    );
+    final archivedPaymentMethod = FinancePaymentMethod(
+      uuid: 'archived-template-payment',
+      name: '已归档账户',
+      isArchived: true,
+    );
+    await tester.runAsync(() async {
+      await db.insert('finance_categories', archivedCategory.toMap());
+      await db.insert(
+        'finance_payment_methods',
+        archivedPaymentMethod.toMap(),
+      );
+    });
+    final template = FinanceEntryTemplate(
+      uuid: 'archived-template',
+      name: '旧分类模板',
+      amountMinor: 1200,
+      categoryUuid: archivedCategory.uuid,
+      paymentMethodUuid: archivedPaymentMethod.uuid,
+    );
+
+    await _pump(tester, FinanceEntryScreen(initialTemplate: template));
+    await _tap(tester, find.text('保存账单'));
+    await _waitFor(
+      tester,
+      () => find.byType(FinanceEntryScreen).evaluate().isEmpty,
+    );
+
+    final rows = await tester.runAsync(
+      () => db.query('finance_transactions', where: 'is_deleted = 0'),
+    );
+    expect(rows, hasLength(1));
+    expect(rows!.single['category_uuid'], isNot(archivedCategory.uuid));
+    expect(rows.single['payment_method_uuid'], isNull);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('从表单选择的快捷模板也不会使用已归档分类或账户', (tester) async {
+    final db = await _seed(tester);
+    final archivedCategory = FinanceCategory(
+      uuid: 'picked-archived-template-category',
+      name: '已归档分类',
+      isArchived: true,
+    );
+    final archivedPaymentMethod = FinancePaymentMethod(
+      uuid: 'picked-archived-template-payment',
+      name: '已归档账户',
+      isArchived: true,
+    );
+    final template = FinanceEntryTemplate(
+      uuid: 'picked-archived-template',
+      name: '旧分类模板',
+      amountMinor: 1200,
+      categoryUuid: archivedCategory.uuid,
+      paymentMethodUuid: archivedPaymentMethod.uuid,
+    );
+    await tester.runAsync(() async {
+      await db.insert('finance_categories', archivedCategory.toMap());
+      await db.insert(
+        'finance_payment_methods',
+        archivedPaymentMethod.toMap(),
+      );
+      await db.insert('finance_entry_templates', template.toMap());
+    });
+
+    await _pump(tester, const FinanceEntryScreen());
+    await _tap(tester, find.text('快捷模板'));
+    await _tap(tester, find.text('旧分类模板'));
+    await _tap(tester, find.text('保存账单'));
+    await _waitFor(
+      tester,
+      () => find.byType(FinanceEntryScreen).evaluate().isEmpty,
+    );
+
+    final rows = await tester.runAsync(
+      () => db.query('finance_transactions', where: 'is_deleted = 0'),
+    );
+    expect(rows, hasLength(1));
+    expect(rows!.single['category_uuid'], isNot(archivedCategory.uuid));
+    expect(rows.single['payment_method_uuid'], isNull);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('记账表单可区分同名快捷模板并填入所选模板', (tester) async {
+    final db = await _seed(tester);
+    final templates = [
+      FinanceEntryTemplate(
+        uuid: 'commute-template-first',
+        name: '通勤',
+        amountMinor: 2500,
+        categoryUuid: 'test-food',
+        merchant: '地铁',
+        createdAt: 100,
+      ),
+      FinanceEntryTemplate(
+        uuid: 'commute-template-second',
+        name: '通勤',
+        amountMinor: 2500,
+        categoryUuid: 'test-food',
+        merchant: '网约车',
+        createdAt: 200,
+      ),
+    ];
+    await tester.runAsync(() async {
+      for (final template in templates) {
+        await db.insert('finance_entry_templates', template.toMap());
+      }
+    });
+    await _pump(tester, const FinanceEntryScreen());
+
+    await _tap(tester, find.text('快捷模板'));
+    expect(find.text('通勤（同名模板 1/2）'), findsOneWidget);
+    expect(find.text('通勤（同名模板 2/2）'), findsOneWidget);
+    await _tap(tester, find.text('通勤（同名模板 2/2）'));
+    await _tap(tester, find.text('保存账单'));
+    await _waitFor(
+      tester,
+      () => find.byType(FinanceEntryScreen).evaluate().isEmpty,
+    );
+
+    final rows = await tester.runAsync(
+      () => db.query('finance_transactions', where: 'is_deleted = 0'),
+    );
+    expect(rows, hasLength(1));
+    expect(rows!.single['merchant'], '网约车');
+    expect(rows.single['amount_minor'], 2500);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('新草稿不会把已归档分类或账户识别为可用关联', (tester) async {
+    final db = await _seed(tester);
+    final archivedCategory = FinanceCategory(
+      uuid: 'draft-archived-category',
+      name: '已归档分类',
+      isArchived: true,
+    );
+    final archivedPaymentMethod = FinancePaymentMethod(
+      uuid: 'draft-archived-payment',
+      name: '已归档账户',
+      isArchived: true,
+    );
+    await tester.runAsync(() async {
+      await db.insert('finance_categories', archivedCategory.toMap());
+      await db.insert('finance_payment_methods', archivedPaymentMethod.toMap());
+    });
+    final draft = FinanceEntryDraft(
+      amountMinor: 1200,
+      transactionDate: dateKey(DateTime.now()),
+      categoryUuid: archivedCategory.uuid,
+      categoryName: archivedCategory.name,
+      paymentMethodUuid: archivedPaymentMethod.uuid,
+      paymentMethodName: archivedPaymentMethod.name,
+      source: FinanceEntrySource.ai,
+    );
+
+    await _pump(tester, FinanceEntryScreen(initialDraft: draft));
+    await _tap(tester, find.text('保存账单'));
+    await _waitFor(
+      tester,
+      () => find.byType(FinanceEntryScreen).evaluate().isEmpty,
+    );
+
+    final rows = await tester.runAsync(
+      () => db.query('finance_transactions', where: 'is_deleted = 0'),
+    );
+    expect(rows, hasLength(1));
+    expect(rows!.single['category_uuid'], isNot(archivedCategory.uuid));
+    expect(rows.single['payment_method_uuid'], isNull);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('自然语言草稿匹配到已归档分类时不会自动换成其他分类', (tester) async {
+    final db = await _seed(tester);
+    final archivedCategory = FinanceCategory(
+      uuid: 'quick-archived-category',
+      name: '已归档分类',
+      isArchived: true,
+    );
+    await tester.runAsync(
+      () => db.insert('finance_categories', archivedCategory.toMap()),
+    );
+
+    await _pump(tester, const FinanceEntryScreen());
+    await tester.enterText(
+      find.byKey(const ValueKey('finance-quick-entry-input')),
+      '类型: 支出\n金额: 12\n分类: 已归档分类',
+    );
+    await _tap(tester, find.text('识别账单'));
+    await _tap(tester, find.text('保存账单'));
+    await _waitFor(
+      tester,
+      () => find.byType(FinanceEntryScreen).evaluate().isEmpty,
+    );
+
+    final rows = await tester.runAsync(
+      () => db.query('finance_transactions', where: 'is_deleted = 0'),
+    );
+    expect(rows, hasLength(1));
+    expect(rows!.single['category_uuid'], isNull);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('AI草稿遇到重复分类名称时保留歧义并支持完整分类路径', (tester) async {
+    final db = await _seed(tester);
+    final parentOne = FinanceCategory(
+      uuid: 'duplicate-category-parent-one',
+      name: '工作',
+    );
+    final parentTwo = FinanceCategory(
+      uuid: 'duplicate-category-parent-two',
+      name: '生活',
+    );
+    final categoryOne = FinanceCategory(
+      uuid: 'duplicate-category-one',
+      name: '其他',
+      parentUuid: parentOne.uuid,
+    );
+    final categoryTwo = FinanceCategory(
+      uuid: 'duplicate-category-two',
+      name: '其他',
+      parentUuid: parentTwo.uuid,
+    );
+    await tester.runAsync(() async {
+      for (final category in [parentOne, parentTwo, categoryOne, categoryTwo]) {
+        await db.insert('finance_categories', category.toMap());
+      }
+    });
+
+    await _pump(
+      tester,
+      FinanceEntryScreen(
+        initialDraft: FinanceEntryDraft(
+          amountMinor: 1200,
+          transactionDate: dateKey(DateTime.now()),
+          categoryName: '其他',
+          source: FinanceEntrySource.ai,
+        ),
+      ),
+    );
+    await _tap(tester, find.text('保存账单'));
+    await _waitFor(
+      tester,
+      () => find.byType(FinanceEntryScreen).evaluate().isEmpty,
+    );
+
+    final rows = await tester.runAsync(
+      () => db.query('finance_transactions', where: 'is_deleted = 0'),
+    );
+    expect(rows, hasLength(1));
+    expect(rows!.single['category_uuid'], isNull);
+
+    await _pump(
+      tester,
+      FinanceEntryScreen(
+        initialDraft: FinanceEntryDraft(
+          amountMinor: 1200,
+          transactionDate: dateKey(DateTime.now()),
+          categoryName: '工作 - 其他',
+          merchant: '完整路径分类',
+          source: FinanceEntrySource.ai,
+        ),
+      ),
+    );
+    await _tap(tester, find.text('保存账单'));
+    await _waitFor(
+      tester,
+      () => find.byType(FinanceEntryScreen).evaluate().isEmpty,
+    );
+    final pathRows = await tester.runAsync(
+      () => db.query(
+        'finance_transactions',
+        where: 'merchant = ? AND is_deleted = 0',
+        whereArgs: ['完整路径分类'],
+      ),
+    );
+    expect(pathRows, hasLength(1));
+    expect(pathRows!.single['category_uuid'], categoryOne.uuid);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('记账分类选择器区分同级重名分类', (tester) async {
+    final db = await _seed(tester);
+    final firstParent = FinanceCategory(
+      uuid: 'entry-duplicate-parent-first',
+      name: '选择重复大类',
+      sortOrder: 10,
+    );
+    final secondParent = FinanceCategory(
+      uuid: 'entry-duplicate-parent-second',
+      name: '选择重复大类',
+      sortOrder: 20,
+    );
+    final firstChild = FinanceCategory(
+      uuid: 'entry-duplicate-child-first',
+      name: '选择重复小类',
+      parentUuid: secondParent.uuid,
+      sortOrder: 10,
+    );
+    final secondChild = FinanceCategory(
+      uuid: 'entry-duplicate-child-second',
+      name: '选择重复小类',
+      parentUuid: secondParent.uuid,
+      sortOrder: 20,
+    );
+    await tester.runAsync(() async {
+      for (final category in [
+        firstParent,
+        secondParent,
+        firstChild,
+        secondChild,
+      ]) {
+        await db.insert('finance_categories', category.toMap());
+      }
+    });
+
+    await _pump(tester, const FinanceEntryScreen());
+    final categoryField = find.byWidgetPredicate(
+      (widget) =>
+          widget.key is ValueKey<String> &&
+          (widget.key! as ValueKey<String>).value.startsWith(
+            'finance-category-',
+          ),
+    );
+    await _tap(tester, categoryField);
+    expect(find.text('选择重复大类（同名分类 1/2）'), findsOneWidget);
+    expect(find.text('选择重复大类（同名分类 2/2）'), findsOneWidget);
+
+    await _tap(tester, find.text('选择重复大类（同名分类 2/2）'));
+    expect(find.text('选择重复大类（同名分类 2/2） · 选择小类'), findsOneWidget);
+    expect(find.text('选择重复小类（同名分类 1/2）'), findsOneWidget);
+    expect(find.text('选择重复小类（同名分类 2/2）'), findsOneWidget);
+    await _tap(tester, find.text('选择重复小类（同名分类 2/2）'));
+
+    expect(
+      find.text(
+        '选择重复大类（同名分类 2/2） - 选择重复小类（同名分类 2/2）',
+      ),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('AI草稿遇到重复账户名称时不会猜测到账账户', (tester) async {
+    final db = await _seed(tester);
+    await tester.runAsync(() async {
+      await db.insert(
+        'finance_payment_methods',
+        FinancePaymentMethod(uuid: 'duplicate-income-card-one', name: '工资卡')
+            .toMap(),
+      );
+      await db.insert(
+        'finance_payment_methods',
+        FinancePaymentMethod(uuid: 'duplicate-income-card-two', name: '工资卡')
+            .toMap(),
+      );
+    });
+
+    await _pump(
+      tester,
+      FinanceEntryScreen(
+        initialDraft: FinanceEntryDraft(
+          type: FinanceTransactionType.income,
+          amountMinor: 50000,
+          transactionDate: dateKey(DateTime.now()),
+          paymentMethodName: '工资卡',
+          source: FinanceEntrySource.ai,
+        ),
+      ),
+    );
+    await _waitFor(
+      tester,
+      () => find.text('未匹配到账账户：工资卡').evaluate().isNotEmpty,
+    );
+    await _tap(tester, find.text('保存账单'));
+    await _waitFor(
+      tester,
+      () => find.byType(FinanceEntryScreen).evaluate().isEmpty,
+    );
+
+    final rows = await tester.runAsync(
+      () => db.query('finance_transactions', where: 'is_deleted = 0'),
+    );
+    expect(rows, hasLength(1));
+    expect(rows!.single['payment_method_uuid'], isNull);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('记账账户选择器可区分同名同图标账户', (tester) async {
+    final db = await _seed(tester);
+    await tester.runAsync(() async {
+      await db.insert(
+        'finance_payment_methods',
+        FinancePaymentMethod(
+          uuid: 'picker-duplicate-account-one',
+          name: '工资卡',
+          sortOrder: 10,
+        ).toMap(),
+      );
+      await db.insert(
+        'finance_payment_methods',
+        FinancePaymentMethod(
+          uuid: 'picker-duplicate-account-two',
+          name: '工资卡',
+          sortOrder: 20,
+        ).toMap(),
+      );
+    });
+
+    await _pump(tester, FinanceEntryScreen());
+    await _tap(tester, _key('finance-payment-null'));
+
+    expect(find.text('工资卡（同名账户 1/2）'), findsOneWidget);
+    await _tap(tester, find.text('工资卡（同名账户 2/2）'));
+    await tester.pumpAndSettle();
+    expect(find.text('工资卡（同名账户 2/2）'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('还款账户已归档时在账户选择器中明确标记', (tester) async {
+    final paymentMethod = FinancePaymentMethod(
+      uuid: 'archived-loan-payment-method',
+      name: '旧银行卡',
+      isArchived: true,
+    );
+    final installment = FinanceLoanInstallment(
+      uuid: 'archived-loan-installment',
+      loanUuid: 'test-loan',
+      installmentIndex: 1,
+      dueDate: '2026-10-15',
+      paymentMinor: 11000,
+      principalMinor: 10000,
+      interestMinor: 1000,
+      remainingPrincipalMinor: 90000,
+      paymentMethodUuid: paymentMethod.uuid,
+    );
+
+    await _pump(
+      tester,
+      FinanceLoanPaymentDialog(
+        installment: installment,
+        paymentMethods: [paymentMethod],
+      ),
+    );
+
+    expect(find.textContaining('旧银行卡'), findsOneWidget);
+    expect(find.textContaining('（已归档）'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('贷款列表和详情可区分同名贷款', (tester) async {
+    final db = await _seed(tester);
+    await tester.runAsync(() async {
+      await db.update(
+        'finance_loans',
+        {'created_at': 100},
+        where: 'uuid = ?',
+        whereArgs: ['test-loan'],
+      );
+      await db.insert(
+        'finance_loans',
+        FinanceLoan(
+          uuid: 'duplicate-loan',
+          name: '电脑分期',
+          lender: '测试出借方',
+          principalMinor: 120000,
+          annualInterestRateBps: 400,
+          termMonths: 3,
+          startDate: '2026-09-01',
+          repaymentDay: 15,
+          createdAt: 200,
+        ).toMap(),
+      );
+    });
+
+    await _pump(tester, const FinanceLoanScreen());
+    final firstCard = _key('finance-loan-card-test-loan');
+    final secondCard = _key('finance-loan-card-duplicate-loan');
+    await _waitFor(
+      tester,
+      () => firstCard.evaluate().isNotEmpty && secondCard.evaluate().isNotEmpty,
+    );
+
+    expect(find.text('电脑分期（同名贷款 1/2）'), findsOneWidget);
+    expect(find.text('电脑分期（同名贷款 2/2）'), findsOneWidget);
+    await _tap(tester, secondCard);
+    final detailScreen = find.byType(FinanceLoanDetailScreen);
+    final detailName = find.descendant(
+      of: detailScreen,
+      matching: find.text('电脑分期（同名贷款 2/2）'),
+    );
+    await _waitFor(tester, () => detailName.evaluate().isNotEmpty);
+    expect(detailName, findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('贷款详情中的已还记录明确标记已归档账户', (tester) async {
+    final db = await _seed(tester);
+    final paymentMethod = FinancePaymentMethod(
+      uuid: 'archived-loan-history-payment-method',
+      name: '已归档还款卡',
+      isArchived: true,
+    );
+    await tester.runAsync(() async {
+      await db.insert('finance_payment_methods', paymentMethod.toMap());
+      await db.update(
+        'finance_loan_installments',
+        {'payment_method_uuid': paymentMethod.uuid},
+        where: 'uuid = ?',
+        whereArgs: ['test-installment-1'],
+      );
+    });
+
+    await _pump(tester, FinanceLoanDetailScreen(loan: _loan()));
+    await tester.scrollUntilVisible(
+      _key('finance-loan-installment-test-installment-1'),
+      250,
+      maxScrolls: 20,
+      scrollable: find.byType(Scrollable).first,
+    );
+
+    expect(find.text('还款账户：已归档还款卡（已归档）'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('表单打开期间归档分类和账户后新账单会清除旧关联', (tester) async {
+    final db = await _seed(tester);
+    final category = FinanceCategory(
+      uuid: 'live-archived-category',
+      name: '待归档分类',
+    );
+    final paymentMethod = FinancePaymentMethod(
+      uuid: 'live-archived-payment',
+      name: '待归档账户',
+    );
+    await tester.runAsync(() async {
+      await db.insert('finance_categories', category.toMap());
+      await db.insert('finance_payment_methods', paymentMethod.toMap());
+    });
+    final draft = FinanceEntryDraft(
+      amountMinor: 1200,
+      transactionDate: dateKey(DateTime.now()),
+      categoryUuid: category.uuid,
+      paymentMethodUuid: paymentMethod.uuid,
+      source: FinanceEntrySource.ai,
+    );
+
+    await _pump(tester, FinanceEntryScreen(initialDraft: draft));
+    expect(find.text('待归档分类'), findsOneWidget);
+    await tester.runAsync(() async {
+      await FinanceStorage.archiveCategory(category.uuid);
+      await FinanceStorage.archivePaymentMethod(paymentMethod.uuid);
+    });
+    await _waitFor(
+      tester,
+      () => find.text('待归档分类').evaluate().isEmpty,
+    );
+
+    await _tap(tester, find.text('保存账单'));
+    await _waitFor(
+      tester,
+      () => find.byType(FinanceEntryScreen).evaluate().isEmpty,
+    );
+
+    final rows = await tester.runAsync(
+      () => db.query('finance_transactions', where: 'is_deleted = 0'),
+    );
+    expect(rows, hasLength(1));
+    expect(rows!.single['category_uuid'], isNot(category.uuid));
+    expect(rows.single['payment_method_uuid'], isNull);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('余额范围仍引用已归档账户时显示归档状态', (tester) async {
+    await _seed(tester);
+    final paymentMethod = FinancePaymentMethod(
+      uuid: 'budget-archived-payment',
+      name: '已归档预算账户',
+    );
+    await tester.runAsync(
+      () => FinanceStorage.savePaymentMethod(paymentMethod),
+    );
+
+    await _pump(
+      tester,
+      FinanceBudgetEntryScreen(
+        month: DateTime.now(),
+        initialPaymentMethodUuid: paymentMethod.uuid,
+      ),
+    );
+    expect(find.textContaining('（已归档）'), findsNothing);
+    await tester.runAsync(
+      () => FinanceStorage.archivePaymentMethod(paymentMethod.uuid),
+    );
+    await _waitFor(
+      tester,
+      () => find.textContaining('（已归档）').evaluate().isNotEmpty,
+    );
+
+    expect(find.textContaining('已归档预算账户'), findsOneWidget);
+    expect(find.textContaining('（已归档）'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('编辑归档分类预算时明确标记分类状态', (tester) async {
+    final db = await _seed(tester);
+    final category = FinanceCategory(
+      uuid: 'budget-archived-category',
+      name: '已归档预算分类',
+      isArchived: true,
+    );
+    await tester.runAsync(
+      () => db.insert('finance_categories', category.toMap()),
+    );
+    final now = DateTime.now();
+
+    await _pump(
+      tester,
+      FinanceBudgetEntryScreen(
+        month: now,
+        budget: FinanceBudget(
+          uuid: 'archived-category-budget',
+          monthKey: financeMonthKey(now),
+          categoryUuid: category.uuid,
+          amountMinor: 1200,
+        ),
+      ),
+    );
+
+    expect(find.textContaining('已归档预算分类'), findsOneWidget);
+    expect(find.textContaining('（已归档）'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('预算总览卡片明确标记已归档的分类和账户', (tester) async {
+    final db = await _seed(tester);
+    final archivedCategory = FinanceCategory(
+      uuid: 'budget-overview-archived-category',
+      name: '预算归档分类',
+      isArchived: true,
+    );
+    final archivedPaymentMethod = FinancePaymentMethod(
+      uuid: 'budget-overview-archived-payment',
+      name: '余额归档账户',
+      isArchived: true,
+    );
+    await tester.runAsync(() async {
+      await db.insert('finance_categories', archivedCategory.toMap());
+      await db.insert('finance_payment_methods', archivedPaymentMethod.toMap());
+      await db.insert(
+        'finance_budgets',
+        FinanceBudget(
+          uuid: 'budget-overview-archived-category-budget',
+          monthKey: financeMonthKey(_month),
+          categoryUuid: archivedCategory.uuid,
+          amountMinor: 12000,
+        ).toMap(),
+      );
+      await db.insert(
+        'finance_budgets',
+        FinanceBudget(
+          uuid: 'budget-overview-archived-payment-snapshot',
+          monthKey: financeMonthKey(_month),
+          paymentMethodUuid: archivedPaymentMethod.uuid,
+          amountMinor: 24000,
+          balanceSnapshotAt: DateTime(2026, 9, 10, 12).millisecondsSinceEpoch,
+        ).toMap(),
+      );
+    });
+
+    await _pump(
+      tester,
+      FinanceBudgetScreen(
+        initialMonth: _month,
+        clock: () => DateTime(2026, 9, 20, 12),
+      ),
+    );
+
+    expect(find.text('预算归档分类（已归档）'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('余额归档账户（已归档）'),
+      250,
+      maxScrolls: 20,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('余额归档账户（已归档）'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('余额卡片和录入入口区分同名账户', (tester) async {
+    final db = await _seed(tester);
+    final firstMethod = FinancePaymentMethod(
+      uuid: 'budget-duplicate-account-one',
+      name: '共同账户',
+      sortOrder: 10,
+    );
+    final secondMethod = FinancePaymentMethod(
+      uuid: 'budget-duplicate-account-two',
+      name: '共同账户',
+      sortOrder: 20,
+    );
+    final snapshotAt = DateTime(2026, 9, 10, 12).millisecondsSinceEpoch;
+    await tester.runAsync(() async {
+      await db.insert('finance_payment_methods', firstMethod.toMap());
+      await db.insert('finance_payment_methods', secondMethod.toMap());
+      for (final method in [firstMethod, secondMethod]) {
+        await db.insert(
+          'finance_budgets',
+          FinanceBudget(
+            uuid: 'snapshot-${method.uuid}',
+            monthKey: financeMonthKey(_month),
+            paymentMethodUuid: method.uuid,
+            amountMinor: 10000,
+            balanceSnapshotAt: snapshotAt,
+          ).toMap(),
+        );
+      }
+    });
+
+    await _pump(
+      tester,
+      FinanceBudgetScreen(
+        initialMonth: _month,
+        clock: () => DateTime(2026, 9, 20, 12),
+      ),
+      size: const Size(1100, 1000),
+    );
+
+    expect(find.text('共同账户（同名账户 1/2）'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('共同账户（同名账户 2/2）'),
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('共同账户（同名账户 2/2）'), findsOneWidget);
+
+    await _tap(tester, find.byTooltip('录入付款方式余额'));
+    await tester.pumpAndSettle();
+    expect(find.text('选择付款方式'), findsOneWidget);
+    expect(
+      find.ancestor(
+        of: find.text('共同账户（同名账户 1/2）'),
+        matching: find.byType(ListTile),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.ancestor(
+        of: find.text('共同账户（同名账户 2/2）'),
+        matching: find.byType(ListTile),
+      ),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('归档同名账户时确认框区分目标账户', (tester) async {
+    final db = await _seed(tester);
+    final firstMethod = FinancePaymentMethod(
+      uuid: 'settings-duplicate-account-one',
+      name: '设置同名账户',
+      sortOrder: 10,
+    );
+    final secondMethod = FinancePaymentMethod(
+      uuid: 'settings-duplicate-account-two',
+      name: '设置同名账户',
+      sortOrder: 20,
+    );
+    await tester.runAsync(() async {
+      await db.insert('finance_payment_methods', firstMethod.toMap());
+      await db.insert('finance_payment_methods', secondMethod.toMap());
+    });
+
+    await _pump(tester, const FinanceSettingsScreen(username: 'test-user'));
+    await _tap(tester, find.text('付款方式'));
+    await _tap(
+      tester,
+      find.byTooltip('管理设置同名账户（同名账户 2/2）'),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('归档').last);
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(
+      find.text('归档“设置同名账户（同名账户 2/2）”？'),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('预算范围下拉框区分同名付款方式', (tester) async {
+    final db = await _seed(tester);
+    final firstMethod = FinancePaymentMethod(
+      uuid: 'budget-scope-duplicate-one',
+      name: '范围同名账户',
+      sortOrder: 10,
+    );
+    final secondMethod = FinancePaymentMethod(
+      uuid: 'budget-scope-duplicate-two',
+      name: '范围同名账户',
+      sortOrder: 20,
+    );
+    await tester.runAsync(() async {
+      await db.insert('finance_payment_methods', firstMethod.toMap());
+      await db.insert('finance_payment_methods', secondMethod.toMap());
+    });
+
+    await _pump(
+      tester,
+      FinanceBudgetEntryScreen(
+        month: _month,
+        initialPaymentMethodUuid: secondMethod.uuid,
+      ),
+    );
+
+    const secondAccountName = '范围同名账户（同名账户 2/2）';
+    expect(find.textContaining(secondAccountName), findsOneWidget);
+    await _tap(
+      tester,
+      _key('finance-budget-scope-payment:${secondMethod.uuid}'),
+    );
+    await tester.pumpAndSettle();
+    const firstAccountOption = '💼  付款方式 · 范围同名账户（同名账户 1/2）';
+    const secondAccountOption = '💼  付款方式 · 范围同名账户（同名账户 2/2）';
+    expect(find.text(firstAccountOption), findsWidgets);
+    expect(find.text(secondAccountOption), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('回收站预算明确标记已归档的分类和账户', (tester) async {
+    final db = await _seed(tester);
+    final archivedCategory = FinanceCategory(
+      uuid: 'trash-archived-category',
+      name: '归档回收站分类',
+      isArchived: true,
+    );
+    final archivedPaymentMethod = FinancePaymentMethod(
+      uuid: 'trash-archived-payment',
+      name: '归档回收站账户',
+      isArchived: true,
+    );
+    await tester.runAsync(() async {
+      await db.insert('finance_categories', archivedCategory.toMap());
+      await db.insert('finance_payment_methods', archivedPaymentMethod.toMap());
+      await db.insert(
+        'finance_budgets',
+        FinanceBudget(
+          uuid: 'trash-archived-category-budget',
+          monthKey: financeMonthKey(_month),
+          categoryUuid: archivedCategory.uuid,
+          amountMinor: 12000,
+          isDeleted: true,
+        ).toMap(),
+      );
+      await db.insert(
+        'finance_budgets',
+        FinanceBudget(
+          uuid: 'trash-archived-payment-snapshot',
+          monthKey: financeMonthKey(_month),
+          paymentMethodUuid: archivedPaymentMethod.uuid,
+          amountMinor: 24000,
+          balanceSnapshotAt: DateTime(2026, 9, 10, 12).millisecondsSinceEpoch,
+          isDeleted: true,
+        ).toMap(),
+      );
+    });
+
+    await _pump(tester, const FinanceTrashScreen());
+    await tester.scrollUntilVisible(
+      find.textContaining('归档回收站分类'),
+      250,
+      maxScrolls: 20,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('归档回收站分类（已归档）预算'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.textContaining('归档回收站账户'),
+      250,
+      maxScrolls: 20,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('归档回收站账户（已归档）余额'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('回收站余额快照区分同名账户', (tester) async {
+    final db = await _seed(tester);
+    final firstMethod = FinancePaymentMethod(
+      uuid: 'trash-duplicate-account-one',
+      name: '回收站同名账户',
+      sortOrder: 10,
+    );
+    final secondMethod = FinancePaymentMethod(
+      uuid: 'trash-duplicate-account-two',
+      name: '回收站同名账户',
+      sortOrder: 20,
+    );
+    final snapshotAt = DateTime(2026, 9, 10, 12).millisecondsSinceEpoch;
+    await tester.runAsync(() async {
+      await db.insert('finance_payment_methods', firstMethod.toMap());
+      await db.insert('finance_payment_methods', secondMethod.toMap());
+      for (final method in [firstMethod, secondMethod]) {
+        await db.insert(
+          'finance_budgets',
+          FinanceBudget(
+            uuid: 'trash-snapshot-${method.uuid}',
+            monthKey: financeMonthKey(_month),
+            paymentMethodUuid: method.uuid,
+            amountMinor: 24000,
+            balanceSnapshotAt: snapshotAt,
+            isDeleted: true,
+          ).toMap(),
+        );
+      }
+    });
+
+    await _pump(
+      tester,
+      const FinanceTrashScreen(),
+      size: const Size(1100, 1000),
+    );
+    expect(find.text('找回需要的记录'), findsOneWidget);
+    expect(find.byType(Scrollable), findsWidgets);
+    await tester.enterText(_key('finance-trash-search'), '回收站同名账户');
+    await tester.pumpAndSettle();
+    expect(find.text('回收站同名账户（同名账户 1/2）余额'), findsOneWidget);
+    expect(find.text('回收站同名账户（同名账户 2/2）余额'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('回收站中的同名贷款、周期账单和模板可以区分', (tester) async {
+    final db = await _seed(tester);
+    await tester.runAsync(() async {
+      for (final loan in [
+        FinanceLoan(
+          uuid: 'trash-duplicate-loan-first',
+          name: '旧订阅分期',
+          principalMinor: 200000,
+          termMonths: 12,
+          startDate: '2026-01-01',
+          repaymentDay: 15,
+          isDeleted: true,
+          createdAt: 100,
+        ),
+        FinanceLoan(
+          uuid: 'trash-duplicate-loan-second',
+          name: '旧订阅分期',
+          principalMinor: 200000,
+          termMonths: 12,
+          startDate: '2026-01-01',
+          repaymentDay: 15,
+          isDeleted: true,
+          createdAt: 200,
+        ),
+      ]) {
+        await db.insert('finance_loans', loan.toMap());
+      }
+      for (final rule in [
+        FinanceRecurringRule(
+          uuid: 'trash-duplicate-rule-first',
+          name: '旧会员订阅',
+          amountMinor: 1000,
+          startDate: '2026-01-01',
+          isDeleted: true,
+          createdAt: 100,
+        ),
+        FinanceRecurringRule(
+          uuid: 'trash-duplicate-rule-second',
+          name: '旧会员订阅',
+          amountMinor: 1000,
+          startDate: '2026-01-01',
+          isDeleted: true,
+          createdAt: 200,
+        ),
+      ]) {
+        await db.insert('finance_recurring_rules', rule.toMap());
+      }
+      for (final template in [
+        FinanceEntryTemplate(
+          uuid: 'trash-duplicate-template-first',
+          name: '旧早餐模板',
+          amountMinor: 1800,
+          isDeleted: true,
+          createdAt: 100,
+        ),
+        FinanceEntryTemplate(
+          uuid: 'trash-duplicate-template-second',
+          name: '旧早餐模板',
+          amountMinor: 1800,
+          isDeleted: true,
+          createdAt: 200,
+        ),
+      ]) {
+        await db.insert('finance_entry_templates', template.toMap());
+      }
+    });
+
+    await _pump(tester, const FinanceTrashScreen(), size: const Size(1100, 1000));
+    await tester.enterText(_key('finance-trash-search'), '旧');
+    await tester.pumpAndSettle();
+
+    expect(find.text('旧订阅分期（同名贷款 1/2）'), findsOneWidget);
+    expect(find.text('旧订阅分期（同名贷款 2/2）'), findsOneWidget);
+    expect(find.text('旧会员订阅（同名周期账单 1/2）'), findsOneWidget);
+    expect(find.text('旧会员订阅（同名周期账单 2/2）'), findsOneWidget);
+    expect(find.text('旧早餐模板（同名模板 1/2）'), findsOneWidget);
+    expect(find.text('旧早餐模板（同名模板 2/2）'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('计算器拒绝超过金额安全上限的结果并保留边界值', (tester) async {
+    Future<void> pumpCalculator(String expression) => tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: FinanceAmountCalculatorSheet(
+            key: ValueKey(expression),
+            initialExpression: expression,
+          ),
+        ),
+      ),
+    );
+
+    await pumpCalculator('90071992547409.92');
+    var useResultButton = tester.widget<FilledButton>(
+      _key('finance-calculator-use-result'),
+    );
+    expect(useResultButton.onPressed, isNull);
+    await _tap(tester, _key('finance-calculator-key-equals'));
+    expect(find.text('结果超过可记录金额上限'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await pumpCalculator('90071992547409.91');
+    useResultButton = tester.widget<FilledButton>(
+      _key('finance-calculator-use-result'),
+    );
+    expect(useResultButton.onPressed, isNotNull);
     expect(tester.takeException(), isNull);
   });
 
@@ -293,7 +1488,9 @@ void main() {
       tester
           .widget<EditableText>(
             find.descendant(
-                of: amountField, matching: find.byType(EditableText)),
+              of: amountField,
+              matching: find.byType(EditableText),
+            ),
           )
           .readOnly,
       isTrue,
@@ -328,12 +1525,11 @@ void main() {
     expect(find.text('使用结果 ¥16'), findsOneWidget);
 
     await _tap(
-        tester, find.byKey(const ValueKey('finance-calculator-use-result')));
-    await tester.pumpAndSettle();
-    expect(
-      tester.widget<TextFormField>(amountField).controller!.text,
-      '16',
+      tester,
+      find.byKey(const ValueKey('finance-calculator-use-result')),
     );
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextFormField>(amountField).controller!.text, '16');
     expect(
       tester.widget<TextFormField>(_key('finance-note-field')).controller!.text,
       '晚餐\n计算：12+4 = 16',
@@ -386,10 +1582,7 @@ void main() {
     expect(scaffold.resizeToAvoidBottomInset, isTrue);
     final noteField = _key('finance-note-field');
     await _tap(tester, noteField);
-    expect(
-      tester.getBottomLeft(noteField).dy,
-      lessThanOrEqualTo(844 - 240),
-    );
+    expect(tester.getBottomLeft(noteField).dy, lessThanOrEqualTo(844 - 240));
     expect(tester.takeException(), isNull);
   });
 
@@ -403,6 +1596,10 @@ void main() {
     await _tap(tester, find.text('识别账单'));
 
     expect(find.text('识别到 2 笔账单'), findsOneWidget);
+    expect(
+      find.text('请逐笔核对后保存，缺少分类或关联账户可在编辑页补充'),
+      findsOneWidget,
+    );
     expect(find.textContaining('· 早餐 · 早餐 · 微信'), findsOneWidget);
     expect(find.textContaining('· 午餐 ·'), findsOneWidget);
     expect(find.text('逐笔确认'), findsOneWidget);
@@ -413,18 +1610,84 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('文本识别未匹配到账账户名称会在编辑表单中保留', (tester) async {
+    await _seed(tester);
+    await _pump(
+      tester,
+      FinanceEntryScreen(
+        initialDraft: FinanceEntryDraft(
+          type: FinanceTransactionType.income,
+          amountMinor: 50000,
+          transactionDate: dateKey(DateTime.now()),
+          categoryName: '工资',
+          paymentMethodName: '未添加的工资卡',
+        ),
+      ),
+    );
+
+    await _waitFor(
+      tester,
+      () => find.text('未匹配到账账户：未添加的工资卡').evaluate().isNotEmpty,
+    );
+    expect(find.text('未匹配到账账户：未添加的工资卡'), findsOneWidget);
+    expect(find.text('未指定（不更新账户余额）'), findsNothing);
+
+    await _tap(tester, _key('finance-payment-null'));
+    expect(find.text('暂不记录到账账户'), findsOneWidget);
+    await _tap(tester, find.text('未指定'));
+    await tester.pumpAndSettle();
+    expect(find.text('未指定（不更新账户余额）'), findsOneWidget);
+
+    await tester.runAsync(
+      () => FinanceStorage.savePaymentMethod(
+        FinancePaymentMethod(
+          uuid: 'synced-payroll-card',
+          name: '未添加的工资卡',
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pumpAndSettle();
+    expect(find.text('未指定（不更新账户余额）'), findsOneWidget);
+    expect(find.text('未匹配到账账户：未添加的工资卡'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('自然语言历史账单没有时刻时提示按录入时间估算', (tester) async {
+    await _seed(tester);
+    await _pump(
+      tester,
+      const FinanceEntryScreen(),
+      size: const Size(1100, 1800),
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('finance-quick-entry-input')),
+      '昨天早餐 8 元',
+    );
+    await _tap(tester, find.text('识别账单'));
+
+    expect(find.text('补充时间'), findsOneWidget);
+    expect(find.text('这笔账单没有与日期匹配的发生时刻，余额计算暂按录入时间估算。'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('自定义大类也可以新增自定义小类', (tester) async {
     final db = await _seed(tester);
-    await tester.runAsync(() => FinanceStorage.saveCategory(FinanceCategory(
+    await tester.runAsync(
+      () => FinanceStorage.saveCategory(
+        FinanceCategory(
           uuid: 'test-food-existing-child',
           name: '外卖',
           parentUuid: 'test-food',
           sortOrder: 1,
-        )));
+        ),
+      ),
+    );
     await _pump(tester, const FinanceEntryScreen());
 
-    const categoryField =
-        ValueKey('finance-category-FinanceTransactionType.expense-test-food');
+    const categoryField = ValueKey(
+      'finance-category-FinanceTransactionType.expense-test-food',
+    );
     await _tap(tester, find.byKey(categoryField));
     expect(find.text('日常餐饮'), findsWidgets);
     expect(find.text('外卖'), findsNothing);
@@ -434,7 +1697,9 @@ void main() {
     expect(find.text('外卖'), findsOneWidget);
     await _tap(tester, find.byTooltip('新增小类'));
     await tester.enterText(
-        find.byKey(const ValueKey('finance-catalog-name')), '夜宵');
+      find.byKey(const ValueKey('finance-catalog-name')),
+      '夜宵',
+    );
     await _tap(tester, find.byKey(const ValueKey('finance-catalog-save')));
     await _waitFor(
       tester,
@@ -444,37 +1709,2965 @@ void main() {
     );
 
     expect(find.text('日常餐饮 - 夜宵'), findsOneWidget);
-    final rows = (await tester.runAsync(() => db.query(
-          'finance_categories',
-          where: 'uuid = ?',
-          whereArgs: ['test-food-existing-child'],
-        )))!;
+    final rows = (await tester.runAsync(
+      () => db.query(
+        'finance_categories',
+        where: 'uuid = ?',
+        whereArgs: ['test-food-existing-child'],
+      ),
+    ))!;
     expect(rows.single['parent_uuid'], 'test-food');
-    final customRows = (await tester.runAsync(() => db.query(
-          'finance_categories',
-          where: 'name = ?',
-          whereArgs: ['夜宵'],
-        )))!;
+    final customRows = (await tester.runAsync(
+      () =>
+          db.query('finance_categories', where: 'name = ?', whereArgs: ['夜宵']),
+    ))!;
     expect(customRows.single['parent_uuid'], 'test-food');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('历史草稿按所选月份说明并提示未知发生时刻', (tester) async {
+    await _seed(tester);
+    final now = DateTime.now();
+    final selectedMonth = DateTime(now.year, now.month - 1);
+    final monthLabel = '${selectedMonth.year}年${selectedMonth.month}月';
+    final expectedDescription = '将整笔金额一次性计入$monthLabel';
+    await _pump(
+      tester,
+      FinanceEntryScreen(
+        initialDraft: FinanceEntryDraft(
+          amountMinor: 1200,
+          transactionDate: dateKey(
+            DateTime(selectedMonth.year, selectedMonth.month, 5),
+          ),
+        ),
+      ),
+      size: const Size(1100, 2400),
+    );
+
+    expect(find.text(expectedDescription), findsOneWidget);
+    expect(find.text('将整笔金额一次性计入当前月份'), findsNothing);
+    expect(find.text('补充时间'), findsOneWidget);
+    expect(find.text('这笔账单没有与日期匹配的发生时刻，余额计算暂按录入时间估算。'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('手动选择历史日期后不沿用未经确认的当前时刻', (tester) async {
+    await _seed(tester);
+    await _pump(
+      tester,
+      const FinanceEntryScreen(),
+      size: const Size(1100, 1800),
+    );
+
+    await tester.tap(find.text('账单日期'));
+    await tester.pumpAndSettle();
+    final previousMonthButton = find.byTooltip('Previous month');
+    expect(previousMonthButton, findsOneWidget);
+    await tester.tap(previousMonthButton);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('15').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('补充时间'), findsOneWidget);
+    expect(find.text('这笔账单没有与日期匹配的发生时刻，余额计算暂按录入时间估算。'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    '新建账单选择夏令时切换后的日期时保存该日期的时区偏移',
+    (tester) async {
+      final targetDate = _upcomingTimezoneOffsetChangeDate();
+      if (targetDate == null) return;
+      final db = await _seed(tester);
+      final now = DateTime.now();
+      await _pump(
+        tester,
+        FinanceEntryScreen(
+          initialDraft: FinanceEntryDraft(
+            amountMinor: 1200,
+            transactionDate: dateKey(now),
+          ),
+        ),
+        size: const Size(1100, 1800),
+      );
+
+      await _tap(tester, find.text('账单日期'));
+      await tester.pumpAndSettle();
+      final monthDelta =
+          (targetDate.year - now.year) * 12 + targetDate.month - now.month;
+      for (var month = 0; month < monthDelta; month++) {
+        await tester.tap(find.byTooltip('Next month'));
+        await tester.pumpAndSettle();
+      }
+      await tester.tap(find.text('${targetDate.day}').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('OK'));
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(find.text('保存账单'));
+      await tester.tap(find.text('保存账单'));
+      final rows = await _waitForSavedTransactions(tester, db);
+      await tester.pump(const Duration(milliseconds: 200));
+      final transaction = FinanceTransaction.fromMap(rows.single);
+      final expectedOccurrence = DateTime(
+        targetDate.year,
+        targetDate.month,
+        targetDate.day,
+        now.hour,
+        now.minute,
+      );
+      expect(
+        transaction.timezoneOffsetMinutes,
+        expectedOccurrence.timeZoneOffset.inMinutes,
+      );
+      expect(
+        transaction.occurredAt,
+        expectedOccurrence.millisecondsSinceEpoch,
+      );
+      expect(tester.takeException(), isNull);
+    },
+    skip: _upcomingTimezoneOffsetChangeDate() == null,
+  );
+
+  testWidgets(
+    '未来日期草稿使用发生日期对应的时区偏移',
+    (tester) async {
+      final targetDate = _upcomingTimezoneOffsetChangeDate();
+      if (targetDate == null) return;
+      final db = await _seed(tester);
+      final now = DateTime.now();
+      await _pump(
+        tester,
+        FinanceEntryScreen(
+          initialDraft: FinanceEntryDraft(
+            amountMinor: 1200,
+            transactionDate: dateKey(targetDate),
+          ),
+        ),
+      );
+      expect(find.textContaining('按记录时区'), findsNothing);
+
+      await _tap(tester, find.text('保存账单'));
+      final rows = await _waitForSavedTransactions(tester, db);
+      await tester.pump(const Duration(milliseconds: 200));
+      final transaction = FinanceTransaction.fromMap(rows.single);
+      final expectedOccurrence = DateTime(
+        targetDate.year,
+        targetDate.month,
+        targetDate.day,
+        now.hour,
+        now.minute,
+      );
+      expect(
+        transaction.timezoneOffsetMinutes,
+        expectedOccurrence.timeZoneOffset.inMinutes,
+      );
+      expect(
+        transaction.occurredAt,
+        expectedOccurrence.millisecondsSinceEpoch,
+      );
+      expect(tester.takeException(), isNull);
+    },
+    skip: _upcomingTimezoneOffsetChangeDate() == null,
+  );
+
+  testWidgets('编辑旧账单时保留未记录的发生时刻', (tester) async {
+    final db = await _seed(tester);
+    final legacyDate = DateTime(2026, 9, 10);
+    final transaction = FinanceTransaction.fromMap({
+      'uuid': 'legacy-unknown-occurrence',
+      'type': 'expense',
+      'amount_minor': 1250,
+      'currency_code': 'CNY',
+      'category_uuid': 'test-food',
+      'transaction_date': dateKey(legacyDate),
+      'created_at': legacyDate.millisecondsSinceEpoch,
+      'updated_at': legacyDate.millisecondsSinceEpoch,
+    });
+    await tester.runAsync(() => FinanceStorage.saveTransaction(transaction));
+
+    await _pump(tester, FinanceEntryScreen(transaction: transaction));
+    expect(find.text('补充时间'), findsOneWidget);
+    await tester.ensureVisible(find.text('保存账单'));
+    await tester.tap(find.text('保存账单'));
+    var rows = <Map<String, Object?>>[];
+    for (var attempt = 0; attempt < 100; attempt++) {
+      rows = (await tester.runAsync(
+        () => db.query(
+          'finance_transactions',
+          where: 'uuid = ?',
+          whereArgs: [transaction.uuid],
+        ),
+      ))!;
+      if (rows.single['version'] == 2) break;
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 20)),
+      );
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+    expect(rows.single['version'], 2);
+    expect(rows.single['occurred_at'], isNull);
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    '编辑未来日期旧账单时不沿用不匹配的旧发生时刻',
+    (tester) async {
+      final db = await _seed(tester);
+      final now = DateTime.now();
+      final createdAt = now.subtract(const Duration(days: 2));
+      final staleOccurrence = now.subtract(const Duration(days: 1));
+      final futureDate = DateTime(now.year, now.month, now.day + 1);
+      final transaction = FinanceTransaction(
+        uuid: 'future-ledger-with-stale-occurrence',
+        amountMinor: 1250,
+        categoryUuid: 'test-food',
+        transactionDate: dateKey(futureDate),
+        occurredAt: staleOccurrence.millisecondsSinceEpoch,
+        timezoneOffsetMinutes: now.timeZoneOffset.inMinutes,
+        createdAt: createdAt.millisecondsSinceEpoch,
+        updatedAt: createdAt.millisecondsSinceEpoch,
+      );
+      await tester.runAsync(() => FinanceStorage.saveTransaction(transaction));
+
+      expect(
+        transaction.balanceEventAt(snapshotAt: now.millisecondsSinceEpoch),
+        lessThan(now.millisecondsSinceEpoch),
+        reason: '旧时间戳会让这笔未来账单提前进入余额',
+      );
+      await _pump(tester, FinanceEntryScreen(transaction: transaction));
+      expect(find.text('补充时间'), findsOneWidget);
+      await _tap(tester, find.text('保存账单'));
+
+      var row = <String, Object?>{};
+      for (var attempt = 0; attempt < 100; attempt++) {
+        row = (await tester.runAsync(
+          () => db.query(
+            'finance_transactions',
+            where: 'uuid = ?',
+            whereArgs: [transaction.uuid],
+          ),
+        ))!.single;
+        if (row['version'] == 2) break;
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 20)),
+        );
+        await tester.pump(const Duration(milliseconds: 20));
+      }
+      expect(row['version'], 2);
+      expect(row['occurred_at'], isNull);
+      final saved = FinanceTransaction.fromMap(row);
+      expect(
+        saved.balanceEventAt(snapshotAt: now.millisecondsSinceEpoch),
+        DateTime(now.year, now.month, now.day + 1).millisecondsSinceEpoch,
+      );
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('编辑大额账单后原样保存不会因金额回填丢一分', (tester) async {
+    final db = await _seed(tester);
+    const amountMinor = maxFinanceAmountMinor - 1;
+    final transaction = FinanceTransaction(
+      uuid: 'edit-large-amount-exact',
+      amountMinor: amountMinor,
+      categoryUuid: 'test-food',
+      transactionDate: dateKey(DateTime.now()),
+    );
+    await tester.runAsync(() => FinanceStorage.saveTransaction(transaction));
+
+    await _pump(
+      tester,
+      Builder(
+        builder: (context) => Scaffold(
+          body: TextButton(
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => FinanceEntryScreen(transaction: transaction),
+              ),
+            ),
+            child: const Text('打开大额账单'),
+          ),
+        ),
+      ),
+      size: const Size(1280, 1000),
+    );
+    await tester.tap(find.text('打开大额账单'));
+    await _waitFor(
+      tester,
+      () =>
+          _key('finance-amount-field').evaluate().isNotEmpty &&
+          find.byType(CircularProgressIndicator).evaluate().isEmpty,
+    );
+
+    final amountField = tester.widget<TextField>(
+      _field('finance-amount-field'),
+    );
+    expect(amountField.controller!.text, '90,071,992,547,409.90');
+    expect(parseFinanceAmount(amountField.controller!.text), amountMinor);
+    await _tap(tester, find.text('保存账单'));
+    await _waitFor(
+      tester,
+      () => find.byType(FinanceEntryScreen).evaluate().isEmpty,
+    );
+
+    final row = (await tester.runAsync(
+      () => db.query(
+        'finance_transactions',
+        where: 'uuid = ?',
+        whereArgs: [transaction.uuid],
+      ),
+    ))!.single;
+    expect(row['amount_minor'], amountMinor);
+    expect(row['version'], 2);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('编辑大额预算后原样保存不会因金额回填丢一分', (tester) async {
+    final db = await _seed(tester);
+    const amountMinor = maxFinanceAmountMinor - 1;
+    final month = DateTime.now();
+    final budget = FinanceBudget(
+      uuid: 'edit-large-budget-exact',
+      monthKey: financeMonthKey(month),
+      amountMinor: amountMinor,
+    );
+    await tester.runAsync(() => db.insert('finance_budgets', budget.toMap()));
+
+    await _pump(
+      tester,
+      Builder(
+        builder: (context) => Scaffold(
+          body: TextButton(
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => FinanceBudgetEntryScreen(
+                  month: month,
+                  budget: budget,
+                ),
+              ),
+            ),
+            child: const Text('打开大额预算'),
+          ),
+        ),
+      ),
+      size: const Size(1280, 1000),
+    );
+    await tester.tap(find.text('打开大额预算'));
+    await _waitFor(
+      tester,
+      () =>
+          _key('finance-budget-amount').evaluate().isNotEmpty &&
+          find.byType(CircularProgressIndicator).evaluate().isEmpty,
+    );
+
+    final amountField = tester.widget<TextField>(
+      _field('finance-budget-amount'),
+    );
+    expect(amountField.controller!.text, '90,071,992,547,409.90');
+    expect(parseFinanceAmount(amountField.controller!.text), amountMinor);
+    await _tap(tester, find.text('保存预算'));
+    await _waitFor(
+      tester,
+      () => find.byType(FinanceBudgetEntryScreen).evaluate().isEmpty,
+    );
+
+    final row = (await tester.runAsync(
+      () => db.query(
+        'finance_budgets',
+        where: 'uuid = ?',
+        whereArgs: [budget.uuid],
+      ),
+    ))!.single;
+    expect(row['amount_minor'], amountMinor);
+    expect(row['version'], 2);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('编辑未分类账单时不自动添加默认分类', (tester) async {
+    final db = await _seed(tester);
+    final transaction = FinanceTransaction(
+      uuid: 'edit-uncategorized-entry',
+      amountMinor: 1250,
+      paymentMethodUuid: 'deleted-payment-method',
+      transactionDate: dateKey(DateTime.now()),
+      merchant: '原本未分类',
+    );
+    await tester.runAsync(() => FinanceStorage.saveTransaction(transaction));
+
+    await _pump(tester, FinanceEntryScreen(transaction: transaction));
+    expect(find.text('未分类'), findsOneWidget);
+    expect(find.text('已删除或未知付款方式'), findsOneWidget);
+    await _tap(tester, find.text('保存账单'));
+    var rows = <Map<String, Object?>>[];
+    for (var attempt = 0; attempt < 100; attempt++) {
+      rows = (await tester.runAsync(
+        () => db.query(
+          'finance_transactions',
+          where: 'uuid = ?',
+          whereArgs: [transaction.uuid],
+        ),
+      ))!;
+      if (rows.single['version'] == 2) break;
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 20)),
+      );
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(rows.single['version'], 2);
+    expect(rows.single['category_uuid'], isNull);
+    expect(rows.single['payment_method_uuid'], 'deleted-payment-method');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('未分类支出的新退款继续保持未分类', (tester) async {
+    final db = await _seed(tester);
+    final original = FinanceTransaction(
+      uuid: 'uncategorized-refund-original',
+      amountMinor: 5000,
+      paymentMethodUuid: 'deleted-payment-method',
+      transactionDate: dateKey(DateTime.now()),
+      merchant: '未分类原账单',
+    );
+    await tester.runAsync(() => FinanceStorage.saveTransaction(original));
+
+    await _pump(tester, FinanceEntryScreen(originalTransaction: original));
+    expect(find.text('未分类'), findsOneWidget);
+    expect(find.text('已删除或未知退款到账账户'), findsOneWidget);
+    await _tap(tester, find.text('保存账单'));
+    var rows = <Map<String, Object?>>[];
+    for (var attempt = 0; attempt < 100; attempt++) {
+      rows = (await tester.runAsync(
+        () => db.query(
+          'finance_transactions',
+          where: 'related_transaction_uuid = ?',
+          whereArgs: [original.uuid],
+        ),
+      ))!;
+      if (rows.isNotEmpty) break;
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 20)),
+      );
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(rows, hasLength(1));
+    expect(rows.single['type'], FinanceTransactionType.refund.name);
+    expect(rows.single['category_uuid'], isNull);
+    expect(rows.single['payment_method_uuid'], 'deleted-payment-method');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('退款表单明确说明到账账户会增加余额', (tester) async {
+    await _seed(tester);
+    final paymentMethod = FinancePaymentMethod(
+      uuid: 'refund-destination-card',
+      name: '退款到账卡',
+    );
+    final original = FinanceTransaction(
+      uuid: 'refund-destination-original',
+      amountMinor: 5000,
+      paymentMethodUuid: paymentMethod.uuid,
+      transactionDate: dateKey(DateTime.now()),
+      merchant: '退款账户文案原账单',
+    );
+    await tester.runAsync(() async {
+      await FinanceStorage.savePaymentMethod(paymentMethod);
+      await FinanceStorage.saveTransaction(original);
+    });
+
+    await _pump(tester, FinanceEntryScreen(originalTransaction: original));
+
+    expect(find.text('退款到账账户（可选）'), findsOneWidget);
+    expect(find.text('退款到账卡'), findsOneWidget);
+    await _tap(tester, _key('finance-payment-refund-destination-card'));
+    expect(find.text('选择退款到账账户'), findsOneWidget);
+    expect(find.text('退款会加到所选账户已录入的余额'), findsOneWidget);
+    expect(find.text('暂不记录退款到账账户'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('收入表单将未知付款方式标为未知到账账户', (tester) async {
+    await _seed(tester);
+    final income = FinanceTransaction(
+      uuid: 'income-with-unknown-account',
+      type: FinanceTransactionType.income,
+      amountMinor: 5000,
+      paymentMethodUuid: 'deleted-payment-method',
+      transactionDate: dateKey(DateTime.now()),
+      merchant: '未知到账账户测试',
+    );
+    await tester.runAsync(() => FinanceStorage.saveTransaction(income));
+
+    await _pump(tester, FinanceEntryScreen(transaction: income));
+
+    expect(find.text('到账账户（可选）'), findsOneWidget);
+    expect(find.text('已删除或未知到账账户'), findsOneWidget);
+    expect(find.text('已删除或未知付款方式'), findsNothing);
+    await _tap(tester, _key('finance-payment-deleted-payment-method'));
+    expect(find.text('选择到账账户'), findsOneWidget);
+    expect(find.text('暂不记录到账账户'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('当前月预算不提前统计尚未发生的未来账单', (tester) async {
+    final db = await _seed(tester);
+    var clockNow = DateTime(2026, 9, 15, 12);
+    final now = clockNow;
+    final laterToday = now.add(const Duration(hours: 1));
+    final tomorrow = now.add(const Duration(days: 1));
+    await tester.runAsync(() async {
+      for (final transaction in [
+        FinanceTransaction(
+          uuid: 'budget-current-expense',
+          amountMinor: 40000,
+          categoryUuid: 'test-food',
+          transactionDate: dateKey(now),
+          occurredAt: now
+              .subtract(const Duration(hours: 1))
+              .millisecondsSinceEpoch,
+          timezoneOffsetMinutes: now.timeZoneOffset.inMinutes,
+          createdAt: now
+              .subtract(const Duration(hours: 1))
+              .millisecondsSinceEpoch,
+        ),
+        FinanceTransaction(
+          uuid: 'budget-future-today-expense',
+          amountMinor: 20000,
+          categoryUuid: 'test-food',
+          transactionDate: dateKey(laterToday),
+          occurredAt: laterToday.millisecondsSinceEpoch,
+          timezoneOffsetMinutes: now.timeZoneOffset.inMinutes,
+          createdAt: now.millisecondsSinceEpoch,
+        ),
+        FinanceTransaction(
+          uuid: 'budget-future-day-expense',
+          amountMinor: 150000,
+          categoryUuid: 'test-food',
+          transactionDate: dateKey(tomorrow),
+          occurredAt: tomorrow.millisecondsSinceEpoch,
+          timezoneOffsetMinutes: now.timeZoneOffset.inMinutes,
+          createdAt: now.millisecondsSinceEpoch,
+        ),
+      ]) {
+        await db.insert('finance_transactions', transaction.toMap());
+      }
+    });
+
+    await _pump(
+      tester,
+      FinanceBudgetScreen(initialMonth: now, clock: () => clockNow),
+      size: const Size(1100, 1000),
+    );
+    final card = _key('finance-budget-card-test-category-budget');
+    await tester.scrollUntilVisible(
+      card,
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(
+      find.descendant(of: card, matching: find.text('剩余 ¥800.00')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: card, matching: find.textContaining('超支')),
+      findsNothing,
+    );
+
+    clockNow = laterToday;
+    await tester.pump(const Duration(hours: 1, seconds: 1));
+    expect(
+      find.descendant(of: card, matching: find.text('剩余 ¥600.00')),
+      findsOneWidget,
+    );
+
+    clockNow = tomorrow;
+    await tester.pump(const Duration(hours: 23, seconds: 1));
+    expect(
+      find.descendant(of: card, matching: find.text('超支 ¥900.00')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('未来月份预算用计划用语显示待发生账单', (tester) async {
+    final db = await _seed(tester);
+    final now = DateTime.now();
+    final futureMonth = DateTime(now.year, now.month + 1);
+    final plannedAt = DateTime(futureMonth.year, futureMonth.month, 10, 12);
+    await tester.runAsync(() async {
+      await db.insert(
+        'finance_budgets',
+        FinanceBudget(
+          uuid: 'future-overall-budget',
+          monthKey: financeMonthKey(futureMonth),
+          amountMinor: 10000,
+        ).toMap(),
+      );
+      await db.insert(
+        'finance_transactions',
+        FinanceTransaction(
+          uuid: 'future-planned-expense',
+          amountMinor: 2000,
+          transactionDate: dateKey(plannedAt),
+          occurredAt: plannedAt.millisecondsSinceEpoch,
+          timezoneOffsetMinutes: plannedAt.timeZoneOffset.inMinutes,
+          createdAt: now.millisecondsSinceEpoch,
+          merchant: '计划账单',
+        ).toMap(),
+      );
+    });
+
+    await _pump(
+      tester,
+      FinanceBudgetScreen(initialMonth: futureMonth),
+      size: const Size(1100, 1000),
+    );
+
+    expect(
+      find.text('${futureMonth.year}年${futureMonth.month}月总预算'),
+      findsOneWidget,
+    );
+    expect(find.text('计划使用 ¥20.00 / ¥100.00'), findsOneWidget);
+    expect(find.text('计划剩余 ¥80.00'), findsWidgets);
+    expect(find.text('已使用 ¥20.00 / ¥100.00'), findsNothing);
+    expect(
+      tester
+          .widget<IconButton>(
+            find.byWidgetPredicate(
+              (widget) =>
+                  widget is IconButton && widget.tooltip == '录入付款方式余额',
+            ),
+          )
+          .onPressed,
+      isNull,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('未来月份预算在月初切换为实际统计', (tester) async {
+    final db = await _seed(tester);
+    var clockNow = DateTime(2026, 10, 31, 23, 59, 58);
+    final futureMonth = DateTime(2026, 11);
+    final plannedAt = DateTime(2026, 11, 15, 12);
+    await tester.runAsync(() async {
+      await db.insert(
+        'finance_budgets',
+        FinanceBudget(
+          uuid: 'future-month-rollover-budget',
+          monthKey: financeMonthKey(futureMonth),
+          amountMinor: 10000,
+        ).toMap(),
+      );
+      await db.insert(
+        'finance_transactions',
+        FinanceTransaction(
+          uuid: 'future-month-rollover-expense',
+          amountMinor: 2500,
+          transactionDate: dateKey(plannedAt),
+          occurredAt: plannedAt.millisecondsSinceEpoch,
+          createdAt: clockNow.millisecondsSinceEpoch,
+        ).toMap(),
+      );
+    });
+
+    await _pump(
+      tester,
+      FinanceBudgetScreen(
+        initialMonth: futureMonth,
+        clock: () => clockNow,
+      ),
+      size: const Size(1100, 1000),
+    );
+    expect(find.text('计划使用 ¥25.00 / ¥100.00'), findsOneWidget);
+
+    clockNow = DateTime(2026, 11, 1, 0, 0, 2);
+    await tester.pump(const Duration(seconds: 3));
+    await _waitFor(
+      tester,
+      () => find.text('已使用 ¥0.00 / ¥100.00').evaluate().isNotEmpty,
+    );
+
+    expect(find.text('计划使用 ¥25.00 / ¥100.00'), findsNothing);
+    expect(find.text('已使用 ¥0.00 / ¥100.00'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('未来月份开始后重新载入账户流水', (tester) async {
+    final db = await _seed(tester);
+    var clockNow = DateTime(2026, 10, 31, 23, 59, 58);
+    final snapshotAt = DateTime(2026, 10, 1, 9);
+    final plannedAt = DateTime(2026, 11, 15, 12);
+    await tester.runAsync(() async {
+      await db.insert(
+        'finance_payment_methods',
+        FinancePaymentMethod(uuid: 'future-card', name: '跨月银行卡').toMap(),
+      );
+      await db.insert(
+        'finance_budgets',
+        FinanceBudget(
+          uuid: 'future-card-snapshot',
+          monthKey: financeMonthKey(snapshotAt),
+          paymentMethodUuid: 'future-card',
+          amountMinor: 10000,
+          balanceSnapshotAt: snapshotAt.millisecondsSinceEpoch,
+          createdAt: snapshotAt.millisecondsSinceEpoch,
+          updatedAt: snapshotAt.millisecondsSinceEpoch,
+        ).toMap(),
+      );
+      await db.insert(
+        'finance_transactions',
+        FinanceTransaction(
+          uuid: 'future-card-expense',
+          amountMinor: 2500,
+          paymentMethodUuid: 'future-card',
+          transactionDate: dateKey(plannedAt),
+          occurredAt: plannedAt.millisecondsSinceEpoch,
+          createdAt: clockNow.millisecondsSinceEpoch,
+        ).toMap(),
+      );
+    });
+
+    await _pump(
+      tester,
+      FinanceBudgetScreen(
+        initialMonth: DateTime(2026, 11),
+        clock: () => clockNow,
+      ),
+      size: const Size(1100, 1000),
+    );
+    expect(find.text('未来月份不显示余额'), findsOneWidget);
+
+    clockNow = DateTime(2026, 11, 1, 0, 0, 2);
+    await tester.pump(const Duration(seconds: 3));
+    final card = _key('finance-budget-card-future-card-snapshot');
+    await _waitFor(tester, () => card.evaluate().isNotEmpty);
+    expect(
+      tester
+          .widget<IconButton>(
+            find.byWidgetPredicate(
+              (widget) =>
+                  widget is IconButton && widget.tooltip == '录入付款方式余额',
+            ),
+          )
+          .onPressed,
+      isNotNull,
+    );
+    await tester.scrollUntilVisible(
+      card,
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+
+    clockNow = DateTime(2026, 11, 15, 12, 0, 2);
+    await tester.pump(const Duration(days: 15));
+    await _waitFor(
+      tester,
+      () =>
+          find
+              .descendant(of: card, matching: find.text('当前余额 ¥75.00'))
+              .evaluate()
+              .isNotEmpty,
+    );
+
+    expect(
+      find.descendant(of: card, matching: find.text('当前余额 ¥75.00')),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('记账概览不提前统计本月未来发生的账单', (tester) async {
+    final db = await _seed(tester);
+    final now = DateTime.now();
+    final pastAt = DateTime(now.year, now.month, now.day);
+    final futureAt = DateTime(now.year, now.month, now.day, 23, 59, 59);
+    await tester.runAsync(() async {
+      await db.insert(
+        'finance_transactions',
+        FinanceTransaction(
+          uuid: 'overview-past-expense',
+          amountMinor: 4000,
+          categoryUuid: 'test-food',
+          transactionDate: dateKey(pastAt),
+          occurredAt: pastAt.millisecondsSinceEpoch,
+          createdAt: pastAt.millisecondsSinceEpoch,
+        ).toMap(),
+      );
+      await db.insert(
+        'finance_transactions',
+        FinanceTransaction(
+          uuid: 'overview-future-expense',
+          amountMinor: 9000,
+          categoryUuid: 'test-food',
+          transactionDate: dateKey(futureAt),
+          occurredAt: futureAt.millisecondsSinceEpoch,
+          createdAt: now.millisecondsSinceEpoch,
+        ).toMap(),
+      );
+    });
+
+    await _pump(tester, const FinanceHomeScreen(username: 'default'));
+
+    expect(find.text('¥130.00'), findsNothing);
+    expect(find.text('¥40.00'), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('记账首页保持打开时会在周期账单到期后自动生成', (tester) async {
+    final db = await _seed(tester);
+    var clockNow = DateTime(2026, 9, 15, 8, 59);
+    await _pump(
+      tester,
+      FinanceHomeScreen(username: 'default', clock: () => clockNow),
+      size: const Size(1100, 1000),
+    );
+
+    var rows = (await tester.runAsync(
+      () => db.query(
+        'finance_transactions',
+        where: 'source = ?',
+        whereArgs: [FinanceEntrySource.automation.name],
+      ),
+    ))!;
+    expect(rows, isEmpty);
+
+    clockNow = DateTime(2026, 9, 15, 9, 1);
+    await tester.pump(const Duration(minutes: 2));
+    for (var attempt = 0; attempt < 40 && rows.isEmpty; attempt++) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 20)),
+      );
+      await tester.pump(const Duration(milliseconds: 20));
+      rows = (await tester.runAsync(
+        () => db.query(
+          'finance_transactions',
+          where: 'source = ? AND transaction_date = ?',
+          whereArgs: [FinanceEntrySource.automation.name, '2026-09-15'],
+        ),
+      ))!;
+    }
+
+    expect(rows, hasLength(1));
+    expect(rows.single['merchant'], '每月房租');
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('首页打开后新增已到期的自动账单会补生成当前周期', (tester) async {
+    final db = await _seed(tester);
+    await tester.runAsync(() => db.delete('finance_recurring_rules'));
+    final actualNow = DateTime.now();
+    final clockNow = DateTime(actualNow.year, actualNow.month + 1, 15, 10);
+    final dueDate = DateTime(clockNow.year, clockNow.month, 15, 9);
+    await _pump(
+      tester,
+      FinanceHomeScreen(username: 'default', clock: () => clockNow),
+      size: const Size(1100, 1000),
+    );
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 300)),
+    );
+    await tester.pump(const Duration(milliseconds: 300));
+
+    await tester.runAsync(
+      () => FinanceStorage.saveRecurringRule(
+        FinanceRecurringRule(
+          uuid: 'late-added-auto-rule',
+          name: '迟录房租',
+          amountMinor: 250000,
+          dayOfMonth: 15,
+          startDate: dateKey(DateTime(actualNow.year, actualNow.month, 1)),
+        ),
+      ),
+    );
+
+    var rows = (await tester.runAsync(
+      () => db.query(
+        'finance_transactions',
+        where: 'source = ? AND transaction_date = ?',
+        whereArgs: [FinanceEntrySource.automation.name, dateKey(dueDate)],
+      ),
+    ))!;
+    for (var attempt = 0; attempt < 40 && rows.isEmpty; attempt++) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 20)),
+      );
+      await tester.pump(const Duration(milliseconds: 20));
+      rows = (await tester.runAsync(
+        () => db.query(
+          'finance_transactions',
+          where: 'source = ? AND transaction_date = ?',
+          whereArgs: [FinanceEntrySource.automation.name, dateKey(dueDate)],
+        ),
+      ))!;
+    }
+
+    expect(rows, hasLength(1));
+    expect(rows.single['merchant'], '迟录房租');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('云端同步后已打开的账单列表会刷新', (tester) async {
+    await _seed(tester);
+    final now = DateTime.now();
+    await _pump(
+      tester,
+      const FinanceHomeScreen(username: 'default'),
+      size: const Size(1100, 1000),
+    );
+    await _tap(tester, find.text('账单').hitTestable().last);
+    expect(find.text('来自另一台设备的账单'), findsNothing);
+
+    final remoteTransaction = FinanceTransaction(
+      uuid: 'remote-finance-screen-refresh',
+      amountMinor: 1234,
+      transactionDate: dateKey(now),
+      merchant: '来自另一台设备的账单',
+    );
+    await tester.runAsync(
+      () => FinanceStorage.mergeRemoteBundle({
+        'transactions': [remoteTransaction.toMap()],
+      }),
+    );
+
+    await _waitFor(
+      tester,
+      () => find.text('来自另一台设备的账单').evaluate().isNotEmpty,
+    );
+    expect(find.text('来自另一台设备的账单'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('未来月份概览将待发生账单标为计划数据', (tester) async {
+    final now = DateTime.now();
+    final futureMonth = DateTime(now.year, now.month + 1);
+    final plannedAt = DateTime(futureMonth.year, futureMonth.month, 10, 12);
+    final transaction = FinanceTransaction(
+      uuid: 'future-overview-planned-expense',
+      amountMinor: 2500,
+      categoryUuid: 'test-food',
+      transactionDate: dateKey(plannedAt),
+      occurredAt: plannedAt.millisecondsSinceEpoch,
+      timezoneOffsetMinutes: plannedAt.timeZoneOffset.inMinutes,
+      createdAt: now.millisecondsSinceEpoch,
+    );
+
+    await _pump(
+      tester,
+      Scaffold(
+        body: FinanceOverviewPanel(
+          month: futureMonth,
+          summary: FinanceSummary.fromTransactions([transaction]),
+          transactions: [transaction],
+          categories: {
+            'test-food': FinanceCategory(
+              uuid: 'test-food',
+              name: '日常餐饮',
+              icon: '🍜',
+            ),
+          },
+          onAdd: () {},
+          addActionKey: GlobalKey(),
+          onRefresh: () async {},
+        ),
+      ),
+    );
+
+    expect(find.text('计划净支出'), findsOneWidget);
+    expect(find.text('计划总支出'), findsOneWidget);
+    expect(find.text('计划支出分类'), findsOneWidget);
+    expect(find.text('计划每日净支出'), findsOneWidget);
+    expect(find.textContaining('平均计划净支出'), findsOneWidget);
+
+    await _tap(tester, find.text('周视图'));
+    final weeklyTitle = tester
+        .widget<Text>(find.textContaining('每日净支出').first)
+        .data!;
+    expect(weeklyTitle, startsWith('计划'));
+
+    await _tap(tester, find.text('日视图'));
+    final dailyTitle = tester
+        .widget<Text>(find.textContaining('时段净支出').first)
+        .data!;
+    expect(dailyTitle, startsWith('计划'));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('概览在选中月份开始时切换到实际统计', (tester) async {
+    final db = await _seed(tester);
+    var clockNow = DateTime(2026, 10, 31, 23, 59, 58);
+    final plannedAt = DateTime(2026, 11, 15, 12);
+    await tester.runAsync(() async {
+      await db.insert(
+        'finance_transactions',
+        FinanceTransaction(
+          uuid: 'overview-next-month-planned-expense',
+          amountMinor: 2500,
+          categoryUuid: 'test-food',
+          transactionDate: dateKey(plannedAt),
+          occurredAt: plannedAt.millisecondsSinceEpoch,
+          createdAt: clockNow.millisecondsSinceEpoch,
+        ).toMap(),
+      );
+    });
+
+    await _pump(
+      tester,
+      FinanceHomeScreen(username: 'default', clock: () => clockNow),
+      size: const Size(1100, 1000),
+    );
+    await _tap(
+      tester,
+      find.byKey(const ValueKey('finance-overview-period-next')),
+    );
+    await _waitFor(
+      tester,
+      () => find.text('2026年11月').evaluate().isNotEmpty,
+    );
+    expect(find.text('计划净支出'), findsOneWidget);
+
+    clockNow = DateTime(2026, 11, 1, 0, 0, 2);
+    await tester.pump(const Duration(seconds: 3));
+    await _waitFor(
+      tester,
+      () =>
+          find.text('计划净支出').evaluate().isEmpty &&
+          find.text('净支出').evaluate().isNotEmpty,
+    );
+
+    expect(find.text('计划净支出'), findsNothing);
+    expect(find.text('净支出'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('导出菜单按所选月份命名账单', (tester) async {
+    await _seed(tester);
+    final now = DateTime.now();
+    final selectedMonth = DateTime(now.year, now.month - 1);
+    await _pump(tester, const FinanceHomeScreen(username: 'default'));
+
+    await _tap(
+      tester,
+      find.byKey(const ValueKey('finance-overview-period-previous')),
+    );
+    await _waitFor(
+      tester,
+      () => find
+          .text('${selectedMonth.year}年${selectedMonth.month}月')
+          .evaluate()
+          .isNotEmpty,
+    );
+    await _tap(tester, find.byTooltip('更多操作'));
+
+    expect(
+      find.text('导出${selectedMonth.year}年${selectedMonth.month}月账单 CSV'),
+      findsOneWidget,
+    );
+    expect(find.text('导出本月 CSV'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('CSV 导出失败时向用户显示错误', (tester) async {
+    await _seed(tester);
+    const pathProviderChannel = MethodChannel(
+      'plugins.flutter.io/path_provider',
+    );
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(pathProviderChannel, (call) async {
+      if (call.method == 'getApplicationDocumentsDirectory') {
+        throw PlatformException(
+          code: 'test_storage_unavailable',
+          message: '测试存储不可用',
+        );
+      }
+      return null;
+    });
+    addTearDown(
+      () => messenger.setMockMethodCallHandler(pathProviderChannel, null),
+    );
+    await _pump(tester, const FinanceHomeScreen(username: 'default'));
+
+    await _tap(tester, find.byTooltip('更多操作'));
+    await tester.pumpAndSettle();
+    await _tap(tester, find.text('导出本月账单 CSV'));
+    await tester.pump(const Duration(milliseconds: 500));
+
+    expect(find.textContaining('导出失败：'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('首页记账摘要不提前计入未来账单且最近一笔显示已发生记录', (tester) async {
+    final db = await _seed(tester);
+    final now = DateTime.now();
+    final pastAt = DateTime(now.year, now.month, now.day);
+    final futureAt = DateTime(now.year, now.month, now.day, 23, 59, 59);
+    await tester.runAsync(() async {
+      await db.insert(
+        'finance_transactions',
+        FinanceTransaction(
+          uuid: 'today-section-past-expense',
+          amountMinor: 4000,
+          categoryUuid: 'test-food',
+          transactionDate: dateKey(pastAt),
+          occurredAt: pastAt.millisecondsSinceEpoch,
+          createdAt: pastAt.millisecondsSinceEpoch,
+          merchant: '过去支出',
+        ).toMap(),
+      );
+      await db.insert(
+        'finance_transactions',
+        FinanceTransaction(
+          uuid: 'today-section-future-expense',
+          amountMinor: 9000,
+          categoryUuid: 'test-food',
+          transactionDate: dateKey(futureAt),
+          occurredAt: futureAt.millisecondsSinceEpoch,
+          createdAt: now.millisecondsSinceEpoch,
+          merchant: '未来支出',
+        ).toMap(),
+      );
+    });
+
+    await _pump(
+      tester,
+      const Scaffold(body: FinanceTodaySection(username: 'default')),
+    );
+
+    expect(find.text('本月结余'), findsOneWidget);
+    expect(find.text('1 笔'), findsOneWidget);
+    expect(find.text('¥130.00'), findsNothing);
+    expect(find.text('过去支出'), findsOneWidget);
+    expect(find.text('未来支出'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('首页仅有未来账单时显示待发生记录而不是空账单提示', (tester) async {
+    final db = await _seed(tester);
+    var now = DateTime(2026, 10, 7, 12);
+    final futureAt = DateTime(2026, 10, 7, 20);
+    await tester.runAsync(() async {
+      await db.insert(
+        'finance_transactions',
+        FinanceTransaction(
+          uuid: 'today-section-only-future-expense',
+          amountMinor: 6500,
+          categoryUuid: 'test-food',
+          transactionDate: dateKey(futureAt),
+          occurredAt: futureAt.millisecondsSinceEpoch,
+          createdAt: now.millisecondsSinceEpoch,
+          merchant: '计划晚餐',
+        ).toMap(),
+      );
+    });
+
+    await _pump(
+      tester,
+      Scaffold(
+        body: FinanceTodaySection(username: 'default', clock: () => now),
+      ),
+    );
+
+    expect(find.text('0 笔'), findsOneWidget);
+    expect(find.text('本月还没有账单，点击开始记录'), findsNothing);
+    expect(find.text('计划晚餐'), findsOneWidget);
+    expect(find.textContaining('下一笔待发生 · 2026-10-07'), findsOneWidget);
+    expect(find.text('-¥65.00'), findsOneWidget);
+
+    now = futureAt;
+    await tester.pump(const Duration(hours: 8, milliseconds: 2));
+    await _waitFor(
+      tester,
+      () => find.textContaining('最近一笔 · 2026-10-07').evaluate().isNotEmpty,
+    );
+
+    expect(find.textContaining('下一笔待发生'), findsNothing);
+    expect(find.text('本月还没有账单，点击开始记录'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('首页最近一笔按有效发生时刻排序旧账单', (tester) async {
+    final db = await _seed(tester);
+    final now = DateTime.now();
+    final legacyCreatedAt = now.subtract(const Duration(hours: 1));
+    final earlierAt = now.subtract(const Duration(hours: 2));
+    await tester.runAsync(() async {
+      await db.insert(
+        'finance_transactions',
+        FinanceTransaction.fromMap({
+          'uuid': 'today-section-legacy-latest',
+          'amount_minor': 3000,
+          'transaction_date': dateKey(now),
+          'created_at': legacyCreatedAt.millisecondsSinceEpoch,
+          'updated_at': now.millisecondsSinceEpoch,
+          'merchant': '时间未知但较晚',
+        }).toMap(),
+      );
+      await db.insert(
+        'finance_transactions',
+        FinanceTransaction(
+          uuid: 'today-section-known-earlier',
+          amountMinor: 2000,
+          transactionDate: dateKey(now),
+          occurredAt: earlierAt.millisecondsSinceEpoch,
+          createdAt: earlierAt.millisecondsSinceEpoch,
+          updatedAt: earlierAt.millisecondsSinceEpoch,
+          merchant: '有时刻但较早',
+        ).toMap(),
+      );
+    });
+
+    await _pump(
+      tester,
+      const Scaffold(body: FinanceTodaySection(username: 'default')),
+    );
+
+    expect(find.text('时间未知但较晚'), findsOneWidget);
+    expect(find.text('有时刻但较早'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('首页记账小卡明确标出退款后的净支出', (tester) async {
+    final db = await _seed(tester);
+    final now = DateTime.now();
+    final occurredAt = DateTime(
+      now.year,
+      now.month,
+      now.day,
+    ).millisecondsSinceEpoch;
+    final originalUuid = 'today-section-previous-month-expense';
+    await tester.runAsync(() async {
+      await db.insert(
+        'finance_transactions',
+        FinanceTransaction(
+          uuid: originalUuid,
+          amountMinor: 5000,
+          transactionDate: dateKey(DateTime(now.year, now.month - 1, 15)),
+          occurredAt: occurredAt - const Duration(days: 20).inMilliseconds,
+          createdAt: occurredAt - const Duration(days: 20).inMilliseconds,
+          merchant: '上月消费',
+        ).toMap(),
+      );
+      await db.insert(
+        'finance_transactions',
+        FinanceTransaction(
+          uuid: 'today-section-previous-month-refund',
+          type: FinanceTransactionType.refund,
+          amountMinor: 5000,
+          relatedTransactionUuid: originalUuid,
+          transactionDate: dateKey(now),
+          occurredAt: occurredAt,
+          createdAt: now.millisecondsSinceEpoch,
+          merchant: '本月退款',
+        ).toMap(),
+      );
+    });
+
+    await _pump(
+      tester,
+      const Scaffold(body: FinanceTodaySection(username: 'default')),
+    );
+
+    expect(find.text('净支出'), findsOneWidget);
+    expect(find.text('支出'), findsNothing);
+    expect(find.text(formatFinanceAmount(-5000)), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('首页记账摘要跨月后自动刷新到新月份', (tester) async {
+    final db = await _seed(tester);
+    var clockNow = DateTime(2026, 10, 31, 23, 59, 58);
+    final nextMonthAt = DateTime(2026, 11);
+    await tester.runAsync(() async {
+      await db.insert(
+        'finance_transactions',
+        FinanceTransaction(
+          uuid: 'today-section-before-month-rollover',
+          amountMinor: 2000,
+          transactionDate: dateKey(clockNow),
+          occurredAt: clockNow.millisecondsSinceEpoch,
+          createdAt: clockNow.millisecondsSinceEpoch,
+          merchant: '十月账单',
+        ).toMap(),
+      );
+      await db.insert(
+        'finance_transactions',
+        FinanceTransaction(
+          uuid: 'today-section-after-month-rollover',
+          type: FinanceTransactionType.income,
+          amountMinor: 3000,
+          transactionDate: dateKey(nextMonthAt),
+          occurredAt: nextMonthAt.millisecondsSinceEpoch,
+          createdAt: clockNow.millisecondsSinceEpoch,
+          merchant: '十一月收入',
+        ).toMap(),
+      );
+    });
+
+    await _pump(
+      tester,
+      Scaffold(
+        body: FinanceTodaySection(username: 'default', clock: () => clockNow),
+      ),
+    );
+    expect(find.text('十月账单'), findsOneWidget);
+    expect(find.text('十一月收入'), findsNothing);
+
+    clockNow = DateTime(2026, 11, 1, 0, 0, 2);
+    await tester.pump(const Duration(seconds: 3));
+    await _waitFor(tester, () => find.text('十一月收入').evaluate().isNotEmpty);
+
+    expect(find.text('十月账单'), findsNothing);
+    expect(find.text('十一月收入'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('记账概览跨月后更新所选月份状态', (tester) async {
+    await _seed(tester);
+    var clockNow = DateTime(2026, 10, 31, 23, 59, 58);
+    await _pump(
+      tester,
+      FinanceHomeScreen(username: 'default', clock: () => clockNow),
+      size: const Size(1100, 1000),
+    );
+
+    expect(find.text('本月没有可展示的净支出分类'), findsOneWidget);
+    clockNow = DateTime(2026, 11, 1, 0, 0, 2);
+    await tester.pump(const Duration(seconds: 3));
+    await _waitFor(
+      tester,
+      () => find.text('2026年10月没有可展示的净支出分类').evaluate().isNotEmpty,
+    );
+
+    expect(find.text('本月没有可展示的净支出分类'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('夏令时回拨日以及月底账单在日周月视图中都能显示', (tester) async {
+    final spendingLabel = DateTime(2026, 11).isAfter(DateTime.now())
+        ? '计划净支出'
+        : '净支出';
+    final transactions = [
+      FinanceTransaction(
+        uuid: 'dst-fallback-first-day',
+        amountMinor: 2000,
+        transactionDate: '2026-11-01',
+      ),
+      FinanceTransaction(
+        uuid: 'dst-fallback-month-end',
+        amountMinor: 3000,
+        transactionDate: '2026-11-30',
+      ),
+    ];
+    await _pump(
+      tester,
+      Scaffold(
+        body: FinanceOverviewPanel(
+          month: DateTime(2026, 11),
+          summary: FinanceSummary.fromTransactions(transactions),
+          transactions: transactions,
+          categories: const {},
+          onAdd: () {},
+          addActionKey: GlobalKey(),
+          onRefresh: () async {},
+        ),
+      ),
+      size: const Size(1100, 1200),
+    );
+
+    await _tap(tester, find.text('日视图'));
+    expect(find.byTooltip('未知时刻 · $spendingLabel ¥20.00'), findsOneWidget);
+
+    await _tap(tester, find.text('周视图'));
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Tooltip &&
+            widget.message?.contains('11月1日') == true &&
+            widget.message?.contains('$spendingLabel ¥20.00') == true,
+      ),
+      findsOneWidget,
+    );
+
+    await _tap(tester, find.text('月视图'));
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Tooltip &&
+            widget.message?.contains('11月30日') == true &&
+            widget.message?.contains('$spendingLabel ¥30.00') == true,
+      ),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('日视图小时分布使用账单记录时区', (tester) async {
+    final now = DateTime.now();
+    final transaction = FinanceTransaction(
+      uuid: 'daily-chart-timezone-entry',
+      amountMinor: 2000,
+      categoryUuid: 'test-food',
+      transactionDate: dateKey(now),
+      occurredAt:
+          DateTime.utc(
+            now.year,
+            now.month,
+            now.day,
+            0,
+            30,
+          ).millisecondsSinceEpoch -
+          14 * 60 * 60 * 1000,
+      timezoneOffsetMinutes: 14 * 60,
+      createdAt: DateTime.now()
+          .subtract(const Duration(hours: 1))
+          .millisecondsSinceEpoch,
+    );
+    await _pump(
+      tester,
+      Scaffold(
+        body: FinanceOverviewPanel(
+          month: DateTime(now.year, now.month),
+          summary: FinanceSummary.fromTransactions([transaction]),
+          transactions: [transaction],
+          categories: {
+            'test-food': FinanceCategory(
+              uuid: 'test-food',
+              name: '日常餐饮',
+              icon: '🍜',
+            ),
+          },
+          onAdd: () {},
+          addActionKey: GlobalKey(),
+          onRefresh: () async {},
+        ),
+      ),
+    );
+    await _tap(tester, find.text('日视图'));
+
+    expect(find.byTooltip('0时 · 净支出 ¥20.00'), findsOneWidget);
+    expect(find.byTooltip('12时 · 净支出 ¥0.00'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('日视图把未知发生时刻单独显示', (tester) async {
+    final entryAt = DateTime.now().subtract(const Duration(minutes: 1));
+    final transaction = FinanceTransaction.fromMap({
+      'uuid': 'overview-unknown-occurrence-hour',
+      'amount_minor': 2000,
+      'transaction_date': dateKey(entryAt),
+      'created_at': entryAt.millisecondsSinceEpoch,
+      'updated_at': entryAt.millisecondsSinceEpoch,
+      'merchant': '时间未知账单',
+    });
+
+    await _pump(
+      tester,
+      Scaffold(
+        body: FinanceOverviewPanel(
+          month: DateTime(entryAt.year, entryAt.month),
+          summary: FinanceSummary.fromTransactions([transaction]),
+          transactions: [transaction],
+          categories: const {},
+          onAdd: () {},
+          addActionKey: GlobalKey(),
+          onRefresh: () async {},
+        ),
+      ),
+    );
+    await _tap(tester, find.text('日视图'));
+
+    expect(find.byTooltip('未知时刻 · 净支出 ¥20.00'), findsOneWidget);
+    expect(find.byTooltip('12时 · 净支出 ¥20.00'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('退款超过支出时净支出图表仍显示负值', (tester) async {
+    final refund = FinanceTransaction(
+      uuid: 'overview-net-refund',
+      type: FinanceTransactionType.refund,
+      amountMinor: 5000,
+      transactionDate: '2026-09-02',
+    );
+
+    await _pump(
+      tester,
+      Scaffold(
+        body: FinanceOverviewPanel(
+          month: _month,
+          summary: FinanceSummary.fromTransactions([refund]),
+          transactions: [refund],
+          categories: const {},
+          onAdd: () {},
+          addActionKey: GlobalKey(),
+          onRefresh: () async {},
+        ),
+      ),
+    );
+
+    expect(find.text('每日净支出'), findsOneWidget);
+    expect(find.text('本月还没有净支出记录'), findsNothing);
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Tooltip &&
+            widget.message?.contains('净支出 -¥50.00') == true,
+      ),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('类别消费占比按支出计算，不被某类超额退款放大', (tester) async {
+    final transactions = [
+      FinanceTransaction(
+        uuid: 'share-expense-a',
+        amountMinor: 10000,
+        categoryUuid: 'share-category-a',
+        transactionDate: '2026-09-02',
+      ),
+      FinanceTransaction(
+        uuid: 'share-expense-b',
+        amountMinor: 5000,
+        categoryUuid: 'share-category-b',
+        transactionDate: '2026-09-02',
+      ),
+      FinanceTransaction(
+        uuid: 'share-refund-b',
+        type: FinanceTransactionType.refund,
+        amountMinor: 10000,
+        categoryUuid: 'share-category-b',
+        transactionDate: '2026-09-03',
+      ),
+    ];
+
+    await _pump(
+      tester,
+      Scaffold(
+        body: FinanceOverviewPanel(
+          month: _month,
+          summary: FinanceSummary.fromTransactions(transactions),
+          transactions: transactions,
+          categories: const {},
+          onAdd: () {},
+          addActionKey: GlobalKey(),
+          onRefresh: () async {},
+        ),
+      ),
+      size: const Size(1100, 1500),
+    );
+
+    final shareSemantics = tester.widget<Semantics>(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Semantics &&
+            widget.properties.label?.startsWith('各类别支出占比：') == true,
+      ),
+    );
+    expect(shareSemantics.properties.label, contains('66.7%'));
+    expect(shareSemantics.properties.label, contains('33.3%'));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('支出与同日退款相抵时图表说明净额为零', (tester) async {
+    final occurredAt = DateTime(2026, 9, 2, 10).millisecondsSinceEpoch;
+    final transactions = [
+      FinanceTransaction(
+        uuid: 'overview-offset-expense',
+        amountMinor: 5000,
+        transactionDate: '2026-09-02',
+        occurredAt: occurredAt,
+        createdAt: occurredAt,
+      ),
+      FinanceTransaction(
+        uuid: 'overview-offset-refund',
+        type: FinanceTransactionType.refund,
+        amountMinor: 5000,
+        transactionDate: '2026-09-02',
+        occurredAt: occurredAt,
+        createdAt: occurredAt,
+      ),
+    ];
+
+    await _pump(
+      tester,
+      Scaffold(
+        body: FinanceOverviewPanel(
+          month: _month,
+          summary: FinanceSummary.fromTransactions(transactions),
+          transactions: transactions,
+          categories: const {},
+          onAdd: () {},
+          addActionKey: GlobalKey(),
+          onRefresh: () async {},
+        ),
+      ),
+    );
+
+    expect(find.text('支出与退款相抵，净支出为 ¥0.00'), findsOneWidget);
+    expect(find.textContaining('还没有净支出记录'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('记账概览月份箭头遵守日期选择器范围', (tester) async {
+    Future<void> pumpMonth(DateTime month) => _pump(
+      tester,
+      Scaffold(
+        body: FinanceOverviewPanel(
+          month: month,
+          summary: const FinanceSummary(),
+          transactions: const [],
+          categories: const {},
+          onAdd: () {},
+          addActionKey: GlobalKey(),
+          onRefresh: () async {},
+        ),
+      ),
+    );
+
+    await pumpMonth(DateTime(2000));
+    expect(
+      tester
+          .widget<IconButton>(
+            find.byKey(const ValueKey('finance-overview-period-previous')),
+          )
+          .onPressed,
+      isNull,
+    );
+    expect(
+      tester
+          .widget<IconButton>(
+            find.byKey(const ValueKey('finance-overview-period-next')),
+          )
+          .onPressed,
+      isNotNull,
+    );
+
+    final lastAllowedDate = DateTime.now().add(const Duration(days: 3650));
+    await pumpMonth(DateTime(lastAllowedDate.year, lastAllowedDate.month));
+    expect(
+      tester
+          .widget<IconButton>(
+            find.byKey(const ValueKey('finance-overview-period-next')),
+          )
+          .onPressed,
+      isNull,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('预算月份箭头遵守日期选择器范围', (tester) async {
+    await _seed(tester);
+    final now = DateTime.now();
+    Future<void> pumpMonth(DateTime month) => _pump(
+      tester,
+      FinanceBudgetScreen(initialMonth: month, clock: () => now),
+      size: const Size(1100, 1000),
+    );
+    IconButton buttonFor(String tooltip) => tester.widget<IconButton>(
+      find
+          .ancestor(
+            of: find.byTooltip(tooltip),
+            matching: find.byType(IconButton),
+          )
+          .first,
+    );
+
+    await pumpMonth(DateTime(2000));
+    expect(buttonFor('上个月').onPressed, isNull);
+    expect(buttonFor('下个月').onPressed, isNotNull);
+
+    final lastAllowedDate = now.add(const Duration(days: 3650));
+    await pumpMonth(DateTime(lastAllowedDate.year, lastAllowedDate.month));
+    expect(buttonFor('下个月').onPressed, isNull);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('预算页跨月后更新本月统计标签', (tester) async {
+    final db = await _seed(tester);
+    var clockNow = DateTime(2026, 10, 31, 23, 59, 58);
+    await tester.runAsync(() async {
+      await db.insert(
+        'finance_budgets',
+        FinanceBudget(
+          uuid: 'budget-month-rollover',
+          monthKey: '2026-10',
+          amountMinor: 10000,
+        ).toMap(),
+      );
+    });
+
+    await _pump(
+      tester,
+      FinanceBudgetScreen(clock: () => clockNow),
+      size: const Size(1100, 1000),
+    );
+    expect(find.text('本月总预算'), findsOneWidget);
+
+    clockNow = DateTime(2026, 11, 1, 0, 0, 2);
+    await tester.pump(const Duration(seconds: 3));
+    await _waitFor(
+      tester,
+      () => find.text('2026年10月总预算').evaluate().isNotEmpty,
+    );
+
+    expect(find.text('本月总预算'), findsNothing);
+    expect(find.text('2026年10月总预算'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('历史月份的小结和分类空状态显示所选月份', (tester) async {
+    final now = DateTime.now();
+    final selectedMonth = DateTime(now.year, now.month - 1);
+    final transactionDate = dateKey(
+      DateTime(selectedMonth.year, selectedMonth.month, 2),
+    );
+    final transactions = [
+      FinanceTransaction(
+        uuid: 'overview-offset-expense',
+        amountMinor: 5000,
+        categoryUuid: 'test-food',
+        transactionDate: transactionDate,
+      ),
+      FinanceTransaction(
+        uuid: 'overview-offset-refund',
+        type: FinanceTransactionType.refund,
+        amountMinor: 5000,
+        categoryUuid: 'test-food',
+        transactionDate: transactionDate,
+      ),
+    ];
+
+    await _pump(
+      tester,
+      Scaffold(
+        body: FinanceOverviewPanel(
+          month: selectedMonth,
+          summary: FinanceSummary.fromTransactions(transactions),
+          transactions: transactions,
+          categories: const {},
+          onAdd: () {},
+          addActionKey: GlobalKey(),
+          onRefresh: () async {},
+        ),
+      ),
+    );
+
+    final monthLabel = '${selectedMonth.year}年${selectedMonth.month}月';
+    expect(find.text('$monthLabel没有可展示的净支出分类'), findsOneWidget);
+    expect(find.text('$monthLabel小结'), findsOneWidget);
+    expect(find.text('本月没有可展示的净支出分类'), findsNothing);
+    expect(find.text('本月小结'), findsNothing);
+
+    await _tap(tester, find.text('周视图'));
+    final weeklyChartTitle = tester
+        .widget<Text>(find.textContaining('每日净支出').first)
+        .data!;
+    expect(weeklyChartTitle, isNot('本周每日净支出'));
+    final weekLabel = weeklyChartTitle.replaceFirst('每日净支出', '');
+    expect(find.text('$weekLabel小结'), findsOneWidget);
+    expect(find.text('$weekLabel没有可展示的净支出分类'), findsOneWidget);
+
+    await _tap(tester, find.text('日视图'));
+    final dailyChartTitle = tester
+        .widget<Text>(find.textContaining('时段净支出').first)
+        .data!;
+    expect(dailyChartTitle, isNot('当天时段净支出'));
+    final dayLabel = dailyChartTitle.replaceFirst('时段净支出', '');
+    expect(find.text('$dayLabel没有可展示的净支出分类'), findsOneWidget);
+    expect(find.text('$dayLabel还没有净支出记录'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('概览平均净支出不把收入笔数计入分母', (tester) async {
+    final occurredAt = DateTime(2026, 9, 2, 10).millisecondsSinceEpoch;
+    final transactions = [
+      FinanceTransaction(
+        uuid: 'overview-average-expense',
+        amountMinor: 10000,
+        transactionDate: '2026-09-02',
+        occurredAt: occurredAt,
+        createdAt: occurredAt,
+      ),
+      FinanceTransaction(
+        uuid: 'overview-average-refund',
+        type: FinanceTransactionType.refund,
+        amountMinor: 2000,
+        transactionDate: '2026-09-02',
+        occurredAt: occurredAt,
+        createdAt: occurredAt,
+      ),
+      for (var index = 0; index < 3; index++)
+        FinanceTransaction(
+          uuid: 'overview-average-income-$index',
+          type: FinanceTransactionType.income,
+          amountMinor: 5000,
+          transactionDate: '2026-09-02',
+          occurredAt: occurredAt,
+          createdAt: occurredAt,
+        ),
+    ];
+
+    await _pump(
+      tester,
+      Scaffold(
+        body: FinanceOverviewPanel(
+          month: _month,
+          summary: FinanceSummary.fromTransactions(transactions),
+          transactions: transactions,
+          categories: const {},
+          onAdd: () {},
+          addActionKey: GlobalKey(),
+          onRefresh: () async {},
+        ),
+      ),
+    );
+
+    expect(find.text('共 5 笔记录，支出/退款 2 笔，平均净支出 ¥40.00。'), findsOneWidget);
+    expect(find.text('本期结余'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('概览卡片分别显示净支出与总支出', (tester) async {
+    final occurredAt = DateTime(2026, 9, 2, 10).millisecondsSinceEpoch;
+    final transactions = [
+      FinanceTransaction(
+        uuid: 'overview-gross-expense',
+        amountMinor: 10000,
+        transactionDate: '2026-09-02',
+        occurredAt: occurredAt,
+        createdAt: occurredAt,
+      ),
+      FinanceTransaction(
+        uuid: 'overview-gross-refund',
+        type: FinanceTransactionType.refund,
+        amountMinor: 2000,
+        transactionDate: '2026-09-02',
+        occurredAt: occurredAt,
+        createdAt: occurredAt,
+      ),
+    ];
+
+    await _pump(
+      tester,
+      Scaffold(
+        body: FinanceOverviewPanel(
+          month: _month,
+          summary: FinanceSummary.fromTransactions(transactions),
+          transactions: transactions,
+          categories: const {},
+          onAdd: () {},
+          addActionKey: GlobalKey(),
+          onRefresh: () async {},
+        ),
+      ),
+    );
+
+    expect(find.text('净支出'), findsOneWidget);
+    expect(find.text('总支出'), findsOneWidget);
+    final summaryCard = find
+        .ancestor(of: find.text('总支出'), matching: find.byType(Card))
+        .first;
+    expect(
+      find.descendant(of: summaryCard, matching: find.text('¥80.00')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: summaryCard, matching: find.text('¥100.00')),
+      findsOneWidget,
+    );
+    expect(find.text('实际支出'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('只有收入时不显示不存在的平均净支出', (tester) async {
+    final occurredAt = DateTime(2026, 9, 2, 10).millisecondsSinceEpoch;
+    final transactions = [
+      FinanceTransaction(
+        uuid: 'overview-income-only',
+        type: FinanceTransactionType.income,
+        amountMinor: 5000,
+        transactionDate: '2026-09-02',
+        occurredAt: occurredAt,
+        createdAt: occurredAt,
+      ),
+    ];
+
+    await _pump(
+      tester,
+      Scaffold(
+        body: FinanceOverviewPanel(
+          month: _month,
+          summary: FinanceSummary.fromTransactions(transactions),
+          transactions: transactions,
+          categories: const {},
+          onAdd: () {},
+          addActionKey: GlobalKey(),
+          onRefresh: () async {},
+        ),
+      ),
+    );
+
+    expect(find.text('共 1 笔记录，本期暂无支出或退款记录。'), findsOneWidget);
+    expect(find.textContaining('平均净支出'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('账单列表将尚未发生的未来账单标记出来', (tester) async {
+    final now = DateTime(2026, 10, 2, 12);
+    final futureAt = now.add(const Duration(hours: 1));
+    final actualAt = now.subtract(const Duration(hours: 1));
+    final transactions = [
+      FinanceTransaction(
+        uuid: 'ledger-upcoming-bill',
+        amountMinor: 3000,
+        transactionDate: dateKey(futureAt),
+        occurredAt: futureAt.millisecondsSinceEpoch,
+        createdAt: now.millisecondsSinceEpoch,
+        merchant: '未来房租',
+      ),
+      FinanceTransaction(
+        uuid: 'ledger-occurred-bill',
+        amountMinor: 1500,
+        transactionDate: dateKey(now),
+        occurredAt: actualAt.millisecondsSinceEpoch,
+        createdAt: actualAt.millisecondsSinceEpoch,
+        merchant: '已发生账单',
+      ),
+      FinanceTransaction(
+        uuid: 'ledger-upcoming-income',
+        type: FinanceTransactionType.income,
+        amountMinor: 7200,
+        transactionDate: dateKey(futureAt),
+        occurredAt: futureAt.add(const Duration(hours: 1)).millisecondsSinceEpoch,
+        createdAt: now.millisecondsSinceEpoch,
+        merchant: '待到账收入',
+      ),
+    ];
+
+    await _pump(
+      tester,
+      Scaffold(
+        body: FinanceLedgerPanel(
+          clock: () => now,
+          transactions: transactions,
+          categories: const {},
+          paymentMethods: const {},
+          keyword: '',
+          filterType: null,
+          onOpenDetail: (_, _) {},
+          onKeywordChanged: (_) {},
+          onFilterChanged: (_) {},
+          onEdit: (_) {},
+          onDelete: (_) {},
+          onRefund: (_) {},
+        ),
+      ),
+    );
+
+    expect(find.textContaining('待发生'), findsNWidgets(2));
+    expect(find.text('未来房租'), findsOneWidget);
+    expect(find.text('净支出 ¥15.00'), findsOneWidget);
+    expect(find.text('计划净支出 ¥30.00'), findsOneWidget);
+    expect(find.text('计划收入 ¥72.00'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('账单搜索支持列表显示的中文日期', (tester) async {
+    final now = DateTime(2026, 9, 5, 12);
+    final transactions = [
+      FinanceTransaction(
+        uuid: 'ledger-search-date-match',
+        amountMinor: 3000,
+        transactionDate: '2026-09-04',
+        merchant: '日期匹配账单',
+      ),
+      FinanceTransaction(
+        uuid: 'ledger-search-date-other',
+        amountMinor: 1500,
+        transactionDate: '2026-09-05',
+        merchant: '其他日期账单',
+      ),
+    ];
+
+    await _pump(
+      tester,
+      Scaffold(
+        body: FinanceLedgerPanel(
+          clock: () => now,
+          transactions: transactions,
+          categories: const {},
+          paymentMethods: const {},
+          keyword: '9月4日',
+          filterType: null,
+          onOpenDetail: (_, _) {},
+          onKeywordChanged: (_) {},
+          onFilterChanged: (_) {},
+          onEdit: (_) {},
+          onDelete: (_) {},
+          onRefund: (_) {},
+        ),
+      ),
+    );
+
+    expect(find.text('日期匹配账单'), findsOneWidget);
+    expect(find.text('其他日期账单'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('账单搜索按中文月份精确筛选', (tester) async {
+    final now = DateTime(2026, 11, 5, 12);
+    final transactions = [
+      FinanceTransaction(
+        uuid: 'ledger-search-january',
+        amountMinor: 3000,
+        transactionDate: '2026-01-04',
+        merchant: '一月账单',
+      ),
+      FinanceTransaction(
+        uuid: 'ledger-search-november',
+        amountMinor: 1500,
+        transactionDate: '2026-11-04',
+        merchant: '十一月账单',
+      ),
+    ];
+
+    await _pump(
+      tester,
+      Scaffold(
+        body: FinanceLedgerPanel(
+          clock: () => now,
+          transactions: transactions,
+          categories: const {},
+          paymentMethods: const {},
+          keyword: '1月',
+          filterType: null,
+          onOpenDetail: (_, _) {},
+          onKeywordChanged: (_) {},
+          onFilterChanged: (_) {},
+          onEdit: (_) {},
+          onDelete: (_) {},
+          onRefund: (_) {},
+        ),
+      ),
+    );
+
+    expect(find.text('一月账单'), findsOneWidget);
+    expect(find.text('十一月账单'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('账单列表保留已删除付款方式的关联提示并支持搜索', (tester) async {
+    final transaction = FinanceTransaction(
+      uuid: 'ledger-deleted-payment-method',
+      amountMinor: 1500,
+      paymentMethodUuid: 'deleted-payment-method',
+      transactionDate: dateKey(DateTime.now()),
+      merchant: '已删除账户账单',
+    );
+    final income = FinanceTransaction(
+      uuid: 'ledger-income-deleted-account',
+      type: FinanceTransactionType.income,
+      amountMinor: 2500,
+      paymentMethodUuid: 'deleted-income-account',
+      transactionDate: dateKey(DateTime.now()),
+      merchant: '已删除到账账户收入',
+    );
+    FinanceLedgerPanel ledger(String keyword) => FinanceLedgerPanel(
+      transactions: [transaction, income],
+      categories: const {},
+      paymentMethods: const {},
+      keyword: keyword,
+      filterType: null,
+      onOpenDetail: (_, _) {},
+      onKeywordChanged: (_) {},
+      onFilterChanged: (_) {},
+      onEdit: (_) {},
+      onDelete: (_) {},
+      onRefund: (_) {},
+    );
+
+    await _pump(
+      tester,
+      Scaffold(body: ledger('已删除或未知付款方式')),
+    );
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is TextField &&
+            widget.decoration?.hintText == '搜索商家、备注、分类、关联账户或日期',
+      ),
+      findsOneWidget,
+    );
+
+    final expenseRow = find
+        .ancestor(of: find.text('已删除账户账单'), matching: find.byType(ListTile))
+        .first;
+    final incomeRow = find
+        .ancestor(of: find.text('已删除到账账户收入'), matching: find.byType(ListTile))
+        .first;
+    expect(
+      find.descendant(
+        of: expenseRow,
+        matching: find.textContaining('已删除或未知付款方式'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: incomeRow,
+        matching: find.textContaining('已删除或未知到账账户'),
+      ),
+      findsOneWidget,
+    );
+    await _pump(
+      tester,
+      Scaffold(body: ledger('已删除或未知到账账户')),
+    );
+    expect(find.text('已删除到账账户收入'), findsOneWidget);
+    expect(find.text('已删除账户账单'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('历史账单列表和详情标记已归档分类及账户', (tester) async {
+    final category = FinanceCategory(
+      uuid: 'archived-history-category',
+      name: '归档历史分类',
+      isArchived: true,
+    );
+    final paymentMethod = FinancePaymentMethod(
+      uuid: 'archived-history-payment',
+      name: '归档历史账户',
+      isArchived: true,
+    );
+    final transaction = FinanceTransaction(
+      uuid: 'archived-history-transaction',
+      amountMinor: 1500,
+      categoryUuid: category.uuid,
+      paymentMethodUuid: paymentMethod.uuid,
+      transactionDate: dateKey(DateTime.now()),
+      merchant: '归档关联账单',
+    );
+    FinanceLedgerPanel ledger({String keyword = ''}) => FinanceLedgerPanel(
+      transactions: [transaction],
+      categories: {category.uuid: category},
+      paymentMethods: {paymentMethod.uuid: paymentMethod},
+      keyword: keyword,
+      filterType: null,
+      onOpenDetail: (_, _) {},
+      onKeywordChanged: (_) {},
+      onFilterChanged: (_) {},
+      onEdit: (_) {},
+      onDelete: (_) {},
+      onRefund: (_) {},
+    );
+
+    await _pump(tester, Scaffold(body: ledger()));
+    final row = find
+        .ancestor(of: find.text('归档关联账单'), matching: find.byType(ListTile))
+        .first;
+    expect(
+      find.descendant(
+        of: row,
+        matching: find.textContaining('归档历史分类（已归档）'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: row,
+        matching: find.textContaining('归档历史账户（已归档）'),
+      ),
+      findsOneWidget,
+    );
+
+    await _pump(
+      tester,
+      Scaffold(body: ledger(keyword: '已归档')),
+    );
+    expect(find.text('归档关联账单'), findsOneWidget);
+
+    await _pump(
+      tester,
+      FinanceTransactionDetailScreen(
+        transaction: transaction,
+        category: category,
+        categoryDisplayName: financeCategoryDisplayName(category, [category]),
+        paymentMethod: paymentMethod,
+      ),
+    );
+    expect(find.textContaining('归档历史分类（已归档）'), findsOneWidget);
+    expect(find.textContaining('归档历史账户（已归档）'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('历史账单列表和详情区分同名付款方式', (tester) async {
+    final firstMethod = FinancePaymentMethod(
+      uuid: 'ledger-duplicate-account-one',
+      name: '历史同名账户',
+      sortOrder: 10,
+    );
+    final secondMethod = FinancePaymentMethod(
+      uuid: 'ledger-duplicate-account-two',
+      name: '历史同名账户',
+      sortOrder: 20,
+    );
+    final transaction = FinanceTransaction(
+      uuid: 'ledger-duplicate-account-transaction',
+      amountMinor: 3200,
+      paymentMethodUuid: secondMethod.uuid,
+      transactionDate: dateKey(DateTime.now()),
+      merchant: '同名账户历史账单',
+    );
+    FinanceLedgerPanel ledger({String keyword = ''}) => FinanceLedgerPanel(
+      transactions: [transaction],
+      categories: const {},
+      paymentMethods: {
+        firstMethod.uuid: firstMethod,
+        secondMethod.uuid: secondMethod,
+      },
+      keyword: keyword,
+      filterType: null,
+      onOpenDetail: (_, _) {},
+      onKeywordChanged: (_) {},
+      onFilterChanged: (_) {},
+      onEdit: (_) {},
+      onDelete: (_) {},
+      onRefund: (_) {},
+    );
+
+    await _pump(tester, Scaffold(body: ledger()));
+    final row = find
+        .ancestor(of: find.text('同名账户历史账单'), matching: find.byType(ListTile))
+        .first;
+    expect(
+      find.descendant(
+        of: row,
+        matching: find.textContaining('历史同名账户（同名账户 2/2）'),
+      ),
+      findsOneWidget,
+    );
+
+    await _pump(tester, Scaffold(body: ledger(keyword: '同名账户 2/2')));
+    expect(find.text('同名账户历史账单'), findsOneWidget);
+
+    await _pump(
+      tester,
+      FinanceTransactionDetailScreen(
+        transaction: transaction,
+        paymentMethod: secondMethod,
+        paymentMethods: [firstMethod, secondMethod],
+      ),
+    );
+    expect(find.textContaining('历史同名账户（同名账户 2/2）'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('账单详情区分未指定和已删除付款方式', (tester) async {
+    await _seed(tester);
+    final transaction = FinanceTransaction(
+      uuid: 'detail-deleted-payment-method',
+      amountMinor: 1500,
+      paymentMethodUuid: 'deleted-payment-method',
+      transactionDate: dateKey(DateTime.now()),
+      merchant: '已删除账户详情',
+    );
+    await tester.runAsync(() => FinanceStorage.saveTransaction(transaction));
+
+    await _pump(tester, FinanceTransactionDetailScreen(transaction: transaction));
+    await _waitFor(tester, () => find.text('付款方式').evaluate().isNotEmpty);
+
+    expect(find.text('已删除或未知付款方式'), findsOneWidget);
+    expect(find.text('未指定'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('收入和退款详情按类型显示到账账户状态', (tester) async {
+    await _seed(tester);
+    final now = dateKey(DateTime.now());
+    final income = FinanceTransaction(
+      uuid: 'detail-income-unknown-account',
+      type: FinanceTransactionType.income,
+      amountMinor: 2500,
+      paymentMethodUuid: 'deleted-income-account',
+      transactionDate: now,
+      merchant: '收入详情未知账户',
+    );
+    final original = FinanceTransaction(
+      uuid: 'detail-refund-original',
+      amountMinor: 5000,
+      transactionDate: now,
+      merchant: '退款详情原单',
+    );
+    final refund = FinanceTransaction(
+      uuid: 'detail-refund-unassigned',
+      type: FinanceTransactionType.refund,
+      amountMinor: 1000,
+      transactionDate: now,
+      relatedTransactionUuid: original.uuid,
+      merchant: '未指定退款到账账户',
+    );
+    await tester.runAsync(() async {
+      await FinanceStorage.saveTransaction(income);
+      await FinanceStorage.saveTransaction(original);
+      await FinanceStorage.saveTransaction(refund);
+    });
+
+    await _pump(tester, FinanceTransactionDetailScreen(transaction: income));
+    await _waitFor(tester, () => find.text('到账账户').evaluate().isNotEmpty);
+    expect(find.text('已删除或未知到账账户'), findsOneWidget);
+    expect(find.text('付款方式'), findsNothing);
+
+    await _pump(tester, FinanceTransactionDetailScreen(transaction: refund));
+    await _waitFor(
+      tester,
+      () => find.text('退款到账账户').evaluate().isNotEmpty,
+    );
+    expect(find.text('未指定（不更新账户余额）'), findsOneWidget);
+    expect(find.text('付款方式'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    '账单详情按发生日期的本机偏移判断时区提示',
+    (tester) async {
+      await _seed(tester);
+      final changedDate = _upcomingTimezoneOffsetChangeDate()!;
+      final occurrence = DateTime(
+        changedDate.year,
+        changedDate.month,
+        changedDate.day,
+        9,
+      );
+      final transaction = FinanceTransaction(
+        uuid: 'detail-local-dst-occurrence',
+        amountMinor: 1200,
+        transactionDate: dateKey(occurrence),
+        occurredAt: occurrence.millisecondsSinceEpoch,
+        timezoneOffsetMinutes: occurrence.timeZoneOffset.inMinutes,
+        merchant: '本地夏令时账单',
+      );
+
+      await _pump(
+        tester,
+        FinanceTransactionDetailScreen(transaction: transaction),
+      );
+
+      expect(
+        find.textContaining(
+          '（${financeTimezoneLabel(occurrence.timeZoneOffset.inMinutes)}）',
+        ),
+        findsNothing,
+      );
+      expect(tester.takeException(), isNull);
+    },
+    skip: _upcomingTimezoneOffsetChangeDate() == null,
+  );
+
+  testWidgets('账单详情仍为异地发生时刻显示记录时区', (tester) async {
+    await _seed(tester);
+    final now = DateTime.now();
+    final deviceOffset = now.timeZoneOffset.inMinutes;
+    final recordedOffset = deviceOffset == 14 * 60
+        ? -14 * 60
+        : deviceOffset + 60;
+    final occurrenceLocal = DateTime.fromMillisecondsSinceEpoch(
+      now.millisecondsSinceEpoch,
+      isUtc: true,
+    ).add(Duration(minutes: recordedOffset));
+    final transaction = FinanceTransaction(
+      uuid: 'detail-remote-timezone-occurrence',
+      amountMinor: 1200,
+      transactionDate: dateKey(occurrenceLocal),
+      occurredAt: now.millisecondsSinceEpoch,
+      timezoneOffsetMinutes: recordedOffset,
+      merchant: '异地时区账单',
+    );
+
+    await _pump(
+      tester,
+      FinanceTransactionDetailScreen(transaction: transaction),
+    );
+
+    expect(
+      find.textContaining('（${financeTimezoneLabel(recordedOffset)}）'),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('账单被删除后打开的详情停止显示旧记录', (tester) async {
+    final db = await _seed(tester);
+    final transaction = FinanceTransaction(
+      uuid: 'deleted-open-detail',
+      amountMinor: 8500,
+      transactionDate: '2026-10-02',
+      merchant: '等待同步删除的账单',
+    );
+    await tester.runAsync(
+      () => db.insert('finance_transactions', transaction.toMap()),
+    );
+
+    await _pump(
+      tester,
+      Builder(
+        builder: (context) => Scaffold(
+          body: TextButton(
+            onPressed: () {
+              Navigator.of(context).push<void>(
+                MaterialPageRoute(
+                  builder: (_) =>
+                      FinanceTransactionDetailScreen(transaction: transaction),
+                ),
+              );
+            },
+            child: const Text('打开测试账单'),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('打开测试账单'));
+    await tester.pumpAndSettle();
+    expect(find.text('等待同步删除的账单'), findsOneWidget);
+
+    await tester.runAsync(
+      () => FinanceStorage.deleteTransaction(transaction.uuid),
+    );
+    await _waitFor(tester, () => find.text('账单已删除').evaluate().isNotEmpty);
+
+    expect(find.text('等待同步删除的账单'), findsNothing);
+    expect(
+      find.byKey(const ValueKey('finance-transaction-detail-edit')),
+      findsNothing,
+    );
+    expect(find.text('这笔记录已从账本中移除。'), findsOneWidget);
+
+    await tester.runAsync(
+      () => FinanceStorage.restoreTransaction(transaction.uuid),
+    );
+    await _waitFor(tester, () => find.text('等待同步删除的账单').evaluate().isNotEmpty);
+    expect(
+      find.byKey(const ValueKey('finance-transaction-detail-edit')),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('窄屏账单列表中的大额金额不会挤出卡片', (tester) async {
+    final transaction = FinanceTransaction(
+      uuid: 'ledger-large-amount-narrow-screen',
+      amountMinor: maxFinanceAmountMinor,
+      transactionDate: '2026-09-04',
+      merchant: '大额账单',
+    );
+
+    await _pump(
+      tester,
+      Scaffold(
+        body: FinanceLedgerPanel(
+          transactions: [transaction],
+          categories: const {},
+          paymentMethods: const {},
+          keyword: '',
+          filterType: null,
+          onOpenDetail: (_, _) {},
+          onKeywordChanged: (_) {},
+          onFilterChanged: (_) {},
+          onEdit: (_) {},
+          onDelete: (_) {},
+          onRefund: (_) {},
+        ),
+      ),
+      size: const Size(320, 740),
+    );
+
+    expect(find.text('大额账单'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('未分类账单筛选只显示未关联分类的账单', (tester) async {
+    final uncategorized = FinanceTransaction(
+      uuid: 'ledger-uncategorized',
+      amountMinor: 1200,
+      transactionDate: '2026-09-04',
+      merchant: '未分类支出',
+    );
+    final categorized = FinanceTransaction(
+      uuid: 'ledger-categorized',
+      amountMinor: 1800,
+      categoryUuid: 'test-food',
+      transactionDate: '2026-09-04',
+      merchant: '分类支出',
+    );
+    final deletedCategoryEntry = FinanceTransaction(
+      uuid: 'ledger-deleted-category',
+      amountMinor: 900,
+      categoryUuid: 'deleted-food-category',
+      transactionDate: '2026-09-04',
+      merchant: '删除分类后保留的账单',
+    );
+    String? changedCategoryUuid = financeUncategorizedCategoryFilterUuid;
+
+    await _pump(
+      tester,
+      Scaffold(
+        body: FinanceLedgerPanel(
+          transactions: [uncategorized, categorized, deletedCategoryEntry],
+          categories: {
+            'test-food': FinanceCategory(
+              uuid: 'test-food',
+              name: '日常餐饮',
+              icon: '🍜',
+            ),
+          },
+          paymentMethods: const {},
+          keyword: '',
+          filterType: null,
+          categoryUuid: financeUncategorizedCategoryFilterUuid,
+          onOpenDetail: (_, _) {},
+          onKeywordChanged: (_) {},
+          onFilterChanged: (_) {},
+          onCategoryChanged: (value) => changedCategoryUuid = value,
+          onEdit: (_) {},
+          onDelete: (_) {},
+          onRefund: (_) {},
+        ),
+      ),
+    );
+
+    expect(find.text('未分类支出'), findsOneWidget);
+    expect(find.text('分类支出'), findsNothing);
+    expect(find.text('删除分类后保留的账单'), findsNothing);
+    expect(find.text('分类 · 未分类'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find
+            .ancestor(
+              of: find.text('未分类支出'),
+              matching: find.byType(Card),
+            )
+            .first,
+        matching: find.text('未分类'),
+      ),
+      findsOneWidget,
+    );
+    await _tap(
+      tester,
+      find.byKey(const ValueKey('finance-ledger-category-filter')),
+    );
+    expect(changedCategoryUuid, isNull);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('分类已删除的历史账单仍可从分类账单入口查看', (tester) async {
+    final transaction = FinanceTransaction(
+      uuid: 'ledger-deleted-category-detail',
+      amountMinor: 900,
+      categoryUuid: 'deleted-food-category',
+      transactionDate: '2026-09-04',
+      merchant: '删除分类后的历史账单',
+    );
+
+    await _pump(
+      tester,
+      Scaffold(
+        body: FinanceLedgerPanel(
+          transactions: [transaction],
+          categories: const {},
+          paymentMethods: const {},
+          keyword: '',
+          filterType: null,
+          categoryUuid: 'deleted-food-category',
+          onOpenDetail: (_, _) {},
+          onKeywordChanged: (_) {},
+          onFilterChanged: (_) {},
+          onCategoryChanged: (_) {},
+          onEdit: (_) {},
+          onDelete: (_) {},
+          onRefund: (_) {},
+        ),
+      ),
+    );
+
+    expect(find.text('删除分类后的历史账单'), findsOneWidget);
+    expect(find.text('分类已删除或不可用'), findsOneWidget);
+    expect(find.text('分类 · 分类已删除或不可用'), findsOneWidget);
+    expect(find.text('未分类'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('分类汇总和详情明确标记已归档分类', (tester) async {
+    final now = DateTime.now();
+    final root = FinanceCategory(
+      uuid: 'archived-summary-root',
+      name: '归档大类',
+      icon: '🍜',
+      isArchived: true,
+    );
+    final child = FinanceCategory(
+      uuid: 'archived-summary-child',
+      name: '归档小类',
+      parentUuid: root.uuid,
+      isArchived: true,
+    );
+    final transaction = FinanceTransaction(
+      uuid: 'archived-summary-transaction',
+      amountMinor: 3500,
+      categoryUuid: child.uuid,
+      transactionDate: dateKey(now),
+      occurredAt: now.millisecondsSinceEpoch,
+      timezoneOffsetMinutes: now.timeZoneOffset.inMinutes,
+      merchant: '归档分类账单',
+    );
+    final categories = {root.uuid: root, child.uuid: child};
+
+    await _pump(
+      tester,
+      Scaffold(
+        body: FinanceOverviewPanel(
+          month: DateTime(now.year, now.month),
+          clock: () => now,
+          summary: FinanceSummary.fromTransactions([transaction]),
+          transactions: [transaction],
+          categories: categories,
+          onAdd: () {},
+          addActionKey: GlobalKey(),
+          onRefresh: () async {},
+        ),
+      ),
+    );
+    await tester.scrollUntilVisible(
+      _key('finance-overview-category-${root.uuid}'),
+      250,
+      maxScrolls: 20,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.textContaining('已归档 归档大类'), findsOneWidget);
+
+    await _pump(
+      tester,
+      FinanceCategoryDetailScreen(
+        periodTitle: '本月',
+        clock: () => now,
+        rootCategoryUuid: root.uuid,
+        transactions: [transaction],
+        categories: categories,
+      ),
+    );
+    expect(find.text('归档大类（已归档）'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('归档大类 - 归档小类（已归档）'),
+      250,
+      maxScrolls: 20,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('归档大类 - 归档小类（已归档）'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('概览将已删除分类的历史支出单独列出', (tester) async {
+    final now = DateTime.now();
+    final transaction = FinanceTransaction(
+      uuid: 'deleted-overview-category-transaction',
+      amountMinor: 3200,
+      categoryUuid: 'deleted-overview-category',
+      transactionDate: dateKey(now),
+      merchant: '保留分类关联的历史支出',
+    );
+
+    await _pump(
+      tester,
+      Scaffold(
+        body: FinanceOverviewPanel(
+          month: DateTime(now.year, now.month),
+          clock: () => now,
+          summary: FinanceSummary.fromTransactions([transaction]),
+          transactions: [transaction],
+          categories: {
+            'deleted-overview-category': FinanceCategory(
+              uuid: 'deleted-overview-category',
+              name: '历史分类',
+              isDeleted: true,
+            ),
+          },
+          onAdd: () {},
+          addActionKey: GlobalKey(),
+          onRefresh: () async {},
+        ),
+      ),
+      size: const Size(900, 1500),
+    );
+
+    expect(
+      find.descendant(
+        of: _key('finance-overview-category-deleted-overview-category'),
+        matching: find.textContaining('历史分类（已删除）'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      _key('finance-overview-category-deleted-overview-category'),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('窄屏大字号分类详情容纳重名完整路径', (tester) async {
+    final firstParent = FinanceCategory(
+      uuid: 'narrow-duplicate-parent-first',
+      name: '很长的重名家庭生活支出分类',
+      sortOrder: 10,
+    );
+    final secondParent = FinanceCategory(
+      uuid: 'narrow-duplicate-parent-second',
+      name: '很长的重名家庭生活支出分类',
+      sortOrder: 20,
+    );
+    final firstChild = FinanceCategory(
+      uuid: 'narrow-duplicate-child-first',
+      name: '很长的重名日常用品购物分类',
+      parentUuid: firstParent.uuid,
+      sortOrder: 10,
+    );
+    final secondChild = FinanceCategory(
+      uuid: 'narrow-duplicate-child-second',
+      name: '很长的重名日常用品购物分类',
+      parentUuid: firstParent.uuid,
+      sortOrder: 20,
+    );
+    final categories = {
+      for (final category in [
+        firstParent,
+        secondParent,
+        firstChild,
+        secondChild,
+      ])
+        category.uuid: category,
+    };
+
+    await _pump(
+      tester,
+      FinanceCategoryDetailScreen(
+        periodTitle: '2026年9月',
+        rootCategoryUuid: firstParent.uuid,
+        transactions: [
+          FinanceTransaction(
+            uuid: 'narrow-duplicate-transaction-first',
+            amountMinor: 2500,
+            categoryUuid: firstChild.uuid,
+            transactionDate: '2026-09-05',
+          ),
+          FinanceTransaction(
+            uuid: 'narrow-duplicate-transaction-second',
+            amountMinor: 3800,
+            categoryUuid: secondChild.uuid,
+            transactionDate: '2026-09-06',
+          ),
+        ],
+        categories: categories,
+      ),
+      size: const Size(320, 640),
+      scale: 1.8,
+    );
+
+    expect(find.textContaining('同名分类'), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('周视图分类详情进入账单时保留选中周范围', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final inWeek = FinanceTransaction(
+      uuid: 'weekly-category-in-range',
+      amountMinor: 2400,
+      categoryUuid: 'test-food',
+      transactionDate: '2026-06-03',
+      merchant: '本周账单',
+    );
+    final outsideWeek = FinanceTransaction(
+      uuid: 'weekly-category-out-of-range',
+      amountMinor: 5600,
+      categoryUuid: 'test-food',
+      transactionDate: '2026-06-12',
+      merchant: '其它日期账单',
+    );
+    List<FinanceTransaction>? selectedPeriodTransactions;
+
+    await _pump(
+      tester,
+      Scaffold(
+        body: FinanceOverviewPanel(
+          month: DateTime(2026, 6),
+          summary: FinanceSummary.fromTransactions([inWeek, outsideWeek]),
+          transactions: [inWeek, outsideWeek],
+          categories: {
+            'test-food': FinanceCategory(
+              uuid: 'test-food',
+              name: '日常餐饮',
+              icon: '🍜',
+            ),
+          },
+          onAdd: () {},
+          addActionKey: GlobalKey(),
+          onRefresh: () async {},
+          onCategorySelected: (_, _, periodTransactions) async {
+            selectedPeriodTransactions = periodTransactions;
+          },
+        ),
+      ),
+    );
+    await _tap(tester, find.text('周视图'));
+    await _tap(
+      tester,
+      find.byKey(const ValueKey('finance-overview-category-test-food')),
+    );
+    await tester.pumpAndSettle();
+    await _tap(
+      tester,
+      find.byKey(const ValueKey('finance-category-detail-test-food')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(selectedPeriodTransactions, [inWeek]);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('历史月份账单为空时显示所选月份', (tester) async {
+    final now = DateTime.now();
+    final selectedMonth = DateTime(now.year, now.month - 1);
+    await _pump(
+      tester,
+      Scaffold(
+        body: FinanceLedgerPanel(
+          month: selectedMonth,
+          transactions: const [],
+          categories: const {},
+          paymentMethods: const {},
+          keyword: '',
+          filterType: null,
+          onOpenDetail: (_, _) {},
+          onKeywordChanged: (_) {},
+          onFilterChanged: (_) {},
+          onEdit: (_) {},
+          onDelete: (_) {},
+          onRefund: (_) {},
+        ),
+      ),
+    );
+
+    expect(
+      find.text('${selectedMonth.year}年${selectedMonth.month}月还没有账单'),
+      findsOneWidget,
+    );
+    expect(find.text('本月还没有账单'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('纯空格搜索不会把空账单提示成搜索无结果', (tester) async {
+    final selectedMonth = DateTime(2026, 9);
+    await _pump(
+      tester,
+      Scaffold(
+        body: FinanceLedgerPanel(
+          month: selectedMonth,
+          transactions: const [],
+          categories: const {},
+          paymentMethods: const {},
+          keyword: '   ',
+          filterType: null,
+          onOpenDetail: (_, _) {},
+          onKeywordChanged: (_) {},
+          onFilterChanged: (_) {},
+          onEdit: (_) {},
+          onDelete: (_) {},
+          onRefund: (_) {},
+        ),
+      ),
+    );
+
+    expect(find.text('2026年9月还没有账单'), findsOneWidget);
+    expect(find.text('没有匹配的账单'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('编辑缺少发生时刻的旧账单不会改变当天排序', (tester) async {
+    final legacy = FinanceTransaction.fromMap({
+      'uuid': 'ledger-edited-legacy-time',
+      'amount_minor': 1000,
+      'transaction_date': '2026-09-02',
+      'created_at': DateTime(2026, 9, 2, 8).millisecondsSinceEpoch,
+      'updated_at': DateTime(2026, 9, 2, 18).millisecondsSinceEpoch,
+      'merchant': '旧账单',
+    });
+    final knownTime = DateTime(2026, 9, 2, 11);
+    final known = FinanceTransaction(
+      uuid: 'ledger-known-time',
+      amountMinor: 2000,
+      transactionDate: '2026-09-02',
+      occurredAt: knownTime.millisecondsSinceEpoch,
+      timezoneOffsetMinutes: knownTime.timeZoneOffset.inMinutes,
+      createdAt: DateTime(2026, 9, 2, 9).millisecondsSinceEpoch,
+      updatedAt: DateTime(2026, 9, 2, 10).millisecondsSinceEpoch,
+      merchant: '有时间账单',
+    );
+
+    await _pump(
+      tester,
+      Scaffold(
+        body: FinanceLedgerPanel(
+          transactions: [legacy, known],
+          categories: const {},
+          paymentMethods: const {},
+          keyword: '',
+          filterType: null,
+          onOpenDetail: (_, _) {},
+          onKeywordChanged: (_) {},
+          onFilterChanged: (_) {},
+          onEdit: (_) {},
+          onDelete: (_) {},
+          onRefund: (_) {},
+        ),
+      ),
+    );
+
+    expect(
+      tester.getTopLeft(find.text('有时间账单')).dy,
+      lessThan(tester.getTopLeft(find.text('旧账单')).dy),
+    );
     expect(tester.takeException(), isNull);
   });
 
   testWidgets('预算卡片直接编辑并保存，范围和备注保持不变', (tester) async {
     final db = await _seed(tester);
-    await _pump(tester, FinanceBudgetScreen(initialMonth: _month),
-        size: const Size(1100, 1000));
+    await _pump(
+      tester,
+      FinanceBudgetScreen(initialMonth: _month),
+      size: const Size(1100, 1000),
+    );
     await _tap(tester, _key('finance-budget-card-test-budget'));
     await _waitFor(
-        tester, () => _key('finance-budget-amount').evaluate().isNotEmpty);
+      tester,
+      () => _key('finance-budget-amount').evaluate().isNotEmpty,
+    );
     await tester.enterText(_field('finance-budget-amount'), '4500');
     await _tap(tester, find.text('保存预算'));
     await _waitFor(
-        tester,
-        () =>
-            find.byType(FinanceBudgetEntryScreen).evaluate().isEmpty &&
-            find.byType(CircularProgressIndicator).evaluate().isEmpty);
-    final rows = (await tester.runAsync(() => db.query('finance_budgets',
-        where: 'uuid = ?', whereArgs: ['test-budget'])))!;
+      tester,
+      () =>
+          find.byType(FinanceBudgetEntryScreen).evaluate().isEmpty &&
+          find.byType(CircularProgressIndicator).evaluate().isEmpty,
+    );
+    final rows = (await tester.runAsync(
+      () => db.query(
+        'finance_budgets',
+        where: 'uuid = ?',
+        whereArgs: ['test-budget'],
+      ),
+    ))!;
     expect(rows.single['amount_minor'], 450000);
     expect(rows.single['category_uuid'], isNull);
     expect(rows.single['note'], '本月总预算');
@@ -482,18 +4675,813 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('银行卡余额快照后没有收支时显示余额不变', (tester) async {
+    final db = await _seed(tester);
+    final now = DateTime.now();
+    final snapshotAt = now.subtract(const Duration(minutes: 5));
+    await tester.runAsync(() async {
+      await db.insert(
+        'finance_payment_methods',
+        FinancePaymentMethod(uuid: 'unchanged-card', name: '未变银行卡').toMap(),
+      );
+      await db.insert(
+        'finance_budgets',
+        FinanceBudget(
+          uuid: 'unchanged-card-snapshot',
+          monthKey: financeMonthKey(now),
+          paymentMethodUuid: 'unchanged-card',
+          amountMinor: 10000,
+          balanceSnapshotAt: snapshotAt.millisecondsSinceEpoch,
+          createdAt: snapshotAt.millisecondsSinceEpoch,
+          updatedAt: snapshotAt.millisecondsSinceEpoch,
+        ).toMap(),
+      );
+    });
+
+    await _pump(
+      tester,
+      FinanceBudgetScreen(initialMonth: now),
+      size: const Size(1100, 1000),
+    );
+    final card = _key('finance-budget-card-unchanged-card-snapshot');
+    await tester.scrollUntilVisible(
+      card,
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(
+      find.descendant(of: card, matching: find.text('录入后余额不变')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: card, matching: find.text('当前余额 ¥100.00')),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('删除付款方式余额快照会说明后续余额将重新计算', (tester) async {
+    final db = await _seed(tester);
+    final now = DateTime.now();
+    final previousSnapshotAt = DateTime(now.year, now.month - 1, 15, 12);
+    final currentSnapshotAt = now.subtract(const Duration(minutes: 1));
+    await tester.runAsync(() async {
+      await db.insert(
+        'finance_payment_methods',
+        FinancePaymentMethod(
+          uuid: 'snapshot-delete-card',
+          name: '快照删除银行卡',
+        ).toMap(),
+      );
+      await db.insert(
+        'finance_budgets',
+        FinanceBudget(
+          uuid: 'snapshot-delete-previous',
+          monthKey: financeMonthKey(previousSnapshotAt),
+          paymentMethodUuid: 'snapshot-delete-card',
+          amountMinor: 9000,
+          balanceSnapshotAt: previousSnapshotAt.millisecondsSinceEpoch,
+        ).toMap(),
+      );
+      await db.insert(
+        'finance_budgets',
+        FinanceBudget(
+          uuid: 'snapshot-delete-current',
+          monthKey: financeMonthKey(currentSnapshotAt),
+          paymentMethodUuid: 'snapshot-delete-card',
+          amountMinor: 10000,
+          balanceSnapshotAt: currentSnapshotAt.millisecondsSinceEpoch,
+        ).toMap(),
+      );
+    });
+
+    await _pump(
+      tester,
+      FinanceBudgetScreen(initialMonth: now),
+      size: const Size(1100, 1000),
+    );
+    final card = _key('finance-budget-card-snapshot-delete-current');
+    await tester.scrollUntilVisible(
+      card,
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await _tap(
+      tester,
+      find.descendant(
+        of: card,
+        matching: find.byType(PopupMenuButton<String>),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('移入回收站').last);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text(
+        '删除这条余额快照后，会按更早的余额快照和账单重新计算；如果没有更早快照，该付款方式将不再显示余额。已有账单不会删除。',
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(find.widgetWithText(FilledButton, '删除'));
+    await _waitFor(
+      tester,
+      () =>
+          _key('finance-budget-card-snapshot-delete-current')
+              .evaluate()
+              .isEmpty &&
+          _key('finance-budget-card-snapshot-delete-previous')
+              .evaluate()
+              .isNotEmpty,
+    );
+    expect(
+      find.descendant(
+        of: _key('finance-budget-card-snapshot-delete-previous'),
+        matching: find.text('当前余额 ¥90.00'),
+      ),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('银行卡余额计入录入后的收入、退款和支出', (tester) async {
+    final db = await _seed(tester);
+    final now = DateTime.now();
+    final snapshotAt = now
+        .subtract(const Duration(minutes: 5))
+        .millisecondsSinceEpoch;
+    final recordedAt = now.millisecondsSinceEpoch;
+    final transactionDate = dateKey(now);
+    await tester.runAsync(() async {
+      await db.insert(
+        'finance_payment_methods',
+        FinancePaymentMethod(uuid: 'balance-card', name: '测试银行卡').toMap(),
+      );
+      await db.insert(
+        'finance_budgets',
+        FinanceBudget(
+          uuid: 'balance-card-budget',
+          monthKey: financeMonthKey(now),
+          paymentMethodUuid: 'balance-card',
+          amountMinor: 10000,
+          createdAt: snapshotAt,
+          updatedAt: snapshotAt,
+        ).toMap(),
+      );
+      for (final transaction in [
+        FinanceTransaction(
+          uuid: 'card-income',
+          type: FinanceTransactionType.income,
+          amountMinor: 5000,
+          paymentMethodUuid: 'balance-card',
+          transactionDate: transactionDate,
+          createdAt: recordedAt,
+        ),
+        FinanceTransaction(
+          uuid: 'card-expense',
+          amountMinor: 2000,
+          paymentMethodUuid: 'balance-card',
+          transactionDate: transactionDate,
+          createdAt: recordedAt,
+        ),
+        FinanceTransaction(
+          uuid: 'card-refund',
+          type: FinanceTransactionType.refund,
+          amountMinor: 500,
+          paymentMethodUuid: 'balance-card',
+          transactionDate: transactionDate,
+          createdAt: recordedAt,
+        ),
+        FinanceTransaction(
+          uuid: 'unassigned-income',
+          type: FinanceTransactionType.income,
+          amountMinor: 100000,
+          transactionDate: transactionDate,
+          createdAt: recordedAt,
+        ),
+      ]) {
+        await db.insert('finance_transactions', transaction.toMap());
+      }
+    });
+
+    await _pump(
+      tester,
+      FinanceBudgetScreen(initialMonth: now),
+      size: const Size(1100, 1000),
+    );
+    final card = _key('finance-budget-card-balance-card-budget');
+    await tester.scrollUntilVisible(
+      card,
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(of: card, matching: find.text('录入后净增加')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: card, matching: find.text('当前余额 ¥135.00')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: card, matching: find.byType(LinearProgressIndicator)),
+      findsNothing,
+      reason: '付款方式余额允许收入超过快照金额，预算进度条不能表示余额变化',
+    );
+
+    await tester.runAsync(() async {
+      final income = (await FinanceStorage.getTransaction('unassigned-income'))!
+        ..paymentMethodUuid = 'balance-card';
+      income.markAsChanged();
+      await FinanceStorage.saveTransaction(income);
+    });
+    await _waitFor(
+      tester,
+      () => find
+          .descendant(of: card, matching: find.text('当前余额 ¥1,135.00'))
+          .evaluate()
+          .isNotEmpty,
+    );
+    await tester.runAsync(
+      () => FinanceStorage.deleteTransaction('unassigned-income'),
+    );
+    await _waitFor(
+      tester,
+      () => find
+          .descendant(of: card, matching: find.text('当前余额 ¥135.00'))
+          .evaluate()
+          .isNotEmpty,
+    );
+
+    await _tap(tester, card);
+    await _waitFor(
+      tester,
+      () => _key('finance-budget-amount').evaluate().isNotEmpty,
+    );
+    await _tap(tester, find.text('保存余额'));
+    await _waitFor(
+      tester,
+      () =>
+          find.byType(FinanceBudgetEntryScreen).evaluate().isEmpty &&
+          find.byType(CircularProgressIndicator).evaluate().isEmpty,
+    );
+    expect(
+      find.descendant(of: card, matching: find.text('当前余额 ¥135.00')),
+      findsOneWidget,
+      reason: '未修改录入金额时，重新保存不能抹掉之后的账单变化',
+    );
+
+    await tester.runAsync(() async {
+      await FinanceStorage.deleteBudget('balance-card-budget');
+      await FinanceStorage.restoreBudget('balance-card-budget');
+    });
+    await _pump(
+      tester,
+      FinanceBudgetScreen(initialMonth: now),
+      size: const Size(1100, 1000),
+    );
+    await tester.scrollUntilVisible(
+      card,
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(
+      find.descendant(of: card, matching: find.text('当前余额 ¥135.00')),
+      findsOneWidget,
+      reason: '从回收站恢复余额记录不能重置快照时间',
+    );
+
+    await tester.runAsync(
+      () => FinanceStorage.saveTransaction(
+        FinanceTransaction(
+          uuid: 'later-card-income',
+          type: FinanceTransactionType.income,
+          amountMinor: 1000,
+          paymentMethodUuid: 'balance-card',
+          transactionDate: transactionDate,
+        ),
+      ),
+    );
+    await _waitFor(
+      tester,
+      () => find
+          .descendant(of: card, matching: find.text('当前余额 ¥145.00'))
+          .evaluate()
+          .isNotEmpty,
+    );
+
+    await _tap(tester, card);
+    await _waitFor(
+      tester,
+      () => _key('finance-budget-snapshot-time').evaluate().isNotEmpty,
+    );
+    await _tap(tester, find.text('使用保存时刻'));
+    await _tap(tester, find.text('保存余额'));
+    await _waitFor(
+      tester,
+      () =>
+          find.byType(FinanceBudgetEntryScreen).evaluate().isEmpty &&
+          find
+              .descendant(of: card, matching: find.text('当前余额 ¥100.00'))
+              .evaluate()
+              .isNotEmpty,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('付款方式余额跨月结转并按所选月份截止时间计算', (tester) async {
+    final db = await _seed(tester);
+    var clockNow = DateTime.now();
+    final now = clockNow;
+    final previousMonth = DateTime(now.year, now.month - 1);
+    final snapshotAt = DateTime(
+      previousMonth.year,
+      previousMonth.month,
+      10,
+      12,
+    );
+    final priorExpenseAt = DateTime(
+      previousMonth.year,
+      previousMonth.month,
+      20,
+      12,
+    );
+    final currentIncomeAt = DateTime(
+      now.year,
+      now.month,
+      now.day,
+      now.hour,
+      now.minute,
+    );
+    final currentExpenseAt = currentIncomeAt;
+    final futureAt = clockNow.add(const Duration(minutes: 1));
+    await tester.runAsync(() async {
+      await db.insert(
+        'finance_payment_methods',
+        FinancePaymentMethod(uuid: 'carry-card', name: '跨月银行卡').toMap(),
+      );
+      await db.insert(
+        'finance_budgets',
+        FinanceBudget(
+          uuid: 'carry-card-budget',
+          monthKey: financeMonthKey(previousMonth),
+          paymentMethodUuid: 'carry-card',
+          amountMinor: 10000,
+          balanceSnapshotAt: snapshotAt.millisecondsSinceEpoch,
+        ).toMap(),
+      );
+      for (final transaction in [
+        FinanceTransaction(
+          uuid: 'carry-same-minute-income',
+          type: FinanceTransactionType.income,
+          amountMinor: 800,
+          paymentMethodUuid: 'carry-card',
+          transactionDate: dateKey(snapshotAt),
+          occurredAt: snapshotAt.millisecondsSinceEpoch,
+          createdAt: snapshotAt.millisecondsSinceEpoch + 1000,
+        ),
+        FinanceTransaction(
+          uuid: 'carry-prior-expense',
+          amountMinor: 1000,
+          paymentMethodUuid: 'carry-card',
+          transactionDate: dateKey(priorExpenseAt),
+          occurredAt: priorExpenseAt.millisecondsSinceEpoch,
+          createdAt: priorExpenseAt.millisecondsSinceEpoch,
+        ),
+        FinanceTransaction(
+          uuid: 'carry-current-income',
+          type: FinanceTransactionType.income,
+          amountMinor: 2500,
+          paymentMethodUuid: 'carry-card',
+          transactionDate: dateKey(currentIncomeAt),
+          occurredAt: currentIncomeAt.millisecondsSinceEpoch,
+          createdAt: currentIncomeAt.millisecondsSinceEpoch,
+        ),
+        FinanceTransaction(
+          uuid: 'carry-current-expense',
+          amountMinor: 500,
+          paymentMethodUuid: 'carry-card',
+          transactionDate: dateKey(currentExpenseAt),
+          occurredAt: currentExpenseAt.millisecondsSinceEpoch,
+          createdAt: currentExpenseAt.millisecondsSinceEpoch,
+        ),
+        FinanceTransaction(
+          uuid: 'carry-future-income',
+          type: FinanceTransactionType.income,
+          amountMinor: 10000,
+          paymentMethodUuid: 'carry-card',
+          transactionDate: dateKey(futureAt),
+          occurredAt: futureAt.millisecondsSinceEpoch,
+          createdAt: now.millisecondsSinceEpoch,
+        ),
+      ]) {
+        await db.insert('finance_transactions', transaction.toMap());
+      }
+      final legacyBackdatedIncome = FinanceTransaction(
+        uuid: 'carry-legacy-backdated-income',
+        type: FinanceTransactionType.income,
+        amountMinor: 700,
+        paymentMethodUuid: 'carry-card',
+        transactionDate: dateKey(snapshotAt.subtract(const Duration(days: 1))),
+        createdAt: currentIncomeAt.millisecondsSinceEpoch,
+      ).toMap()..remove('occurred_at');
+      await db.insert('finance_transactions', legacyBackdatedIncome);
+    });
+
+    await _pump(
+      tester,
+      FinanceBudgetScreen(initialMonth: now, clock: () => clockNow),
+      size: const Size(1100, 1000),
+    );
+    final card = _key('finance-budget-card-carry-card-budget');
+    await tester.scrollUntilVisible(
+      card,
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(
+      find.descendant(of: card, matching: find.text('当前余额 ¥125.00')),
+      findsOneWidget,
+      reason: '余额应累计跨月收支、快照同分钟后录入的流水和补录旧账，且不应计入尚未发生的账单',
+    );
+
+    if (financeMonthKey(futureAt) == financeMonthKey(now)) {
+      clockNow = clockNow.add(const Duration(minutes: 2));
+      await tester.pump(const Duration(minutes: 2));
+      await _waitFor(
+        tester,
+        () => find
+            .descendant(of: card, matching: find.text('当前余额 ¥225.00'))
+            .evaluate()
+            .isNotEmpty,
+      );
+    }
+
+    await _tap(tester, find.byTooltip('上个月'));
+    await _waitFor(
+      tester,
+      () => find
+          .descendant(of: card, matching: find.text('该月余额 ¥98.00'))
+          .evaluate()
+          .isNotEmpty,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('余额刷新定时器遵循快照同分钟账单的实际生效时刻', (tester) async {
+    final db = await _seed(tester);
+    var clockNow = DateTime(2026, 10, 7, 12, 0, 30);
+    final snapshotAt = DateTime(2026, 10, 7, 12, 0);
+    final recordedAt = DateTime(2026, 10, 7, 12, 1);
+    await tester.runAsync(() async {
+      await db.insert(
+        'finance_payment_methods',
+        FinancePaymentMethod(uuid: 'timer-card', name: '定时刷新银行卡').toMap(),
+      );
+      await db.insert(
+        'finance_budgets',
+        FinanceBudget(
+          uuid: 'timer-card-snapshot',
+          monthKey: financeMonthKey(snapshotAt),
+          paymentMethodUuid: 'timer-card',
+          amountMinor: 10000,
+          balanceSnapshotAt: snapshotAt.millisecondsSinceEpoch,
+          createdAt: snapshotAt.millisecondsSinceEpoch,
+          updatedAt: snapshotAt.millisecondsSinceEpoch,
+        ).toMap(),
+      );
+      await db.insert(
+        'finance_transactions',
+        FinanceTransaction(
+          uuid: 'timer-card-expense',
+          amountMinor: 100,
+          paymentMethodUuid: 'timer-card',
+          transactionDate: dateKey(snapshotAt),
+          occurredAt: snapshotAt.millisecondsSinceEpoch,
+          createdAt: recordedAt.millisecondsSinceEpoch,
+        ).toMap(),
+      );
+    });
+
+    await _pump(
+      tester,
+      FinanceBudgetScreen(
+        initialMonth: clockNow,
+        clock: () => clockNow,
+      ),
+      size: const Size(1100, 1000),
+    );
+    final card = _key('finance-budget-card-timer-card-snapshot');
+    await tester.scrollUntilVisible(
+      card,
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(
+      find.descendant(of: card, matching: find.text('当前余额 ¥100.00')),
+      findsOneWidget,
+    );
+
+    clockNow = recordedAt.add(const Duration(seconds: 1));
+    await tester.pump(const Duration(seconds: 31));
+    await _waitFor(
+      tester,
+      () => find
+          .descendant(of: card, matching: find.text('当前余额 ¥99.00'))
+          .evaluate()
+          .isNotEmpty,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('余额刷新定时器遵循快照同分钟还款的记录生效时刻', (tester) async {
+    final db = await _seed(tester);
+    final actualNow = DateTime.now();
+    final snapshotAt = DateTime(
+      actualNow.year,
+      actualNow.month,
+      actualNow.day,
+      actualNow.hour,
+      actualNow.minute,
+    );
+    var clockNow = snapshotAt.add(const Duration(seconds: 10));
+    final recordedAt = snapshotAt.add(const Duration(minutes: 1));
+    await tester.runAsync(() async {
+      await db.insert(
+        'finance_payment_methods',
+        FinancePaymentMethod(
+          uuid: 'timer-repayment-card',
+          name: '还款刷新银行卡',
+        ).toMap(),
+      );
+      await db.insert(
+        'finance_budgets',
+        FinanceBudget(
+          uuid: 'timer-repayment-snapshot',
+          monthKey: financeMonthKey(snapshotAt),
+          paymentMethodUuid: 'timer-repayment-card',
+          amountMinor: 10000,
+          balanceSnapshotAt: snapshotAt.millisecondsSinceEpoch,
+          createdAt: snapshotAt.millisecondsSinceEpoch,
+          updatedAt: snapshotAt.millisecondsSinceEpoch,
+        ).toMap(),
+      );
+      await db.insert(
+        'finance_loan_installments',
+        FinanceLoanInstallment(
+          uuid: 'timer-same-minute-repayment',
+          loanUuid: 'test-loan',
+          installmentIndex: 2,
+          dueDate: dateKey(snapshotAt),
+          paymentMinor: 500,
+          principalMinor: 500,
+          interestMinor: 0,
+          remainingPrincipalMinor: 100000,
+          isPaid: true,
+          paidAt: snapshotAt.millisecondsSinceEpoch,
+          paymentMethodUuid: 'timer-repayment-card',
+          createdAt: snapshotAt.millisecondsSinceEpoch,
+          updatedAt: recordedAt.millisecondsSinceEpoch,
+        ).toMap(),
+      );
+    });
+
+    await _pump(
+      tester,
+      FinanceBudgetScreen(
+        initialMonth: clockNow,
+        clock: () => clockNow,
+      ),
+      size: const Size(1100, 1000),
+    );
+    final card = _key('finance-budget-card-timer-repayment-snapshot');
+    await tester.scrollUntilVisible(
+      card,
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(
+      find.descendant(of: card, matching: find.text('当前余额 ¥100.00')),
+      findsOneWidget,
+    );
+
+    clockNow = recordedAt.add(const Duration(seconds: 1));
+    await tester.pump(const Duration(seconds: 55));
+    await _waitFor(
+      tester,
+      () => find
+          .descendant(of: card, matching: find.text('当前余额 ¥95.00'))
+          .evaluate()
+          .isNotEmpty,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('跨时区付款余额按快照月份归属避免污染前月', (tester) async {
+    final db = await _seed(tester);
+    final actualNow = DateTime.now();
+    final clockNow = DateTime(actualNow.year, actualNow.month, 15, 12);
+    final previousMonth = DateTime(clockNow.year, clockNow.month - 1);
+    final nextMonth = DateTime(previousMonth.year, previousMonth.month + 1);
+    final previousMonthEnd = nextMonth.subtract(
+      const Duration(milliseconds: 1),
+    );
+    final previousSnapshotAt = nextMonth.add(const Duration(hours: 20));
+    final nextSnapshotAt = previousMonthEnd.subtract(const Duration(hours: 10));
+
+    await tester.runAsync(() async {
+      await db.insert(
+        'finance_payment_methods',
+        FinancePaymentMethod(uuid: 'timezone-card', name: '跨时区银行卡').toMap(),
+      );
+      await db.insert(
+        'finance_budgets',
+        FinanceBudget(
+          uuid: 'timezone-card-previous-month',
+          monthKey: financeMonthKey(previousMonth),
+          paymentMethodUuid: 'timezone-card',
+          amountMinor: 10000,
+          balanceSnapshotAt: previousSnapshotAt.millisecondsSinceEpoch,
+        ).toMap(),
+      );
+      await db.insert(
+        'finance_budgets',
+        FinanceBudget(
+          uuid: 'timezone-card-next-month',
+          monthKey: financeMonthKey(nextMonth),
+          paymentMethodUuid: 'timezone-card',
+          amountMinor: 20000,
+          balanceSnapshotAt: nextSnapshotAt.millisecondsSinceEpoch,
+        ).toMap(),
+      );
+    });
+
+    await _pump(
+      tester,
+      FinanceBudgetScreen(initialMonth: previousMonth, clock: () => clockNow),
+      size: const Size(1100, 1000),
+    );
+    expect(find.text('该月余额 ¥100.00'), findsOneWidget);
+    expect(find.text('该月余额 ¥200.00'), findsNothing);
+
+    final previousMonthCard = _key(
+      'finance-budget-card-timezone-card-previous-month',
+    );
+    await _tap(tester, previousMonthCard);
+    await _waitFor(
+      tester,
+      () =>
+          find.byType(FinanceBudgetEntryScreen).evaluate().isNotEmpty &&
+          _key('finance-budget-amount').evaluate().isNotEmpty,
+    );
+    await tester.enterText(_field('finance-budget-amount'), '110');
+    await _tap(tester, find.text('保存余额'));
+    await _waitFor(
+      tester,
+      () => find.byType(FinanceBudgetEntryScreen).evaluate().isEmpty,
+    );
+    final editedSnapshot = (await tester.runAsync(
+      () => FinanceStorage.getBudget('timezone-card-previous-month'),
+    ))!;
+    expect(editedSnapshot.amountMinor, 11000);
+    expect(
+      editedSnapshot.effectiveBalanceSnapshotAt,
+      previousSnapshotAt.millisecondsSinceEpoch,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('历史月份余额必须选择实际对应时间并保存到快照', (tester) async {
+    final db = await _seed(tester);
+    await tester.runAsync(
+      () => db.insert(
+        'finance_payment_methods',
+        FinancePaymentMethod(uuid: 'past-card', name: '历史银行卡').toMap(),
+      ),
+    );
+    final now = DateTime.now();
+    final pastMonth = DateTime(now.year, now.month - 1);
+    await _pump(tester, FinanceBudgetScreen(initialMonth: pastMonth));
+    await tester.scrollUntilVisible(
+      find.text('月末付款方式余额'),
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('月末付款方式余额'), findsOneWidget);
+    expect(find.text('付款方式实时余额'), findsNothing);
+    await _tap(tester, find.text('选择付款方式并录入余额'));
+    await _tap(tester, find.text('历史银行卡'));
+    await _waitFor(
+      tester,
+      () =>
+          find.byType(FinanceBudgetEntryScreen).evaluate().isNotEmpty &&
+          _key('finance-budget-amount').evaluate().isNotEmpty,
+    );
+    expect(
+      find.text('关联此付款方式的支出会扣减余额；收入和退款记到此账户时会加回。'),
+      findsOneWidget,
+    );
+    await tester.enterText(_field('finance-budget-amount'), '100');
+    await _tap(tester, find.text('保存余额'));
+    expect(find.text('请先选择该月份内的余额对应时间'), findsOneWidget);
+    var rows = (await tester.runAsync(
+      () => db.query(
+        'finance_budgets',
+        where: 'payment_method_uuid = ?',
+        whereArgs: ['past-card'],
+      ),
+    ))!;
+    expect(rows, isEmpty);
+
+    await _tap(tester, find.text('点击选择日期和时刻'));
+    await tester.pumpAndSettle();
+    expect(find.byType(DatePickerDialog), findsOneWidget);
+    await tester.tap(find.text('OK').last);
+    await tester.pumpAndSettle();
+    expect(find.byType(TimePickerDialog), findsOneWidget);
+    await tester.tap(find.text('OK').last);
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(seconds: 5));
+    await _tap(tester, find.text('保存余额'));
+    await _waitFor(
+      tester,
+      () => find.byType(FinanceBudgetEntryScreen).evaluate().isEmpty,
+    );
+    rows = (await tester.runAsync(
+      () => db.query(
+        'finance_budgets',
+        where: 'payment_method_uuid = ?',
+        whereArgs: ['past-card'],
+      ),
+    ))!;
+    expect(rows, hasLength(1));
+    final snapshotAt = DateTime.fromMillisecondsSinceEpoch(
+      rows.single['balance_snapshot_at'] as int,
+    );
+    expect(financeMonthKey(snapshotAt), financeMonthKey(pastMonth));
+    expect(rows.single['amount_minor'], 10000);
+    expect(tester.takeException(), isNull);
+
+    final card = _key(
+      'finance-budget-card-${FinanceBudget.stableUuid(financeMonthKey(pastMonth), null, paymentMethodUuid: 'past-card')}',
+    );
+    await tester.scrollUntilVisible(
+      card,
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(
+      find.descendant(of: card, matching: find.text('该月余额 ¥100.00')),
+      findsOneWidget,
+    );
+    await tester.runAsync(() async {
+      await FinanceStorage.saveTransaction(
+        FinanceTransaction(
+          uuid: 'before-historical-snapshot',
+          amountMinor: 500,
+          paymentMethodUuid: 'past-card',
+          transactionDate: dateKey(snapshotAt),
+          createdAt: snapshotAt.millisecondsSinceEpoch - 60000,
+        ),
+      );
+      await FinanceStorage.saveTransaction(
+        FinanceTransaction(
+          uuid: 'after-historical-snapshot',
+          type: FinanceTransactionType.income,
+          amountMinor: 2000,
+          paymentMethodUuid: 'past-card',
+          transactionDate: dateKey(snapshotAt),
+          createdAt: snapshotAt.millisecondsSinceEpoch + 60000,
+        ),
+      );
+    });
+    await _waitFor(
+      tester,
+      () => find
+          .descendant(of: card, matching: find.text('该月余额 ¥120.00'))
+          .evaluate()
+          .isNotEmpty,
+    );
+  });
+
   testWidgets('贷款分组表单保存后仍生成精确还款计划', (tester) async {
     final db = await _seed(tester);
     await _pump(
-        tester,
-        Scaffold(
-            body: Builder(
-                builder: (context) => TextButton(
-                      onPressed: () => Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                              builder: (_) => const FinanceLoanEntryScreen())),
-                      child: const Text('新增贷款测试'),
-                    ))));
+      tester,
+      Scaffold(
+        body: Builder(
+          builder: (context) => TextButton(
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const FinanceLoanEntryScreen(),
+              ),
+            ),
+            child: const Text('新增贷款测试'),
+          ),
+        ),
+      ),
+    );
     await _tap(tester, find.text('新增贷款测试'));
     await tester.pumpAndSettle();
     await tester.enterText(_field('finance-loan-name'), '新测试贷款');
@@ -503,20 +5491,900 @@ void main() {
     await tester.enterText(_field('finance-loan-term'), '3');
     await _tap(tester, find.text('保存贷款'));
     await _waitFor(
-        tester, () => find.byType(FinanceLoanEntryScreen).evaluate().isEmpty);
-    final rows = (await tester.runAsync(() =>
-        db.query('finance_loans', where: 'name = ?', whereArgs: ['新测试贷款'])))!;
+      tester,
+      () => find.byType(FinanceLoanEntryScreen).evaluate().isEmpty,
+    );
+    final rows = (await tester.runAsync(
+      () => db.query('finance_loans', where: 'name = ?', whereArgs: ['新测试贷款']),
+    ))!;
     expect(rows.single['principal_minor'], 100000);
     expect(rows.single['annual_interest_rate_bps'], 1200);
-    final installments = (await tester.runAsync(() => db.query(
+    final installments = (await tester.runAsync(
+      () => db.query(
         'finance_loan_installments',
         where: 'loan_uuid = ?',
-        whereArgs: [rows.single['uuid']])))!;
+        whereArgs: [rows.single['uuid']],
+      ),
+    ))!;
     expect(installments, hasLength(3));
     expect(
-        installments.fold<int>(
-            0, (sum, row) => sum + (row['principal_minor'] as int)),
-        100000);
+      installments.fold<int>(
+        0,
+        (sum, row) => sum + (row['principal_minor'] as int),
+      ),
+      100000,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('删除已关联退款的原单会提示原因并保留原单', (tester) async {
+    final db = await _seed(tester);
+    final original = FinanceTransaction(
+      uuid: 'ui-refund-original',
+      amountMinor: 10000,
+      transactionDate: dateKey(DateTime.now()),
+      merchant: '退款原单测试',
+    );
+    await tester.runAsync(() async {
+      await FinanceStorage.saveTransaction(original);
+      await FinanceStorage.saveTransaction(
+        FinanceTransaction(
+          uuid: 'ui-refund',
+          type: FinanceTransactionType.refund,
+          amountMinor: 1000,
+          transactionDate: original.transactionDate,
+          merchant: '原单退款记录',
+          relatedTransactionUuid: original.uuid,
+        ),
+      );
+    });
+    await _pump(
+      tester,
+      const FinanceHomeScreen(username: 'default'),
+      size: const Size(1100, 1000),
+    );
+    await tester.tap(find.text('账单').hitTestable().last);
+    await tester.pumpAndSettle();
+    final row = find
+        .ancestor(of: find.text('退款原单测试'), matching: find.byType(ListTile))
+        .first;
+    await _tap(
+      tester,
+      find.descendant(of: row, matching: find.byType(PopupMenuButton<String>)),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('删除'));
+    await tester.pumpAndSettle();
+    await _waitFor(
+      tester,
+      () => find.text('该账单已关联退款，请先处理退款记录').evaluate().isNotEmpty,
+    );
+    expect(find.text('该账单已关联退款，请先处理退款记录'), findsOneWidget);
+    expect(find.text('删除账单？'), findsNothing);
+    expect(tester.takeException(), isNull);
+    final rows = (await tester.runAsync(
+      () => db.query(
+        'finance_transactions',
+        where: 'uuid = ?',
+        whereArgs: [original.uuid],
+      ),
+    ))!;
+    expect(rows.single['is_deleted'], 0);
+  });
+
+  testWidgets('删除整组分期前会检查其他期次关联的退款', (tester) async {
+    final db = await _seed(tester);
+    late List<FinanceTransaction> installments;
+    await tester.runAsync(() async {
+      installments = await FinanceStorage.saveInstallmentPlan(
+        transaction: FinanceTransaction(
+          uuid: 'ui-installment-refund-first',
+          amountMinor: 1200,
+          transactionDate: dateKey(DateTime.now()),
+          merchant: '其他期次有关联退款的分期',
+        ),
+        totalAmountMinor: 3600,
+        installmentCount: 3,
+        startDate: DateTime.now(),
+      );
+      await FinanceStorage.saveTransaction(
+        FinanceTransaction(
+          uuid: 'ui-installment-refund-linked',
+          type: FinanceTransactionType.refund,
+          amountMinor: 100,
+          transactionDate: installments[1].transactionDate,
+          merchant: '第二期退款',
+          relatedTransactionUuid: installments[1].uuid,
+        ),
+      );
+    });
+    await _pump(
+      tester,
+      const FinanceHomeScreen(username: 'default'),
+      size: const Size(1100, 1000),
+    );
+    await tester.tap(find.text('账单').hitTestable().last);
+    await tester.pumpAndSettle();
+    final row = find
+        .ancestor(
+          of: find.text('其他期次有关联退款的分期'),
+          matching: find.byType(ListTile),
+        )
+        .first;
+    await _tap(
+      tester,
+      find.descendant(of: row, matching: find.byType(PopupMenuButton<String>)),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('删除'));
+    await _waitFor(
+      tester,
+      () => find.text('该账单已关联退款，请先处理退款记录').evaluate().isNotEmpty,
+    );
+    expect(find.text('删除分期账单？'), findsNothing);
+    final groupRows = (await tester.runAsync(
+      () => db.query(
+        'finance_transactions',
+        where: 'installment_group_uuid = ?',
+        whereArgs: [installments.first.installmentGroupUuid],
+      ),
+    ))!;
+    expect(groupRows.where((item) => item['is_deleted'] == 0), hasLength(3));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('删除退款前明确提示净支出和账户余额影响', (tester) async {
+    await _seed(tester);
+    final now = DateTime.now();
+    final original = FinanceTransaction(
+      uuid: 'ui-refund-delete-copy-original',
+      amountMinor: 10000,
+      paymentMethodUuid: 'finance-system-payment-cash',
+      transactionDate: dateKey(now),
+      merchant: '退款确认原单',
+    );
+    await tester.runAsync(() async {
+      await FinanceStorage.saveTransaction(original);
+      await FinanceStorage.saveTransaction(
+        FinanceTransaction(
+          uuid: 'ui-refund-delete-copy-refund',
+          type: FinanceTransactionType.refund,
+          amountMinor: 1000,
+          paymentMethodUuid: 'finance-system-payment-cash',
+          transactionDate: original.transactionDate,
+          merchant: '需要删除的退款',
+          relatedTransactionUuid: original.uuid,
+        ),
+      );
+    });
+    await _pump(
+      tester,
+      const FinanceHomeScreen(username: 'default'),
+      size: const Size(1100, 1000),
+    );
+    await tester.tap(find.text('账单').hitTestable().last);
+    await tester.pumpAndSettle();
+    final row = find
+        .ancestor(of: find.text('需要删除的退款'), matching: find.byType(ListTile))
+        .first;
+    await _tap(
+      tester,
+      find.descendant(of: row, matching: find.byType(PopupMenuButton<String>)),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('删除'));
+    await _waitFor(
+      tester,
+      () => find
+          .text('删除后，这笔退款不再抵扣净支出，也不再增加退款到账账户的余额。确认继续吗？')
+          .evaluate()
+          .isNotEmpty,
+    );
+
+    expect(
+      find.text('删除后，这笔退款不再抵扣净支出，也不再增加退款到账账户的余额。确认继续吗？'),
+      findsOneWidget,
+    );
+    await tester.tap(find.widgetWithText(TextButton, '取消'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('删除关联付款方式的支出或收入会提示余额变化', (tester) async {
+    await _seed(tester);
+    final today = dateKey(DateTime.now());
+    await tester.runAsync(() async {
+      await FinanceStorage.saveTransaction(
+        FinanceTransaction(
+          uuid: 'ui-expense-delete-balance-copy',
+          amountMinor: 1200,
+          paymentMethodUuid: 'finance-system-payment-cash',
+          transactionDate: today,
+          merchant: '删除后余额增加的支出',
+        ),
+      );
+      await FinanceStorage.saveTransaction(
+        FinanceTransaction(
+          uuid: 'ui-income-delete-balance-copy',
+          type: FinanceTransactionType.income,
+          amountMinor: 2200,
+          paymentMethodUuid: 'finance-system-payment-cash',
+          transactionDate: today,
+          merchant: '删除后余额减少的收入',
+        ),
+      );
+    });
+    await _pump(
+      tester,
+      const FinanceHomeScreen(username: 'default'),
+      size: const Size(1100, 1000),
+    );
+    await tester.tap(find.text('账单').hitTestable().last);
+    await tester.pumpAndSettle();
+
+    for (final (merchant, warning) in [
+      (
+        '删除后余额增加的支出',
+        '删除后，这笔支出不再计入统计，付款方式余额会相应增加。确认继续吗？',
+      ),
+      (
+        '删除后余额减少的收入',
+        '删除后，这笔收入不再计入统计，到账账户余额会相应减少。确认继续吗？',
+      ),
+    ]) {
+      final row = find
+          .ancestor(of: find.text(merchant), matching: find.byType(ListTile))
+          .first;
+      await _tap(
+        tester,
+        find.descendant(
+          of: row,
+          matching: find.byType(PopupMenuButton<String>),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('删除').last);
+      await tester.pumpAndSettle();
+      await _waitFor(tester, () => find.text(warning).evaluate().isNotEmpty);
+      expect(find.text(warning), findsOneWidget);
+      await tester.tap(find.widgetWithText(TextButton, '取消'));
+      await tester.pumpAndSettle();
+    }
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('删除未来计划账单时说明不会影响当前余额', (tester) async {
+    await _seed(tester);
+    final clockNow = DateTime(2026, 10, 7, 12);
+    final dueAt = DateTime(2026, 10, 8, 9);
+    await tester.runAsync(
+      () => FinanceStorage.saveTransaction(
+        FinanceTransaction(
+          uuid: 'ui-future-expense-delete-copy',
+          amountMinor: 1200,
+          paymentMethodUuid: 'finance-system-payment-cash',
+          transactionDate: dateKey(dueAt),
+          occurredAt: dueAt.millisecondsSinceEpoch,
+          createdAt: clockNow.millisecondsSinceEpoch,
+          merchant: '删除后余额不变的计划支出',
+        ),
+      ),
+    );
+    await _pump(
+      tester,
+      FinanceHomeScreen(username: 'default', clock: () => clockNow),
+      size: const Size(1100, 1000),
+    );
+    await tester.tap(find.text('账单').hitTestable().last);
+    await tester.pumpAndSettle();
+    final row = find
+        .ancestor(
+          of: find.text('删除后余额不变的计划支出'),
+          matching: find.byType(ListTile),
+        )
+        .first;
+    await _tap(
+      tester,
+      find.descendant(of: row, matching: find.byType(PopupMenuButton<String>)),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('删除'));
+    await _waitFor(
+      tester,
+      () => find
+          .text('删除后，这笔计划支出会从未来账单中移除，不会影响当前付款方式余额。确认继续吗？')
+          .evaluate()
+          .isNotEmpty,
+    );
+    expect(
+      find.text('删除后，这笔计划支出会从未来账单中移除，不会影响当前付款方式余额。确认继续吗？'),
+      findsOneWidget,
+    );
+    await tester.tap(find.widgetWithText(TextButton, '取消'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('删除余额快照之前的账单不会承诺改变当前余额', (tester) async {
+    final db = await _seed(tester);
+    final snapshotAt = DateTime(2026, 10, 15, 12);
+    final clockNow = DateTime(2026, 10, 16, 12);
+    final transactionAt = DateTime(2026, 10, 14, 12);
+    await tester.runAsync(() async {
+      await db.insert(
+        'finance_budgets',
+        FinanceBudget(
+          uuid: 'ui-delete-snapshotted-expense',
+          monthKey: '2026-10',
+          paymentMethodUuid: 'finance-system-payment-cash',
+          amountMinor: 10000,
+          balanceSnapshotAt: snapshotAt.millisecondsSinceEpoch,
+          createdAt: snapshotAt.millisecondsSinceEpoch,
+          updatedAt: snapshotAt.millisecondsSinceEpoch,
+        ).toMap(),
+      );
+      await FinanceStorage.saveTransaction(
+        FinanceTransaction(
+          uuid: 'ui-delete-before-snapshot-expense',
+          amountMinor: 1200,
+          paymentMethodUuid: 'finance-system-payment-cash',
+          transactionDate: dateKey(transactionAt),
+          occurredAt: transactionAt.millisecondsSinceEpoch,
+          createdAt: transactionAt.millisecondsSinceEpoch,
+          merchant: '快照前支出',
+        ),
+      );
+    });
+    await _pump(
+      tester,
+      FinanceHomeScreen(username: 'default', clock: () => clockNow),
+      size: const Size(1100, 1000),
+    );
+    await tester.tap(find.text('账单').hitTestable().last);
+    await tester.pumpAndSettle();
+    final row = find
+        .ancestor(of: find.text('快照前支出'), matching: find.byType(ListTile))
+        .first;
+    await _tap(
+      tester,
+      find.descendant(of: row, matching: find.byType(PopupMenuButton<String>)),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('删除'));
+    await _waitFor(
+      tester,
+      () => find
+          .text('删除后，这笔支出不再计入统计；当前余额以录入的余额快照为准，不会变化。确认继续吗？')
+          .evaluate()
+          .isNotEmpty,
+    );
+    expect(
+      find.text('删除后，这笔支出不再计入统计；当前余额以录入的余额快照为准，不会变化。确认继续吗？'),
+      findsOneWidget,
+    );
+    await tester.tap(find.widgetWithText(TextButton, '取消'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('删除付款方式已删除的账单不会承诺余额变化', (tester) async {
+    await _seed(tester);
+    await tester.runAsync(() async {
+      await FinanceStorage.databaseOverride!.insert(
+        'finance_payment_methods',
+        FinancePaymentMethod(
+          uuid: 'deleted-payment-method',
+          name: '已删除银行卡',
+          isDeleted: true,
+        ).toMap(),
+      );
+      await FinanceStorage.saveTransaction(
+        FinanceTransaction(
+          uuid: 'ui-deleted-payment-method-delete-copy',
+          amountMinor: 1500,
+          paymentMethodUuid: 'deleted-payment-method',
+          transactionDate: dateKey(DateTime.now()),
+          merchant: '删除付款方式后仍保留的账单',
+        ),
+      );
+    });
+    await _pump(
+      tester,
+      const FinanceHomeScreen(username: 'default'),
+      size: const Size(1100, 1000),
+    );
+    await tester.tap(find.text('账单').hitTestable().last);
+    await tester.pumpAndSettle();
+    final row = find
+        .ancestor(
+          of: find.text('删除付款方式后仍保留的账单'),
+          matching: find.byType(ListTile),
+        )
+        .first;
+    await _tap(
+      tester,
+      find.descendant(of: row, matching: find.byType(PopupMenuButton<String>)),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('删除'));
+    await _waitFor(
+      tester,
+      () => find.text('删除后不会计入统计，确认继续吗？').evaluate().isNotEmpty,
+    );
+
+    expect(find.text('删除后不会计入统计，确认继续吗？'), findsOneWidget);
+    expect(find.textContaining('付款方式余额'), findsNothing);
+    await tester.tap(find.widgetWithText(FilledButton, '删除'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('删除关联付款方式的分期会说明余额与计划影响', (tester) async {
+    await _seed(tester);
+    await tester.runAsync(
+      () => FinanceStorage.saveTransaction(
+        FinanceTransaction(
+          uuid: 'ui-installment-delete-balance-copy',
+          amountMinor: 1200,
+          paymentMethodUuid: 'finance-system-payment-cash',
+          transactionDate: dateKey(DateTime.now()),
+          merchant: '需确认的分期账单',
+          installmentGroupUuid: 'ui-installment-delete-balance-group',
+          installmentIndex: 1,
+          installmentCount: 3,
+          installmentTotalMinor: 3600,
+        ),
+      ),
+    );
+    await _pump(
+      tester,
+      const FinanceHomeScreen(username: 'default'),
+      size: const Size(1100, 1000),
+    );
+    await tester.tap(find.text('账单').hitTestable().last);
+    await tester.pumpAndSettle();
+    final row = find
+        .ancestor(of: find.text('需确认的分期账单'), matching: find.byType(ListTile))
+        .first;
+    await _tap(
+      tester,
+      find.descendant(
+        of: row,
+        matching: find.byType(PopupMenuButton<String>),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('删除'));
+    await tester.pumpAndSettle();
+    await _waitFor(
+      tester,
+      () => find
+          .text(
+            '这是第 1/3 期。删除后不会计入统计；已发生期次会从账户流水中移除，余额按余额快照和剩余流水重新计算，未发生期次会从未来计划中移除。',
+          )
+          .evaluate()
+          .isNotEmpty,
+    );
+
+    expect(
+      find.text(
+        '这是第 1/3 期。删除后不会计入统计；已发生期次会从账户流水中移除，余额按余额快照和剩余流水重新计算，未发生期次会从未来计划中移除。',
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(find.widgetWithText(TextButton, '取消'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('删除已计入余额快照的分期不会承诺余额增减', (tester) async {
+    final db = await _seed(tester);
+    final actualNow = DateTime.now();
+    final clockNow = DateTime(actualNow.year, actualNow.month, 15, 12);
+    final transactionAt = clockNow.subtract(const Duration(days: 2));
+    final snapshotAt = clockNow.subtract(const Duration(days: 1));
+    await tester.runAsync(() async {
+      await db.insert(
+        'finance_budgets',
+        FinanceBudget(
+          uuid: 'installment-delete-included-snapshot',
+          monthKey: financeMonthKey(snapshotAt),
+          paymentMethodUuid: 'finance-system-payment-cash',
+          amountMinor: 10000,
+          balanceSnapshotAt: snapshotAt.millisecondsSinceEpoch,
+        ).toMap(),
+      );
+      await db.insert(
+        'finance_transactions',
+        FinanceTransaction(
+          uuid: 'installment-delete-included-snapshot-transaction',
+          amountMinor: 1200,
+          paymentMethodUuid: 'finance-system-payment-cash',
+          transactionDate: dateKey(transactionAt),
+          occurredAt: transactionAt.millisecondsSinceEpoch,
+          timezoneOffsetMinutes: transactionAt.timeZoneOffset.inMinutes,
+          createdAt: transactionAt.millisecondsSinceEpoch,
+          merchant: '已计入余额快照的分期',
+          installmentGroupUuid: 'installment-delete-included-snapshot-group',
+          installmentIndex: 1,
+          installmentCount: 3,
+          installmentTotalMinor: 3600,
+        ).toMap(),
+      );
+    });
+
+    await _pump(
+      tester,
+      FinanceHomeScreen(username: 'default', clock: () => clockNow),
+      size: const Size(1100, 1000),
+    );
+    await tester.tap(find.text('账单').hitTestable().last);
+    await tester.pumpAndSettle();
+    final row = find
+        .ancestor(
+          of: find.text('已计入余额快照的分期'),
+          matching: find.byType(ListTile),
+        )
+        .first;
+    await _tap(
+      tester,
+      find.descendant(
+        of: row,
+        matching: find.byType(PopupMenuButton<String>),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('删除'));
+    await tester.pumpAndSettle();
+    await _waitFor(
+      tester,
+      () => find.text('删除分期账单？').evaluate().isNotEmpty,
+    );
+
+    expect(
+      find.textContaining('余额按余额快照和剩余流水重新计算'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('增加付款方式余额'), findsNothing);
+    expect(find.textContaining('减少付款方式余额'), findsNothing);
+    await tester.tap(find.widgetWithText(TextButton, '取消'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('跨时区账单显示记录时刻且编辑保存保留原始时间戳', (tester) async {
+    final db = await _seed(tester);
+    final transaction = FinanceTransaction(
+      uuid: 'timezone-entry',
+      amountMinor: 2000,
+      transactionDate: '2026-10-02',
+      occurredAt: DateTime.utc(2026, 10, 1, 10, 30).millisecondsSinceEpoch,
+      timezoneOffsetMinutes: 840,
+    );
+    await tester.runAsync(() => FinanceStorage.saveTransaction(transaction));
+    await _pump(
+      tester,
+      Builder(
+        builder: (context) => Scaffold(
+          body: TextButton(
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => FinanceEntryScreen(transaction: transaction),
+              ),
+            ),
+            child: const Text('打开跨时区账单'),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('打开跨时区账单'));
+    await _waitFor(tester, () => find.text('00:30').evaluate().isNotEmpty);
+    expect(find.text('00:30'), findsOneWidget);
+    expect(find.text('按记录时区 UTC+14:00 显示'), findsOneWidget);
+    await _tap(tester, find.text('保存账单'));
+    await _waitFor(
+      tester,
+      () => find.byType(FinanceEntryScreen).evaluate().isEmpty,
+    );
+    final row = (await tester.runAsync(
+      () => db.query(
+        'finance_transactions',
+        where: 'uuid = ?',
+        whereArgs: [transaction.uuid],
+      ),
+    ))!.single;
+    expect(row['occurred_at'], transaction.occurredAt);
+    expect(row['timezone_offset_minutes'], 840);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('还款扣减本金及利息一次，撤销后恢复账户余额', (tester) async {
+    final db = await _seed(tester);
+    final now = DateTime.now();
+    final paidAt = now.subtract(const Duration(hours: 1));
+    final snapshotAt = now
+        .subtract(const Duration(hours: 2))
+        .millisecondsSinceEpoch;
+    await tester.runAsync(() async {
+      await db.insert(
+        'finance_budgets',
+        FinanceBudget(
+          uuid: 'loan-balance',
+          monthKey: financeMonthKey(now),
+          paymentMethodUuid: 'finance-system-payment-cash',
+          amountMinor: 100000,
+          balanceSnapshotAt: snapshotAt,
+        ).toMap(),
+      );
+      await FinanceStorage.setLoanInstallmentPaid(
+        'test-installment-2',
+        true,
+        paymentMethodUuid: 'finance-system-payment-cash',
+        paidAt: paidAt,
+      );
+    });
+    final repayment = (await tester.runAsync(
+      () => FinanceStorage.getLoanInstallment('test-installment-2'),
+    ))!;
+    final interest = (await tester.runAsync(
+      () => FinanceStorage.getTransaction(repayment.interestTransactionUuid!),
+    ))!;
+    expect(interest.transactionDate, dateKey(paidAt));
+    expect(interest.paymentMethodUuid, 'finance-system-payment-cash');
+    await _pump(
+      tester,
+      FinanceBudgetScreen(initialMonth: now),
+      size: const Size(1100, 1000),
+    );
+    final card = _key('finance-budget-card-loan-balance');
+    await tester.scrollUntilVisible(
+      card,
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(
+      find.descendant(
+        of: card,
+        matching: find.text(
+          '当前余额 ${formatFinanceAmount(100000 - repayment.paymentMinor)}',
+        ),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: card,
+        matching: find.text(formatFinanceAmount(repayment.paymentMinor)),
+      ),
+      findsOneWidget,
+    );
+    // Reopen the page after each operation so a stale rendered balance cannot
+    // hide a lost cash movement while the revision listener is reloading.
+    for (final deleted in [true, false]) {
+      await tester.runAsync(
+        () => deleted
+            ? FinanceStorage.deleteLoan('test-loan')
+            : FinanceStorage.restoreLoan('test-loan'),
+      );
+      await _pump(
+        tester,
+        FinanceBudgetScreen(initialMonth: now),
+        size: const Size(1100, 1000),
+      );
+      await tester.scrollUntilVisible(
+        card,
+        250,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(
+        find.descendant(
+          of: card,
+          matching: find.text(
+            '当前余额 ${formatFinanceAmount(100000 - repayment.paymentMinor)}',
+          ),
+        ),
+        findsOneWidget,
+        reason: deleted ? '删除贷款保留已还本金扣款' : '恢复贷款不重复扣款',
+      );
+    }
+    await tester.runAsync(
+      () => FinanceStorage.setLoanInstallmentPaid(repayment.uuid, false),
+    );
+    await _waitFor(
+      tester,
+      () => find
+          .descendant(of: card, matching: find.text('当前余额 ¥1,000.00'))
+          .evaluate()
+          .isNotEmpty,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('利息已退款时撤销还款显示原因且保留已还记录', (tester) async {
+    await _seed(tester);
+    final paid = (await tester.runAsync(() async {
+      await FinanceStorage.setLoanInstallmentPaid(
+        'test-installment-2',
+        true,
+        paymentMethodUuid: 'finance-system-payment-cash',
+        paidAt: DateTime.now().subtract(const Duration(hours: 1)),
+      );
+      final installment = (await FinanceStorage.getLoanInstallment(
+        'test-installment-2',
+      ))!;
+      await FinanceStorage.saveTransaction(
+        FinanceTransaction(
+          uuid: 'ui-loan-interest-refund',
+          type: FinanceTransactionType.refund,
+          amountMinor: installment.interestMinor,
+          paymentMethodUuid: installment.paymentMethodUuid,
+          transactionDate: dateKey(DateTime.now()),
+          relatedTransactionUuid: installment.interestTransactionUuid,
+        ),
+      );
+      return installment;
+    }))!;
+    await _pump(tester, FinanceLoanDetailScreen(loan: _loan()));
+    await _tap(tester, _key('finance-loan-filter-paid'));
+    await tester.pumpAndSettle();
+    await _tap(tester, _key('finance-loan-paid-test-installment-2'));
+    await _waitFor(
+      tester,
+      () => find.textContaining('该账单已关联退款，请先处理退款记录').evaluate().isNotEmpty,
+    );
+    final preserved = (await tester.runAsync(
+      () => FinanceStorage.getLoanInstallment(paid.uuid),
+    ))!;
+    expect(preserved.isPaid, true);
+    expect(preserved.paymentMethodUuid, paid.paymentMethodUuid);
+    expect(
+      (await tester.runAsync(
+        () => FinanceStorage.getTransaction(paid.interestTransactionUuid!),
+      ))!.isDeleted,
+      false,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('跨时区分期按实际发生时刻扣减而非创建日期或本机日历日期', (tester) async {
+    final db = await _seed(tester);
+    final clock = DateTime.utc(2026, 10, 1, 12).toLocal();
+    await tester.runAsync(() async {
+      await db.insert(
+        'finance_budgets',
+        FinanceBudget(
+          uuid: 'timezone-balance',
+          monthKey: '2026-10',
+          paymentMethodUuid: 'finance-system-payment-cash',
+          amountMinor: 10000,
+          balanceSnapshotAt: DateTime.utc(
+            2026,
+            10,
+            1,
+            9,
+          ).millisecondsSinceEpoch,
+        ).toMap(),
+      );
+      await db.insert(
+        'finance_transactions',
+        FinanceTransaction(
+          uuid: 'timezone-installment',
+          amountMinor: 2000,
+          paymentMethodUuid: 'finance-system-payment-cash',
+          transactionDate: '2026-10-02',
+          timezoneOffsetMinutes: 840,
+          occurredAt: DateTime.utc(2026, 10, 1, 10, 30).millisecondsSinceEpoch,
+          createdAt: DateTime.utc(2026, 9, 15).millisecondsSinceEpoch,
+        ).toMap(),
+      );
+    });
+    await _pump(
+      tester,
+      FinanceBudgetScreen(initialMonth: clock, clock: () => clock),
+      size: const Size(1100, 1000),
+    );
+    final card = _key('finance-budget-card-timezone-balance');
+    await tester.scrollUntilVisible(
+      card,
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(
+      find.descendant(of: card, matching: find.text('当前余额 ¥80.00')),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('还款账户选择器区分同名账户并保存正确账户', (tester) async {
+    final db = await _seed(tester);
+    final firstMethod = FinancePaymentMethod(
+      uuid: 'loan-duplicate-account-one',
+      name: '还款同名账户',
+      sortOrder: 10,
+    );
+    final secondMethod = FinancePaymentMethod(
+      uuid: 'loan-duplicate-account-two',
+      name: '还款同名账户',
+      sortOrder: 20,
+    );
+    await tester.runAsync(() async {
+      await db.insert('finance_payment_methods', firstMethod.toMap());
+      await db.insert('finance_payment_methods', secondMethod.toMap());
+    });
+
+    await _pump(tester, FinanceLoanDetailScreen(loan: _loan()));
+    await _tap(tester, _key('finance-loan-paid-test-installment-2'));
+    await tester.pumpAndSettle();
+    await tester.tap(_key('finance-loan-payment-method'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('💼 还款同名账户（同名账户 1/2）'), findsOneWidget);
+    await tester.tap(find.text('💼 还款同名账户（同名账户 2/2）'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('还款同名账户（同名账户 2/2）'), findsWidgets);
+    await tester.tap(_key('finance-loan-payment-save'));
+    await _waitFor(
+      tester,
+      () => _key('finance-loan-payment-save').evaluate().isEmpty,
+    );
+
+    final paid = (await tester.runAsync(
+      () => FinanceStorage.getLoanInstallment('test-installment-2'),
+    ))!;
+    expect(paid.paymentMethodUuid, secondMethod.uuid);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('已还期次详情区分同名还款账户', (tester) async {
+    final db = await _seed(tester);
+    final firstMethod = FinancePaymentMethod(
+      uuid: 'loan-detail-duplicate-one',
+      name: '历史还款账户',
+      sortOrder: 10,
+    );
+    final secondMethod = FinancePaymentMethod(
+      uuid: 'loan-detail-duplicate-two',
+      name: '历史还款账户',
+      sortOrder: 20,
+    );
+    await tester.runAsync(() async {
+      await db.insert('finance_payment_methods', firstMethod.toMap());
+      await db.insert('finance_payment_methods', secondMethod.toMap());
+      final installment =
+          (await FinanceStorage.getLoanInstallment('test-installment-2'))!;
+      installment
+        ..isPaid = true
+        ..paidAt = DateTime(2026, 10, 1, 12).millisecondsSinceEpoch
+        ..paymentMethodUuid = secondMethod.uuid;
+      await db.update(
+        'finance_loan_installments',
+        installment.toMap(),
+        where: 'uuid = ?',
+        whereArgs: [installment.uuid],
+      );
+    });
+
+    await _pump(
+      tester,
+      FinanceLoanDetailScreen(loan: _loan()),
+      size: const Size(1100, 1000),
+    );
+    await _tap(tester, _key('finance-loan-filter-paid'));
+    await tester.pumpAndSettle();
+    final installmentCard = _key('finance-loan-installment-test-installment-2');
+    await tester.scrollUntilVisible(
+      installmentCard,
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(
+      find.descendant(
+        of: installmentCard,
+        matching: find.text('还款账户：历史还款账户（同名账户 2/2）'),
+      ),
+      findsOneWidget,
+    );
     expect(tester.takeException(), isNull);
   });
 
@@ -527,30 +6395,125 @@ void main() {
     await tester.pumpAndSettle();
     expect(_key('finance-loan-installment-test-installment-1'), findsNothing);
     await _tap(tester, _key('finance-loan-paid-test-installment-2'));
+    await tester.pumpAndSettle();
+    await tester.tap(_key('finance-loan-payment-save'));
+    await tester.pump();
+    expect(find.text('请选择还款账户或不关联账户'), findsOneWidget);
+    await tester.tap(_key('finance-loan-payment-method'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.textContaining('现金').last);
+    await tester.pumpAndSettle();
+    await tester.tap(_key('finance-loan-payment-save'));
     await _waitFor(tester, () => find.text('已还 2').evaluate().isNotEmpty);
     final paid = (await tester.runAsync(
-        () => FinanceStorage.getLoanInstallment('test-installment-2')))!;
+      () => FinanceStorage.getLoanInstallment('test-installment-2'),
+    ))!;
     expect(paid.isPaid, isTrue);
+    expect(paid.paymentMethodUuid, 'finance-system-payment-cash');
     expect(paid.interestTransactionUuid, isNotNull);
-    final interest = (await tester.runAsync(() => db.query(
+    final interest = (await tester.runAsync(
+      () => db.query(
         'finance_transactions',
         where: 'uuid = ?',
-        whereArgs: [paid.interestTransactionUuid])))!;
+        whereArgs: [paid.interestTransactionUuid],
+      ),
+    ))!;
     expect(interest.single['amount_minor'], paid.interestMinor);
     expect(interest.single['is_deleted'], 0);
     await _top(tester);
     await _tap(tester, _key('finance-loan-filter-paid'));
     await tester.pumpAndSettle();
+    await _tap(tester, _key('finance-loan-payment-edit-test-installment-2'));
+    await tester.pumpAndSettle();
+    expect(find.text('修改还款记录'), findsOneWidget);
+    await tester.tap(_key('finance-loan-payment-method'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.textContaining('微信').last);
+    await tester.pumpAndSettle();
+    await tester.tap(_key('finance-loan-payment-save'));
+    await _waitFor(
+      tester,
+      () => find
+          .byKey(const ValueKey('finance-loan-payment-save'))
+          .evaluate()
+          .isEmpty,
+    );
+    final edited = (await tester.runAsync(
+      () => FinanceStorage.getLoanInstallment('test-installment-2'),
+    ))!;
+    expect(edited.paymentMethodUuid, 'finance-system-payment-wechat');
+    expect(edited.paidAt, paid.paidAt);
+    expect(edited.interestTransactionUuid, paid.interestTransactionUuid);
+    final editedInterest = (await tester.runAsync(
+      () => db.query(
+        'finance_transactions',
+        where: 'uuid = ?',
+        whereArgs: [paid.interestTransactionUuid],
+      ),
+    ))!;
+    expect(
+      editedInterest.single['payment_method_uuid'],
+      edited.paymentMethodUuid,
+    );
     await _tap(tester, _key('finance-loan-paid-test-installment-2'));
     await _waitFor(tester, () => find.text('已还 1').evaluate().isNotEmpty);
     final unpaid = (await tester.runAsync(
-        () => FinanceStorage.getLoanInstallment('test-installment-2')))!;
+      () => FinanceStorage.getLoanInstallment('test-installment-2'),
+    ))!;
     expect(unpaid.isPaid, isFalse);
-    final deletedInterest = (await tester.runAsync(() => db.query(
+    final deletedInterest = (await tester.runAsync(
+      () => db.query(
         'finance_transactions',
         where: 'uuid = ?',
-        whereArgs: [paid.interestTransactionUuid])))!;
+        whereArgs: [paid.interestTransactionUuid],
+      ),
+    ))!;
     expect(deletedInterest.single['is_deleted'], 1);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('贷款和还款详情跨过还款日后自动更新逾期状态', (tester) async {
+    final db = await _seed(tester);
+    await tester.runAsync(
+      () => db.update(
+        'finance_loan_installments',
+        {'due_date': '2026-10-15'},
+        where: 'uuid = ?',
+        whereArgs: ['test-installment-2'],
+      ),
+    );
+    var now = DateTime(2026, 10, 15, 23, 59, 58);
+
+    await _pump(tester, FinanceLoanScreen(clock: () => now));
+    final loanCard = _key('finance-loan-card-test-loan');
+    final loanBadge = find.descendant(
+      of: loanCard,
+      matching: find.byType(FinanceStatusBadge),
+    );
+    await _waitFor(tester, () => loanBadge.evaluate().isNotEmpty);
+    expect(tester.widget<FinanceStatusBadge>(loanBadge).label, '还款中');
+
+    now = DateTime(2026, 10, 16, 0, 0, 2);
+    await tester.pump(const Duration(seconds: 3));
+    expect(tester.widget<FinanceStatusBadge>(loanBadge).label, '有逾期待还');
+    expect(tester.takeException(), isNull);
+
+    now = DateTime(2026, 10, 15, 23, 59, 58);
+    await _pump(
+      tester,
+      FinanceLoanDetailScreen(loan: _loan(), clock: () => now),
+    );
+    final installment = _key('finance-loan-installment-test-installment-2');
+    final installmentBadge = find.descendant(
+      of: installment,
+      matching: find.byType(FinanceStatusBadge),
+    );
+    await _waitFor(tester, () => installmentBadge.evaluate().isNotEmpty);
+    expect(tester.widget<FinanceStatusBadge>(installmentBadge).label, '待还');
+
+    now = DateTime(2026, 10, 16, 0, 0, 2);
+    await tester.pump(const Duration(seconds: 3));
+    expect(tester.widget<FinanceStatusBadge>(installmentBadge).label, '已逾期');
     expect(tester.takeException(), isNull);
   });
 
@@ -559,27 +6522,167 @@ void main() {
     await _pump(tester, const FinanceTrashScreen());
     await tester.enterText(_key('finance-trash-search'), '旧分期');
     await tester.pumpAndSettle();
-    await _tap(tester,
-        _key('finance-trash-restore-transaction-deleted-installment-1'));
+    await _tap(
+      tester,
+      _key('finance-trash-restore-transaction-deleted-installment-1'),
+    );
     await tester.pump(const Duration(milliseconds: 300));
     expect(find.text('只恢复本期'), findsOneWidget);
     expect(find.text('恢复整组'), findsOneWidget);
     await _tap(tester, find.text('取消'));
     await tester.pumpAndSettle();
-    final before = (await tester.runAsync(() => db.query('finance_transactions',
-        where: 'installment_group_uuid = ?', whereArgs: ['deleted-group'])))!;
+    final before = (await tester.runAsync(
+      () => db.query(
+        'finance_transactions',
+        where: 'installment_group_uuid = ?',
+        whereArgs: ['deleted-group'],
+      ),
+    ))!;
     expect(before.every((row) => row['is_deleted'] == 1), isTrue);
-    await _tap(tester,
-        _key('finance-trash-restore-transaction-deleted-installment-1'));
+    await _tap(
+      tester,
+      _key('finance-trash-restore-transaction-deleted-installment-1'),
+    );
     await tester.pump(const Duration(milliseconds: 300));
     await _tap(tester, find.text('恢复整组'));
     await _waitFor(tester, () => find.text('没有找到匹配记录').evaluate().isNotEmpty);
-    final restored = (await tester.runAsync(() => db.query(
+    expect(find.text('整组分期账单已恢复'), findsOneWidget);
+    final restored = (await tester.runAsync(
+      () => db.query(
         'finance_transactions',
         where: 'installment_group_uuid = ?',
-        whereArgs: ['deleted-group'])))!;
+        whereArgs: ['deleted-group'],
+      ),
+    ))!;
     expect(restored, hasLength(2));
     expect(restored.every((row) => row['is_deleted'] == 0), isTrue);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('回收站不能单独恢复已超出当前期数的分期账单', (tester) async {
+    final db = await _seed(tester);
+    late String removedInstallmentUuid;
+    await tester.runAsync(() async {
+      final saved = await FinanceStorage.saveInstallmentPlan(
+        transaction: FinanceTransaction(
+          uuid: 'shortened-plan-first',
+          amountMinor: 12000,
+          transactionDate: '2026-09-01',
+          merchant: '期数调整账单',
+        ),
+        totalAmountMinor: 12000,
+        installmentCount: 3,
+        startDate: DateTime(2026, 9, 1),
+      );
+      removedInstallmentUuid = saved.last.uuid;
+      final groupUuid = saved.first.installmentGroupUuid!;
+      final group = await FinanceStorage.getInstallmentGroup(
+        groupUuid,
+        includeDeleted: true,
+      );
+      await FinanceStorage.saveInstallmentPlan(
+        transaction: FinanceTransaction.fromMap(saved.first.toMap()),
+        totalAmountMinor: 8000,
+        installmentCount: 2,
+        startDate: DateTime(2026, 9, 1),
+        existingInstallments: group,
+      );
+    });
+
+    await _pump(tester, const FinanceTrashScreen());
+    await _tap(
+      tester,
+      _key('finance-trash-restore-transaction-$removedInstallmentUuid'),
+    );
+    await tester.pump(const Duration(milliseconds: 300));
+    await _tap(tester, find.text('只恢复本期'));
+    await _waitFor(
+      tester,
+      () => find.textContaining('超出当前分期计划').evaluate().isNotEmpty,
+    );
+
+    final row = await tester.runAsync(
+      () => db.query(
+        'finance_transactions',
+        where: 'uuid = ?',
+        whereArgs: [removedInstallmentUuid],
+      ),
+    );
+    expect(row!.single['is_deleted'], 1);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('周期账单编辑器区分同名付款方式', (tester) async {
+    final firstMethod = FinancePaymentMethod(
+      uuid: 'automation-duplicate-account-one',
+      name: '周期同名账户',
+      sortOrder: 10,
+    );
+    final secondMethod = FinancePaymentMethod(
+      uuid: 'automation-duplicate-account-two',
+      name: '周期同名账户',
+      sortOrder: 20,
+    );
+    await _pump(
+      tester,
+      FinanceAutomationEditor.rule(
+        categories: const [],
+        paymentMethods: [firstMethod, secondMethod],
+        onSave: (_) async {},
+      ),
+    );
+
+    await _tap(tester, _key('finance-automation-payment-null'));
+    await tester.pumpAndSettle();
+    expect(find.text('💼 周期同名账户（同名账户 1/2）'), findsOneWidget);
+    await tester.tap(find.text('💼 周期同名账户（同名账户 2/2）'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('周期同名账户（同名账户 2/2）'), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('周期账单卡片区分同名付款方式', (tester) async {
+    final firstMethod = FinancePaymentMethod(
+      uuid: 'automation-card-duplicate-one',
+      name: '规则同名账户',
+      sortOrder: 10,
+    );
+    final secondMethod = FinancePaymentMethod(
+      uuid: 'automation-card-duplicate-two',
+      name: '规则同名账户',
+      sortOrder: 20,
+    );
+    final rule = FinanceRecurringRule(
+      uuid: 'automation-duplicate-account-rule',
+      name: '每月订阅',
+      amountMinor: 10000,
+      paymentMethodUuid: secondMethod.uuid,
+      startDate: '2026-01-01',
+    );
+    await _pump(
+      tester,
+      Scaffold(
+        body: FinanceAutomationManager(
+          rules: [rule],
+          templates: const [],
+          categories: const [],
+          paymentMethods: [firstMethod, secondMethod],
+          onAddRule: () async => false,
+          onAddTemplate: () async => false,
+          onEditRule: (_) async {},
+          onToggleRule: (_, _) async {},
+          onDeleteRule: (_) async {},
+          onEditTemplate: (_) async {},
+          onUseTemplate: (_) async {},
+          onDeleteTemplate: (_) async {},
+        ),
+      ),
+    );
+
+    expect(
+      find.textContaining('付款方式 · 规则同名账户（同名账户 2/2）'),
+      findsOneWidget,
+    );
     expect(tester.takeException(), isNull);
   });
 
@@ -601,14 +6704,22 @@ void main() {
           scale: narrow ? 2 : 1,
           brightness: narrow ? Brightness.dark : Brightness.light,
         );
-        expect(tester.takeException(), isNull,
-            reason: '${screen.runtimeType} 首屏');
+        expect(
+          tester.takeException(),
+          isNull,
+          reason: '${screen.runtimeType} 首屏',
+        );
         for (var i = 0; i < 9; i++) {
           await tester.drag(
-              find.byType(Scrollable).first, const Offset(0, -420));
+            find.byType(Scrollable).first,
+            const Offset(0, -420),
+          );
           await tester.pumpAndSettle();
-          expect(tester.takeException(), isNull,
-              reason: '${screen.runtimeType} 滚动布局');
+          expect(
+            tester.takeException(),
+            isNull,
+            reason: '${screen.runtimeType} 滚动布局',
+          );
         }
       }
     }
@@ -617,15 +6728,24 @@ void main() {
   testWidgets('预算保存栏在键盘弹出时仍可见，非法金额不会写入', (tester) async {
     final db = await _seed(tester);
     await _pump(
-        tester, FinanceBudgetEntryScreen(month: _month, budget: _budget()),
-        size: const Size(320, 740), scale: 1.6, keyboard: 240);
+      tester,
+      FinanceBudgetEntryScreen(month: _month, budget: _budget()),
+      size: const Size(320, 740),
+      scale: 1.6,
+      keyboard: 240,
+    );
     expect(find.text('保存预算').hitTestable(), findsOneWidget);
     await tester.enterText(_field('finance-budget-amount'), '0');
     await _tap(tester, find.text('保存预算'));
     await tester.pumpAndSettle();
     expect(find.text('请输入大于 0、最多两位小数的金额'), findsOneWidget);
-    final rows = (await tester.runAsync(() => db.query('finance_budgets',
-        where: 'uuid = ?', whereArgs: ['test-budget'])))!;
+    final rows = (await tester.runAsync(
+      () => db.query(
+        'finance_budgets',
+        where: 'uuid = ?',
+        whereArgs: ['test-budget'],
+      ),
+    ))!;
     expect(rows.single['amount_minor'], 500000);
     expect(tester.takeException(), isNull);
   });
@@ -636,14 +6756,17 @@ void main() {
     for (final screen in [
       const FinanceAutomationScreen(),
       const FinanceTrashScreen(),
-      FinanceBudgetEntryScreen(month: _month)
+      FinanceBudgetEntryScreen(month: _month),
     ]) {
       await _pump(tester, screen);
       expect(find.textContaining('加载失败'), findsOneWidget);
       expect(
-          find.widgetWithText(
-              FilledButton, screen is FinanceBudgetEntryScreen ? '重试' : '重新加载'),
-          findsOneWidget);
+        find.widgetWithText(
+          FilledButton,
+          screen is FinanceBudgetEntryScreen ? '重试' : '重新加载',
+        ),
+        findsOneWidget,
+      );
       expect(tester.takeException(), isNull);
     }
   });

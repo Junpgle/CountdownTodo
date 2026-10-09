@@ -4,6 +4,7 @@ import '../services/api_service.dart';
 import '../models.dart';
 import '../widgets/floating_glass_control.dart';
 import '../widgets/management_page.dart';
+import '../utils/app_dialogs.dart';
 
 class TeamMessageCenterScreen extends StatefulWidget {
   final List<Team> managedTeams;
@@ -296,20 +297,20 @@ class _TeamMessageCenterScreenState extends State<TeamMessageCenterScreen> {
               msg['team_uuid'], _asInt(msg['user_id']), action);
       if (!mounted) return;
       if (res['success'] == true) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(context,
             SnackBar(content: Text(action == 'approve' ? '已批准入队' : '已拒绝申请')));
         await _loadAllMessages();
       } else {
         final isHandled = res['error']?.toString().contains('已处理') == true ||
             res['error']?.toString().contains('并行处理') == true;
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(context,
             SnackBar(content: Text(res['error']?.toString() ?? '操作失败')));
         if (isHandled) await _loadAllMessages();
       }
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('处理失败，请稍后重试')));
+        AppSnackBars.showSnackBar(context,
+            const SnackBar(content: Text('处理失败，请稍后重试')));
       }
     } finally {
       if (mounted) setState(() => _processingJoinRequestKeys.remove(key));

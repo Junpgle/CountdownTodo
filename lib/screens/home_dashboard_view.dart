@@ -115,6 +115,7 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                       username: widget.username,
                       timeSalutation: _timeSalutation,
                       currentGreeting: _currentGreeting,
+                      semesterWeek: _currentSemesterWeek,
                       textConfig: HomeTextConfig(
                         customTimeSalutation:
                             _homeTextConfig['customTimeSalutation'] as String?,
@@ -535,7 +536,7 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                           _courseDataNotifier,
                                           _scheduleRevision,
                                         ]),
-                                        builder: (_, __) =>
+                                        builder: (_, _) =>
                                             _buildUniversalBanner(isLight),
                                       ),
                                       'courses': courseSection,
@@ -786,8 +787,7 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                             fit: StackFit.expand,
                                             children: [
                                               ...previousChildren,
-                                              if (currentChild != null)
-                                                currentChild,
+                                              ?currentChild,
                                             ],
                                           );
                                         },
@@ -967,175 +967,127 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
       menuScreen: HomeDrawerMenu(
         username: widget.username,
         timeSalutation: _timeSalutation,
-        onSettings: () {
-          Future.delayed(const Duration(milliseconds: 350), () async {
-            if (!context.mounted) return;
-            await PageTransitions.pushFromRect(
-              context: context,
-              page: const SettingsPage(),
-              sourceKey: _settingsButtonKey,
-            );
-            if (!mounted) return;
-            _loadSectionPreferences();
-            _loadSemesterSettings();
-            await _loadHomeTextConfig();
-            _loadAllData(deferred: true);
-          });
+        onSettings: _openSettingsFromDrawer,
+        onOpenUpdateSettings: (sourceKey) => _openSettingsFromDrawer(
+          sourceKey,
+          initialTarget: 'update',
+          sourceBorderRadius: BorderRadius.circular(6),
+          placeholderIcon: Icons.new_releases_outlined,
+        ),
+        onAiAssistant: (sourceKey) =>
+            _openAiAssistantFromAppBar(sourceKey: sourceKey),
+        onTeams: (sourceKey) async {
+          await PageTransitions.pushFromRect(
+            context: context,
+            page: TeamManagementScreen(username: widget.username),
+            sourceKey: sourceKey,
+            placeholderIcon: Icons.people_rounded,
+          );
+          if (!mounted) return;
+          final unreadBackgroundNotifications =
+              await BackgroundNotificationService
+                  .getUnreadBackgroundNotifications();
+          final notificationIds = unreadBackgroundNotifications
+              .map((e) => e['id'])
+              .whereType<num>()
+              .map((e) => e.toInt())
+              .toList();
+          await ApiService.markNotificationsRead(notificationIds);
+          await BackgroundNotificationService
+              .clearUnreadBackgroundNotifications();
+          await _fetchTeamPendingCount();
+          _loadAllData(deferred: true);
         },
-        onOpenUpdateSettings: () {
-          Future.delayed(const Duration(milliseconds: 350), () async {
-            if (!context.mounted) return;
-            await PageTransitions.pushFromRect(
-              context: context,
-              page: const SettingsPage(initialTarget: 'update'),
-              sourceKey: _settingsButtonKey,
-            );
-            if (!mounted) return;
-            _loadSectionPreferences();
-            _loadSemesterSettings();
-            await _loadHomeTextConfig();
-            _loadAllData(deferred: true);
-          });
-        },
-        onAiAssistant: () {
-          Future.delayed(const Duration(milliseconds: 300), () {
-            if (!mounted) return;
-            _openAiAssistantFromAppBar();
-          });
-        },
-        onTeams: () {
-          Future.delayed(const Duration(milliseconds: 300), () async {
-            if (!context.mounted) return;
-            await PageTransitions.pushFromRect(
-              context: context,
-              page: TeamManagementScreen(username: widget.username),
-              sourceKey: _teamsButtonKey,
-            );
-            if (!mounted) return;
-            final unreadBackgroundNotifications =
-                await BackgroundNotificationService
-                    .getUnreadBackgroundNotifications();
-            final notificationIds = unreadBackgroundNotifications
-                .map((e) => e['id'])
-                .whereType<num>()
-                .map((e) => e.toInt())
-                .toList();
-            await ApiService.markNotificationsRead(notificationIds);
-            await BackgroundNotificationService
-                .clearUnreadBackgroundNotifications();
-            await _fetchTeamPendingCount();
-            _loadAllData(deferred: true);
-          });
-        },
-        onFinance: () {
-          Future.delayed(const Duration(milliseconds: 300), () async {
-            if (!context.mounted) return;
-            await PageTransitions.pushFromRect(
-              context: context,
-              page: FinanceHomeScreen(username: widget.username),
-              sourceKey: _financeCardKey,
-              placeholderIcon: Icons.account_balance_wallet_outlined,
-            );
-          });
+        onFinance: (sourceKey) async {
+          await PageTransitions.pushFromRect(
+            context: context,
+            page: FinanceHomeScreen(username: widget.username),
+            sourceKey: sourceKey,
+            placeholderIcon: Icons.account_balance_wallet_outlined,
+          );
         },
         teamPendingCount: _teamPendingCount,
         hasTeamConflictDot: _hasTeamConflictDot,
-        onTimeline: () {
-          Future.delayed(const Duration(milliseconds: 300), () async {
-            if (!context.mounted) return;
-            await PageTransitions.pushFromRect(
-              context: context,
-              page: PersonalTimelineScreen(username: widget.username),
-              sourceKey: _timelineCardKey,
-              placeholderIcon: Icons.timeline_rounded,
-              sourceColor: Theme.of(context).brightness == Brightness.dark
-                  ? Colors.black
-                  : Colors.white,
-            );
-          });
+        onTimeline: (sourceKey) async {
+          await PageTransitions.pushFromRect(
+            context: context,
+            page: PersonalTimelineScreen(username: widget.username),
+            sourceKey: sourceKey,
+            placeholderIcon: Icons.timeline_rounded,
+            sourceColor: Theme.of(context).brightness == Brightness.dark
+                ? Colors.black
+                : Colors.white,
+          );
         },
-        onJournal: () {
-          Future.delayed(const Duration(milliseconds: 300), () async {
-            if (!context.mounted) return;
-            await PageTransitions.pushFromRect(
-              context: context,
-              page: JournalHomeScreen(username: widget.username),
-              sourceKey: GlobalKey(),
-            );
-          });
+        onJournal: (sourceKey) async {
+          await PageTransitions.pushFromRect(
+            context: context,
+            page: JournalHomeScreen(username: widget.username),
+            sourceKey: sourceKey,
+            placeholderIcon: Icons.auto_stories_rounded,
+          );
         },
-        onScreenTime: () {
-          Future.delayed(const Duration(milliseconds: 300), () async {
-            if (!context.mounted) return;
-            await PageTransitions.pushFromRect(
-              context: context,
-              page: TimeLogScreen(username: widget.username),
-              sourceKey: _screenTimeCardKey,
-              placeholderIcon: Icons.timer_outlined,
-            );
-          });
+        onScreenTime: (sourceKey) async {
+          await PageTransitions.pushFromRect(
+            context: context,
+            page: TimeLogScreen(username: widget.username),
+            sourceKey: sourceKey,
+            placeholderIcon: Icons.pie_chart_rounded,
+          );
         },
-        onPlanCenter: () {
-          Future.delayed(const Duration(milliseconds: 300), () async {
-            if (!context.mounted) return;
-            await PageTransitions.pushFromRect(
-              context: context,
-              page: TodoPlanScreen(username: widget.username),
-              sourceKey: GlobalKey(),
-            );
-            _loadSemesterSettings();
-            _loadAllData(
-              deferred: true,
-              domains: const {
-                DataRefreshDomain.todos,
-                DataRefreshDomain.planBlocks,
-                DataRefreshDomain.fixedSchedules,
-              },
-            );
-          });
+        onPlanCenter: (sourceKey) async {
+          await PageTransitions.pushFromRect(
+            context: context,
+            page: TodoPlanScreen(username: widget.username),
+            sourceKey: sourceKey,
+            placeholderIcon: Icons.edit_calendar_rounded,
+          );
+          if (!mounted) return;
+          _loadSemesterSettings();
+          _loadAllData(
+            deferred: true,
+            domains: const {
+              DataRefreshDomain.todos,
+              DataRefreshDomain.planBlocks,
+              DataRefreshDomain.fixedSchedules,
+            },
+          );
         },
-        onHabits: () {
-          Future.delayed(const Duration(milliseconds: 300), () async {
-            if (!context.mounted) return;
-            await PageTransitions.pushFromRect(
-              context: context,
-              page: HabitCenterScreen(username: widget.username),
-              sourceKey: _habitsCardKey,
-              placeholderIcon: Icons.repeat_rounded,
-            );
-            _habitsRevision.value++;
-          });
+        onHabits: (sourceKey) async {
+          await PageTransitions.pushFromRect(
+            context: context,
+            page: HabitCenterScreen(username: widget.username),
+            sourceKey: sourceKey,
+            placeholderIcon: Icons.repeat_rounded,
+          );
+          if (mounted) _habitsRevision.value++;
         },
-        onChangelog: () {
-          Future.delayed(const Duration(milliseconds: 350), () {
-            if (!context.mounted) return;
-            Navigator.of(context, rootNavigator: true).push(
-              PageTransitions.material(
-                builder: (context) => FeatureGuideScreen(
-                  mode: FeatureGuideMode.changelog,
-                  loggedInUser: widget.username,
-                ),
-              ),
-            );
-          });
+        onChangelog: (sourceKey) async {
+          await PageTransitions.pushFromRect(
+            context: Navigator.of(context, rootNavigator: true).context,
+            page: FeatureGuideScreen(
+              mode: FeatureGuideMode.changelog,
+              loggedInUser: widget.username,
+            ),
+            sourceKey: sourceKey,
+            placeholderIcon: Icons.system_update_rounded,
+          );
         },
-        onChallengeCenter: () {
-          Future.delayed(const Duration(milliseconds: 350), () async {
-            if (!context.mounted) return;
-            await Navigator.of(context, rootNavigator: true).push(
-              PageTransitions.slideHorizontal(
-                const ChallengeCenterScreen(),
-              ),
-            );
-            if (mounted) _loadThirtyDayChallengeStatus();
-          });
+        onChallengeCenter: (sourceKey) async {
+          await PageTransitions.pushFromRect(
+            context: Navigator.of(context, rootNavigator: true).context,
+            page: const ChallengeCenterScreen(),
+            sourceKey: sourceKey,
+            placeholderIcon: Icons.auto_awesome_rounded,
+          );
+          if (mounted) _loadThirtyDayChallengeStatus();
         },
-        onUpdate: () {
-          Future.delayed(const Duration(milliseconds: 300), () {
-            if (!context.mounted) return;
-            UpdateService.checkUpdateAndPrompt(context, isManual: true);
-          });
-        },
+        onUpdate: (sourceKey) => _openSettingsFromDrawer(
+          sourceKey,
+          initialTarget: 'update',
+          checkUpdatesOnOpen: true,
+          placeholderIcon: Icons.system_update_rounded,
+        ),
       ),
       mainScreen: AppSystemUiRegion(
         backgroundBrightness:
@@ -1149,6 +1101,31 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
       menuScreenWidth: isTablet ? drawerWidth : null,
       slideWidth: drawerWidth,
     );
+  }
+
+  Future<void> _openSettingsFromDrawer(
+    GlobalKey sourceKey, {
+    String? initialTarget,
+    bool checkUpdatesOnOpen = false,
+    BorderRadius sourceBorderRadius =
+        const BorderRadius.all(Radius.circular(16)),
+    IconData placeholderIcon = Icons.settings_rounded,
+  }) async {
+    await PageTransitions.pushFromRect(
+      context: context,
+      page: SettingsPage(
+        initialTarget: initialTarget,
+        checkUpdatesOnOpen: checkUpdatesOnOpen,
+      ),
+      sourceKey: sourceKey,
+      sourceBorderRadius: sourceBorderRadius,
+      placeholderIcon: placeholderIcon,
+    );
+    if (!mounted) return;
+    _loadSectionPreferences();
+    _loadSemesterSettings();
+    await _loadHomeTextConfig();
+    if (mounted) _loadAllData(deferred: true);
   }
 
   Widget _buildWallpaperCopyright(bool isLight) {
@@ -1229,14 +1206,16 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
         mimeType: 'image/$ext',
       );
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           SnackBar(content: Text('已保存到 $savedPath')),
         );
       }
     } catch (e) {
       // debugPrint('下载壁纸失败: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           SnackBar(content: Text('下载失败: $e')),
         );
       }
@@ -1437,7 +1416,7 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
 
   Future<void> _openHomeAddMenu() async {
     ModalRoute<_HomeAddAction>? menuRoute;
-    final action = await showModalBottomSheet<_HomeAddAction>(
+    final action = await showAppModalBottomSheet<_HomeAddAction>(
       context: context,
       showDragHandle: true,
       useSafeArea: true,
@@ -1590,6 +1569,11 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
       onAddPressed: () {
         _openHomeAddMenu();
       },
+      onAddLongPress: _openQuickVoiceChat,
+      onAddLongPressStart: _startQuickVoiceGesture,
+      onAddLongPressMoveUpdate: _moveQuickVoiceGesture,
+      onAddLongPressEnd: _endQuickVoiceGesture,
+      onAddLongPressCancel: _cancelQuickVoiceGesture,
       onPomodoroPressed: () {
         _openHomePomodoro(sourceKey: _homePomodoroActionKey);
       },
@@ -1722,6 +1706,11 @@ class _HomeDashboardBottomBar extends StatelessWidget {
     required this.onTabSelected,
     required this.onWeeklyPressed,
     required this.onAddPressed,
+    required this.onAddLongPress,
+    required this.onAddLongPressStart,
+    required this.onAddLongPressMoveUpdate,
+    required this.onAddLongPressEnd,
+    required this.onAddLongPressCancel,
     required this.onPomodoroPressed,
     required this.height,
     required this.margin,
@@ -1740,6 +1729,11 @@ class _HomeDashboardBottomBar extends StatelessWidget {
   final ValueChanged<int> onTabSelected;
   final VoidCallback onWeeklyPressed;
   final VoidCallback onAddPressed;
+  final VoidCallback onAddLongPress;
+  final GestureLongPressStartCallback onAddLongPressStart;
+  final GestureLongPressMoveUpdateCallback onAddLongPressMoveUpdate;
+  final GestureLongPressEndCallback onAddLongPressEnd;
+  final VoidCallback onAddLongPressCancel;
   final VoidCallback onPomodoroPressed;
   final double height;
   final EdgeInsets margin;
@@ -1764,12 +1758,18 @@ class _HomeDashboardBottomBar extends StatelessWidget {
         label: '新增',
         selectable: false,
         onPressed: onAddPressed,
+        onLongPress: onAddLongPress,
+        onLongPressStart: onAddLongPressStart,
+        onLongPressMoveUpdate: onAddLongPressMoveUpdate,
+        onLongPressEnd: onAddLongPressEnd,
+        onLongPressCancel: onAddLongPressCancel,
         builder: (context, selectedLayer, interactive) => Center(
           child: HomeBottomNavigationActionButton(
             buttonKey: selectedLayer ? null : addButtonKey,
             primaryColor: primaryColor,
             interactive: interactive,
             onPressed: onAddPressed,
+            onLongPress: onAddLongPress,
             semanticsLabel: '新增',
             child: Icon(
               Icons.add_rounded,

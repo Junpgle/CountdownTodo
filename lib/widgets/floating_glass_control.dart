@@ -88,6 +88,30 @@ ButtonStyle _floatingGlassChildButtonStyle(ButtonStyle? style) {
   );
 }
 
+Widget _floatingGlassSegmentedButtonBackground(
+  BuildContext context,
+  Set<WidgetState> states,
+  Widget? child,
+) {
+  final selected = states.contains(WidgetState.selected);
+  final colorScheme = Theme.of(context).colorScheme;
+  return DecoratedBox(
+    decoration: BoxDecoration(
+      color: selected ? colorScheme.secondaryContainer : Colors.transparent,
+      borderRadius: BorderRadius.circular(16),
+    ),
+    child: child ?? const SizedBox.shrink(),
+  );
+}
+
+ButtonStyle _floatingGlassChildSegmentedButtonStyle(ButtonStyle? style) {
+  return _floatingGlassChildButtonStyle(style).copyWith(
+    // The floating control suppresses nested glass surfaces, but selected
+    // segments still need a solid fill to remain distinguishable.
+    backgroundBuilder: _floatingGlassSegmentedButtonBackground,
+  );
+}
+
 ThemeData _floatingGlassChildTheme(BuildContext context) {
   final theme = Theme.of(context);
   return theme.copyWith(
@@ -107,7 +131,9 @@ ThemeData _floatingGlassChildTheme(BuildContext context) {
       style: _floatingGlassChildButtonStyle(theme.iconButtonTheme.style),
     ),
     segmentedButtonTheme: SegmentedButtonThemeData(
-      style: _floatingGlassChildButtonStyle(theme.segmentedButtonTheme.style),
+      style: _floatingGlassChildSegmentedButtonStyle(
+        theme.segmentedButtonTheme.style,
+      ),
     ),
   );
 }
@@ -352,6 +378,111 @@ class _OptimisticGlassSwitchState extends State<_OptimisticGlassSwitch> {
           child: Opacity(opacity: 0.58, child: renderedSwitch),
         ),
       ),
+    );
+  }
+}
+
+/// Uses the package slider while Liquid Glass is enabled and keeps Material's
+/// standard slider as the preference-off fallback.
+class LiquidGlassSlider extends StatelessWidget {
+  const LiquidGlassSlider({
+    super.key,
+    required this.value,
+    required this.onChanged,
+    this.onChangeStart,
+    this.onChangeEnd,
+    this.min = 0,
+    this.max = 1,
+    this.divisions,
+    this.label,
+    this.activeColor,
+    this.inactiveColor,
+  });
+
+  final double value;
+  final ValueChanged<double>? onChanged;
+  final ValueChanged<double>? onChangeStart;
+  final ValueChanged<double>? onChangeEnd;
+  final double min;
+  final double max;
+  final int? divisions;
+  final String? label;
+  final Color? activeColor;
+  final Color? inactiveColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<LiquidGlassEffectConfiguration>(
+      valueListenable: LiquidGlassEffectService.configurationListenable,
+      builder: (context, configuration, _) {
+        final colorScheme = Theme.of(context).colorScheme;
+        if (!configuration.enabled) {
+          return Slider(
+            value: value,
+            onChanged: onChanged,
+            onChangeStart: onChangeStart,
+            onChangeEnd: onChangeEnd,
+            min: min,
+            max: max,
+            divisions: divisions,
+            label: label,
+            activeColor: activeColor,
+            inactiveColor: inactiveColor,
+          );
+        }
+
+        final isDark = colorScheme.brightness == Brightness.dark;
+        final enhanced = configuration.mode == LiquidGlassEffectMode.enhanced;
+        final settings = LiquidGlassSettings(
+          bodyMode: GlassBodyMode.clear,
+          glassColor: colorScheme.primary.withValues(
+            alpha: isDark ? 0.14 : 0.11,
+          ),
+          thickness: enhanced ? 22 : 18,
+          blur: enhanced ? 14 : 10,
+          chromaticAberration: enhanced ? 0.006 : 0.003,
+          lightIntensity: isDark ? 0.56 : 0.62,
+          ambientStrength: isDark ? 0.12 : 0.14,
+          backerColor: colorScheme.surface.withValues(
+            alpha: liquidGlassBackerOpacity(
+              isDark ? (enhanced ? 0.56 : 0.5) : (enhanced ? 0.64 : 0.58),
+              configuration,
+            ),
+          ),
+        );
+        final quality = GlassThemeHelpers.resolveQuality(
+          context,
+          widgetQuality:
+              enhanced ? GlassQuality.premium : GlassQuality.standard,
+        );
+        final slider = GlassSlider(
+          value: value,
+          onChanged: onChanged,
+          onChangeStart: onChangeStart,
+          onChangeEnd: onChangeEnd,
+          min: min,
+          max: max,
+          divisions: divisions,
+          label: label,
+          activeColor: activeColor ?? colorScheme.primary,
+          inactiveColor: inactiveColor ??
+              colorScheme.surfaceContainerHighest.withValues(alpha: 0.72),
+          thumbColor: colorScheme.surface,
+          settings: settings,
+          useOwnLayer: true,
+          quality: quality,
+        );
+
+        // Sliders animate the thumb independently from the surrounding panel.
+        // Reopen the package renderer when a settings card provides an outer
+        // glass layer, matching the existing switch treatment.
+        return InheritedLiquidGlass(
+          settings: settings,
+          quality: quality,
+          avoidsRefraction: false,
+          child: slider,
+        );
+      },
     );
   }
 }
@@ -686,8 +817,7 @@ class _FloatingGlassTopBarContentFadeBox extends SingleChildRenderObjectWidget {
 }
 
 class _RenderFloatingGlassTopBarContentFadeBox extends RenderProxyBox {
-  _RenderFloatingGlassTopBarContentFadeBox({required double fadeHeight})
-      : _fadeHeight = fadeHeight;
+  _RenderFloatingGlassTopBarContentFadeBox({required this._fadeHeight});
 
   @override
   ShaderMaskLayer? get layer => super.layer as ShaderMaskLayer?;
@@ -834,8 +964,7 @@ class FloatingGlassSliverContentFade extends SingleChildRenderObjectWidget {
 }
 
 class _RenderFloatingGlassSliverContentFade extends RenderProxySliver {
-  _RenderFloatingGlassSliverContentFade({required double fadeHeight})
-      : _fadeHeight = fadeHeight;
+  _RenderFloatingGlassSliverContentFade({required this._fadeHeight});
 
   double _fadeHeight;
 
@@ -2562,6 +2691,7 @@ class FloatingGlassActionButton extends StatelessWidget {
               ? LiquidRoundedSuperellipse(borderRadius: borderRadius)
               : const LiquidOval(),
           settings: LiquidGlassSettings(
+            bodyMode: GlassBodyMode.clear,
             glassColor: resolvedTint.withValues(
               alpha: liquidGlassBackerOpacity(
                 isDark ? 0.18 : 0.12,
@@ -2848,31 +2978,40 @@ class _FloatingGlassControlFallback extends StatelessWidget {
       ],
     );
 
-    final content = Stack(
-      fit: height == null ? StackFit.passthrough : StackFit.expand,
-      clipBehavior: allowChildOverflow ? Clip.none : Clip.hardEdge,
-      children: [
-        // Keep the neutral fallback inexpensive on Android while preserving
-        // the frosted read on platforms where a small bounded blur is cheap.
-        if (!AppPlatform.isAndroid)
-          Positioned.fill(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(borderRadius),
-              child: BackdropFilter(
-                filter: ui.ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-                child: const SizedBox.expand(),
-              ),
-            ),
-          ),
-        child,
-      ],
-    );
-
     return Container(
       height: height,
       margin: margin,
       decoration: decoration,
-      child: content,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          // A right- or left-positioned control can have unbounded width. An
+          // expanding Stack turns that infinity into a tight child constraint,
+          // which fails during layout. Let the child choose its width there;
+          // retain the existing fill behavior when both axes are bounded.
+          final fit = height != null && constraints.hasBoundedWidth
+              ? StackFit.expand
+              : StackFit.passthrough;
+          return Stack(
+            fit: fit,
+            clipBehavior: allowChildOverflow ? Clip.none : Clip.hardEdge,
+            children: [
+              // Keep the Android fallback inexpensive while preserving a
+              // frosted surface elsewhere, where a small blur is cheap.
+              if (!AppPlatform.isAndroid)
+                Positioned.fill(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(borderRadius),
+                    child: BackdropFilter(
+                      filter: ui.ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+                      child: const SizedBox.expand(),
+                    ),
+                  ),
+                ),
+              child,
+            ],
+          );
+        },
+      ),
     );
   }
 }

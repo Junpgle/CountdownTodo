@@ -1,13 +1,17 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../services/reminder_schedule_service.dart';
 import '../../../widgets/floating_glass_control.dart';
 import '../models/finance_models.dart';
 import '../services/finance_repository.dart';
+import '../services/finance_storage.dart';
 import '../widgets/finance_automation_editor.dart';
 import '../widgets/finance_automation_manager.dart';
 import '../widgets/finance_management_widgets.dart';
 import 'finance_entry_screen.dart';
+import '../../../utils/app_dialogs.dart';
 
 /// 周期账单和快捷记账模板管理。
 class FinanceAutomationScreen extends StatefulWidget {
@@ -26,11 +30,28 @@ class _FinanceAutomationScreenState extends State<FinanceAutomationScreen> {
   bool _isLoading = true;
   String? _loadError;
   int _loadGeneration = 0;
+  Timer? _financeChangeRefreshTimer;
 
   @override
   void initState() {
     super.initState();
+    FinanceStorage.revision.addListener(_onFinanceChanged);
     _load();
+  }
+
+  @override
+  void dispose() {
+    _financeChangeRefreshTimer?.cancel();
+    FinanceStorage.revision.removeListener(_onFinanceChanged);
+    super.dispose();
+  }
+
+  void _onFinanceChanged() {
+    _financeChangeRefreshTimer?.cancel();
+    _financeChangeRefreshTimer = Timer(const Duration(milliseconds: 100), () {
+      _financeChangeRefreshTimer = null;
+      if (mounted) unawaited(_load());
+    });
   }
 
   Future<void> _load() async {
@@ -61,13 +82,16 @@ class _FinanceAutomationScreenState extends State<FinanceAutomationScreen> {
   }
 
   Future<bool> _openRuleEditor([FinanceRecurringRule? rule]) async {
-    final saved = await showDialog<bool>(
+    final saved = await showAppDialog<bool>(
       context: context,
       builder: (_) => FinanceAutomationEditor.rule(
         rule: rule,
         categories: _categories,
         paymentMethods: _paymentMethods,
-        onSave: FinanceRepository.saveRecurringRule,
+        onSave: (updatedRule) => FinanceRepository.saveRecurringRule(
+          updatedRule,
+          original: rule,
+        ),
       ),
     );
     if (saved != true || !mounted) return false;
@@ -100,13 +124,14 @@ class _FinanceAutomationScreenState extends State<FinanceAutomationScreen> {
   }
 
   Future<bool> _openTemplateEditor([FinanceEntryTemplate? template]) async {
-    final saved = await showDialog<bool>(
+    final saved = await showAppDialog<bool>(
       context: context,
       builder: (_) => FinanceAutomationEditor.template(
         template: template,
         categories: _categories,
         paymentMethods: _paymentMethods,
-        onSave: FinanceRepository.saveTemplate,
+        onSave: (updated) =>
+            FinanceRepository.saveTemplate(updated, original: template),
       ),
     );
     if (saved != true || !mounted) return false;
@@ -129,7 +154,7 @@ class _FinanceAutomationScreenState extends State<FinanceAutomationScreen> {
   }
 
   Future<bool> _confirm(String title, String message) async {
-    return await showDialog<bool>(
+    return await showAppDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
             title: Text(title),

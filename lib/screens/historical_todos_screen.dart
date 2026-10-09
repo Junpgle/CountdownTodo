@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../models.dart';
 import '../storage_service.dart';
 import '../widgets/management_page.dart';
+import '../utils/app_dialogs.dart';
 
 class HistoricalTodosScreen extends StatefulWidget {
   final String username;
@@ -18,13 +19,18 @@ class HistoricalTodosScreen extends StatefulWidget {
 
 class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
     with SingleTickerProviderStateMixin {
+  static const int _todoPageSize = 120;
   List<TodoItem> _history = [];
   List<TodoItem> _deletedTodos = [];
   List<TodoItem> _orphanTodos = [];
+  List<TodoItem> _loadedTodos = [];
   bool _isLoading = true;
+  bool _isLoadingMore = false;
+  bool _hasMoreTodoPages = false;
   bool _loadFailed = false;
   String? _busyId;
   int _loadGeneration = 0;
+  int _nextTodoOffset = 0;
   final _searchController = TextEditingController();
   late TabController _tabController;
 
@@ -60,26 +66,63 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
     }
   }
 
-  Future<void> _loadData() async {
+  Future<void> _loadData({bool loadMore = false}) async {
     if (!mounted) return;
+    if (loadMore &&
+        (!_hasMoreTodoPages ||
+            _isLoadingMore ||
+            _isLoading ||
+            _busyId != null)) {
+      return;
+    }
     final generation = ++_loadGeneration;
-    setState(() => _isLoading = true);
+    final offset = loadMore ? _nextTodoOffset : 0;
+    setState(() {
+      if (loadMore) {
+        _isLoadingMore = true;
+      } else {
+        _isLoading = true;
+        _isLoadingMore = false;
+        _hasMoreTodoPages = false;
+        _nextTodoOffset = 0;
+        _loadedTodos = [];
+        _history = [];
+        _deletedTodos = [];
+        _orphanTodos = [];
+      }
+    });
     try {
       // 🚀 核心优化：并发加载待办和分组
       final results = await Future.wait([
         widget.loadTodos?.call() ??
-            StorageService.getTodos(widget.username, includeDeleted: true),
+            StorageService.getTodos(
+              widget.username,
+              includeDeleted: true,
+              limit: _todoPageSize,
+              offset: offset,
+            ),
         widget.loadGroups?.call() ??
             StorageService.getTodoGroups(widget.username, includeDeleted: true),
       ]);
 
       if (!mounted || generation != _loadGeneration) return;
-      final allTodos = results[0] as List<TodoItem>;
+      final pageTodos = results[0] as List<TodoItem>;
+      final mergedTodos = <String, TodoItem>{
+        if (loadMore) for (final todo in _loadedTodos) todo.id: todo,
+      };
+      for (final todo in pageTodos) {
+        final previous = mergedTodos[todo.id];
+        if (previous == null || todo.updatedAt > previous.updatedAt) {
+          mergedTodos[todo.id] = todo;
+        }
+      }
+      final allTodos = mergedTodos.values.toList();
       final groups = results[1] as List<TodoGroup>;
       final activeGroupIds =
           groups.where((g) => !g.isDeleted).map((g) => g.id).toSet();
 
       setState(() {
+        _loadedTodos = allTodos;
         // 1. 历史记录：已完成、日期在今天之前、未被逻辑删除
         _history =
             allTodos.where((t) => _isHistorical(t) && !t.isDeleted).toList();
@@ -100,37 +143,48 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
         }).toList();
         _orphanTodos.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
 
+        _nextTodoOffset = offset + _todoPageSize;
+        _hasMoreTodoPages =
+            widget.loadTodos == null && pageTodos.length >= _todoPageSize;
         _isLoading = false;
+        _isLoadingMore = false;
         _loadFailed = false;
       });
     } catch (_) {
       if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _isLoading = false;
-        _loadFailed = true;
+        _isLoadingMore = false;
+        _loadFailed = !loadMore;
       });
+      if (loadMore) {
+        AppSnackBars.showSnackBar(
+          context,
+          const SnackBar(content: Text('加载更多待办失败，请重试')),
+        );
+      }
     }
   }
 
   Future<void> _deleteItem(TodoItem item) async {
     try {
-      await StorageService.deleteTodoGlobally(widget.username, item.id);
-      final allTodos = await StorageService.getTodos(widget.username);
-      final index = allTodos.indexWhere((t) => t.id == item.id);
-      if (index != -1) {
-        allTodos[index].isDeleted = true;
-        allTodos[index].markAsChanged();
-        await StorageService.saveTodos(widget.username, allTodos, sync: true);
-      }
+      final current =
+          await StorageService.getTodoByUuid(widget.username, item.id);
+      if (current == null) throw StateError('待办已不存在');
+      current.isDeleted = true;
+      current.markAsChanged();
+      await StorageService.updateSingleTodo(widget.username, current);
       await _loadData();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           const SnackBar(content: Text('已移至回收站')),
         );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           const SnackBar(content: Text('删除失败，请稍后再试')),
         );
       }
@@ -138,17 +192,16 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
   }
 
   Future<void> _uncheckItem(TodoItem item) async {
-    final allTodos = await StorageService.getTodos(widget.username);
-    int idx = allTodos.indexWhere((t) => t.id == item.id);
-    if (idx != -1) {
-      allTodos[idx].isDone = false;
-      allTodos[idx].markAsChanged();
-      await StorageService.saveTodos(widget.username, allTodos, sync: true);
-    }
+    final current =
+        await StorageService.getTodoByUuid(widget.username, item.id);
+    if (current == null) throw StateError('待办已不存在');
+    current.isDone = false;
+    current.markAsChanged();
+    await StorageService.updateSingleTodo(widget.username, current);
     await _loadData();
     if (mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('待办已取消完成，并退回主页清单')));
+      AppSnackBars.showSnackBar(context,
+          const SnackBar(content: Text('待办已取消完成，并退回主页清单')));
     }
   }
 
@@ -170,8 +223,8 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
     await StorageService.updateSingleTodo(widget.username, item);
     await _loadData();
     if (mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('待办已成功恢复，并退回首页清单')));
+      AppSnackBars.showSnackBar(context,
+          const SnackBar(content: Text('待办已成功恢复，并退回首页清单')));
     }
   }
 
@@ -179,36 +232,37 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
     await StorageService.permanentlyDeleteTodo(widget.username, item.id);
     await _loadData();
     if (mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('已彻底删除')));
+      AppSnackBars.showSnackBar(context,
+          const SnackBar(content: Text('已彻底删除')));
     }
   }
 
   Future<void> _fixOrphan(TodoItem item) async {
-    final allTodos = await StorageService.getTodos(widget.username);
-    int idx = allTodos.indexWhere((t) => t.id == item.id);
-    if (idx != -1) {
-      allTodos[idx].groupId = null; // 解绑无效的分组，让它回到首页主列表
-      allTodos[idx].markAsChanged();
-      await StorageService.saveTodos(widget.username, allTodos, sync: true);
-    }
+    final current =
+        await StorageService.getTodoByUuid(widget.username, item.id);
+    if (current == null) throw StateError('待办已不存在');
+    current.groupId = null; // 解绑无效的分组，让它回到首页主列表
+    current.markAsChanged();
+    await StorageService.updateSingleTodo(widget.username, current);
     await _loadData();
     if (mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('已修复！待办已回到首页清单')));
+      AppSnackBars.showSnackBar(context,
+          const SnackBar(content: Text('已修复！待办已回到首页清单')));
     }
   }
 
   Future<bool> _confirmPermanentDelete({TodoItem? item}) async {
     final scheme = Theme.of(context).colorScheme;
-    return await showDialog<bool>(
+    return await showAppDialog<bool>(
           context: context,
           builder: (ctx) => AlertDialog(
             scrollable: true,
             icon: Icon(Icons.delete_forever_outlined, color: scheme.error),
             title: Text(item == null ? '清空全部回收站？' : '彻底删除这条待办？'),
             content: Text(item == null
-                ? '将永久删除回收站中的全部 ${_deletedTodos.length} 条待办（包括未显示的搜索结果），删除后无法恢复。'
+                ? _hasMoreTodoPages
+                    ? '将永久删除回收站中的全部待办（当前已加载 ${_deletedTodos.length} 条，仍可能有尚未加载的记录），删除后无法恢复。'
+                    : '将永久删除回收站中的全部 ${_deletedTodos.length} 条待办（包括未显示的搜索结果），删除后无法恢复。'
                 : '“${item.title}”将被永久删除，删除后无法恢复。'),
             actions: [
               TextButton(
@@ -233,8 +287,8 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
       await action();
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('操作失败，请稍后重试')));
+        AppSnackBars.showSnackBar(context,
+            const SnackBar(content: Text('操作失败，请稍后重试')));
       }
     } finally {
       if (mounted) setState(() => _busyId = null);
@@ -283,7 +337,7 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
       Icons.folder_off_outlined
     ];
     return RefreshIndicator(
-      onRefresh: _loadData,
+      onRefresh: () => _loadData(),
       child: ManagementPage(
           key: PageStorageKey('todo-history-$section'),
           maxWidth: 900,
@@ -306,8 +360,10 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
                 children: [
                   Text(
                       query.isEmpty
-                          ? '共 ${items.length} 条待办'
-                          : '找到 ${visible.length} 条待办',
+                          ? _hasMoreTodoPages
+                              ? '已加载 ${items.length} 条待办'
+                              : '共 ${items.length} 条待办'
+                          : '找到 ${visible.length} 条待办${_hasMoreTodoPages ? '（当前已加载）' : ''}',
                       style: theme.textTheme.titleSmall
                           ?.copyWith(color: scheme.onSurfaceVariant)),
                   if (section == 1 && items.isNotEmpty)
@@ -339,6 +395,24 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
                           ?.copyWith(color: scheme.onSurfaceVariant))),
               ...group.value.map((item) => _buildCard(item, section)),
             ],
+            if (_isLoadingMore)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 20),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (_hasMoreTodoPages)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Center(
+                  child: TextButton.icon(
+                    onPressed: _isLoading || _busyId != null
+                        ? null
+                        : () => _loadData(loadMore: true),
+                    icon: const Icon(Icons.expand_more_rounded),
+                    label: const Text('加载更多待办'),
+                  ),
+                ),
+              ),
           ]),
     );
   }
@@ -435,7 +509,9 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
           IconButton(
               icon: const Icon(Icons.refresh_rounded),
               tooltip: '重新扫描',
-              onPressed: _isLoading || _busyId != null ? null : _loadData)
+              onPressed: _isLoading || _busyId != null
+                  ? null
+                  : () => _loadData())
         ],
         bottom: TabBar(
           controller: _tabController,
@@ -457,7 +533,7 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
                     ManagementLoadError(
                         title: '暂时无法加载待办',
                         description: '请重试，已保存的待办不会受影响。',
-                        onRetry: _loadData),
+                        onRetry: () => _loadData()),
                   ])
                 : TabBarView(controller: _tabController, children: [
                     _buildList(_history, 0, topBarHeight),

@@ -1,18 +1,22 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../services/storage/app_settings_storage.dart';
 import '../models/finance_models.dart';
 import '../services/finance_automation_service.dart';
 import '../services/finance_repository.dart';
+import '../services/finance_storage.dart';
 import '../services/ai_usage_cost_service.dart';
 import '../../../widgets/floating_bottom_bar.dart';
 import '../../../widgets/floating_glass_control.dart';
 import '../../../widgets/home_bottom_navigation_content.dart';
 import '../../../utils/page_transitions.dart';
 import '../widgets/finance_widgets.dart';
+import '../widgets/finance_intro_guide.dart';
 import 'finance_automation_screen.dart';
 import 'ai_usage_cost_screen.dart';
 import 'finance_budget_screen.dart';
@@ -22,6 +26,7 @@ import 'finance_settings_screen.dart';
 import 'finance_text_recognition_screen.dart';
 import 'finance_trash_screen.dart';
 import 'finance_transaction_detail_screen.dart';
+import '../../../utils/app_dialogs.dart';
 
 typedef _FinanceHomeData = ({
   List<FinanceTransaction> transactions,
@@ -29,11 +34,13 @@ typedef _FinanceHomeData = ({
   List<FinanceCategory> categories,
   List<FinancePaymentMethod> paymentMethods,
   List<FinanceTransaction> overviewTransactions,
+  List<FinanceRecurringRule> recurringRules,
 });
 
 class FinanceHomeScreen extends StatefulWidget {
   final String username;
   final bool openQuickEntry;
+  final DateTime Function() clock;
   final DateTime? initialMonth;
   final String? initialCategoryFilterUuid;
   final _FinanceHomeData? _initialData;
@@ -42,50 +49,63 @@ class FinanceHomeScreen extends StatefulWidget {
     super.key,
     required this.username,
     this.openQuickEntry = false,
-  })  : initialMonth = null,
-        initialCategoryFilterUuid = null,
-        _initialData = null;
+    this.clock = DateTime.now,
+  }) : initialMonth = null,
+       initialCategoryFilterUuid = null,
+       _initialData = null;
 
   const FinanceHomeScreen._categoryLedger({
     required this.username,
     required DateTime month,
     required String categoryUuid,
-    required _FinanceHomeData initialData,
-  })  : openQuickEntry = false,
-        initialMonth = month,
-        initialCategoryFilterUuid = categoryUuid,
-        _initialData = initialData;
+    required this._initialData,
+    this.clock = DateTime.now,
+  }) : openQuickEntry = false,
+       initialMonth = month,
+       initialCategoryFilterUuid = categoryUuid;
 
   @override
   State<FinanceHomeScreen> createState() => _FinanceHomeScreenState();
 }
 
 class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
-  DateTime _month = DateTime(DateTime.now().year, DateTime.now().month);
+  late DateTime _month;
   List<FinanceTransaction> _transactions = const [];
   List<FinanceTransaction> _overviewTransactions = const [];
   List<FinanceCategory> _categories = const [];
   List<FinancePaymentMethod> _paymentMethods = const [];
+  List<FinanceRecurringRule> _recurringRules = const [];
   FinanceSummary _summary = const FinanceSummary();
   String _keyword = '';
   FinanceTransactionType? _filterType;
   String? _categoryFilterUuid;
+  bool _categoryTapOpensLedger = true;
   int _selectedIndex = 0;
   bool _isLoading = true;
   String? _loadError;
   int _loadGeneration = 0;
   bool _maintenanceScheduled = false;
   Future<void>? _maintenanceFuture;
+  String? _lastRecurringRuleSignature;
+  Timer? _upcomingTransactionTimer;
+  Timer? _autoGenerationTimer;
+  Timer? _financeChangeRefreshTimer;
   final GlobalKey _overviewAddActionKey = GlobalKey();
   final GlobalKey _bottomAddActionKey = GlobalKey();
+  final GlobalKey _budgetActionKey = GlobalKey();
+  final GlobalKey _moreActionKey = GlobalKey();
+  bool _guideScheduled = false;
+  bool _guideAttempted = false;
+  bool _showingGuide = false;
+  bool _quickEntryInProgress = false;
 
   Map<String, FinanceCategory> get _categoryMap => {
-        for (final item in _categories) item.uuid: item,
-      };
+    for (final item in _categories) item.uuid: item,
+  };
 
   Map<String, FinancePaymentMethod> get _paymentMethodMap => {
-        for (final item in _paymentMethods) item.uuid: item,
-      };
+    for (final item in _paymentMethods) item.uuid: item,
+  };
 
   bool get _hasLedgerFilters =>
       _keyword.trim().isNotEmpty ||
@@ -133,7 +153,10 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
   @override
   void initState() {
     super.initState();
-    if (widget.initialMonth != null) _month = widget.initialMonth!;
+    _quickEntryInProgress = widget.openQuickEntry;
+    FinanceStorage.revision.addListener(_onFinanceStorageChanged);
+    final initialMonth = widget.initialMonth ?? widget.clock();
+    _month = DateTime(initialMonth.year, initialMonth.month);
     if (_isCategoryLedgerRoute) {
       _categoryFilterUuid = widget.initialCategoryFilterUuid;
       _selectedIndex = 1;
@@ -147,16 +170,52 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
       _categories = initialData.categories;
       _paymentMethods = initialData.paymentMethods;
       _overviewTransactions = initialData.overviewTransactions;
+      _recurringRules = initialData.recurringRules;
+      _lastRecurringRuleSignature = _recurringRuleSignature(
+        initialData.recurringRules,
+      );
       _isLoading = false;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _scheduleUpcomingTransactionRefresh();
+        _scheduleNextAutoGeneration();
+      });
     }
     if (widget.openQuickEntry) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _openEntry();
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted) return;
+        try {
+          await _openEntry();
+        } finally {
+          _quickEntryInProgress = false;
+          if (mounted) _scheduleIntroGuide();
+        }
       });
     }
   }
 
+  @override
+  void dispose() {
+    _upcomingTransactionTimer?.cancel();
+    _autoGenerationTimer?.cancel();
+    _financeChangeRefreshTimer?.cancel();
+    FinanceStorage.revision.removeListener(_onFinanceStorageChanged);
+    super.dispose();
+  }
+
+  void _onFinanceStorageChanged() {
+    _financeChangeRefreshTimer?.cancel();
+    _financeChangeRefreshTimer = Timer(const Duration(milliseconds: 100), () {
+      _financeChangeRefreshTimer = null;
+      if (mounted) unawaited(_load(showLoading: false));
+    });
+  }
+
   Future<void> _load({bool showLoading = true}) async {
+    _upcomingTransactionTimer?.cancel();
+    _upcomingTransactionTimer = null;
+    _autoGenerationTimer?.cancel();
+    _autoGenerationTimer = null;
     final generation = ++_loadGeneration;
     if (mounted && showLoading) {
       setState(() {
@@ -165,17 +224,39 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
       });
     }
     try {
-      final data = await _loadOverviewData();
+      final values = await Future.wait<Object>([
+        _loadOverviewData(),
+        AppSettingsStorage.isFinanceCategoryTapOpensLedger(),
+      ]);
+      final data = values[0] as _FinanceHomeData;
+      final categoryTapOpensLedger = values[1] as bool;
       if (!mounted || generation != _loadGeneration) return;
+      final recurringRuleSignature = _recurringRuleSignature(
+        data.recurringRules,
+      );
+      final shouldReconcileRecurringRules =
+          _lastRecurringRuleSignature != null &&
+          _lastRecurringRuleSignature != recurringRuleSignature;
+      _lastRecurringRuleSignature = recurringRuleSignature;
       setState(() {
         _transactions = data.transactions;
         _summary = data.summary;
         _categories = data.categories;
         _paymentMethods = data.paymentMethods;
         _overviewTransactions = data.overviewTransactions;
+        _recurringRules = data.recurringRules;
+        _categoryTapOpensLedger = categoryTapOpensLedger;
         _isLoading = false;
       });
-      if (!_isCategoryLedgerRoute) _startBackgroundMaintenance(generation);
+      _scheduleUpcomingTransactionRefresh();
+      _scheduleNextAutoGeneration();
+      if (!_isCategoryLedgerRoute) {
+        _scheduleIntroGuide();
+        _startBackgroundMaintenance(generation);
+        if (shouldReconcileRecurringRules) {
+          unawaited(_reconcileAutoGeneration());
+        }
+      }
     } catch (error) {
       if (!mounted || generation != _loadGeneration) return;
       if (showLoading) {
@@ -187,33 +268,191 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
     }
   }
 
+  void _scheduleIntroGuide() {
+    if (_guideScheduled ||
+        _guideAttempted ||
+        _quickEntryInProgress ||
+        _isCategoryLedgerRoute ||
+        _isLoading ||
+        _loadError != null ||
+        _selectedIndex != 0) {
+      return;
+    }
+    _guideScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _guideScheduled = false;
+      if (!mounted ||
+          _quickEntryInProgress ||
+          _selectedIndex != 0 ||
+          ModalRoute.of(context)?.isCurrent == false) {
+        return;
+      }
+      _guideAttempted = true;
+      unawaited(_showIntroGuide());
+    });
+  }
+
+  Future<void> _showIntroGuide({bool force = false}) async {
+    if (_showingGuide ||
+        !mounted ||
+        _isLoading ||
+        _loadError != null ||
+        _quickEntryInProgress ||
+        _isCategoryLedgerRoute ||
+        (!force && _selectedIndex != 0)) {
+      return;
+    }
+    _showingGuide = true;
+    try {
+      if (_selectedIndex != 0) {
+        setState(() => _selectedIndex = 0);
+        await WidgetsBinding.instance.endOfFrame;
+        if (!mounted) return;
+      }
+      await FinanceIntroGuide.show(
+        context: context,
+        addKey: _bottomAddActionKey,
+        budgetKey: _budgetActionKey,
+        moreKey: _moreActionKey,
+        onOpenSettings: _openSettings,
+        force: force,
+      );
+    } catch (error) {
+      debugPrint('记账新手指引暂时无法显示：$error');
+    } finally {
+      _showingGuide = false;
+    }
+  }
+
+  String _recurringRuleSignature(Iterable<FinanceRecurringRule> rules) {
+    final values = rules
+        .map(
+          (rule) => [
+            rule.uuid,
+            rule.name,
+            rule.type.name,
+            rule.amountMinor,
+            rule.currencyCode,
+            rule.categoryUuid,
+            rule.paymentMethodUuid,
+            rule.merchant,
+            rule.note,
+            rule.frequency.name,
+            rule.dayOfMonth,
+            rule.monthOfYear,
+            rule.startDate,
+            rule.endDate,
+            rule.reminderMinutes,
+            rule.autoGenerate,
+            rule.isEnabled,
+          ],
+        )
+        .toList()
+      ..sort(
+        (left, right) => left.first.toString().compareTo(right.first.toString()),
+      );
+    return jsonEncode(values);
+  }
+
   Future<_FinanceHomeData> _loadOverviewData() async {
     final from = DateTime(_month.year, _month.month);
     final to = DateTime(_month.year, _month.month + 1);
     // 周视图需要覆盖月初前和月末后的完整自然周，避免边界日期被截断。
-    final overviewFrom = from.subtract(const Duration(days: 7));
-    final overviewTo = to.add(const Duration(days: 7));
+    final overviewFrom = financeCalendarDayOffset(from, -7);
+    final overviewTo = financeCalendarDayOffset(to, 7);
     final values = await Future.wait<dynamic>([
       // 这个范围已经包含本月，后续在内存中切出本月账单，避免重复查询。
       FinanceRepository.getTransactions(from: overviewFrom, to: overviewTo),
-      FinanceRepository.getCategories(includeArchived: true),
+      FinanceRepository.getCategories(
+        includeArchived: true,
+        includeDeleted: true,
+      ),
       FinanceRepository.getPaymentMethods(includeArchived: true),
+      FinanceRepository.getRecurringRules(enabledOnly: true),
     ]);
     final overviewTransactions = values[0] as List<FinanceTransaction>;
     final fromKey = dateKey(from);
     final toKey = dateKey(to);
     final transactions = overviewTransactions
-        .where((transaction) =>
-            transaction.transactionDate.compareTo(fromKey) >= 0 &&
-            transaction.transactionDate.compareTo(toKey) < 0)
+        .where(
+          (transaction) =>
+              transaction.transactionDate.compareTo(fromKey) >= 0 &&
+              transaction.transactionDate.compareTo(toKey) < 0,
+        )
         .toList(growable: false);
+    final now = widget.clock();
+    final isCurrentMonth = from.year == now.year && from.month == now.month;
     return (
       transactions: transactions,
-      summary: FinanceRepository.summarizeTransactions(transactions),
+      summary: FinanceSummary.fromTransactions(
+        transactions,
+        asOfAt: isCurrentMonth ? now.millisecondsSinceEpoch : null,
+      ),
       categories: values[1] as List<FinanceCategory>,
       paymentMethods: values[2] as List<FinancePaymentMethod>,
       overviewTransactions: overviewTransactions,
+      recurringRules: values[3] as List<FinanceRecurringRule>,
     );
+  }
+
+  void _scheduleUpcomingTransactionRefresh() {
+    _upcomingTransactionTimer?.cancel();
+    _upcomingTransactionTimer = null;
+    final currentDate = widget.clock();
+    final now = currentDate.millisecondsSinceEpoch;
+    final currentMonth = DateTime(currentDate.year, currentDate.month);
+    if (_month.isBefore(currentMonth)) {
+      return;
+    }
+
+    final monthStart = DateTime(_month.year, _month.month);
+    var nextEventAt = monthStart.isAfter(currentMonth)
+        ? monthStart.millisecondsSinceEpoch
+        : DateTime(_month.year, _month.month + 1).millisecondsSinceEpoch;
+    for (final transaction in _overviewTransactions) {
+      final eventAt = transaction.balanceEventAt();
+      if (eventAt > now && eventAt < nextEventAt) {
+        nextEventAt = eventAt;
+      }
+    }
+    final delayMs = (nextEventAt - now + 1)
+        .clamp(1, const Duration(days: 24).inMilliseconds)
+        .toInt();
+    _upcomingTransactionTimer = Timer(Duration(milliseconds: delayMs), () {
+      _upcomingTransactionTimer = null;
+      if (mounted) unawaited(_load(showLoading: false));
+    });
+  }
+
+  void _scheduleNextAutoGeneration() {
+    _autoGenerationTimer?.cancel();
+    _autoGenerationTimer = null;
+    final now = widget.clock();
+    final dueAt = FinanceAutomationService.nextAutoGenerationDueAfter(
+      _recurringRules,
+      now: now,
+    );
+    if (dueAt == null) return;
+
+    final delayMs =
+        (dueAt.millisecondsSinceEpoch - now.millisecondsSinceEpoch + 1)
+            .clamp(1, const Duration(days: 24).inMilliseconds)
+            .toInt();
+    _autoGenerationTimer = Timer(Duration(milliseconds: delayMs), () {
+      _autoGenerationTimer = null;
+      if (mounted) unawaited(_reconcileAutoGeneration());
+    });
+  }
+
+  Future<void> _reconcileAutoGeneration() async {
+    try {
+      await FinanceAutomationService.reconcileCurrentPeriod(
+        now: widget.clock(),
+      );
+    } catch (error) {
+      // 自动账单补偿失败不应影响已经打开的记账首页。
+    }
+    if (mounted) await _load(showLoading: false);
   }
 
   void _startBackgroundMaintenance(int generation) {
@@ -237,7 +476,10 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
       var needsRefresh = false;
       try {
         needsRefresh =
-            await FinanceAutomationService.reconcileCurrentPeriod() > 0;
+            await FinanceAutomationService.reconcileCurrentPeriod(
+              now: widget.clock(),
+            ) >
+            0;
       } catch (_) {
         // 自动化异常不应阻断已有账单的查看和手动记账。
       }
@@ -287,11 +529,13 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
   }
 
   Future<void> _openRefund(FinanceTransaction original) async {
-    final remaining =
-        await FinanceRepository.getRemainingRefundableMinor(original.uuid);
+    final remaining = await FinanceRepository.getRemainingRefundableMinor(
+      original.uuid,
+    );
     if (!mounted) return;
     if (remaining <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         const SnackBar(content: Text('该账单已全部退款')),
       );
       return;
@@ -310,9 +554,10 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
   ) async {
     final colorScheme = Theme.of(context).colorScheme;
     final category = _categoryMap[transaction.categoryUuid];
-    final categoryDisplayName = category == null
-        ? null
-        : financeCategoryDisplayName(category, _categories);
+    final categoryDisplayName = financeCategoryReferenceDisplayName(
+      transaction.categoryUuid,
+      _categories,
+    );
     final result = await PageTransitions.pushFromRect<FinanceTransaction>(
       context: context,
       page: FinanceTransactionDetailScreen(
@@ -320,6 +565,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
         category: category,
         categoryDisplayName: categoryDisplayName,
         paymentMethod: _paymentMethodMap[transaction.paymentMethodUuid],
+        paymentMethods: _paymentMethods,
       ),
       sourceKey: sourceKey,
       sourceColor: colorScheme.surfaceContainerLow,
@@ -343,9 +589,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
 
   Future<void> _openTextRecognition() async {
     await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => const FinanceTextRecognitionScreen(),
-      ),
+      MaterialPageRoute(builder: (_) => const FinanceTextRecognitionScreen()),
     );
     if (mounted) await _load();
   }
@@ -360,28 +604,122 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
   }
 
   Future<void> _openLoans() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const FinanceLoanScreen()),
-    );
+    await Navigator.of(context)
+        .push(MaterialPageRoute(builder: (_) => const FinanceLoanScreen()));
     if (mounted) await _load();
   }
 
   Future<void> _openAutomation() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const FinanceAutomationScreen()),
-    );
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const FinanceAutomationScreen()));
     if (mounted) await _load();
   }
 
+  String _deleteTransactionDescription(
+    FinanceTransaction transaction, {
+    required bool hasPaymentMethod,
+    required bool includedInBalanceSnapshot,
+  }) {
+    if (transaction.balanceEventAt() > widget.clock().millisecondsSinceEpoch) {
+      final label = switch (transaction.type) {
+        FinanceTransactionType.expense => '支出',
+        FinanceTransactionType.income => '收入',
+        FinanceTransactionType.refund => '退款',
+      };
+      final effect = hasPaymentMethod
+          ? switch (transaction.type) {
+              FinanceTransactionType.expense => '，不会影响当前付款方式余额',
+              FinanceTransactionType.income => '，不会影响当前到账账户余额',
+              FinanceTransactionType.refund => '，不会影响当前退款到账账户余额',
+            }
+          : transaction.type == FinanceTransactionType.refund
+          ? '，不再抵扣净支出'
+          : '';
+      return '删除后，这笔计划$label会从未来账单中移除$effect。确认继续吗？';
+    }
+
+    if (hasPaymentMethod && includedInBalanceSnapshot) {
+      return switch (transaction.type) {
+        FinanceTransactionType.expense =>
+          '删除后，这笔支出不再计入统计；当前余额以录入的余额快照为准，不会变化。确认继续吗？',
+        FinanceTransactionType.income =>
+          '删除后，这笔收入不再计入统计；当前余额以录入的余额快照为准，不会变化。确认继续吗？',
+        FinanceTransactionType.refund =>
+          '删除后，这笔退款不再抵扣净支出；当前余额以录入的余额快照为准，不会变化。确认继续吗？',
+      };
+    }
+
+    return switch (transaction.type) {
+      FinanceTransactionType.expense => hasPaymentMethod
+          ? '删除后，这笔支出不再计入统计，付款方式余额会相应增加。确认继续吗？'
+          : '删除后不会计入统计，确认继续吗？',
+      FinanceTransactionType.income => hasPaymentMethod
+          ? '删除后，这笔收入不再计入统计，到账账户余额会相应减少。确认继续吗？'
+          : '删除后不会计入统计，确认继续吗？',
+      FinanceTransactionType.refund => hasPaymentMethod
+          ? '删除后，这笔退款不再抵扣净支出，也不再增加退款到账账户的余额。确认继续吗？'
+          : '删除后，这笔退款不再抵扣净支出。确认继续吗？',
+    };
+  }
+
   Future<void> _deleteTransaction(FinanceTransaction transaction) async {
+    if (transaction.type == FinanceTransactionType.expense) {
+      final transactionsToCheck =
+          transaction.isInstallment && transaction.installmentGroupUuid != null
+          ? await FinanceRepository.getInstallmentGroup(
+              transaction.installmentGroupUuid!,
+            )
+          : [transaction];
+      for (final item in transactionsToCheck) {
+        final refunds = await FinanceRepository.getRefundsForTransaction(
+          item.uuid,
+        );
+        if (refunds.isEmpty) continue;
+        if (!mounted) return;
+        AppSnackBars.showSnackBar(
+          context,
+          const SnackBar(content: Text('该账单已关联退款，请先处理退款记录')),
+        );
+        return;
+      }
+    }
+    if (!mounted) return;
+    final hasPaymentMethod = _paymentMethodMap.containsKey(
+      transaction.paymentMethodUuid?.trim(),
+    );
+    final includedInBalanceSnapshot = hasPaymentMethod
+        ? await _isIncludedInBalanceSnapshot(transaction)
+        : false;
+    if (!mounted) return;
+    final deleteDescription = _deleteTransactionDescription(
+      transaction,
+      hasPaymentMethod: hasPaymentMethod,
+      includedInBalanceSnapshot: includedInBalanceSnapshot,
+    );
+    final installmentDeleteDescription = switch (transaction.type) {
+      FinanceTransactionType.expense => hasPaymentMethod
+          ? '删除后不会计入统计；已发生期次会从账户流水中移除，余额按余额快照和剩余流水重新计算，'
+              '未发生期次会从未来计划中移除。'
+          : '删除后不会计入统计；未发生期次会从未来计划中移除。',
+      FinanceTransactionType.income => hasPaymentMethod
+          ? '删除后不会计入统计；已发生期次会从账户流水中移除，余额按余额快照和剩余流水重新计算，'
+              '未发生期次会从未来计划中移除。'
+          : '删除后不会计入统计；未发生期次会从未来计划中移除。',
+      FinanceTransactionType.refund => hasPaymentMethod
+          ? '删除后不会计入统计，也不再抵扣净支出；已发生期次会从账户流水中移除，'
+              '余额按余额快照和剩余流水重新计算，'
+              '未发生期次会从未来计划中移除。'
+          : '删除后不会计入统计；未发生期次会从未来计划中移除。',
+    };
     final deleteMode = transaction.isInstallment
-        ? await showDialog<String>(
+        ? await showAppDialog<String>(
             context: context,
             builder: (context) => AlertDialog(
               title: const Text('删除分期账单？'),
               content: Text(
-                '这是第 ${transaction.installmentIndex}/${transaction.installmentCount} 期，'
-                '删除后不会计入统计。',
+                '这是第 ${transaction.installmentIndex}/${transaction.installmentCount} 期。'
+                '$installmentDeleteDescription',
               ),
               actions: [
                 TextButton(
@@ -399,11 +737,11 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
               ],
             ),
           )
-        : await showDialog<String>(
+        : await showAppDialog<String>(
             context: context,
             builder: (context) => AlertDialog(
               title: const Text('删除账单？'),
-              content: const Text('删除后不会计入统计，确认继续吗？'),
+              content: Text(deleteDescription),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(context),
@@ -417,37 +755,91 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
             ),
           );
     if (deleteMode == null) return;
-    if (deleteMode == 'group' && transaction.installmentGroupUuid != null) {
-      await FinanceRepository.deleteInstallmentGroup(
-        transaction.installmentGroupUuid!,
+    try {
+      if (deleteMode == 'group' && transaction.installmentGroupUuid != null) {
+        await FinanceRepository.deleteInstallmentGroup(
+          transaction.installmentGroupUuid!,
+        );
+      } else {
+        await FinanceRepository.deleteTransaction(transaction.uuid);
+      }
+    } catch (error) {
+      if (!mounted) return;
+      AppSnackBars.showSnackBar(
+        context,
+        SnackBar(
+          content: Text(
+            error is StateError ? error.message.toString() : '删除账单失败：$error',
+          ),
+        ),
       );
-    } else {
-      await FinanceRepository.deleteTransaction(transaction.uuid);
+      return;
     }
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(deleteMode == 'group' ? '整组分期账单已删除' : '账单已删除'),
-        ),
+      AppSnackBars.showSnackBar(
+        context,
+        SnackBar(content: Text(deleteMode == 'group' ? '整组分期账单已删除' : '账单已删除')),
       );
       await _load();
     }
   }
 
+  Future<bool> _isIncludedInBalanceSnapshot(
+    FinanceTransaction transaction,
+  ) async {
+    final paymentMethodUuid = transaction.paymentMethodUuid?.trim();
+    if (paymentMethodUuid == null || paymentMethodUuid.isEmpty) return false;
+    final nowAt = widget.clock().millisecondsSinceEpoch;
+    if (transaction.balanceEventAt() > nowAt) return false;
+    final snapshots = FinanceRepository.latestPaymentBalanceSnapshots(
+      await FinanceRepository.getBudgets(),
+      asOfAt: nowAt,
+      nowAt: nowAt,
+    );
+    for (final snapshot in snapshots) {
+      if (snapshot.paymentMethodUuid != paymentMethodUuid) continue;
+      final snapshotAt = snapshot.effectiveBalanceSnapshotAt;
+      return transaction.balanceEventAt(snapshotAt: snapshotAt) <= snapshotAt;
+    }
+    return false;
+  }
+
   Future<void> _exportCsv() async {
-    final path = await FinanceRepository.exportCsv(
-      transactions: _transactions,
-      categories: _categoryMap,
-      paymentMethods: _paymentMethodMap,
-    );
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-            path == null ? '已取消导出' : '已导出本月账单${path.isEmpty ? '' : '：$path'}'),
-        duration: const Duration(seconds: 4),
-      ),
-    );
+    try {
+      final path = await FinanceRepository.exportCsv(
+        transactions: _transactions,
+        categories: _categoryMap,
+        paymentMethods: _paymentMethodMap,
+      );
+      if (!mounted) return;
+      AppSnackBars.showSnackBar(
+        context,
+        SnackBar(
+          content: Text(
+            path == null
+                ? '已取消导出'
+                : '已导出$_selectedMonthLabel账单${path.isEmpty ? '' : '：$path'}',
+          ),
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      AppSnackBars.showSnackBar(
+        context,
+        SnackBar(
+          content: Text('导出失败：$error'),
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    }
+  }
+
+  String get _selectedMonthLabel {
+    final now = widget.clock();
+    return _month.year == now.year && _month.month == now.month
+        ? '本月'
+        : '${_month.year}年${_month.month}月';
   }
 
   void _setMonth(DateTime value) {
@@ -460,6 +852,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
   Future<void> _pushCategoryLedger(
     String categoryUuid,
     GlobalKey sourceKey,
+    List<FinanceTransaction> periodTransactions,
   ) async {
     final category = _categoryMap[categoryUuid];
     final colorScheme = Theme.of(context).colorScheme;
@@ -470,21 +863,21 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
         month: _month,
         categoryUuid: categoryUuid,
         initialData: (
-          transactions: _transactions,
+          transactions: periodTransactions,
           summary: _summary,
           categories: _categories,
           paymentMethods: _paymentMethods,
           overviewTransactions: _overviewTransactions,
+          recurringRules: _recurringRules,
         ),
+        clock: widget.clock,
       ),
       sourceKey: sourceKey,
       sourceColor: colorScheme.brightness == Brightness.dark
           ? Colors.black
           : Colors.white,
-      placeholderBuilder: (_) => Text(
-        category?.icon ?? '💰',
-        style: const TextStyle(fontSize: 30),
-      ),
+      placeholderBuilder: (_) =>
+          Text(category?.icon ?? '💰', style: const TextStyle(fontSize: 30)),
       sourceBorderRadius: BorderRadius.circular(12),
     );
     if (mounted) await _load(showLoading: false);
@@ -505,26 +898,29 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
                 style: floatingGlassPlainIconButtonStyle(),
                 tooltip: _clearFiltersBeforePop
                     ? _isCategoryLedgerRoute
-                        ? '取消附加筛选'
-                        : '返回全部账单'
+                          ? '取消附加筛选'
+                          : '返回全部账单'
                     : _isCategoryLedgerRoute
-                        ? '返回支出分类'
-                        : '返回概览',
+                    ? '返回支出分类'
+                    : '返回概览',
                 onPressed: _handleBack,
                 icon: const Icon(Icons.arrow_back_ios_new_rounded),
               )
             : null,
         actions: [
           IconButton(
+            key: _budgetActionKey,
             style: floatingGlassPlainIconButtonStyle(),
             tooltip: '预算',
             onPressed: _openBudgets,
             icon: const Icon(Icons.track_changes_outlined),
           ),
           PopupMenuButton<String>(
+            key: _moreActionKey,
             style: floatingGlassPlainIconButtonStyle(),
             tooltip: '更多操作',
             onSelected: (value) {
+              if (value == 'guide') _showIntroGuide(force: true);
               if (value == 'settings') _openSettings();
               if (value == 'text') _openTextRecognition();
               if (value == 'automation') _openAutomation();
@@ -537,14 +933,12 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
               if (value == 'export') _exportCsv();
               if (value == 'trash') {
                 Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => const FinanceTrashScreen(),
-                  ),
+                  MaterialPageRoute(builder: (_) => const FinanceTrashScreen()),
                 );
               }
             },
-            itemBuilder: (context) => const [
-              PopupMenuItem(
+            itemBuilder: (context) => [
+              const PopupMenuItem(
                 value: 'text',
                 child: ListTile(
                   contentPadding: EdgeInsets.zero,
@@ -557,10 +951,10 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
                 child: ListTile(
                   contentPadding: EdgeInsets.zero,
                   leading: Icon(Icons.file_download_outlined),
-                  title: Text('导出本月 CSV'),
+                  title: Text('导出$_selectedMonthLabel账单 CSV'),
                 ),
               ),
-              PopupMenuItem(
+              const PopupMenuItem(
                 value: 'automation',
                 child: ListTile(
                   contentPadding: EdgeInsets.zero,
@@ -568,7 +962,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
                   title: Text('自动化与快捷模板'),
                 ),
               ),
-              PopupMenuItem(
+              const PopupMenuItem(
                 value: 'loans',
                 child: ListTile(
                   contentPadding: EdgeInsets.zero,
@@ -576,7 +970,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
                   title: Text('贷款'),
                 ),
               ),
-              PopupMenuItem(
+              const PopupMenuItem(
                 value: 'ai_cost',
                 child: ListTile(
                   contentPadding: EdgeInsets.zero,
@@ -592,7 +986,16 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
                   title: Text('记账设置'),
                 ),
               ),
-              PopupMenuItem(
+              if (!_isCategoryLedgerRoute)
+                const PopupMenuItem(
+                  value: 'guide',
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.help_outline_rounded),
+                    title: Text('记账新手指引'),
+                  ),
+                ),
+              const PopupMenuItem(
                 value: 'trash',
                 child: ListTile(
                   contentPadding: EdgeInsets.zero,
@@ -609,52 +1012,55 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
         child: _isLoading
             ? const Center(child: CircularProgressIndicator())
             : _loadError != null
-                ? _buildError(colorScheme)
-                : Column(
-                    children: [
-                      Expanded(
-                        child: IndexedStack(
-                          index: _selectedIndex,
-                          children: [
-                            FinanceOverviewPanel(
-                              topPadding: topBarHeight,
-                              month: _month,
-                              summary: _summary,
-                              transactions: _overviewTransactions,
-                              categories: _categoryMap,
-                              onAdd: () => _openEntry(
-                                sourceKey: _overviewAddActionKey,
-                              ),
-                              addActionKey: _overviewAddActionKey,
-                              onRefresh: _load,
-                              onMonthChanged: _setMonth,
-                              onCategorySelected: _pushCategoryLedger,
-                            ),
-                            FinanceLedgerPanel(
-                              topPadding: topBarHeight,
-                              transactions: _transactions,
-                              categories: _categoryMap,
-                              paymentMethods: _paymentMethodMap,
-                              keyword: _keyword,
-                              filterType: _filterType,
-                              categoryUuid: _categoryFilterUuid,
-                              onOpenDetail: _openDetail,
-                              onKeywordChanged: (value) =>
-                                  setState(() => _keyword = value),
-                              onFilterChanged: (value) =>
-                                  setState(() => _filterType = value),
-                              onCategoryChanged: (value) =>
-                                  setState(() => _categoryFilterUuid = value),
-                              onEdit: (transaction) =>
-                                  _openEntry(transaction: transaction),
-                              onDelete: _deleteTransaction,
-                              onRefund: _openRefund,
-                            ),
-                          ],
+            ? _buildError(colorScheme)
+            : Column(
+                children: [
+                  Expanded(
+                    child: IndexedStack(
+                      index: _selectedIndex,
+                      children: [
+                        FinanceOverviewPanel(
+                          topPadding: topBarHeight,
+                          month: _month,
+                          clock: widget.clock,
+                          summary: _summary,
+                          transactions: _overviewTransactions,
+                          categories: _categoryMap,
+                          categoryTapOpensLedger: _categoryTapOpensLedger,
+                          onAdd: () =>
+                              _openEntry(sourceKey: _overviewAddActionKey),
+                          addActionKey: _overviewAddActionKey,
+                          onRefresh: _load,
+                          onMonthChanged: _setMonth,
+                          onCategorySelected: _pushCategoryLedger,
                         ),
-                      ),
-                    ],
+                        FinanceLedgerPanel(
+                          topPadding: topBarHeight,
+                          month: _month,
+                          clock: widget.clock,
+                          transactions: _transactions,
+                          categories: _categoryMap,
+                          paymentMethods: _paymentMethodMap,
+                          keyword: _keyword,
+                          filterType: _filterType,
+                          categoryUuid: _categoryFilterUuid,
+                          onOpenDetail: _openDetail,
+                          onKeywordChanged: (value) =>
+                              setState(() => _keyword = value),
+                          onFilterChanged: (value) =>
+                              setState(() => _filterType = value),
+                          onCategoryChanged: (value) =>
+                              setState(() => _categoryFilterUuid = value),
+                          onEdit: (transaction) =>
+                              _openEntry(transaction: transaction),
+                          onDelete: _deleteTransaction,
+                          onRefund: _openRefund,
+                        ),
+                      ],
+                    ),
                   ),
+                ],
+              ),
       ),
       // 记账入口固定在底栏中央，避免扩展 FAB 覆盖账单内容。
       bottomNavigationBar: FloatingBottomNavigationBar(
@@ -692,6 +1098,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
         onTabSelected: (index) {
           if (index == 0) {
             setState(() => _selectedIndex = 0);
+            _scheduleIntroGuide();
           } else if (index == 2) {
             setState(() => _selectedIndex = 1);
           }
@@ -708,23 +1115,18 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
       child: scaffold,
     );
 
-    final isDesktop = !kIsWeb &&
+    final isDesktop =
+        !kIsWeb &&
         (defaultTargetPlatform == TargetPlatform.windows ||
             defaultTargetPlatform == TargetPlatform.macOS ||
             defaultTargetPlatform == TargetPlatform.linux);
     if (!isDesktop) return guardedScaffold;
     return Shortcuts(
       shortcuts: const {
-        SingleActivator(
-          LogicalKeyboardKey.keyN,
-          control: true,
-          shift: true,
-        ): _FinanceQuickEntryIntent(),
-        SingleActivator(
-          LogicalKeyboardKey.keyN,
-          meta: true,
-          shift: true,
-        ): _FinanceQuickEntryIntent(),
+        SingleActivator(LogicalKeyboardKey.keyN, control: true, shift: true):
+            _FinanceQuickEntryIntent(),
+        SingleActivator(LogicalKeyboardKey.keyN, meta: true, shift: true):
+            _FinanceQuickEntryIntent(),
       },
       child: Actions(
         actions: {
@@ -735,10 +1137,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
             },
           ),
         },
-        child: Focus(
-          autofocus: true,
-          child: guardedScaffold,
-        ),
+        child: Focus(autofocus: true, child: guardedScaffold),
       ),
     );
   }

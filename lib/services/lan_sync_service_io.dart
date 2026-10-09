@@ -260,8 +260,6 @@ class LanSyncService {
       if (parts.length != 4) return;
 
       final subnet = '${parts[0]}.${parts[1]}.${parts[2]}';
-      client.badCertificateCallback = (cert, host, port) => true;
-
       // Bound concurrent probes so a manual fallback scan cannot create 253
       // simultaneous radio/socket operations.
       const batchSize = 32;
@@ -952,7 +950,6 @@ class LanSyncService {
       _emitProgress('正在请求连接 ${device.deviceName}...');
 
       client = HttpClient();
-      client.badCertificateCallback = (cert, host, port) => true;
 
       final requestPayload = {
         'deviceId': _currentDeviceId,
@@ -1056,7 +1053,6 @@ class LanSyncService {
       _emitProgressValue(0.1);
 
       client = HttpClient();
-      client.badCertificateCallback = (cert, host, port) => true;
 
       final encryptedPayload = _encrypt(jsonEncode(payload));
 

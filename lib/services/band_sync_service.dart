@@ -451,7 +451,7 @@ class BandSyncService {
         'data': sanitizedData,
         'batchNum': batchNum,
         'totalBatches': totalBatches,
-        if (transferId != null) 'transferId': transferId,
+        'transferId': ?transferId,
         'timestamp': DateTime.now().millisecondsSinceEpoch,
       };
 

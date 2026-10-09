@@ -267,7 +267,7 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
   }
 
   void _showTokenExpiredDialog() {
-    showDialog(
+    showAppDialog(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
@@ -622,7 +622,10 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
     if (_showCoachMarks || !mounted) return;
     final hasSeenCoachMarks =
         await FeatureTipService.hasTipBeenShown('coach_home_intro');
-    if (hasSeenCoachMarks) return;
+    if (hasSeenCoachMarks) {
+      await _checkQuickVoiceCoachMarks();
+      return;
+    }
     if (mounted) {
       _showCoachMarks = true;
       final isTablet = MediaQuery.of(context).size.shortestSide >= 600 ||
@@ -687,6 +690,10 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
         },
       );
 
+      if (finished && mounted) {
+        await _checkQuickVoiceCoachMarks();
+      }
+
       // 如果是平板/宽屏模式（左右两栏同时显示），播完首页引导后延迟接着播专注Tab引导
       if (finished && isTablet && mounted) {
         await Future.delayed(const Duration(milliseconds: 500));
@@ -695,6 +702,19 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
       if (finished && mounted) {
         await _checkDeviceCalendarReadCoachMark();
       }
+    }
+  }
+
+  Future<void> _checkQuickVoiceCoachMarks() async {
+    if (_showCoachMarks || !mounted) return;
+    _showCoachMarks = true;
+    try {
+      await QuickVoiceChatGuide.showIfNeeded(
+        context: context,
+        addButtonKey: _homeAddActionKey,
+      );
+    } finally {
+      _showCoachMarks = false;
     }
   }
 
@@ -797,7 +817,7 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
         await CourseCalendarAdjustmentService.pendingOfficialHolidayWindow();
     if (window == null || !mounted) return;
 
-    final action = await showDialog<String>(
+    final action = await showAppDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('${window.name}课表调整提醒'),

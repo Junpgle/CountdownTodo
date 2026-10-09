@@ -612,20 +612,19 @@ class PomodoroSyncService {
     _send({
       'action': 'START',
       'session_uuid': sessionUuid,
-      if (todoUuid != null) 'todo_uuid': todoUuid,
-      if (todoTitle != null) 'todo_title': todoTitle,
-      if (planBlockId != null) 'plan_block_id': planBlockId,
+      'todo_uuid': ?todoUuid,
+      'todo_title': ?todoTitle,
+      'plan_block_id': ?planBlockId,
       'duration': durationSeconds,
       'target_end_ms': targetEndMs,
       'tags': tagNames,
-      if (sourceDeviceName != null) 'source_device_name': sourceDeviceName,
-      if (note != null) 'note': note,
+      'source_device_name': ?sourceDeviceName,
+      'note': ?note,
       'do_not_disturb': doNotDisturb,
-      if (mode != null) 'mode': mode,
-      if (currentCycle != null) 'current_cycle': currentCycle,
-      if (totalCycles != null) 'total_cycles': totalCycles,
-      if (plannedFocusSeconds != null)
-        'planned_focus_seconds': plannedFocusSeconds,
+      'mode': ?mode,
+      'current_cycle': ?currentCycle,
+      'total_cycles': ?totalCycles,
+      'planned_focus_seconds': ?plannedFocusSeconds,
       'timestamp': customTimestamp ?? DateTime.now().millisecondsSinceEpoch,
     });
   }
@@ -650,28 +649,27 @@ class PomodoroSyncService {
     _send({
       'action': 'RECONNECT_SYNC',
       'session_uuid': sessionUuid,
-      if (todoUuid != null) 'todo_uuid': todoUuid,
-      if (todoTitle != null) 'todo_title': todoTitle,
-      if (planBlockId != null) 'plan_block_id': planBlockId,
+      'todo_uuid': ?todoUuid,
+      'todo_title': ?todoTitle,
+      'plan_block_id': ?planBlockId,
       'duration': durationSeconds,
       'target_end_ms': targetEndMs,
       'tags': tagNames,
-      if (sourceDeviceName != null) 'source_device_name': sourceDeviceName,
-      if (note != null) 'note': note,
+      'source_device_name': ?sourceDeviceName,
+      'note': ?note,
       'do_not_disturb': doNotDisturb,
-      if (mode != null) 'mode': mode,
-      if (currentCycle != null) 'current_cycle': currentCycle,
-      if (totalCycles != null) 'total_cycles': totalCycles,
-      if (plannedFocusSeconds != null)
-        'planned_focus_seconds': plannedFocusSeconds,
+      'mode': ?mode,
+      'current_cycle': ?currentCycle,
+      'total_cycles': ?totalCycles,
+      'planned_focus_seconds': ?plannedFocusSeconds,
       'timestamp': customTimestamp ?? DateTime.now().millisecondsSinceEpoch,
     });
   }
 
   void sendStopSignal({String? todoUuid, String? sessionUuid}) => _send({
         'action': 'STOP',
-        if (todoUuid != null) 'todo_uuid': todoUuid,
-        if (sessionUuid != null) 'session_uuid': sessionUuid,
+        'todo_uuid': ?todoUuid,
+        'session_uuid': ?sessionUuid,
       });
 
   /// 🚀 新增：上报本地空闲状态（用于重连后的补擦除）
@@ -719,7 +717,7 @@ class PomodoroSyncService {
     _channel = null;
     try {
       await channel?.sink
-          .close(ws_status.goingAway)
+          .close(ws_status.normalClosure)
           .timeout(const Duration(seconds: 2));
     } catch (_) {}
     _connecting = false;
@@ -734,9 +732,9 @@ class PomodoroSyncService {
     _send({
       'action': 'SWITCH',
       'session_uuid': sessionUuid,
-      if (todoUuid != null) 'todo_uuid': todoUuid,
-      if (todoTitle != null) 'todo_title': todoTitle,
-      if (note != null) 'note': note,
+      'todo_uuid': ?todoUuid,
+      'todo_title': ?todoTitle,
+      'note': ?note,
       'timestamp': DateTime.now().millisecondsSinceEpoch,
     });
   }
@@ -767,7 +765,7 @@ class PomodoroSyncService {
       'pausedAtMs': pausedAtMs,
       'accumulatedMs': accumulatedMs,
       'pauseStartMs': pauseStartMs,
-      if (doNotDisturb != null) 'do_not_disturb': doNotDisturb,
+      'do_not_disturb': ?doNotDisturb,
     });
   }
 
@@ -786,15 +784,15 @@ class PomodoroSyncService {
     _send({
       'action': 'RESUME',
       'session_uuid': sessionUuid,
-      if (pausedAtMs != null) 'pausedAtMs': pausedAtMs,
-      if (accumulatedMs != null) 'accumulatedMs': accumulatedMs,
-      if (pauseStartMs != null) 'pauseStartMs': pauseStartMs,
-      if (targetEndMs != null) 'target_end_ms': targetEndMs,
-      if (mode != null) 'mode': mode,
-      if (todoUuid != null) 'todo_uuid': todoUuid,
-      if (todoTitle != null) 'todo_title': todoTitle,
-      if (note != null) 'note': note,
-      if (doNotDisturb != null) 'do_not_disturb': doNotDisturb,
+      'pausedAtMs': ?pausedAtMs,
+      'accumulatedMs': ?accumulatedMs,
+      'pauseStartMs': ?pauseStartMs,
+      'target_end_ms': ?targetEndMs,
+      'mode': ?mode,
+      'todo_uuid': ?todoUuid,
+      'todo_title': ?todoTitle,
+      'note': ?note,
+      'do_not_disturb': ?doNotDisturb,
     });
   }
 
@@ -848,7 +846,7 @@ class PomodoroSyncService {
     await _wsSub?.cancel();
     _wsSub = null;
     try {
-      await _channel?.sink.close(ws_status.goingAway);
+      await _channel?.sink.close(ws_status.normalClosure);
     } catch (_) {}
     _channel = null;
     _userId = null;

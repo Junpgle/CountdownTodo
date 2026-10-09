@@ -11,6 +11,7 @@ import '../update_service.dart';
 import '../utils/app_platform.dart';
 import '../widgets/floating_glass_control.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
+import '../utils/app_dialogs.dart';
 
 /// 手环同步界面
 class BandSyncScreen extends StatefulWidget {
@@ -185,7 +186,8 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
         _isServiceEnabled = false;
         _isTogglingService = false;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         const SnackBar(content: Text('手环服务启动失败，请检查小米穿戴 App 是否可用')),
       );
       return;
@@ -392,7 +394,8 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
                               _logs.add('手动检查手环更新...');
                               await UpdateService.syncBandVersionInfo();
                               if (!context.mounted) return;
-                              ScaffoldMessenger.of(context).showSnackBar(
+                              AppSnackBars.showSnackBar(
+                                context,
                                 const SnackBar(content: Text('已向手环推送最新版本信息')),
                               );
                             },
@@ -807,7 +810,8 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
   void _copyToClipboard(String text, String label) {
     Clipboard.setData(ClipboardData(text: text));
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         SnackBar(
           content: Text('已复制$label到剪贴板'),
           duration: const Duration(seconds: 1),

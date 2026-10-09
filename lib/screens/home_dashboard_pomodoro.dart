@@ -598,7 +598,8 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
       }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         SnackBar(content: Text('启动专注失败: $e')),
       );
     }
@@ -617,7 +618,8 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
       }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         SnackBar(content: Text('停止专注失败: $e')),
       );
     }

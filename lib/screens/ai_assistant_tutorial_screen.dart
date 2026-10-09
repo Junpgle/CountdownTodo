@@ -832,7 +832,7 @@ class _AiAssistantTutorialScreenState extends State<AiAssistantTutorialScreen>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            '智能上下文通过“关键词按需注入”技术，仅在对话需要时才向 AI 传递特定背景，平衡了功能、性能与隐私。',
+            '智能上下文支持两种获取方式，可在“AI 助手设置”中切换。默认使用工具查询（Function Calling）：模型选择查询工具、日期和筛选条件，App 返回实际数据后，模型继续回答。每次调用的函数、参数和返回数据都会在对话中展示。智能注入模式保留原有的关键词按需注入方式。',
             style: TextStyle(fontSize: 14, height: 1.6),
           ),
           const SizedBox(height: 20),

@@ -1214,7 +1214,7 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           itemCount: apps.length - skipCount,
-          separatorBuilder: (_, __) => Divider(
+          separatorBuilder: (_, _) => Divider(
               height: 1,
               indent: 60,
               endIndent: 16,
@@ -1458,7 +1458,7 @@ class CategoryDetailScreen extends StatelessWidget {
                             child: ListView.separated(
                               padding: EdgeInsets.zero,
                               itemCount: apps.length,
-                              separatorBuilder: (_, __) => Divider(
+                              separatorBuilder: (_, _) => Divider(
                                   height: 1,
                                   indent: 60,
                                   endIndent: 16,

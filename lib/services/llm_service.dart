@@ -142,27 +142,26 @@ class LLMConfig {
    - 快递类：顺丰、京东快递、菜鸟、中通、圆通、韵达、申通、极兔、德邦
 
 2. 识别规则：
-   - 图片中有取餐码、取件码、餐号、订单号等
-   - 或者包含上述品牌 logo/名称+数字组合
-   - 则按以下规则处理：
+   - 只有图片明确表示还需要取餐/取件，例如出现取餐码、取件码、餐号、取单号、待取餐、已出餐或待取件，才生成领取待办
+   - 品牌 logo/名称加数字、付款成功、普通订单号或交易单号本身都不代表需要领取；只有图片明确写明凭订单号领取时，订单号才可作为领取凭据
 
 3. 处理方式：
    - title: 使用【品牌名+取餐/取件】格式
      * 识别到具体品牌：如"肯德基取餐"、"顺丰取件"
      * 未识别具体品牌：外卖用"外卖取餐"，快递用"快递取件"，奶茶用"奶茶取餐"
-   - remark: 取餐码/取件码的值
+   - remark: 有领取码时只写这个码，例如"取餐码：140"，不要再追加地点或其他说明；无码时仅保留必需的领取地点，否则设为null
    - 这是需要用户完成领取动作的待办，不是固定日程
    - 截图能可靠确认是当前已出餐/已到站通知且没有期限时：timeMode="unscheduled"，dueDate=null
    - 截图包含明确领取日期但没有具体时刻时：timeMode="dateOnly"，dueDate为当天"23:59"
    - 截图包含明确领取期限时：timeMode="deadline"，dueDate为最晚领取时刻
-   - 截图日期来源不可靠时，不得猜测今天，todo的dueDate设为null
+   - 付款、下单或交易时间不是领取日期或截止时间；截图没有明确领取日期时，不得猜测今天，todo的dueDate设为null
    - 普通todo只输出上述timeMode和dueDate；固定日程和规划块才使用时间区间字段
 
 ===== 通用事项规则 =====
 1. itemKind: 必须为todo/fixedSchedule/planBlock/needsConfirmation之一。会议、考试、课程、预约等不能静默输出为todo
-2. title: 核心事件名称（如"开会"、"交作业"、"体检"），去除时间和地点
+2. title: 可直接展示的简短核心动作/事件（如"开会"、"交作业"、"体检"），去除时间、地点和凭证细节，不要摘抄截图原文
 3. location: fixedSchedule的地点单独写入，没有则null；todo和planBlock设为null
-4. remark: 人物、携带物品等补充信息；todo和planBlock也在这里保留地点，没有则null
+4. remark: 只保留完成事项必需且标题未表达的信息，例如领取码、必要地点或携带物品；最多一句短语，没有则null。不要复述图片全文、支付记录或无关背景
 5. 时间字段：普通todo只输出timeMode和dueDate，遵循未安排/日期/截止语义；fixedSchedule时间待定时保留日期但startTime/endTime均为null，只有开始时刻时endTime=null，明确区间才同时填写；planBlock必须有明确起止
 6. timeMode：普通todo只能为unscheduled/dateOnly/deadline；明确区间才使用range，且只适用于fixedSchedule或planBlock
 7. recurrence: 重复规则（none/daily/weekly/monthly/yearly/weekdays/customDays）
@@ -174,10 +173,21 @@ class LLMConfig {
 
 【输出格式】
 如果图片中有多个事项，请返回JSON数组；如果是单个事项，也请返回JSON数组（只有一个元素）。
+如果只是支付/订单凭证，没有明确需要用户完成的动作，返回[]；账单由独立通道处理。
 例如：[{"itemKind":"todo","title":"提交报告","location":null,"remark":null,"timeMode":"deadline","dueDate":"YYYY-MM-DD HH:mm","recurrence":"none","customIntervalDays":null,"recurrenceEndDate":null,"reminderMinutes":5}]
 固定日程或规划块需要时间区间时，才使用startTime/endTime和timeMode="range"。
 
   必须且只能返回纯JSON数组格式，不要包含Markdown标记。''';
+
+  /// Also applied to saved vision prompts so existing configurations receive
+  /// the concise display rules without replacing the user's custom prompt.
+  static const String visionTodoConcisenessPrompt = '''
+【图片事项展示精简规则（优先于前文）】
+title是待办名称，只写简短、可执行的动作或事件；取餐/取件固定为“品牌名+取餐/取件”，不要拼接码、日期、商户全称或整句通知。
+remark会作为灵动岛内容展示，必须比title更短。取餐/取件有码时只写“取餐码：140”或“取件码：8866”，不要追加地点、商户、时间或其他说明；无码时仅保留必需的领取地点，否则为null。其他事项也只保留完成动作所需的一句短语。
+不要把支付时间、下单时间、金额、商户公司全称、交易单号、支付订单号、流水号、付款方式、广告文案或OCR全文写入title和remark。只有图片明确说明某订单号就是领取凭据，才可保留该号码。
+付款或下单时间不是待办的完成日期/领取期限；仅凭付款成功、品牌名和数字不能生成取餐/取件待办；已取餐或已签收也不能再生成领取待办。没有明确待办或日程时返回[]。
+示例：图片同时写着“卡旺卡取餐码140、支付时间13:01、交易单号4200…”，只输出：[{"itemKind":"todo","title":"卡旺卡取餐","location":null,"remark":"取餐码：140","timeMode":"unscheduled","dueDate":null,"recurrence":"none","customIntervalDays":null,"recurrenceEndDate":null,"reminderMinutes":5}]；支付信息交给独立账单通道。''';
 
   /// 外部分享图片使用的第二条识别通道。它只负责账单，和待办/取餐码
   /// 识别并行执行，避免一张支付截图里同时出现取餐码时互相覆盖结果。
@@ -1033,11 +1043,18 @@ class LLMService {
       imagePath,
       operation: 'vision_todo',
       onUsage: onUsage,
-      promptBuilder: (config, nowStr) => _ensureRecognitionPrompt(
-        config.visionPrompt,
-        fallback: LLMConfig.defaultVisionPrompt,
-      ).replaceAll('{now}', nowStr),
+      promptBuilder: (config, nowStr) =>
+          buildTodoVisionPrompt(config, now: nowStr),
     );
+  }
+
+  /// Keeps saved vision prompts while adding the current display rules.
+  static String buildTodoVisionPrompt(LLMConfig config, {required String now}) {
+    final prompt = _ensureRecognitionPrompt(
+      config.visionPrompt,
+      fallback: LLMConfig.defaultVisionPrompt,
+    ).replaceAll('{now}', now);
+    return '$prompt\n\n${LLMConfig.visionTodoConcisenessPrompt}';
   }
 
   /// Performs the finance half of a shared-image recognition pass. This is

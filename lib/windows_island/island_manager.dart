@@ -50,7 +50,7 @@ class IslandManager {
       final sequence = ++_payloadSequence;
       await file.writeAsString(jsonEncode({
         'islandId': islandId,
-        if (windowId != null) 'windowId': windowId,
+        'windowId': ?windowId,
         'sequence': sequence,
         'timestamp': DateTime.now().millisecondsSinceEpoch,
         'payload': payload,

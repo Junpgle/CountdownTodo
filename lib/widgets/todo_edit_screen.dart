@@ -202,7 +202,8 @@ class TodoEditScreenState extends State<TodoEditScreen> {
     if (_preserveLegacyTiming &&
         _dueDate != null &&
         !_dueDate!.isAfter(_createdDate)) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         const SnackBar(content: Text('结束时间必须晚于开始时间')),
       );
       return false;
@@ -214,7 +215,8 @@ class TodoEditScreenState extends State<TodoEditScreen> {
       preserveExistingTiming: _preserveLegacyTiming,
     );
     if (_recurrence != RecurrenceType.none && normalizedTime.start == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         const SnackBar(content: Text('重复待办需要先设置首次完成日期')),
       );
       return false;
@@ -349,13 +351,14 @@ class TodoEditScreenState extends State<TodoEditScreen> {
     final already = await HabitRepository.getActiveGoals();
     if (!mounted) return;
     if (already.any((g) => g.sourceIds.contains(seriesId))) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         const SnackBar(content: Text('该循环待办已加入习惯追踪')),
       );
       return;
     }
 
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showAppDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('加入习惯追踪'),
@@ -383,12 +386,14 @@ class TodoEditScreenState extends State<TodoEditScreen> {
     );
     if (!mounted) return;
     if (goal == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         const SnackBar(content: Text('该循环待办已加入习惯追踪')),
       );
       return;
     }
-    ScaffoldMessenger.of(context).showSnackBar(
+    AppSnackBars.showSnackBar(
+      context,
       SnackBar(content: Text('已加入习惯追踪：${goal.name}')),
     );
   }
@@ -428,7 +433,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
         actions: [
           IconButton(
             onPressed: () async {
-              final confirm = await showDialog<bool>(
+              final confirm = await showAppDialog<bool>(
                 context: context,
                 builder: (ctx) => AlertDialog(
                   title: const Text('删除待办'),
@@ -671,7 +676,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                     icon: Icons.event_available_rounded,
                     color: Theme.of(context).colorScheme.secondary,
                     onTap: () async {
-                      final pickedDate = await showDatePicker(
+                      final pickedDate = await showAppDatePicker(
                           context: context,
                           firstDate: DateTime(2000),
                           lastDate: DateTime(2100),
@@ -693,7 +698,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                           );
                         });
                       } else {
-                        final pickedTime = await showTimePicker(
+                        final pickedTime = await showAppTimePicker(
                             context: context,
                             initialTime: TimeOfDay.fromDateTime(_createdDate));
                         if (!mounted || pickedTime == null) return;
@@ -714,13 +719,13 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                     icon: Icons.play_circle_outline_rounded,
                     color: colorScheme.primary,
                     onTap: () async {
-                      final pickedDate = await showDatePicker(
+                      final pickedDate = await showAppDatePicker(
                           context: context,
                           firstDate: DateTime(2000),
                           lastDate: DateTime(2100),
                           initialDate: _createdDate);
                       if (!context.mounted || pickedDate == null) return;
-                      final pickedTime = await showTimePicker(
+                      final pickedTime = await showAppTimePicker(
                           context: context,
                           initialTime: TimeOfDay.fromDateTime(_createdDate));
                       if (!mounted || pickedTime == null) return;
@@ -748,7 +753,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                         : Icons.flag_rounded,
                     color: Colors.deepOrangeAccent,
                     onTap: () async {
-                      final pickedDate = await showDatePicker(
+                      final pickedDate = await showAppDatePicker(
                           context: context,
                           firstDate: DateTime(2000),
                           lastDate: DateTime(2100),
@@ -758,7 +763,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                         setState(() => _dueDate = DateTime(pickedDate.year,
                             pickedDate.month, pickedDate.day, 23, 59));
                       } else {
-                        final pickedTime = await showTimePicker(
+                        final pickedTime = await showAppTimePicker(
                             context: context,
                             initialTime: TimeOfDay.fromDateTime(
                                 _dueDate ?? DateTime.now()));
@@ -868,7 +873,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                     ],
                     InkWell(
                       onTap: () async {
-                        final picked = await showDatePicker(
+                        final picked = await showAppDatePicker(
                             context: context,
                             // 循环结束日期是系列规则，不是当前实例的截止时间；
                             // 允许把规则结束日期回调到今天之前。
@@ -1175,7 +1180,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
     if (occurrence.id == _editingTodo.id) return;
     FocusScope.of(context).unfocus();
     if (_hasUnsavedChanges) {
-      final action = await showDialog<_OccurrenceSwitchAction>(
+      final action = await showAppDialog<_OccurrenceSwitchAction>(
         context: context,
         builder: (dialogContext) => AlertDialog(
           title: const Text('切换循环期次'),
@@ -1558,6 +1563,33 @@ class TodoEditScreenState extends State<TodoEditScreen> {
     );
   }
 
+  Future<void> _createPlanBlock() async {
+    final todo = _editingTodo;
+    if (_isDone || todo.isDone || todo.isDeleted) return;
+    final now = DateTime.now();
+    final dayStart = DateTime(now.year, now.month, now.day, 8);
+    final start = PlanAvailabilityService.minuteCeiling(
+      now.isAfter(dayStart) ? now : dayStart,
+    );
+    await showPlanBlockEditorPage<void>(
+      context: context,
+      builder: (_) => PlanBlockEditorSheet(
+        fullPage: true,
+        username: widget.username,
+        todos: [todo],
+        todoGroups: widget.todoGroups,
+        initialTodoId: todo.id,
+        startTime: start,
+        endTime: start.add(const Duration(minutes: 30)),
+        autoFillEstimateOnTodoChange: false,
+        autoRecommendTime: true,
+        onSaved: () {
+          if (mounted) _loadRelatedPlans();
+        },
+      ),
+    );
+  }
+
   Widget _buildPlanBlockSection() {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
@@ -1567,11 +1599,22 @@ class TodoEditScreenState extends State<TodoEditScreen> {
       children: [
         KeyedSubtree(
           key: _planKey,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          child: Wrap(
+            spacing: 12,
+            runSpacing: 4,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               const Text("计划安排",
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              TextButton.icon(
+                key: const ValueKey('todo-create-plan-block'),
+                onPressed:
+                    _isDone || _editingTodo.isDone || _editingTodo.isDeleted
+                        ? null
+                        : _createPlanBlock,
+                icon: const Icon(Icons.add, size: 16),
+                label: const Text('新建规划块'),
+              ),
               TextButton.icon(
                 onPressed: () async {
                   await Navigator.push(

@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:countdown_todo/models/ai_todo_action.dart';
+import 'package:countdown_todo/models/ai_context_mode.dart';
 import 'package:countdown_todo/models/chat_message.dart';
 import 'package:countdown_todo/screens/settings/pages/ai_assistant_settings_page.dart';
 import 'package:countdown_todo/services/ai_action_parser.dart';
@@ -174,13 +175,15 @@ void main() {
     });
 
     test('parses Actions v2 envelopes and legacy arrays', () {
-      const v2Content = '正文\n'
+      const v2Content =
+          '正文\n'
           '[ACTION_START]'
           '{"protocol":"cdt.actions","version":2,"actions":['
           '{"action":"create_todo","todos":[{"title":"交报告"}]}'
           ']}'
           '[ACTION_END]';
-      const legacyContent = '[ACTION_START]'
+      const legacyContent =
+          '[ACTION_START]'
           '[{"action":"create_todo","title":"买牛奶"}]'
           '[ACTION_END]';
 
@@ -201,67 +204,71 @@ void main() {
       expect(AiActionParser.cleanActionContent(v2Content), '正文');
     });
 
-    test('persists custom model modalities with image-only legacy fallback',
-        () {
-      final model = CustomVisionModel(
-        id: 'custom-id',
-        name: '全模态模型',
-        modelId: 'omni-model',
-        apiUrl: 'https://example.com/v1/chat/completions',
-        apiKey: 'secret',
-        modalities: const {'image', 'audio', 'video', 'file'},
-      );
+    test(
+      'persists custom model modalities with image-only legacy fallback',
+      () {
+        final model = CustomVisionModel(
+          id: 'custom-id',
+          name: '全模态模型',
+          modelId: 'omni-model',
+          apiUrl: 'https://example.com/v1/chat/completions',
+          apiKey: 'secret',
+          modalities: const {'image', 'audio', 'video', 'file'},
+        );
 
-      final restored = CustomVisionModel.fromJson(model.toJson());
-      final legacy = CustomVisionModel.fromJson({
-        'id': 'legacy',
-        'name': '旧视觉模型',
-        'model_id': 'legacy-model',
-        'api_url': 'https://example.com/v1/chat/completions',
-        'api_key': '',
-      });
-      final emptyCapabilities = CustomVisionModel.fromJson({
-        'id': 'empty',
-        'name': '空能力模型',
-        'model_id': 'empty-model',
-        'api_url': 'https://example.com/v1/chat/completions',
-        'api_key': '',
-        'modalities': <String>[],
-      });
+        final restored = CustomVisionModel.fromJson(model.toJson());
+        final legacy = CustomVisionModel.fromJson({
+          'id': 'legacy',
+          'name': '旧视觉模型',
+          'model_id': 'legacy-model',
+          'api_url': 'https://example.com/v1/chat/completions',
+          'api_key': '',
+        });
+        final emptyCapabilities = CustomVisionModel.fromJson({
+          'id': 'empty',
+          'name': '空能力模型',
+          'model_id': 'empty-model',
+          'api_url': 'https://example.com/v1/chat/completions',
+          'api_key': '',
+          'modalities': <String>[],
+        });
 
-      expect(restored.modalities, {'image', 'audio', 'video', 'file'});
-      expect(legacy.modalities, {'image'});
-      expect(emptyCapabilities.modalities, {'image'});
-    });
+        expect(restored.modalities, {'image', 'audio', 'video', 'file'});
+        expect(legacy.modalities, {'image'});
+        expect(emptyCapabilities.modalities, {'image'});
+      },
+    );
 
-    test('persists assistant context behavior separately from model config',
-        () async {
-      expect(await ChatStorageService.isSmartContextEnabled(), isTrue);
-      expect(await ChatStorageService.shouldShowContextPreview(), isFalse);
-      expect(await ChatStorageService.shouldInjectMoreContext(), isFalse);
+    test(
+      'persists assistant context behavior separately from model config',
+      () async {
+        expect(await ChatStorageService.isSmartContextEnabled(), isTrue);
+        expect(await ChatStorageService.shouldShowContextPreview(), isFalse);
+        expect(await ChatStorageService.shouldInjectMoreContext(), isFalse);
 
-      await ChatStorageService.setSmartContextEnabled(false);
-      await ChatStorageService.setShowContextPreview(true);
-      await ChatStorageService.setInjectMoreContext(true);
+        await ChatStorageService.setSmartContextEnabled(false);
+        await ChatStorageService.setShowContextPreview(true);
+        await ChatStorageService.setInjectMoreContext(true);
 
-      expect(await ChatStorageService.isSmartContextEnabled(), isFalse);
-      expect(await ChatStorageService.shouldShowContextPreview(), isTrue);
-      expect(await ChatStorageService.shouldInjectMoreContext(), isTrue);
-    });
+        expect(await ChatStorageService.isSmartContextEnabled(), isFalse);
+        expect(await ChatStorageService.shouldShowContextPreview(), isTrue);
+        expect(await ChatStorageService.shouldInjectMoreContext(), isTrue);
+      },
+    );
 
     test('reports built-in MiMo multimodal capabilities', () async {
-      expect(
-        await LLMService.getMultimodalCapabilities('mimo-v2.5'),
-        {'image', 'audio', 'video'},
-      );
-      expect(
-        await LLMService.getMultimodalCapabilities('mimo-v2-omni'),
-        {'image', 'video'},
-      );
-      expect(
-        await LLMService.getMultimodalCapabilities('legacy-vision'),
-        {'image'},
-      );
+      expect(await LLMService.getMultimodalCapabilities('mimo-v2.5'), {
+        'image',
+        'audio',
+        'video',
+      });
+      expect(await LLMService.getMultimodalCapabilities('mimo-v2-omni'), {
+        'image',
+        'video',
+      });
+      expect(await LLMService.getMultimodalCapabilities('legacy-vision'), {
+        'image',
+      });
     });
   });
 
@@ -293,12 +300,11 @@ void main() {
       addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
     });
 
-    testWidgets('exposes behavior controls and persists smart context',
-        (tester) async {
+    testWidgets('exposes behavior controls and persists smart context', (
+      tester,
+    ) async {
       await tester.pumpWidget(
-        const MaterialApp(
-          home: AiAssistantSettingsPage(isEmbedded: true),
-        ),
+        const MaterialApp(home: AiAssistantSettingsPage(isEmbedded: true)),
       );
       await tester.pumpAndSettle();
 
@@ -309,7 +315,30 @@ void main() {
       expect(find.text('默认开启深度思考'), findsOneWidget);
       expect(find.text('启用自定义提示词'), findsOneWidget);
       expect(find.text('模型与 API 配置'), findsOneWidget);
+      expect(find.text('工具查询'), findsOneWidget);
+      expect(find.text('智能注入'), findsOneWidget);
+      expect(
+        await ChatStorageService.getContextMode(),
+        AiContextMode.functionCalling,
+      );
 
+      await tester.ensureVisible(find.text('智能注入'));
+      await tester.tap(find.text('智能注入'));
+      await tester.pumpAndSettle();
+      expect(
+        await ChatStorageService.getContextMode(),
+        AiContextMode.smartContextInjection,
+      );
+
+      await tester.tap(find.text('工具查询'));
+      await tester.pumpAndSettle();
+      expect(
+        await ChatStorageService.getContextMode(),
+        AiContextMode.functionCalling,
+      );
+
+      await tester.ensureVisible(find.text('启用智能上下文'));
+      await tester.pumpAndSettle();
       await tester.tap(find.bySemanticsLabel('启用智能上下文'));
       await tester.pump();
       expect(await ChatStorageService.isSmartContextEnabled(), isFalse);

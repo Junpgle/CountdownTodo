@@ -17,8 +17,8 @@ class HomeQuickActionButton extends StatelessWidget {
     required Widget child,
   })  : _extended = false,
         _compactChild = child,
-        _icon = null,
-        _label = null;
+        icon = null,
+        label = null;
 
   const HomeQuickActionButton.extended({
     super.key,
@@ -29,12 +29,10 @@ class HomeQuickActionButton extends StatelessWidget {
     required this.foregroundColor,
     required this.isDark,
     this.useLiquidGlass = true,
-    required Widget icon,
-    required Widget label,
+    required this.icon,
+    required this.label,
   })  : _extended = true,
-        _compactChild = null,
-        _icon = icon,
-        _label = label;
+        _compactChild = null;
 
   final Object heroTag;
   final VoidCallback onPressed;
@@ -45,8 +43,8 @@ class HomeQuickActionButton extends StatelessWidget {
   final bool useLiquidGlass;
   final bool _extended;
   final Widget? _compactChild;
-  final Widget? _icon;
-  final Widget? _label;
+  final Widget? icon;
+  final Widget? label;
 
   @override
   Widget build(BuildContext context) {
@@ -55,8 +53,8 @@ class HomeQuickActionButton extends StatelessWidget {
             heroTag: heroTag,
             onPressed: onPressed,
             tooltip: tooltip,
-            icon: _icon!,
-            label: _label!,
+            icon: icon!,
+            label: label!,
           )
         : FloatingActionButton.small(
             heroTag: heroTag,
@@ -74,8 +72,8 @@ class HomeQuickActionButton extends StatelessWidget {
             tooltip: tooltip,
             backgroundColor: tint,
             foregroundColor: foregroundColor,
-            icon: _icon!,
-            label: _label!,
+            icon: icon!,
+            label: label!,
           )
         : FloatingGlassActionButton.small(
             heroTag: heroTag,

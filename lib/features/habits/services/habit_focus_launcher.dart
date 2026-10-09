@@ -5,6 +5,7 @@ import '../../../services/pomodoro_control_service.dart';
 import '../../../services/pomodoro_service.dart';
 import '../../../utils/page_transitions.dart';
 import '../models/habit_goal.dart';
+import '../../../utils/app_dialogs.dart';
 
 /// Starts focus for a habit and opens the shared Pomodoro screen.
 abstract final class HabitFocusLauncher {
@@ -40,7 +41,8 @@ abstract final class HabitFocusLauncher {
       if (context.mounted) onReturned?.call();
     } catch (error) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         SnackBar(content: Text('启动专注失败: $error')),
       );
     }

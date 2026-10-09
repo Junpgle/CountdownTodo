@@ -7,6 +7,8 @@ import 'finance_repository.dart';
 /// Recognizes the small, deliberately explicit text format used by the
 /// finance import entry point and by the AI assistant.
 abstract final class FinanceTextParser {
+  static const String _numericCommaMarker = '\uE000';
+
   static const String formatHelp = '''推荐格式（每笔一段）：
 #记账
 类型: 支出
@@ -17,7 +19,7 @@ abstract final class FinanceTextParser {
 付款方式: 微信
 备注: 工作日午餐
 
-类型支持：支出、收入、退款。金额单位为元，日期省略时默认为今天。''';
+类型支持：支出、收入、退款。支出可写“付款方式”，收入或退款可写“到账账户”或“退款到账账户”。金额单位为元，日期可写今天/昨天/本周一/上周五或具体日期，省略时默认为今天。''';
 
   /// The natural-language shortcut shown in the normal entry form.
   ///
@@ -26,11 +28,11 @@ abstract final class FinanceTextParser {
   /// bills in the same input.
   static const String quickEntryExample = '今天早餐 8 元，微信；中午午餐 25 元，支付宝';
   static const String quickEntryHelp =
-      '直接描述一笔或多笔账单；多笔请用换行或分号分开，缺少分类和付款方式也可以稍后补充';
+      '直接描述一笔或多笔账单；多笔请用换行或分号分开，缺少分类和付款/到账账户也可以稍后补充';
 
   /// Kept for callers that still use the old single-sentence wording.
   static const String oneSentenceExample = '今天午餐花了 28.5 元，微信支付，分类餐饮';
-  static const String oneSentenceHelp = '说法：时间 + 事项 + 金额 + 付款方式 + 分类\n'
+  static const String oneSentenceHelp = '说法：时间 + 事项 + 金额 + 付款/到账账户 + 分类\n'
       '示例：今天午餐花了 28.5 元，微信支付，分类餐饮';
 
   static const Map<String, String> _sentencePaymentAliases = {
@@ -207,6 +209,31 @@ abstract final class FinanceTextParser {
     '其他': '其他',
   };
 
+  static final RegExp _relativeWeekdayPattern = RegExp(
+    r'(上周|上星期|上礼拜|本周|这周|本星期|这星期|本礼拜|这礼拜)\s*'
+    r'([一二三四五六日天1-7])',
+  );
+  static final RegExp _chineseMonthDayPattern = RegExp(
+    r'(?:(?:(\d{4})\s*年|(今年|前年|去年|上一年|前一年))\s*)?'
+    r'(?<![\d零〇○一二三四五六七八九十廿百千])'
+    r'(\d{1,2}|[零〇○一二三四五六七八九十廿百千]{1,4})'
+    r'\s*(?:月|/)\s*'
+    r'(\d{1,2}|[零〇○一二三四五六七八九十廿百千]{1,4})'
+    r'(?![\d零〇○一二三四五六七八九十廿百千])\s*[日号]?',
+  );
+  static final RegExp _relativeDayPattern = RegExp(
+    r'大前天|大前日|大后天|大后日|前天|前日|昨天|昨日|今天|今日|'
+    r'明天|明日|后天|后日|today|yesterday|tomorrow',
+    caseSensitive: false,
+  );
+  static final RegExp _unsupportedCurrencyAmountPattern = RegExp(
+    r'(?:[$€£]\s*\d|\d[\d,]*(?:\.\d+)?\s*[$€£]|'
+    r'(?:USD|EUR|GBP|HKD|JPY|AUD|CAD|SGD)\s*\d|'
+    r'\d[\d,]*(?:\.\d+)?\s*'
+    r'(?:USD|EUR|GBP|HKD|JPY|AUD|CAD|SGD|美元|美金|欧元|英镑|港币|港元|日元|日币|韩元|澳元|加元|新加坡元|dollars?|euros?|pounds?))',
+    caseSensitive: false,
+  );
+
   static final RegExp _blockMarker = RegExp(
     r'^[ \t]*(?:#[ \t]*)?(?:\[[ \t]*)?记账(?:[ \t]*#?[ \t]*\d+)?(?:[ \t]*\])?(?=[ \t]*(?:\||$))',
     multiLine: true,
@@ -247,13 +274,17 @@ abstract final class FinanceTextParser {
     FinanceEntrySource source = FinanceEntrySource.manual,
   }) {
     final text = _normalizeOneSentence(input);
-    if (text.isEmpty) return null;
+    if (text.isEmpty || _unsupportedCurrencyAmountPattern.hasMatch(text)) {
+      return null;
+    }
 
     final amountMatch = _findSentenceAmountMatch(text);
     final amount = _parseAmount(amountMatch?.group(1));
     if (amount == null || amount <= 0 || amountMatch == null) return null;
 
     final current = now ?? DateTime.now();
+    final sentenceDate = _parseSentenceDate(text, current);
+    if (sentenceDate == null) return null;
     final type = _parseType(text);
     final explicitCategory = _extractSentenceValue(
       text,
@@ -268,7 +299,8 @@ abstract final class FinanceTextParser {
       _extractSentenceValue(
         text,
         RegExp(
-          r'(?:付款方式|支付方式|付款(?!给)|支付(?!宝|给)|用(?!于)|通过)'
+          r'(?:退款到账账户|到账账户|关联账户|账户|付款方式|支付方式|'
+          r'付款(?!给)|支付(?!宝|给)|用(?!于)|通过)'
           r'\s*[:=]?\s*([^,，。；;]+)',
         ),
       ),
@@ -294,7 +326,7 @@ abstract final class FinanceTextParser {
     return FinanceEntryDraft(
       type: type,
       amountMinor: amount,
-      transactionDate: dateKey(_parseSentenceDate(text, current)),
+      transactionDate: dateKey(sentenceDate),
       categoryName: category,
       paymentMethodName: payment,
       merchant: merchant,
@@ -319,7 +351,8 @@ abstract final class FinanceTextParser {
 
     final structuredText = normalized.replaceAll('：', ':');
     final hasStructuredFields = RegExp(
-      r'(?:^|\n)\s*(?:#?记账|类型|方向|收支|金额|分类|日期|付款方式)\s*[:=]',
+      r'(?:^|\n)\s*(?:#?记账|类型|方向|收支|金额|分类|日期|'
+      r'付款方式|到账账户|退款到账账户|关联账户)\s*[:=]',
       multiLine: true,
     ).hasMatch(structuredText);
     if (_blockMarker.hasMatch(structuredText) || hasStructuredFields) {
@@ -350,7 +383,7 @@ abstract final class FinanceTextParser {
       source: source,
     );
     if (wholeDraft != null && drafts.length <= 1) return [wholeDraft];
-    return _deduplicate(drafts);
+    return drafts;
   }
 
   /// Parses one or more explicit bill blocks. Invalid/incomplete blocks are
@@ -380,7 +413,7 @@ abstract final class FinanceTextParser {
       );
       if (draft != null) drafts.add(draft);
     }
-    return _deduplicate(drafts);
+    return drafts;
   }
 
   /// Converts typed results from a vision model into finance drafts while
@@ -398,17 +431,19 @@ abstract final class FinanceTextParser {
       if (normalized['originalText'] == null && originalText != null) {
         normalized['originalText'] = originalText;
       }
-      final draft = FinanceEntryDraft.fromJson(normalized)
+      final draft = FinanceEntryDraft.fromJson(
+        normalized,
+        now: now,
+        preserveRawDate: true,
+      )
         ..source = source
         ..originalText ??= originalText;
       if (draft.amountMinor > 0) {
-        if (draft.transactionDate.trim().isEmpty) {
-          draft.transactionDate = dateKey(now ?? DateTime.now());
-        }
+        _normalizeDraftDate(draft, now: now);
         drafts.add(draft);
       }
     }
-    return _deduplicate(drafts);
+    return drafts;
   }
 
   /// Extracts the assistant's separate finance event protocol.
@@ -421,23 +456,31 @@ abstract final class FinanceTextParser {
   }) {
     final drafts = <FinanceEntryDraft>[];
     final marker = RegExp(
-      r'\[FINANCE_START\](.*?)\[FINANCE_END\]',
+      r'\[(?:FINANCE|FN)_START\](.*?)\[(?:FINANCE|FN)_END\]',
       dotAll: true,
     );
     for (final match in marker.allMatches(content)) {
       final payload = _decodeMaps(match.group(1) ?? '');
       for (final map in payload) {
-        final draft = FinanceEntryDraft.fromJson(map)
+        final draft = FinanceEntryDraft.fromJson(
+          map,
+          now: now,
+          preserveRawDate: true,
+        )
           ..source = FinanceEntrySource.ai;
         if (draft.amountMinor > 0) {
-          if (draft.transactionDate.trim().isEmpty) {
-            draft.transactionDate = dateKey(now ?? DateTime.now());
-          }
+          _normalizeDraftDate(draft, now: now);
           drafts.add(draft);
         }
       }
     }
-    return _deduplicate(drafts);
+    return drafts;
+  }
+
+  static void _normalizeDraftDate(FinanceEntryDraft draft, {DateTime? now}) {
+    final reference = now ?? DateTime.now();
+    final parsed = _parseDate(draft.transactionDate, reference);
+    draft.transactionDate = dateKey(parsed ?? reference);
   }
 
   /// Extracts read-only finance queries and confirmation-required mutations.
@@ -488,7 +531,10 @@ abstract final class FinanceTextParser {
   static String cleanAssistantContent(String content) {
     return content
         .replaceAll(
-          RegExp(r'\[FINANCE_START\].*?\[FINANCE_END\]', dotAll: true),
+          RegExp(
+            r'\[(?:FINANCE|FN)_START\].*?\[(?:FINANCE|FN)_END\]',
+            dotAll: true,
+          ),
           '',
         )
         .replaceAll(
@@ -499,6 +545,27 @@ abstract final class FinanceTextParser {
           '',
         )
         .trim();
+  }
+
+  /// Hides finance protocol blocks while a response is still arriving.
+  ///
+  /// An incomplete block has no closing marker yet, so strip its trailing
+  /// contents as well as the complete blocks handled by
+  /// [cleanAssistantContent].
+  static String cleanStreamingAssistantContent(String content) {
+    var visible = content;
+    for (final markers in [
+      ('[FINANCE_START]', '[FINANCE_END]'),
+      ('[FN_START]', '[FN_END]'),
+      ('[FINANCE_ACTION_START]', '[FINANCE_ACTION_END]'),
+    ]) {
+      final start = visible.lastIndexOf(markers.$1);
+      if (start >= 0 &&
+          visible.indexOf(markers.$2, start + markers.$1.length) < 0) {
+        visible = visible.substring(0, start);
+      }
+    }
+    return cleanAssistantContent(visible);
   }
 
   static bool isFinanceResult(Map<String, dynamic> result) {
@@ -523,6 +590,22 @@ abstract final class FinanceTextParser {
       'refund',
     }.contains(kind)) {
       return true;
+    }
+    if (const {
+      'todo',
+      'fixedschedule',
+      'fixed_schedule',
+      'planblock',
+      'plan_block',
+      'needsconfirmation',
+      'needs_confirmation',
+      'task',
+      'meal_pickup',
+      'mealpickup',
+      'pickup',
+      'pickup_code',
+    }.contains(kind)) {
+      return false;
     }
     final hasAmount = result.containsKey('amount') ||
         result.containsKey('amount_yuan') ||
@@ -559,25 +642,6 @@ abstract final class FinanceTextParser {
             result.containsKey('payment_method'));
   }
 
-  static List<FinanceEntryDraft> _deduplicate(
-    Iterable<FinanceEntryDraft> drafts,
-  ) {
-    final result = <FinanceEntryDraft>[];
-    final seen = <String>{};
-    for (final draft in drafts) {
-      final key = [
-        draft.type.name,
-        draft.amountMinor,
-        draft.transactionDate,
-        draft.categoryUuid ?? draft.categoryName ?? '',
-        draft.merchant ?? '',
-        draft.note ?? '',
-      ].join('|').toLowerCase();
-      if (seen.add(key)) result.add(draft);
-    }
-    return result;
-  }
-
   static List<String> _splitBlocks(String text) {
     final matches = _blockMarker.allMatches(text).toList();
     if (matches.isEmpty) return [text];
@@ -606,9 +670,13 @@ abstract final class FinanceTextParser {
   }
 
   static List<String> _splitCommaSeparatedQuickEntries(String text) {
-    final clauses = text
+    final protectedText = text.replaceAllMapped(
+      RegExp(r'(?<=\d),(?=\d)'),
+      (_) => _numericCommaMarker,
+    );
+    final clauses = protectedText
         .split(RegExp(r'\s*[,，]\s*'))
-        .map((part) => part.trim())
+        .map((part) => part.replaceAll(_numericCommaMarker, ',').trim())
         .where((part) => part.isNotEmpty)
         .toList();
     if (clauses.length < 2) return [text];
@@ -616,7 +684,13 @@ abstract final class FinanceTextParser {
     final groups = <String>[];
     var current = '';
     for (final clause in clauses) {
-      final startsEntry = _findSentenceAmountMatch(clause) != null;
+      final amountMatch = _findSentenceAmountMatch(clause);
+      final startsEntry =
+          amountMatch != null &&
+          current.trim().isNotEmpty &&
+          _findSentenceAmountMatch(current) != null &&
+          clause.substring(0, amountMatch.start).trim().isNotEmpty &&
+          !_isAmountClarificationClause(clause);
       if (startsEntry && current.trim().isNotEmpty) {
         groups.add(current.trim());
         current = clause;
@@ -629,6 +703,19 @@ abstract final class FinanceTextParser {
     if (current.trim().isNotEmpty) groups.add(current.trim());
     return groups.length > 1 ? groups : [text];
   }
+
+  static bool _isAmountClarificationClause(String value) => RegExp(
+    r'^(?:其中|包括|包含|(?:每)?满\s*\d+(?:[,.]\d+)?\s*(?:元|块钱?)?\s*减|'
+    r'原价|(?:(?:会员|平台|商家|店铺|支付宝|微信|银联|信用卡|银行卡|云闪付|花呗|白条)'
+    r'(?:支付|付款)?)?'
+    r'(?:优惠|折扣|减免|立减|满减|补贴)|'
+    r'(?:(?:(?:会员|平台|商家|店铺|支付宝|微信|银联|信用卡|银行卡|云闪付|花呗|白条)'
+    r'(?:支付|付款)?)?'
+    r'(?:使用|用了|用)?(?:红包|优惠券|代金券)抵扣)|'
+    r'(?:最后|最终)\s*(?:支付|付款|付了?|实付|实际支付|实际付款)|'
+    r'实付|实际支付|实际付款|现付|'
+        r'实收|实际收款|实际到账|到账|到手价|到手|省下|抵扣)',
+  ).hasMatch(value.trim());
 
   static Map<String, String> _parseFields(String block) {
     final fields = <String, String>{};
@@ -698,6 +785,7 @@ abstract final class FinanceTextParser {
     final type = _parseType(typeText ?? block);
     final dateText = _first(fields, const ['日期', 'date', '账单日期', '时间']);
     final date = _parseDate(dateText, now ?? DateTime.now());
+    if (date == null) return null;
     final merchant = _first(fields, const [
       '商家',
       '商户',
@@ -709,6 +797,9 @@ abstract final class FinanceTextParser {
     ]);
     final category = _first(fields, const ['分类', '类别', 'category']);
     final payment = _first(fields, const [
+      '退款到账账户',
+      '到账账户',
+      '关联账户',
       '付款方式',
       '支付方式',
       '支付',
@@ -745,9 +836,9 @@ abstract final class FinanceTextParser {
 
   static int? _parseAmount(String? raw) {
     if (raw == null || raw.trim().isEmpty) return null;
+    if (_unsupportedCurrencyAmountPattern.hasMatch(raw)) return null;
     final normalized = raw
         .trim()
-        .replaceAll(',', '')
         .replaceAll(RegExp(r'^[¥￥$€£]\s*'), '')
         .replaceAll(RegExp(r'\s*(?:元|块|人民币|CNY)\s*$', caseSensitive: false), '')
         .replaceFirst(RegExp(r'^\+'), '')
@@ -765,6 +856,14 @@ abstract final class FinanceTextParser {
 
   static RegExpMatch? _findSentenceAmountMatch(String text) {
     final patterns = [
+      RegExp(
+        r'(?:(?:最后|最终)\s*(?:支付|付款|付了?|实付|实际支付|实际付款)|'
+        r'折后|优惠后|抵扣后|补贴后|'
+        r'实际支付|实际付款|实付|现付|净付|实际收款|实收金额|实收|实际到账|到账|到手价|到手)'
+        r'\s*[:=]?\s*(?:¥|￥)?\s*'
+        r'(\d+(?:[,.]\d+)*)(?=\s*(?:元|块钱?|人民币|CNY|RMB|[,，。；;]|$))',
+        caseSensitive: false,
+      ),
       RegExp(r'(?:¥|￥)\s*(\d+(?:[,.]\d+)*)', caseSensitive: false),
       RegExp(
         r'(\d+(?:[,.]\d+)*)\s*(?:元|块钱?|人民币|CNY|RMB)(?![A-Za-z])',
@@ -816,6 +915,16 @@ abstract final class FinanceTextParser {
     if (RegExp(r'^\s*(?:年|月|日|号|点|时|分)').hasMatch(after)) {
       return false;
     }
+    // Unlabelled number guessing must not promote product counts or
+    // measurements (for example "买了2个苹果") into standalone bills.
+    if (RegExp(
+      r'^\s*(?:个|件|只|张|份|杯|瓶|盒|袋|斤|公斤|千克|克|毫升|升|米|公里|'
+      r'站|层|次|名|人|位|套|本|包|台|部|辆|双|片|颗|粒|枚|条|秒|分钟|小时|天|岁|'
+      r'kg|g|ml|l)(?![A-Za-z])',
+      caseSensitive: false,
+    ).hasMatch(after)) {
+      return false;
+    }
     if (RegExp(r'(?:年|月|日|号)\s*$').hasMatch(before)) return false;
     if (RegExp(r'[-/.]\s*$').hasMatch(before) ||
         RegExp(r'^\s*[-/.]').hasMatch(after)) {
@@ -846,7 +955,9 @@ abstract final class FinanceTextParser {
         .replaceFirst(RegExp(r'[,，。；;、\s]+$'), '')
         .trim();
     final nextField = RegExp(
-      r'(?:^|\s)(?:分类|类别|归类为?|记到|付款方式|支付方式|付款|支付|备注|说明|商家|商户|店铺|项目|名称)\s*[:=]?',
+      r'(?:^|\s)(?:分类|类别|归类为?|记到|退款到账账户|到账账户|'
+      r'关联账户|账户|付款方式|支付方式|付款|支付|备注|说明|'
+      r'商家|商户|店铺|项目|名称)\s*[:=]?',
     ).firstMatch(normalized);
     if (nextField != null) {
       if (nextField.start == 0) return null;
@@ -860,6 +971,7 @@ abstract final class FinanceTextParser {
     if (explicitValue != null) return explicitValue;
     final paymentInText = _knownSentencePayment(text);
     if (explicit != null && explicit.trim().isNotEmpty) {
+      if (_parseAmount(explicit) != null) return paymentInText;
       if (paymentInText != null &&
           RegExp(
             r'^(?:分类|类别|归类为?|记到|备注|说明|商家|商户|店铺|项目|名称)\s*[:=]?',
@@ -928,9 +1040,33 @@ abstract final class FinanceTextParser {
       value = _removeSentenceDate(value);
       value = value.replaceAll(
         RegExp(
+          r'(?:每)?满\s*\d+(?:[,.]\d+)?\s*(?:元|块钱?)?\s*减\s*'
+          r'\d+(?:[,.]\d+)?\s*(?:元|块钱?)?',
+          caseSensitive: false,
+        ),
+        '',
+      );
+      value = value.replaceAll(
+        RegExp(
+          r'(?:原价|优惠|折扣|减免|立减|满减|实付|实际支付|实际付款|现付|'
+          r'实收|实际收款|实际到账|到账|到手价|到手|省下|抵扣)\s*[:=]?\s*'
+          r'(?:¥|￥)?\s*\d+(?:[,.]\d+)*\s*'
+          r'(?:元|块钱?|人民币|CNY|RMB)?',
+          caseSensitive: false,
+        ),
+        '',
+      );
+      if (payment != null && payment.trim().isNotEmpty) {
+        value = value.replaceAll(
+          RegExp(RegExp.escape(payment.trim()), caseSensitive: false),
+          '',
+        );
+      }
+      value = value.replaceAll(
+        RegExp(
           r'记一笔|记账|记录|一共|合计|实付|金额|支出|收入|退款|消费|花(?:了|费)?|'
           r'用了?|支付了?|付款了?|付了|买了?|购买了?|收到|入账|进账|收款|赚到?|'
-          r'用于|在|于|给|为',
+          r'用于|在|于|给|退了?|退回|退还|返还|退钱|为',
         ),
         '',
       );
@@ -945,7 +1081,9 @@ abstract final class FinanceTextParser {
           _sameSentenceValue(value, payment) ||
           _sameSentenceValue(value, note) ||
           _knownSentencePayment(value) != null ||
-          RegExp(r'^(?:分类|类别|付款方式|支付方式|备注|说明)').hasMatch(value)) {
+          RegExp(
+            r'^(?:分类|类别|退款到账账户|到账账户|关联账户|账户|付款方式|支付方式|备注|说明)',
+          ).hasMatch(value)) {
         continue;
       }
       return value;
@@ -970,7 +1108,8 @@ abstract final class FinanceTextParser {
 
   static String _removeSentenceDate(String value) {
     return value
-        .replaceAll(RegExp(r'今天|昨天|前天|明天'), '')
+        .replaceAll(_relativeDayPattern, '')
+        .replaceAll(_relativeWeekdayPattern, '')
         .replaceAll(
           RegExp(
             r'\d{4}\s*(?:年|[-/.])\s*\d{1,2}\s*'
@@ -978,49 +1117,68 @@ abstract final class FinanceTextParser {
           ),
           '',
         )
+        .replaceAll(_chineseMonthDayPattern, '')
         .replaceAll(RegExp(r'\d{1,2}\s*月\s*\d{1,2}\s*日?'), '')
         .replaceAll(RegExp(r'\d{1,2}\s*/\s*\d{1,2}'), '');
   }
 
-  static DateTime _parseSentenceDate(String text, DateTime now) {
-    final relative = RegExp(r'今天|昨天|前天|明天').firstMatch(text)?.group(0);
+  static DateTime? _parseSentenceDate(String text, DateTime now) {
+    final relative = _relativeDayPattern
+        .firstMatch(text.toLowerCase())
+        ?.group(0);
     if (relative != null) return _parseDate(relative, now);
+    final relativeWeekday = _parseRelativeWeekdayDate(text, now);
+    if (relativeWeekday != null) return relativeWeekday;
 
     final full = RegExp(
-      r'(?<!\d)(\d{4})\s*(?:年|[-/.])\s*(\d{1,2})\s*'
-      r'(?:月|[-/.])\s*(\d{1,2})\s*日?',
+      r'(?<!\d)(\d{4})\s*(?:年|[-/.])\s*(\d+)\s*'
+      r'(?:月|[-/.])\s*(\d+)(?!\d)\s*日?',
     ).firstMatch(text);
     if (full != null) {
-      final parsed = _safeSentenceDate(
+      return _safeSentenceDate(
         int.tryParse(full.group(1) ?? ''),
         int.tryParse(full.group(2) ?? ''),
         int.tryParse(full.group(3) ?? ''),
       );
-      if (parsed != null) return parsed;
+    }
+
+    final chineseMonthDay = _chineseMonthDayPattern.firstMatch(text);
+    if (chineseMonthDay != null) {
+      final yearText = chineseMonthDay.group(1);
+      final relativeYear = chineseMonthDay.group(2);
+      final year = int.tryParse(yearText ?? '') ??
+          switch (relativeYear) {
+            '前年' => now.year - 2,
+            '去年' || '上一年' || '前一年' => now.year - 1,
+            _ => now.year,
+          };
+      return _safeSentenceDate(
+        year,
+        _parseChineseDateNumber(chineseMonthDay.group(3) ?? ''),
+        _parseChineseDateNumber(chineseMonthDay.group(4) ?? ''),
+      );
     }
 
     final monthDay = RegExp(
-      r'(?<!\d)(\d{1,2})\s*月\s*(\d{1,2})\s*日?',
+      r'(?<!\d)(\d+)\s*月\s*(\d+)(?!\d)\s*日?',
     ).firstMatch(text);
     if (monthDay != null) {
-      final parsed = _safeSentenceDate(
+      return _safeSentenceDate(
         now.year,
         int.tryParse(monthDay.group(1) ?? ''),
         int.tryParse(monthDay.group(2) ?? ''),
       );
-      if (parsed != null) return parsed;
     }
 
     final slashMonthDay = RegExp(
-      r'(?<!\d)(\d{1,2})\s*/\s*(\d{1,2})(?!\d)',
+      r'(?<!\d)(\d+)\s*/\s*(\d+)(?!\d)',
     ).firstMatch(text);
     if (slashMonthDay != null) {
-      final parsed = _safeSentenceDate(
+      return _safeSentenceDate(
         now.year,
         int.tryParse(slashMonthDay.group(1) ?? ''),
         int.tryParse(slashMonthDay.group(2) ?? ''),
       );
-      if (parsed != null) return parsed;
     }
     return _day(now);
   }
@@ -1036,9 +1194,94 @@ abstract final class FinanceTextParser {
     return _day(candidate);
   }
 
+  static int? _parseChineseDateNumber(String value) {
+    final numeric = int.tryParse(value);
+    if (numeric != null) return numeric;
+    const digits = {
+      '零': 0,
+      '〇': 0,
+      '○': 0,
+      '一': 1,
+      '二': 2,
+      '三': 3,
+      '四': 4,
+      '五': 5,
+      '六': 6,
+      '七': 7,
+      '八': 8,
+      '九': 9,
+    };
+    final digit = digits[value];
+    if (digit != null) return digit;
+    final positionalDigits = value
+        .split('')
+        .map((character) => digits[character])
+        .toList();
+    if (positionalDigits.length > 1 &&
+        positionalDigits.every((digit) => digit != null)) {
+      return int.tryParse(
+        positionalDigits
+            .whereType<int>()
+            .map((digit) => digit.toString())
+            .join(),
+      );
+    }
+    if (value == '十') return 10;
+    if (value == '廿') return 20;
+    if (value.startsWith('廿')) {
+      final ones = digits[value.substring(1)];
+      return ones == null ? null : 20 + ones;
+    }
+    if (value.startsWith('十')) {
+      final ones = digits[value.substring(1)];
+      return ones == null ? null : 10 + ones;
+    }
+    final tenIndex = value.indexOf('十');
+    if (tenIndex < 0) return null;
+    final tens = tenIndex == 0 ? 1 : digits[value.substring(0, tenIndex)];
+    final ones = tenIndex == value.length - 1
+        ? 0
+        : digits[value.substring(tenIndex + 1)];
+    return tens == null || ones == null ? null : tens * 10 + ones;
+  }
+
+  static DateTime? _parseRelativeWeekdayDate(String text, DateTime now) {
+    final match = _relativeWeekdayPattern.firstMatch(text);
+    if (match == null) return null;
+    final offset = switch (match.group(2)!) {
+      '一' || '1' => 0,
+      '二' || '2' => 1,
+      '三' || '3' => 2,
+      '四' || '4' => 3,
+      '五' || '5' => 4,
+      '六' || '6' => 5,
+      '日' || '天' || '7' => 6,
+      _ => null,
+    };
+    if (offset == null) return null;
+    final today = _day(now);
+    final thisMonday = financeCalendarDayOffset(
+      today,
+      DateTime.monday - today.weekday,
+    );
+    final weekStart = match.group(1)!.startsWith('上')
+        ? financeCalendarDayOffset(thisMonday, -7)
+        : thisMonday;
+    return financeCalendarDayOffset(weekStart, offset);
+  }
+
   static FinanceTransactionType _parseType(String text) {
     final value = text.toLowerCase();
-    if (value.contains('退款') || value.contains('refund')) {
+    if (value.contains('退款') ||
+        value.contains('退了') ||
+        value.contains('退回') ||
+        value.contains('退还') ||
+        value.contains('返还') ||
+        value.contains('退钱') ||
+        value.contains('退货款') ||
+        value.contains('退货到账') ||
+        value.contains('返现') ||
+        value.contains('refund')) {
       return FinanceTransactionType.refund;
     }
     if (value.contains('收入') ||
@@ -1046,27 +1289,78 @@ abstract final class FinanceTextParser {
         value.contains('收款') ||
         value.contains('收到') ||
         value.contains('到账') ||
+        value.contains('实收') ||
+        value.contains('实际收款') ||
+        (value.contains('到手') && !value.contains('到手价')) ||
         value.contains('赚到') ||
         value.contains('income') ||
         value.contains('入账')) {
       return FinanceTransactionType.income;
     }
+    final hasIncomeCategory = const [
+      '工资',
+      '薪资',
+      '薪水',
+      '月薪',
+      '发薪',
+      '加班费',
+      '奖金',
+      '年终奖',
+      '绩效',
+      '津贴',
+      '补贴',
+      '报销',
+      '生活费',
+      '零花钱',
+      '家里给',
+      '父母给',
+    ].any((term) => value.contains(term));
+    final hasExpenseAction = const [
+      '花了',
+      '花费',
+      '消费',
+      '支出',
+      '支付',
+      '付款',
+      '买了',
+      '买入',
+      '购买',
+      '交费',
+      '缴费',
+      '交生活费',
+      '给孩子',
+      '给朋友',
+      '给员工',
+      '给家里',
+      '给父母',
+      '转给',
+      '给了',
+    ].any((term) => value.contains(term));
+    if (hasIncomeCategory && !hasExpenseAction) {
+      return FinanceTransactionType.income;
+    }
     return FinanceTransactionType.expense;
   }
 
-  static DateTime _parseDate(String? raw, DateTime now) {
+  static DateTime? _parseDate(String? raw, DateTime now) {
     if (raw == null || raw.trim().isEmpty) return _day(now);
     final value = raw.trim().toLowerCase();
-    if (value.contains('今天') || value == 'today') return _day(now);
-    if (value.contains('昨天') || value == 'yesterday') {
-      return _day(now.subtract(const Duration(days: 1)));
+    final relative = _relativeDayPattern.firstMatch(value)?.group(0);
+    if (relative != null) {
+      final offset = switch (relative) {
+        '大前天' || '大前日' => -3,
+        '前天' || '前日' => -2,
+        '昨天' || '昨日' || 'yesterday' => -1,
+        '今天' || '今日' || 'today' => 0,
+        '明天' || '明日' || 'tomorrow' => 1,
+        '后天' || '后日' => 2,
+        '大后天' || '大后日' => 3,
+        _ => null,
+      };
+      if (offset != null) return financeCalendarDayOffset(_day(now), offset);
     }
-    if (value.contains('前天')) {
-      return _day(now.subtract(const Duration(days: 2)));
-    }
-    if (value.contains('明天') || value == 'tomorrow') {
-      return _day(now.add(const Duration(days: 1)));
-    }
+    final relativeWeekday = _parseRelativeWeekdayDate(value, now);
+    if (relativeWeekday != null) return relativeWeekday;
 
     final normalized = value
         .replaceAll('年', '-')
@@ -1074,15 +1368,18 @@ abstract final class FinanceTextParser {
         .replaceAll('日', '')
         .replaceAll('/', '-')
         .replaceAll('.', '-');
-    final match =
-        RegExp(r'^(\d{4})-(\d{1,2})-(\d{1,2})').firstMatch(normalized);
-    if (match != null) {
-      final parsed = DateTime.tryParse(
-        '${match.group(1)}-${match.group(2)!.padLeft(2, '0')}-${match.group(3)!.padLeft(2, '0')}',
-      );
-      if (parsed != null) return _day(parsed);
+    final match = RegExp(
+      r'^(\d{4})(?!\d)-(\d{1,2})(?!\d)-(\d{1,2})(?!\d)(?=$|[\sT])',
+    ).firstMatch(normalized);
+    if (match == null) return null;
+    final year = int.parse(match.group(1)!);
+    final month = int.parse(match.group(2)!);
+    final day = int.parse(match.group(3)!);
+    final parsed = DateTime(year, month, day);
+    if (parsed.year != year || parsed.month != month || parsed.day != day) {
+      return null;
     }
-    return _day(now);
+    return _day(parsed);
   }
 
   static DateTime _day(DateTime value) =>

@@ -17,15 +17,15 @@ class IslandIpcFileWatcher {
     required this.fallbackInterval,
     required this.degradedPollInterval,
     this.eventDebounce = const Duration(milliseconds: 40),
-    IslandDirectoryWatch? watchDirectory,
-  }) : _watchDirectory = watchDirectory;
+    this.watchDirectory,
+  });
 
   final Future<File> Function() resolveFile;
   final Future<void> Function() onFileChanged;
   final Duration fallbackInterval;
   final Duration degradedPollInterval;
   final Duration eventDebounce;
-  final IslandDirectoryWatch? _watchDirectory;
+  final IslandDirectoryWatch? watchDirectory;
 
   StreamSubscription<FileSystemEvent>? _directorySubscription;
   Timer? _eventDebounceTimer;
@@ -51,7 +51,7 @@ class IslandIpcFileWatcher {
     _startFallbackTimer(fallbackInterval);
 
     try {
-      final events = _watchDirectory?.call(target.parent) ??
+      final events = watchDirectory?.call(target.parent) ??
           target.parent.watch(
             events: FileSystemEvent.create |
                 FileSystemEvent.modify |
@@ -59,7 +59,7 @@ class IslandIpcFileWatcher {
           );
       _directorySubscription = events.listen(
         _onDirectoryEvent,
-        onError: (Object _, StackTrace __) => _enterDegradedPolling(),
+        onError: (Object _, StackTrace _) => _enterDegradedPolling(),
         onDone: _enterDegradedPolling,
         cancelOnError: true,
       );

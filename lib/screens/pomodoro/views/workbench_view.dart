@@ -459,10 +459,12 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     if (_strictWaitingForFlip || _strictStartInFlight) return;
     if (!AppPlatform.isAndroid && !AppPlatform.isIOS) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('严格自由专注仅支持 Android 和 iOS 手机端'),
-          behavior: SnackBarBehavior.floating,
-        ));
+        AppSnackBars.showSnackBar(
+            context,
+            const SnackBar(
+              content: Text('严格自由专注仅支持 Android 和 iOS 手机端'),
+              behavior: SnackBarBehavior.floating,
+            ));
       }
       return;
     }
@@ -498,10 +500,12 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
           _strictWaitingForFlip = false;
           _remainingSeconds = 0;
         });
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('严格模式启动失败，请重试'),
-          behavior: SnackBarBehavior.floating,
-        ));
+        AppSnackBars.showSnackBar(
+            context,
+            const SnackBar(
+              content: Text('严格模式启动失败，请重试'),
+              behavior: SnackBarBehavior.floating,
+            ));
       }
       await PomodoroService.clearRunState();
       PomodoroSyncService.instance.setLocalFocusing(false);
@@ -596,10 +600,12 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                 _phase == PomodoroPhase.focusing &&
                 _isPaused))) {
       _strictUnavailableNoticeShown = true;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('运动传感器不可用，正在自动重试'),
-        behavior: SnackBarBehavior.floating,
-      ));
+      AppSnackBars.showSnackBar(
+          context,
+          const SnackBar(
+            content: Text('运动传感器不可用，正在自动重试'),
+            behavior: SnackBarBehavior.floating,
+          ));
     } else if (event.state == StrictFocusSensorState.waitingForFlip ||
         event.state == StrictFocusSensorState.faceDown ||
         event.state == StrictFocusSensorState.notFaceDown) {
@@ -1393,7 +1399,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
           'notifId': alarmNotifId,
           'type': 'pomodoro',
           'source': ScheduledReminderSources.pomodoro,
-          if (sessionUuid != null) 'sessionUuid': sessionUuid,
+          'sessionUuid': ?sessionUuid,
         }
       ],
       clearFirst: false,
@@ -1751,7 +1757,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
 
   void _showPauseDialog() {
     _pauseFocus();
-    showDialog(
+    showAppDialog(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => StatefulBuilder(
@@ -1810,7 +1816,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
   }
 
   void _showPauseEndChoiceDialog() {
-    showDialog(
+    showAppDialog(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
@@ -2003,11 +2009,13 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       _syncService.sendUpdateTagsSignal(tagNames);
     }
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content:
-              Text(newTodo != null ? '已切换至: ${newTodo.title}' : '已切换为自由专注'),
-          duration: const Duration(seconds: 2),
-          behavior: SnackBarBehavior.floating));
+      AppSnackBars.showSnackBar(
+          context,
+          SnackBar(
+              content:
+                  Text(newTodo != null ? '已切换至: ${newTodo.title}' : '已切换为自由专注'),
+              duration: const Duration(seconds: 2),
+              behavior: SnackBarBehavior.floating));
     }
   }
 
@@ -2117,7 +2125,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     final durationCtrl =
         TextEditingController(text: (durationSeconds ~/ 60).toString());
 
-    final completed = await showDialog<bool>(
+    final completed = await showAppDialog<bool>(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
@@ -2193,10 +2201,12 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         setState(() => _todos[localIdx].isDone = true);
       }
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text('✅ "${_boundTodo!.title}" 已标记完成'),
-            backgroundColor: Colors.green,
-            behavior: SnackBarBehavior.floating));
+        AppSnackBars.showSnackBar(
+            context,
+            SnackBar(
+                content: Text('✅ "${_boundTodo!.title}" 已标记完成'),
+                backgroundColor: Colors.green,
+                behavior: SnackBarBehavior.floating));
       }
     }
     return completed ?? false;
@@ -2270,10 +2280,12 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       await _clearRunStateSilently();
       await _persistIdleBoundTodo(_boundTodo);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('☕ 休息结束，准备开始下一轮！'),
-            duration: Duration(seconds: 3),
-            behavior: SnackBarBehavior.floating));
+        AppSnackBars.showSnackBar(
+            context,
+            const SnackBar(
+                content: Text('☕ 休息结束，准备开始下一轮！'),
+                duration: Duration(seconds: 3),
+                behavior: SnackBarBehavior.floating));
       }
     } finally {
       _isHandlingEnd = false;
@@ -2289,7 +2301,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       _pauseTicker?.cancel();
       bool confirm = skipDialog;
       if (!skipDialog) {
-        final res = await showDialog<bool>(
+        final res = await showAppDialog<bool>(
           context: context,
           builder: (ctx) => AlertDialog(
             title: const Text('放弃本次专注？'),
@@ -2400,7 +2412,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     final breakCtrl =
         TextEditingController(text: _settings.breakMinutes.toString());
     final cyclesCtrl = TextEditingController(text: _settings.cycles.toString());
-    showDialog(
+    showAppDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('⚙️ 番茄钟设置'),
@@ -2454,7 +2466,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
   void _showNoteDialog() {
     final ctrl = TextEditingController(text: _currentNote);
     final isRemote = _phase == PomodoroPhase.remoteWatching;
-    showDialog(
+    showAppDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('专注备注'),
@@ -2625,8 +2637,15 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                   const Divider(height: 1),
                   ...(() {
                     final Map<String?, List<TodoItem>> grouped = {};
+                    final groupIds = _todoGroups.map((g) => g.id).toSet();
                     for (var t in pickerTodos) {
-                      grouped.putIfAbsent(t.groupId, () => []).add(t);
+                      final groupId = t.groupId;
+                      final effectiveGroupId = groupId != null &&
+                              groupId.isNotEmpty &&
+                              groupIds.contains(groupId)
+                          ? groupId
+                          : null;
+                      grouped.putIfAbsent(effectiveGroupId, () => []).add(t);
                     }
 
                     List<Widget> sections = [];
@@ -2650,15 +2669,6 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                             .map((t) => _buildTodoTile(ctx, t, isSwitching)));
                       }
                     }
-
-                    // Safety for any other IDs
-                    grouped.forEach((id, tasks) {
-                      if (tasks.isNotEmpty) {
-                        sections.add(_buildSectionHeader('其他'));
-                        sections.addAll(tasks
-                            .map((t) => _buildTodoTile(ctx, t, isSwitching)));
-                      }
-                    });
 
                     return sections;
                   })(),
@@ -2929,7 +2939,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       fit: StackFit.expand,
       children: [
         if (previousChildren.isNotEmpty) previousChildren.last,
-        if (currentChild != null) currentChild,
+        ?currentChild,
       ],
     );
   }
@@ -3331,7 +3341,8 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         // 🚀 强制触发重连
         _syncService.manualReconnect();
         if (_syncConnState != SyncConnectionState.connected) {
-          ScaffoldMessenger.of(context).showSnackBar(
+          AppSnackBars.showSnackBar(
+            context,
             const SnackBar(
               content: Text('正在尝试重新连接同步服务器...'),
               duration: Duration(seconds: 1),
@@ -3432,7 +3443,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
   Widget _buildImmersiveTimerWidget() {
     return ValueListenableBuilder<int>(
       valueListenable: _timerTickNotifier,
-      builder: (context, _, __) {
+      builder: (context, _, _) {
         final isCountUp = _settings.mode == TimerMode.countUp;
         final isRemoteCountUp = _remoteState?.duration == 0;
         return ImmersiveTimer(

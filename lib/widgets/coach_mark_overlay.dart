@@ -26,29 +26,42 @@ class CoachMarkOverlay {
     required List<CoachMarkStep> steps,
     required VoidCallback onFinish,
     required VoidCallback onSkip,
+    bool dismissOnBack = false,
   }) {
     final completed = Completer<bool>();
     late OverlayEntry overlayEntry;
+    LocalHistoryEntry? backEntry;
+    var closed = false;
+
+    void close(bool finished) {
+      if (closed) return;
+      closed = true;
+      overlayEntry.remove();
+      overlayEntry.dispose();
+      backEntry?.remove();
+      if (finished) {
+        onFinish();
+      } else {
+        onSkip();
+      }
+      completed.complete(finished);
+    }
 
     overlayEntry = OverlayEntry(
       builder: (ctx) {
         return _CoachMarkOverlayWidget(
           steps: steps,
-          onFinish: () {
-            overlayEntry.remove();
-            onFinish();
-            if (!completed.isCompleted) completed.complete(true);
-          },
-          onSkip: () {
-            overlayEntry.remove();
-            onSkip();
-            if (!completed.isCompleted) completed.complete(false);
-          },
+          onFinish: () => close(true),
+          onSkip: () => close(false),
         );
       },
     );
 
     Overlay.of(context, rootOverlay: true).insert(overlayEntry);
+    if (dismissOnBack) {
+      backEntry = LocalHistoryEntry(onRemove: () => close(false));
+      ModalRoute.of(context)?.addLocalHistoryEntry(backEntry);
+    }
     return completed.future;
   }
 }

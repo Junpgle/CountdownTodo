@@ -9,6 +9,8 @@ import '../screens/todo_plan_screen.dart';
 import '../screens/plan_block_stats_screen.dart';
 import '../utils/page_transitions.dart';
 import 'optional_liquid_glass_surface.dart';
+import 'missed_plan_recovery_flow.dart';
+import 'plan_conflict_review.dart';
 
 class PlanBlockTodaySection extends StatefulWidget {
   final String username;
@@ -235,6 +237,8 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _buildHeader(theme, planned, rate),
+            PlanConflictIndicator(username: widget.username,
+              refreshTrigger: widget.refreshTrigger, onSaved: _loadData),
             const SizedBox(height: 12),
             if (_blocks.isEmpty && freeRecords.isEmpty)
               _buildEmpty(theme)
@@ -340,13 +344,15 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection> {
     final isExpanded = _expandedBlockId == block.uuid;
     final records = blockRecordsMap[block.uuid] ?? [];
     final hasRecords = records.isNotEmpty;
+    final canRecover = block.status == TodoPlanStatus.missed;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         GestureDetector(
           behavior: HitTestBehavior.opaque,
-          onTap: hasRecords
+          key: ValueKey('plan-today-row-${block.id}'),
+          onTap: hasRecords || canRecover
               ? () => setState(() {
                     _expandedBlockId = isExpanded ? null : block.uuid;
                   })
@@ -368,7 +374,7 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection> {
                         color: theme.colorScheme.onSurface),
                   ),
                 ),
-                if (hasRecords)
+                if (hasRecords || canRecover)
                   Padding(
                     padding: const EdgeInsets.only(right: 4),
                     child: Icon(
@@ -402,7 +408,24 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection> {
           curve: Curves.easeInOut,
           alignment: Alignment.topCenter,
           child: isExpanded
-              ? _buildRecordList(records, theme)
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildRecordList(records, theme),
+                    if (canRecover)
+                      TextButton.icon(
+                        key: ValueKey('plan-today-recover-${block.id}'),
+                        onPressed: () => showMissedPlanRecovery(
+                          context: context,
+                          username: widget.username,
+                          sourceId: block.id,
+                          onSaved: _loadData,
+                        ),
+                        icon: const Icon(Icons.event_repeat),
+                        label: const Text('重新安排'),
+                      ),
+                  ],
+                )
               : const SizedBox.shrink(),
         ),
       ],

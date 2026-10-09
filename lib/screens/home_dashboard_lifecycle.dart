@@ -4,6 +4,8 @@ part of 'home_dashboard.dart';
 mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
   bool _didEnterBackground = false;
   bool _isCompletingTodoFromNotification = false;
+  DateTime? _semesterWeekLoadedDate;
+  bool _semesterWeekRefreshPending = false;
 
   @override
   void initState() {
@@ -202,6 +204,7 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
     if (lifecycleState != null && lifecycleState != AppLifecycleState.resumed) {
       return;
     }
+    unawaited(FinanceAutomationService.resumeAutoGenerationSchedule());
     _scheduleDashboardMinuteTick();
   }
 
@@ -219,10 +222,24 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
     _dashboardMinuteTimer = Timer(delay, () {
       _dashboardMinuteTimer = null;
       if (!mounted || !_isDashboardInForeground) return;
+      _refreshSemesterWeekIfDateChanged();
       unawaited(_checkUpcomingEvents());
       _pomodoroTickNotifier.value++;
       _scheduleDashboardMinuteTick();
     });
+  }
+
+  void _refreshSemesterWeekIfDateChanged() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    if (_semesterWeekLoadedDate == today || _semesterWeekRefreshPending) return;
+
+    _semesterWeekRefreshPending = true;
+    unawaited(
+      _loadSemesterSettings()
+          .catchError((Object _) {})
+          .whenComplete(() => _semesterWeekRefreshPending = false),
+    );
   }
 
   void _stopDashboardTimers() {
@@ -244,6 +261,8 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
 
   @override
   void dispose() {
+    _cancelQuickVoiceGesture();
+    FinanceAutomationService.cancelScheduledAutoGeneration();
     _permissionCoordinator.dispose();
     for (final sub in _notifSubs) {
       sub.cancel();
@@ -477,7 +496,7 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
   }
 
   Future<void> _showClipboardChallengeDialog(ChallengeDraft draft) async {
-    final shouldImport = await showDialog<bool>(
+    final shouldImport = await showAppDialog<bool>(
       context: context,
       builder: (dialogContext) {
         final scheme = Theme.of(dialogContext).colorScheme;
@@ -514,7 +533,7 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
 
   Future<void> _startImportedChallenge(ChallengeDraft draft) async {
     if (_isThirtyDayChallengeActive && mounted) {
-      final shouldReplace = await showDialog<bool>(
+      final shouldReplace = await showAppDialog<bool>(
         context: context,
         builder: (dialogContext) => AlertDialog(
           title: const Text('开启导入的挑战？'),
@@ -543,12 +562,14 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
       );
       await _loadThirtyDayChallengeStatus();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         SnackBar(content: Text('已开启「${draft.title}」')),
       );
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         const SnackBar(content: Text('挑战导入失败，请稍后再试')),
       );
     }
@@ -558,7 +579,7 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
     String inviteCode, {
     String? teamName,
   }) async {
-    final shouldJoin = await showDialog<bool>(
+    final shouldJoin = await showAppDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         icon: const Icon(Icons.groups_rounded),
@@ -586,11 +607,13 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
     if (!mounted) return;
     if (result['success'] == true) {
       _debouncedFetchTeamPending();
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         const SnackBar(content: Text('加入申请已提交，请等待管理员审核')),
       );
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         SnackBar(
             content: Text(result['error'] ?? result['message'] ?? '加入团队失败')),
       );
@@ -601,12 +624,17 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
     bool enabled = await StorageService.getSemesterEnabled();
     DateTime? start = await StorageService.getSemesterStart();
     DateTime? end = await StorageService.getSemesterEnd();
+    final now = DateTime.now();
+    final semesterWeekContext = await SemesterWeekContext.loadForToday();
+    final currentSemesterWeek = semesterWeekContext?.weekForDate(now);
     if (mounted) {
       setState(() {
         _semesterEnabled = enabled;
         _semesterStart = start;
         _semesterEnd = end;
+        _currentSemesterWeek = currentSemesterWeek;
       });
+      _semesterWeekLoadedDate = DateTime(now.year, now.month, now.day);
     }
   }
 
@@ -959,7 +987,8 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
       await WidgetService.updateTodoWidget(_todos);
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           SnackBar(
               content: Text('已完成: ${todoToComplete.title}'),
               duration: const Duration(seconds: 1)),

@@ -261,7 +261,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
 
   void _showAutoJoinDialog(String inviteCode) {
     bool isProcessing = false;
-    showDialog(
+    showAppDialog(
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
@@ -646,7 +646,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
         onAction,
   }) {
     bool isProcessing = false;
-    showDialog(
+    showAppDialog(
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
@@ -710,13 +710,15 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
     );
   }
 
-  void _showSuccessToast(String msg) =>
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+  void _showSuccessToast(String msg) => AppSnackBars.showSnackBar(
+      context,
+      SnackBar(
           content: Text(msg),
           backgroundColor: Colors.green.shade600,
           behavior: SnackBarBehavior.floating));
-  void _showErrorToast(String msg) =>
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+  void _showErrorToast(String msg) => AppSnackBars.showSnackBar(
+      context,
+      SnackBar(
           content: Text(msg),
           backgroundColor: Colors.redAccent,
           behavior: SnackBarBehavior.floating));
@@ -943,7 +945,8 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
       );
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           SnackBar(content: Text('打开AI助手失败: $e')),
         );
       }
@@ -2091,7 +2094,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
   }
 
   void _confirmLeaveTeam(Team team) {
-    showDialog(
+    showAppDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('退出团队'),
@@ -2120,7 +2123,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
   }
 
   void _confirmDeleteTeam(Team team) {
-    showDialog(
+    showAppDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('解散团队'),
@@ -2928,7 +2931,7 @@ class __TeamMembersViewState extends State<_TeamMembersView> {
   }
 
   void _confirmRemoveMember(dynamic m) {
-    showDialog(
+    showAppDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('移除成员'),

@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter_downloader/flutter_downloader.dart';
+import '../../../utils/app_dialogs.dart';
 
 class StorageManagementHandler {
   final BuildContext context;
@@ -234,7 +235,7 @@ class StorageManagementHandler {
 
   void _showFilesDialog(
       List<Map<String, dynamic>> topFiles, Map<String, double> dirSizes) {
-    showDialog(
+    showAppDialog(
       context: context,
       builder: (ctx) {
         return StatefulBuilder(
@@ -273,7 +274,7 @@ class StorageManagementHandler {
                           ? const Center(child: Text("未发现大于 50KB 的文件"))
                           : ListView.separated(
                               itemCount: topFiles.length,
-                              separatorBuilder: (_, __) =>
+                              separatorBuilder: (_, _) =>
                                   const Divider(height: 1),
                               itemBuilder: (context, index) {
                                 final fileInfo = topFiles[index];

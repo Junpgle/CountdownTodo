@@ -7,6 +7,22 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  test('切换活动会话时同时更新认证令牌和用户 ID', () {
+    final previousToken = ApiService.getToken();
+    final previousUserId = ApiService.currentUserId;
+    addTearDown(() {
+      ApiService.setToken(previousToken ?? '');
+      ApiService.currentUserId = previousUserId;
+    });
+
+    ApiService.currentUserId = 15;
+    ApiService.setToken('old-server-token');
+    ApiService.setSession(token: 'new-server-token', userId: 42);
+
+    expect(ApiService.getToken(), 'new-server-token');
+    expect(ApiService.currentUserId, 42);
+  });
+
   test('restores the authenticated user id after a cold start', () async {
     SharedPreferences.setMockInitialValues({
       'current_login_user': 'alice',
@@ -52,6 +68,49 @@ void main() {
     expect(prefs.getInt('last_screen_time_sync_alice'), isNull);
     expect(ApiService.getToken(), isEmpty);
     expect(ApiService.currentUserId, 0);
+  });
+
+  test('preserves an existing device id while recording install ownership',
+      () async {
+    SharedPreferences.setMockInitialValues({
+      'app_device_uuid_alice': 'device-a',
+      'current_login_user': 'alice',
+    });
+    UserSessionStorage.installationIdProviderOverride =
+        () async => 'install-a';
+    addTearDown(
+      () => UserSessionStorage.installationIdProviderOverride = null,
+    );
+
+    expect(await UserSessionStorage.getDeviceIdForUser('alice'), 'device-a');
+
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getString('app_device_install_id_alice'), 'install-a');
+  });
+
+  test('rotates a restored device id once when its install owner changes',
+      () async {
+    SharedPreferences.setMockInitialValues({
+      'app_device_uuid_alice': 'device-a',
+      'app_device_install_id_alice': 'install-a',
+      'current_login_user': 'alice',
+    });
+    UserSessionStorage.installationIdProviderOverride =
+        () async => 'install-b';
+    addTearDown(
+      () => UserSessionStorage.installationIdProviderOverride = null,
+    );
+
+    final ids = await Future.wait([
+      UserSessionStorage.getDeviceIdForUser('alice'),
+      UserSessionStorage.getDeviceIdForUser('alice'),
+    ]);
+    final prefs = await SharedPreferences.getInstance();
+
+    expect(ids.first, isNot('device-a'));
+    expect(ids.last, ids.first);
+    expect(prefs.getString('app_device_uuid_alice'), ids.first);
+    expect(prefs.getString('app_device_install_id_alice'), 'install-b');
   });
 
   test(

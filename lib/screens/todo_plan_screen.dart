@@ -5,20 +5,19 @@ import 'package:intl/intl.dart';
 import '../models.dart';
 import '../services/course_service.dart';
 import '../storage_service.dart';
-import '../services/pomodoro_control_service.dart';
 import '../utils/app_dialogs.dart';
 import '../services/pomodoro_service.dart';
+import '../services/plan_execution_repository.dart';
+import '../widgets/plan_execution_view.dart';
 import 'course_screens.dart';
-import 'pomodoro_screen.dart';
 import 'plan_block_stats_screen.dart';
-import '../services/time_estimation_service.dart';
-import '../services/ai_todo_chat_launcher.dart';
 import '../utils/page_transitions.dart';
-import '../utils/todo_recurrence_picker.dart';
-import 'todo_chat_screen.dart';
 import '../services/feature_tip_service.dart';
 import '../widgets/coach_mark_overlay.dart';
 import '../widgets/floating_glass_control.dart';
+import '../widgets/plan_block_editor_sheet.dart';
+import '../widgets/missed_plan_recovery_flow.dart';
+import '../widgets/plan_conflict_review.dart';
 
 // 复用 TimeLog 的颜色和基础常量
 const double kTimeAxisW = 46.0;
@@ -51,6 +50,8 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
   List<CourseItem> _courses = [];
   List<PomodoroTag> _tags = [];
   List<PomodoroRecord> _pomodoroRecords = [];
+  List<TimeLogItem> _timeLogs = [];
+  String? _loadError;
   final Set<String> _mappedBlockIds = <String>{};
   int _loadGeneration = 0;
 
@@ -131,8 +132,10 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
     if (signal.affects(DataRefreshDomain.todos) ||
         signal.affects(DataRefreshDomain.todoGroups) ||
         signal.affects(DataRefreshDomain.courses) ||
+        signal.affects(DataRefreshDomain.fixedSchedules) ||
         signal.affects(DataRefreshDomain.planBlocks) ||
-        signal.affects(DataRefreshDomain.pomodoro)) {
+        signal.affects(DataRefreshDomain.pomodoro) ||
+        signal.affects(DataRefreshDomain.timeLogs)) {
       unawaited(_loadData());
     }
   }
@@ -141,8 +144,10 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
     if (!mounted) return;
     final loadGeneration = ++_loadGeneration;
     final focusedDate = _focusedDate;
-    final dayEnd = focusedDate.add(const Duration(days: 1));
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _loadError = null;
+    });
     late final List<dynamic> results;
     try {
       results = await Future.wait([
@@ -151,12 +156,15 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
         StorageService.getTodoGroups(widget.username),
         CourseService.getAllCourses(widget.username),
         PomodoroService.getTags(),
-        PomodoroService.getRecordsInRange(focusedDate, dayEnd),
+        const PlanExecutionRepository().read(widget.username, focusedDate),
       ]);
     } catch (error) {
       debugPrint('TodoPlan load failed: $error');
       if (mounted && loadGeneration == _loadGeneration) {
-        setState(() => _isLoading = false);
+        setState(() {
+          _isLoading = false;
+          _loadError = '规划或实际记录读取失败，请重试';
+        });
       }
       return;
     }
@@ -172,12 +180,8 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
     final courses =
         (results[3] as List<CourseItem>).where((c) => !c.isDeleted).toList();
     final tags = results[4] as List<PomodoroTag>;
-    final records = (results[5] as List<PomodoroRecord>)
-        .where((record) =>
-            !record.isDeleted &&
-            record.startTime >= focusedDate.millisecondsSinceEpoch &&
-            record.startTime < dayEnd.millisecondsSinceEpoch)
-        .toList();
+    final execution = results[5] as PlanExecutionData;
+    final records = execution.records;
 
     // 自动标记过期未完成的规划块为 missed
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -205,6 +209,7 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
       _courses = courses;
       _tags = tags;
       _pomodoroRecords = records;
+      _timeLogs = execution.logs;
       _mappedBlockIds
         ..clear()
         ..addAll(_buildMappedBlocks(todos, courses, blocks)
@@ -309,7 +314,7 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
   }
 
   void _pickDate() async {
-    final picked = await showDatePicker(
+    final picked = await showAppDatePicker(
       context: context,
       initialDate: _focusedDate,
       firstDate: DateTime(2020),
@@ -339,19 +344,29 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
           mainAxisSize: MainAxisSize.min,
           children: [
             IconButton(
-                icon: const Icon(Icons.chevron_left), onPressed: _prevDay),
-            GestureDetector(
-              onTap: _pickDate,
-              child: Text(DateFormat('MM月dd日').format(_focusedDate),
-                  style: const TextStyle(
-                      fontWeight: FontWeight.bold, fontSize: 18)),
+              icon: const Icon(Icons.chevron_left),
+              onPressed: _prevDay,
             ),
+            Flexible(child: GestureDetector(
+              onTap: _pickDate,
+              child: Text(
+                DateFormat('MM月dd日').format(_focusedDate),
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                ),
+              ),
+            )),
             IconButton(
-                icon: const Icon(Icons.chevron_right), onPressed: _nextDay),
+              icon: const Icon(Icons.chevron_right),
+              onPressed: _nextDay,
+            ),
           ],
         ),
         centerTitle: true,
         actions: [
+          PlanConflictIndicator(username: widget.username, date: _focusedDate,
+            compact: true, onSaved: _loadData),
           IconButton(
             icon: const Icon(Icons.bar_chart_rounded),
             tooltip: '规划统计',
@@ -361,10 +376,7 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
               ),
             ),
           ),
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadData,
-          ),
+          IconButton(icon: const Icon(Icons.refresh), onPressed: _loadData),
         ],
       ),
       body: FloatingGlassTopBarContentFade(
@@ -376,11 +388,27 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
           padding: EdgeInsets.only(top: topBarHeight),
           child: _isLoading
               ? const Center(child: CircularProgressIndicator())
+              : _loadError != null
+              ? Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(_loadError!),
+                      TextButton(onPressed: _loadData, child: const Text('重试')),
+                    ],
+                  ),
+                )
               : Column(
                   children: [
                     _PlanDaySummary(
                       blocks: _planBlocks,
                       pomodoroRecords: _pomodoroRecords,
+                    ),
+                    PlanExecutionSummary(
+                      date: _focusedDate,
+                      records: _pomodoroRecords,
+                      logs: _timeLogs,
+                      tags: _tags,
                     ),
                     Expanded(
                       child: _PlanGridView(
@@ -392,6 +420,7 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
                         courses: _courses,
                         tags: _tags,
                         pomodoroRecords: _pomodoroRecords,
+                        timeLogs: _timeLogs,
                         username: widget.username,
                         initialTodoId: widget.initialTodoId,
                         onRefresh: _loadData,
@@ -536,6 +565,7 @@ class _PlanGridView extends StatefulWidget {
   final List<CourseItem> courses;
   final List<PomodoroTag> tags;
   final List<PomodoroRecord> pomodoroRecords;
+  final List<TimeLogItem> timeLogs;
   final String username;
   final String? initialTodoId;
   final VoidCallback onRefresh;
@@ -549,6 +579,7 @@ class _PlanGridView extends StatefulWidget {
     required this.courses,
     required this.tags,
     required this.pomodoroRecords,
+    required this.timeLogs,
     required this.username,
     this.initialTodoId,
     required this.onRefresh,
@@ -576,6 +607,14 @@ class _PlanGridViewState extends State<_PlanGridView> {
         .floor()
         .clamp(0, _blocksPerHour - 1);
     return hour * _blocksPerHour + blockInHour;
+  }
+
+  void _clearRecordSelection() {
+    if (_dragStartBlock == null && _dragEndBlock == null) return;
+    setState(() {
+      _dragStartBlock = null;
+      _dragEndBlock = null;
+    });
   }
 
   void _handleDragStart(Offset pos, double width, double hourH) {
@@ -625,11 +664,10 @@ class _PlanGridViewState extends State<_PlanGridView> {
     DateTime endTime, {
     required bool autoFillEstimateOnTodoChange,
   }) {
-    showAppModalBottomSheet(
+    showPlanBlockEditorPage(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => _AddPlanBlockSheet(
+      builder: (context) => PlanBlockEditorSheet(
+        fullPage: true,
         startTime: startTime,
         endTime: endTime,
         todos: widget.todos,
@@ -672,6 +710,14 @@ class _PlanGridViewState extends State<_PlanGridView> {
 
   @override
   Widget build(BuildContext context) {
+    final executionEntries = PlanExecutionEntry.forDay(
+      widget.date,
+      widget.pomodoroRecords,
+      widget.timeLogs,
+    );
+    final executionLaneCount =
+        PlanExecutionEntry.timelineLaneCount(executionEntries);
+
     return Column(
       children: [
         _buildGranularityBar(),
@@ -726,7 +772,20 @@ class _PlanGridViewState extends State<_PlanGridView> {
                       children: [
                         ..._buildGridLines(gridW, hourH),
                         ...widget.blocks.expand(
-                            (block) => _buildBlockItems(block, gridW, hourH)),
+                            (block) => _buildBlockItems(
+                              block,
+                              gridW,
+                              hourH,
+                              executionLaneCount,
+                            )),
+                        if (executionEntries.isNotEmpty)
+                          Positioned.fill(child: PlanExecutionTimelineLayer(
+                            date: widget.date,
+                            entries: executionEntries,
+                            tags: widget.tags,
+                            hourHeight: hourH,
+                            onRecordInteraction: _clearRecordSelection,
+                          )),
                         if (_dragStartBlock != null && _dragEndBlock != null)
                           ..._buildDraggingBlocks(gridW, hourH),
                         _buildNowLine(gridW, hourH),
@@ -745,7 +804,10 @@ class _PlanGridViewState extends State<_PlanGridView> {
   Widget _buildGranularityBar() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 6, 12, 8),
-      child: Row(
+      child: Wrap(
+        spacing: 6,
+        runSpacing: 4,
+        crossAxisAlignment: WrapCrossAlignment.center,
         children: [
           const Text('粒度', style: TextStyle(fontSize: 12)),
           const SizedBox(width: 8),
@@ -807,7 +869,7 @@ class _PlanGridViewState extends State<_PlanGridView> {
   }
 
   List<Widget> _buildBlockItems(
-      TodoPlanBlock block, double width, double hourH) {
+      TodoPlanBlock block, double width, double hourH, int laneCount) {
     final start = DateTime.fromMillisecondsSinceEpoch(block.startTime);
     final end = DateTime.fromMillisecondsSinceEpoch(block.endTime);
     final dayStart =
@@ -832,6 +894,8 @@ class _PlanGridViewState extends State<_PlanGridView> {
         : (isMappedBlock ? Icons.task_alt_rounded : Icons.event_note);
     final actualMinutes =
         _actualMinutesForPlanBlock(block, widget.pomodoroRecords);
+    final segmentHeight = max(1.0, hourH / laneCount - 2);
+    final contentFontSize = min(10.0, max(6.0, segmentHeight * 0.72));
     final widgets = <Widget>[];
 
     final endHour = clippedEnd.isAtSameMomentAs(dayEnd) ? 23 : clippedEnd.hour;
@@ -853,7 +917,7 @@ class _PlanGridViewState extends State<_PlanGridView> {
         top: hour * hourH + 1,
         left: left + 1,
         width: max(1.0, segmentW - 2),
-        height: max(1.0, hourH - 2),
+        height: max(1.0, hourH / laneCount - 2),
         child: GestureDetector(
           onTap: isMappedBlock
               ? () => _openMappedBlockDetail(block)
@@ -914,21 +978,24 @@ class _PlanGridViewState extends State<_PlanGridView> {
                   borderRadius: BorderRadius.circular(5),
                   border: Border.all(color: color.withValues(alpha: 0.4)),
                 ),
-                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                padding: EdgeInsets.symmetric(
+                  horizontal: 5,
+                  vertical: laneCount > 1 ? 0 : 1,
+                ),
                 child: Row(
                   children: [
                     Icon(
                         block.status == TodoPlanStatus.finished
                             ? Icons.check_circle
                             : icon,
-                        size: 10,
+                        size: min(10.0, contentFontSize),
                         color: color),
                     const SizedBox(width: 3),
                     Expanded(
                       child: Text(
                         block.titleSnapshot ?? todo?.title ?? '未知待办',
                         style: TextStyle(
-                            fontSize: 10,
+                            fontSize: contentFontSize,
                             fontWeight: FontWeight.bold,
                             color: color),
                         overflow: TextOverflow.ellipsis,
@@ -940,7 +1007,7 @@ class _PlanGridViewState extends State<_PlanGridView> {
                       Text(
                         isMappedCourse ? '课程' : '待办',
                         style: TextStyle(
-                            fontSize: 8,
+                            fontSize: min(8.0, contentFontSize),
                             fontWeight: FontWeight.w700,
                             color: color.withValues(alpha: 0.72)),
                         maxLines: 1,
@@ -950,7 +1017,8 @@ class _PlanGridViewState extends State<_PlanGridView> {
                       Text(
                         '${DateFormat('HH:mm').format(start)}-${DateFormat('HH:mm').format(end)}',
                         style: TextStyle(
-                            fontSize: 8, color: color.withValues(alpha: 0.72)),
+                            fontSize: min(8.0, contentFontSize),
+                            color: color.withValues(alpha: 0.72)),
                         maxLines: 1,
                       ),
                     if (segmentW > 92 && actualMinutes > 0) ...[
@@ -958,7 +1026,7 @@ class _PlanGridViewState extends State<_PlanGridView> {
                       Text(
                         '$actualMinutes/${block.plannedMinutes}m',
                         style: TextStyle(
-                            fontSize: 8,
+                            fontSize: min(8.0, contentFontSize),
                             fontWeight: FontWeight.w700,
                             color: Colors.green.shade700),
                         maxLines: 1,
@@ -1136,12 +1204,22 @@ class _PlanGridViewState extends State<_PlanGridView> {
   }
 
   void _showEditBlockSheet(TodoPlanBlock block) {
-    showAppModalBottomSheet(
+    showPlanBlockEditorSheet(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => _AddPlanBlockSheet(
+      builder: (context) => PlanBlockEditorSheet(
         block: block,
+        onRecover: block.status != TodoPlanStatus.missed
+            ? null
+            : () {
+                if (mounted) {
+                  showMissedPlanRecovery(
+                    context: this.context,
+                    username: widget.username,
+                    sourceId: block.id,
+                    onSaved: widget.onRefresh,
+                  );
+                }
+              },
         startTime: DateTime.fromMillisecondsSinceEpoch(block.startTime),
         endTime: DateTime.fromMillisecondsSinceEpoch(block.endTime),
         todos: widget.todos,
@@ -1149,594 +1227,6 @@ class _PlanGridViewState extends State<_PlanGridView> {
         username: widget.username,
         initialTodoId: block.todoId,
         onSaved: widget.onRefresh,
-      ),
-    );
-  }
-}
-
-class _TodoPlanSelectEntry {
-  const _TodoPlanSelectEntry._({
-    required this.value,
-    this.header,
-    this.todo,
-  });
-
-  factory _TodoPlanSelectEntry.header(String header, int index) =>
-      _TodoPlanSelectEntry._(value: '__todo_header_$index', header: header);
-
-  factory _TodoPlanSelectEntry.todo(TodoItem todo) =>
-      _TodoPlanSelectEntry._(value: todo.id, todo: todo);
-
-  final String value;
-  final String? header;
-  final TodoItem? todo;
-}
-
-class _AddPlanBlockSheet extends StatefulWidget {
-  final TodoPlanBlock? block;
-  final DateTime startTime;
-  final DateTime endTime;
-  final List<TodoItem> todos;
-  final List<TodoGroup> todoGroups;
-  final String username;
-  final String? initialTodoId;
-  final bool autoFillEstimateOnTodoChange;
-  final VoidCallback onSaved;
-
-  const _AddPlanBlockSheet({
-    this.block,
-    required this.startTime,
-    required this.endTime,
-    required this.todos,
-    required this.todoGroups,
-    required this.username,
-    this.initialTodoId,
-    this.autoFillEstimateOnTodoChange = true,
-    required this.onSaved,
-  });
-
-  @override
-  State<_AddPlanBlockSheet> createState() => _AddPlanBlockSheetState();
-}
-
-class _AddPlanBlockSheetState extends State<_AddPlanBlockSheet> {
-  String? _selectedTodoId;
-  late DateTime _start, _end;
-  late TextEditingController _remarkCtrl;
-  int _reminderMinutes = 5;
-  int _pomodoroMinutes = 25;
-  int _pomodoroRounds = 0;
-  late List<_TodoPlanSelectEntry> _todoEntries;
-  int? _estimatedMinutes;
-
-  @override
-  void initState() {
-    super.initState();
-    _start = widget.startTime;
-    _end = widget.endTime;
-    _selectedTodoId = widget.block?.todoId ?? widget.initialTodoId;
-    _remarkCtrl = TextEditingController(text: widget.block?.remark);
-    _reminderMinutes = widget.block?.reminderMinutes ?? 5;
-    _pomodoroMinutes = widget.block?.pomodoroMinutes ?? 25;
-    _pomodoroRounds = widget.block?.pomodoroRounds ?? 0;
-    _todoEntries = _buildTodoEntries(
-      collapseRecurrenceSeriesForTodoPicker(
-        widget.todos,
-        now: _start,
-        preferredTodoId: _selectedTodoId,
-      ),
-      widget.todoGroups,
-    );
-    final selectedExists =
-        _todoEntries.any((entry) => entry.todo?.id == _selectedTodoId);
-    if (!selectedExists) {
-      _selectedTodoId = null;
-    }
-    if (_selectedTodoId == null) {
-      for (final entry in _todoEntries) {
-        final todo = entry.todo;
-        if (todo != null) {
-          _selectedTodoId = todo.id;
-          break;
-        }
-      }
-    }
-  }
-
-  @override
-  void dispose() {
-    _remarkCtrl.dispose();
-    super.dispose();
-  }
-
-  Future<void> _prefillEstimate(String todoId) async {
-    final todo = widget.todos.cast<TodoItem?>().firstWhere(
-          (t) => t?.id == todoId,
-          orElse: () => null,
-        );
-    if (todo == null || todo.title.isEmpty) return;
-
-    final result = await TimeEstimationService.estimate(
-      todo.title,
-      groupId: todo.groupId,
-    );
-    if (!mounted) return;
-
-    final estMin = result.estimatedMinutes;
-    final newEnd = _start.add(Duration(minutes: estMin));
-
-    setState(() {
-      _estimatedMinutes = estMin;
-      // Auto-fill end time
-      if (newEnd.isAfter(_start)) {
-        _end = newEnd;
-      }
-      // Suggest pomodoro rounds based on estimated duration
-      if (estMin >= _pomodoroMinutes) {
-        _pomodoroRounds = (estMin / _pomodoroMinutes).round().clamp(1, 6);
-      }
-    });
-  }
-
-  TodoItem? get _selectedTodo => widget.todos
-      .cast<TodoItem?>()
-      .firstWhere((t) => t?.id == _selectedTodoId, orElse: () => null);
-
-  static List<_TodoPlanSelectEntry> _buildTodoEntries(
-    List<TodoItem> todos,
-    List<TodoGroup> groups,
-  ) {
-    final groupNameById = {
-      for (final group in groups) group.id: group.name,
-    };
-    int urgencyMs(TodoItem todo) {
-      if (todo.dueDate != null) return todo.dueDate!.millisecondsSinceEpoch;
-      if (todo.createdDate != null && todo.createdDate! > 0) {
-        return todo.createdDate!;
-      }
-      return 1 << 62;
-    }
-
-    String groupName(TodoItem todo) {
-      final groupId = todo.groupId;
-      if (groupId == null || groupId.isEmpty) return '未分类';
-      return groupNameById[groupId] ?? '未知分类';
-    }
-
-    int groupRank(TodoItem todo) {
-      final groupId = todo.groupId;
-      if (groupId == null || groupId.isEmpty) return 1 << 30;
-      final idx = groups.indexWhere((group) => group.id == groupId);
-      return idx == -1 ? (1 << 30) - 1 : idx;
-    }
-
-    final sorted = List<TodoItem>.from(todos)
-      ..sort((a, b) {
-        if (a.isDone != b.isDone) return a.isDone ? 1 : -1;
-        final groupRankCompare = groupRank(a).compareTo(groupRank(b));
-        if (groupRankCompare != 0) return groupRankCompare;
-        final groupCompare = groupName(a).compareTo(groupName(b));
-        if (groupCompare != 0) return groupCompare;
-        final urgencyCompare = urgencyMs(a).compareTo(urgencyMs(b));
-        if (urgencyCompare != 0) return urgencyCompare;
-        return a.title.compareTo(b.title);
-      });
-
-    final entries = <_TodoPlanSelectEntry>[];
-    String? currentHeader;
-    var headerIndex = 0;
-    for (final todo in sorted) {
-      final header = '${todo.isDone ? "已完成" : "未完成"} · ${groupName(todo)}';
-      if (header != currentHeader) {
-        currentHeader = header;
-        entries.add(_TodoPlanSelectEntry.header(header, headerIndex++));
-      }
-      entries.add(_TodoPlanSelectEntry.todo(todo));
-    }
-    return entries;
-  }
-
-  String _todoGroupLabel(TodoItem todo) {
-    final groupId = todo.groupId;
-    if (groupId == null || groupId.isEmpty) return '未分类';
-    return widget.todoGroups
-            .cast<TodoGroup?>()
-            .firstWhere((group) => group?.id == groupId, orElse: () => null)
-            ?.name ??
-        '未知分类';
-  }
-
-  String _todoUrgencyLabel(TodoItem todo) {
-    final target = todo.dueDate ??
-        (todo.createdDate != null && todo.createdDate! > 0
-            ? DateTime.fromMillisecondsSinceEpoch(todo.createdDate!)
-            : null);
-    if (target == null) return '无时间';
-    return DateFormat('MM-dd HH:mm').format(target);
-  }
-
-  Widget _buildTodoDropdownRow(TodoItem todo) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Row(
-      children: [
-        Container(
-          constraints: const BoxConstraints(maxWidth: 86),
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-          decoration: BoxDecoration(
-            color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.8),
-            borderRadius: BorderRadius.circular(6),
-          ),
-          child: Text(
-            _todoGroupLabel(todo),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
-          ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            todo.title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              decoration: todo.isDone ? TextDecoration.lineThrough : null,
-            ),
-          ),
-        ),
-        const SizedBox(width: 8),
-        Text(
-          todo.isDone ? '已完成' : _todoUrgencyLabel(todo),
-          style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
-        ),
-      ],
-    );
-  }
-
-  Future<TodoPlanBlock?> _save({bool closeSheet = true}) async {
-    if (_selectedTodoId == null || !_end.isAfter(_start)) {
-      return null;
-    }
-    final todo = widget.todos
-        .cast<TodoItem?>()
-        .firstWhere((t) => t?.id == _selectedTodoId, orElse: () => null);
-
-    final block = widget.block ??
-        TodoPlanBlock(
-          todoId: _selectedTodoId!,
-          titleSnapshot: todo?.title,
-          startTime: _start.millisecondsSinceEpoch,
-          endTime: _end.millisecondsSinceEpoch,
-          plannedMinutes: _end.difference(_start).inMinutes,
-          remark: _remarkCtrl.text.isEmpty ? null : _remarkCtrl.text,
-          reminderMinutes: _reminderMinutes,
-          pomodoroMinutes: _pomodoroMinutes,
-          pomodoroRounds: _pomodoroRounds,
-        );
-
-    if (widget.block != null) {
-      block.todoId = _selectedTodoId!;
-      block.titleSnapshot = todo?.title;
-      block.startTime = _start.millisecondsSinceEpoch;
-      block.endTime = _end.millisecondsSinceEpoch;
-      block.plannedMinutes = _end.difference(_start).inMinutes;
-      block.remark = _remarkCtrl.text.isEmpty ? null : _remarkCtrl.text;
-      block.reminderMinutes = _reminderMinutes;
-      block.pomodoroMinutes = _pomodoroMinutes;
-      block.pomodoroRounds = _pomodoroRounds;
-      block.markAsChanged();
-    }
-
-    await StorageService.savePlanBlocks(widget.username, [block]);
-    widget.onSaved();
-    if (mounted && closeSheet) Navigator.pop(context);
-    return block;
-  }
-
-  Future<void> _saveAndStartFocus() async {
-    final block = await _save(closeSheet: false);
-    final todo = _selectedTodo;
-    if (block == null || todo == null) return;
-    block.status = TodoPlanStatus.focusing;
-    block.markAsChanged();
-    await StorageService.savePlanBlocks(widget.username, [block]);
-    final settings = await PomodoroService.getSettings();
-    await PomodoroControlService.startFocus(
-      settings: settings,
-      boundTodo: todo,
-      durationMinutes: max(
-        1,
-        block.pomodoroRounds > 0
-            ? block.pomodoroMinutes * block.pomodoroRounds
-            : block.plannedMinutes,
-      ),
-      planBlockId: block.uuid,
-    );
-    widget.onSaved();
-    if (!mounted) return;
-    Navigator.pop(context);
-    Navigator.push(
-      context,
-      PageTransitions.material(
-        builder: (_) => PomodoroScreen(username: widget.username),
-      ),
-    );
-  }
-
-  Future<void> _delete() async {
-    if (widget.block == null) return;
-    await StorageService.deletePlanBlockGlobally(
-        widget.username, widget.block!.id);
-    widget.onSaved();
-    if (mounted) Navigator.pop(context);
-  }
-
-  Future<void> _skip() async {
-    if (widget.block == null) return;
-    final block = widget.block!;
-    block.status = TodoPlanStatus.skipped;
-    block.markAsChanged();
-    await StorageService.savePlanBlocks(widget.username, [block]);
-    widget.onSaved();
-    if (mounted) Navigator.pop(context);
-  }
-
-  Future<void> _openAiPlanner() async {
-    await Navigator.of(context).push(
-      PageTransitions.material(
-        builder: (_) => TodoChatScreen(
-          username: widget.username,
-          // TodoItem.toJson() is the persistence format. The chat context
-          // needs the normalized AI fields, including title, id, and timeMode.
-          todos: AiTodoChatLauncher.toChatTodoMaps(widget.todos),
-          todoGroups: widget.todoGroups,
-        ),
-      ),
-    );
-    widget.onSaved();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      padding: EdgeInsets.fromLTRB(
-          20, 20, 20, MediaQuery.of(context).padding.bottom + 20),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(widget.block == null ? '添加规划块' : '编辑规划块',
-                  style: const TextStyle(
-                      fontSize: 18, fontWeight: FontWeight.bold)),
-              if (widget.block != null)
-                Row(mainAxisSize: MainAxisSize.min, children: [
-                  IconButton(
-                      icon: const Icon(Icons.skip_next, color: Colors.orange),
-                      tooltip: '跳过规划',
-                      onPressed: _skip),
-                  IconButton(
-                      icon: const Icon(Icons.delete, color: Colors.red),
-                      tooltip: '删除规划',
-                      onPressed: _delete),
-                ]),
-            ],
-          ),
-          const SizedBox(height: 20),
-          const Text('选择待办项目',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 10),
-          DropdownButtonFormField<String>(
-            initialValue: _selectedTodoId,
-            isExpanded: true,
-            items: _todoEntries
-                .map((entry) => DropdownMenuItem(
-                      value: entry.value,
-                      enabled: entry.todo != null,
-                      child: entry.todo == null
-                          ? Text(
-                              entry.header!,
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w800,
-                                color: Theme.of(context).colorScheme.primary,
-                              ),
-                            )
-                          : _buildTodoDropdownRow(entry.todo!),
-                    ))
-                .toList(),
-            selectedItemBuilder: (context) => _todoEntries.map((entry) {
-              final todo = entry.todo;
-              if (todo == null) return const SizedBox.shrink();
-              return Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  todo.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              );
-            }).toList(),
-            onChanged: (v) {
-              if (v == null || v.startsWith('__todo_header_')) return;
-              setState(() => _selectedTodoId = v);
-              if (widget.autoFillEstimateOnTodoChange) {
-                _prefillEstimate(v);
-              }
-            },
-            decoration: InputDecoration(
-              border:
-                  OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-            ),
-          ),
-          if (_estimatedMinutes != null) ...[
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Icon(Icons.auto_awesome,
-                    size: 14, color: Theme.of(context).colorScheme.primary),
-                const SizedBox(width: 4),
-                Text(
-                  'AI 预估 ${formatMinutesChinese(_estimatedMinutes!)}，已自动设置时长和番茄轮数',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Theme.of(context)
-                        .colorScheme
-                        .primary
-                        .withValues(alpha: 0.8),
-                  ),
-                ),
-              ],
-            ),
-          ],
-          const SizedBox(height: 20),
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('开始时间',
-                        style: TextStyle(fontSize: 12, color: Colors.grey)),
-                    TextButton(
-                      onPressed: () async {
-                        final t = await showTimePicker(
-                            context: context,
-                            initialTime: TimeOfDay.fromDateTime(_start));
-                        if (t != null) {
-                          setState(() => _start = DateTime(_start.year,
-                              _start.month, _start.day, t.hour, t.minute));
-                        }
-                      },
-                      child: Text(DateFormat('HH:mm').format(_start),
-                          style: const TextStyle(fontSize: 16)),
-                    ),
-                  ],
-                ),
-              ),
-              const Icon(Icons.arrow_forward, size: 16, color: Colors.grey),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('结束时间',
-                        style: TextStyle(fontSize: 12, color: Colors.grey)),
-                    TextButton(
-                      onPressed: () async {
-                        final t = await showTimePicker(
-                            context: context,
-                            initialTime: TimeOfDay.fromDateTime(_end));
-                        if (t != null) {
-                          setState(() => _end = DateTime(_end.year, _end.month,
-                              _end.day, t.hour, t.minute));
-                        }
-                      },
-                      child: Text(DateFormat('HH:mm').format(_end),
-                          style: const TextStyle(fontSize: 16)),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          const Text('备注 (可选)',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 10),
-          TextField(
-            controller: _remarkCtrl,
-            decoration: InputDecoration(
-              hintText: '输入备注信息...',
-              border:
-                  OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-            ),
-          ),
-          const SizedBox(height: 20),
-          Row(
-            children: [
-              const Text('番茄配置',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-              const Spacer(),
-              DropdownButton<int>(
-                value: _pomodoroMinutes,
-                items: [15, 20, 25, 30, 45, 60]
-                    .map((m) => DropdownMenuItem(
-                          value: m,
-                          child: Text('${m}min'),
-                        ))
-                    .toList(),
-                onChanged: (v) => setState(() => _pomodoroMinutes = v ?? 25),
-              ),
-              const SizedBox(width: 10),
-              DropdownButton<int>(
-                value: _pomodoroRounds,
-                items: [0, 1, 2, 3, 4, 5, 6]
-                    .map((round) => DropdownMenuItem(
-                          value: round,
-                          child: Text(round == 0 ? '按规划时长' : 'x$round'),
-                        ))
-                    .toList(),
-                onChanged: (v) => setState(() => _pomodoroRounds = v ?? 0),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text('提前提醒',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-              DropdownButton<int>(
-                value: _reminderMinutes,
-                items: [0, 5, 10, 15, 30]
-                    .map((m) => DropdownMenuItem(
-                          value: m,
-                          child: Text(m == 0 ? '不提醒' : '$m 分钟前'),
-                        ))
-                    .toList(),
-                onChanged: (v) => setState(() => _reminderMinutes = v ?? 5),
-              ),
-            ],
-          ),
-          const SizedBox(height: 30),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: _openAiPlanner,
-              icon: const Icon(Icons.auto_awesome),
-              label: const Text('AI 帮我安排更多'),
-            ),
-          ),
-          const SizedBox(height: 10),
-          SizedBox(
-            width: double.infinity,
-            child: Row(children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: _saveAndStartFocus,
-                  icon: const Icon(Icons.play_arrow),
-                  label: const Text('保存并开始专注'),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: FilledButton(
-                  onPressed: _save,
-                  child: const Text('保存规划'),
-                ),
-              ),
-            ]),
-          ),
-        ],
       ),
     );
   }

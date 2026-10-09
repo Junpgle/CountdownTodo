@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../utils/app_dialogs.dart';
+
 class ZfTimeConfigDialog extends StatefulWidget {
   const ZfTimeConfigDialog({super.key});
 
@@ -31,7 +33,7 @@ class _ZfTimeConfigDialogState extends State<ZfTimeConfigDialog> {
         ? TimeOfDay(hour: t['sH']!, minute: t['sM']!)
         : TimeOfDay(hour: t['eH']!, minute: t['eM']!);
 
-    final TimeOfDay? picked = await showTimePicker(
+    final TimeOfDay? picked = await showAppTimePicker(
       context: context,
       initialTime: initialTime,
       helpText: "设置第 ${index + 1} 节课${isStart ? '开始' : '结束'}时间",

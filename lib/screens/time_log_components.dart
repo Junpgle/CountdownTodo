@@ -182,7 +182,7 @@ class _DayViewState extends State<_DayView> {
                         child: ListView.separated(
                       shrinkWrap: true,
                       itemCount: dayLogs.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 8),
+                      separatorBuilder: (_, _) => const SizedBox(height: 8),
                       itemBuilder: (ctx2, i) {
                         final log = dayLogs[i];
                         final tag = log.tagUuids.isNotEmpty
@@ -260,7 +260,7 @@ class _DayViewState extends State<_DayView> {
                               constraints: const BoxConstraints(
                                   minWidth: 36, minHeight: 36),
                               onPressed: () {
-                                showDialog(
+                                showAppDialog(
                                     context: ctx,
                                     builder: (dCtx) => AlertDialog(
                                           backgroundColor: _TC.card(ctx),
@@ -1011,7 +1011,7 @@ class _PlanEntrySheetState extends State<_PlanEntrySheet> {
   }
 
   Future<void> _pickTime(bool start) async {
-    final value = await showTimePicker(
+    final value = await showAppTimePicker(
       context: context,
       initialTime: TimeOfDay.fromDateTime(start ? _start : _end),
     );
@@ -1035,13 +1035,13 @@ class _PlanEntrySheetState extends State<_PlanEntrySheet> {
 
   TodoPlanBlock? _buildBlock() {
     if (_todoId == null) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('请先选择待办')));
+      AppSnackBars.showSnackBar(context,
+          const SnackBar(content: Text('请先选择待办')));
       return null;
     }
     if (!_end.isAfter(_start)) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('结束时间必须晚于开始时间')));
+      AppSnackBars.showSnackBar(context,
+          const SnackBar(content: Text('结束时间必须晚于开始时间')));
       return null;
     }
     final todo = widget.todos
@@ -1117,7 +1117,7 @@ class _PlanEntrySheetState extends State<_PlanEntrySheet> {
                     color: accent, fontSize: 12, fontWeight: FontWeight.w700)),
           ]),
           const SizedBox(height: 16),
-          Text('TODO',
+          Text('关联待办',
               style: TextStyle(
                   fontSize: 9, color: _TC.textHint(context), letterSpacing: 2)),
           const SizedBox(height: 8),
@@ -1284,7 +1284,7 @@ class _LogEntrySheetState extends State<_LogEntrySheet> {
   }
 
   Future<void> _pickTime(bool isStart) async {
-    final t = await showTimePicker(
+    final t = await showAppTimePicker(
         context: context,
         initialTime: TimeOfDay.fromDateTime(isStart ? _start : _end));
     if (t == null || !mounted) return;
@@ -1299,7 +1299,7 @@ class _LogEntrySheetState extends State<_LogEntrySheet> {
   }
 
   Future<void> _pickDate(bool isStart) async {
-    final d = await showDatePicker(
+    final d = await showAppDatePicker(
         context: context,
         initialDate: isStart ? _start : _end,
         firstDate: DateTime(2020),
@@ -1316,8 +1316,8 @@ class _LogEntrySheetState extends State<_LogEntrySheet> {
 
   void _save() {
     if (!_end.isAfter(_start)) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('结束时间必须晚于开始时间')));
+      AppSnackBars.showSnackBar(context,
+          const SnackBar(content: Text('结束时间必须晚于开始时间')));
       return;
     }
 
@@ -1814,7 +1814,7 @@ class _TagDetailSheetState extends State<_TagDetailSheet> {
                 child: ListView.separated(
                     shrinkWrap: true,
                     itemCount: allRecs.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 6),
+                    separatorBuilder: (_, _) => const SizedBox(height: 6),
                     itemBuilder: (ctx, i) {
                       final r = allRecs.reversed.elementAt(i);
                       final colorScheme = Theme.of(ctx).colorScheme;

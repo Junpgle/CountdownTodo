@@ -29,6 +29,20 @@ void main() {
     expect(drafts.single.source, FinanceEntrySource.import);
   });
 
+  test('结构化日期也支持相对星期', () {
+    final drafts = FinanceTextParser.parse(
+      '''#记账
+类型: 支出
+金额: 30
+分类: 餐饮
+日期: 上星期五''',
+      now: DateTime(2026, 8, 30),
+    );
+
+    expect(drafts, hasLength(1));
+    expect(drafts.single.transactionDate, '2026-08-21');
+  });
+
   test('解析紧凑格式、收入和退款', () {
     final drafts = FinanceTextParser.parse(
       '''#记账 | 收入 | 1000 | 工资 | 八月工资 | 2026-08-01 | 银行卡
@@ -66,6 +80,50 @@ void main() {
     expect(drafts[1].amountMinor, 10000);
   });
 
+  test('结构化文本、识别结果和 AI 草稿都保留重复账单', () {
+    final structured = FinanceTextParser.parse(
+      '''#记账
+类型: 支出
+金额: 20
+日期: 今天
+商家: 午餐
+
+#记账
+类型: 支出
+金额: 20
+日期: 今天
+商家: 午餐''',
+      now: fixedNow,
+    );
+    expect(structured, hasLength(2));
+
+    final recognized = FinanceTextParser.fromRecognitionResults([
+      {
+        'itemKind': 'finance',
+        'type': 'expense',
+        'amount': 20,
+        'date': '2026-08-29',
+        'merchant': '午餐',
+      },
+      {
+        'itemKind': 'finance',
+        'type': 'expense',
+        'amount': 20,
+        'date': '2026-08-29',
+        'merchant': '午餐',
+      },
+    ], now: fixedNow);
+    expect(recognized, hasLength(2));
+
+    final assistantDrafts = FinanceTextParser.extractAssistantDrafts(
+      '''[FINANCE_START]
+[{"itemKind":"finance","type":"expense","amount":20,"date":"2026-08-29","merchant":"午餐"},
+ {"itemKind":"finance","type":"expense","amount":20,"date":"2026-08-29","merchant":"午餐"}]
+[FINANCE_END]''',
+    );
+    expect(assistantDrafts, hasLength(2));
+  });
+
   test('不依赖中文输入法也能识别显式账单字段', () {
     const text = 'amount:12.50\ntype:expense';
 
@@ -96,6 +154,8 @@ void main() {
       'itemKind': 'todo',
       'title': '肯德基取餐',
       'remark': '取餐码: 1234',
+      'amount': 35.6,
+      'merchant': '肯德基',
     };
     final bill = <String, dynamic>{
       'itemKind': 'finance',
@@ -167,6 +227,58 @@ void main() {
       expect(draft.categoryName, '工资');
     });
 
+    test('收入和退款的一句话记账识别到账账户字段', () {
+      final incomeDrafts = FinanceTextParser.parseQuickEntries(
+        '今天收到工资 2,000 元，到账账户: 建设银行',
+        now: now,
+      );
+      final refundDrafts = FinanceTextParser.parseQuickEntries(
+        '今天退款 20 元，退款到账账户: 工商银行',
+        now: now,
+      );
+
+      expect(incomeDrafts, hasLength(1));
+      expect(incomeDrafts.single.type, FinanceTransactionType.income);
+      expect(incomeDrafts.single.paymentMethodName, '建设银行');
+      expect(refundDrafts, hasLength(1));
+      expect(refundDrafts.single.type, FinanceTransactionType.refund);
+      expect(refundDrafts.single.paymentMethodName, '工商银行');
+    });
+
+    test('结构化收入记录识别到账账户字段', () {
+      final drafts = FinanceTextParser.parseQuickEntries(
+        '''#记账
+类型: 收入
+金额: 2,000
+日期: 2026-08-30
+到账账户: 建设银行''',
+        now: now,
+      );
+
+      expect(drafts, hasLength(1));
+      expect(drafts.single.type, FinanceTransactionType.income);
+      expect(drafts.single.paymentMethodName, '建设银行');
+    });
+
+    test('识别本周和上周的具体星期，不把日期词拼进商家', () {
+      final previousWeek = FinanceTextParser.parseOneSentence(
+        '上周五午餐花了 30 元，微信支付',
+        now: now,
+      );
+      final thisWeek = FinanceTextParser.parseOneSentence(
+        '这周一午餐花了 12 元',
+        now: now,
+      );
+
+      expect(previousWeek, isNotNull);
+      expect(previousWeek!.transactionDate, '2026-08-21');
+      expect(previousWeek.merchant, '午餐');
+      expect(previousWeek.paymentMethodName, '微信');
+      expect(thisWeek, isNotNull);
+      expect(thisWeek!.transactionDate, '2026-08-24');
+      expect(thisWeek.merchant, '午餐');
+    });
+
     test('支持退款和付款方式', () {
       final draft = FinanceTextParser.parseOneSentence(
         '前天退款 20 元，支付宝',
@@ -199,6 +311,26 @@ void main() {
       expect(
         FinanceTextParser.parseOneSentence('今天午餐，微信支付'),
         isNull,
+      );
+    });
+
+    test('外币金额不会静默按人民币录入', () {
+      for (final text in ['今天咖啡 \$5', '今天咖啡 5 美元', '今天咖啡 EUR 5']) {
+        expect(
+          FinanceTextParser.parseOneSentence(text, now: now),
+          isNull,
+          reason: text,
+        );
+      }
+      expect(
+        FinanceTextParser.parse(
+          '''#记账
+类型: 支出
+金额: \$5
+日期: 今天''',
+          now: now,
+        ),
+        isEmpty,
       );
     });
 
@@ -249,10 +381,27 @@ void main() {
       }
     });
 
+    test('商品到手价不会被误判为收入', () {
+      final draft = FinanceTextParser.parseOneSentence(
+        '今天买手机到手价 5000 元',
+        now: now,
+      );
+
+      expect(draft, isNotNull);
+      expect(draft!.type, FinanceTransactionType.expense);
+      expect(draft.categoryName, '数码');
+      expect(draft.merchant, '手机');
+    });
+
     test('收入语义会归入工资和对应细分类', () {
       final cases = <String, String>{
+        '工资8000': '工资',
         '收到工资8000': '工资',
+        '生活费1000': '生活费',
         '收到生活费1000': '生活费',
+        '零花钱500': '零花钱',
+        '父母给钱3000': '家庭支持',
+        '年终奖5000': '年终奖',
         '收到年终奖5000': '年终奖',
       };
 
@@ -262,6 +411,13 @@ void main() {
         expect(draft!.type, FinanceTransactionType.income);
         expect(draft.categoryName, entry.value, reason: entry.key);
       }
+
+      final employeePayroll = FinanceTextParser.parseOneSentence(
+        '今天给员工发工资 8000 元',
+        now: now,
+      );
+      expect(employeePayroll, isNotNull);
+      expect(employeePayroll!.type, FinanceTransactionType.expense);
     });
 
     test('饮品自然语言优先识别为餐饮下的细分类', () {
@@ -303,6 +459,124 @@ void main() {
       commaSeparated.map((draft) => draft.paymentMethodName),
       ['微信', '支付宝'],
     );
+
+    final repeatedEntries = FinanceTextParser.parseQuickEntries(
+      '今天午餐 20 元；今天午餐 20 元',
+      now: now,
+    );
+    expect(repeatedEntries, hasLength(2));
+    expect(repeatedEntries.map((draft) => draft.amountMinor), [2000, 2000]);
+  });
+
+  test('单笔账单中的原价优惠和实付金额不会拆成多笔', () {
+    final drafts = FinanceTextParser.parseQuickEntries(
+      '今天午餐原价 30 元，优惠 5 元，实付 25 元',
+      now: fixedNow,
+    );
+
+    expect(drafts, hasLength(1));
+    expect(drafts.single.amountMinor, 2500);
+    expect(drafts.single.categoryName, '午餐');
+
+    final memberDiscountDrafts = FinanceTextParser.parseQuickEntries(
+      '今天午餐原价 30 元，会员优惠 5 元，实付 25 元',
+      now: fixedNow,
+    );
+    expect(memberDiscountDrafts, hasLength(1));
+    expect(memberDiscountDrafts.single.amountMinor, 2500);
+
+    final paymentPromotionDrafts = FinanceTextParser.parseQuickEntries(
+      '今天午餐原价 30 元，支付宝优惠 5 元，实付 25 元',
+      now: fixedNow,
+    );
+    expect(paymentPromotionDrafts, hasLength(1));
+    expect(paymentPromotionDrafts.single.amountMinor, 2500);
+
+    final paymentActionDrafts = FinanceTextParser.parseQuickEntries(
+      '今天午餐原价 30 元，微信支付立减 5 元，实付 25 元',
+      now: fixedNow,
+    );
+    expect(paymentActionDrafts, hasLength(1));
+    expect(paymentActionDrafts.single.amountMinor, 2500);
+
+    final thresholdDiscountDrafts = FinanceTextParser.parseQuickEntries(
+      '今天午餐原价 30 元，满 30 减 5 元，实付 25 元',
+      now: fixedNow,
+    );
+    expect(thresholdDiscountDrafts, hasLength(1));
+    expect(thresholdDiscountDrafts.single.amountMinor, 2500);
+    expect(thresholdDiscountDrafts.single.merchant, '午餐');
+
+    final lastPaymentDrafts = FinanceTextParser.parseQuickEntries(
+      '今天午餐原价 30 元，支付宝优惠 5 元，最后付款 25 元',
+      now: fixedNow,
+    );
+    expect(lastPaymentDrafts, hasLength(1));
+    expect(lastPaymentDrafts.single.amountMinor, 2500);
+    expect(lastPaymentDrafts.single.paymentMethodName, '支付宝');
+    expect(lastPaymentDrafts.single.merchant, '午餐');
+
+    final redPacketDrafts = FinanceTextParser.parseQuickEntries(
+      '今天午餐原价 30 元，支付宝红包抵扣 5 元，实付 25 元',
+      now: fixedNow,
+    );
+    expect(redPacketDrafts, hasLength(1));
+    expect(redPacketDrafts.single.amountMinor, 2500);
+
+    final couponDrafts = FinanceTextParser.parseQuickEntries(
+      '今天午餐原价 30 元，平台使用优惠券抵扣 5 元，实付 25 元',
+      now: fixedNow,
+    );
+    expect(couponDrafts, hasLength(1));
+    expect(couponDrafts.single.amountMinor, 2500);
+
+    final incomeDrafts = FinanceTextParser.parseQuickEntries(
+      '今天工资应发 1000 元，实收 980 元',
+      now: fixedNow,
+    );
+    expect(incomeDrafts, hasLength(1));
+    expect(incomeDrafts.single.type, FinanceTransactionType.income);
+    expect(incomeDrafts.single.amountMinor, 98000);
+  });
+
+  test('口语中的退回款项识别为退款而不是支出', () {
+    final drafts = FinanceTextParser.parseQuickEntries(
+      '今天买衣服 100 元，商家退了 20 元',
+      now: fixedNow,
+    );
+
+    expect(drafts, hasLength(2));
+    expect(
+      drafts.map((draft) => draft.type),
+      [FinanceTransactionType.expense, FinanceTransactionType.refund],
+    );
+    expect(drafts.map((draft) => draft.amountMinor), [10000, 2000]);
+
+    final returnedGoods = FinanceTextParser.parseOneSentence(
+      '今天收到退货款 20 元',
+      now: fixedNow,
+    );
+    expect(returnedGoods, isNotNull);
+    expect(returnedGoods!.type, FinanceTransactionType.refund);
+
+    final cashback = FinanceTextParser.parseOneSentence(
+      '今天收到银行卡返现 10 元',
+      now: fixedNow,
+    );
+    expect(cashback, isNotNull);
+    expect(cashback!.type, FinanceTransactionType.refund);
+  });
+
+  test('逗号分隔字段时保留每笔账单的分类和付款方式', () {
+    final drafts = FinanceTextParser.parseQuickEntries(
+      '今天早餐，8元，微信；中午午餐，25元，支付宝',
+      now: now,
+    );
+
+    expect(drafts, hasLength(2));
+    expect(drafts.map((draft) => draft.amountMinor), [800, 2500]);
+    expect(drafts.map((draft) => draft.categoryName), ['早餐', '午餐']);
+    expect(drafts.map((draft) => draft.paymentMethodName), ['微信', '支付宝']);
   });
 
   test('自然语言快速记账兼容全角冒号的结构化文本', () {

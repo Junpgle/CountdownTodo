@@ -6,6 +6,9 @@ import '../services/course_service.dart';
 import '../services/pomodoro_service.dart';
 import '../storage_service.dart';
 import '../widgets/floating_glass_control.dart';
+import '../widgets/missed_plan_recovery_flow.dart';
+import '../widgets/plan_block_editor_sheet.dart';
+import '../widgets/optional_liquid_glass_surface.dart';
 
 class PlanBlockStatsScreen extends StatefulWidget {
   final String username;
@@ -644,13 +647,96 @@ class _PlanBlockStatsScreenState extends State<PlanBlockStatsScreen> {
                       style: TextStyle(
                           fontSize: 12,
                           color: theme.colorScheme.onSurfaceVariant)),
+                  if (!_isMappedBlock(b))
+                    TextButton(
+                      key: ValueKey('plan-stats-recover-${b.id}'),
+                      onPressed: () => showMissedPlanRecovery(
+                        context: context,
+                        username: widget.username,
+                        sourceId: b.id,
+                        onSaved: _loadData,
+                      ),
+                      child: const Text('重新安排'),
+                    ),
                 ],
               ),
             );
           }),
+          if (missed.length > 10)
+            TextButton(
+              key: const ValueKey('plan-stats-all-missed'),
+              onPressed: () => _showAllMissed(missed),
+              child: const Text('查看全部漏做'),
+            ),
         ],
       ),
     );
+  }
+
+  Future<void> _showAllMissed(List<TodoPlanBlock> missed) async {
+    ModalRoute<dynamic>? route;
+    final selected = await showPlanBlockEditorSheet<String>(
+      context: context,
+      builder: (sheetContext) {
+        route = ModalRoute.of(sheetContext);
+        return OptionalLiquidGlassSheet(
+          fallbackDecoration: BoxDecoration(
+            color: Theme.of(sheetContext).colorScheme.surface,
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: SizedBox(
+            height: MediaQuery.sizeOf(sheetContext).height * .7,
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Text(
+                    '当前范围的漏做规划 (${missed.length})',
+                    style: Theme.of(sheetContext).textTheme.titleMedium,
+                  ),
+                ),
+                Expanded(
+                  child: ListView.builder(
+                    itemCount: missed.length,
+                    itemBuilder: (_, index) {
+                      final block = missed[index];
+                      return Material(
+                        color: Colors.transparent,
+                        child: ListTile(
+                          title: Text(block.titleSnapshot ?? '未命名'),
+                          subtitle: Text(
+                            '${DateFormat('MM-dd HH:mm').format(DateTime.fromMillisecondsSinceEpoch(block.startTime))} · ${block.plannedMinutes} 分钟',
+                          ),
+                          trailing: _isMappedBlock(block)
+                              ? null
+                              : TextButton(
+                                  key: ValueKey(
+                                    'plan-stats-all-recover-${block.id}',
+                                  ),
+                                  onPressed: () =>
+                                      Navigator.pop(sheetContext, block.id),
+                                  child: const Text('重新安排'),
+                                ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+    await route?.completed;
+    if (selected != null && mounted) {
+      await showMissedPlanRecovery(
+        context: context,
+        username: widget.username,
+        sourceId: selected,
+        onSaved: _loadData,
+      );
+    }
   }
 
   String _fmtMin(int minutes) {

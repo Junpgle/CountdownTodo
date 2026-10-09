@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../services/api_service.dart';
+import '../../../utils/app_dialogs.dart';
 
 class ChangePasswordDialog extends StatefulWidget {
   final int userId;
@@ -70,13 +71,13 @@ class _ChangePasswordDialogState extends State<ChangePasswordDialog> {
               ? null
               : () async {
                   if (newPassCtrl.text != confirmPassCtrl.text) {
-                    ScaffoldMessenger.of(context).showSnackBar(
+                    AppSnackBars.showSnackBar(context,
                         const SnackBar(content: Text('两次输入的新密码不一致')));
                     return;
                   }
                   if (newPassCtrl.text.isEmpty || oldPassCtrl.text.isEmpty) {
-                    ScaffoldMessenger.of(context)
-                        .showSnackBar(const SnackBar(content: Text('请填写完整')));
+                    AppSnackBars.showSnackBar(context,
+                        const SnackBar(content: Text('请填写完整')));
                     return;
                   }
 
@@ -88,9 +89,11 @@ class _ChangePasswordDialogState extends State<ChangePasswordDialog> {
 
                   final messenger = ScaffoldMessenger.of(context);
                   Navigator.pop(context);
-                  messenger.showSnackBar(SnackBar(
-                      content: Text(res['message'] ??
-                          (res['success'] ? '修改成功' : '修改失败'))));
+                  AppSnackBars.showSnackBarFromMessenger(
+                      messenger,
+                      SnackBar(
+                          content: Text(res['message'] ??
+                              (res['success'] ? '修改成功' : '修改失败'))));
 
                   if (res['success']) {
                     widget.onLogout(true);

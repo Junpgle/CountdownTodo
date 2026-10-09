@@ -1,8 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import '../services/github_resource_service.dart';
+import '../utils/app_dialogs.dart';
 
 typedef PrivacyPolicyAction = FutureOr<void> Function();
 
@@ -63,7 +64,7 @@ class _PrivacyPolicyDialogState extends State<PrivacyPolicyDialog> {
   }
 
   Future<void> _handleDisagree(BuildContext context) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showAppDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('确认不同意'),

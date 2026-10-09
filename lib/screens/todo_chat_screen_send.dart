@@ -1,7 +1,77 @@
 part of 'todo_chat_screen.dart';
+
 // ignore_for_file: annotate_overrides, unused_element, unused_element_parameter
 
 mixin _TodoChatSend on _TodoChatScreenStateBase {
+  bool _openingVoiceInput = false;
+
+  ChatUsageSummary? _takePendingVoiceUsageSummary() {
+    final usage = _pendingVoiceUsageSummary;
+    _pendingVoiceUsageSummary = null;
+    return usage;
+  }
+
+  Future<void> _openVoiceInput() async {
+    if (_isLoading || _openingVoiceInput || _pendingAttachment != null) return;
+    _openingVoiceInput = true;
+    try {
+      final globalConfig = await LLMService.getConfig();
+      final hasChatApi =
+          (_chatModel.isNotEmpty && _chatApiKey.isNotEmpty) ||
+          (globalConfig?.isConfigured ?? false);
+      final key = await MimoAsrService.resolveApiKey(
+        chatConfig: {
+          'provider': _chatProvider,
+          'apiUrl': _chatApiUrl,
+          'apiKey': _chatApiKey,
+        },
+      );
+      if (!mounted) return;
+      if (!hasChatApi || key.isEmpty) {
+        AppSnackBars.showSnackBar(
+          context,
+          SnackBar(
+            content: const Text('请配置 AI 对话模型，并填写普通小米 MiMo API Key 以识别语音'),
+            action: SnackBarAction(label: '配置', onPressed: _openLlmConfigPage),
+          ),
+        );
+        return;
+      }
+      if (!await MinorModeService.instance.authorizeAiInteraction()) return;
+      if (!mounted) return;
+      ChatUsageSummary? voiceUsage;
+      final text = await showModalBottomSheet<String>(
+        context: context,
+        isScrollControlled: true,
+        isDismissible: false,
+        enableDrag: false,
+        backgroundColor: Colors.transparent,
+        builder: (_) => QuickVoiceChatSheet(
+          apiKey: key,
+          onUsageSummary: (usage) => voiceUsage = usage,
+        ),
+      );
+      if (!mounted || text == null || _isLoading) return;
+      _pendingVoiceUsageSummary = ChatUsageSummary.combine([
+        ?_pendingVoiceUsageSummary,
+        ?voiceUsage,
+      ]);
+      // Preserve a typed draft; otherwise send in this session for follow-ups.
+      final draft = _inputCtrl.text.trim();
+      _inputCtrl.text = draft.isEmpty ? text : '$draft\n$text';
+      if (draft.isEmpty) await _sendMessage();
+    } catch (_) {
+      if (mounted) {
+        AppSnackBars.showSnackBar(
+          context,
+          const SnackBar(content: Text('无法打开语音对话，请稍后重试')),
+        );
+      }
+    } finally {
+      _openingVoiceInput = false;
+    }
+  }
+
   Future<void> _sendMessage() async {
     final text = _inputCtrl.text.trim();
     final attachment = _pendingAttachment;
@@ -11,7 +81,10 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
     // a simple import usable without an AI key and makes its result editable
     // immediately; natural-language finance requests still go through the
     // assistant below.
-    if (attachment == null && await _tryHandleExplicitFinanceText(text)) return;
+    if (attachment == null) {
+      if (await _tryHandleExplicitFinanceText(text)) return;
+      if (await _tryConfirmPendingFinanceDraft(text)) return;
+    }
 
     String model = _chatModel;
     String apiKey = _chatApiKey;
@@ -27,13 +100,11 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
         provider = globalConfig.provider;
       } else {
         if (!mounted) return;
-        final goToSettings = await showDialog<bool>(
+        final goToSettings = await showAppDialog<bool>(
           context: context,
           builder: (ctx) => AlertDialog(
             title: const Text('未配置大模型'),
-            content: const Text(
-              '可以先配置API地址和密钥，也可以复制完整提示词到外部AI，稍后把回复粘贴回来识别。',
-            ),
+            content: const Text('可以先配置API地址和密钥，也可以复制完整提示词到外部AI，稍后把回复粘贴回来识别。'),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(ctx, false),
@@ -103,7 +174,8 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
         };
         if (!capabilities.contains(requiredCapability)) {
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
+            AppSnackBars.showSnackBar(
+              context,
               SnackBar(
                 content: Text(
                   '当前多模态模型不支持${attachment.typeLabel}输入，'
@@ -116,7 +188,8 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
         }
       } else {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
+          AppSnackBars.showSnackBar(
+            context,
             const SnackBar(content: Text('请先配置支持该输入的多模态模型')),
           );
         }
@@ -125,6 +198,25 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
     }
 
     if (apiUrl.isEmpty) apiUrl = AiChatService.defaultApiUrl;
+    final nativeToolMode = AiChatService.supportsFunctionTools(
+      provider: provider,
+      apiUrl: apiUrl,
+      model: model,
+    );
+    final useQueryTools =
+        _smartContext && _contextMode == AiContextMode.functionCalling;
+    final useContextInjection = _usesContextInjection;
+    if (useQueryTools && !nativeToolMode) {
+      if (mounted) {
+        AppSnackBars.showSnackBar(
+          context,
+          const SnackBar(
+            content: Text('当前模型尚未接入原生工具查询。请更换支持的模型，或在AI助手设置中切换为“智能注入”。'),
+          ),
+        );
+      }
+      return;
+    }
     final sessionId = _activeSessionId;
     if (sessionId == null) return;
 
@@ -155,23 +247,23 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
 
     final userMsg = ChatMessage(
       role: ChatRole.user,
-      content: text.isEmpty
-          ? switch (attachment?.kind) {
-              ChatAttachmentKind.image => '请分析图片内容，并提取重要信息、待办与建议。',
-              ChatAttachmentKind.audio => '请理解这段音频，并提取重要信息、待办与建议。',
-              ChatAttachmentKind.video => '请分析这段视频，并提取重要信息、待办与建议。',
-              ChatAttachmentKind.document => '请阅读这份文件，并提取重要信息、待办与建议。',
-              null => '',
-            }
-          : text,
+      content: AiMultimodalMessageBuilder.requestTextForAttachment(
+        text: text,
+        attachmentKind: attachment?.kind,
+      ),
       attachment: attachmentForMessage,
+      usageSummary: _takePendingVoiceUsageSummary(),
     );
     final requestText = userMsg.content;
+    final previousUserMessage = _latestUserTextFromHistory();
 
     setState(() {
       _messages.add(userMsg);
       _streamingContent = '';
       _streamingReasoning = '';
+      _streamingToolCalls = [];
+      _queryToolResults.clear();
+      _streamingFinishReason = null;
       _isLoading = true;
       _pendingAttachment = null;
     });
@@ -180,32 +272,98 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
     _scrollToBottom();
 
     _cancelGeneration = Completer<void>();
+    ChatUsageSummary? usageSummary;
 
     try {
-      final financeContext = await FinanceAiContextService.buildContext(
-        userMessage: requestText,
+      final conversationContext = _recentConversationTextForContext(
+        excludingMessageId: userMsg.id,
       );
+      final financeContext = useContextInjection
+          ? await FinanceAiContextService.buildContext(
+              userMessage: requestText,
+              conversationContext: conversationContext,
+              previousUserMessage: previousUserMessage,
+              dateRangeOverride: _financeContextDateRangeOverride(),
+            )
+          : '';
+      final habitContext = useContextInjection
+          ? await HabitAiContextService.buildContext(
+              userMessage: requestText,
+              conversationContext: conversationContext,
+              previousUserMessage: previousUserMessage,
+              goals: _habitGoals,
+            )
+          : '';
+      final nativeTools = nativeToolMode
+          ? <Map<String, dynamic>>[
+              if (useQueryTools) ...AiQueryToolService.buildDefinitions(),
+              ...AiNativeToolDefinitionBuilder.buildNativeToolDefinitions(
+                requestText,
+                previousUserMessage: previousUserMessage,
+              ),
+            ]
+          : null;
+      final allowedNativeToolNames =
+          AiNativeToolDefinitionBuilder.allowedToolNames(nativeTools);
+      final allowedNativeCdtActions =
+          AiNativeToolDefinitionBuilder.allowedCdtActionNames(nativeTools);
+      final allowedNativeFinanceActions =
+          AiNativeToolDefinitionBuilder.allowedFinanceActionNames(nativeTools);
+      final includeReasoningContent =
+          nativeToolMode &&
+          AiChatService.effectiveProvider(provider, apiUrl) == 'deepseek';
       final List<Map<String, dynamic>> apiMessages =
           await _buildApiMessagesForRequest(
-        financeContext: financeContext,
-        provider: provider,
-      );
+            financeContext: financeContext,
+            habitContext: habitContext ?? '',
+            provider: provider,
+            nativeToolCalls: nativeToolMode,
+            includeReasoningContent: includeReasoningContent,
+            contextInjection: useContextInjection,
+            queryTools: useQueryTools,
+          );
       String fullContent = '';
       String reasoningContent = '';
-      ChatUsageSummary? usageSummary;
+      final nativeToolCalls = <AiChatFunctionCall>[];
+      final toolCallProgress = <int, ChatNativeToolCall>{};
+      final usageSummaries = <ChatUsageSummary>[];
 
-      await for (final chunk in AiChatService.streamChat(
+      Stream<AiChatStreamChunk> streamRound(
+        List<Map<String, dynamic>> messages,
+        List<Map<String, dynamic>> tools,
+      ) => AiChatService.streamChat(
         apiUrl: apiUrl,
         apiKey: apiKey,
         model: model,
-        messages: apiMessages,
+        messages: messages,
         deepThinking: _deepThinking,
         provider: provider,
         cancelToken: _cancelGeneration,
         imageCount: attachment?.kind == ChatAttachmentKind.image ? 1 : 0,
-      )) {
+        tools: tools,
+      );
+      final responseStream = useQueryTools
+          ? AiToolChatRunner.run(
+              messages: apiMessages,
+              tools: nativeTools!,
+              streamRound: streamRound,
+              executeRead: _createQueryToolService().execute,
+              cancelToken: _cancelGeneration,
+              includeReasoningContent: includeReasoningContent,
+            )
+          : streamRound(apiMessages, nativeTools ?? []);
+      await for (final chunk in responseStream) {
         if (chunk.usageSummary != null) {
-          usageSummary = chunk.usageSummary;
+          usageSummaries.add(chunk.usageSummary!);
+          usageSummary = ChatUsageSummary.combine(usageSummaries);
+        }
+        _queryToolResults.addAll(chunk.toolResults);
+        if (chunk.finishReason != null && chunk.finishReason!.isNotEmpty) {
+          if (mounted) {
+            setState(() {
+              _streamingFinishReason = chunk.finishReason;
+            });
+          }
         }
         if (chunk.reasoningContent.isNotEmpty) {
           reasoningContent += chunk.reasoningContent;
@@ -215,6 +373,43 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
             });
             _scrollToBottom();
           }
+        }
+        if (chunk.toolCallDeltas.isNotEmpty) {
+          for (final delta in chunk.toolCallDeltas) {
+            final previous = toolCallProgress[delta.index];
+            toolCallProgress[delta.index] = ChatNativeToolCall(
+              id: delta.id?.isNotEmpty == true ? delta.id! : previous?.id ?? '',
+              name: '${previous?.name ?? ''}${delta.name}',
+              arguments: '${previous?.arguments ?? ''}${delta.arguments}',
+              argumentsComplete: false,
+            );
+          }
+        }
+        nativeToolCalls.addAll(chunk.toolCalls);
+        if (mounted &&
+            (chunk.toolCallDeltas.isNotEmpty ||
+                chunk.toolCalls.isNotEmpty ||
+                chunk.toolResults.isNotEmpty)) {
+          final completeIds = nativeToolCalls.map((call) => call.id).toSet();
+          final progressEntries = toolCallProgress.entries.toList()
+            ..sort((a, b) => a.key.compareTo(b.key));
+          setState(() {
+            _streamingToolCalls = [
+              for (final call in nativeToolCalls)
+                ChatNativeToolCall(
+                  id: call.id,
+                  name: call.name,
+                  arguments: call.arguments,
+                  result: _queryToolResults[call.id],
+                  resultSummary: _queryToolResults.containsKey(call.id)
+                      ? _queryResultSummary(_queryToolResults[call.id])
+                      : '',
+                ),
+              for (final entry in progressEntries)
+                if (!completeIds.contains(entry.value.id)) entry.value,
+            ];
+          });
+          _scrollToBottom();
         }
         if (chunk.content.isNotEmpty) {
           fullContent += chunk.content;
@@ -227,9 +422,24 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
         }
       }
 
+      final actionContent = AiNativeToolCallParser.appendToAssistantText(
+        fullContent,
+        nativeToolCalls,
+        allowedToolNames: allowedNativeToolNames,
+        allowedCdtActionNames: allowedNativeCdtActions,
+        allowedFinanceActionNames: allowedNativeFinanceActions,
+      );
+      final rawModelReply = AiNativeToolCallParser.formatRawReply(
+        fullContent,
+        nativeToolCalls,
+      );
+
       // 用户主动打断：保存已有内容为部分回复
       if (_cancelGeneration?.isCompleted == true) {
-        if (fullContent.isNotEmpty || reasoningContent.isNotEmpty) {
+        if (fullContent.isNotEmpty ||
+            reasoningContent.isNotEmpty ||
+            nativeToolCalls.isNotEmpty ||
+            _streamingToolCalls.isNotEmpty) {
           final existingTodoTitles = {
             for (final todo in widget.todos)
               if (todo['id'] != null)
@@ -239,36 +449,61 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
             for (final schedule in _fixedSchedules) schedule.id: schedule.title,
           };
           final todoActions = AiActionParser.extractTodoActions(
-            fullContent,
+            actionContent,
             originalText: requestText,
             existingTodoTitles: existingTodoTitles,
             existingScheduleTitles: existingScheduleTitles,
           );
           final financeDrafts = FinanceTextParser.extractAssistantDrafts(
-            fullContent,
+            actionContent,
           );
           final financeActions = FinanceTextParser.extractAssistantActions(
-            fullContent,
+            actionContent,
+          );
+          final nativeToolCallRecords = _buildNativeToolCallRecords(
+            calls: nativeToolCalls,
+            todoActions: todoActions,
+            financeDrafts: financeDrafts,
+            financeActions: financeActions,
+            interrupted: true,
           );
           final cleanContent = FinanceTextParser.cleanAssistantContent(
-            AiActionParser.cleanActionContent(fullContent),
+            AiActionParser.cleanActionContent(actionContent),
           );
+          final interruptedContent = financeDrafts.isNotEmpty
+              ? _financeDraftSummary(financeDrafts.length)
+              : cleanContent.isNotEmpty
+              ? cleanContent
+              : todoActions.isNotEmpty
+              ? '已生成待确认操作草案，请核对后添加。'
+              : financeActions.isNotEmpty
+              ? '已生成账单操作草案，请在确认卡中核对。'
+              : nativeToolCalls.isNotEmpty || _streamingToolCalls.isNotEmpty
+              ? '工具调用已记录；应用没有自动修改数据。请查看调用详情和处理结果。'
+              : cleanContent;
+          final finishReasonNote = _streamingFinishReason == null
+              ? ''
+              : '\n\n模型结束原因：$_streamingFinishReason；响应流收尾前已中断。';
           setState(() {
             final assistantMsg = ChatMessage(
               role: ChatRole.assistant,
-              content:
-                  '${cleanContent.isEmpty && (financeDrafts.isNotEmpty || financeActions.isNotEmpty) ? financeDrafts.isNotEmpty ? '已生成记账草案，请核对后编辑并保存。' : '已生成账单操作草案，请在确认卡中核对。' : cleanContent}\n\n*(已中断)*',
-              rawContent: fullContent,
+              content: '$interruptedContent$finishReasonNote\n\n*(已中断)*',
+              rawContent: rawModelReply,
               reasoningContent: reasoningContent,
               smartContext: _lastRequestSmartContext,
               usageSummary: usageSummary,
               todoActions: todoActions.isNotEmpty ? todoActions : null,
               financeDrafts: financeDrafts.isNotEmpty ? financeDrafts : null,
               financeActions: financeActions.isNotEmpty ? financeActions : null,
+              nativeToolCalls: nativeToolCallRecords.isNotEmpty
+                  ? nativeToolCallRecords
+                  : null,
             );
             _messages.add(assistantMsg);
             _streamingContent = '';
             _streamingReasoning = '';
+            _streamingToolCalls = [];
+            _streamingFinishReason = null;
             _isLoading = false;
             _cancelGeneration = null;
             ChatStorageService.addMessage(assistantMsg, sessionId: sessionId);
@@ -277,6 +512,8 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
           setState(() {
             _streamingContent = '';
             _streamingReasoning = '';
+            _streamingToolCalls = [];
+            _streamingFinishReason = null;
             _isLoading = false;
             _cancelGeneration = null;
           });
@@ -285,7 +522,9 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
         return;
       }
 
-      if (fullContent.isEmpty && reasoningContent.isEmpty) {
+      if (actionContent.isEmpty &&
+          reasoningContent.isEmpty &&
+          nativeToolCalls.isEmpty) {
         throw Exception('未收到有效回复');
       }
 
@@ -298,43 +537,68 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
         for (final schedule in _fixedSchedules) schedule.id: schedule.title,
       };
       final todoActions = AiActionParser.extractTodoActions(
-        fullContent,
+        actionContent,
         originalText: requestText,
         existingTodoTitles: existingTodoTitles,
         existingScheduleTitles: existingScheduleTitles,
       );
-      final inlineSuggestions = AiActionParser.extractSuggestions(fullContent);
+      final inlineSuggestions = AiActionParser.extractSuggestions(
+        actionContent,
+      );
       final financeDrafts = FinanceTextParser.extractAssistantDrafts(
-        fullContent,
+        actionContent,
       );
       final financeActions = FinanceTextParser.extractAssistantActions(
-        fullContent,
+        actionContent,
+      );
+      final nativeToolCallRecords = _buildNativeToolCallRecords(
+        calls: nativeToolCalls,
+        todoActions: todoActions,
+        financeDrafts: financeDrafts,
+        financeActions: financeActions,
       );
       final cleanContent = FinanceTextParser.cleanAssistantContent(
-        AiActionParser.cleanActionContent(fullContent),
+        AiActionParser.cleanActionContent(actionContent),
       );
+      final assistantContent = financeDrafts.isNotEmpty
+          ? _financeDraftSummary(financeDrafts.length)
+          : cleanContent.isNotEmpty
+          ? cleanContent
+          : todoActions.isNotEmpty
+          ? '已生成待确认操作草案，请核对后添加。'
+          : financeActions.isNotEmpty
+          ? '已生成账单操作草案，请在确认卡中核对。'
+          : nativeToolCalls.isNotEmpty
+          ? '工具调用已记录；应用没有自动修改数据。请查看调用详情和处理结果。'
+          : cleanContent;
 
+      final assistantMsg = ChatMessage(
+        role: ChatRole.assistant,
+        content: assistantContent,
+        rawContent: rawModelReply,
+        reasoningContent: reasoningContent,
+        smartContext: _lastRequestSmartContext,
+        usageSummary: usageSummary,
+        todoActions: todoActions.isNotEmpty ? todoActions : null,
+        financeDrafts: financeDrafts.isNotEmpty ? financeDrafts : null,
+        financeActions: financeActions.isNotEmpty ? financeActions : null,
+        nativeToolCalls: nativeToolCallRecords.isNotEmpty
+            ? nativeToolCallRecords
+            : null,
+      );
+      var supersededDraftsIgnored = false;
       setState(() {
-        final assistantMsg = ChatMessage(
-          role: ChatRole.assistant,
-          content: cleanContent.isEmpty &&
-                  (financeDrafts.isNotEmpty || financeActions.isNotEmpty)
-              ? financeDrafts.isNotEmpty
-                  ? '已生成记账草案，请核对后编辑并保存。'
-                  : '已生成账单操作草案，请在确认卡中核对。'
-              : cleanContent,
-          rawContent: fullContent,
-          reasoningContent: reasoningContent,
-          smartContext: _lastRequestSmartContext,
-          usageSummary: usageSummary,
-          todoActions: todoActions.isNotEmpty ? todoActions : null,
-          financeDrafts: financeDrafts.isNotEmpty ? financeDrafts : null,
-          financeActions: financeActions.isNotEmpty ? financeActions : null,
-        );
-
         _messages.add(assistantMsg);
+        if (financeDrafts.length == 1) {
+          supersededDraftsIgnored = _ignoreSupersededDateCorrectionDrafts(
+            assistantMsg,
+            financeDrafts.single,
+          );
+        }
         _streamingContent = '';
         _streamingReasoning = '';
+        _streamingToolCalls = [];
+        _streamingFinishReason = null;
         _isLoading = false;
         _cancelGeneration = null;
         _suggestions = inlineSuggestions.isNotEmpty
@@ -343,29 +607,157 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
         if (todoActions.isNotEmpty) {
           _actionRailCollapsed = false;
         }
-        ChatStorageService.addMessage(assistantMsg, sessionId: sessionId);
       });
+      await ChatStorageService.addMessage(assistantMsg, sessionId: sessionId);
+      if (supersededDraftsIgnored) await _saveHistorySilently();
       _scrollToBottom();
       _generateSessionTitle(sessionId: sessionId);
     } catch (e) {
       if (mounted) {
+        final partialToolCalls = _streamingToolCalls
+            .map(
+              (call) => ChatNativeToolCall(
+                id: call.id,
+                name: call.name,
+                arguments: call.arguments,
+                result: _queryToolResults[call.id],
+                resultSummary: _queryToolResults.containsKey(call.id)
+                    ? '${_queryResultSummary(_queryToolResults[call.id])} 后续生成中断。'
+                    : call.argumentsComplete
+                    ? '请求中断，工具参数已收全但草案未完成处理；本地数据未修改。'
+                    : '请求中断，参数可能不完整；本地数据未修改。',
+                argumentsComplete: call.argumentsComplete,
+              ),
+            )
+            .toList(growable: false);
+        final finishReason = _streamingFinishReason;
+        final hasPartialReply =
+            _streamingContent.isNotEmpty || _streamingReasoning.isNotEmpty;
+        final diagnosticMessage =
+            partialToolCalls.isEmpty && !hasPartialReply && finishReason == null
+            ? null
+            : ChatMessage(
+                role: ChatRole.assistant,
+                content: useQueryTools
+                    ? '工具查询过程中断；已返回的数据保留在调用记录中。'
+                    : finishReason != null
+                    ? '模型已结束本轮内容（finish_reason=$finishReason），但响应流未收尾；应用记录了已收到的内容，未修改本地数据。'
+                    : '请求中断；应用记录了已收到的部分内容，未修改本地数据。',
+                rawContent: _streamingContent,
+                reasoningContent: _streamingReasoning,
+                smartContext: _lastRequestSmartContext,
+                usageSummary: usageSummary,
+                nativeToolCalls: partialToolCalls.isNotEmpty
+                    ? partialToolCalls
+                    : null,
+              );
         setState(() {
+          if (diagnosticMessage != null) _messages.add(diagnosticMessage);
           _streamingContent = '';
+          _streamingReasoning = '';
+          _streamingToolCalls = [];
+          _streamingFinishReason = null;
           _isLoading = false;
           _cancelGeneration = null;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
+        if (diagnosticMessage != null) {
+          try {
+            await ChatStorageService.addMessage(
+              diagnosticMessage,
+              sessionId: sessionId,
+            );
+          } catch (_) {
+            // Keep the visible diagnostic even if history storage is busy.
+          }
+        }
+        if (!mounted) return;
+        AppSnackBars.showSnackBar(
+          context,
           SnackBar(content: Text('AI回复失败: $e')),
         );
       }
     }
   }
 
+  String _queryResultSummary(Map<String, dynamic>? result) {
+    if (result == null) return '查询尚未完成。';
+    if (result['ok'] == false) return '查询失败：${result['error']}';
+    if (result['status'] == 'awaiting_confirmation') return '操作草案等待确认，尚未执行。';
+    final summary = result['summary'];
+    final count =
+        result['total_count'] ??
+        (summary is Map
+            ? summary['transaction_count'] ?? summary['count']
+            : null);
+    final items = result['items'];
+    return count == null
+        ? '已返回只读查询结果。'
+        : '查询匹配 $count 条${items is List ? '，本页返回 ${items.length} 条' : ''}。'
+              '${result['has_more'] == true ? '可继续查询下一页。' : ''}';
+  }
+
+  List<ChatNativeToolCall> _buildNativeToolCallRecords({
+    required List<AiChatFunctionCall> calls,
+    required List<AiTodoAction> todoActions,
+    required List<FinanceEntryDraft> financeDrafts,
+    required List<FinanceAiAction> financeActions,
+    bool interrupted = false,
+  }) {
+    if (calls.isEmpty) {
+      return _streamingToolCalls
+          .map(
+            (call) => ChatNativeToolCall(
+              id: call.id,
+              name: call.name,
+              arguments: call.arguments,
+              resultSummary: interrupted
+                  ? '请求已中断，参数可能不完整；本地数据未修改。'
+                  : '调用参数没有完整返回；本地数据未修改。',
+              argumentsComplete: false,
+            ),
+          )
+          .toList(growable: false);
+    }
+
+    final todoCount = todoActions.where((action) => !action.isIgnored).length;
+    final draftCount = financeDrafts.where((draft) => !draft.isIgnored).length;
+    final financeActionCount = financeActions
+        .where((action) => !action.isIgnored)
+        .length;
+
+    return calls
+        .map((call) {
+          final summary = switch (call.name) {
+            'propose_cdt_actions' =>
+              todoCount > 0
+                  ? '应用解析出 $todoCount 条待确认操作草案；等待确认，本地数据未改变。'
+                  : '应用未解析出有效操作；本地数据未改变。',
+            'propose_finance_drafts' =>
+              draftCount > 0
+                  ? '应用生成 $draftCount 条记账草案；等待确认后保存。'
+                  : '应用未解析出有效账单草案；本地数据未改变。',
+            'propose_finance_actions' =>
+              financeActionCount > 0
+                  ? '应用生成 $financeActionCount 条账单修改草案；等待确认后执行。'
+                  : '应用未解析出有效账单操作；本地数据未改变。',
+            _ => _queryResultSummary(_queryToolResults[call.id]),
+          };
+          return ChatNativeToolCall(
+            id: call.id,
+            name: call.name,
+            arguments: call.arguments,
+            result: _queryToolResults[call.id],
+            resultSummary: interrupted ? '$summary 请求已中断。' : summary,
+          );
+        })
+        .toList(growable: false);
+  }
+
   Future<void> _pickChatAttachment() async {
     if (_isLoading || _isPickingAttachment) return;
     setState(() => _isPickingAttachment = true);
     try {
-      final result = await FilePicker.platform.pickFiles(
+      final file = await FilePicker.pickFile(
         type: FileType.custom,
         allowedExtensions: const [
           'jpg',
@@ -388,13 +780,15 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
           'yaml',
           'yml',
         ],
-        allowMultiple: false,
-        withData: true,
       );
-      if (result == null || result.files.isEmpty) return;
-      final file = result.files.single;
+      if (file == null) return;
       final path = file.path ?? '';
-      final bytes = file.bytes;
+      Uint8List? bytes;
+      try {
+        bytes = await file.readAsBytes();
+      } catch (_) {
+        // A local path can still be read later by the message builder.
+      }
       if (path.isEmpty && bytes == null) {
         throw Exception('未读取到附件内容');
       }
@@ -418,15 +812,16 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
         'md' => 'text/markdown',
         _ => 'text/plain',
       };
+      final sizeBytes = bytes?.length ?? (await file.length() ?? 0);
       final attachment = ChatImageAttachment(
         path: path,
         name: file.name.isEmpty ? '附件' : file.name,
         mimeType: mimeType,
-        sizeBytes: file.size,
+        sizeBytes: sizeBytes,
         bytes: bytes,
       );
       final maxBytes = AiMultimodalMessageBuilder.maxBytesFor(attachment.kind);
-      if (file.size > maxBytes) {
+      if (sizeBytes > maxBytes) {
         throw Exception(
           '${attachment.typeLabel}过大，请选择 '
           '${(maxBytes / 1024 / 1024).round()}MB 以内的文件',
@@ -434,10 +829,14 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
       }
       setState(() {
         _pendingAttachment = attachment;
+        _liveEstimatedTokens = _estimateTokensForPendingInput(
+          _inputCtrl.text.trim(),
+        );
       });
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           SnackBar(content: Text('选择附件失败: $error')),
         );
       }
@@ -448,18 +847,30 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
 
   Future<List<Map<String, dynamic>>> _buildApiMessagesForRequest({
     required String financeContext,
+    required String habitContext,
     required String provider,
+    bool nativeToolCalls = false,
+    bool includeReasoningContent = false,
+    bool? contextInjection,
+    bool? queryTools,
   }) async {
-    final baseMessages = _buildApiMessages(financeContext: financeContext);
+    final baseMessages = _buildApiMessages(
+      financeContext: financeContext,
+      habitContext: habitContext,
+      nativeToolCalls: nativeToolCalls,
+      includeReasoningContent: includeReasoningContent,
+      contextInjection: contextInjection,
+      queryTools: queryTools,
+    );
     final prepared = <Map<String, dynamic>>[];
     for (final baseMessage in baseMessages) {
       final messageId = baseMessage['_messageId']?.toString();
       final sourceMessage = messageId == null
           ? null
           : _messages.cast<ChatMessage?>().firstWhere(
-                (message) => message?.id == messageId,
-                orElse: () => null,
-              );
+              (message) => message?.id == messageId,
+              orElse: () => null,
+            );
       final message = Map<String, dynamic>.from(baseMessage)
         ..remove('_messageId');
       final attachment = sourceMessage?.attachment;
@@ -475,8 +886,9 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
                   displayName: attachment.name,
                 )
               : await readImageInput(attachment.path);
-          final maxBytes =
-              AiMultimodalMessageBuilder.maxBytesFor(attachment.kind);
+          final maxBytes = AiMultimodalMessageBuilder.maxBytesFor(
+            attachment.kind,
+          );
           if (imageInput.length > maxBytes) {
             throw Exception(
               '${attachment.typeLabel}过大，请选择 '
@@ -506,9 +918,8 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
   }
 
   Future<bool> _tryHandleExplicitFinanceText(String text) async {
-    final hasPickupClue = RegExp(
-      r'取餐|取件|取货|餐号|取单号|取餐码|取件码|外卖|快递',
-    ).hasMatch(text);
+    final hasPickupClue = RegExp(r'取餐|取件|取货|餐号|取单号|取餐码|取件码|外卖|快递')
+        .hasMatch(text);
     if (hasPickupClue || !FinanceTextParser.looksLikeFinanceFormat(text)) {
       return false;
     }
@@ -520,12 +931,14 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
     final sessionId = _activeSessionId;
     if (sessionId == null) return false;
 
-    final userMsg = ChatMessage(role: ChatRole.user, content: text);
+    final userMsg = ChatMessage(
+      role: ChatRole.user,
+      content: text,
+      usageSummary: _takePendingVoiceUsageSummary(),
+    );
     final assistantMsg = ChatMessage(
       role: ChatRole.assistant,
-      content: drafts.length == 1
-          ? '已识别为一笔记账草案，请核对后编辑并保存。'
-          : '已识别为 ${drafts.length} 笔记账草案，请逐笔核对后保存。',
+      content: _financeDraftSummary(drafts.length),
       rawContent: text,
       financeDrafts: drafts,
     );
@@ -541,25 +954,223 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
     return true;
   }
 
+  String _financeDraftSummary(int count) => count == 1
+      ? '已生成 1 笔待确认记账。请在下方卡片核对，点击“编辑并保存”后才会写入账本；聊天回复“确认”不会直接入账。'
+      : '已生成 $count 笔待确认记账。请逐笔在下方卡片核对并点击“编辑并保存”；聊天回复“确认”不会直接入账。';
+
+  Future<bool> _tryConfirmPendingFinanceDraft(String text) async {
+    final command = text
+        .trim()
+        .replaceAll(RegExp(r'[\s，。！？、,.!?]'), '');
+    if (!const {
+      '确认',
+      '确认记账',
+      '确认保存',
+      '确认并保存',
+      '确定',
+      '确定保存',
+      '确定并保存',
+    }.contains(command)) {
+      return false;
+    }
+
+    final latestAssistant = _messages
+        .where((message) => message.role == ChatRole.assistant)
+        .lastOrNull;
+    if (latestAssistant == null) return false;
+
+    var drafts = latestAssistant.financeDrafts ?? const <FinanceEntryDraft>[];
+    if (drafts.isEmpty) {
+      drafts = FinanceTextParser.extractAssistantDrafts(
+        latestAssistant.rawContent,
+      );
+      if (drafts.isEmpty) {
+        drafts = FinanceTextParser.extractAssistantDrafts(
+          latestAssistant.content,
+        );
+      }
+    }
+    drafts = drafts
+        .where((draft) => !draft.isAdded && !draft.isIgnored)
+        .toList(growable: false);
+    if (drafts.isEmpty) return false;
+
+    final sessionId = _activeSessionId;
+    if (sessionId == null) return false;
+
+    final legacyMessageNeedsMigration =
+        latestAssistant.financeDrafts == null ||
+        latestAssistant.financeDrafts!.isEmpty;
+    if (legacyMessageNeedsMigration) {
+      final messageIndex = _messages.indexOf(latestAssistant);
+      if (messageIndex >= 0) {
+        _messages[messageIndex] = latestAssistant.copyWith(
+          content: FinanceTextParser.cleanAssistantContent(
+            AiActionParser.cleanActionContent(latestAssistant.content),
+          ),
+          financeDrafts: drafts,
+        );
+      }
+    }
+    final supersededDraftsIgnored = drafts.length == 1
+        ? _ignoreSupersededDateCorrectionDrafts(
+            latestAssistant,
+            drafts.single,
+          )
+        : false;
+    final historyNeedsSave =
+        legacyMessageNeedsMigration || supersededDraftsIgnored;
+    final userMessage = ChatMessage(
+      role: ChatRole.user,
+      content: text,
+      usageSummary: _takePendingVoiceUsageSummary(),
+    );
+    final assistantMessage = ChatMessage(
+      role: ChatRole.assistant,
+      content: drafts.length == 1
+          ? '账单草案已显示在上方确认卡中。点击“编辑并保存”，核对金额、分类和日期后保存。聊天文字确认不会直接写入账本。'
+          : '当前有 ${drafts.length} 笔待确认账单，请在每笔账单卡片中分别点击“编辑并保存”核对。聊天文字确认不会直接写入账本。',
+    );
+    setState(() {
+      _messages.addAll([userMessage, assistantMessage]);
+      _inputCtrl.clear();
+      _suggestions = _getSmartSuggestions();
+    });
+    await ChatStorageService.addMessage(userMessage, sessionId: sessionId);
+    await ChatStorageService.addMessage(assistantMessage, sessionId: sessionId);
+    if (historyNeedsSave) await _saveHistorySilently();
+    _scrollToBottom();
+    return true;
+  }
+
+  bool _ignoreSupersededDateCorrectionDrafts(
+    ChatMessage latestAssistant,
+    FinanceEntryDraft confirmedDraft,
+  ) {
+    final latestIndex = _messages.indexOf(latestAssistant);
+    if (latestIndex <= 0) return false;
+    final previousAssistantIndex = _messages
+        .take(latestIndex)
+        .toList()
+        .lastIndexWhere((message) => message.role == ChatRole.assistant);
+    if (previousAssistantIndex < 0) return false;
+    final interveningMessages = _messages.sublist(
+      previousAssistantIndex + 1,
+      latestIndex,
+    );
+    final correction = interveningMessages
+        .where((message) => message.role == ChatRole.user)
+        .lastOrNull;
+    if (correction == null ||
+        !RegExp(
+          r'(?:\d{2,4}\s*年|\d{1,2}\s*月|\d{1,2}\s*(?:日|号)|\d{4}[-/.]\d{1,2})',
+        ).hasMatch(correction.content)) {
+      return false;
+    }
+
+    final previousAssistant = _messages[previousAssistantIndex];
+    var previousDrafts =
+        previousAssistant.financeDrafts ?? const <FinanceEntryDraft>[];
+    if (previousDrafts.isEmpty) {
+      previousDrafts = FinanceTextParser.extractAssistantDrafts(
+        previousAssistant.rawContent,
+      );
+      if (previousDrafts.isEmpty) {
+        previousDrafts = FinanceTextParser.extractAssistantDrafts(
+          previousAssistant.content,
+        );
+      }
+    }
+    final matchingDrafts = previousDrafts.where((draft) {
+      final hasDescriptor = [
+        draft.merchant,
+        draft.categoryName ?? draft.categoryUuid,
+        draft.note,
+      ].any((value) => value?.trim().isNotEmpty == true);
+      return !draft.isAdded &&
+          !draft.isIgnored &&
+          hasDescriptor &&
+          draft.transactionDate != confirmedDraft.transactionDate &&
+          draft.type == confirmedDraft.type &&
+          draft.amountMinor == confirmedDraft.amountMinor &&
+          _sameFinanceDraftText(draft.merchant, confirmedDraft.merchant) &&
+          _sameFinanceDraftText(
+            draft.categoryName ?? draft.categoryUuid,
+            confirmedDraft.categoryName ?? confirmedDraft.categoryUuid,
+          ) &&
+          _sameFinanceDraftText(
+            draft.paymentMethodName ?? draft.paymentMethodUuid,
+            confirmedDraft.paymentMethodName ?? confirmedDraft.paymentMethodUuid,
+          ) &&
+          _sameFinanceDraftText(draft.note, confirmedDraft.note);
+    }).toList(growable: false);
+    if (matchingDrafts.isEmpty) return false;
+    for (final draft in matchingDrafts) {
+      draft.isIgnored = true;
+    }
+
+    if (previousAssistant.financeDrafts == null ||
+        previousAssistant.financeDrafts!.isEmpty) {
+      _messages[previousAssistantIndex] = previousAssistant.copyWith(
+        content: FinanceTextParser.cleanAssistantContent(
+          AiActionParser.cleanActionContent(previousAssistant.content),
+        ),
+        financeDrafts: previousDrafts,
+      );
+    }
+    return true;
+  }
+
+  bool _sameFinanceDraftText(String? first, String? second) =>
+      (first ?? '').trim().toLowerCase() ==
+      (second ?? '').trim().toLowerCase();
+
   Future<void> _copyManualPromptFromInput() async {
     final text = _inputCtrl.text.trim();
     if (text.isEmpty) return;
 
-    final financeContext = await FinanceAiContextService.buildContext(
-      userMessage: text,
-    );
+    // An external model cannot call the app's read-only query tools, so the
+    // copied request must carry its data through smart context injection.
+    final useContextInjection = _smartContext;
+    final financeContext = useContextInjection
+        ? await FinanceAiContextService.buildContext(
+            userMessage: text,
+            conversationContext: _recentConversationTextForContext(),
+            previousUserMessage: _latestUserTextFromHistory(),
+            dateRangeOverride: _financeContextDateRangeOverride(),
+          )
+        : '';
+    final habitContext = useContextInjection
+        ? await HabitAiContextService.buildContext(
+            userMessage: text,
+            conversationContext: _recentConversationTextForContext(),
+            previousUserMessage: _latestUserTextFromHistory(),
+            goals: _habitGoals,
+          )
+        : null;
     final apiMessages = _buildApiMessages(
       pendingUserText: text,
       financeContext: financeContext,
+      habitContext: habitContext ?? '',
+      contextInjection: useContextInjection,
+      queryTools: false,
     );
-    final manualPrompt =
-        AiTodoContextBuilder.buildManualCopyPrompt(apiMessages);
+    final manualPrompt = AiTodoContextBuilder.buildManualCopyPrompt(
+      apiMessages,
+    );
     _pendingManualOriginalText = text;
     _pendingManualSmartContext = _lastRequestSmartContext;
     await Clipboard.setData(ClipboardData(text: manualPrompt));
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('已复制完整提示词，可粘贴到外部AI')),
+    AppSnackBars.showSnackBar(
+      context,
+      SnackBar(
+        content: Text(
+          useContextInjection
+              ? '已按智能注入模式复制提示词，可粘贴到外部AI'
+              : '已复制提示词；智能上下文当前关闭，未附带业务数据',
+        ),
+      ),
     );
   }
 
@@ -568,7 +1179,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
     if (!mounted) return;
     final replyCtrl = TextEditingController(text: data?.text?.trim() ?? '');
 
-    final reply = await showDialog<String>(
+    final reply = await showAppDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('粘贴AI回复并识别'),
@@ -610,8 +1221,8 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
     final originalText = _pendingManualOriginalText.isNotEmpty
         ? _pendingManualOriginalText
         : (_inputCtrl.text.trim().isNotEmpty
-            ? _inputCtrl.text.trim()
-            : _lastUserContent());
+              ? _inputCtrl.text.trim()
+              : _lastUserContent());
     final smartContext = _pendingManualSmartContext;
     final existingTodoTitles = {
       for (final todo in widget.todos)
@@ -628,8 +1239,9 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
     );
     final inlineSuggestions = AiActionParser.extractSuggestions(fullContent);
     final financeDrafts = FinanceTextParser.extractAssistantDrafts(fullContent);
-    final financeActions =
-        FinanceTextParser.extractAssistantActions(fullContent);
+    final financeActions = FinanceTextParser.extractAssistantActions(
+      fullContent,
+    );
     final cleanContent = FinanceTextParser.cleanAssistantContent(
       AiActionParser.cleanActionContent(fullContent),
     );
@@ -640,12 +1252,12 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
     }
     final assistantMsg = ChatMessage(
       role: ChatRole.assistant,
-      content: cleanContent.isEmpty
-          ? financeDrafts.isNotEmpty
-              ? '已生成记账草案，请核对后编辑并保存。'
-              : financeActions.isNotEmpty
-                  ? '已生成账单操作草案，请在确认卡中核对。'
-                  : fullContent
+      content: financeDrafts.isNotEmpty
+          ? _financeDraftSummary(financeDrafts.length)
+          : cleanContent.isEmpty
+          ? financeActions.isNotEmpty
+              ? '已生成账单操作草案，请在确认卡中核对。'
+              : fullContent
           : cleanContent,
       rawContent: fullContent,
       smartContext: smartContext,
@@ -655,10 +1267,19 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
     );
     newMessages.add(assistantMsg);
 
+    var supersededDraftsIgnored = false;
     setState(() {
       _messages.addAll(newMessages);
+      if (financeDrafts.length == 1) {
+        supersededDraftsIgnored = _ignoreSupersededDateCorrectionDrafts(
+          assistantMsg,
+          financeDrafts.single,
+        );
+      }
       _streamingContent = '';
       _streamingReasoning = '';
+      _streamingToolCalls = [];
+      _streamingFinishReason = null;
       _isLoading = false;
       _cancelGeneration = null;
       _suggestions = inlineSuggestions.isNotEmpty
@@ -676,6 +1297,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
     for (final message in newMessages) {
       await ChatStorageService.addMessage(message, sessionId: sessionId);
     }
+    if (supersededDraftsIgnored) await _saveHistorySilently();
     _scrollToBottom();
     _generateSessionTitle(sessionId: sessionId);
   }
@@ -752,10 +1374,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
             'role': 'system',
             'content': '请根据用户的第一个问题生成一个简短的对话标题，不超过10个字，只返回标题文本，不要任何其他内容。',
           },
-          {
-            'role': 'user',
-            'content': firstUserMsg.content,
-          },
+          {'role': 'user', 'content': firstUserMsg.content},
         ],
         provider: provider,
       );
@@ -780,7 +1399,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
   }
 
   Future<void> _clearHistory() async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showAppDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('清空聊天记录'),
@@ -807,244 +1426,12 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
   }
 
   Future<void> _showPromptSettings() async {
-    final promptCtrl = TextEditingController(text: _customPrompt);
-    bool enabled = _promptEnabled;
-    bool smartContext = _smartContext;
-    bool showContextPreview = _showInjectedContextPreview;
-    bool injectMoreContext = _injectMoreContext;
-    bool deepThinking = _deepThinking;
-
-    Future<void> persistAssistantSettings() async {
-      await ChatStorageService.saveCustomPrompt(promptCtrl.text);
-      await ChatStorageService.setPromptEnabled(enabled);
-      await Future.wait([
-        ChatStorageService.setSmartContextEnabled(smartContext),
-        ChatStorageService.setShowContextPreview(showContextPreview),
-        ChatStorageService.setInjectMoreContext(injectMoreContext),
-        ChatStorageService.setDeepThinkingEnabled(deepThinking),
-      ]);
-      if (!mounted) return;
-      setState(() {
-        _customPrompt = promptCtrl.text;
-        _promptEnabled = enabled;
-        _smartContext = smartContext;
-        _showInjectedContextPreview = showContextPreview;
-        _injectMoreContext = injectMoreContext;
-        _deepThinking = deepThinking;
-        _liveSmartContextPreview =
-            _buildSmartContextPreview(_inputCtrl.text.trim());
-        _liveActionProtocolPreview =
-            _buildActionProtocolPreview(_inputCtrl.text.trim());
-        _liveEstimatedTokens =
-            _estimateTokensForPendingInput(_inputCtrl.text.trim());
-      });
-    }
-
-    await showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('AI 助手设置'),
-          content: SizedBox(
-            width: MediaQuery.of(context).size.width * 0.85,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '这里管理助手的行为、上下文与协议。模型、API Key 和服务商在独立的“模型与 API 配置”中管理。',
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      fontSize: 13,
-                      height: 1.4,
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  const Text(
-                    '行为与上下文',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  LiquidGlassSwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('智能上下文'),
-                    subtitle: const Text('按当前问题注入待办、日程、规划、账单等只读数据'),
-                    value: smartContext,
-                    onChanged: (value) =>
-                        setDialogState(() => smartContext = value),
-                  ),
-                  LiquidGlassSwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('在输入区显示注入预览'),
-                    subtitle: const Text('关闭只会隐藏 UI 详情，不会停止上下文注入'),
-                    value: showContextPreview,
-                    onChanged: smartContext
-                        ? (value) => setDialogState(
-                              () => showContextPreview = value,
-                            )
-                        : null,
-                  ),
-                  LiquidGlassSwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('默认扩展上下文范围'),
-                    subtitle: const Text('相关日期问题默认查看未来 30 天'),
-                    value: injectMoreContext,
-                    onChanged: smartContext
-                        ? (value) => setDialogState(
-                              () => injectMoreContext = value,
-                            )
-                        : null,
-                  ),
-                  LiquidGlassSwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('默认开启深度思考'),
-                    subtitle: const Text('模型支持时附带 thinking 参数'),
-                    value: deepThinking,
-                    onChanged: (value) =>
-                        setDialogState(() => deepThinking = value),
-                  ),
-                  const Divider(height: 24),
-                  const Text(
-                    '动作与上下文协议',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context)
-                          .colorScheme
-                          .surfaceContainerHighest
-                          .withValues(alpha: 0.55),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Text(
-                      'CDT Actions v2 · Smart Context v2\n'
-                      '新回复使用带版本的动作信封；仍可读取旧版 ACTION 数组和历史聊天记录。',
-                      style: TextStyle(fontSize: 12.5, height: 1.45),
-                    ),
-                  ),
-                  const Divider(height: 24),
-                  LiquidGlassSwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('启用自定义提示词'),
-                    subtitle: const Text('关闭后将使用默认提示词'),
-                    value: enabled,
-                    onChanged: (val) {
-                      setDialogState(() => enabled = val);
-                    },
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    '提示词内容',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: promptCtrl,
-                    maxLines: 12,
-                    minLines: 6,
-                    enabled: enabled,
-                    decoration: InputDecoration(
-                      hintText:
-                          '输入自定义提示词...\n\n可用变量：\n{now} - 当前时间\n{todos} - 待办清单\n固定日程、规划块等上下文会按当前问题自动注入',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      isDense: true,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      TextButton.icon(
-                        onPressed: () {
-                          promptCtrl.text = ChatStorageService.defaultPrompt;
-                          setDialogState(() => enabled = true);
-                        },
-                        icon: const Icon(Icons.restore),
-                        label: const Text('恢复默认'),
-                      ),
-                      const Spacer(),
-                      TextButton.icon(
-                        onPressed: () {
-                          _showPromptPreview(
-                            promptCtrl.text,
-                            enabled,
-                          );
-                        },
-                        icon: const Icon(Icons.visibility_outlined),
-                        label: const Text('预览'),
-                      ),
-                    ],
-                  ),
-                  const Divider(height: 24),
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.hub_rounded),
-                    title: const Text('模型与 API 配置'),
-                    subtitle: const Text('服务商、API Key、文本模型与多模态模型'),
-                    trailing: const Icon(Icons.chevron_right_rounded),
-                    onTap: () async {
-                      await persistAssistantSettings();
-                      if (!ctx.mounted) return;
-                      Navigator.pop(ctx);
-                      if (mounted) unawaited(_openLlmConfigPage());
-                    },
-                  ),
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              onPressed: () async {
-                await persistAssistantSettings();
-                if (ctx.mounted) Navigator.pop(ctx);
-              },
-              child: const Text('保存'),
-            ),
-          ],
-        ),
+    await Navigator.of(context).push<void>(
+      PageTransitions.material<void>(
+        builder: (_) => const AiAssistantSettingsPage(),
       ),
     );
-    promptCtrl.dispose();
-  }
-
-  void _showPromptPreview(String prompt, bool enabled) {
-    final resolvedPrompt = AiTodoContextBuilder.buildPromptPreview(
-      customPrompt: prompt,
-      promptEnabled: enabled,
-      todos: widget.todos,
-      todoGroups: widget.todoGroups,
-    );
-
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('提示词预览'),
-        content: SizedBox(
-          width: MediaQuery.of(context).size.width * 0.85,
-          height: 400,
-          child: SingleChildScrollView(
-            child: SelectableText(
-              resolvedPrompt,
-              style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('关闭'),
-          ),
-        ],
-      ),
-    );
+    if (!mounted) return;
+    await Future.wait([_loadPromptSettings(), _loadDeepThinking()]);
   }
 }

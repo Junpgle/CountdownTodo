@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart'; // 引入 kIsWeb
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:dynamic_color/dynamic_color.dart';
+import 'package:material_ui/material_ui.dart' as material_ui;
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 // video_player_win plugin
@@ -45,6 +46,7 @@ import 'services/minor_mode_service.dart';
 import 'services/liquid_glass_effect_service.dart';
 import 'services/power_save_mode_service.dart';
 import 'theme/app_liquid_glass_theme.dart';
+import 'theme/dynamic_color_scheme_adapter.dart';
 import 'widgets/island_debug_host.dart';
 import 'widgets/macos_window_chrome.dart';
 
@@ -52,6 +54,7 @@ import 'utils/navigator_utils.dart';
 import 'utils/url_hash.dart';
 import 'utils/app_performance_monitor.dart';
 import 'utils/system_ui_style.dart';
+import './utils/app_dialogs.dart';
 
 typedef CloseDialogCallback = Future<bool> Function();
 CloseDialogCallback? _onShowCloseDialog;
@@ -262,9 +265,6 @@ Future<void> main(List<String> args) async {
 
   _configureRuntimeCaches();
 
-  // 原生端绕过 SSL 证书验证，解决迁移时旧服务器握手失败问题；Web 端 no-op。
-  PlatformBootstrap.configureHttpOverrides();
-
   final platformReady = _initializePlatformBeforeHome(args);
 
   // 预热 SharedPreferences 缓存，避免启动时多次重复 load
@@ -290,6 +290,7 @@ Future<void> main(List<String> args) async {
         platformReady: platformReady,
         initialShareCode: initialShareCode,
       ),
+      theme: GlassThemeData.simple(quality: GlassQuality.standard),
       brightnessResolver: Theme.maybeBrightnessOf,
     ),
   );
@@ -487,7 +488,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
     try {
       // debugPrint('[Main] Attempting to show Flutter dialog...');
-      final result = await showDialog<bool>(
+      final result = await showAppDialog<bool>(
         context: context,
         barrierDismissible: false,
         builder: (dialogContext) => AlertDialog(
@@ -643,7 +644,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
     _privacyDialogShowing = true;
     try {
-      final result = await showDialog<bool>(
+      final result = await showAppDialog<bool>(
         context: navContext,
         barrierDismissible: false,
         builder: (dialogContext) => PrivacyPolicyDialog(
@@ -1010,16 +1011,18 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                   valueListenable: StorageService.appWallpaperColorNotifier,
                   builder: (context, appWallpaperColor, _) {
                     return DynamicColorBuilder(
-                      builder: (ColorScheme? lightDynamic,
-                          ColorScheme? darkDynamic) {
+                      builder: (material_ui.ColorScheme? lightDynamic,
+                          material_ui.ColorScheme? darkDynamic) {
                         ColorScheme lightScheme;
                         ColorScheme darkScheme;
 
                         if (colorMode == 'system_wallpaper' &&
                             lightDynamic != null &&
                             darkDynamic != null) {
-                          lightScheme = lightDynamic.harmonized();
-                          darkScheme = darkDynamic.harmonized();
+                          lightScheme = flutterColorSchemeFromDynamic(
+                              lightDynamic.harmonized());
+                          darkScheme = flutterColorSchemeFromDynamic(
+                              darkDynamic.harmonized());
                         } else if ((colorMode == 'custom' ||
                                 colorMode == 'image_extracted') &&
                             customColor != null) {

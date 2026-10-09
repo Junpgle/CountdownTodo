@@ -94,18 +94,18 @@ class ClipboardService {
 
   /// Get text from Windows clipboard using Win32 API
   String? _getClipboardText() {
-    if (IsClipboardFormatAvailable(CF_UNICODETEXT) == 0) {
+    if (!IsClipboardFormatAvailable(CF_UNICODETEXT).value) {
       return null;
     }
-    if (OpenClipboard(NULL) == 0) {
+    if (!OpenClipboard(null).value) {
       return null;
     }
     try {
-      final hData = GetClipboardData(CF_UNICODETEXT);
-      if (hData == 0) return null;
+      final hData = GetClipboardData(CF_UNICODETEXT).value;
+      if (hData.isNull) return null;
 
-      final handle = Pointer.fromAddress(hData);
-      final pData = GlobalLock(handle);
+      final handle = HGLOBAL(hData);
+      final pData = GlobalLock(handle).value;
       if (pData == nullptr) return null;
 
       try {

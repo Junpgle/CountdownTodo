@@ -365,6 +365,7 @@ class OptionalLiquidGlassPanel extends StatelessWidget {
                 ? const LiquidOval()
                 : LiquidRoundedSuperellipse(borderRadius: borderRadius),
             settings: LiquidGlassSettings(
+              bodyMode: GlassBodyMode.clear,
               glassColor: resolvedTint,
               thickness: enhanced ? 24 : 18,
               blur: enhanced ? 16 : 12,
@@ -551,6 +552,7 @@ class OptionalLiquidGlassSurface extends StatelessWidget {
           height: height,
           shape: LiquidRoundedSuperellipse(borderRadius: borderRadius),
           settings: LiquidGlassSettings(
+            bodyMode: GlassBodyMode.clear,
             glassColor: tint,
             thickness: 20,
             blur: 12,
@@ -661,6 +663,7 @@ class _TopBarLiquidGlassSurface extends StatelessWidget {
       height: height,
       shape: LiquidOval(),
       settings: LiquidGlassSettings(
+        bodyMode: GlassBodyMode.clear,
         glassColor: glassColor,
         thickness: isDark ? 12 : 10,
         blur: isDark ? 6 : 5,
@@ -873,19 +876,22 @@ class OptionalLiquidGlassSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return OptionalLiquidGlassPanel(
-      mode: OptionalLiquidGlassPanelMode.adaptiveRepeated,
-      highContrast: true,
-      clipBehavior: Clip.antiAlias,
-      borderRadiusGeometry:
-          BorderRadius.vertical(top: Radius.circular(topRadius)),
-      padding: padding,
-      fallback: Container(
+    return Material(
+      color: Colors.transparent,
+      child: OptionalLiquidGlassPanel(
+        mode: OptionalLiquidGlassPanelMode.adaptiveRepeated,
+        highContrast: true,
+        clipBehavior: Clip.antiAlias,
+        borderRadiusGeometry:
+            BorderRadius.vertical(top: Radius.circular(topRadius)),
         padding: padding,
-        decoration: fallbackDecoration,
+        fallback: Container(
+          padding: padding,
+          decoration: fallbackDecoration,
+          child: child,
+        ),
         child: child,
       ),
-      child: child,
     );
   }
 }

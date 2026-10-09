@@ -1,10 +1,291 @@
+import 'dart:io';
+
+import 'package:countdown_todo/features/finance/models/finance_ai_action.dart';
 import 'package:countdown_todo/features/finance/models/finance_models.dart';
 import 'package:countdown_todo/features/finance/services/finance_repository.dart';
+import 'package:countdown_todo/features/finance/services/finance_text_parser.dart';
 import 'package:countdown_todo/services/storage/app_settings_storage.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  test('新交易默认保存创建时的本机时区', () {
+    final createdAt = DateTime.now().millisecondsSinceEpoch;
+    final localDate = dateKey(DateTime.fromMillisecondsSinceEpoch(createdAt));
+    final transaction = FinanceTransaction(
+      amountMinor: 100,
+      transactionDate: localDate,
+      occurredAt: createdAt,
+    );
+
+    expect(
+      transaction.timezoneOffsetMinutes,
+      DateTime.fromMillisecondsSinceEpoch(createdAt).timeZoneOffset.inMinutes,
+    );
+    expect(dateKey(transaction.occurrenceLocalTime!), localDate);
+  });
+
+  test('移动账单日期时平移可信发生时刻并保留未知时间', () {
+    final originalOccurrence = DateTime(2027, 2, 15, 9, 42, 18, 250);
+    final transaction = FinanceTransaction(
+      amountMinor: 100,
+      transactionDate: dateKey(originalOccurrence),
+      occurredAt: originalOccurrence.millisecondsSinceEpoch,
+      timezoneOffsetMinutes: originalOccurrence.timeZoneOffset.inMinutes,
+    );
+    final targetOccurrence = DateTime(2027, 2, 20, 9, 42, 18, 250);
+
+    expect(
+      financeOccurrenceTimestampForDate(
+        transaction,
+        dateKey(targetOccurrence),
+      ),
+      targetOccurrence.millisecondsSinceEpoch,
+    );
+
+    final now = DateTime.now();
+    final recentTransaction = FinanceTransaction(
+      type: FinanceTransactionType.expense,
+      amountMinor: 100,
+      transactionDate: dateKey(now),
+      occurredAt: now.millisecondsSinceEpoch,
+      timezoneOffsetMinutes: now.timeZoneOffset.inMinutes,
+    );
+    final futureDate = DateTime(now.year, now.month + 2, now.day);
+    final futureOccurrenceAt = financeOccurrenceTimestampForDate(
+      recentTransaction,
+      dateKey(futureDate),
+    );
+    final movedFutureTransaction = FinanceTransaction(
+      type: FinanceTransactionType.expense,
+      amountMinor: 100,
+      transactionDate: dateKey(futureDate),
+      occurredAt: futureOccurrenceAt,
+      timezoneOffsetMinutes: recentTransaction.timezoneOffsetMinutes,
+      createdAt: now.millisecondsSinceEpoch,
+    );
+    expect(
+      movedFutureTransaction.balanceEventAt(
+        snapshotAt: now.millisecondsSinceEpoch,
+      ),
+      greaterThan(now.millisecondsSinceEpoch),
+    );
+
+    final unknownOccurrence = FinanceTransaction(
+      amountMinor: 100,
+      transactionDate: dateKey(originalOccurrence),
+      occurredAt: null,
+    )..occurredAt = null;
+    expect(
+      financeOccurrenceTimestampForDate(
+        unknownOccurrence,
+        dateKey(targetOccurrence),
+      ),
+      isNull,
+    );
+  });
+
+  test(
+    '回拨小时的默认发生时刻保留当前实际偏移',
+    () {
+      final firstOccurrence = DateTime(2026, 11, 1, 1, 30);
+      final secondOccurrence = DateTime.fromMillisecondsSinceEpoch(
+        firstOccurrence.millisecondsSinceEpoch +
+            const Duration(hours: 1).inMilliseconds,
+      );
+      final reconstructed = DateTime(
+        secondOccurrence.year,
+        secondOccurrence.month,
+        secondOccurrence.day,
+        secondOccurrence.hour,
+        secondOccurrence.minute,
+      );
+
+      expect(
+        firstOccurrence.timeZoneOffset,
+        isNot(secondOccurrence.timeZoneOffset),
+      );
+      expect(
+        financeDefaultOccurrenceTimezoneOffsetMinutes(
+          occurrence: reconstructed,
+          now: secondOccurrence,
+        ),
+        secondOccurrence.timeZoneOffset.inMinutes,
+      );
+      final futureOccurrence = DateTime(2027, 2, 15, 9);
+      expect(
+        financeDefaultOccurrenceTimezoneOffsetMinutes(
+          occurrence: futureOccurrence,
+          now: secondOccurrence,
+        ),
+        futureOccurrence.timeZoneOffset.inMinutes,
+      );
+    },
+    skip: DateTime(2026, 11, 1, 1, 30).timeZoneOffset ==
+        DateTime(2026, 11, 1, 2, 30).timeZoneOffset,
+  );
+
+  test('分期发生时刻使用记录时区，跨日期后仍按实际时刻扣减', () {
+    final eventAt = DateTime.utc(2026, 10, 1, 10, 30).millisecondsSinceEpoch;
+    final transaction = FinanceTransaction(
+      amountMinor: 2000,
+      transactionDate: '2026-10-02',
+      occurredAt: eventAt,
+      timezoneOffsetMinutes: 840,
+      createdAt: DateTime.utc(2026, 9, 15).millisecondsSinceEpoch,
+    );
+    expect(dateKey(transaction.occurrenceLocalTime!), '2026-10-02');
+    expect(transaction.occurrenceLocalTime!.hour, 0);
+    expect(
+      transaction.balanceEventAt(
+        snapshotAt: DateTime.utc(2026, 9, 30).millisecondsSinceEpoch,
+      ),
+      eventAt,
+    );
+    expect(
+      FinanceTransaction.fromMap(transaction.toMap()).balanceEventAt(),
+      eventAt,
+    );
+  });
+
+  test('历史账单缺少发生时间时未来日期不会提前扣减', () {
+    final future = DateTime(2027, 1, 2);
+    final transaction = FinanceTransaction.fromMap({
+      'amount_minor': 100,
+      'transaction_date': dateKey(future),
+      'created_at': DateTime(2026, 10, 1).millisecondsSinceEpoch,
+    });
+    expect(transaction.balanceEventAt(), future.millisecondsSinceEpoch);
+  });
+
+  test('无发生时刻的历史账单按保存时区的日期边界计算余额', () {
+    final localOffset = DateTime(2026, 10, 2).timeZoneOffset.inMinutes;
+    if (localOffset >= 14 * 60) return;
+
+    final savedOffset = localOffset + 60;
+    final savedDateStartAt =
+        DateTime.utc(2026, 10, 2).millisecondsSinceEpoch - savedOffset * 60000;
+    final localDateStartAt = DateTime(2026, 10, 2).millisecondsSinceEpoch;
+    final createdAt =
+        savedDateStartAt + const Duration(minutes: 30).inMilliseconds;
+    final snapshotAt =
+        savedDateStartAt + const Duration(minutes: 45).inMilliseconds;
+    expect(localDateStartAt, greaterThan(snapshotAt));
+
+    final transaction = FinanceTransaction(
+      amountMinor: 100,
+      transactionDate: '2026-10-02',
+      occurredAt: null,
+      timezoneOffsetMinutes: savedOffset,
+      createdAt: createdAt,
+    )..occurredAt = null;
+
+    expect(transaction.balanceEventAt(snapshotAt: snapshotAt), createdAt);
+    final snapshot = FinanceBudget(
+      uuid: 'saved-zone-snapshot',
+      monthKey: '2026-10',
+      paymentMethodUuid: 'saved-zone-card',
+      amountMinor: 10000,
+      balanceSnapshotAt: snapshotAt,
+    );
+    expect(
+      FinanceRepository.paymentMethodBalanceAt(
+        snapshot: snapshot,
+        transactions: [transaction],
+        loanRepayments: const [],
+        loanInterestTransactionUuids: const {},
+        asOfAt: snapshotAt + const Duration(minutes: 30).inMilliseconds,
+      ),
+      10000,
+    );
+  });
+
+  test('预算截止汇总排除尚未发生的同日和未来日期账单', () {
+    final asOf = DateTime(2026, 10, 2, 12);
+    final summary = FinanceSummary.fromTransactions(
+      [
+        FinanceTransaction(
+          uuid: 'budget-before-cutoff',
+          amountMinor: 40000,
+          transactionDate: '2026-10-02',
+          occurredAt: DateTime(2026, 10, 2, 11).millisecondsSinceEpoch,
+        ),
+        FinanceTransaction(
+          uuid: 'budget-after-cutoff',
+          amountMinor: 20000,
+          transactionDate: '2026-10-02',
+          occurredAt: DateTime(2026, 10, 2, 13).millisecondsSinceEpoch,
+        ),
+        FinanceTransaction(
+          uuid: 'budget-next-day',
+          amountMinor: 150000,
+          transactionDate: '2026-10-03',
+          occurredAt: DateTime(2026, 10, 3, 12).millisecondsSinceEpoch,
+        ),
+      ],
+      asOfAt: asOf.millisecondsSinceEpoch,
+    );
+
+    expect(summary.expenseMinor, 40000);
+    expect(summary.transactionCount, 1);
+  });
+
+  test('未来发生时刻不因记录日期与保存时区不一致而提前计入余额', () {
+    final createdAt = DateTime.utc(2026, 10, 1, 16, 30);
+    final occurredAt = createdAt.add(const Duration(minutes: 1));
+    final transaction = FinanceTransaction(
+      amountMinor: 100,
+      transactionDate: '2026-10-02',
+      occurredAt: occurredAt.millisecondsSinceEpoch,
+      timezoneOffsetMinutes: 0,
+      createdAt: createdAt.millisecondsSinceEpoch,
+    );
+
+    expect(
+      transaction.balanceEventAt(snapshotAt: createdAt.millisecondsSinceEpoch),
+      occurredAt.millisecondsSinceEpoch,
+    );
+  });
+
+  test('未来账单的旧发生时刻早于录入时间时按计划日期计入余额', () {
+    final createdAt = DateTime.utc(2026, 10, 1, 16, 30);
+    final staleOccurrence = createdAt.subtract(const Duration(hours: 1));
+    final localCreatedAt = DateTime.fromMillisecondsSinceEpoch(
+      createdAt.millisecondsSinceEpoch,
+    );
+    final futureDate = DateTime(
+      localCreatedAt.year,
+      localCreatedAt.month,
+      localCreatedAt.day + 1,
+    );
+    final transaction = FinanceTransaction(
+      amountMinor: 100,
+      transactionDate: dateKey(futureDate),
+      occurredAt: staleOccurrence.millisecondsSinceEpoch,
+      timezoneOffsetMinutes: localCreatedAt.timeZoneOffset.inMinutes,
+      createdAt: createdAt.millisecondsSinceEpoch,
+    );
+
+    expect(
+      transaction.balanceEventAt(snapshotAt: createdAt.millisecondsSinceEpoch),
+      dateFromKey(dateKey(futureDate)).millisecondsSinceEpoch,
+    );
+  });
+
+  test('已录入的历史日期账单不回溯修改付款余额', () {
+    final createdAt = DateTime.utc(2026, 10, 2);
+    final transaction = FinanceTransaction(
+      amountMinor: 100,
+      transactionDate: '2026-10-01',
+      occurredAt: createdAt.millisecondsSinceEpoch,
+      timezoneOffsetMinutes: 0,
+      createdAt: createdAt.millisecondsSinceEpoch,
+    );
+
+    expect(transaction.balanceEventAt(), createdAt.millisecondsSinceEpoch);
+  });
+
   group('记账金额解析', () {
     test('支持整数和两位小数，并转换为分', () {
       expect(parseFinanceAmount('12'), 1200);
@@ -20,6 +301,401 @@ void main() {
       expect(parseFinanceAmount('1,23'), isNull);
       expect(parseFinanceAmount('abc'), isNull);
     });
+
+    test('付款余额可录入零，普通账单仍拒绝零', () {
+      expect(parseFinanceAmount('0', allowZero: true), 0);
+      expect(parseFinanceAmount('0.00', allowZero: true), 0);
+      expect(parseFinanceAmount('0'), isNull);
+    });
+
+    test('金额上限在整数边界内精确解析和显示', () {
+      expect(parseFinanceAmount('90071992547409.91'), maxFinanceAmountMinor);
+      expect(parseFinanceAmount('90071992547409.92'), isNull);
+      expect(parseFinanceAmount('100000000000000000'), isNull);
+      expect(
+        formatFinanceAmount(maxFinanceAmountMinor),
+        '¥90,071,992,547,409.91',
+      );
+    });
+
+    test('AI 识别草稿金额也保持精确并拒绝越界值', () {
+      expect(
+        FinanceEntryDraft.fromJson({'amount': '90071992547409.91'}).amountMinor,
+        maxFinanceAmountMinor,
+      );
+      expect(
+        FinanceEntryDraft.fromJson({'amount': '100000000000000000'})
+            .amountMinor,
+        0,
+      );
+      expect(
+        FinanceEntryDraft.fromJson({'amount_minor': maxFinanceAmountMinor + 1})
+            .amountMinor,
+        0,
+      );
+    });
+  });
+
+  test('恢复记账草案时拒绝溢出日期并规范有效日期', () {
+    final now = DateTime(2026, 10, 2);
+
+    expect(
+      FinanceEntryDraft.fromJson(
+        {'transaction_date': '2026-02-30'},
+        now: now,
+      ).transactionDate,
+      '2026-10-02',
+    );
+    expect(
+      FinanceEntryDraft.fromJson(
+        {'transaction_date': '2026/10/01'},
+        now: now,
+      ).transactionDate,
+      '2026-10-01',
+    );
+    expect(
+      FinanceEntryDraft.fromJson(
+        {'transaction_date': '2026年10月1日'},
+        now: now,
+      ).transactionDate,
+      '2026-10-01',
+    );
+    expect(
+      FinanceEntryDraft.fromJson(
+        {'transaction_date': '2026-10-01T23:30:00-05:00'},
+        now: now,
+      ).transactionDate,
+      '2026-10-01',
+    );
+  });
+
+  test('自然语言快速记账不会把商品数量拆成金额', () {
+    final drafts = FinanceTextParser.parseQuickEntries(
+      '买了2个苹果，共20元；买了3个橙子，共30元',
+      now: DateTime(2026, 10, 2),
+    );
+
+    expect(drafts.map((draft) => draft.amountMinor).toList(), [2000, 3000]);
+  });
+
+  test('自然语言快速记账不会把账单中的其中明细拆成第二笔', () {
+    final drafts = FinanceTextParser.parseQuickEntries(
+      '今天午餐30元，其中米饭5元',
+      now: DateTime(2026, 10, 2),
+    );
+
+    expect(drafts, hasLength(1));
+    expect(drafts.single.amountMinor, 3000);
+  });
+
+  test('自然语言快速记账支持大前天到大后天', () {
+    final now = DateTime(2026, 10, 2);
+    final cases = [
+      ('大前天', '2026-09-29'),
+      ('前天', '2026-09-30'),
+      ('昨天', '2026-10-01'),
+      ('今天', '2026-10-02'),
+      ('明天', '2026-10-03'),
+      ('后天', '2026-10-04'),
+      ('大后天', '2026-10-05'),
+    ];
+
+    for (final (phrase, expectedDate) in cases) {
+      final drafts = FinanceTextParser.parseQuickEntries(
+        '$phrase 午餐20元',
+        now: now,
+      );
+      expect(drafts.single.transactionDate, expectedDate, reason: phrase);
+    }
+  });
+
+  test('自然语言快速记账解析带阿拉伯数字的历史年份', () {
+    final now = DateTime(2026, 10, 2);
+
+    expect(
+      FinanceTextParser.parseQuickEntries('去年9月2日 午餐20元', now: now)
+          .single
+          .transactionDate,
+      '2025-09-02',
+    );
+    expect(
+      FinanceTextParser.parseQuickEntries('前年9月2日 午餐20元', now: now)
+          .single
+          .transactionDate,
+      '2024-09-02',
+    );
+    final slashDate = FinanceTextParser.parseQuickEntries(
+      '去年9/2 午餐20元',
+      now: now,
+    ).single;
+    expect(slashDate.transactionDate, '2025-09-02');
+    expect(slashDate.merchant, '午餐');
+    expect(
+      FinanceTextParser.parseQuickEntries(
+        '去年9月2日，前年买的午餐20元',
+        now: now,
+      ).single.transactionDate,
+      '2025-09-02',
+    );
+  });
+
+  test('自然语言快速记账拒绝不存在的明确日期', () {
+    final now = DateTime(2026, 10, 2);
+
+    expect(
+      FinanceTextParser.parseQuickEntries('2026-02-30 午餐20元', now: now),
+      isEmpty,
+    );
+    expect(
+      FinanceTextParser.parseQuickEntries('2月30日 午餐20元', now: now),
+      isEmpty,
+    );
+    expect(
+      FinanceTextParser.parseQuickEntries('19月2日 午餐20元', now: now),
+      isEmpty,
+    );
+    expect(
+      FinanceTextParser.parseQuickEntries('9月230日 午餐20元', now: now),
+      isEmpty,
+    );
+    expect(
+      FinanceTextParser.parseQuickEntries('十三月二日 午餐20元', now: now),
+      isEmpty,
+    );
+    expect(
+      FinanceTextParser.parseQuickEntries('九月二百日 午餐20元', now: now),
+      isEmpty,
+    );
+    expect(
+      FinanceTextParser.parseQuickEntries(
+        '2026年9月230日 午餐20元',
+        now: now,
+      ),
+      isEmpty,
+    );
+    expect(
+      FinanceTextParser.parseQuickEntries('九月三十一日 午餐20元', now: now),
+      isEmpty,
+    );
+    expect(
+      FinanceTextParser.parseQuickEntries('2026-02-28 午餐20元', now: now)
+          .single
+          .transactionDate,
+      '2026-02-28',
+    );
+    expect(
+      FinanceTextParser.parseQuickEntries('午餐20元', now: now)
+          .single
+          .transactionDate,
+      '2026-10-02',
+    );
+
+    expect(
+      FinanceTextParser.parseQuickEntries('九月二十一日 午餐20元', now: now)
+          .single
+          .transactionDate,
+      '2026-09-21',
+    );
+    expect(
+      FinanceTextParser.parseQuickEntries('去年九月二日 午餐20元', now: now)
+          .single
+          .transactionDate,
+      '2025-09-02',
+    );
+  });
+
+  test('自然语言快速记账支持带零的逐位中文日期', () {
+    final now = DateTime(2026, 10, 2);
+    final cases = [
+      ('九月〇二日', '2026-09-02'),
+      ('九月零五日', '2026-09-05'),
+      ('九月二〇日', '2026-09-20'),
+    ];
+
+    for (final (dateText, expectedDate) in cases) {
+      expect(
+        FinanceTextParser.parseQuickEntries('$dateText 午餐20元', now: now)
+            .single
+            .transactionDate,
+        expectedDate,
+        reason: dateText,
+      );
+    }
+  });
+
+  test('结构化记账拒绝被数字尾缀截短的日期', () {
+    final drafts = FinanceTextParser.parse(
+      '#记账 | 支出 | 20 | 餐饮 | 午餐 | 2026-09-023',
+      now: DateTime(2026, 10, 2),
+    );
+
+    expect(drafts, isEmpty);
+  });
+
+  test('AI 修改账单草案忽略不存在的日期并保留有效金额', () {
+    final action = FinanceAiAction.tryParse({
+      'action': 'update_finance',
+      'transactionId': 'transaction-1',
+      'amount_minor': '1234',
+      'date': '2026-02-30',
+    });
+
+    expect(action, isNotNull);
+    expect(action!.amountMinor, 1234);
+    expect(action.hasAmount, isTrue);
+    expect(action.hasDate, isFalse);
+    expect(action.transactionDate, isNull);
+
+    final validAction = FinanceAiAction.tryParse({
+      'action': 'update_finance',
+      'transactionId': 'transaction-1',
+      'date': '2026-02-28',
+    });
+    expect(validAction?.hasDate, isTrue);
+    expect(validAction?.transactionDate, '2026-02-28');
+  });
+
+  test('视觉与聊天识别草案无效日期回落到基准日', () {
+    final now = DateTime(2026, 10, 2);
+    final recognized = FinanceTextParser.fromRecognitionResults(
+      [
+        {
+          'isFinance': true,
+          'type': 'expense',
+          'amount': 12.34,
+          'date': '2026-02-30',
+        },
+      ],
+      now: now,
+    );
+    final assistant = FinanceTextParser.extractAssistantDrafts(
+      '[FINANCE_START]\n'
+      '[{"type":"expense","amount":12.34,"date":"2026-02-30"}]\n'
+      '[FINANCE_END]',
+      now: now,
+    );
+    final undatedRecognition = FinanceTextParser.fromRecognitionResults(
+      [
+        {'isFinance': true, 'type': 'expense', 'amount': 12.34},
+      ],
+      now: now,
+    );
+    final undatedAssistant = FinanceTextParser.extractAssistantDrafts(
+      '[FINANCE_START]\n'
+      '[{"type":"expense","amount":12.34}]\n'
+      '[FINANCE_END]',
+      now: now,
+    );
+
+    expect(recognized.single.transactionDate, '2026-10-02');
+    expect(assistant.single.transactionDate, '2026-10-02');
+    expect(undatedRecognition.single.transactionDate, '2026-10-02');
+    expect(undatedAssistant.single.transactionDate, '2026-10-02');
+  });
+
+  test('识别草案仍接受中文和斜杠日期', () {
+    final now = DateTime(2026, 10, 2);
+    final recognized = FinanceTextParser.fromRecognitionResults(
+      [
+        {
+          'isFinance': true,
+          'type': 'expense',
+          'amount': 12.34,
+          'date': '2026/09/02',
+        },
+      ],
+      now: now,
+    );
+    final assistant = FinanceTextParser.extractAssistantDrafts(
+      '[FINANCE_START]\n'
+      '[{"type":"expense","amount":12.34,"date":"2026年9月2日"}]\n'
+      '[FINANCE_END]',
+      now: now,
+    );
+
+    expect(recognized.single.transactionDate, '2026-09-02');
+    expect(assistant.single.transactionDate, '2026-09-02');
+  });
+
+  test('流式AI回复隐藏完整和未完成的记账协议块', () {
+    expect(
+      FinanceTextParser.cleanStreamingAssistantContent(
+        '已识别账单\n[FINANCE_START]\n{"type":"income"}',
+      ),
+      '已识别账单',
+    );
+    expect(
+      FinanceTextParser.cleanStreamingAssistantContent(
+        '已识别账单\n[FINANCE_START]\n[]\n[FINANCE_END]\n请核对后保存',
+      ),
+      '已识别账单\n\n请核对后保存',
+    );
+    expect(
+      FinanceTextParser.cleanStreamingAssistantContent(
+        '[FINANCE_ACTION_START]',
+      ),
+      isEmpty,
+    );
+  });
+
+  test('AI 简写 FN 协议会生成待确认收入草案并从回复正文隐藏', () {
+    const response = '''
+[FN_START] {"type":"income","amount":90,"date":"2026-09-30","note":"兼职收入，已到账"} [FN_END]
+已识别为兼职收入，请核对后保存。
+''';
+
+    final drafts = FinanceTextParser.extractAssistantDrafts(response);
+
+    expect(drafts, hasLength(1));
+    expect(drafts.single.type, FinanceTransactionType.income);
+    expect(drafts.single.amountMinor, 9000);
+    expect(drafts.single.transactionDate, '2026-09-30');
+    expect(
+      FinanceTextParser.cleanAssistantContent(response),
+      '已识别为兼职收入，请核对后保存。',
+    );
+    expect(
+      FinanceTextParser.cleanStreamingAssistantContent(
+        '[FN_START] {"type":"income","amount":90',
+      ),
+      isEmpty,
+    );
+  });
+
+  test('快速记账区分金额千位逗号与多笔账单分隔符', () {
+    final now = DateTime(2026, 10, 2);
+    final groupedAmount = FinanceTextParser.parseQuickEntries(
+      '午餐1,234.56元',
+      now: now,
+    );
+
+    expect(groupedAmount, hasLength(1));
+    expect(groupedAmount.single.amountMinor, 123456);
+    expect(
+      FinanceTextParser.parseOneSentence('午餐12,34元', now: now),
+      isNull,
+    );
+  });
+
+  test('分期和贷款本金拒绝超出跨平台安全范围的金额', () {
+    expect(
+      () => FinanceInstallmentCalculator.split(
+        totalMinor: maxFinanceAmountMinor + 1,
+        count: 2,
+        startDate: DateTime(2026, 9),
+      ),
+      throwsArgumentError,
+    );
+    expect(
+      () => FinanceLoanCalculator.generate(
+        principalMinor: maxFinanceAmountMinor + 1,
+        annualInterestRateBps: 0,
+        termMonths: 1,
+        startDate: DateTime(2026, 9),
+        repaymentDay: 1,
+      ),
+      throwsArgumentError,
+    );
   });
 
   test('交易模型可以在 SQLite/JSON 字段之间往返', () {
@@ -51,6 +727,19 @@ void main() {
     expect(restored.installmentLabel, '2/6 期');
     expect(restored.installmentTotalMinor, 15594);
     expect(restored.pendingSync, isTrue);
+  });
+
+  test('旧交易缺少发生时刻时保留未记录状态', () {
+    final legacy = FinanceTransaction(
+      amountMinor: 100,
+      transactionDate: '2026-08-27',
+      createdAt: 1787832000000,
+    ).toMap()
+      ..remove('occurred_at');
+
+    final restored = FinanceTransaction.fromMap(legacy);
+
+    expect(restored.occurredAt, isNull);
   });
 
   test('分期金额按分精确分摊，余数只造成 1 分差异', () {
@@ -149,6 +838,44 @@ void main() {
     expect(equalPrincipal.last.remainingPrincipalMinor, 0);
   });
 
+  test('贷款计算器在最大安全金额附近按精确分数计算利息', () {
+    final schedule = FinanceLoanCalculator.generate(
+      principalMinor: 9007111393859999,
+      annualInterestRateBps: 1,
+      termMonths: 1,
+      startDate: DateTime(2026, 1, 1),
+      repaymentDay: 1,
+      repaymentMethod: FinanceLoanRepaymentMethod.equalPrincipal,
+    );
+
+    expect(schedule.single.interestMinor, 75059261615);
+  });
+
+  test('等额本息月供使用精确整数公式', () {
+    final schedule = FinanceLoanCalculator.generate(
+      principalMinor: 1000000000000,
+      annualInterestRateBps: 1,
+      termMonths: 2,
+      startDate: DateTime(2026, 1, 1),
+      repaymentDay: 1,
+    );
+
+    expect(schedule.first.paymentMinor, 500006250009);
+  });
+
+  test('无法安全保存的贷款月供会被拒绝', () {
+    expect(
+      () => FinanceLoanCalculator.generate(
+        principalMinor: maxFinanceAmountMinor,
+        annualInterestRateBps: FinanceLoanCalculator.maxAnnualInterestRateBps,
+        termMonths: 1,
+        startDate: DateTime(2026, 1, 1),
+        repaymentDay: 1,
+      ),
+      throwsArgumentError,
+    );
+  });
+
   test('预算模型可以在 SQLite/JSON 字段之间往返', () {
     final original = FinanceBudget(
       uuid: 'budget-1',
@@ -221,6 +948,118 @@ void main() {
     );
     expect(sanitizeFinanceCsvText('=HYPERLINK("x")'), '\'=HYPERLINK("x")');
     expect(sanitizeFinanceCsvText(' 午餐'), ' 午餐');
+  });
+
+  test('CSV 导出防护公式日期、标注账户类型并区分同名账户', () async {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    final directory = await Directory.systemTemp.createTemp(
+      'finance-csv-export-',
+    );
+    const channel = MethodChannel('plugins.flutter.io/path_provider');
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      if (call.method == 'getApplicationDocumentsDirectory') {
+        return directory.path;
+      }
+      return null;
+    });
+    addTearDown(() async {
+      messenger.setMockMethodCallHandler(channel, null);
+      await directory.delete(recursive: true);
+    });
+
+    final path = await FinanceRepository.exportCsv(
+      transactions: [
+        FinanceTransaction(
+          uuid: 'csv-deleted-expense-account',
+          amountMinor: 100,
+          transactionDate: '=1+1',
+          paymentMethodUuid: 'deleted-payment-method',
+        ),
+        FinanceTransaction(
+          uuid: 'csv-deleted-income-account',
+          type: FinanceTransactionType.income,
+          amountMinor: 250,
+          transactionDate: '2026-09-03',
+          paymentMethodUuid: 'deleted-income-account',
+        ),
+        FinanceTransaction(
+          uuid: 'csv-deleted-refund-account',
+          type: FinanceTransactionType.refund,
+          amountMinor: 70,
+          transactionDate: '2026-09-04',
+          paymentMethodUuid: 'deleted-refund-account',
+        ),
+        FinanceTransaction(
+          uuid: 'csv-duplicate-account-first',
+          amountMinor: 100,
+          transactionDate: '2026-09-05',
+          paymentMethodUuid: 'csv-account-first',
+        ),
+        FinanceTransaction(
+          uuid: 'csv-duplicate-account-second',
+          type: FinanceTransactionType.income,
+          amountMinor: 200,
+          transactionDate: '2026-09-06',
+          paymentMethodUuid: 'csv-account-second',
+        ),
+        FinanceTransaction(
+          uuid: 'csv-deleted-category',
+          amountMinor: 100,
+          transactionDate: '2026-09-07',
+          categoryUuid: 'deleted-category',
+        ),
+      ],
+      categories: {
+        'deleted-category': FinanceCategory(
+          uuid: 'deleted-category',
+          name: '历史分类',
+          icon: '🗂️',
+          isDeleted: true,
+        ),
+      },
+      paymentMethods: {
+        'csv-account-first': FinancePaymentMethod(
+          uuid: 'csv-account-first',
+          name: '导出同名账户',
+          icon: '💳',
+          sortOrder: 10,
+        ),
+        'csv-account-second': FinancePaymentMethod(
+          uuid: 'csv-account-second',
+          name: '导出同名账户',
+          icon: '💳',
+          sortOrder: 20,
+        ),
+      },
+    );
+
+    expect(path, isNotNull);
+    final csv = await File(path!).readAsString();
+    expect(csv, contains('日期,类型,金额,分类,关联账户'));
+    expect(csv, contains("\n'=1+1,支出,-1.00"));
+    expect(csv, contains("\n'=1+1,支出,-1.00,未分类,已删除或未知付款方式"));
+    expect(
+      csv,
+      contains('2026-09-03,收入,2.50,未分类,已删除或未知到账账户'),
+    );
+    expect(
+      csv,
+      contains('2026-09-04,退款,0.70,未分类,已删除或未知退款到账账户'),
+    );
+    expect(
+      csv,
+      contains('2026-09-05,支出,-1.00,未分类,💳 导出同名账户（同名账户 1/2）'),
+    );
+    expect(
+      csv,
+      contains('2026-09-06,收入,2.00,未分类,💳 导出同名账户（同名账户 2/2）'),
+    );
+    expect(
+      csv,
+      contains('2026-09-07,支出,-1.00,🗂️ 历史分类（已删除）,未指定'),
+    );
   });
 
   test('汇总会将退款从实际支出中扣除', () {
@@ -301,6 +1140,86 @@ void main() {
     expect(spending, {'payment-card': 7500, 'payment-wallet': -4000});
   });
 
+  test('付款方式余额按收入和退款增加、支出减少', () {
+    final changes = FinanceRepository.summarizePaymentMethodBalanceChanges([
+      FinanceTransaction(
+        uuid: 'card-expense',
+        amountMinor: 10000,
+        paymentMethodUuid: 'payment-card',
+        transactionDate: '2026-09-01',
+      ),
+      FinanceTransaction(
+        uuid: 'card-refund',
+        type: FinanceTransactionType.refund,
+        amountMinor: 2500,
+        paymentMethodUuid: 'payment-card',
+        transactionDate: '2026-09-02',
+      ),
+      FinanceTransaction(
+        uuid: 'card-income',
+        type: FinanceTransactionType.income,
+        amountMinor: 9000,
+        paymentMethodUuid: 'payment-card',
+        transactionDate: '2026-09-03',
+      ),
+      FinanceTransaction(
+        uuid: 'unassigned-income',
+        type: FinanceTransactionType.income,
+        amountMinor: 5000,
+        transactionDate: '2026-09-03',
+      ),
+    ]);
+
+    expect(changes, {'payment-card': 1500});
+  });
+
+  test('快照同一分钟后录入的贷款还款按记录时间扣减余额', () {
+    final snapshotAt = DateTime(2026, 9, 15, 12).millisecondsSinceEpoch;
+    final repayment = FinanceLoanInstallment(
+      uuid: 'same-minute-repayment',
+      loanUuid: 'loan',
+      installmentIndex: 1,
+      dueDate: '2026-09-15',
+      paymentMinor: 5000,
+      principalMinor: 4500,
+      interestMinor: 500,
+      remainingPrincipalMinor: 50000,
+      isPaid: true,
+      paidAt: snapshotAt,
+      paymentMethodUuid: 'payment-card',
+      createdAt: snapshotAt - 60_000,
+      updatedAt: snapshotAt + 10_000,
+    );
+    final snapshot = FinanceBudget(
+      uuid: 'payment-card-snapshot',
+      monthKey: '2026-09',
+      paymentMethodUuid: 'payment-card',
+      amountMinor: 100000,
+      balanceSnapshotAt: snapshotAt,
+    );
+
+    expect(
+      FinanceRepository.paymentMethodBalanceAt(
+        snapshot: snapshot,
+        transactions: const [],
+        loanRepayments: [repayment],
+        loanInterestTransactionUuids: const {},
+        asOfAt: snapshotAt + 60_000,
+      ),
+      95000,
+    );
+    expect(
+      FinanceRepository.paymentMethodBalanceAt(
+        snapshot: snapshot,
+        transactions: const [],
+        loanRepayments: [repayment],
+        loanInterestTransactionUuids: const {},
+        asOfAt: snapshotAt + 5_000,
+      ),
+      100000,
+    );
+  });
+
   test('默认分类和付款方式使用稳定 ID', () {
     expect(
       FinanceDefaults.categories.map((item) => item['uuid']).toSet().length,
@@ -336,6 +1255,49 @@ void main() {
                 (parent) => parent['uuid'] == item['parent_uuid'],
               )),
       isTrue,
+    );
+  });
+
+  test('分类路径区分同级重名分类并保留父子层级', () {
+    final firstParent = FinanceCategory(
+      uuid: 'duplicate-category-parent-first',
+      name: '重复分类',
+      sortOrder: 10,
+    );
+    final secondParent = FinanceCategory(
+      uuid: 'duplicate-category-parent-second',
+      name: '重复分类',
+      sortOrder: 20,
+    );
+    final firstChild = FinanceCategory(
+      uuid: 'duplicate-category-child-first',
+      name: '子分类',
+      parentUuid: firstParent.uuid,
+      sortOrder: 10,
+    );
+    final secondChild = FinanceCategory(
+      uuid: 'duplicate-category-child-second',
+      name: '子分类',
+      parentUuid: firstParent.uuid,
+      sortOrder: 20,
+    );
+    final categories = [firstParent, secondParent, firstChild, secondChild];
+
+    expect(
+      financeCategoryDisplayName(firstParent, categories),
+      '重复分类（同名分类 1/2）',
+    );
+    expect(
+      financeCategoryDisplayName(secondParent, categories),
+      '重复分类（同名分类 2/2）',
+    );
+    expect(
+      financeCategoryDisplayName(firstChild, categories),
+      '重复分类（同名分类 1/2） - 子分类（同名分类 1/2）',
+    );
+    expect(
+      financeCategoryDisplayName(secondChild, categories),
+      '重复分类（同名分类 1/2） - 子分类（同名分类 2/2）',
     );
   });
 

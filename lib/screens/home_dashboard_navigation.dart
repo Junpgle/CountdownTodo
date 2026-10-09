@@ -6,7 +6,8 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
     final granted = await NotificationService.checkExactAlarmPermission();
     if (granted) return;
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
+    AppSnackBars.showSnackBar(
+      context,
       SnackBar(
         content: const Text('⏰ 需要「精确闹钟」权限才能在 App 被杀后准时发送提醒'),
         action: SnackBarAction(
@@ -97,7 +98,8 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
       }
       await ExternalShareHandler.clearPendingFinanceRecognized();
       if (mounted && savedCount > 0) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           SnackBar(content: Text('已保存 $savedCount 笔识别账单')),
         );
       }
@@ -241,7 +243,8 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
     await WidgetService.updateTodoWidget(_todos);
 
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         SnackBar(
           content: Text('已添加 ${newTodos.length} 个待办'),
           duration: const Duration(seconds: 2),
@@ -324,7 +327,7 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
 
   /// 显示原始分析文本对话框
   void _showOriginalText(String text) {
-    showDialog(
+    showAppDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text("分析原始文字"),
@@ -482,7 +485,8 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
       _navigateToPomodoro();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         SnackBar(content: Text('启动专注失败: $e')),
       );
     }
@@ -517,7 +521,8 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
     _pomodoroRevision.value++;
     _pomodoroTickNotifier.value++;
     unawaited(_loadAllData(domains: const {DataRefreshDomain.todos}));
-    ScaffoldMessenger.of(context).showSnackBar(
+    AppSnackBars.showSnackBar(
+      context,
       SnackBar(content: Text('已完成：${todo.title}')),
     );
   }

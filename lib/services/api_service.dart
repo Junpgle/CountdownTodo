@@ -36,7 +36,7 @@ class ApiService {
   static String baseUrl = kIsWeb ? aliyunCloudflareUrl : aliyunProdUrl;
   static String? _baseUrlOverride;
 
-  // 🛡️ 全局使用的、跳过 SSL 证书验证的 HTTP 客户端
+  // 复用使用平台默认 TLS 证书校验的 HTTP 客户端。
   static http.Client? _clientInstance;
   static http.Client? _deltaSyncClient;
   static http.Client get _client {
@@ -52,6 +52,12 @@ class ApiService {
   }
 
   static int currentUserId = 0;
+
+  /// Atomically switches the in-memory identity used by authenticated syncs.
+  static void setSession({required String token, required int userId}) {
+    _authToken = token;
+    currentUserId = userId;
+  }
 
   // 🚀 公开获取 token 的方法（供 WebSocket 等服务使用）
   static String? getToken() => _authToken;
@@ -662,7 +668,7 @@ class ApiService {
       final uri = Uri.parse('$_effectiveBaseUrl/api/courses').replace(
         queryParameters: {
           'user_id': userId.toString(),
-          if (semester != null) 'semester': semester,
+          'semester': ?semester,
         },
       );
       final response = await _request('GET', uri.toString());
@@ -1129,15 +1135,34 @@ class ApiService {
   // ==========================================
 
   static Future<List<dynamic>> fetchTeams() async {
+    final result = await fetchTeamsWithStatus();
+    return result.teams;
+  }
+
+  /// Returns whether the teams request actually succeeded, even when the user
+  /// has no teams. Search warmup uses this to avoid caching network failures as
+  /// a valid empty result.
+  static Future<({bool succeeded, List<dynamic> teams})> fetchTeamsWithStatus({
+    http.Client? client,
+  }) async {
     try {
-      final response = await _request('GET', '/api/teams');
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return data['teams'] ?? [];
+      final response = await _request('GET', '/api/teams', client: client);
+      if (response.statusCode != 200) {
+        return (succeeded: false, teams: const <dynamic>[]);
       }
-      return [];
-    } catch (e) {
-      return [];
+
+      final data = jsonDecode(response.body);
+      if (data is! Map || data['success'] == false) {
+        return (succeeded: false, teams: const <dynamic>[]);
+      }
+      final rawTeams = data['teams'];
+      if (rawTeams == null) return (succeeded: true, teams: const <dynamic>[]);
+      if (rawTeams is! List) {
+        return (succeeded: false, teams: const <dynamic>[]);
+      }
+      return (succeeded: true, teams: List<dynamic>.from(rawTeams));
+    } catch (_) {
+      return (succeeded: false, teams: const <dynamic>[]);
     }
   }
 

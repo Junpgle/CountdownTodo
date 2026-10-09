@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../models.dart';
 import '../course_schedule_semantics.dart';
+import '../../utils/app_dialogs.dart';
 
 /// Lets the user repair courses for which a source export did not contain a
 /// usable time range.  Courses with the same identity and weekday share one
@@ -18,7 +19,7 @@ class CourseTimeRepairDialog extends StatefulWidget {
     BuildContext context,
     List<CourseItem> courses,
   ) {
-    return showDialog<List<CourseItem>>(
+    return showAppDialog<List<CourseItem>>(
       context: context,
       barrierDismissible: false,
       builder: (_) => CourseTimeRepairDialog(courses: courses),
@@ -129,7 +130,7 @@ class _CourseTimeRepairDialogState extends State<CourseTimeRepairDialog> {
     _TimeRepairGroup group, {
     required bool isStart,
   }) async {
-    final picked = await showTimePicker(
+    final picked = await showAppTimePicker(
       context: context,
       initialTime: isStart ? group.start : group.end,
       helpText: isStart ? '设置开始时间' : '设置结束时间',
@@ -202,7 +203,7 @@ class _CourseTimeRepairDialogState extends State<CourseTimeRepairDialog> {
             Expanded(
               child: ListView.separated(
                 itemCount: _groups.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 8),
+                separatorBuilder: (_, _) => const SizedBox(height: 8),
                 itemBuilder: (context, index) {
                   final group = _groups[index];
                   final sample = group.sample;

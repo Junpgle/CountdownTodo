@@ -1,6 +1,6 @@
 # Project architecture
 
-Last reconciled with code: 2026-09-26. Flutter package version: **6.4.1**.
+Last reconciled with code: 2026-10-07. Flutter package version: **6.6.117**.
 
 ## Repository map
 
@@ -49,7 +49,7 @@ as part of normal client work.
 
 ## Local data
 
-- SQLite schema version: **55** in `DatabaseHelper`
+- SQLite schema version: **57** in `DatabaseSchemaHistory`
   (`DatabaseSchemaHistory.currentVersion`).
 - Per-user database: `uni_sync_<username>.db`.
 - Main tables include todos, groups, countdowns, courses, plan blocks, time logs,
@@ -59,6 +59,19 @@ as part of normal client work.
   budgets, recurring rules, entry templates, loans and loan installments. They are
   a personal-only domain; `finance_v1` uses an independent cursor and never carries
   `team_uuid`.
+- Payment-method balances replay transactions and loan repayments after a dated
+  snapshot. A repayment recorded after a snapshot in the same minute takes effect
+  from its record update time, matching transaction balance handling.
+- An open finance home reconciles the current period when recurring rules change,
+  so a rule added or enabled after its due time does not wait until the next launch.
+- Payment balance refresh timers use the same effective event time as balance
+  reconstruction, including repayments entered after a same-minute snapshot.
+- AI balance context uses the shared snapshot selection rules, including
+  month-key tolerance for cross-timezone month-end snapshots.
+- Deleting a future finance entry describes its removal from planned cash flow
+  without implying an immediate change to the current payment balance.
+- Deleting a finance entry already covered by the latest account snapshot
+  explains that it changes ledger statistics without changing the saved balance.
 - Global search combines FTS5/FTS4/`LIKE` database search with feature-module and
   remote catalog adapters. See [`features/global-search.md`](features/global-search.md)
   for coverage, openable destinations, animation behavior and server limits.

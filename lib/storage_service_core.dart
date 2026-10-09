@@ -143,8 +143,9 @@ mixin _StorageCore on _StorageServiceBase {
     String username, {
     required bool includeDeleted,
     required int? limit,
+    required int offset,
   }) {
-    return '$username|includeDeleted=$includeDeleted|limit=${limit ?? "all"}';
+    return '$username|includeDeleted=$includeDeleted|limit=${limit ?? "all"}|offset=$offset';
   }
 
   List<TodoItem> _cloneTodoItems(List<TodoItem> items) {

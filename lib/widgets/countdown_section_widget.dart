@@ -16,6 +16,7 @@ import '../utils/page_transitions.dart';
 import 'platform_backdrop_filter.dart';
 import 'optional_liquid_glass_surface.dart';
 import 'version_history_sheet.dart';
+import '../utils/app_dialogs.dart';
 
 /// Opens the shared important-day editor from any home entry point.
 ///
@@ -49,7 +50,7 @@ Future<void> showCountdownEditorDialog({
   }
 
   try {
-    await showDialog<void>(
+    await showAppDialog<void>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
@@ -79,7 +80,7 @@ Future<void> showCountdownEditorDialog({
                   ),
                   trailing: const Icon(Icons.calendar_today, size: 20),
                   onTap: () async {
-                    final picked = await showDatePicker(
+                    final picked = await showAppDatePicker(
                       context: context,
                       firstDate: isEditing ? DateTime(2000) : DateTime.now(),
                       lastDate: DateTime(2100),
@@ -279,7 +280,7 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
   }
 
   void _deleteCountdown(CountdownItem itemToDelete) {
-    showDialog(
+    showAppDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text("删除倒计时"),

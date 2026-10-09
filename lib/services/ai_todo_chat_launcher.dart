@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../models.dart';
+import '../models/chat_message.dart';
 import '../models/ai_todo_action.dart';
 import '../screens/todo_chat_screen.dart';
 import '../storage_service.dart';
@@ -10,6 +11,7 @@ import 'todo_classification_service.dart';
 import 'pomodoro_service.dart';
 import 'minor_mode_policy.dart';
 import 'minor_mode_service.dart';
+import '../utils/app_dialogs.dart';
 
 class AiTodoChatLauncher {
   static final DateFormat _localDateTimeFormat = DateFormat('yyyy-MM-dd HH:mm');
@@ -29,6 +31,9 @@ class AiTodoChatLauncher {
     List<FixedScheduleItem>? fixedSchedules,
     Map<String, int> categoryReminderDefaults = const {},
     GlobalKey? sourceKey,
+    String? initialMessage,
+    bool sendInitialMessage = true,
+    ChatUsageSummary? initialVoiceUsageSummary,
     void Function(List<TodoItem> inserted, List<TodoItem> updated)?
         onTodosBatchAction,
     void Function(List<TodoGroup> groups)? onTodoGroupsChanged,
@@ -37,7 +42,8 @@ class AiTodoChatLauncher {
     final authorized = await MinorModeService.instance.authorizeAiInteraction();
     if (!authorized) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           SnackBar(
             content: Text(
               MinorModeService.instance.authorizationFailureMessage(
@@ -50,12 +56,13 @@ class AiTodoChatLauncher {
       return;
     }
 
-    final initialCategorizationActions =
-        await TodoClassificationService.buildCategorizeActions(
-      todos: todos,
-      groups: todoGroups,
-      categoryReminderDefaults: categoryReminderDefaults,
-    );
+    final initialCategorizationActions = initialMessage != null
+        ? const <AiTodoAction>[]
+        : await TodoClassificationService.buildCategorizeActions(
+            todos: todos,
+            groups: todoGroups,
+            categoryReminderDefaults: categoryReminderDefaults,
+          );
     final resolvedFixedSchedules = fixedSchedules ??
         await StorageService.getFixedSchedules(
           username,
@@ -64,6 +71,9 @@ class AiTodoChatLauncher {
     if (!context.mounted) return;
     final page = TodoChatScreen(
       username: username,
+      initialMessage: initialMessage,
+      sendInitialMessage: sendInitialMessage,
+      initialVoiceUsageSummary: initialVoiceUsageSummary,
       todos: toChatTodoMaps(todos),
       todoGroups: todoGroups,
       courses: courses,

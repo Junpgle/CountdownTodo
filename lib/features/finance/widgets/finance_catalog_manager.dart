@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../models/finance_models.dart';
+import '../../../utils/app_dialogs.dart';
 
 enum _CatalogSection { expense, income, payment }
 
@@ -68,7 +69,8 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
           if (!method.isDeleted)
             _CatalogEntry(
               uuid: method.uuid,
-              name: method.name,
+              name: financePaymentMethodDisplayName(
+                  method, widget.paymentMethods),
               icon: method.icon,
               isSystem: method.isSystem,
               isArchived: method.isArchived,
@@ -88,15 +90,19 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
     final entries = <_CatalogEntry>[];
     for (final category in widget.categories) {
       if (category.isDeleted || category.type != type) continue;
+      final parentUuid = category.parentUuid?.trim();
+      final parent = parentUuid == null || parentUuid.isEmpty
+          ? null
+          : categoriesByUuid[parentUuid];
       entries.add(
         _CatalogEntry(
           uuid: category.uuid,
-          name: category.name,
+          name: financeCategorySiblingDisplayName(category, widget.categories),
           icon: category.icon,
           isSystem: category.isSystem,
-          isArchived: category.isArchived,
+          isArchived: category.isArchived || parent?.isArchived == true,
           parentUuid: category.parentUuid,
-          searchName: _categorySearchName(category, categoriesByUuid),
+          searchName: financeCategoryDisplayName(category, widget.categories),
           onEdit: () => widget.onEditCategory(category),
           onArchive: () => widget.onArchiveCategory(category),
           onRestore: () => widget.onRestoreCategory(category),
@@ -109,24 +115,6 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
       );
     }
     return entries;
-  }
-
-  String _categorySearchName(
-    FinanceCategory category,
-    Map<String, FinanceCategory> categoriesByUuid,
-  ) {
-    final names = <String>[];
-    final visited = <String>{};
-    FinanceCategory? current = category;
-    while (current != null && visited.add(current.uuid)) {
-      names.insert(0, current.name);
-      final parentUuid = current.parentUuid?.trim();
-      if (parentUuid == null || parentUuid.isEmpty) break;
-      final parent = categoriesByUuid[parentUuid];
-      if (parent == null || parent.type != current.type) break;
-      current = parent;
-    }
-    return names.join(' - ');
   }
 
   bool _matchesFilter(_CatalogEntry entry, _CatalogFilter filter) =>
@@ -209,7 +197,8 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
     } catch (error) {
       debugPrint('记账目录操作失败：$error');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           const SnackBar(content: Text('操作失败，请稍后重试')),
         );
       }

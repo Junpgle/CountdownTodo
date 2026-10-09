@@ -16,9 +16,10 @@ abstract final class ChallengeTextParser {
   static String _normalizeLine(String line) {
     var normalized = line.replaceFirst('\uFEFF', '').trim();
     normalized = normalized.replaceFirst(
-      RegExp(r'^(?:[-*•·]|\d+[.)、])\s+'),
+      RegExp(r'^(?:[-*+•·]|\d+[.)、])\s+'),
       '',
     );
+    normalized = normalized.replaceFirst(RegExp(r'^\[[ xX]\]\s+'), '');
     return normalized.trim();
   }
 }

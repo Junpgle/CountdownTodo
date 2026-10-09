@@ -1,4 +1,5 @@
 part of 'todo_chat_screen.dart';
+
 // ignore_for_file: annotate_overrides, unused_element, unused_element_parameter
 
 mixin _TodoChatActions on _TodoChatScreenStateBase {
@@ -66,30 +67,31 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
     final existing = _fixedSchedules
         .where((item) => item.id == action.scheduleId)
         .firstOrNull;
-    final dateValue =
-        action.hasDate ? action.date : action.date ?? existing?.date;
+    final dateValue = action.hasDate
+        ? action.date
+        : action.date ?? existing?.date;
     final startValue = action.hasStartTime
         ? action.startTime
         : action.startTime ??
-            (existing?.startTime == null
-                ? null
-                : DateTime.fromMillisecondsSinceEpoch(existing!.startTime!)
-                    .toIso8601String());
+              (existing?.startTime == null
+                  ? null
+                  : DateTime.fromMillisecondsSinceEpoch(existing!.startTime!)
+                        .toIso8601String());
     final endValue = action.hasDueDate
         ? action.dueDate
         : action.dueDate ??
-            (existing?.endTime == null
-                ? null
-                : DateTime.fromMillisecondsSinceEpoch(existing!.endTime!)
-                    .toIso8601String());
+              (existing?.endTime == null
+                  ? null
+                  : DateTime.fromMillisecondsSinceEpoch(existing!.endTime!)
+                        .toIso8601String());
     final date = dateValue?.trim();
     final start = DateTime.tryParse(startValue ?? '');
     final end = DateTime.tryParse(endValue ?? '');
     final day = date?.isNotEmpty == true
         ? date!
         : start == null
-            ? '日期待定'
-            : DateFormat('yyyy-MM-dd').format(start);
+        ? '日期待定'
+        : DateFormat('yyyy-MM-dd').format(start);
     if (start == null) return '$day 时间待定';
     final startText = DateFormat('HH:mm').format(start);
     if (end == null) return '$day $startText（结束待定）';
@@ -113,8 +115,8 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
         final valueText = value == null
             ? '数量目标'
             : value == value.roundToDouble()
-                ? value.round().toString()
-                : value.toStringAsFixed(1);
+            ? value.round().toString()
+            : value.toStringAsFixed(1);
         target = action.unit?.trim().isNotEmpty == true
             ? '$valueText ${action.unit!.trim()}'
             : valueText;
@@ -174,7 +176,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
 
     final colorScheme = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.only(top: 8),
       child: _IridescentActionPanel(
         isDark: isDark,
         child: Container(
@@ -211,8 +213,10 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
               ),
               ...drafts.map(
                 (draft) => Container(
-                  margin:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  margin: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
                   padding: const EdgeInsets.fromLTRB(12, 10, 8, 8),
                   decoration: BoxDecoration(
                     color: isDark
@@ -229,12 +233,12 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
                             child: Text(
                               '${draft.type.label}  ${formatFinanceAmount(draft.amountMinor)}',
                               style: TextStyle(
-                                fontSize: 16,
+                                fontSize: 13,
                                 fontWeight: FontWeight.w700,
                                 color:
                                     draft.type == FinanceTransactionType.expense
-                                        ? colorScheme.error
-                                        : colorScheme.primary,
+                                    ? colorScheme.error
+                                    : colorScheme.primary,
                               ),
                             ),
                           ),
@@ -244,8 +248,9 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
                             label: const Text('编辑并保存'),
                             style: TextButton.styleFrom(
                               visualDensity: VisualDensity.compact,
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 8),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                              ),
                             ),
                           ),
                           IconButton(
@@ -326,10 +331,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
       children: [
         Icon(icon, size: 13, color: color.withValues(alpha: 0.8)),
         const SizedBox(width: 3),
-        Text(
-          text,
-          style: TextStyle(fontSize: 11, color: color),
-        ),
+        Text(text, style: TextStyle(fontSize: 11, color: color)),
       ],
     );
   }
@@ -345,9 +347,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
     await _saveHistorySilently();
     if (!mounted) return;
     setState(() {});
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('账单已保存')),
-    );
+    AppSnackBars.showSnackBar(context, const SnackBar(content: Text('账单已保存')));
   }
 
   Future<void> _ignoreFinanceDraft(FinanceEntryDraft draft) async {
@@ -358,14 +358,15 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
 
   Widget _buildMessageFinanceActions(ChatMessage msg, bool isDark) {
     final actions = msg.financeActions!
-        .where((action) =>
-            action.isMutation && !action.isAdded && !action.isIgnored)
+        .where(
+          (action) => action.isMutation && !action.isAdded && !action.isIgnored,
+        )
         .toList();
     if (actions.isEmpty) return const SizedBox.shrink();
 
     final colorScheme = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.only(top: 8),
       child: _IridescentActionPanel(
         isDark: isDark,
         child: Container(
@@ -404,8 +405,10 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
               ),
               ...actions.map(
                 (action) => Container(
-                  margin:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  margin: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
                   padding: const EdgeInsets.fromLTRB(12, 10, 8, 8),
                   decoration: BoxDecoration(
                     color: isDark
@@ -435,7 +438,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
                                   ? '删除已有账单'
                                   : '修改已有账单',
                               style: const TextStyle(
-                                fontSize: 15,
+                                fontSize: 13,
                                 fontWeight: FontWeight.w700,
                               ),
                             ),
@@ -464,8 +467,10 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
                         child: action.type == FinanceAiActionType.delete
                             ? FilledButton.tonalIcon(
                                 onPressed: () => _deleteFinanceAction(action),
-                                icon:
-                                    const Icon(Icons.delete_outline, size: 16),
+                                icon: const Icon(
+                                  Icons.delete_outline,
+                                  size: 16,
+                                ),
                                 label: const Text('确认删除'),
                                 style: FilledButton.styleFrom(
                                   foregroundColor: colorScheme.error,
@@ -541,7 +546,8 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
     final existing = await FinanceRepository.getTransaction(id);
     if (!mounted) return;
     if (existing == null || existing.isDeleted) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         const SnackBar(content: Text('这笔账单已不存在或已被删除，请重新查询后再操作')),
       );
       return;
@@ -559,9 +565,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
     await _saveHistorySilently();
     if (!mounted) return;
     setState(() {});
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('账单已更新')),
-    );
+    AppSnackBars.showSnackBar(context, const SnackBar(content: Text('账单已更新')));
   }
 
   Future<FinanceTransaction> _applyFinanceActionToTransaction(
@@ -585,7 +589,8 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
         action.categoryName,
         type,
       );
-      categoryUuid = action.categoryUuid ??
+      categoryUuid =
+          action.categoryUuid ??
           resolvedCategory ??
           (action.categoryName?.trim().isNotEmpty == true
               ? existing.categoryUuid
@@ -593,18 +598,22 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
     }
     String? paymentMethodUuid = existing.paymentMethodUuid;
     if (action.hasPaymentMethod) {
-      paymentMethodUuid = action.paymentMethodUuid ??
+      paymentMethodUuid =
+          action.paymentMethodUuid ??
           _findFinancePaymentUuid(paymentMethods, action.paymentMethodName);
     }
     final requestedDate = action.transactionDate?.trim();
-    final transactionDate = action.hasDate &&
+    final transactionDate =
+        action.hasDate &&
             requestedDate != null &&
-            RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(requestedDate) &&
-            DateTime.tryParse(requestedDate) != null
+            isFinanceDateKey(requestedDate)
         ? requestedDate
         : existing.transactionDate;
+    final occurredAt = transactionDate == existing.transactionDate
+        ? existing.occurredAt
+        : financeOccurrenceTimestampForDate(existing, transactionDate);
 
-    return FinanceTransaction(
+    final updated = FinanceTransaction(
       uuid: existing.uuid,
       type: type,
       amountMinor: action.hasAmount && action.amountMinor != null
@@ -614,7 +623,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
       categoryUuid: categoryUuid,
       paymentMethodUuid: paymentMethodUuid,
       transactionDate: transactionDate,
-      occurredAt: existing.occurredAt,
+      occurredAt: occurredAt,
       timezoneOffsetMinutes: existing.timezoneOffsetMinutes,
       merchant: action.hasMerchant ? action.merchant : existing.merchant,
       note: action.hasNote ? action.note : existing.note,
@@ -628,6 +637,8 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
       updatedAt: existing.updatedAt,
       deviceId: existing.deviceId,
     );
+    if (occurredAt == null) updated.occurredAt = null;
+    return updated;
   }
 
   String? _findFinanceCategoryUuid(
@@ -642,12 +653,14 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
         : FinanceCategoryType.expense;
     return categories
         .where((item) => item.type == categoryType && !item.isDeleted)
-        .where((item) =>
-            _normalizeFinanceOption(item.name) == wanted ||
-            _normalizeFinanceOption(
-                  financeCategoryDisplayName(item, categories),
-                ) ==
-                wanted)
+        .where(
+          (item) =>
+              _normalizeFinanceOption(item.name) == wanted ||
+              _normalizeFinanceOption(
+                    financeCategoryDisplayName(item, categories),
+                  ) ==
+                  wanted,
+        )
         .map((item) => item.uuid)
         .firstOrNull;
   }
@@ -675,7 +688,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
   Future<void> _deleteFinanceAction(FinanceAiAction action) async {
     final id = action.transactionId;
     if (id == null || id.isEmpty) return;
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showAppDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('删除这笔账单？'),
@@ -699,12 +712,14 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
       await _saveHistorySilently();
       if (!mounted) return;
       setState(() {});
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         const SnackBar(content: Text('账单已移入回收站')),
       );
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         SnackBar(content: Text('删除失败：$error')),
       );
     }
@@ -721,19 +736,21 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
         .where((action) => !action.isAdded && !action.isIgnored)
         .toList();
     if (activeActions.isEmpty) return const SizedBox.shrink();
-    final hasExistingMutations =
-        activeActions.any((t) => t.mutatesExistingItem);
+    final hasExistingMutations = activeActions.any(
+      (t) => t.mutatesExistingItem,
+    );
     final hasPomodoroActions = activeActions.any((t) => t.isPomodoroAction);
     final hasTimeLogActions = activeActions.any((t) => t.isTimeLogAction);
     final hasCountdownActions = activeActions.any((t) => t.isCountdownAction);
     final hasTagActions = activeActions.any((t) => t.isPomodoroTagAction);
-    final hasScheduleActions =
-        activeActions.any((t) => t.isFixedScheduleAction);
+    final hasScheduleActions = activeActions.any(
+      (t) => t.isFixedScheduleAction,
+    );
     final hasHabitActions = activeActions.any((t) => t.isHabitAction);
 
     final colorScheme = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.only(top: 8),
       child: _IridescentActionPanel(
         isDark: isDark,
         child: Container(
@@ -768,18 +785,18 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
                       hasHabitActions
                           ? '建议创建习惯'
                           : hasPomodoroActions
-                              ? '建议操作番茄钟'
-                              : hasScheduleActions
-                                  ? '建议管理日程'
-                                  : hasTimeLogActions
-                                      ? '建议整理专注记录'
-                                      : hasCountdownActions
-                                          ? '建议整理倒计时'
-                                          : hasTagActions
-                                              ? '建议整理番茄标签'
-                                              : hasExistingMutations
-                                                  ? '建议整理待办'
-                                                  : '建议添加待办',
+                          ? '建议操作番茄钟'
+                          : hasScheduleActions
+                          ? '建议管理日程'
+                          : hasTimeLogActions
+                          ? '建议整理专注记录'
+                          : hasCountdownActions
+                          ? '建议整理倒计时'
+                          : hasTagActions
+                          ? '建议整理番茄标签'
+                          : hasExistingMutations
+                          ? '建议整理待办'
+                          : '建议添加待办',
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 13,
@@ -801,12 +818,14 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
                 final timeStr = todo.isHabitAction
                     ? _formatHabitActionSummary(todo)
                     : todo.isFixedScheduleAction
-                        ? _formatScheduleActionTime(todo)
-                        : _formatTodoTimeRange(startTime, dueDate, isAllDay);
+                    ? _formatScheduleActionTime(todo)
+                    : _formatTodoTimeRange(startTime, dueDate, isAllDay);
 
                 return Container(
-                  margin:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  margin: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
                     color: isDark
@@ -846,8 +865,8 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
                                             (todo.isHabitAction
                                                 ? '未命名习惯'
                                                 : todo.isFixedScheduleAction
-                                                    ? '未命名日程'
-                                                    : '未命名待办'),
+                                                ? '未命名日程'
+                                                : '未命名待办'),
                                         style: const TextStyle(
                                           fontSize: 14,
                                           fontWeight: FontWeight.w600,
@@ -864,10 +883,12 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
                                     child: Text(
                                       _getMutationHint(todo),
                                       style: TextStyle(
-                                          fontSize: 10,
-                                          color: Colors.grey
-                                              .withValues(alpha: 0.8),
-                                          fontStyle: FontStyle.italic),
+                                        fontSize: 10,
+                                        color: Colors.grey.withValues(
+                                          alpha: 0.8,
+                                        ),
+                                        fontStyle: FontStyle.italic,
+                                      ),
                                     ),
                                   ),
                               ],
@@ -897,9 +918,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
                                   ? Icons.repeat_rounded
                                   : Icons.access_time,
                               size: 13,
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSurface
+                              color: Theme.of(context).colorScheme.onSurface
                                   .withValues(alpha: 0.5),
                             ),
                             const SizedBox(width: 4),
@@ -907,9 +926,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
                               timeStr,
                               style: TextStyle(
                                 fontSize: 11,
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .onSurface
+                                color: Theme.of(context).colorScheme.onSurface
                                     .withValues(alpha: 0.5),
                               ),
                             ),
@@ -943,9 +960,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
                               Icon(
                                 Icons.notes,
                                 size: 13,
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .onSurface
+                                color: Theme.of(context).colorScheme.onSurface
                                     .withValues(alpha: 0.4),
                               ),
                               const SizedBox(width: 4),
@@ -973,9 +988,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
                               Icon(
                                 Icons.location_on_outlined,
                                 size: 13,
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .onSurface
+                                color: Theme.of(context).colorScheme.onSurface
                                     .withValues(alpha: 0.4),
                               ),
                               const SizedBox(width: 4),
@@ -1025,11 +1038,11 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
                           padding: const EdgeInsets.only(left: 28, top: 6),
                           child: Container(
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 2),
+                              horizontal: 8,
+                              vertical: 2,
+                            ),
                             decoration: BoxDecoration(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .primary
+                              color: Theme.of(context).colorScheme.primary
                                   .withValues(alpha: 0.05),
                               borderRadius: BorderRadius.circular(6),
                             ),
@@ -1044,29 +1057,37 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
                                 Expanded(
                                   child: DropdownButtonHideUnderline(
                                     child: DropdownButton<String?>(
-                                      value: widget.todoGroups.any(
-                                        (g) => g.id == currentGroupId,
-                                      )
+                                      value:
+                                          widget.todoGroups.any(
+                                            (g) => g.id == currentGroupId,
+                                          )
                                           ? currentGroupId
                                           : null,
                                       isDense: true,
-                                      icon: const Icon(Icons.arrow_drop_down,
-                                          size: 16),
-                                      hint: const Text('选择分类',
-                                          style: TextStyle(fontSize: 11)),
+                                      icon: const Icon(
+                                        Icons.arrow_drop_down,
+                                        size: 16,
+                                      ),
+                                      hint: const Text(
+                                        '选择分类',
+                                        style: TextStyle(fontSize: 11),
+                                      ),
                                       items: [
                                         const DropdownMenuItem<String?>(
                                           value: null,
-                                          child: Text('默认分类',
-                                              style: TextStyle(fontSize: 11)),
+                                          child: Text(
+                                            '默认分类',
+                                            style: TextStyle(fontSize: 11),
+                                          ),
                                         ),
                                         ...widget.todoGroups.map(
                                           (g) => DropdownMenuItem<String?>(
                                             value: g.id,
                                             child: Text(
                                               g.name,
-                                              style:
-                                                  const TextStyle(fontSize: 11),
+                                              style: const TextStyle(
+                                                fontSize: 11,
+                                              ),
                                             ),
                                           ),
                                         ),
@@ -1093,9 +1114,10 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
                 child: SizedBox(
                   width: double.infinity,
                   child: FilledButton(
-                    onPressed: msg.todoActions!.any(
-                      (t) => t.isSelected && !t.isAdded && !t.isIgnored,
-                    )
+                    onPressed:
+                        msg.todoActions!.any(
+                          (t) => t.isSelected && !t.isAdded && !t.isIgnored,
+                        )
                         ? () => _addTodosForMessage(msg)
                         : null,
                     style: FilledButton.styleFrom(
@@ -1112,7 +1134,9 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
                         Text(
                           '执行所选操作 (${activeActions.where((t) => t.isSelected).length})',
                           style: const TextStyle(
-                              fontSize: 13, fontWeight: FontWeight.bold),
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ],
                     ),
@@ -1146,7 +1170,10 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
             _buildMiniMetaChip(Icons.flag_rounded, priority, Colors.orange),
           ...tags.map(
             (tag) => _buildMiniMetaChip(
-                Icons.sell_outlined, tag, colorScheme.primary),
+              Icons.sell_outlined,
+              tag,
+              colorScheme.primary,
+            ),
           ),
         ],
       ),
@@ -1423,8 +1450,9 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
     );
     final dateCtrl = TextEditingController(text: action.date ?? '');
     final locationCtrl = TextEditingController(text: action.location ?? '');
-    final durationCtrl =
-        TextEditingController(text: action.durationMinutes?.toString() ?? '');
+    final durationCtrl = TextEditingController(
+      text: action.durationMinutes?.toString() ?? '',
+    );
     final reminderCtrl = TextEditingController(
       text: action.isFixedScheduleAction
           ? action.reminderMinutesList.join(',')
@@ -1435,12 +1463,13 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
     final tagCtrl = TextEditingController(text: action.tagUuids.join(','));
     var recurrence = action.recurrence;
     var isAllDay = action.isAllDay;
-    var timeMode = action.timeMode ??
+    var timeMode =
+        action.timeMode ??
         (isAllDay
             ? TodoTimeMode.dateOnly.name
             : action.dueDate == null
-                ? TodoTimeMode.unscheduled.name
-                : TodoTimeMode.deadline.name);
+            ? TodoTimeMode.unscheduled.name
+            : TodoTimeMode.deadline.name);
     var recurrenceScope = action.recurrenceScope;
     final initialRecurrence = recurrence;
     final initialIsAllDay = isAllDay;
@@ -1452,7 +1481,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
     final initialDueText = dueCtrl.text;
     final initialReminderText = reminderCtrl.text;
 
-    await showDialog<void>(
+    await showAppDialog<void>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
@@ -1484,22 +1513,37 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
                   if (action.isFixedScheduleAction)
                     _editField(locationCtrl, '地点'),
                   if (_usesStartTime(action))
-                    _editField(startCtrl, _startTimeLabel(action),
-                        hint: 'YYYY-MM-DD HH:mm'),
+                    _editField(
+                      startCtrl,
+                      _startTimeLabel(action),
+                      hint: 'YYYY-MM-DD HH:mm',
+                    ),
                   if (_usesDueTime(action))
-                    _editField(dueCtrl, _dueTimeLabel(action),
-                        hint: 'YYYY-MM-DD HH:mm'),
+                    _editField(
+                      dueCtrl,
+                      _dueTimeLabel(action),
+                      hint: 'YYYY-MM-DD HH:mm',
+                    ),
                   if (_usesDuration(action))
-                    _editField(durationCtrl, '时长（分钟）',
-                        keyboardType: TextInputType.number),
+                    _editField(
+                      durationCtrl,
+                      '时长（分钟）',
+                      keyboardType: TextInputType.number,
+                    ),
                   if (_usesReminder(action))
-                    _editField(reminderCtrl, '提前提醒（分钟）',
-                        keyboardType: TextInputType.number),
+                    _editField(
+                      reminderCtrl,
+                      '提前提醒（分钟）',
+                      keyboardType: TextInputType.number,
+                    ),
                   if (_usesColor(action))
                     _editField(colorCtrl, '颜色', hint: '#3B82F6'),
                   if (_usesStatus(action))
-                    _editField(statusCtrl, '状态',
-                        hint: 'completed 或 interrupted'),
+                    _editField(
+                      statusCtrl,
+                      '状态',
+                      hint: 'completed 或 interrupted',
+                    ),
                   if (_usesTags(action)) _editField(tagCtrl, '番茄标签ID（逗号分隔）'),
                   if (action.isTodoAction || action.isFixedScheduleAction) ...[
                     const SizedBox(height: 8),
@@ -1509,11 +1553,17 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
                         decoration: const InputDecoration(labelText: '待办时间语义'),
                         items: const [
                           DropdownMenuItem(
-                              value: 'unscheduled', child: Text('未安排')),
+                            value: 'unscheduled',
+                            child: Text('未安排'),
+                          ),
                           DropdownMenuItem(
-                              value: 'dateOnly', child: Text('日期内完成')),
+                            value: 'dateOnly',
+                            child: Text('日期内完成'),
+                          ),
                           DropdownMenuItem(
-                              value: 'deadline', child: Text('截止时刻')),
+                            value: 'deadline',
+                            child: Text('截止时刻'),
+                          ),
                         ],
                         onChanged: (value) => setDialogState(() {
                           timeMode = value ?? TodoTimeMode.unscheduled.name;
@@ -1543,9 +1593,13 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
                         decoration: const InputDecoration(labelText: '循环作用范围'),
                         items: const [
                           DropdownMenuItem(
-                              value: 'occurrence', child: Text('仅本期')),
+                            value: 'occurrence',
+                            child: Text('仅本期'),
+                          ),
                           DropdownMenuItem(
-                              value: 'future', child: Text('本期及以后')),
+                            value: 'future',
+                            child: Text('本期及以后'),
+                          ),
                         ],
                         onChanged: (value) => setDialogState(
                           () => recurrenceScope = value ?? 'occurrence',
@@ -1600,7 +1654,8 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
                       action.hasRemark || remarkCtrl.text != initialRemarkText;
                   action.hasDate =
                       action.hasDate || dateCtrl.text != initialDateText;
-                  action.hasLocation = action.hasLocation ||
+                  action.hasLocation =
+                      action.hasLocation ||
                       locationCtrl.text != initialLocationText;
                   action.hasStartTime =
                       action.hasStartTime || startCtrl.text != initialStartText;
@@ -1609,15 +1664,18 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
                   if (action.isFixedScheduleAction) {
                     action.hasReminderMinutesList =
                         action.hasReminderMinutesList ||
-                            reminderCtrl.text != initialReminderText;
+                        reminderCtrl.text != initialReminderText;
                   } else {
-                    action.hasReminderMinutes = action.hasReminderMinutes ||
+                    action.hasReminderMinutes =
+                        action.hasReminderMinutes ||
                         reminderCtrl.text != initialReminderText;
                   }
-                  action.hasTimeMode = action.hasTimeMode ||
+                  action.hasTimeMode =
+                      action.hasTimeMode ||
                       timeMode != initialTimeMode ||
                       isAllDay != initialIsAllDay;
-                  action.hasIsAllDay = action.hasIsAllDay ||
+                  action.hasIsAllDay =
+                      action.hasIsAllDay ||
                       isAllDay != initialIsAllDay ||
                       timeMode != initialTimeMode;
                   action.hasRecurrence =
@@ -1892,9 +1950,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
         width: double.infinity,
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
         decoration: BoxDecoration(
-          color: Theme.of(context)
-              .colorScheme
-              .surfaceContainerHighest
+          color: Theme.of(context).colorScheme.surfaceContainerHighest
               .withValues(alpha: 0.35),
           borderRadius: BorderRadius.circular(6),
         ),
@@ -1906,9 +1962,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
                   row,
                   style: TextStyle(
                     fontSize: 11,
-                    color: Theme.of(context)
-                        .colorScheme
-                        .onSurface
+                    color: Theme.of(context).colorScheme.onSurface
                         .withValues(alpha: 0.65),
                   ),
                 ),
@@ -1942,17 +1996,18 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
         startTime: existing.startTime == null
             ? null
             : DateTime.fromMillisecondsSinceEpoch(existing.startTime!)
-                .toIso8601String(),
+                  .toIso8601String(),
         dueDate: existing.endTime == null
             ? null
             : DateTime.fromMillisecondsSinceEpoch(existing.endTime!)
-                .toIso8601String(),
+                  .toIso8601String(),
       );
       final nextAction = AiTodoAction(
         type: AiTodoActionType.updateFixedSchedule,
         date: action.hasDate ? action.date : existing.date,
-        startTime:
-            action.hasStartTime ? action.startTime : existingAction.startTime,
+        startTime: action.hasStartTime
+            ? action.startTime
+            : existingAction.startTime,
         dueDate: action.hasDueDate ? action.dueDate : existingAction.dueDate,
       );
       rows.add(
@@ -2153,15 +2208,19 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
 
       if (result.newCountdowns.isNotEmpty ||
           result.updatedCountdowns.isNotEmpty) {
-        final allCountdowns =
-            await StorageService.getCountdowns(widget.username);
+        final allCountdowns = await StorageService.getCountdowns(
+          widget.username,
+        );
         final merged = AiTodoActionExecutor.mergeCountdownUpdates(
           allCountdowns,
           result.newCountdowns,
           result.updatedCountdowns,
         );
-        await StorageService.saveCountdowns(widget.username, merged,
-            sync: true);
+        await StorageService.saveCountdowns(
+          widget.username,
+          merged,
+          sync: true,
+        );
       }
 
       if (result.newTodoGroups.isNotEmpty ||
@@ -2175,8 +2234,11 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
           result.newTodoGroups,
           result.updatedTodoGroups,
         );
-        await StorageService.saveTodoGroups(widget.username, merged,
-            sync: true);
+        await StorageService.saveTodoGroups(
+          widget.username,
+          merged,
+          sync: true,
+        );
         widget.onTodoGroupsChanged?.call(merged);
       }
 
@@ -2193,14 +2255,16 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
 
       if (result.newPlanBlocks.isNotEmpty ||
           result.updatedPlanBlocks.isNotEmpty) {
-        await StorageService.savePlanBlocks(
-          widget.username,
-          [...result.newPlanBlocks, ...result.updatedPlanBlocks],
-          sync: true,
-        );
+        await StorageService.savePlanBlocks(widget.username, [
+          ...result.newPlanBlocks,
+          ...result.updatedPlanBlocks,
+        ], sync: true);
         _planBlocks = [
-          ..._planBlocks.where((existing) => !result.updatedPlanBlocks
-              .any((updated) => updated.uuid == existing.uuid)),
+          ..._planBlocks.where(
+            (existing) => !result.updatedPlanBlocks.any(
+              (updated) => updated.uuid == existing.uuid,
+            ),
+          ),
           ...result.newPlanBlocks,
           ...result.updatedPlanBlocks,
         ];
@@ -2208,14 +2272,10 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
 
       if (result.newFixedSchedules.isNotEmpty ||
           result.updatedFixedSchedules.isNotEmpty) {
-        await StorageService.saveFixedSchedules(
-          widget.username,
-          [
-            ...result.newFixedSchedules,
-            ...result.updatedFixedSchedules,
-          ],
-          sync: true,
-        );
+        await StorageService.saveFixedSchedules(widget.username, [
+          ...result.newFixedSchedules,
+          ...result.updatedFixedSchedules,
+        ], sync: true);
         _fixedSchedules = AiTodoActionExecutor.mergeFixedScheduleUpdates(
           _fixedSchedules,
           result.newFixedSchedules,
@@ -2236,10 +2296,13 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
       setState(() {});
       _saveHistorySilently();
 
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         SnackBar(
-            content: Text(
-                '已执行所选操作 (新待办: ${result.newTodos.length}, 新习惯: ${createdHabits.length}, 整理待办: ${result.updatedTodos.length}, 日程: ${result.newFixedSchedules.length + result.updatedFixedSchedules.length}, 规划: ${result.newPlanBlocks.length + result.updatedPlanBlocks.length}, 专注记录: ${result.newTimeLogs.length + result.updatedTimeLogs.length}, 倒计时: ${result.newCountdowns.length + result.updatedCountdowns.length}, 分类: ${result.newTodoGroups.length + result.updatedTodoGroups.length}, 标签: ${result.newPomodoroTags.length + result.updatedPomodoroTags.length}, 番茄钟: ${result.pomodoroActions.length})')),
+          content: Text(
+            '已执行所选操作 (新待办: ${result.newTodos.length}, 新习惯: ${createdHabits.length}, 整理待办: ${result.updatedTodos.length}, 日程: ${result.newFixedSchedules.length + result.updatedFixedSchedules.length}, 规划: ${result.newPlanBlocks.length + result.updatedPlanBlocks.length}, 专注记录: ${result.newTimeLogs.length + result.updatedTimeLogs.length}, 倒计时: ${result.newCountdowns.length + result.updatedCountdowns.length}, 分类: ${result.newTodoGroups.length + result.updatedTodoGroups.length}, 标签: ${result.newPomodoroTags.length + result.updatedPomodoroTags.length}, 番茄钟: ${result.pomodoroActions.length})',
+          ),
+        ),
       );
     }
   }
@@ -2272,7 +2335,8 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
         if (match.isNotEmpty) {
           boundTodo = TodoItem(
             id: block.todoId,
-            title: match.first['title']?.toString() ??
+            title:
+                match.first['title']?.toString() ??
                 block.titleSnapshot ??
                 '规划任务',
           );
@@ -2430,14 +2494,20 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
       if (msg.content.trim().isNotEmpty) {
         sections.add('[CLEANED_CONTENT]\n${msg.content.trim()}');
       }
+      if (msg.nativeToolCalls?.isNotEmpty == true) {
+        const encoder = JsonEncoder.withIndent('  ');
+        sections.add(
+          '[NATIVE_TOOL_CALLS]\n${encoder.convert(msg.nativeToolCalls!.map((call) => call.toJson()).toList())}',
+        );
+      }
     }
 
     final actions = msg.todoActions;
     if (actions != null && actions.isNotEmpty) {
       const encoder = JsonEncoder.withIndent('  ');
-      sections.add('[PARSED_ACTIONS]\n${encoder.convert(
-        actions.map((action) => action.toJson()).toList(),
-      )}');
+      sections.add(
+        '[PARSED_ACTIONS]\n${encoder.convert(actions.map((action) => action.toJson()).toList())}',
+      );
     }
 
     if (msg.reasoningContent.trim().isNotEmpty) {
@@ -2453,7 +2523,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
 
   Future<void> _showRawReplyDialog(ChatMessage msg) async {
     final colorScheme = Theme.of(context).colorScheme;
-    await showDialog<void>(
+    await showAppDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('模型原始回复'),
