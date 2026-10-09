@@ -35,6 +35,12 @@ class PlanExecutionEntry {
       ? Theme.of(context).colorScheme.tertiary
       : Theme.of(context).colorScheme.secondary;
 
+  static int timelineLaneCount(Iterable<PlanExecutionEntry> entries) {
+    final hasFocus = entries.any((entry) => entry.isFocus);
+    final hasLogs = entries.any((entry) => !entry.isFocus);
+    return 1 + (hasFocus ? 1 : 0) + (hasLogs ? 1 : 0);
+  }
+
   static List<PlanExecutionEntry> forDay(
     DateTime day,
     List<PomodoroRecord> records,
@@ -211,7 +217,7 @@ class PlanExecutionSummary extends StatelessWidget {
   }
 }
 
-/// Three vertical lanes per hour: plans, focus and manually logged time.
+/// Plans and present execution kinds share the hour across separate lanes.
 /// The full list remains available for short or overlapping records.
 class PlanExecutionTimelineLayer extends StatelessWidget {
   const PlanExecutionTimelineLayer({
@@ -233,6 +239,9 @@ class PlanExecutionTimelineLayer extends StatelessWidget {
     builder: (context, constraints) {
       final day = DateTime(date.year, date.month, date.day);
       final nextDay = DateTime(date.year, date.month, date.day + 1);
+      final hasFocus = entries.any((entry) => entry.isFocus);
+      final laneCount = PlanExecutionEntry.timelineLaneCount(entries);
+      final laneHeight = hourHeight / laneCount;
       final segments = <Widget>[];
       for (final entry in entries) {
         final start = DateTime.fromMillisecondsSinceEpoch(entry.start);
@@ -254,14 +263,14 @@ class PlanExecutionTimelineLayer extends StatelessWidget {
               constraints.maxWidth *
               to.difference(from).inMilliseconds /
               3600000;
+          final laneIndex = entry.isFocus || !hasFocus ? 1 : 2;
           final color = entry.color(context);
           segments.add(
             Positioned(
-              top:
-                  hour * hourHeight + (entry.isFocus ? 0.5 : 0.75) * hourHeight,
+              top: hour * hourHeight + laneIndex * laneHeight + 0.5,
               left: left + 1,
               width: max(1, width - 2),
-              height: max(1, hourHeight / 4 - 1),
+              height: max(1, laneHeight - 1),
               child: Tooltip(
                 message: '${entry.kind} · ${entry.title}\n${entry.timeLabel}',
                 child: GestureDetector(
@@ -281,14 +290,23 @@ class PlanExecutionTimelineLayer extends StatelessWidget {
                       color: color.withValues(alpha: 0.24),
                       border: Border(left: BorderSide(color: color, width: 2)),
                     ),
-                    child: hourHeight < 64
+                    child:
+                        laneHeight < 11 ||
+                            width < 72 ||
+                            !from.isAtSameMomentAs(clippedStart)
                         ? null
                         : ClipRect(
-                            child: Text(
-                              entry.title,
-                              maxLines: 1,
-                              overflow: TextOverflow.clip,
-                              style: TextStyle(fontSize: 8, color: color),
+                            child: Center(
+                              child: Text(
+                                entry.title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: min(9.0, laneHeight * 0.68),
+                                  fontWeight: FontWeight.w600,
+                                  color: color,
+                                ),
+                              ),
                             ),
                           ),
                   ),

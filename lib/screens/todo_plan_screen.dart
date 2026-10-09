@@ -595,8 +595,6 @@ class _PlanGridViewState extends State<_PlanGridView> {
   int _lastMoveDelta = 0;
 
   int get _blocksPerHour => 60 ~/ _minutesPerBlock;
-  bool get _hasExecutionRecords =>
-      widget.pomodoroRecords.isNotEmpty || widget.timeLogs.isNotEmpty;
 
   int? _getIndex(Offset pos, double width, double hourH) {
     if (pos.dy < 0 || pos.dy > 24 * hourH) return null;
@@ -708,6 +706,14 @@ class _PlanGridViewState extends State<_PlanGridView> {
 
   @override
   Widget build(BuildContext context) {
+    final executionEntries = PlanExecutionEntry.forDay(
+      widget.date,
+      widget.pomodoroRecords,
+      widget.timeLogs,
+    );
+    final executionLaneCount =
+        PlanExecutionEntry.timelineLaneCount(executionEntries);
+
     return Column(
       children: [
         _buildGranularityBar(),
@@ -762,12 +768,16 @@ class _PlanGridViewState extends State<_PlanGridView> {
                       children: [
                         ..._buildGridLines(gridW, hourH),
                         ...widget.blocks.expand(
-                            (block) => _buildBlockItems(block, gridW, hourH)),
-                        if (_hasExecutionRecords)
+                            (block) => _buildBlockItems(
+                              block,
+                              gridW,
+                              hourH,
+                              executionLaneCount,
+                            )),
+                        if (executionEntries.isNotEmpty)
                           Positioned.fill(child: PlanExecutionTimelineLayer(
                             date: widget.date,
-                            entries: PlanExecutionEntry.forDay(widget.date,
-                                widget.pomodoroRecords, widget.timeLogs),
+                            entries: executionEntries,
                             tags: widget.tags,
                             hourHeight: hourH,
                             onRecordInteraction: _clearRecordSelection,
@@ -855,7 +865,7 @@ class _PlanGridViewState extends State<_PlanGridView> {
   }
 
   List<Widget> _buildBlockItems(
-      TodoPlanBlock block, double width, double hourH) {
+      TodoPlanBlock block, double width, double hourH, int laneCount) {
     final start = DateTime.fromMillisecondsSinceEpoch(block.startTime);
     final end = DateTime.fromMillisecondsSinceEpoch(block.endTime);
     final dayStart =
@@ -880,6 +890,8 @@ class _PlanGridViewState extends State<_PlanGridView> {
         : (isMappedBlock ? Icons.task_alt_rounded : Icons.event_note);
     final actualMinutes =
         _actualMinutesForPlanBlock(block, widget.pomodoroRecords);
+    final segmentHeight = max(1.0, hourH / laneCount - 2);
+    final contentFontSize = min(10.0, max(6.0, segmentHeight * 0.72));
     final widgets = <Widget>[];
 
     final endHour = clippedEnd.isAtSameMomentAs(dayEnd) ? 23 : clippedEnd.hour;
@@ -901,7 +913,7 @@ class _PlanGridViewState extends State<_PlanGridView> {
         top: hour * hourH + 1,
         left: left + 1,
         width: max(1.0, segmentW - 2),
-        height: max(1.0, hourH * (_hasExecutionRecords ? 0.5 : 1.0) - 2),
+        height: max(1.0, hourH / laneCount - 2),
         child: GestureDetector(
           onTap: isMappedBlock
               ? () => _openMappedBlockDetail(block)
@@ -962,21 +974,24 @@ class _PlanGridViewState extends State<_PlanGridView> {
                   borderRadius: BorderRadius.circular(5),
                   border: Border.all(color: color.withValues(alpha: 0.4)),
                 ),
-                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                padding: EdgeInsets.symmetric(
+                  horizontal: 5,
+                  vertical: laneCount > 1 ? 0 : 1,
+                ),
                 child: Row(
                   children: [
                     Icon(
                         block.status == TodoPlanStatus.finished
                             ? Icons.check_circle
                             : icon,
-                        size: 10,
+                        size: min(10.0, contentFontSize),
                         color: color),
                     const SizedBox(width: 3),
                     Expanded(
                       child: Text(
                         block.titleSnapshot ?? todo?.title ?? '未知待办',
                         style: TextStyle(
-                            fontSize: 10,
+                            fontSize: contentFontSize,
                             fontWeight: FontWeight.bold,
                             color: color),
                         overflow: TextOverflow.ellipsis,
@@ -988,7 +1003,7 @@ class _PlanGridViewState extends State<_PlanGridView> {
                       Text(
                         isMappedCourse ? '课程' : '待办',
                         style: TextStyle(
-                            fontSize: 8,
+                            fontSize: min(8.0, contentFontSize),
                             fontWeight: FontWeight.w700,
                             color: color.withValues(alpha: 0.72)),
                         maxLines: 1,
@@ -998,7 +1013,8 @@ class _PlanGridViewState extends State<_PlanGridView> {
                       Text(
                         '${DateFormat('HH:mm').format(start)}-${DateFormat('HH:mm').format(end)}',
                         style: TextStyle(
-                            fontSize: 8, color: color.withValues(alpha: 0.72)),
+                            fontSize: min(8.0, contentFontSize),
+                            color: color.withValues(alpha: 0.72)),
                         maxLines: 1,
                       ),
                     if (segmentW > 92 && actualMinutes > 0) ...[
@@ -1006,7 +1022,7 @@ class _PlanGridViewState extends State<_PlanGridView> {
                       Text(
                         '$actualMinutes/${block.plannedMinutes}m',
                         style: TextStyle(
-                            fontSize: 8,
+                            fontSize: min(8.0, contentFontSize),
                             fontWeight: FontWeight.w700,
                             color: Colors.green.shade700),
                         maxLines: 1,
