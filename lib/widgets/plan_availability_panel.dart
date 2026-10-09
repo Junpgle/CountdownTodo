@@ -29,7 +29,17 @@ class PlanAvailabilityPanel extends StatefulWidget {
     this.dateShortcuts = false,
     this.onQueryChanged,
     this.onDateChanged,
+    this.avoidancePreferencesLoader,
+    this.autoLookupAndSelect = false,
+    this.autoSelectionRevision = 0,
+    this.onAutoLookupPendingChanged,
+    this.resultsOnly = false,
+    this.autoLookupResults = true,
+    this.initialQuery,
   });
+  final bool resultsOnly;
+  final bool autoLookupResults;
+  final PlanAvailabilityQuery? initialQuery;
   final String username;
   final TodoItem? todo;
   final DateTime initialDate;
@@ -44,6 +54,11 @@ class PlanAvailabilityPanel extends StatefulWidget {
   final bool dateShortcuts;
   final ValueChanged<PlanAvailabilityQuery>? onQueryChanged;
   final ValueChanged<DateTime>? onDateChanged;
+  final Future<PlanAvoidancePreferences> Function(String username)?
+  avoidancePreferencesLoader;
+  final bool autoLookupAndSelect;
+  final int autoSelectionRevision;
+  final ValueChanged<bool>? onAutoLookupPendingChanged;
   @override
   State<PlanAvailabilityPanel> createState() => _PlanAvailabilityPanelState();
 }
@@ -65,7 +80,9 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
   );
   final Set<PlanDailyTimeWindow> _enabledAvoid = {};
   int _avoidPreferencesSequence = 0;
+  late int _initialAutoSelectionRevision;
   bool _avoidPreferencesLoaded = false;
+  bool _autoLookupStarted = false;
   DateTime get _now => widget.clock?.call() ?? DateTime.now();
   PlanAvailabilityQuery get _query => PlanAvailabilityQuery(
     username: widget.username,
@@ -83,9 +100,18 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
   @override
   void initState() {
     super.initState();
-    _date = _day(widget.initialDate);
+    _initialAutoSelectionRevision = widget.autoSelectionRevision;
+    _date = _day(widget.initialQuery?.date ?? widget.initialDate);
     _expanded = widget.initialExpanded;
     _minutes = widget.initialMinutes > 0 ? widget.initialMinutes : 30;
+    final initialQuery = widget.initialQuery;
+    if (initialQuery != null) {
+      _minutes = initialQuery.minutes;
+      _start = initialQuery.windowStart;
+      _end = initialQuery.windowEnd;
+      _resultLimit = initialQuery.resultLimit;
+      _appOnly = initialQuery.appOnly;
+    }
     _duration = TextEditingController(text: '$_minutes');
     unawaited(_loadAvoidPreferences());
     WidgetsBinding.instance.addObserver(this);
@@ -108,7 +134,9 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
     _enabledAvoid.clear();
     PlanAvoidancePreferences saved;
     try {
-      saved = await PlanAvailabilityPreferences.load(username);
+      saved =
+          await (widget.avoidancePreferencesLoader?.call(username) ??
+              PlanAvailabilityPreferences.load(username));
     } catch (error) {
       debugPrint('Unable to load availability preferences: $error');
       saved = PlanAvoidancePreferences(
@@ -127,6 +155,22 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
     _enabledAvoid.addAll(saved.selectedIndices.map((i) => _avoidOptions[i]));
     _avoidPreferencesLoaded = true;
     _invalidate();
+    if ((widget.autoLookupAndSelect ||
+            (widget.resultsOnly && widget.autoLookupResults)) &&
+        !_autoLookupStarted) {
+      if (widget.autoLookupAndSelect &&
+          widget.autoSelectionRevision != _initialAutoSelectionRevision) {
+        widget.onAutoLookupPendingChanged?.call(false);
+        return;
+      }
+      _autoLookupStarted = true;
+      final lookupSequence = _sequence;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && lookupSequence == _sequence) {
+          unawaited(_lookup(selectFirst: widget.autoLookupAndSelect));
+        }
+      });
+    }
   }
 
   void _avoidChanged() {
@@ -177,7 +221,14 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
       _loading = false;
       _error = null;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) widget.onInvalidated();
+        if (!mounted) return;
+        widget.onInvalidated();
+        widget.onQueryChanged?.call(_query);
+        if (widget.resultsOnly &&
+            widget.autoLookupResults &&
+            _avoidPreferencesLoaded) {
+          unawaited(_lookup());
+        }
       });
     }
   }
@@ -220,6 +271,16 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
     });
     widget.onInvalidated();
     widget.onQueryChanged?.call(_query);
+    if (_autoLookupStarted) widget.onAutoLookupPendingChanged?.call(false);
+    if (widget.resultsOnly &&
+        widget.autoLookupResults &&
+        _autoLookupStarted &&
+        _avoidPreferencesLoaded) {
+      final sequence = _sequence;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && sequence == _sequence) unawaited(_lookup());
+      });
+    }
   }
 
   void _changeMinutes(int value) {
@@ -390,8 +451,9 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
     ],
   );
 
-  Future<void> _lookup() async {
+  Future<void> _lookup({bool selectFirst = false}) async {
     final query = _query;
+    final selectionRevision = widget.autoSelectionRevision;
     final invalid = PlanAvailabilityService.invalidReason(
       query,
       widget.todo,
@@ -399,6 +461,7 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
     );
     if (invalid != null) {
       setState(() => _error = PlanAvailabilityException(invalid));
+      if (selectFirst) widget.onAutoLookupPendingChanged?.call(false);
       return;
     }
     final sequence = ++_sequence;
@@ -410,6 +473,7 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
       _error = null;
     });
     widget.onInvalidated();
+    if (selectFirst) widget.onAutoLookupPendingChanged?.call(true);
     try {
       final snapshot =
           await (widget.loader?.call(query, forceRefresh: true) ??
@@ -422,6 +486,11 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
         _snapshot = snapshot;
         _result = PlanAvailabilityService.find(query, snapshot, now: _now);
       });
+      if (selectFirst &&
+          selectionRevision == widget.autoSelectionRevision &&
+          _result!.slots.isNotEmpty) {
+        _select(_result!.slots.first);
+      }
     } catch (error) {
       if (!mounted || sequence != _sequence) return;
       setState(
@@ -431,6 +500,9 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
       );
     } finally {
       if (mounted && sequence == _sequence) setState(() => _loading = false);
+      if (mounted && selectFirst) {
+        widget.onAutoLookupPendingChanged?.call(false);
+      }
     }
   }
 
@@ -487,6 +559,271 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
     widget.onSelected(selection);
   }
 
+  Widget _slotButton(PlanTimeSlot slot) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: OutlinedButton(
+        key: ValueKey('plan-slot-${slot.start.millisecondsSinceEpoch}'),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: _selectedStart == slot.start
+              ? colors.onPrimaryContainer
+              : colors.onSurface,
+          backgroundColor: _selectedStart == slot.start
+              ? colors.primaryContainer
+              : colors.surface,
+          side: BorderSide(
+            color: _selectedStart == slot.start
+                ? colors.primary
+                : colors.outlineVariant,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+          padding: const EdgeInsets.all(14),
+        ),
+        onPressed: () => _select(slot),
+        child: Row(
+          children: [
+            Icon(
+              _selectedStart == slot.start
+                  ? Icons.check_circle_outline
+                  : Icons.schedule_outlined,
+              size: 22,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${DateFormat('HH:mm').format(slot.start)}–${DateFormat('HH:mm').format(slot.end)}',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${DateFormat('MM-dd').format(slot.start)} · ${slot.minutes} 分钟${_selectedStart == slot.start ? ' · 已选用' : ''}',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: colors.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Icon(
+              _selectedStart == slot.start ? Icons.done : Icons.arrow_forward,
+              size: 18,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _customSearch() async {
+    final sequence = _sequence;
+    final revision = widget.autoSelectionRevision;
+    ModalRoute<dynamic>? dialogRoute;
+    final selection = await showAppDialog<PlanAvailabilitySelection>(
+      context: context,
+      builder: (dialogContext) {
+        dialogRoute = ModalRoute.of(dialogContext);
+        final media = MediaQuery.of(dialogContext);
+        return Dialog(
+          key: const ValueKey('plan-custom-search-dialog'),
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 24,
+          ),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: 620,
+              maxHeight:
+                  (media.size.height -
+                          media.viewInsets.bottom -
+                          media.padding.vertical -
+                          48)
+                      .clamp(0.0, double.infinity),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 12, 8, 8),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '自定义寻找时段',
+                          style: Theme.of(dialogContext).textTheme.titleLarge,
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: '关闭自定义查找',
+                        onPressed: () => Navigator.pop(dialogContext),
+                        icon: const Icon(Icons.close),
+                      ),
+                    ],
+                  ),
+                ),
+                Flexible(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                    child: PlanAvailabilityPanel(
+                      username: widget.username,
+                      todo: widget.todo,
+                      initialDate: _date,
+                      initialMinutes: _minutes,
+                      initialQuery: _query,
+                      editingBlock: widget.editingBlock,
+                      estimatedMinutes: widget.estimatedMinutes,
+                      loader: widget.loader,
+                      clock: widget.clock,
+                      initialExpanded: true,
+                      dateShortcuts: true,
+                      avoidancePreferencesLoader:
+                          widget.avoidancePreferencesLoader,
+                      onInvalidated: () {},
+                      onSelected: (value) =>
+                          Navigator.pop(dialogContext, value),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+    await dialogRoute?.completed;
+    if (!mounted || selection == null) return;
+    if (sequence != _sequence ||
+        revision != widget.autoSelectionRevision ||
+        !PlanAvailabilityService.accepts(
+          selection,
+          selection.snapshot,
+          now: _now,
+        )) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('安排已变化，请重新选择推荐时段')));
+      return;
+    }
+    final query = selection.query;
+    setState(() {
+      ++_sequence;
+      _date = _day(query.date);
+      _minutes = query.minutes;
+      _duration.text = '$_minutes';
+      _start = query.windowStart;
+      _end = query.windowEnd;
+      _resultLimit = query.resultLimit;
+      _appOnly = query.appOnly;
+      _enabledAvoid
+        ..clear()
+        ..addAll(query.avoidWindows);
+      _snapshot = selection.snapshot;
+      _result = PlanAvailabilityService.find(
+        query,
+        selection.snapshot,
+        now: _now,
+      );
+      _selectedStart = selection.slot.start;
+      _loading = false;
+      _error = null;
+    });
+    widget.onQueryChanged?.call(_query);
+    widget.onSelected(selection);
+  }
+
+  Widget _compactResults() {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final slots = _result?.slots ?? const <PlanTimeSlot>[];
+    // Keep a custom choice visible even when it was outside the first two.
+    final selected = slots.where((slot) => slot.start == _selectedStart);
+    final visible = slots.take(2).toList();
+    if (selected.isNotEmpty && !visible.contains(selected.first)) {
+      if (visible.length == 2) visible.removeLast();
+      visible.add(selected.first);
+    }
+    return Container(
+      key: const ValueKey('plan-recommended-times'),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.event_available_outlined,
+                size: 20,
+                color: colors.primary,
+              ),
+              const SizedBox(width: 8),
+              Expanded(child: Text('推荐时段', style: theme.textTheme.titleSmall)),
+              IconButton(
+                key: const ValueKey('plan-refresh-slots'),
+                tooltip: '刷新推荐',
+                onPressed: _loading || !_avoidPreferencesLoaded
+                    ? null
+                    : _lookup,
+                icon: const Icon(Icons.refresh, size: 20),
+              ),
+            ],
+          ),
+          if (_loading) ...[
+            const LinearProgressIndicator(),
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 12),
+              child: Text('正在查找可用时段…'),
+            ),
+          ],
+          if (_error != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Text(
+                _error!.message,
+                style: TextStyle(color: colors.error),
+              ),
+            ),
+          if (_result?.message != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Text(_result!.message!),
+            ),
+          for (final slot in visible) _slotButton(slot),
+          if (_snapshot != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 4, bottom: 8),
+              child: Text(
+                _snapshot!.coverage,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: colors.onSurfaceVariant,
+                ),
+              ),
+            ),
+          TextButton.icon(
+            key: const ValueKey('plan-find-time'),
+            onPressed: _loading || !_avoidPreferencesLoaded
+                ? null
+                : _customSearch,
+            icon: const Icon(Icons.tune, size: 18),
+            label: const Text('自定义寻找时段'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _expansion({
     required bool open,
     required Duration duration,
@@ -512,6 +849,7 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
 
   @override
   Widget build(BuildContext context) {
+    if (widget.resultsOnly) return _compactResults();
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
     final editable =
@@ -681,7 +1019,7 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
                       child: TextButton(
                         onPressed: () =>
                             _changeMinutes(widget.estimatedMinutes!),
-                        child: Text('采用历史估时 ${widget.estimatedMinutes} 分钟'),
+                        child: Text('采用预计用时 ${widget.estimatedMinutes} 分钟'),
                       ),
                     ),
                   const SizedBox(height: 16),
@@ -764,73 +1102,7 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
                       ),
                     ),
                     const SizedBox(height: 10),
-                    for (final slot in _result!.slots)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: OutlinedButton(
-                          key: ValueKey(
-                            'plan-slot-${slot.start.millisecondsSinceEpoch}',
-                          ),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: _selectedStart == slot.start
-                                ? colors.onPrimaryContainer
-                                : colors.onSurface,
-                            backgroundColor: _selectedStart == slot.start
-                                ? colors.primaryContainer
-                                : colors.surface,
-                            side: BorderSide(
-                              color: _selectedStart == slot.start
-                                  ? colors.primary
-                                  : colors.outlineVariant,
-                            ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                            padding: const EdgeInsets.all(14),
-                          ),
-                          onPressed: () => _select(slot),
-                          child: Row(
-                            children: [
-                              Icon(
-                                _selectedStart == slot.start
-                                    ? Icons.check_circle_outline
-                                    : Icons.schedule_outlined,
-                                size: 22,
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      '${DateFormat('HH:mm').format(slot.start)}–${DateFormat('HH:mm').format(slot.end)}',
-                                      style: theme.textTheme.titleMedium
-                                          ?.copyWith(
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      '${DateFormat('MM-dd').format(slot.start)} · ${slot.minutes} 分钟${_selectedStart == slot.start ? ' · 已选用' : ''}',
-                                      style: theme.textTheme.bodySmall
-                                          ?.copyWith(
-                                            color: colors.onSurfaceVariant,
-                                          ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Icon(
-                                _selectedStart == slot.start
-                                    ? Icons.done
-                                    : Icons.arrow_forward,
-                                size: 18,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
+                    for (final slot in _result!.slots) _slotButton(slot),
                   ],
                   const SizedBox(height: 12),
                   Text(

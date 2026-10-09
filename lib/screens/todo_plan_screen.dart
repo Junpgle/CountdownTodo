@@ -16,6 +16,7 @@ import '../services/feature_tip_service.dart';
 import '../widgets/coach_mark_overlay.dart';
 import '../widgets/floating_glass_control.dart';
 import '../widgets/plan_block_editor_sheet.dart';
+import '../widgets/missed_plan_recovery_flow.dart';
 
 // 复用 TimeLog 的颜色和基础常量
 const double kTimeAxisW = 46.0;
@@ -661,9 +662,10 @@ class _PlanGridViewState extends State<_PlanGridView> {
     DateTime endTime, {
     required bool autoFillEstimateOnTodoChange,
   }) {
-    showPlanBlockEditorSheet(
+    showPlanBlockEditorPage(
       context: context,
       builder: (context) => PlanBlockEditorSheet(
+        fullPage: true,
         startTime: startTime,
         endTime: endTime,
         todos: widget.todos,
@@ -1186,6 +1188,18 @@ class _PlanGridViewState extends State<_PlanGridView> {
       context: context,
       builder: (context) => PlanBlockEditorSheet(
         block: block,
+        onRecover: block.status != TodoPlanStatus.missed
+            ? null
+            : () {
+                if (mounted) {
+                  showMissedPlanRecovery(
+                    context: this.context,
+                    username: widget.username,
+                    sourceId: block.id,
+                    onSaved: widget.onRefresh,
+                  );
+                }
+              },
         startTime: DateTime.fromMillisecondsSinceEpoch(block.startTime),
         endTime: DateTime.fromMillisecondsSinceEpoch(block.endTime),
         todos: widget.todos,

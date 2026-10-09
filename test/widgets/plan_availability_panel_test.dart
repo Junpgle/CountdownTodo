@@ -139,6 +139,63 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('偏好恢复前用户已修改草稿时不自动采用推荐', (tester) async {
+    final preferences = Completer<PlanAvoidancePreferences>();
+    final queries = <PlanAvailabilityQuery>[];
+    var revision = 0;
+    var selected = 0;
+    var autoLookupPending = false;
+    late StateSetter rebuild;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: StatefulBuilder(
+          builder: (context, setState) {
+            rebuild = setState;
+            return Scaffold(
+              body: SingleChildScrollView(
+                child: PlanAvailabilityPanel(
+                  username: 'synthetic',
+                  todo: todo,
+                  initialDate: day,
+                  initialMinutes: 30,
+                  clock: () => now,
+                  initialExpanded: true,
+                  autoLookupAndSelect: true,
+                  autoSelectionRevision: revision,
+                  avoidancePreferencesLoader: (_) => preferences.future,
+                  loader: (query, {bool forceRefresh = false}) async {
+                    queries.add(query);
+                    return snapshot();
+                  },
+                  onSelected: (_) => selected++,
+                  onInvalidated: () {},
+                  onAutoLookupPendingChanged: (value) =>
+                      autoLookupPending = value,
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+
+    rebuild(() => revision++);
+    await tester.pump();
+    preferences.complete(
+      PlanAvoidancePreferences(
+        PlanAvailabilityPreferences.defaultWindows,
+        const {},
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(queries, isEmpty);
+    expect(selected, 0);
+    expect(autoLookupPending, isFalse);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('关闭重开恢复预设和自定义勾选，查找确实采用恢复的避让', (tester) async {
     final queries = <PlanAvailabilityQuery>[];
     Future<PlanAvailabilitySnapshot> loader(

@@ -378,6 +378,7 @@ class PlanAvailabilityRepository {
     int? expectedVersion,
     int? expectedUpdatedAt,
     bool sync = true,
+    Future<void> Function(DatabaseExecutor executor)? beforeWrite,
   }) async {
     final query = selection.query;
     if (draft.todoId != query.todoId ||
@@ -442,6 +443,7 @@ class PlanAvailabilityRepository {
           throw const PlanAvailabilityException('该时段已失效或被占用，请重新查找时段');
         }
         await _checkAccount(query.username);
+        if (beforeWrite != null) await beforeWrite(executor);
       },
     );
   }
