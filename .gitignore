@@ -110,6 +110,7 @@ todo.md
 !/test/llm_config_page_test.dart
 !/test/services/
 /test/services/*
+!/test/services/todo_overdue_triage_service_test.dart
 !/test/services/search_navigation_test.dart
 !/test/services/global_search_extra_service_test.dart
 !/test/services/search_scope_test.dart
@@ -136,6 +137,7 @@ todo.md
 !/test/services/permission_request_coordinator_test.dart
 !/test/services/ongoing_activity_service_test.dart
 !/test/services/timeline_statistics_service_test.dart
+!/test/services/timeline_habit_summary_test.dart
 !/test/services/calendar_sync_service_test.dart
 !/test/services/data_import_fixed_schedule_preview_test.dart
 !/test/services/data_refresh_domain_test.dart
@@ -173,6 +175,7 @@ todo.md
 !/test/models/json_compatibility_test.dart
 !/test/widgets/
 /test/widgets/*
+!/test/widgets/todo_overdue_triage_test.dart
 !/test/widgets/feature_guide_liquid_glass_test.dart
 !/test/widgets/add_todo_screen_test.dart
 !/test/widgets/todo_recurrence_progress_test.dart

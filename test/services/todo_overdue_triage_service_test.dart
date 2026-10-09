@@ -1,0 +1,219 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+
+import 'package:countdown_todo/models.dart';
+import 'package:countdown_todo/models/plan_availability.dart';
+import 'package:countdown_todo/services/todo_overdue_triage_service.dart';
+import 'package:countdown_todo/storage_service.dart';
+
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  sqfliteFfiInit();
+  databaseFactory = databaseFactoryFfi;
+
+  group('TodoOverdueTriageService', () {
+    final fixedNow = DateTime(2026, 10, 9, 14, 30);
+    late TodoOverdueTriageService service;
+
+    setUp(() {
+      SharedPreferences.setMockInitialValues({
+        'current_login_user': 'user_test',
+      });
+      service = TodoOverdueTriageService(clock: () => fixedNow);
+    });
+
+    test('filterOverdueTodos filters only active overdue items', () {
+      final todos = [
+        TodoItem(
+          id: '1',
+          title: '逾期任务1',
+          dueDate: DateTime(2026, 10, 8, 10, 0),
+        ),
+        TodoItem(
+          id: '2',
+          title: '已完成逾期任务',
+          dueDate: DateTime(2026, 10, 8, 10, 0),
+          isDone: true,
+        ),
+        TodoItem(
+          id: '3',
+          title: '已删除逾期任务',
+          dueDate: DateTime(2026, 10, 8, 10, 0),
+          isDeleted: true,
+        ),
+        TodoItem(id: '4', title: '未来任务', dueDate: DateTime(2026, 10, 9, 18, 0)),
+        TodoItem(id: '5', title: '无截止时间任务'),
+        TodoItem(
+          id: '6',
+          title: '排除的重复系列',
+          dueDate: DateTime(2026, 10, 8, 10, 0),
+          recurrenceSeriesId: 'series_1',
+        ),
+      ];
+
+      final overdue = service.filterOverdueTodos(
+        todos: todos,
+        excludedRecurrenceSeriesIds: {'series_1'},
+      );
+
+      expect(overdue.length, 1);
+      expect(overdue.first.id, '1');
+      expect(overdue.first.title, '逾期任务1');
+    });
+
+    test('computeRescheduledDueDate handles today with past hour fallback', () {
+      // 原时间是上午 9:00，当前是下午 14:30，今天 9:00 已过，应回退至 23:59
+      final pastHourTodo = TodoItem(
+        id: '1',
+        title: '早起背单词',
+        dueDate: DateTime(2026, 10, 8, 9, 0),
+      );
+
+      final res1 = service.computeRescheduledDueDate(
+        pastHourTodo,
+        target: OverdueRescheduleTarget.today,
+      );
+
+      expect(res1.dueDate, DateTime(2026, 10, 9, 23, 59));
+      expect(res1.isDateOnly, isFalse);
+
+      // 原时间是晚上 20:00，当前是下午 14:30，今天 20:00 仍未到，保留 20:00
+      final futureHourTodo = TodoItem(
+        id: '2',
+        title: '晚上开会',
+        dueDate: DateTime(2026, 10, 8, 20, 0),
+      );
+
+      final res2 = service.computeRescheduledDueDate(
+        futureHourTodo,
+        target: OverdueRescheduleTarget.today,
+      );
+
+      expect(res2.dueDate, DateTime(2026, 10, 9, 20, 0));
+      expect(res2.isDateOnly, isFalse);
+    });
+
+    test('computeRescheduledDueDate handles dateOnly items', () {
+      final dateOnlyTodo = TodoItem(
+        id: '1',
+        title: '提交报告',
+        dueDate: DateTime(2026, 10, 8, 23, 59),
+        isAllDay: true,
+      );
+
+      final resToday = service.computeRescheduledDueDate(
+        dateOnlyTodo,
+        target: OverdueRescheduleTarget.today,
+      );
+      expect(resToday.isDateOnly, isTrue);
+      expect(resToday.dueDate, DateTime(2026, 10, 9, 23, 59));
+
+      final resTomorrow = service.computeRescheduledDueDate(
+        dateOnlyTodo,
+        target: OverdueRescheduleTarget.tomorrow,
+      );
+      expect(resTomorrow.isDateOnly, isTrue);
+      expect(resTomorrow.dueDate, DateTime(2026, 10, 10, 23, 59));
+    });
+
+    test('computeRescheduledDueDate handles tomorrow and clear targets', () {
+      final todo = TodoItem(
+        id: '1',
+        title: '写需求文档',
+        dueDate: DateTime(2026, 10, 7, 16, 45),
+      );
+
+      final resTomorrow = service.computeRescheduledDueDate(
+        todo,
+        target: OverdueRescheduleTarget.tomorrow,
+      );
+      expect(resTomorrow.dueDate, DateTime(2026, 10, 10, 16, 45));
+      expect(resTomorrow.isDateOnly, isFalse);
+
+      final resClear = service.computeRescheduledDueDate(
+        todo,
+        target: OverdueRescheduleTarget.clear,
+      );
+      expect(resClear.dueDate, isNull);
+      expect(resClear.isDateOnly, isFalse);
+    });
+
+    test(
+      'applyBatchReschedule updates items and persists to storage',
+      () async {
+        final todo1 = TodoItem(
+          id: 't1',
+          title: '待办1',
+          dueDate: DateTime(2026, 10, 8, 10, 0),
+        );
+        final todo2 = TodoItem(
+          id: 't2',
+          title: '待办2',
+          dueDate: DateTime(2026, 10, 8, 11, 0),
+        );
+        final normalTodo = TodoItem(
+          id: 't3',
+          title: '正常待办',
+          dueDate: DateTime(2026, 10, 15, 12, 0),
+        );
+
+        final allTodos = [todo1, todo2, normalTodo];
+        await StorageService.saveTodos('user_test', allTodos);
+
+        final result = await service.applyBatchReschedule(
+          username: 'user_test',
+          todosToReschedule: [todo1, todo2],
+          target: OverdueRescheduleTarget.tomorrow,
+          allTodos: allTodos,
+        );
+
+        expect(result.modifiedCount, 2);
+        expect(result.target, OverdueRescheduleTarget.tomorrow);
+
+        final updated1 = result.updatedTodos.firstWhere((t) => t.id == 't1');
+        expect(updated1.dueDate, DateTime(2026, 10, 10, 10, 0));
+        expect(updated1.version, greaterThan(1));
+
+        final updated3 = result.updatedTodos.firstWhere((t) => t.id == 't3');
+        expect(updated3.dueDate, DateTime(2026, 10, 15, 12, 0));
+      },
+    );
+
+    test(
+      'schedulePlanBlock creates plan block and adjusts todo due date',
+      () async {
+        final todo = TodoItem(
+          id: 't_plan',
+          title: '待办准备排期',
+          dueDate: DateTime(2026, 10, 8, 10, 0),
+        );
+        final allTodos = [todo];
+        await StorageService.saveTodos('user_test', allTodos);
+
+        final slot = PlanTimeSlot(
+          DateTime(2026, 10, 9, 16, 0),
+          DateTime(2026, 10, 9, 16, 45),
+        );
+
+        final block = await service.schedulePlanBlock(
+          username: 'user_test',
+          todo: todo,
+          slot: slot,
+          allTodos: allTodos,
+        );
+
+        expect(block.todoId, 't_plan');
+        expect(block.titleSnapshot, '待办准备排期');
+        expect(block.startTime, slot.start.millisecondsSinceEpoch);
+        expect(block.endTime, slot.end.millisecondsSinceEpoch);
+        expect(block.plannedMinutes, 45);
+        expect(block.status, TodoPlanStatus.planned);
+
+        // 验证待办由于安排了 16:45 结束的规划，其截止时间对齐至 16:45，不再逾期
+        expect(todo.dueDate, slot.end);
+        expect(todo.isDateOnly, isFalse);
+      },
+    );
+  });
+}

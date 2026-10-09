@@ -15,23 +15,25 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
 
     // ── 颜色层 ──
     final Color cardBg = todo.isDone
-        ? colorScheme.surfaceContainerHighest
-            .withValues(alpha: isLight ? 0.25 : 0.08)
+        ? colorScheme.surfaceContainerHighest.withValues(
+            alpha: isLight ? 0.25 : 0.08,
+          )
         : colorScheme.surface.withValues(
             alpha: isPast
                 ? (isLight ? 0.9 : 0.45)
                 : isFuture
-                    ? (isLight ? 0.85 : 0.35)
-                    : (isLight ? 0.97 : 0.75),
+                ? (isLight ? 0.85 : 0.35)
+                : (isLight ? 0.97 : 0.75),
           );
 
     final Color titleColor = todo.isDone
         ? colorScheme.onSurface.withValues(alpha: 0.35)
         : (isPast || isFuture
-            ? colorScheme.onSurface.withValues(alpha: 0.65)
-            : colorScheme.onSurface);
-    final bool isRecentlyUpdatedByOthers =
-        widget.highlightedTodoIds.contains(todo.id);
+              ? colorScheme.onSurface.withValues(alpha: 0.65)
+              : colorScheme.onSurface);
+    final bool isRecentlyUpdatedByOthers = widget.highlightedTodoIds.contains(
+      todo.id,
+    );
 
     // ── 进度计算 ──
     DateTime cDate = DateTime.fromMillisecondsSinceEpoch(
@@ -136,8 +138,9 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                 ),
                 TextButton(
                   onPressed: () => Navigator.pop(ctx, true),
-                  style:
-                      TextButton.styleFrom(foregroundColor: Colors.redAccent),
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.redAccent,
+                  ),
                   child: const Text('删除'),
                 ),
               ],
@@ -173,7 +176,8 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
         },
         child: Builder(
           builder: (cardCtx) => AnimatedBuilder(
-            animation: _completingAnimations[todo.id] ??
+            animation:
+                _completingAnimations[todo.id] ??
                 _TodoSectionStateBase._kIdleAnimation,
             builder: (context, child) {
               final anim = _completingAnimations[todo.id];
@@ -184,10 +188,7 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
 
               return Transform.scale(
                 scale: scale,
-                child: Opacity(
-                  opacity: opacity,
-                  child: child,
-                ),
+                child: Opacity(opacity: opacity, child: child),
               );
             },
             child: KeyedSubtree(
@@ -200,27 +201,29 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                   child: OptionalLiquidGlassCard(
                     clipBehavior: Clip.antiAlias,
                     borderRadius: 14,
-                    tint: (todo.teamUuid != null
-                            ? colorScheme.primary
-                            : (isPast && !todo.isDone
-                                ? colorScheme.error
-                                : colorScheme.primary))
-                        .withValues(alpha: 0.16),
+                    tint:
+                        (todo.teamUuid != null
+                                ? colorScheme.primary
+                                : (isPast && !todo.isDone
+                                      ? colorScheme.error
+                                      : colorScheme.primary))
+                            .withValues(alpha: 0.16),
                     fallbackDecoration: BoxDecoration(
                       color: todo.teamUuid != null
                           ? (isLight
-                              ? colorScheme.surface.withValues(alpha: 0.92)
-                              : colorScheme.surfaceContainerHighest
-                                  .withValues(alpha: 0.4))
+                                ? colorScheme.surface.withValues(alpha: 0.92)
+                                : colorScheme.surfaceContainerHighest
+                                      .withValues(alpha: 0.4))
                           : cardBg,
                       borderRadius: BorderRadius.circular(14),
                       border: Border.all(
                         color: todo.teamUuid != null
                             ? colorScheme.primary.withValues(alpha: 0.2)
                             : (isPast && !todo.isDone
-                                ? Colors.redAccent.withValues(alpha: 0.25)
-                                : colorScheme.outline
-                                    .withValues(alpha: isLight ? 0.06 : 0.12)),
+                                  ? Colors.redAccent.withValues(alpha: 0.25)
+                                  : colorScheme.outline.withValues(
+                                      alpha: isLight ? 0.06 : 0.12,
+                                    )),
                         width: todo.teamUuid != null ? 1.2 : 1,
                       ),
                       boxShadow: (!todo.isDone && isLight)
@@ -240,7 +243,8 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                             child: IgnorePointer(
                               child: TweenAnimationBuilder<double>(
                                 key: ValueKey(
-                                    'remote_update_flash_${todo.id}_${widget.remoteUpdateHighlightSignal}'),
+                                  'remote_update_flash_${todo.id}_${widget.remoteUpdateHighlightSignal}',
+                                ),
                                 tween: Tween<double>(begin: 1, end: 0),
                                 duration: const Duration(milliseconds: 1100),
                                 curve: Curves.easeOutCubic,
@@ -250,10 +254,12 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                                       borderRadius: BorderRadius.circular(14),
                                       gradient: LinearGradient(
                                         colors: [
-                                          Colors.amberAccent
-                                              .withValues(alpha: 0.35 * value),
-                                          Colors.amberAccent
-                                              .withValues(alpha: 0.12 * value),
+                                          Colors.amberAccent.withValues(
+                                            alpha: 0.35 * value,
+                                          ),
+                                          Colors.amberAccent.withValues(
+                                            alpha: 0.12 * value,
+                                          ),
                                           Colors.transparent,
                                         ],
                                         begin: Alignment.topLeft,
@@ -270,7 +276,8 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                             child: IgnorePointer(
                               child: TweenAnimationBuilder<double>(
                                 key: ValueKey(
-                                    'remote_update_sweep_${todo.id}_${widget.remoteUpdateHighlightSignal}'),
+                                  'remote_update_sweep_${todo.id}_${widget.remoteUpdateHighlightSignal}',
+                                ),
                                 tween: Tween<double>(begin: 0, end: 1),
                                 duration: const Duration(milliseconds: 900),
                                 curve: Curves.easeOutCubic,
@@ -285,8 +292,9 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                                           gradient: LinearGradient(
                                             colors: [
                                               Colors.transparent,
-                                              Colors.amberAccent
-                                                  .withValues(alpha: 0.22),
+                                              Colors.amberAccent.withValues(
+                                                alpha: 0.22,
+                                              ),
                                               Colors.transparent,
                                             ],
                                             begin: Alignment.centerLeft,
@@ -306,13 +314,16 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                               duration: const Duration(milliseconds: 1200),
                               curve: Curves.easeOutQuart,
                               tween: Tween<double>(
-                                  begin: 0.0,
-                                  end: progress < 0.08
-                                      ? 0.08
-                                      : progress.clamp(0.0, 1.0)),
+                                begin: 0.0,
+                                end: progress < 0.08
+                                    ? 0.08
+                                    : progress.clamp(0.0, 1.0),
+                              ),
                               builder: (context, value, child) {
-                                final fillColor =
-                                    _getProgressFillColor(progress, isPast);
+                                final fillColor = _getProgressFillColor(
+                                  progress,
+                                  isPast,
+                                );
                                 return FractionallySizedBox(
                                   alignment: Alignment.centerLeft,
                                   widthFactor: value,
@@ -321,9 +332,11 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                                       gradient: LinearGradient(
                                         colors: [
                                           fillColor.withValues(
-                                              alpha: isLight ? 0.32 : 0.18),
+                                            alpha: isLight ? 0.32 : 0.18,
+                                          ),
                                           fillColor.withValues(
-                                              alpha: isLight ? 0.15 : 0.08),
+                                            alpha: isLight ? 0.15 : 0.08,
+                                          ),
                                         ],
                                         begin: Alignment.centerLeft,
                                         end: Alignment.centerRight,
@@ -340,9 +353,7 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                             borderRadius: BorderRadius.circular(14),
                             onTap: () => _editTodo(todo, cardCtx),
                             child: ConstrainedBox(
-                              constraints: const BoxConstraints(
-                                minHeight: 52,
-                              ),
+                              constraints: const BoxConstraints(minHeight: 52),
                               child: Row(
                                 // Stack 中的任务行只有松垂直约束；使用 stretch
                                 // 会让行高退化为 0，显式高度可避免额外 intrinsic pass。
@@ -353,19 +364,22 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                                       width: 4,
                                       height: 36,
                                       margin: const EdgeInsets.symmetric(
-                                          vertical: 8),
+                                        vertical: 8,
+                                      ),
                                       decoration: BoxDecoration(
                                         color: colorScheme.primary,
                                         borderRadius:
                                             const BorderRadius.horizontal(
-                                          right: Radius.circular(3),
-                                        ),
+                                              right: Radius.circular(3),
+                                            ),
                                       ),
                                     ),
                                   Expanded(
                                     child: Padding(
                                       padding: const EdgeInsets.symmetric(
-                                          horizontal: 12, vertical: 9),
+                                        horizontal: 12,
+                                        vertical: 9,
+                                      ),
                                       child: Row(
                                         crossAxisAlignment:
                                             CrossAxisAlignment.center,
@@ -380,8 +394,9 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                                               visualDensity:
                                                   VisualDensity.compact,
                                               shape: RoundedRectangleBorder(
-                                                  borderRadius:
-                                                      BorderRadius.circular(6)),
+                                                borderRadius:
+                                                    BorderRadius.circular(6),
+                                              ),
                                               activeColor: colorScheme.primary,
                                               value: todo.isDone,
                                               onChanged: (val) {
@@ -396,10 +411,11 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                                                     _isCompleting[todo.id] =
                                                         true;
                                                   } else {
-                                                    _isCompleting
-                                                        .remove(todo.id);
-                                                    _completingAnimations[
-                                                            todo.id]
+                                                    _isCompleting.remove(
+                                                      todo.id,
+                                                    );
+                                                    _completingAnimations[todo
+                                                            .id]
                                                         ?.dispose();
                                                     _completingAnimations
                                                         .remove(todo.id);
@@ -409,18 +425,21 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                                                 if (val) {
                                                   PomodoroSyncService()
                                                       .sendStopSignal(
-                                                          todoUuid: todo.id);
+                                                        todoUuid: todo.id,
+                                                      );
                                                 }
                                                 todo.markAsChanged();
                                                 List<TodoItem> updatedList =
                                                     List.from(widget.todos);
                                                 // 排序以将已完成移到底部
-                                                updatedList.sort((a, b) =>
-                                                    a.isDone == b.isDone
-                                                        ? 0
-                                                        : (a.isDone ? 1 : -1));
+                                                updatedList.sort(
+                                                  (a, b) => a.isDone == b.isDone
+                                                      ? 0
+                                                      : (a.isDone ? 1 : -1),
+                                                );
                                                 widget.onTodosChanged(
-                                                    updatedList);
+                                                  updatedList,
+                                                );
 
                                                 if (val && !wasDone) {
                                                   // 播放动画后清理
@@ -428,22 +447,24 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                                                       ?.dispose();
                                                   final controller =
                                                       AnimationController(
-                                                          duration:
-                                                              const Duration(
-                                                                  milliseconds:
-                                                                      400),
-                                                          vsync: this);
-                                                  _completingAnimations[
-                                                      todo.id] = controller;
-                                                  controller
-                                                      .forward()
-                                                      .then((_) {
+                                                        duration:
+                                                            const Duration(
+                                                              milliseconds: 400,
+                                                            ),
+                                                        vsync: this,
+                                                      );
+                                                  _completingAnimations[todo
+                                                          .id] =
+                                                      controller;
+                                                  controller.forward().then((
+                                                    _,
+                                                  ) {
                                                     if (mounted) {
                                                       setState(() {
                                                         _isCompleting[todo.id] =
                                                             false;
-                                                        _completingAnimations[
-                                                                todo.id]
+                                                        _completingAnimations[todo
+                                                                .id]
                                                             ?.dispose();
                                                         _completingAnimations
                                                             .remove(todo.id);
@@ -475,23 +496,24 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                                                         overflow: TextOverflow
                                                             .ellipsis,
                                                         style: TextStyle(
-                                                          decoration: todo
-                                                                  .isDone
+                                                          decoration:
+                                                              todo.isDone
                                                               ? TextDecoration
-                                                                  .lineThrough
+                                                                    .lineThrough
                                                               : null,
                                                           decorationColor:
                                                               colorScheme
                                                                   .onSurface
                                                                   .withValues(
-                                                                      alpha:
-                                                                          0.3),
+                                                                    alpha: 0.3,
+                                                                  ),
                                                           color: titleColor
                                                               .withValues(
-                                                                  alpha: 0.95),
+                                                                alpha: 0.95,
+                                                              ),
                                                           fontSize: 14.5,
-                                                          fontWeight: todo
-                                                                      .isDone ||
+                                                          fontWeight:
+                                                              todo.isDone ||
                                                                   isPast ||
                                                                   isFuture
                                                               ? FontWeight.w500
@@ -512,39 +534,45 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                                                             .warning_amber_rounded,
                                                         size: 14,
                                                         color: Colors
-                                                            .orange.shade400,
+                                                            .orange
+                                                            .shade400,
                                                       ),
                                                     ],
                                                     const SizedBox(width: 6),
                                                     Container(
-                                                      padding: const EdgeInsets
-                                                          .symmetric(
-                                                          horizontal: 7,
-                                                          vertical: 2),
+                                                      padding:
+                                                          const EdgeInsets.symmetric(
+                                                            horizontal: 7,
+                                                            vertical: 2,
+                                                          ),
                                                       decoration: BoxDecoration(
                                                         color: todo.isDone
                                                             ? colorScheme
-                                                                .onSurface
-                                                                .withValues(
-                                                                    alpha: 0.06)
+                                                                  .onSurface
+                                                                  .withValues(
+                                                                    alpha: 0.06,
+                                                                  )
                                                             : badgeBg,
                                                         borderRadius:
-                                                            BorderRadius
-                                                                .circular(6),
+                                                            BorderRadius.circular(
+                                                              6,
+                                                            ),
                                                       ),
                                                       child: Text(
                                                         badge,
                                                         style: TextStyle(
-                                                            fontSize: 10.5,
-                                                            fontWeight:
-                                                                FontWeight.w600,
-                                                            color: todo.isDone
-                                                                ? colorScheme
+                                                          fontSize: 10.5,
+                                                          fontWeight:
+                                                              FontWeight.w600,
+                                                          color: todo.isDone
+                                                              ? colorScheme
                                                                     .onSurface
                                                                     .withValues(
-                                                                        alpha:
-                                                                            0.3)
-                                                                : badgeColor),
+                                                                      alpha:
+                                                                          0.3,
+                                                                    )
+                                                              : badgeColor,
+                                                        ),
                                                       ),
                                                     ),
                                                   ],
@@ -555,56 +583,62 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                                                     children: [
                                                       Container(
                                                         padding:
-                                                            const EdgeInsets
-                                                                .symmetric(
-                                                                horizontal: 6,
-                                                                vertical: 2),
-                                                        decoration:
-                                                            BoxDecoration(
+                                                            const EdgeInsets.symmetric(
+                                                              horizontal: 6,
+                                                              vertical: 2,
+                                                            ),
+                                                        decoration: BoxDecoration(
                                                           color: colorScheme
                                                               .primary
                                                               .withValues(
-                                                                  alpha: 0.18),
+                                                                alpha: 0.18,
+                                                              ),
                                                           borderRadius:
-                                                              BorderRadius
-                                                                  .circular(4),
+                                                              BorderRadius.circular(
+                                                                4,
+                                                              ),
                                                           border: Border.all(
-                                                              color: colorScheme
-                                                                  .primary
-                                                                  .withValues(
-                                                                      alpha:
-                                                                          0.4),
-                                                              width: 0.8),
+                                                            color: colorScheme
+                                                                .primary
+                                                                .withValues(
+                                                                  alpha: 0.4,
+                                                                ),
+                                                            width: 0.8,
+                                                          ),
                                                         ),
                                                         child: Row(
                                                           mainAxisSize:
                                                               MainAxisSize.min,
                                                           children: [
                                                             Icon(
-                                                                _selectedSubTeamUuid ==
-                                                                        null
-                                                                    ? Icons
+                                                              _selectedSubTeamUuid ==
+                                                                      null
+                                                                  ? Icons
                                                                         .groups_rounded
-                                                                    : Icons
+                                                                  : Icons
                                                                         .person_outline_rounded,
-                                                                size: 10,
-                                                                color: colorScheme
-                                                                    .primary),
+                                                              size: 10,
+                                                              color: colorScheme
+                                                                  .primary,
+                                                            ),
                                                             const SizedBox(
-                                                                width: 3),
+                                                              width: 3,
+                                                            ),
                                                             Text(
-                                                                _selectedSubTeamUuid ==
-                                                                        null
-                                                                    ? "${todo.teamName ?? '团队'} · ${todo.creatorName ?? '成员'}"
-                                                                    : "创建者：${todo.creatorName ?? '成员'}",
-                                                                style: TextStyle(
-                                                                    fontSize:
-                                                                        10,
-                                                                    fontWeight:
-                                                                        FontWeight
-                                                                            .bold,
-                                                                    color: colorScheme
-                                                                        .primary)),
+                                                              _selectedSubTeamUuid ==
+                                                                      null
+                                                                  ? "${todo.teamName ?? '团队'} · ${todo.creatorName ?? '成员'}"
+                                                                  : "创建者：${todo.creatorName ?? '成员'}",
+                                                              style: TextStyle(
+                                                                fontSize: 10,
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .bold,
+                                                                color:
+                                                                    colorScheme
+                                                                        .primary,
+                                                              ),
+                                                            ),
                                                           ],
                                                         ),
                                                       ),
@@ -614,58 +648,63 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                                                                   .teamUuid] ==
                                                               'admin') ...[
                                                         const SizedBox(
-                                                            width: 6),
+                                                          width: 6,
+                                                        ),
                                                         GestureDetector(
                                                           onTap: () =>
                                                               _showIndependentTodoStatus(
-                                                                  todo),
+                                                                todo,
+                                                              ),
                                                           child: Container(
                                                             padding:
-                                                                const EdgeInsets
-                                                                    .symmetric(
-                                                                    horizontal:
-                                                                        6,
-                                                                    vertical:
-                                                                        2),
-                                                            decoration:
-                                                                BoxDecoration(
+                                                                const EdgeInsets.symmetric(
+                                                                  horizontal: 6,
+                                                                  vertical: 2,
+                                                                ),
+                                                            decoration: BoxDecoration(
                                                               color: Colors
                                                                   .green
                                                                   .withValues(
-                                                                      alpha:
-                                                                          0.15),
+                                                                    alpha: 0.15,
+                                                                  ),
                                                               borderRadius:
-                                                                  BorderRadius
-                                                                      .circular(
-                                                                          4),
+                                                                  BorderRadius.circular(
+                                                                    4,
+                                                                  ),
                                                               border: Border.all(
-                                                                  color: Colors
-                                                                      .green
-                                                                      .withValues(
-                                                                          alpha:
-                                                                              0.4),
-                                                                  width: 0.8),
+                                                                color: Colors
+                                                                    .green
+                                                                    .withValues(
+                                                                      alpha:
+                                                                          0.4,
+                                                                    ),
+                                                                width: 0.8,
+                                                              ),
                                                             ),
                                                             child: Row(
                                                               children: [
                                                                 const Icon(
-                                                                    Icons
-                                                                        .assignment_turned_in_outlined,
-                                                                    size: 10,
-                                                                    color: Colors
-                                                                        .green),
+                                                                  Icons
+                                                                      .assignment_turned_in_outlined,
+                                                                  size: 10,
+                                                                  color: Colors
+                                                                      .green,
+                                                                ),
                                                                 const SizedBox(
-                                                                    width: 3),
+                                                                  width: 3,
+                                                                ),
                                                                 const Text(
-                                                                    "独立任务进度",
-                                                                    style: TextStyle(
-                                                                        fontSize:
-                                                                            10,
-                                                                        fontWeight:
-                                                                            FontWeight
-                                                                                .bold,
-                                                                        color: Colors
-                                                                            .green)),
+                                                                  "独立任务进度",
+                                                                  style: TextStyle(
+                                                                    fontSize:
+                                                                        10,
+                                                                    fontWeight:
+                                                                        FontWeight
+                                                                            .bold,
+                                                                    color: Colors
+                                                                        .green,
+                                                                  ),
+                                                                ),
                                                               ],
                                                             ),
                                                           ),
@@ -677,61 +716,72 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                                                 const SizedBox(height: 3),
                                                 Row(
                                                   children: [
-                                                    Icon(Icons.schedule_rounded,
-                                                        size: 11,
-                                                        color: colorScheme
-                                                            .onSurface
-                                                            .withValues(
-                                                                alpha: todo
-                                                                        .isDone
-                                                                    ? 0.65
-                                                                    : (isPast
-                                                                        ? 0.75
-                                                                        : 0.65))),
+                                                    Icon(
+                                                      Icons.schedule_rounded,
+                                                      size: 11,
+                                                      color: colorScheme
+                                                          .onSurface
+                                                          .withValues(
+                                                            alpha: todo.isDone
+                                                                ? 0.65
+                                                                : (isPast
+                                                                      ? 0.75
+                                                                      : 0.65),
+                                                          ),
+                                                    ),
                                                     const SizedBox(width: 3),
                                                     Expanded(
-                                                        child: Text(
-                                                            _buildTimeLabel(
-                                                                todo,
-                                                                cDate,
-                                                                isPast,
-                                                                isFuture,
-                                                                now),
-                                                            maxLines: 1,
-                                                            overflow:
-                                                                TextOverflow
-                                                                    .ellipsis,
-                                                            style: TextStyle(
-                                                                fontSize: 11,
-                                                                color: colorScheme
-                                                                    .onSurface
-                                                                    .withValues(
-                                                                        alpha: todo.isDone
-                                                                            ? 0.4
-                                                                            : isPast
-                                                                                ? 0.75
-                                                                                : 0.65),
-                                                                height: 1.2))),
-                                                  ],
-                                                ),
-                                                if (todo.remark != null &&
-                                                    todo.remark!
-                                                        .isNotEmpty) ...[
-                                                  const SizedBox(height: 2),
-                                                  Text(todo.remark!,
-                                                      maxLines: 1,
-                                                      overflow:
-                                                          TextOverflow.ellipsis,
-                                                      style: TextStyle(
+                                                      child: Text(
+                                                        _buildTimeLabel(
+                                                          todo,
+                                                          cDate,
+                                                          isPast,
+                                                          isFuture,
+                                                          now,
+                                                        ),
+                                                        maxLines: 1,
+                                                        overflow: TextOverflow
+                                                            .ellipsis,
+                                                        style: TextStyle(
                                                           fontSize: 11,
                                                           color: colorScheme
                                                               .onSurface
                                                               .withValues(
-                                                                  alpha: todo
-                                                                          .isDone
-                                                                      ? 0.22
-                                                                      : 0.4),
-                                                          height: 1.2)),
+                                                                alpha:
+                                                                    todo.isDone
+                                                                    ? 0.4
+                                                                    : isPast
+                                                                    ? 0.75
+                                                                    : 0.65,
+                                                              ),
+                                                          height: 1.2,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                                if (todo.remark != null &&
+                                                    todo
+                                                        .remark!
+                                                        .isNotEmpty) ...[
+                                                  const SizedBox(height: 2),
+                                                  Text(
+                                                    todo.remark!,
+                                                    maxLines: 1,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                    style: TextStyle(
+                                                      fontSize: 11,
+                                                      color: colorScheme
+                                                          .onSurface
+                                                          .withValues(
+                                                            alpha: todo.isDone
+                                                                ? 0.22
+                                                                : 0.4,
+                                                          ),
+                                                      height: 1.2,
+                                                    ),
+                                                  ),
                                                 ],
                                                 if (todo.recurrence !=
                                                         RecurrenceType.none ||
@@ -739,7 +789,9 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                                                         null) ...[
                                                   const SizedBox(height: 6),
                                                   _buildRecurrenceProgress(
-                                                      todo, now),
+                                                    todo,
+                                                    now,
+                                                  ),
                                                 ],
                                               ],
                                             ),
@@ -759,7 +811,8 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                             right: 10,
                             child: TweenAnimationBuilder<double>(
                               key: ValueKey(
-                                  'remote_update_badge_${todo.id}_${widget.remoteUpdateHighlightSignal}'),
+                                'remote_update_badge_${todo.id}_${widget.remoteUpdateHighlightSignal}',
+                              ),
                               tween: Tween<double>(begin: 0.8, end: 1.0),
                               duration: const Duration(milliseconds: 650),
                               curve: Curves.easeOutCubic,
@@ -771,22 +824,29 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                               },
                               child: Container(
                                 padding: const EdgeInsets.symmetric(
-                                    horizontal: 8, vertical: 3),
+                                  horizontal: 8,
+                                  vertical: 3,
+                                ),
                                 decoration: BoxDecoration(
-                                  color: Colors.amberAccent
-                                      .withValues(alpha: 0.24),
+                                  color: Colors.amberAccent.withValues(
+                                    alpha: 0.24,
+                                  ),
                                   borderRadius: BorderRadius.circular(999),
                                   border: Border.all(
-                                    color: Colors.amberAccent
-                                        .withValues(alpha: 0.9),
+                                    color: Colors.amberAccent.withValues(
+                                      alpha: 0.9,
+                                    ),
                                     width: 1,
                                   ),
                                 ),
                                 child: const Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Icon(Icons.bolt_rounded,
-                                        size: 12, color: Colors.amberAccent),
+                                    Icon(
+                                      Icons.bolt_rounded,
+                                      size: 12,
+                                      color: Colors.amberAccent,
+                                    ),
                                     SizedBox(width: 4),
                                     Text(
                                       '远端更新',
@@ -853,8 +913,10 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
     );
   }
 
-  Widget _buildAnimatedSection(
-      {required bool expanded, required Widget child}) {
+  Widget _buildAnimatedSection({
+    required bool expanded,
+    required Widget child,
+  }) {
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 300),
       transitionBuilder: (Widget child, Animation<double> animation) {
@@ -868,10 +930,7 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
         );
       },
       child: expanded
-          ? Container(
-              key: const ValueKey('expanded_content'),
-              child: child,
-            )
+          ? Container(key: const ValueKey('expanded_content'), child: child)
           : const SizedBox.shrink(key: ValueKey('collapsed_empty')),
     );
   }
@@ -882,6 +941,7 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
     required VoidCallback onTap,
     Color? color,
     IconData? icon,
+    Widget? trailing,
   }) {
     return InkWell(
       onTap: onTap,
@@ -913,6 +973,7 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                 letterSpacing: 0.5,
               ),
             ),
+            if (trailing != null) ...[const Spacer(), trailing],
           ],
         ),
       ),
@@ -960,15 +1021,35 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
           onTap: () {},
         ),
       );
-      sections.add(Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: separateGroupData
-            .map((data) => _buildGroupWidget(data.group, data.todos))
-            .toList(),
-      ));
+      sections.add(
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: separateGroupData
+              .map((data) => _buildGroupWidget(data.group, data.todos))
+              .toList(),
+        ),
+      );
     }
 
     if (pastItems.isNotEmpty) {
+      final List<TodoItem> overdueTodos = [
+        ...pastItems.map((e) => e.todo).whereType<TodoItem>(),
+        ...pastItems.expand((e) => e.groupTodos ?? const <TodoItem>[]),
+      ].where((t) => !t.isDone && !t.isDeleted && t.dueDate != null).toList();
+
+      if (overdueTodos.isNotEmpty) {
+        sections.add(
+          Padding(
+            padding: const EdgeInsets.only(top: 4, bottom: 8),
+            child: TodoOverdueTriageBanner(
+              count: overdueTodos.length,
+              isLight: widget.isLight,
+              onTap: () => _openOverdueTriage(overdueTodos),
+            ),
+          ),
+        );
+      }
+
       sections.add(
         _buildGroupLabel(
           text: "逾期 · ${pastItems.length}",
@@ -976,6 +1057,22 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
           color: Colors.redAccent.shade200,
           onTap: () =>
               setState(() => _isPastTodosExpanded = !_isPastTodosExpanded),
+          trailing: overdueTodos.isNotEmpty
+              ? TextButton.icon(
+                  key: const ValueKey('todo_overdue_triage_header_button'),
+                  onPressed: () => _openOverdueTriage(overdueTodos),
+                  icon: const Icon(Icons.auto_fix_high_rounded, size: 14),
+                  label: const Text('快速整理', style: TextStyle(fontSize: 12)),
+                  style: TextButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    foregroundColor: Colors.redAccent.shade200,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                  ),
+                )
+              : null,
         ),
       );
       sections.add(
@@ -985,10 +1082,12 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
             children: pastItems.map((item) {
               final todo = item.todo;
               if (todo != null) {
-                return _buildTodoItemCard(todo,
-                    isPast: true,
-                    isFuture: false,
-                    key: _getTodoDismissKey('dismiss', todo.id));
+                return _buildTodoItemCard(
+                  todo,
+                  isPast: true,
+                  isFuture: false,
+                  key: _getTodoDismissKey('dismiss', todo.id),
+                );
               }
               return _buildGroupWidget(item.group!, item.groupTodos!);
             }).toList(),
@@ -1008,11 +1107,13 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
         duration: const Duration(milliseconds: 400),
         transitionBuilder: (child, animation) {
           return FadeTransition(
-              opacity: animation,
-              child: SizeTransition(
-                  sizeFactor: animation,
-                  alignment: AlignmentDirectional.topStart,
-                  child: child));
+            opacity: animation,
+            child: SizeTransition(
+              sizeFactor: animation,
+              alignment: AlignmentDirectional.topStart,
+              child: child,
+            ),
+          );
         },
         child: (!showTodayItems && todayItems.isNotEmpty)
             ? GestureDetector(
@@ -1026,38 +1127,35 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                   decoration: BoxDecoration(
                     color: widget.isLight
                         ? (isDarkTheme
-                            ? Colors.grey[850]!.withValues(alpha: 0.95)
-                            : Colors.white.withValues(alpha: 0.95))
+                              ? Colors.grey[850]!.withValues(alpha: 0.95)
+                              : Colors.white.withValues(alpha: 0.95))
                         : (allTodayDone
-                            ? (isDarkTheme
-                                ? Colors.green.withValues(alpha: 0.15)
-                                : Colors.green.withValues(alpha: 0.08))
-                            : (isDarkTheme
-                                ? Colors.white.withValues(alpha: 0.08)
-                                : Theme.of(context)
-                                    .colorScheme
-                                    .primary
-                                    .withValues(alpha: 0.04))),
+                              ? (isDarkTheme
+                                    ? Colors.green.withValues(alpha: 0.15)
+                                    : Colors.green.withValues(alpha: 0.08))
+                              : (isDarkTheme
+                                    ? Colors.white.withValues(alpha: 0.08)
+                                    : Theme.of(context).colorScheme.primary
+                                          .withValues(alpha: 0.04))),
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(
                       color: allTodayDone
                           ? Colors.green.withValues(alpha: 0.4)
                           : (widget.isLight
-                              ? (isDarkTheme
-                                  ? Colors.white.withValues(alpha: 0.15)
-                                  : Colors.black.withValues(alpha: 0.1))
-                              : (isDarkTheme
-                                  ? Colors.white.withValues(alpha: 0.22)
-                                  : Theme.of(context)
-                                      .colorScheme
-                                      .primary
-                                      .withValues(alpha: 0.25))),
+                                ? (isDarkTheme
+                                      ? Colors.white.withValues(alpha: 0.15)
+                                      : Colors.black.withValues(alpha: 0.1))
+                                : (isDarkTheme
+                                      ? Colors.white.withValues(alpha: 0.22)
+                                      : Theme.of(context).colorScheme.primary
+                                            .withValues(alpha: 0.25))),
                       width: 1.5,
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black
-                            .withValues(alpha: widget.isLight ? 0.15 : 0.08),
+                        color: Colors.black.withValues(
+                          alpha: widget.isLight ? 0.15 : 0.08,
+                        ),
                         blurRadius: 12,
                         offset: const Offset(0, 5),
                       ),
@@ -1065,202 +1163,227 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                   ),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 20, vertical: 16),
+                      horizontal: 20,
+                      vertical: 16,
+                    ),
                     child: Row(
                       children: [
                         Container(
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
-                              color: allTodayDone
-                                  ? Colors.green.withValues(alpha: 0.1)
-                                  : Theme.of(context)
-                                      .colorScheme
-                                      .primary
+                            color: allTodayDone
+                                ? Colors.green.withValues(alpha: 0.1)
+                                : Theme.of(context).colorScheme.primary
                                       .withValues(alpha: 0.1),
-                              shape: BoxShape.circle),
+                            shape: BoxShape.circle,
+                          ),
                           child: Icon(
-                              allTodayDone
-                                  ? Icons.celebration_rounded
-                                  : Icons.task_alt_rounded,
-                              size: 20,
-                              color: allTodayDone
-                                  ? Colors.green
-                                  : Theme.of(context).colorScheme.primary),
+                            allTodayDone
+                                ? Icons.celebration_rounded
+                                : Icons.task_alt_rounded,
+                            size: 20,
+                            color: allTodayDone
+                                ? Colors.green
+                                : Theme.of(context).colorScheme.primary,
+                          ),
                         ),
                         const SizedBox(width: 16),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(allTodayDone ? "任务已全部达成！" : "今日事今日毕",
-                                  style: TextStyle(
-                                      color: allTodayDone
-                                          ? (isDarkTheme
-                                              ? Colors.green.shade200
-                                              : Colors.green.shade900)
-                                          : (widget.isLight
-                                              ? (isDarkTheme
+                              Text(
+                                allTodayDone ? "任务已全部达成！" : "今日事今日毕",
+                                style: TextStyle(
+                                  color: allTodayDone
+                                      ? (isDarkTheme
+                                            ? Colors.green.shade200
+                                            : Colors.green.shade900)
+                                      : (widget.isLight
+                                            ? (isDarkTheme
                                                   ? Colors.white
                                                   : Colors.black)
-                                              : (isDarkTheme
-                                                  ? Colors.white
-                                                      .withValues(alpha: 0.9)
+                                            : (isDarkTheme
+                                                  ? Colors.white.withValues(
+                                                      alpha: 0.9,
+                                                    )
                                                   : Colors.black.withValues(
-                                                      alpha: 0.85))),
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 16,
-                                      letterSpacing: 0.2)),
+                                                      alpha: 0.85,
+                                                    ))),
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                  letterSpacing: 0.2,
+                                ),
+                              ),
                               const SizedBox(height: 2),
                               Text(
-                                  allTodayDone
-                                      ? "今天也很努力呢，休息一下吧 ✨"
-                                      : "今日还有 ${todayItems.where((t) => !t.isDone).length} 个待办等待完成",
-                                  style: TextStyle(
-                                      color: (allTodayDone
-                                          ? (isDarkTheme
-                                              ? Colors.green[200]
-                                              : Colors.green[800])
-                                          : (widget.isLight
-                                              ? (isDarkTheme
-                                                  ? Colors.white
-                                                      .withValues(alpha: 0.7)
-                                                  : Colors.black
-                                                      .withValues(alpha: 0.6))
-                                              : (isDarkTheme
+                                allTodayDone
+                                    ? "今天也很努力呢，休息一下吧 ✨"
+                                    : "今日还有 ${todayItems.where((t) => !t.isDone).length} 个待办等待完成",
+                                style: TextStyle(
+                                  color: (allTodayDone
+                                      ? (isDarkTheme
+                                            ? Colors.green[200]
+                                            : Colors.green[800])
+                                      : (widget.isLight
+                                            ? (isDarkTheme
+                                                  ? Colors.white.withValues(
+                                                      alpha: 0.7,
+                                                    )
+                                                  : Colors.black.withValues(
+                                                      alpha: 0.6,
+                                                    ))
+                                            : (isDarkTheme
                                                   ? Colors.white
                                                   : Colors.black))),
-                                      fontSize: 12.5)),
+                                  fontSize: 12.5,
+                                ),
+                              ),
                             ],
                           ),
                         ),
-                        Icon(Icons.arrow_forward_ios_rounded,
-                            size: 14,
-                            color: (allTodayDone ? Colors.green : Colors.grey)
-                                .withValues(alpha: 0.5)),
+                        Icon(
+                          Icons.arrow_forward_ios_rounded,
+                          size: 14,
+                          color: (allTodayDone ? Colors.green : Colors.grey)
+                              .withValues(alpha: 0.5),
+                        ),
                       ],
                     ),
                   ),
                 ),
               )
             : (showTodayItems && todayItems.isNotEmpty)
-                ? Column(
-                    key: const ValueKey('today_expanded_items'),
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildGroupLabel(
-                        text:
-                            "今日 · ${todayItems.where((t) => t.isDone).length}/${todayItems.length} 已完成",
-                        expanded: true,
-                        onTap: () => setState(() {
-                          _isTodayExpanded = false;
-                          _isTodayManuallyExpanded = false;
-                        }),
-                      ),
-                      _buildAnimatedSection(
-                        expanded: _isTodayExpanded,
-                        child: ReorderableListView(
-                          padding: EdgeInsets.zero,
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          buildDefaultDragHandles: false,
-                          onReorderItem: (oldIndex, newIndex) {
-                            final List<int> todayIndices = [];
-                            for (int i = 0; i < widget.todos.length; i++) {
-                              final t = widget.todos[i];
-                              if (_isHistoricalTodo(t) ||
-                                  t.isDeleted ||
-                                  (!hideFolders && t.groupId != null)) {
-                                continue;
-                              }
-                              if (t.dueDate == null ||
-                                  (t.dueDate!.year == today.year &&
-                                      t.dueDate!.month == today.month &&
-                                      t.dueDate!.day == today.day)) {
-                                todayIndices.add(i);
-                              }
-                            }
-                            final reordered =
-                                List<_SortedDisplayItem>.from(todayItems);
-                            final item = reordered.removeAt(oldIndex);
-                            reordered.insert(newIndex, item);
-                            final updatedList =
-                                List<TodoItem>.from(widget.todos);
-                            final reorderedTodos = reordered
-                                .where((e) => e.todo != null)
-                                .map((e) => e.todo!)
-                                .toList();
-                            for (int i = 0;
-                                i < todayIndices.length &&
-                                    i < reorderedTodos.length;
-                                i++) {
-                              updatedList[todayIndices[i]] = reorderedTodos[i];
-                            }
-                            widget.onTodosChanged(updatedList);
-                          },
-                          children: todayItems.asMap().entries.map((entry) {
-                            final int index = entry.key;
-                            final item = entry.value;
-                            if (item.todo != null) {
-                              return _buildTodoItemCard(
+            ? Column(
+                key: const ValueKey('today_expanded_items'),
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildGroupLabel(
+                    text:
+                        "今日 · ${todayItems.where((t) => t.isDone).length}/${todayItems.length} 已完成",
+                    expanded: true,
+                    onTap: () => setState(() {
+                      _isTodayExpanded = false;
+                      _isTodayManuallyExpanded = false;
+                    }),
+                  ),
+                  _buildAnimatedSection(
+                    expanded: _isTodayExpanded,
+                    child: ReorderableListView(
+                      padding: EdgeInsets.zero,
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      buildDefaultDragHandles: false,
+                      onReorderItem: (oldIndex, newIndex) {
+                        final List<int> todayIndices = [];
+                        for (int i = 0; i < widget.todos.length; i++) {
+                          final t = widget.todos[i];
+                          if (_isHistoricalTodo(t) ||
+                              t.isDeleted ||
+                              (!hideFolders && t.groupId != null)) {
+                            continue;
+                          }
+                          if (t.dueDate == null ||
+                              (t.dueDate!.year == today.year &&
+                                  t.dueDate!.month == today.month &&
+                                  t.dueDate!.day == today.day)) {
+                            todayIndices.add(i);
+                          }
+                        }
+                        final reordered = List<_SortedDisplayItem>.from(
+                          todayItems,
+                        );
+                        final item = reordered.removeAt(oldIndex);
+                        reordered.insert(newIndex, item);
+                        final updatedList = List<TodoItem>.from(widget.todos);
+                        final reorderedTodos = reordered
+                            .where((e) => e.todo != null)
+                            .map((e) => e.todo!)
+                            .toList();
+                        for (
+                          int i = 0;
+                          i < todayIndices.length && i < reorderedTodos.length;
+                          i++
+                        ) {
+                          updatedList[todayIndices[i]] = reorderedTodos[i];
+                        }
+                        widget.onTodosChanged(updatedList);
+                      },
+                      children: todayItems.asMap().entries.map((entry) {
+                        final int index = entry.key;
+                        final item = entry.value;
+                        if (item.todo != null) {
+                          return _buildTodoItemCard(
+                            item.todo!,
+                            isPast: false,
+                            isFuture: false,
+                            key: _getTodoDismissKey('dismiss', item.todo!.id),
+                            dragHandle: ReorderableDelayedDragStartListener(
+                              index: index,
+                              child: _buildTodoDragHandleIcon(
                                 item.todo!,
-                                isPast: false,
-                                isFuture: false,
-                                key: _getTodoDismissKey(
-                                    'dismiss', item.todo!.id),
-                                dragHandle: ReorderableDelayedDragStartListener(
-                                  index: index,
-                                  child: _buildTodoDragHandleIcon(
-                                    item.todo!,
-                                    Theme.of(context)
-                                        .colorScheme
-                                        .onSurfaceVariant,
-                                  ),
-                                ),
-                              );
-                            }
-                            return Container(
-                                key: ValueKey('group_${item.group!.id}'),
-                                child: _buildGroupWidget(
-                                    item.group!, item.groupTodos!));
-                          }).toList(),
-                        ),
-                      )
-                    ],
-                  )
-                : const SizedBox.shrink(key: ValueKey('today_empty')),
+                                Theme.of(context).colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          );
+                        }
+                        return Container(
+                          key: ValueKey('group_${item.group!.id}'),
+                          child: _buildGroupWidget(
+                            item.group!,
+                            item.groupTodos!,
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                ],
+              )
+            : const SizedBox.shrink(key: ValueKey('today_empty')),
       ),
     );
 
     if (futureItems.isNotEmpty) {
-      sections.add(_buildGroupLabel(
+      sections.add(
+        _buildGroupLabel(
           text: "将来 · ${futureItems.where((t) => !t.isDone).length} 未完成",
           expanded: _isFutureExpanded,
           icon: Icons.calendar_month_rounded,
-          onTap: () => setState(() => _isFutureExpanded = !_isFutureExpanded)));
-      sections.add(_buildAnimatedSection(
+          onTap: () => setState(() => _isFutureExpanded = !_isFutureExpanded),
+        ),
+      );
+      sections.add(
+        _buildAnimatedSection(
           expanded: _isFutureExpanded,
           child: Column(
-              children: futureItems.map((item) {
-            final todo = item.todo;
-            if (todo != null) {
-              return _buildTodoItemCard(todo,
+            children: futureItems.map((item) {
+              final todo = item.todo;
+              if (todo != null) {
+                return _buildTodoItemCard(
+                  todo,
                   isPast: false,
                   isFuture: true,
-                  key: _getTodoDismissKey('dismiss', todo.id));
-            }
-            return _buildGroupWidget(item.group!, item.groupTodos!);
-          }).toList())));
+                  key: _getTodoDismissKey('dismiss', todo.id),
+                );
+              }
+              return _buildGroupWidget(item.group!, item.groupTodos!);
+            }).toList(),
+          ),
+        ),
+      );
     }
 
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 500),
       transitionBuilder: (Widget child, Animation<double> animation) {
         return FadeTransition(
-            opacity: animation,
-            child: SizeTransition(
-                sizeFactor: animation,
-                alignment: AlignmentDirectional.topStart,
-                child: child));
+          opacity: animation,
+          child: SizeTransition(
+            sizeFactor: animation,
+            alignment: AlignmentDirectional.topStart,
+            child: child,
+          ),
+        );
       },
       child: !_isWholeListExpanded
           ? GestureDetector(
@@ -1268,13 +1391,15 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
               onTap: () => setState(() => _isWholeListExpanded = true),
               child: Container(
                 margin: const EdgeInsets.symmetric(vertical: 8),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 14,
+                ),
                 decoration: BoxDecoration(
                   color: widget.isLight
                       ? (isDarkTheme
-                          ? Colors.grey[850]!.withValues(alpha: 0.95)
-                          : Colors.white.withValues(alpha: 0.95))
+                            ? Colors.grey[850]!.withValues(alpha: 0.95)
+                            : Colors.white.withValues(alpha: 0.95))
                       : null,
                   gradient: widget.isLight
                       ? null
@@ -1282,87 +1407,87 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                           colors: useDarkUI
                               ? [
                                   Colors.white.withValues(alpha: 0.12),
-                                  Colors.white.withValues(alpha: 0.04)
+                                  Colors.white.withValues(alpha: 0.04),
                                 ]
                               : [
-                                  Theme.of(context)
-                                      .colorScheme
-                                      .primary
+                                  Theme.of(context).colorScheme.primary
                                       .withValues(alpha: 0.06),
-                                  Theme.of(context)
-                                      .colorScheme
-                                      .primary
-                                      .withValues(alpha: 0.01)
+                                  Theme.of(context).colorScheme.primary
+                                      .withValues(alpha: 0.01),
                                 ],
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
                         ),
                   borderRadius: BorderRadius.circular(18),
                   border: Border.all(
-                      color: widget.isLight
-                          ? (isDarkTheme
+                    color: widget.isLight
+                        ? (isDarkTheme
                               ? Colors.white.withValues(alpha: 0.15)
                               : Colors.black.withValues(alpha: 0.1))
-                          : (useDarkUI
+                        : (useDarkUI
                               ? Colors.white.withValues(alpha: 0.1)
-                              : Theme.of(context)
-                                  .colorScheme
-                                  .primary
-                                  .withValues(alpha: 0.08)),
-                      width: 1),
+                              : Theme.of(context).colorScheme.primary
+                                    .withValues(alpha: 0.08)),
+                    width: 1,
+                  ),
                 ),
                 child: Row(
                   children: [
                     Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                            color: Theme.of(context)
-                                .colorScheme
-                                .primary
-                                .withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(10)),
-                        child: Icon(Icons.checklist_rtl_rounded,
-                            size: 20,
-                            color: Theme.of(context).colorScheme.primary)),
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.primary
+                            .withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(
+                        Icons.checklist_rtl_rounded,
+                        size: 20,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                    ),
                     const SizedBox(width: 16),
                     Expanded(
-                        child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
                           Text(
-                              undoneCount == 0
-                                  ? "全部任务已完成"
-                                  : "目前还有 $undoneCount 个待办",
-                              style: TextStyle(
-                                  color: widget.isLight
-                                      ? (isDarkTheme
-                                          ? Colors.white
-                                          : Colors.black)
-                                      : (useDarkUI ? Colors.white : null),
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 15,
-                                  letterSpacing: 0.2)),
+                            undoneCount == 0
+                                ? "全部任务已完成"
+                                : "目前还有 $undoneCount 个待办",
+                            style: TextStyle(
+                              color: widget.isLight
+                                  ? (isDarkTheme ? Colors.white : Colors.black)
+                                  : (useDarkUI ? Colors.white : null),
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                              letterSpacing: 0.2,
+                            ),
+                          ),
                           const SizedBox(height: 2),
                           Text(
-                              undoneCount == 0
-                                  ? "今天做的不错！点击展开回顾"
-                                  : "点击这里展开清单，继续加油吧 ✨",
-                              style: TextStyle(
-                                  color: widget.isLight
-                                      ? (isDarkTheme
-                                          ? Colors.white.withValues(alpha: 0.6)
-                                          : Colors.black
-                                              .withValues(alpha: 0.55))
-                                      : (useDarkUI
-                                              ? Colors.white
-                                              : Colors.black)
-                                          .withValues(alpha: 0.5),
-                                  fontSize: 12)),
-                        ])),
-                    Icon(Icons.unfold_more_rounded,
-                        size: 18,
-                        color: (useDarkUI ? Colors.white : Colors.grey)
-                            .withValues(alpha: 0.4)),
+                            undoneCount == 0
+                                ? "今天做的不错！点击展开回顾"
+                                : "点击这里展开清单，继续加油吧 ✨",
+                            style: TextStyle(
+                              color: widget.isLight
+                                  ? (isDarkTheme
+                                        ? Colors.white.withValues(alpha: 0.6)
+                                        : Colors.black.withValues(alpha: 0.55))
+                                  : (useDarkUI ? Colors.white : Colors.black)
+                                        .withValues(alpha: 0.5),
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Icon(
+                      Icons.unfold_more_rounded,
+                      size: 18,
+                      color: (useDarkUI ? Colors.white : Colors.grey)
+                          .withValues(alpha: 0.4),
+                    ),
                   ],
                 ),
               ),
@@ -1372,7 +1497,7 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _buildTeamFilterTabs(), // 🚀 注入团队分类切换
-                ...sections
+                ...sections,
               ],
             ),
     );
@@ -1399,13 +1524,17 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
       seriesOccurrences.putIfAbsent(seriesId, () => []).add(todo);
     }
     for (final occurrences in seriesOccurrences.values) {
-      occurrences.sort((a, b) => (a.createdDate ?? a.createdAt)
-          .compareTo(b.createdDate ?? b.createdAt));
+      occurrences.sort(
+        (a, b) => (a.createdDate ?? a.createdAt).compareTo(
+          b.createdDate ?? b.createdAt,
+        ),
+      );
     }
     _recurrenceSeriesOccurrences = seriesOccurrences;
 
-    final seriesRepresentativeIds =
-        _buildRecurrenceSeriesRepresentativeIds(seriesOccurrences);
+    final seriesRepresentativeIds = _buildRecurrenceSeriesRepresentativeIds(
+      seriesOccurrences,
+    );
 
     // Build groupById map for O(1) lookup - avoid todoGroups.any() per todo
     final groupById = <String, TodoGroup>{};
@@ -1444,8 +1573,9 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
       }
     }
 
-    final Iterable<TodoGroup> activeGroups =
-        hideFolders ? const <TodoGroup>[] : groupById.values;
+    final Iterable<TodoGroup> activeGroups = hideFolders
+        ? const <TodoGroup>[]
+        : groupById.values;
 
     final List<TodoItem> activeTodos = [
       ...todosByGroup.values.expand((list) => list),
@@ -1507,15 +1637,18 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
       for (var t in gTodos) {
         if (t.isDone) continue;
         final cDate = DateTime.fromMillisecondsSinceEpoch(
-                t.createdDate ?? t.createdAt,
-                isUtc: true)
-            .toLocal();
-        final end = t.dueDate ??
+          t.createdDate ?? t.createdAt,
+          isUtc: true,
+        ).toLocal();
+        final end =
+            t.dueDate ??
             DateTime(cDate.year, cDate.month, cDate.day, 23, 59, 59);
         final totalMin = end.difference(cDate).inMinutes;
         if (totalMin > 0 && now.isAfter(cDate)) {
-          final p =
-              (now.difference(cDate).inMinutes / totalMin).clamp(0.0, 1.0);
+          final p = (now.difference(cDate).inMinutes / totalMin).clamp(
+            0.0,
+            1.0,
+          );
           if (p > groupProgress) groupProgress = p;
         }
       }
@@ -1529,15 +1662,17 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
       );
 
       if (!separateFolders) {
-        placeItem(_SortedDisplayItem(
-          todo: null,
-          group: g,
-          date: minDate,
-          isDone: isAllDone,
-          startMs: 0,
-          progress: groupProgress,
-          groupTodos: gTodos,
-        ));
+        placeItem(
+          _SortedDisplayItem(
+            todo: null,
+            group: g,
+            date: minDate,
+            isDone: isAllDone,
+            startMs: 0,
+            progress: groupProgress,
+            groupTodos: gTodos,
+          ),
+        );
       } else {
         separateGroupData.add(groupData);
       }
@@ -1548,26 +1683,31 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
       double todoProgress = 0.0;
       {
         final cDate = DateTime.fromMillisecondsSinceEpoch(
-                t.createdDate ?? t.createdAt,
-                isUtc: true)
-            .toLocal();
-        final end = t.dueDate ??
+          t.createdDate ?? t.createdAt,
+          isUtc: true,
+        ).toLocal();
+        final end =
+            t.dueDate ??
             DateTime(cDate.year, cDate.month, cDate.day, 23, 59, 59);
         final totalMin = end.difference(cDate).inMinutes;
         if (totalMin > 0 && now.isAfter(cDate)) {
-          todoProgress =
-              (now.difference(cDate).inMinutes / totalMin).clamp(0.0, 1.0);
+          todoProgress = (now.difference(cDate).inMinutes / totalMin).clamp(
+            0.0,
+            1.0,
+          );
         }
       }
 
-      placeItem(_SortedDisplayItem(
-        todo: t,
-        group: null,
-        date: t.dueDate,
-        isDone: t.isDone,
-        startMs: t.createdDate ?? t.createdAt,
-        progress: todoProgress,
-      ));
+      placeItem(
+        _SortedDisplayItem(
+          todo: t,
+          group: null,
+          date: t.dueDate,
+          isDone: t.isDone,
+          startMs: t.createdDate ?? t.createdAt,
+          progress: todoProgress,
+        ),
+      );
     }
 
     void sortItems(List<_SortedDisplayItem> list) {
@@ -1603,7 +1743,9 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
       today.millisecondsSinceEpoch,
       _selectedSubTeamUuid,
       _folderDisplayMode.index,
-      Object.hashAll(widget.todos.map((todo) => Object.hash(
+      Object.hashAll(
+        widget.todos.map(
+          (todo) => Object.hash(
             todo.id,
             todo.isDeleted,
             todo.isDone,
@@ -1615,14 +1757,20 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
             todo.recurrenceSeriesId,
             todo.groupId,
             todo.teamUuid,
-          ))),
-      Object.hashAll(widget.todoGroups.map((group) => Object.hash(
+          ),
+        ),
+      ),
+      Object.hashAll(
+        widget.todoGroups.map(
+          (group) => Object.hash(
             group.id,
             group.isDeleted,
             group.isExpanded,
             group.version,
             group.teamUuid,
-          ))),
+          ),
+        ),
+      ),
     );
   }
 
@@ -1797,7 +1945,7 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                     color: theme.primary.withValues(alpha: 0.3),
                     blurRadius: 8,
                     offset: const Offset(0, 2),
-                  )
+                  ),
                 ]
               : [],
         ),
@@ -1871,9 +2019,7 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                     onPressed: () async {
                       await PageTransitions.pushFromRect(
                         context: context,
-                        page: HistoricalTodosScreen(
-                          username: widget.username,
-                        ),
+                        page: HistoricalTodosScreen(username: widget.username),
                         sourceKey:
                             widget.historyKey ?? _historicalTodosButtonKey,
                         placeholderIcon: Icons.history_rounded,
@@ -1942,6 +2088,17 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
     showAppDialog(
       context: context,
       builder: (ctx) => _IndependentStatusDialog(todo: todo),
+    );
+  }
+
+  void _openOverdueTriage(List<TodoItem> overdueTodos) {
+    showTodoOverdueTriageSheet(
+      context: context,
+      username: widget.username,
+      overdueTodos: overdueTodos,
+      allTodos: widget.todos,
+      onTodosChanged: widget.onTodosChanged,
+      onRefreshRequested: widget.onRefreshRequested,
     );
   }
 }

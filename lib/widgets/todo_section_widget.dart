@@ -3,10 +3,15 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+
 import '../utils/app_dialogs.dart';
+
 import 'package:intl/intl.dart';
+
 import 'dart:convert';
+
 import 'package:shared_preferences/shared_preferences.dart';
+
 import '../models.dart';
 import '../models/chat_message.dart';
 import '../services/api_service.dart';
@@ -46,6 +51,8 @@ import '../screens/todo_plan_screen.dart';
 import 'plan_block_editor_sheet.dart';
 import '../services/plan_availability_service.dart';
 import '../features/habits/repositories/habit_repository.dart';
+import 'todo_overdue_triage_banner.dart';
+import 'todo_overdue_triage_sheet.dart';
 
 part 'todo_section_widget_contract.dart';
 part 'todo_section_widget_lifecycle.dart';
@@ -55,23 +62,11 @@ part 'todo_section_widget_view.dart';
 part 'todo_section_widget_independent_status.dart';
 part 'todo_edit_screen.dart';
 
-enum _TodoFolderDisplayMode {
-  inline,
-  separate,
-  urgentFirst,
-  hidden,
-}
+enum _TodoFolderDisplayMode { inline, separate, urgentFirst, hidden }
 
-enum _RecurrenceOccurrenceAction {
-  toggleCompletion,
-  edit,
-}
+enum _RecurrenceOccurrenceAction { toggleCompletion, edit }
 
-enum _OccurrenceSwitchAction {
-  cancel,
-  discard,
-  save,
-}
+enum _OccurrenceSwitchAction { cancel, discard, save }
 
 enum _QuickCaptureTarget { todo, fixedSchedule, cancel }
 
@@ -89,8 +84,13 @@ class TodoSectionWidget extends StatefulWidget {
 
   /// 大模型识别成功后的回调，用于导航到确认页面
   final Function(
-          List<Map<String, dynamic>>, String?, String?, String?, String?)?
-      onLLMResultsParsed; // 🚀 参数：Results, imagePath, originalText, teamUuid, teamName
+    List<Map<String, dynamic>>,
+    String?,
+    String?,
+    String?,
+    String?,
+  )?
+  onLLMResultsParsed; // 🚀 参数：Results, imagePath, originalText, teamUuid, teamName
 
   final Function(String?, String?)? onTeamChanged; // 🚀 传参：ID, Name
 
@@ -183,17 +183,20 @@ List<TodoItem> _collapseRecurrenceInstancesForDisplayForTest(
     if (todo.isDeleted || seriesId == null || seriesId.isEmpty) continue;
     seriesOccurrences.putIfAbsent(seriesId, () => []).add(todo);
   }
-  final representativeIds =
-      _buildRecurrenceSeriesRepresentativeIds(seriesOccurrences);
+  final representativeIds = _buildRecurrenceSeriesRepresentativeIds(
+    seriesOccurrences,
+  );
   return todos
-      .where((todo) =>
-          !todo.isDeleted &&
-          _shouldDisplayRecurrenceTodo(todo, representativeIds))
+      .where(
+        (todo) =>
+            !todo.isDeleted &&
+            _shouldDisplayRecurrenceTodo(todo, representativeIds),
+      )
       .toList();
 }
 
 ({int completedCount, int totalCount, int overdueCount})
-    _calculateRecurrenceSummary({
+_calculateRecurrenceSummary({
   required List<TodoRecurrenceProgressNode> allNodes,
   required List<TodoRecurrenceProgressNode> historyNodes,
   required bool hasFixedEnd,
@@ -249,28 +252,25 @@ class TodoSectionWidgetState extends _TodoSectionStateBase
   @visibleForTesting
   static List<TodoItem> collapseRecurrenceInstancesForDisplayForTest(
     List<TodoItem> todos,
-  ) =>
-      _collapseRecurrenceInstancesForDisplayForTest(todos);
+  ) => _collapseRecurrenceInstancesForDisplayForTest(todos);
 
   @visibleForTesting
   static List<TodoItem> filterHabitOnlyRecurringTodosForTest(
     List<TodoItem> todos,
     Set<String> habitOnlySeriesIds,
-  ) =>
-      _filterHabitOnlyRecurringTodos(todos, habitOnlySeriesIds);
+  ) => _filterHabitOnlyRecurringTodos(todos, habitOnlySeriesIds);
 
   @visibleForTesting
   static ({int completedCount, int totalCount, int overdueCount})
-      recurrenceSummaryForTest({
+  recurrenceSummaryForTest({
     required List<TodoRecurrenceProgressNode> allNodes,
     required List<TodoRecurrenceProgressNode> historyNodes,
     required bool hasFixedEnd,
-  }) =>
-          _calculateRecurrenceSummary(
-            allNodes: allNodes,
-            historyNodes: historyNodes,
-            hasFixedEnd: hasFixedEnd,
-          );
+  }) => _calculateRecurrenceSummary(
+    allNodes: allNodes,
+    historyNodes: historyNodes,
+    hasFixedEnd: hasFixedEnd,
+  );
 }
 
 class _AiAssistantContext {
