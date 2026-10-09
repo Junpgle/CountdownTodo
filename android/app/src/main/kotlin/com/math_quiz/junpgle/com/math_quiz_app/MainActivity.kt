@@ -2600,6 +2600,9 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val todoTitle = args["todoTitle"] as? String ?: "待办事项"
         val todoRemark = (args["todoRemark"] as? String)?.trim() ?: ""
+        val bandTodoTitle = args["bandTodoTitle"] as? String ?: todoTitle
+        val bandTodoRemark =
+            (args["bandTodoRemark"] as? String)?.trim() ?: todoRemark
         val timeStr = args["timeStr"] as? String ?: ""
         val todoType = args["todoType"] as? String ?: "default"
         val imagePath = args["imagePath"] as? String
@@ -2658,9 +2661,15 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         )
 
         // 📳 同步发送到手环
-        // Keep the wearable notification on its existing masked copy.
-        val bandText = if (todoRemark.isNotEmpty()) todoRemark else "时间: $timeStr"
-        bandPlugin?.sendNotificationToBand(todoTitle, bandText, todoType, notifId)
+        // Keep the original pickup code readable on the wearable.
+        val bandText =
+            if (bandTodoRemark.isNotEmpty()) bandTodoRemark else "时间: $timeStr"
+        bandPlugin?.sendNotificationToBand(
+            bandTodoTitle,
+            bandText,
+            todoType,
+            notifId
+        )
     }
 
     // 负责"全天"待办的汇总显示

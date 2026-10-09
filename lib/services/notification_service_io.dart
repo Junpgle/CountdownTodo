@@ -556,6 +556,8 @@ class NotificationService {
         'timeStr': timeStr,
         'todoType': todoType,
         'notificationId': notifId,
+        if (isSpecialTodo) 'bandTodoTitle': todo.title,
+        if (isSpecialTodo) 'bandTodoRemark': todo.remark ?? '',
         // Android needs the originals for the expanded special-todo card:
         // HyperOS may render it from the notification's standard text fields
         // instead of the custom miui.focus payload.
