@@ -33,6 +33,7 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
   bool _budgetAlertsEnabled = true;
   bool _recurringRemindersEnabled = true;
   bool _cloudSyncEnabled = false;
+  bool _categoryTapOpensLedger = true;
   bool _isLoading = true;
   String? _loadError;
   int _loadGeneration = 0;
@@ -70,6 +71,7 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
         AppSettingsStorage.isFinanceBudgetAlertEnabled(),
         AppSettingsStorage.isFinanceRecurringReminderEnabled(),
         AppSettingsStorage.isFinanceCloudSyncEnabled(widget.username),
+        AppSettingsStorage.isFinanceCategoryTapOpensLedger(),
       ]);
       if (!mounted || generation != _loadGeneration) return;
       setState(() {
@@ -78,6 +80,7 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
         _budgetAlertsEnabled = values[2] as bool;
         _recurringRemindersEnabled = values[3] as bool;
         _cloudSyncEnabled = values[4] as bool;
+        _categoryTapOpensLedger = values[5] as bool;
         _isLoading = false;
         _loadError = null;
       });
@@ -481,6 +484,52 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
                 title: const Text('记账云同步'),
                 subtitle: const Text('默认仅保存在本机；开启后同步到当前账号'),
                 secondary: const Icon(Icons.cloud_sync_outlined),
+              ),
+              const Divider(height: 1, indent: 20, endIndent: 20),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '小类点击方式',
+                      style: theme.textTheme.titleSmall
+                          ?.copyWith(fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '选择在当前页展开账单，或进入账单筛选',
+                      style: theme.textTheme.bodySmall
+                          ?.copyWith(color: colors.onSurfaceVariant),
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: SegmentedButton<bool>(
+                        key: const ValueKey('finance-category-tap-mode'),
+                        segments: const [
+                          ButtonSegment(
+                            value: false,
+                            label: Text('当前页展开'),
+                          ),
+                          ButtonSegment(
+                            value: true,
+                            label: Text('账单筛选'),
+                          ),
+                        ],
+                        selected: {_categoryTapOpensLedger},
+                        onSelectionChanged: (selection) async {
+                          final opensLedger = selection.single;
+                          setState(
+                            () => _categoryTapOpensLedger = opensLedger,
+                          );
+                          await AppSettingsStorage
+                              .setFinanceCategoryTapOpensLedger(opensLedger);
+                        },
+                      ),
+                    ),
+                  ],
+                ),
               ),
               const Divider(height: 1, indent: 20, endIndent: 20),
               LiquidGlassSwitchListTile(

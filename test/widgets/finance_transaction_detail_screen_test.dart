@@ -310,8 +310,20 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('餐饮 - 奶茶'), findsNothing);
-    expect(find.textContaining('餐饮'), findsOneWidget);
-    expect(find.text('¥25.00'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('finance-overview-category-food')),
+        matching: find.textContaining('餐饮'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('finance-overview-category-food')),
+        matching: find.text('¥25.00'),
+      ),
+      findsOneWidget,
+    );
 
     await tester.tap(
       find.byKey(const ValueKey('finance-overview-category-food')),
@@ -319,8 +331,8 @@ void main() {
     await tester.pump(const Duration(milliseconds: 20));
     await tester.pumpAndSettle();
     expect(find.text('支出分类详情'), findsOneWidget);
-    expect(find.text('奶茶'), findsOneWidget);
-    expect(find.text('咖啡'), findsOneWidget);
+    expect(find.text('餐饮 - 奶茶'), findsOneWidget);
+    expect(find.text('餐饮 - 咖啡'), findsOneWidget);
     final directCategoryItem = find.byKey(
       const ValueKey('finance-category-detail-food'),
     );

@@ -114,6 +114,65 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('当前页展开分类时只展示对应支出和退款明细', (tester) async {
+    final transactions = [
+      FinanceTransaction(
+        uuid: 'detail-expense',
+        amountMinor: 1200,
+        transactionDate: '2026-10-01',
+        merchant: '奶茶店',
+        categoryUuid: child.uuid,
+      ),
+      FinanceTransaction(
+        uuid: 'detail-refund',
+        type: FinanceTransactionType.refund,
+        amountMinor: 200,
+        transactionDate: '2026-10-02',
+        note: '退款',
+        categoryUuid: child.uuid,
+      ),
+      FinanceTransaction(
+        uuid: 'other-child-expense',
+        amountMinor: 800,
+        transactionDate: '2026-10-03',
+        merchant: '咖啡店',
+        categoryUuid: 'coffee',
+      ),
+    ];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: FinanceCategoryDetailScreen(
+          periodTitle: '2026年10月',
+          rootCategoryUuid: root.uuid,
+          categoryTapOpensLedger: false,
+          transactions: transactions,
+          categories: {
+            root.uuid: root,
+            child.uuid: child,
+            'coffee': FinanceCategory(
+              uuid: 'coffee',
+              name: '咖啡',
+              parentUuid: root.uuid,
+            ),
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(ValueKey('finance-category-detail-${child.uuid}')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('奶茶店'), findsOneWidget);
+    expect(find.text('退款'), findsOneWidget);
+    expect(find.text('咖啡店'), findsNothing);
+    expect(find.text('+¥2.00'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   for (final archived in [false, true]) {
     test('带二级分类的大类不能变成二级分类，已归档子类=$archived', () async {
       if (archived) await FinanceStorage.archiveCategory(child.uuid);

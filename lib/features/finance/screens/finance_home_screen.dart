@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../services/storage/app_settings_storage.dart';
 import '../models/finance_models.dart';
 import '../services/finance_automation_service.dart';
 import '../services/finance_repository.dart';
@@ -77,6 +78,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
   String _keyword = '';
   FinanceTransactionType? _filterType;
   String? _categoryFilterUuid;
+  bool _categoryTapOpensLedger = true;
   int _selectedIndex = 0;
   bool _isLoading = true;
   String? _loadError;
@@ -208,7 +210,12 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
       });
     }
     try {
-      final data = await _loadOverviewData();
+      final values = await Future.wait<Object>([
+        _loadOverviewData(),
+        AppSettingsStorage.isFinanceCategoryTapOpensLedger(),
+      ]);
+      final data = values[0] as _FinanceHomeData;
+      final categoryTapOpensLedger = values[1] as bool;
       if (!mounted || generation != _loadGeneration) return;
       final recurringRuleSignature = _recurringRuleSignature(
         data.recurringRules,
@@ -224,6 +231,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
         _paymentMethods = data.paymentMethods;
         _overviewTransactions = data.overviewTransactions;
         _recurringRules = data.recurringRules;
+        _categoryTapOpensLedger = categoryTapOpensLedger;
         _isLoading = false;
       });
       _scheduleUpcomingTransactionRefresh();
@@ -935,6 +943,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
                           summary: _summary,
                           transactions: _overviewTransactions,
                           categories: _categoryMap,
+                          categoryTapOpensLedger: _categoryTapOpensLedger,
                           onAdd: () =>
                               _openEntry(sourceKey: _overviewAddActionKey),
                           addActionKey: _overviewAddActionKey,

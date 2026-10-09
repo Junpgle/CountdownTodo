@@ -26,6 +26,8 @@ class AppSettingsStorage {
   static const String _notifyFinanceRecurringEnabled =
       "notify_finance_recurring_enabled";
   static const String _financeCloudSyncEnabled = "finance_cloud_sync_enabled";
+  static const String _financeCategoryTapOpensLedger =
+      "finance_category_tap_opens_ledger";
   static const String _courseReminderMinutes = "course_reminder_minutes";
 
   static const String _privacyAgreed = "privacy_policy_agreed";
@@ -191,6 +193,16 @@ class AppSettingsStorage {
   static Future<void> setFinanceRecurringReminderEnabled(bool enabled) async {
     final prefs = await _prefs;
     await prefs.setBool(_notifyFinanceRecurringEnabled, enabled);
+  }
+
+  static Future<bool> isFinanceCategoryTapOpensLedger() async {
+    final prefs = await _prefs;
+    return prefs.getBool(_financeCategoryTapOpensLedger) ?? true;
+  }
+
+  static Future<void> setFinanceCategoryTapOpensLedger(bool enabled) async {
+    final prefs = await _prefs;
+    await prefs.setBool(_financeCategoryTapOpensLedger, enabled);
   }
 
   static String _financeCloudSyncKey(String username) =>
