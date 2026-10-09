@@ -4,6 +4,7 @@ import 'package:countdown_todo/models.dart';
 import 'package:countdown_todo/models/plan_availability.dart';
 import 'package:countdown_todo/services/device_calendar_read_service.dart';
 import 'package:countdown_todo/services/plan_availability_repository.dart';
+import 'package:countdown_todo/services/plan_availability_preferences.dart';
 import 'package:countdown_todo/storage_service.dart';
 import 'package:countdown_todo/widgets/plan_availability_panel.dart';
 import 'package:flutter/material.dart';
@@ -22,26 +23,36 @@ Future<void> tap(WidgetTester tester, String value) async {
   await tester.ensureVisible(key(value));
   await tester.tap(key(value));
   await tester.pump();
+  if (value == 'plan-find-time') await tester.pumpAndSettle();
 }
 
 Future<void> pumpPanel(
   WidgetTester tester,
   PlanAvailabilityLoader loader, {
   DateTime? date,
+  String username = 'synthetic',
   int minutes = 45,
+  bool initialExpanded = false,
+  bool disableAnimations = false,
   TodoItem? target,
   ValueChanged<PlanAvailabilitySelection>? selected,
   VoidCallback? invalidated,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context)
+            .copyWith(disableAnimations: disableAnimations),
+        child: child!,
+      ),
       home: Scaffold(
         body: SingleChildScrollView(
           child: PlanAvailabilityPanel(
-            username: 'synthetic',
+            username: username,
             todo: target ?? todo,
             initialDate: date ?? day,
             initialMinutes: minutes,
+            initialExpanded: initialExpanded,
             loader: loader,
             clock: () => now,
             onSelected: selected ?? (_) {},
@@ -55,6 +66,255 @@ Future<void> pumpPanel(
 }
 
 void main() {
+  testWidgets('展开和收起经过中间高度，快速反向后保留输入且不会查找或写入', (tester) async {
+    var loads = 0;
+    var invalidations = 0;
+    var selections = 0;
+    await pumpPanel(
+      tester,
+      (q, {bool forceRefresh = false}) async {
+        loads++;
+        return snapshot();
+      },
+      invalidated: () => invalidations++,
+      selected: (_) => selections++,
+    );
+    final expansion = key('plan-availability-expansion');
+    final collapsedHeight = tester.getSize(expansion).height;
+    final headerTop = tester.getTopLeft(key('plan-find-time'));
+    await tester.tap(key('plan-find-time'));
+    await tester.pump();
+    expect(tester.getSize(expansion).height, closeTo(collapsedHeight, 0.01));
+    await tester.pump(const Duration(milliseconds: 100));
+    final expandingHeight = tester.getSize(expansion).height;
+    await tester.pumpAndSettle();
+    final expandedHeight = tester.getSize(expansion).height;
+    expect(expandingHeight, greaterThan(collapsedHeight));
+    expect(expandingHeight, lessThan(expandedHeight));
+    expect(tester.getTopLeft(key('plan-find-time')), headerTop);
+    await tester.enterText(key('plan-custom-duration'), '75');
+    final before = invalidations;
+    await tester.tap(key('plan-find-time'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    final collapsingHeight = tester.getSize(expansion).height;
+    expect(collapsingHeight, greaterThan(collapsedHeight));
+    expect(collapsingHeight, lessThan(expandedHeight));
+    await tester.tap(key('plan-find-time'));
+    await tester.pump();
+    await tester.pumpAndSettle();
+    expect(tester.getSize(expansion).height, closeTo(expandedHeight, 0.01));
+    expect(
+      tester.widget<TextField>(key('plan-custom-duration')).controller!.text,
+      '75',
+    );
+    await tester.tap(key('plan-find-time'));
+    await tester.pump();
+    await tester.pumpAndSettle();
+    expect(tester.getSize(expansion).height, closeTo(collapsedHeight, 0.01));
+    expect(invalidations, before);
+    expect(loads, 0);
+    expect(selections, 0);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('漏做恢复初始展开不先折叠，减少动画设置立即完成切换', (tester) async {
+    await pumpPanel(
+      tester,
+      (q, {bool forceRefresh = false}) async => snapshot(),
+      initialExpanded: true,
+      disableAnimations: true,
+    );
+    final expansion = key('plan-availability-expansion');
+    final expandedHeight = tester.getSize(expansion).height;
+    await tester.tap(key('plan-find-time'));
+    await tester.pump();
+    await tester.pump();
+    final collapsedHeight = tester.getSize(expansion).height;
+    expect(collapsedHeight, lessThan(expandedHeight));
+    await tester.tap(key('plan-find-time'));
+    await tester.pump();
+    await tester.pump();
+    expect(tester.getSize(expansion).height, closeTo(expandedHeight, 0.01));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('关闭重开恢复预设和自定义勾选，查找确实采用恢复的避让', (tester) async {
+    final queries = <PlanAvailabilityQuery>[];
+    Future<PlanAvailabilitySnapshot> loader(
+      PlanAvailabilityQuery query, {
+      bool forceRefresh = false,
+    }) async {
+      queries.add(query);
+      return snapshot();
+    }
+
+    await pumpPanel(tester, loader, initialExpanded: true);
+    await tester.pumpAndSettle();
+    await tap(tester, 'plan-avoid-options');
+    await tester.pumpAndSettle();
+    await tap(tester, 'plan-avoid-toggle-0');
+    await tap(tester, 'plan-avoid-toggle-2');
+    await tap(tester, 'plan-avoid-add');
+    await tester.pumpAndSettle();
+    await tap(tester, 'plan-avoid-confirm');
+    await tester.pumpAndSettle();
+    // Close without saving any plan, then open a new panel.
+    await tester.pumpWidget(const SizedBox());
+    await pumpPanel(tester, loader, initialExpanded: true);
+    await tester.pumpAndSettle();
+    await tap(tester, 'plan-avoid-options');
+    await tester.pumpAndSettle();
+    for (final index in [0, 2, 3]) {
+      expect(
+        tester.widget<FilterChip>(key('plan-avoid-toggle-$index')).selected,
+        isTrue,
+      );
+    }
+    expect(
+      tester.widget<FilterChip>(key('plan-avoid-toggle-1')).selected,
+      isFalse,
+    );
+    await tap(tester, 'plan-lookup-slots');
+    await tester.pumpAndSettle();
+    expect(queries.single.avoidWindows.map((w) => w.label), [
+      '午休',
+      '晚餐',
+      '自定义',
+    ]);
+    expect(queries.single.avoidWindows.last.startMinutes, 900);
+    await tap(tester, 'plan-avoid-toggle-0');
+    await tap(tester, 'plan-avoid-toggle-2');
+    await tap(tester, 'plan-avoid-remove-3');
+    await tester.pumpWidget(const SizedBox());
+    await pumpPanel(tester, loader, initialExpanded: true);
+    await tester.pumpAndSettle();
+    await tap(tester, 'plan-lookup-slots');
+    await tester.pumpAndSettle();
+    expect(queries.last.avoidWindows, isEmpty);
+    expect(find.text('已避开 3 个时段'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('同一面板切换账号不串用勾选，切回恢复本账号', (tester) async {
+    final windows = PlanAvailabilityPreferences.defaultWindows;
+    await tester.runAsync(
+      () => PlanAvailabilityPreferences.save('synthetic', windows, {
+        windows.first,
+      }),
+    );
+    await tester.runAsync(
+      () => PlanAvailabilityPreferences.save('other-account', windows, {
+        windows.last,
+      }),
+    );
+    final queries = <PlanAvailabilityQuery>[];
+    Future<PlanAvailabilitySnapshot> loader(
+      PlanAvailabilityQuery query, {
+      bool forceRefresh = false,
+    }) async {
+      queries.add(query);
+      return snapshot();
+    }
+
+    await pumpPanel(tester, loader, initialExpanded: true);
+    await tester.pumpAndSettle();
+    await tap(tester, 'plan-lookup-slots');
+    await tester.pumpAndSettle();
+    await pumpPanel(
+      tester,
+      loader,
+      username: 'other-account',
+      initialExpanded: true,
+    );
+    await tester.pumpAndSettle();
+    await tap(tester, 'plan-lookup-slots');
+    await tester.pumpAndSettle();
+    await pumpPanel(tester, loader, initialExpanded: true);
+    await tester.pumpAndSettle();
+    await tap(tester, 'plan-lookup-slots');
+    await tester.pumpAndSettle();
+    expect(queries.map((q) => q.username), [
+      'synthetic',
+      'other-account',
+      'synthetic',
+    ]);
+    expect(queries.map((q) => q.avoidWindows.single.label), ['午休', '晚餐', '午休']);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('恢复修改过的预设时段，并传给手动保存查询回调', (tester) async {
+    final windows = [
+      const PlanDailyTimeWindow('午休', 750, 810),
+      ...PlanAvailabilityPreferences.defaultWindows.skip(1),
+    ];
+    await tester.runAsync(
+      () => PlanAvailabilityPreferences.save('synthetic', windows, {
+        windows.first,
+      }),
+    );
+    PlanAvailabilityQuery? query;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: PlanAvailabilityPanel(
+            username: 'synthetic',
+            todo: todo,
+            initialDate: day,
+            initialMinutes: 30,
+            loader: (q, {bool forceRefresh = false}) async => snapshot(),
+            clock: () => now,
+            onSelected: (_) {},
+            onInvalidated: () {},
+            onQueryChanged: (value) => query = value,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(query!.avoidWindows.single.startMinutes, 750);
+    expect(query!.avoidWindows.single.endMinutes, 810);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('避让时段可结束于午夜，并可再次打开编辑', (tester) async {
+    const midnightWindow = PlanDailyTimeWindow('通宵', 1380, 1440);
+    final windows = [
+      ...PlanAvailabilityPreferences.defaultWindows,
+      midnightWindow,
+    ];
+    await tester.runAsync(
+      () => PlanAvailabilityPreferences.save('synthetic', windows, {
+        midnightWindow,
+      }),
+    );
+    await pumpPanel(
+      tester,
+      (q, {bool forceRefresh = false}) async => snapshot(),
+      initialExpanded: true,
+    );
+    await tester.runAsync(() => PlanAvailabilityPreferences.load('synthetic'));
+    await tester.pumpAndSettle();
+    await tap(tester, 'plan-avoid-options');
+    await tester.pumpAndSettle();
+    await tap(tester, 'plan-avoid-edit-3');
+    await tester.pumpAndSettle();
+
+    expect(find.text('调整通宵时间'), findsOneWidget);
+    await tap(tester, 'plan-avoid-end');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('AM'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('OK').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('应用'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('调整通宵时间'), findsNothing);
+    expect(find.text('23:00–24:00'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('默认五条，可调数量与午休用餐避让，修改会使已选推荐失效', (tester) async {
     final queries = <PlanAvailabilityQuery>[];
     var invalidations = 0;

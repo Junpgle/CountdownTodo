@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../models.dart';
 import '../models/plan_availability.dart';
 import '../services/device_calendar_read_service.dart';
+import '../services/plan_availability_preferences.dart';
 import '../services/plan_availability_repository.dart';
 import '../services/plan_availability_service.dart';
 import '../storage_service.dart';
@@ -22,6 +25,10 @@ class PlanAvailabilityPanel extends StatefulWidget {
     this.loader,
     this.clock,
     this.estimatedMinutes,
+    this.initialExpanded = false,
+    this.dateShortcuts = false,
+    this.onQueryChanged,
+    this.onDateChanged,
   });
   final String username;
   final TodoItem? todo;
@@ -33,6 +40,10 @@ class PlanAvailabilityPanel extends StatefulWidget {
   final DateTime Function()? clock;
   final ValueChanged<PlanAvailabilitySelection> onSelected;
   final VoidCallback onInvalidated;
+  final bool initialExpanded;
+  final bool dateShortcuts;
+  final ValueChanged<PlanAvailabilityQuery>? onQueryChanged;
+  final ValueChanged<DateTime>? onDateChanged;
   @override
   State<PlanAvailabilityPanel> createState() => _PlanAvailabilityPanelState();
 }
@@ -49,12 +60,12 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
   PlanAvailabilityException? _error;
   DateTime? _selectedStart;
   int _resultLimit = 5;
-  final List<PlanDailyTimeWindow> _avoidOptions = [
-    const PlanDailyTimeWindow('午休', 720, 840),
-    const PlanDailyTimeWindow('午餐', 690, 750),
-    const PlanDailyTimeWindow('晚餐', 1080, 1140),
-  ];
+  final List<PlanDailyTimeWindow> _avoidOptions = List.of(
+    PlanAvailabilityPreferences.defaultWindows,
+  );
   final Set<PlanDailyTimeWindow> _enabledAvoid = {};
+  int _avoidPreferencesSequence = 0;
+  bool _avoidPreferencesLoaded = false;
   DateTime get _now => widget.clock?.call() ?? DateTime.now();
   PlanAvailabilityQuery get _query => PlanAvailabilityQuery(
     username: widget.username,
@@ -73,18 +84,74 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
   void initState() {
     super.initState();
     _date = _day(widget.initialDate);
+    _expanded = widget.initialExpanded;
     _minutes = widget.initialMinutes > 0 ? widget.initialMinutes : 30;
     _duration = TextEditingController(text: '$_minutes');
+    unawaited(_loadAvoidPreferences());
     WidgetsBinding.instance.addObserver(this);
     StorageService.scopedDataRefreshNotifier.addListener(_onRefresh);
     DeviceCalendarReadService.revision.addListener(_invalidate);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) widget.onQueryChanged?.call(_query);
+    });
   }
 
   DateTime _day(DateTime value) => DateTime(value.year, value.month, value.day);
 
+  Future<void> _loadAvoidPreferences() async {
+    final sequence = ++_avoidPreferencesSequence;
+    final username = widget.username;
+    _avoidPreferencesLoaded = false;
+    _avoidOptions
+      ..clear()
+      ..addAll(PlanAvailabilityPreferences.defaultWindows);
+    _enabledAvoid.clear();
+    PlanAvoidancePreferences saved;
+    try {
+      saved = await PlanAvailabilityPreferences.load(username);
+    } catch (error) {
+      debugPrint('Unable to load availability preferences: $error');
+      saved = PlanAvoidancePreferences(
+        PlanAvailabilityPreferences.defaultWindows,
+        const {},
+      );
+    }
+    if (!mounted ||
+        sequence != _avoidPreferencesSequence ||
+        username != widget.username) {
+      return;
+    }
+    _avoidOptions
+      ..clear()
+      ..addAll(saved.options);
+    _enabledAvoid.addAll(saved.selectedIndices.map((i) => _avoidOptions[i]));
+    _avoidPreferencesLoaded = true;
+    _invalidate();
+  }
+
+  void _avoidChanged() {
+    _invalidate();
+    final username = widget.username;
+    unawaited(
+      PlanAvailabilityPreferences.save(
+        username,
+        _avoidOptions,
+        _enabledAvoid,
+      ).catchError((Object error) {
+        debugPrint('Unable to save availability preferences: $error');
+        if (!mounted || username != widget.username) return;
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('避让设置未能保存，请重试')));
+      }),
+    );
+  }
+
   @override
   void didUpdateWidget(covariant PlanAvailabilityPanel old) {
     super.didUpdateWidget(old);
+    if (old.username != widget.username) {
+      unawaited(_loadAvoidPreferences());
+    }
     final changed =
         old.username != widget.username ||
         old.todo?.id != widget.todo?.id ||
@@ -152,6 +219,7 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
       _loading = false;
     });
     widget.onInvalidated();
+    widget.onQueryChanged?.call(_query);
   }
 
   void _changeMinutes(int value) {
@@ -161,6 +229,7 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
   }
 
   Future<void> _editAvoid(PlanDailyTimeWindow? existing) async {
+    final sequence = _avoidPreferencesSequence;
     var start = existing?.startMinutes ?? 900;
     var end = existing?.endMinutes ?? 960;
     String? error;
@@ -172,14 +241,20 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
             final value = first ? start : end;
             final time = await showAppTimePicker(
               context: context,
-              initialTime: TimeOfDay(hour: value ~/ 60, minute: value % 60),
+              initialTime: TimeOfDay(
+                hour: value == 1440 ? 0 : value ~/ 60,
+                minute: value % 60,
+              ),
             );
             if (time == null || !context.mounted) return;
             update(() {
+              final minutes = time.hour * 60 + time.minute;
               if (first) {
-                start = time.hour * 60 + time.minute;
+                start = minutes;
               } else {
-                end = time.hour * 60 + time.minute;
+                // The picker represents 24:00 as 00:00. Preserve the
+                // end-of-day meaning when editing an avoidance window.
+                end = minutes == 0 ? 1440 : minutes;
               }
               error = null;
             });
@@ -234,7 +309,9 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
         },
       ),
     );
-    if (chosen == null || !mounted) return;
+    if (chosen == null || !mounted || sequence != _avoidPreferencesSequence) {
+      return;
+    }
     if (existing != null) {
       final index = _avoidOptions.indexOf(existing);
       _avoidOptions[index] = chosen;
@@ -243,7 +320,7 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
       _avoidOptions.add(chosen);
     }
     _enabledAvoid.add(chosen);
-    _invalidate();
+    _avoidChanged();
   }
 
   Widget _avoidControls() => ExpansionTile(
@@ -266,18 +343,22 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
               key: ValueKey('plan-avoid-toggle-$index'),
               label: Text(_avoidOptions[index].label),
               selected: _enabledAvoid.contains(_avoidOptions[index]),
-              onSelected: (enabled) {
-                if (enabled) {
-                  _enabledAvoid.add(_avoidOptions[index]);
-                } else {
-                  _enabledAvoid.remove(_avoidOptions[index]);
-                }
-                _invalidate();
-              },
+              onSelected: !_avoidPreferencesLoaded
+                  ? null
+                  : (enabled) {
+                      if (enabled) {
+                        _enabledAvoid.add(_avoidOptions[index]);
+                      } else {
+                        _enabledAvoid.remove(_avoidOptions[index]);
+                      }
+                      _avoidChanged();
+                    },
             ),
             TextButton(
               key: ValueKey('plan-avoid-edit-$index'),
-              onPressed: () => _editAvoid(_avoidOptions[index]),
+              onPressed: !_avoidPreferencesLoaded
+                  ? null
+                  : () => _editAvoid(_avoidOptions[index]),
               child: Text(
                 '${_hhmm(_avoidOptions[index].startMinutes)}–${_hhmm(_avoidOptions[index].endMinutes)}',
               ),
@@ -287,11 +368,13 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
                 tooltip: '移除此避让时段',
                 key: ValueKey('plan-avoid-remove-$index'),
                 icon: const Icon(Icons.close, size: 18),
-                onPressed: () {
-                  _enabledAvoid.remove(_avoidOptions[index]);
-                  _avoidOptions.removeAt(index);
-                  _invalidate();
-                },
+                onPressed: !_avoidPreferencesLoaded
+                    ? null
+                    : () {
+                        _enabledAvoid.remove(_avoidOptions[index]);
+                        _avoidOptions.removeAt(index);
+                        _avoidChanged();
+                      },
               ),
           ],
         ),
@@ -299,7 +382,7 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
         alignment: Alignment.centerLeft,
         child: TextButton.icon(
           key: const ValueKey('plan-avoid-add'),
-          onPressed: () => _editAvoid(null),
+          onPressed: !_avoidPreferencesLoaded ? null : () => _editAvoid(null),
           icon: const Icon(Icons.add, size: 18),
           label: const Text('添加自定义时段'),
         ),
@@ -362,6 +445,7 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
     if (date != null && mounted) {
       _date = _day(date);
       _invalidate();
+      widget.onDateChanged?.call(_date);
     }
   }
 
@@ -403,6 +487,29 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
     widget.onSelected(selection);
   }
 
+  Widget _expansion({
+    required bool open,
+    required Duration duration,
+    required Widget collapsed,
+    required Widget expanded,
+  }) => KeyedSubtree(
+    key: const ValueKey('plan-availability-expansion'),
+    child: duration == Duration.zero
+        ? (open ? expanded : collapsed)
+        : AnimatedCrossFade(
+            duration: duration,
+            firstCurve: Curves.easeInOut,
+            secondCurve: Curves.easeInOut,
+            sizeCurve: Curves.easeInOutCubic,
+            alignment: Alignment.topCenter,
+            crossFadeState: open
+                ? CrossFadeState.showSecond
+                : CrossFadeState.showFirst,
+            firstChild: collapsed,
+            secondChild: expanded,
+          ),
+  );
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -411,6 +518,9 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
         widget.editingBlock == null ||
         PlanAvailabilityService.canReschedule(widget.editingBlock!);
     final open = _expanded && editable;
+    final transitionDuration = MediaQuery.disableAnimationsOf(context)
+        ? Duration.zero
+        : const Duration(milliseconds: 260);
     return Container(
       decoration: BoxDecoration(
         color: colors.primary.withValues(alpha: 0.045),
@@ -445,310 +555,358 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
                       style: TextStyle(fontWeight: FontWeight.w600),
                     ),
                   ),
-                  Icon(open ? Icons.expand_less : Icons.expand_more),
+                  AnimatedRotation(
+                    turns: open ? 0.5 : 0,
+                    duration: transitionDuration,
+                    curve: Curves.easeInOutCubic,
+                    child: const Icon(Icons.expand_more),
+                  ),
                 ],
               ),
             ),
-            if (!editable)
-              Text(
-                '该规划状态不支持推荐改期',
-                style: TextStyle(color: colors.onSurfaceVariant),
-              )
-            else if (!open)
-              Text(
-                '避开已有安排，选择一个连续空闲时段',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: colors.onSurfaceVariant,
+            _expansion(
+              open: open,
+              duration: transitionDuration,
+              collapsed: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  editable ? '避开已有安排，选择一个连续空闲时段' : '该规划状态不支持推荐改期',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colors.onSurfaceVariant,
+                  ),
                 ),
               ),
-            if (open) ...[
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 4,
-                runSpacing: 4,
-                crossAxisAlignment: WrapCrossAlignment.center,
+              expanded: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  TextButton.icon(
-                    key: const ValueKey('plan-availability-date'),
-                    onPressed: _pickDate,
-                    icon: const Icon(Icons.calendar_today_outlined, size: 18),
-                    label: Text(DateFormat('yyyy-MM-dd').format(_date)),
-                  ),
-                  TextButton(
-                    key: const ValueKey('plan-window-start'),
-                    onPressed: () => _pickWindow(true),
-                    child: Text('从 ${_hhmm(_start)}'),
-                  ),
-                  TextButton(
-                    key: const ValueKey('plan-window-end'),
-                    onPressed: () => _pickWindow(false),
-                    child: Text('到 ${_hhmm(_end)}'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Text('需要多长时间？', style: theme.textTheme.labelLarge),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  for (final value in [15, 30, 45, 60])
-                    ChoiceChip(
-                      key: ValueKey('plan-duration-$value'),
-                      label: Text('$value 分钟'),
-                      selected: _minutes == value,
-                      showCheckmark: false,
-                      side: BorderSide.none,
-                      backgroundColor: colors.surfaceContainerLow,
-                      selectedColor: colors.primaryContainer,
-                      onSelected: (_) => _changeMinutes(value),
-                    ),
-                  SizedBox(
-                    width: 140,
-                    child: TextField(
-                      key: const ValueKey('plan-custom-duration'),
-                      controller: _duration,
-                      keyboardType: TextInputType.number,
-                      decoration: InputDecoration(
-                        labelText: '自定义',
-                        suffixText: '分钟',
-                        isDense: true,
-                        filled: true,
-                        fillColor: colors.surfaceContainerLow,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide.none,
-                        ),
-                      ),
-                      onChanged: (value) {
-                        _minutes = int.tryParse(value) ?? 0;
-                        _invalidate();
-                      },
-                    ),
-                  ),
-                ],
-              ),
-              if (widget.estimatedMinutes != null)
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: TextButton(
-                    onPressed: () => _changeMinutes(widget.estimatedMinutes!),
-                    child: Text('采用历史估时 ${widget.estimatedMinutes} 分钟'),
-                  ),
-                ),
-              const SizedBox(height: 16),
-              Wrap(
-                spacing: 8,
-                runSpacing: 4,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  const Text('推荐数量'),
-                  for (final limit in [3, 5, 8])
-                    ChoiceChip(
-                      key: ValueKey('plan-result-limit-$limit'),
-                      label: Text('$limit 个'),
-                      selected: _resultLimit == limit,
-                      showCheckmark: false,
-                      onSelected: (_) {
-                        _resultLimit = limit;
-                        _invalidate();
-                      },
-                    ),
-                ],
-              ),
-              _avoidControls(),
-              const SizedBox(height: 8),
-              FilledButton.icon(
-                key: const ValueKey('plan-lookup-slots'),
-                style: FilledButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 14,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                onPressed: _loading ? null : _lookup,
-                icon: _loading
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.search, size: 20),
-                label: Text(
-                  _loading ? '正在查找' : (_error == null ? '查找时段' : '重新查找'),
-                ),
-              ),
-              if (_error != null) ...[
-                const SizedBox(height: 12),
-                Text(_error!.message, style: TextStyle(color: colors.error)),
-                if (_error!.canUseAppOnly)
-                  TextButton(
-                    key: const ValueKey('plan-app-only'),
-                    onPressed: () {
-                      _appOnly = true;
-                      _invalidate();
-                      _lookup();
-                    },
-                    child: const Text('仅按应用内安排查找'),
-                  ),
-              ],
-              if (_result?.message != null)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  child: Text(_result!.message!),
-                ),
-              if (_result != null &&
-                  _snapshot != null &&
-                  _result!.slots.isNotEmpty) ...[
-                const SizedBox(height: 20),
-                Text(
-                  '可用时段 · ${_result!.slots.length} 个建议',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                for (final slot in _result!.slots)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: OutlinedButton(
-                      key: ValueKey(
-                        'plan-slot-${slot.start.millisecondsSinceEpoch}',
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: _selectedStart == slot.start
-                            ? colors.onPrimaryContainer
-                            : colors.onSurface,
-                        backgroundColor: _selectedStart == slot.start
-                            ? colors.primaryContainer
-                            : colors.surface,
-                        side: BorderSide(
-                          color: _selectedStart == slot.start
-                              ? colors.primary
-                              : colors.outlineVariant,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        padding: const EdgeInsets.all(14),
-                      ),
-                      onPressed: () => _select(slot),
-                      child: Row(
-                        children: [
-                          Icon(
-                            _selectedStart == slot.start
-                                ? Icons.check_circle_outline
-                                : Icons.schedule_outlined,
-                            size: 22,
+                  const SizedBox(height: 8),
+                  if (widget.dateShortcuts)
+                    Wrap(
+                      spacing: 8,
+                      children: [
+                        for (final offset in [0, 1])
+                          TextButton(
+                            key: ValueKey('plan-date-shortcut-$offset'),
+                            onPressed: () {
+                              final today = _day(_now);
+                              _date = DateTime(
+                                today.year,
+                                today.month,
+                                today.day + offset,
+                              );
+                              _invalidate();
+                              widget.onDateChanged?.call(_date);
+                            },
+                            child: Text(offset == 0 ? '今天' : '明天'),
                           ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  '${DateFormat('HH:mm').format(slot.start)}–${DateFormat('HH:mm').format(slot.end)}',
-                                  style: theme.textTheme.titleMedium?.copyWith(
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  '${DateFormat('MM-dd').format(slot.start)} · ${slot.minutes} 分钟${_selectedStart == slot.start ? ' · 已选用' : ''}',
-                                  style: theme.textTheme.bodySmall?.copyWith(
-                                    color: colors.onSurfaceVariant,
-                                  ),
-                                ),
-                              ],
+                        TextButton(
+                          onPressed: _pickDate,
+                          child: const Text('其他日期'),
+                        ),
+                      ],
+                    ),
+                  Wrap(
+                    spacing: 4,
+                    runSpacing: 4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      TextButton.icon(
+                        key: const ValueKey('plan-availability-date'),
+                        onPressed: _pickDate,
+                        icon: const Icon(
+                          Icons.calendar_today_outlined,
+                          size: 18,
+                        ),
+                        label: Text(DateFormat('yyyy-MM-dd').format(_date)),
+                      ),
+                      TextButton(
+                        key: const ValueKey('plan-window-start'),
+                        onPressed: () => _pickWindow(true),
+                        child: Text('从 ${_hhmm(_start)}'),
+                      ),
+                      TextButton(
+                        key: const ValueKey('plan-window-end'),
+                        onPressed: () => _pickWindow(false),
+                        child: Text('到 ${_hhmm(_end)}'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Text('需要多长时间？', style: theme.textTheme.labelLarge),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      for (final value in [15, 30, 45, 60])
+                        ChoiceChip(
+                          key: ValueKey('plan-duration-$value'),
+                          label: Text('$value 分钟'),
+                          selected: _minutes == value,
+                          showCheckmark: false,
+                          side: BorderSide.none,
+                          backgroundColor: colors.surfaceContainerLow,
+                          selectedColor: colors.primaryContainer,
+                          onSelected: (_) => _changeMinutes(value),
+                        ),
+                      SizedBox(
+                        width: 140,
+                        child: TextField(
+                          key: const ValueKey('plan-custom-duration'),
+                          controller: _duration,
+                          keyboardType: TextInputType.number,
+                          decoration: InputDecoration(
+                            labelText: '自定义',
+                            suffixText: '分钟',
+                            isDense: true,
+                            filled: true,
+                            fillColor: colors.surfaceContainerLow,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide.none,
                             ),
                           ),
-                          const SizedBox(width: 8),
-                          Icon(
-                            _selectedStart == slot.start
-                                ? Icons.done
-                                : Icons.arrow_forward,
-                            size: 18,
+                          onChanged: (value) {
+                            _minutes = int.tryParse(value) ?? 0;
+                            _invalidate();
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (widget.estimatedMinutes != null)
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton(
+                        onPressed: () =>
+                            _changeMinutes(widget.estimatedMinutes!),
+                        child: Text('采用历史估时 ${widget.estimatedMinutes} 分钟'),
+                      ),
+                    ),
+                  const SizedBox(height: 16),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      const Text('推荐数量'),
+                      for (final limit in [3, 5, 8])
+                        ChoiceChip(
+                          key: ValueKey('plan-result-limit-$limit'),
+                          label: Text('$limit 个'),
+                          selected: _resultLimit == limit,
+                          showCheckmark: false,
+                          onSelected: (_) {
+                            _resultLimit = limit;
+                            _invalidate();
+                          },
+                        ),
+                    ],
+                  ),
+                  _avoidControls(),
+                  const SizedBox(height: 8),
+                  FilledButton.icon(
+                    key: const ValueKey('plan-lookup-slots'),
+                    style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 14,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    onPressed: _loading || !_avoidPreferencesLoaded
+                        ? null
+                        : _lookup,
+                    icon: _loading
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.search, size: 20),
+                    label: Text(
+                      _loading ? '正在查找' : (_error == null ? '查找时段' : '重新查找'),
+                    ),
+                  ),
+                  if (_error != null) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      _error!.message,
+                      style: TextStyle(color: colors.error),
+                    ),
+                    if (_error!.canUseAppOnly)
+                      TextButton(
+                        key: const ValueKey('plan-app-only'),
+                        onPressed: () {
+                          _appOnly = true;
+                          _invalidate();
+                          _lookup();
+                        },
+                        child: const Text('仅按应用内安排查找'),
+                      ),
+                  ],
+                  if (_result?.message != null)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      child: Text(_result!.message!),
+                    ),
+                  if (_result != null &&
+                      _snapshot != null &&
+                      _result!.slots.isNotEmpty) ...[
+                    const SizedBox(height: 20),
+                    Text(
+                      '可用时段 · ${_result!.slots.length} 个建议',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    for (final slot in _result!.slots)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: OutlinedButton(
+                          key: ValueKey(
+                            'plan-slot-${slot.start.millisecondsSinceEpoch}',
                           ),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: _selectedStart == slot.start
+                                ? colors.onPrimaryContainer
+                                : colors.onSurface,
+                            backgroundColor: _selectedStart == slot.start
+                                ? colors.primaryContainer
+                                : colors.surface,
+                            side: BorderSide(
+                              color: _selectedStart == slot.start
+                                  ? colors.primary
+                                  : colors.outlineVariant,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            padding: const EdgeInsets.all(14),
+                          ),
+                          onPressed: () => _select(slot),
+                          child: Row(
+                            children: [
+                              Icon(
+                                _selectedStart == slot.start
+                                    ? Icons.check_circle_outline
+                                    : Icons.schedule_outlined,
+                                size: 22,
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      '${DateFormat('HH:mm').format(slot.start)}–${DateFormat('HH:mm').format(slot.end)}',
+                                      style: theme.textTheme.titleMedium
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      '${DateFormat('MM-dd').format(slot.start)} · ${slot.minutes} 分钟${_selectedStart == slot.start ? ' · 已选用' : ''}',
+                                      style: theme.textTheme.bodySmall
+                                          ?.copyWith(
+                                            color: colors.onSurfaceVariant,
+                                          ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Icon(
+                                _selectedStart == slot.start
+                                    ? Icons.done
+                                    : Icons.arrow_forward,
+                                size: 18,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                  ],
+                  const SizedBox(height: 12),
+                  Text(
+                    _snapshot?.coverage ??
+                        (_appOnly
+                            ? '仅按应用内安排查找；未计入手机日历'
+                            : '检查应用内安排；手机日历仅在已开启且已授权时计入'),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: colors.onSurfaceVariant,
+                    ),
+                  ),
+                  if (_snapshot != null) ...[
+                    if (_snapshot!.todo.dueDate != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Text(
+                          _snapshot!.todo.isDateOnly
+                              ? '须在 ${DateFormat('MM-dd').format(_snapshot!.todo.dueDate!)} 当天结束前完成'
+                              : '须在 ${DateFormat('MM-dd HH:mm').format(_snapshot!.todo.dueDate!)} 截止前完成',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: colors.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                    Theme(
+                      data: theme.copyWith(dividerColor: Colors.transparent),
+                      child: ExpansionTile(
+                        key: const ValueKey('plan-busy-details'),
+                        tilePadding: EdgeInsets.zero,
+                        title: Text(
+                          '已计入 ${_snapshot!.busy.length} 项占用',
+                          style: theme.textTheme.bodySmall,
+                        ),
+                        children: [
+                          for (final item
+                              in (_snapshot!.busy.toList()..sort(
+                                    (a, b) => a.start.compareTo(b.start),
+                                  ))
+                                  .take(50))
+                            Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 6),
+                              child: Align(
+                                alignment: Alignment.centerLeft,
+                                child: Text(
+                                  '${_sourceLabel(item.source)} · ${DateFormat('MM-dd HH:mm').format(item.start)}–${DateFormat('MM-dd HH:mm').format(item.end)}',
+                                  style: theme.textTheme.bodySmall,
+                                ),
+                              ),
+                            ),
+                          if (_snapshot!.busy.isEmpty) const Text('已检查来源中没有占用'),
+                          if (_snapshot!.busy.length > 50)
+                            Text(
+                              '另有 ${_snapshot!.busy.length - 50} 项占用，均已计入计算',
+                            ),
                         ],
                       ),
                     ),
-                  ),
-              ],
-              const SizedBox(height: 12),
-              Text(
-                _snapshot?.coverage ??
-                    (_appOnly
-                        ? '仅按应用内安排查找；未计入手机日历'
-                        : '检查应用内安排；手机日历仅在已开启且已授权时计入'),
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: colors.onSurfaceVariant,
-                ),
-              ),
-              if (_snapshot != null) ...[
-                if (_snapshot!.todo.dueDate != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 6),
-                    child: Text(
-                      _snapshot!.todo.isDateOnly
-                          ? '须在 ${DateFormat('MM-dd').format(_snapshot!.todo.dueDate!)} 当天结束前完成'
-                          : '须在 ${DateFormat('MM-dd HH:mm').format(_snapshot!.todo.dueDate!)} 截止前完成',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: colors.onSurfaceVariant,
-                      ),
-                    ),
-                  ),
-                Theme(
-                  data: theme.copyWith(dividerColor: Colors.transparent),
-                  child: ExpansionTile(
-                    key: const ValueKey('plan-busy-details'),
-                    tilePadding: EdgeInsets.zero,
-                    title: Text(
-                      '已计入 ${_snapshot!.busy.length} 项占用',
-                      style: theme.textTheme.bodySmall,
-                    ),
-                    children: [
-                      for (final item
-                          in (_snapshot!.busy.toList()
-                                ..sort((a, b) => a.start.compareTo(b.start)))
-                              .take(50))
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 6),
-                          child: Align(
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              '${_sourceLabel(item.source)} · ${DateFormat('MM-dd HH:mm').format(item.start)}–${DateFormat('MM-dd HH:mm').format(item.end)}',
-                              style: theme.textTheme.bodySmall,
-                            ),
-                          ),
-                        ),
-                      if (_snapshot!.busy.isEmpty) const Text('已检查来源中没有占用'),
-                      if (_snapshot!.busy.length > 50)
-                        Text('另有 ${_snapshot!.busy.length - 50} 项占用，均已计入计算'),
-                    ],
-                  ),
-                ),
-              ],
-              if (_snapshot?.unknownTimes.isNotEmpty == true)
-                ExpansionTile(
-                  tilePadding: EdgeInsets.zero,
-                  title: Text(
-                    '另有 ${_snapshot!.unknownTimes.length} 项安排时间未确定',
-                    style: theme.textTheme.bodySmall,
-                  ),
-                  children: [
-                    for (final text in _snapshot!.unknownTimes)
-                      Padding(
-                        padding: const EdgeInsets.all(8),
-                        child: Text(text),
-                      ),
                   ],
-                ),
-            ],
+                  if (_snapshot?.unknownTimes.isNotEmpty == true)
+                    ExpansionTile(
+                      tilePadding: EdgeInsets.zero,
+                      title: Text(
+                        '另有 ${_snapshot!.unknownTimes.length} 项安排时间未确定',
+                        style: theme.textTheme.bodySmall,
+                      ),
+                      children: [
+                        for (final text in _snapshot!.unknownTimes)
+                          Padding(
+                            padding: const EdgeInsets.all(8),
+                            child: Text(text),
+                          ),
+                      ],
+                    ),
+                ],
+              ),
+            ),
           ],
         ),
       ),
