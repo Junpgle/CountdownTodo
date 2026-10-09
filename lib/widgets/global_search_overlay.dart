@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import '../models.dart';
+import '../models/search_scope.dart';
 import '../services/search_service.dart';
 import '../services/global_search_extra_service.dart';
 import '../services/liquid_glass_effect_service.dart';
@@ -97,8 +98,18 @@ const _groupOrder = [
 // ──────────────────────────────────────────────────────────────────────────────
 // 主 Widget
 // ──────────────────────────────────────────────────────────────────────────────
+typedef GlobalSearchCallback = Future<List<SearchResult>> Function(
+  String query, {
+  required SearchScope scope,
+  required bool recordHistory,
+});
+
 class GlobalSearchOverlay extends StatefulWidget {
-  const GlobalSearchOverlay({super.key});
+  const GlobalSearchOverlay({super.key, this.search, this.warmupRemote});
+
+  /// Optional adapters also allow isolated previews without personal data.
+  final GlobalSearchCallback? search;
+  final Future<void> Function()? warmupRemote;
 
   @override
   State<GlobalSearchOverlay> createState() => _GlobalSearchOverlayState();
@@ -115,6 +126,10 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
   List<SearchResult> _results = [];
   bool _isSearching = false;
   String _currentQuery = '';
+  SearchScope _scope = SearchScope.all;
+  int _requestSequence = 0;
+  String? _lastRecordedQuery;
+  bool _searchFailed = false;
   Timer? _debounce;
 
   // 记录每个类型是否已展开（默认只显示前 3 条）
@@ -156,23 +171,29 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
       vsync: this,
       duration: const Duration(milliseconds: 300),
     );
-    _fadeAnimation =
-        CurvedAnimation(parent: _animController, curve: Curves.easeIn);
+    _fadeAnimation = CurvedAnimation(
+      parent: _animController,
+      curve: Curves.easeIn,
+    );
     _animController.forward();
 
     Future.delayed(const Duration(milliseconds: 50), () {
       if (!mounted) return;
       _inputFocusNode.requestFocus();
-      _onQueryChanged(''); // 🚀 初始化触发“猜你想搜”
+      _onQueryChanged(_controller.text); // 保留初始化期间已经输入的内容
     });
     _warmupRemoteResults();
   }
 
   Future<void> _warmupRemoteResults() async {
-    final username = await StorageService.getLoginSession() ?? 'default';
-    await GlobalSearchExtraService.warmupRemote(username);
+    if (widget.warmupRemote != null) {
+      await widget.warmupRemote!();
+    } else {
+      final username = await StorageService.getLoginSession() ?? 'default';
+      await GlobalSearchExtraService.warmupRemote(username);
+    }
     if (mounted && !_resultRouteOpen && _currentQuery.trim().isNotEmpty) {
-      _executeSearch(_currentQuery);
+      _executeSearch(_currentQuery, recordHistory: false);
     }
   }
 
@@ -189,29 +210,96 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
   // ────────────────────────────────── 搜索 ──────────────────────────────────
 
   void _onQueryChanged(String query) {
-    _currentQuery = query;
-    if (_debounce?.isActive ?? false) _debounce!.cancel();
-
-    // 如果是空字符串，立即执行（不防抖），让建议秒出
+    _debounce?.cancel();
+    // Invalidate immediately, including the 300ms debounce window.
+    ++_requestSequence;
+    setState(() {
+      _currentQuery = query;
+      _results = [];
+      _expanded.clear();
+      _searchFailed = false;
+      _isSearching = query.trim().isNotEmpty;
+    });
     if (query.trim().isEmpty) {
+      _lastRecordedQuery = null;
       _executeSearch('');
       return;
     }
-
-    _debounce =
-        Timer(const Duration(milliseconds: 300), () => _executeSearch(query));
+    _debounce = Timer(
+      const Duration(milliseconds: 300),
+      () => _executeSearch(query),
+    );
   }
 
-  Future<void> _executeSearch(String query) async {
-    setState(() => _isSearching = true);
-    final results = await SearchService.instance.search(query);
-    if (mounted && !_resultRouteOpen && query == _currentQuery) {
+  void _selectScope(SearchScope scope) {
+    if (_scope == scope) return;
+    _debounce?.cancel();
+    ++_requestSequence;
+    setState(() {
+      _scope = scope;
+      _results = [];
+      _expanded.clear();
+      _searchFailed = false;
+    });
+    // A scope change may precede the pending debounce. Record that query once.
+    _executeSearch(_currentQuery);
+  }
+
+  Future<void> _executeSearch(String query, {bool recordHistory = true}) async {
+    final request = ++_requestSequence;
+    final scope = _scope;
+    final normalized = query.trim().toLowerCase();
+    final shouldRecord =
+        recordHistory &&
+        normalized.isNotEmpty &&
+        normalized != _lastRecordedQuery;
+    if (shouldRecord) _lastRecordedQuery = normalized;
+
+    if (normalized.isEmpty && scope != SearchScope.all) {
       setState(() {
-        _results = results.cast<SearchResult>();
+        _results = [];
+        _isSearching = false;
+        _searchFailed = false;
+      });
+      return;
+    }
+
+    setState(() {
+      _isSearching = true;
+      _searchFailed = false;
+    });
+    bool isCurrent() =>
+        mounted &&
+        !_resultRouteOpen &&
+        request == _requestSequence &&
+        query == _currentQuery &&
+        scope == _scope;
+    try {
+      final results =
+          await (widget.search?.call(
+                query,
+                scope: scope,
+                recordHistory: shouldRecord,
+              ) ??
+              SearchService.instance.search(
+                query,
+                scope: scope,
+                recordHistory: shouldRecord,
+              ));
+      if (!isCurrent()) return;
+      setState(() {
+        _results = results.where((item) => scope.includes(item.type)).toList();
         _isSearching = false;
         _expanded.clear();
         final ids = _results.map((result) => result.id).toSet();
         _resultKeys.removeWhere((id, _) => !ids.contains(id));
+      });
+    } catch (error) {
+      if (!isCurrent()) return;
+      setState(() {
+        _results = [];
+        _isSearching = false;
+        _searchFailed = true;
       });
     }
   }
@@ -273,7 +361,7 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
     } finally {
       if (mounted) {
         setState(() => _resultRouteOpen = false);
-        _executeSearch(_currentQuery);
+        _executeSearch(_currentQuery, recordHistory: false);
       }
     }
   }
@@ -310,7 +398,12 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final isCompact = size.shortestSide < 600;
-    final hasResultsPanel = _results.isNotEmpty || _isSearching;
+    final hasResultsPanel =
+        _results.isNotEmpty ||
+        _isSearching ||
+        _searchFailed ||
+        _currentQuery.trim().isNotEmpty ||
+        _scope != SearchScope.all;
 
     // 🚀 电脑端（非 Compact）面板使用全不透明色
     final panelColor = isDark
@@ -361,24 +454,26 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
                 child: Align(
                   alignment: Alignment.topCenter,
                   child: ConstrainedBox(
-                    constraints:
-                        BoxConstraints(maxWidth: isCompact ? size.width : 1180),
+                    constraints: BoxConstraints(
+                      maxWidth: isCompact ? size.width : 1180,
+                    ),
                     child: LayoutBuilder(
                       builder: (context, constraints) {
                         final maxHeight = constraints.maxHeight;
                         final topMargin =
                             isCompact && (keyboardInset > 0 || _resultRouteOpen)
-                                ? 16.0
-                                : 60.0;
+                            ? 16.0
+                            : 60.0;
                         const horizontalMargin = 20.0;
                         const bottomMargin = 20.0;
                         const minPanelHeight = 200.0;
                         final keyboardAdjustedMaxHeight =
                             (maxHeight - keyboardInset).clamp(0.0, maxHeight);
-                        final availableHeight = (keyboardAdjustedMaxHeight -
-                                topMargin -
-                                bottomMargin)
-                            .clamp(0.0, maxHeight);
+                        final availableHeight =
+                            (keyboardAdjustedMaxHeight -
+                                    topMargin -
+                                    bottomMargin)
+                                .clamp(0.0, maxHeight);
                         final panelHeight = availableHeight < minPanelHeight
                             ? availableHeight
                             : availableHeight.clamp(minPanelHeight, maxHeight);
@@ -408,24 +503,52 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
                               ),
                             ],
                           ),
-                          child: Column(
-                            mainAxisSize: hasResultsPanel
-                                ? MainAxisSize.max
-                                : MainAxisSize.min,
-                            children: [
-                              _buildSearchInput(colorScheme, isDark),
-                              const SizedBox(height: 8),
-                              _buildSearchScopeHint(colorScheme, isDark),
-                              const SizedBox(height: 12),
-                              if (hasResultsPanel)
-                                Expanded(
-                                  child: _buildResultsPanel(
-                                    colorScheme,
-                                    isDark,
-                                    size,
+                          child: LayoutBuilder(
+                            builder: (context, contentConstraints) {
+                              final header = [
+                                _buildSearchInput(colorScheme, isDark),
+                                const SizedBox(height: 8),
+                                _buildSearchScopeHint(colorScheme, isDark),
+                                const SizedBox(height: 12),
+                              ];
+                              // On landscape with a keyboard, keep all controls
+                              // reachable by scrolling instead of overflowing.
+                              if (contentConstraints.maxHeight < 240) {
+                                return SingleChildScrollView(
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      ...header,
+                                      if (hasResultsPanel)
+                                        SizedBox(
+                                          height: 200,
+                                          child: _buildResultsPanel(
+                                            colorScheme,
+                                            isDark,
+                                            size,
+                                          ),
+                                        ),
+                                    ],
                                   ),
-                                ),
-                            ],
+                                );
+                              }
+                              return Column(
+                                mainAxisSize: hasResultsPanel
+                                    ? MainAxisSize.max
+                                    : MainAxisSize.min,
+                                children: [
+                                  ...header,
+                                  if (hasResultsPanel)
+                                    Expanded(
+                                      child: _buildResultsPanel(
+                                        colorScheme,
+                                        isDark,
+                                        size,
+                                      ),
+                                    ),
+                                ],
+                              );
+                            },
                           ),
                         );
                       },
@@ -452,30 +575,24 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
       return GlassTextField.search(
         controller: _controller,
         focusNode: _inputFocusNode,
-        placeholder: '多关键词搜全应用',
+        placeholder: _scope == SearchScope.all
+            ? '多关键词搜全应用'
+            : '在${_scope.label}中搜索',
         onChanged: _onQueryChanged,
-        prefixIcon:
-            Icon(Icons.search_rounded, color: colorScheme.primary, size: 24),
-        suffixIcon: _isSearching
-            ? const Padding(
-                padding: EdgeInsets.all(14),
-                child: SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: AppLoadingIndicator(),
-                ),
-              )
-            : Semantics(
-                label: '清空搜索',
-                button: true,
-                child: const Icon(Icons.close_rounded),
-              ),
-        onSuffixTap: _isSearching
-            ? null
-            : () {
-                _controller.clear();
-                _onQueryChanged('');
-              },
+        prefixIcon: Icon(
+          Icons.search_rounded,
+          color: colorScheme.primary,
+          size: 24,
+        ),
+        suffixIcon: Semantics(
+          label: '清空搜索',
+          button: true,
+          child: const Icon(Icons.close_rounded),
+        ),
+        onSuffixTap: () {
+          _controller.clear();
+          _onQueryChanged('');
+        },
         textStyle: TextStyle(
           fontSize: 18,
           fontWeight: FontWeight.w600,
@@ -510,15 +627,16 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
 
     return Container(
       decoration: BoxDecoration(
-        color:
-            isDark ? colorScheme.surfaceContainerHighest : colorScheme.surface,
+        color: isDark
+            ? colorScheme.surfaceContainerHighest
+            : colorScheme.surface,
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
             color: colorScheme.shadow.withValues(alpha: 0.15),
             blurRadius: 30,
             offset: const Offset(0, 10),
-          )
+          ),
         ],
       ),
       child: TextField(
@@ -531,26 +649,25 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
           color: colorScheme.onSurface,
         ),
         decoration: InputDecoration(
-          hintText: '多关键词搜全应用',
+          hintText: _scope == SearchScope.all
+              ? '多关键词搜全应用'
+              : '在${_scope.label}中搜索',
           hintStyle: TextStyle(
             color: colorScheme.onSurfaceVariant.withValues(alpha: 0.65),
           ),
-          prefixIcon:
-              Icon(Icons.search_rounded, color: colorScheme.primary, size: 24),
-          suffixIcon: _isSearching
-              ? Container(
-                  padding: const EdgeInsets.all(14),
-                  width: 20,
-                  height: 20,
-                  child: const AppLoadingIndicator(),
-                )
-              : IconButton(
-                  icon: const Icon(Icons.close_rounded),
-                  onPressed: () {
-                    _controller.clear();
-                    _onQueryChanged('');
-                  },
-                ),
+          prefixIcon: Icon(
+            Icons.search_rounded,
+            color: colorScheme.primary,
+            size: 24,
+          ),
+          suffixIcon: IconButton(
+            icon: const Icon(Icons.close_rounded),
+            tooltip: '清空搜索',
+            onPressed: () {
+              _controller.clear();
+              _onQueryChanged('');
+            },
+          ),
           border: InputBorder.none,
           contentPadding: const EdgeInsets.symmetric(vertical: 20),
         ),
@@ -559,59 +676,72 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
   }
 
   Widget _buildSearchScopeHint(ColorScheme colorScheme, bool isDark) {
-    final items = [
-      '待办',
-      '倒计时',
-      '习惯',
-      '挑战',
-      '番茄钟',
-      '时间日志',
-      '屏幕时间',
-      '团队',
-      '记账',
-      '日记',
-      '固定日程',
-      '规划块',
-      'AI 对话',
-      '设置',
-    ];
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4),
-      child: Wrap(
-        spacing: 6,
-        runSpacing: 6,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: [
-          Icon(Icons.tips_and_updates_outlined,
-              size: 15,
-              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.72)),
-          Text(
-            '支持搜索：',
-            style: TextStyle(
-              fontSize: 12,
-              color: colorScheme.onSurfaceVariant,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          for (final item in items)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(
-                color:
-                    colorScheme.primary.withValues(alpha: isDark ? 0.14 : 0.08),
-                borderRadius: BorderRadius.circular(999),
+    final moreSelected = !SearchScope.common.contains(_scope);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              for (final scope in SearchScope.common)
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: ChoiceChip(
+                    key: ValueKey('search_scope_${scope.name}'),
+                    label: Text(scope.label),
+                    selected: _scope == scope,
+                    onSelected: (_) => _selectScope(scope),
+                  ),
+                ),
+              PopupMenuButton<SearchScope>(
+                key: const ValueKey('search_scope_more'),
+                tooltip: '更多搜索范围',
+                initialValue: moreSelected ? _scope : null,
+                onSelected: _selectScope,
+                itemBuilder: (context) => [
+                  for (final scope in SearchScope.values)
+                    if (!SearchScope.common.contains(scope))
+                      CheckedPopupMenuItem(
+                        value: scope,
+                        checked: _scope == scope,
+                        child: Text(scope.label),
+                      ),
+                ],
+                child: Chip(
+                  avatar: Icon(
+                    moreSelected ? Icons.check : Icons.expand_more_rounded,
+                    size: 18,
+                  ),
+                  label: Text(moreSelected ? _scope.label : '更多'),
+                  backgroundColor: moreSelected
+                      ? colorScheme.secondaryContainer
+                      : null,
+                ),
               ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 4),
+        Row(
+          children: [
+            Flexible(
               child: Text(
-                item,
+                '搜索范围：${_scope.label}',
                 style: TextStyle(
-                  fontSize: 11,
-                  color: colorScheme.primary,
-                  fontWeight: FontWeight.w600,
+                  color: colorScheme.onSurfaceVariant,
+                  fontSize: 12,
                 ),
               ),
             ),
-        ],
-      ),
+            if (_isSearching)
+              const Padding(
+                padding: EdgeInsets.only(left: 8),
+                child: AppLoadingIndicator(size: 14),
+              ),
+          ],
+        ),
+      ],
     );
   }
 
@@ -1125,18 +1255,38 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
   // ──────────────────────────────────────────────────────────────────────────
 
   Widget _buildEmptyState(ColorScheme colorScheme, bool isDark) {
-    return Container(
-      padding: const EdgeInsets.all(40),
-      decoration: BoxDecoration(
-        color:
-            isDark ? colorScheme.surfaceContainerHighest : colorScheme.surface,
-        borderRadius: BorderRadius.circular(24),
-      ),
-      child: const AppEmptyState(
-        icon: Icons.search_off_rounded,
-        title: '没找到相关内容',
-        message: '旅行者，你将去往何方？',
-        padding: EdgeInsets.zero,
+    final emptyQuery = _currentQuery.trim().isEmpty;
+    return SingleChildScrollView(
+      child: Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: isDark
+              ? colorScheme.surfaceContainerHighest
+              : colorScheme.surface,
+          borderRadius: BorderRadius.circular(24),
+        ),
+        child: AppEmptyState(
+          icon: _searchFailed ? Icons.error_outline : Icons.search_off_rounded,
+          title: _searchFailed
+              ? '搜索暂时不可用'
+              : emptyQuery
+              ? '输入关键词，在${_scope.label}中搜索'
+              : '在${_scope.label}中未找到“${_currentQuery.trim()}”',
+          message: _searchFailed
+              ? '请重试当前范围的搜索'
+              : emptyQuery
+              ? '可搜索多个关键词，也可以输入日期'
+              : '试试其他关键词或搜索范围',
+          actionLabel: _searchFailed
+              ? '重试'
+              : !emptyQuery && _scope != SearchScope.all
+              ? '搜索全部'
+              : null,
+          onAction: _searchFailed
+              ? () => _executeSearch(_currentQuery, recordHistory: false)
+              : () => _selectScope(SearchScope.all),
+          padding: EdgeInsets.zero,
+        ),
       ),
     );
   }
@@ -1148,7 +1298,7 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
         .surfaceContainerHighest
         .withValues(alpha: isDark ? 0.42 : 0.55);
 
-    return Column(
+    return ListView(
       children: List.generate(
           4,
           (i) => Container(

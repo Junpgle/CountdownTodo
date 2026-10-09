@@ -10,6 +10,7 @@ import '../features/journal/services/journal_storage.dart';
 import '../features/thirty_day_challenge/repositories/thirty_day_challenge_repository.dart';
 import '../features/thirty_day_challenge/services/cloud_challenge_service.dart';
 import '../models.dart';
+import '../models/search_scope.dart';
 import '../storage_service.dart';
 import 'api_service.dart';
 import 'chat_storage_service.dart';
@@ -84,33 +85,56 @@ abstract final class GlobalSearchExtraService {
     String username,
     List<String> terms, {
     DateTime? targetDate,
+    SearchScope scope = SearchScope.all,
+    SearchSourceObserver? onSourceQueried,
   }) async {
+    Future<List<SearchResult>> run(
+      String name,
+      Future<List<SearchResult>> Function() search,
+    ) {
+      onSourceQueried?.call(name);
+      return search();
+    }
+
     final sources = await Future.wait<List<SearchResult>>([
-      searchFinance(terms, targetDate),
-      _journal(username, terms, targetDate),
-      _schedule(username, terms, targetDate),
-      _habitCheckIns(terms, targetDate),
-      _challengeTasks(terms, targetDate),
-      _chat(terms, targetDate),
-      _localTeams(username, terms, targetDate),
+      if (scope.includes(SearchResultType.finance))
+        run('finance', () => searchFinance(terms, targetDate)),
+      if (scope.includes(SearchResultType.journal))
+        run('journal', () => _journal(username, terms, targetDate)),
+      if (scope.includesAny(const [
+        SearchResultType.fixedSchedule,
+        SearchResultType.planBlock,
+      ]))
+        _schedule(username, terms, targetDate, scope, onSourceQueried),
+      if (scope.includes(SearchResultType.habitCheckIn))
+        run('habitCheckIns', () => _habitCheckIns(terms, targetDate)),
+      if (scope.includes(SearchResultType.challengeTask))
+        run('challengeTasks', () => _challengeTasks(terms, targetDate)),
+      if (scope.includes(SearchResultType.chat))
+        run('chat', () => _chat(terms, targetDate)),
+      if (scope.includes(SearchResultType.team))
+        run('teams', () => _localTeams(username, terms, targetDate)),
     ]);
     final records = sources.expand((source) => source).toList();
     if (_remoteUsername == username) {
-      records.addAll(_remoteRecords.where((record) {
-        final data = record.extraData ?? const {};
-        final fields = data['fields'] as Map? ?? const {};
-        final timestamp = data['search_timestamp'] as int?;
-        return _matches(
-          terms,
-          [record.title, record.subtitle, ...fields.values],
-          targetDate: targetDate,
-          recordDate: timestamp == null
-              ? null
-              : DateTime.fromMillisecondsSinceEpoch(timestamp),
-        );
-      }));
+      records.addAll(
+        _remoteRecords.where((record) {
+          if (!scope.includes(record.type)) return false;
+          final data = record.extraData ?? const {};
+          final fields = data['fields'] as Map? ?? const {};
+          final timestamp = data['search_timestamp'] as int?;
+          return _matches(
+            terms,
+            [record.title, record.subtitle, ...fields.values],
+            targetDate: targetDate,
+            recordDate: timestamp == null
+                ? null
+                : DateTime.fromMillisecondsSinceEpoch(timestamp),
+          );
+        }),
+      );
     }
-    return records;
+    return records.where((record) => scope.includes(record.type)).toList();
   }
 
   static Future<List<SearchResult>> searchFinance(
@@ -403,59 +427,81 @@ abstract final class GlobalSearchExtraService {
   }
 
   static Future<List<SearchResult>> _schedule(
-      String username, List<String> terms, DateTime? date) async {
+    String username,
+    List<String> terms,
+    DateTime? date,
+    SearchScope scope,
+    SearchSourceObserver? onSourceQueried,
+  ) async {
     final results = <SearchResult>[];
     try {
-      final schedules = await StorageService.getFixedSchedules(username);
-      for (final item in schedules) {
-        if (item.isDeleted ||
-            !_matches(
-                terms, [item.title, item.location, item.remark, item.date],
-                targetDate: date, recordDate: DateTime.tryParse(item.date))) {
-          continue;
+      if (scope.includes(SearchResultType.fixedSchedule)) {
+        onSourceQueried?.call('fixedSchedules');
+        final schedules = await StorageService.getFixedSchedules(username);
+        for (final item in schedules) {
+          if (item.isDeleted ||
+              !_matches(
+                terms,
+                [item.title, item.location, item.remark, item.date],
+                targetDate: date,
+                recordDate: DateTime.tryParse(item.date),
+              )) {
+            continue;
+          }
+          results.add(
+            _result(
+              id: 'fixed_schedule_${item.id}',
+              title: item.title,
+              subtitle:
+                  '固定日程 · ${item.date}${item.location == null ? '' : ' · ${item.location}'}',
+              icon: Icons.event_available_outlined,
+              type: SearchResultType.fixedSchedule,
+              label: '固定日程',
+              record: item,
+              fields: {
+                '日期': item.date,
+                '地点': item.location ?? '',
+                '备注': item.remark ?? '',
+              },
+            ),
+          );
         }
-        results.add(_result(
-          id: 'fixed_schedule_${item.id}',
-          title: item.title,
-          subtitle:
-              '固定日程 · ${item.date}${item.location == null ? '' : ' · ${item.location}'}',
-          icon: Icons.event_available_outlined,
-          type: SearchResultType.fixedSchedule,
-          label: '固定日程',
-          record: item,
-          fields: {
-            '日期': item.date,
-            '地点': item.location ?? '',
-            '备注': item.remark ?? ''
-          },
-        ));
       }
-      final blocks = await StorageService.getPlanBlocks(username);
-      for (final item in blocks) {
-        if (item.isDeleted) continue;
-        final start = DateTime.fromMillisecondsSinceEpoch(item.startTime);
-        final title = item.titleSnapshot?.trim().isNotEmpty == true
-            ? item.titleSnapshot!
-            : '待办规划块';
-        if (!_matches(terms, [title, item.remark, _day(item.startTime)],
-            targetDate: date, recordDate: start)) {
-          continue;
+      if (scope.includes(SearchResultType.planBlock)) {
+        onSourceQueried?.call('planBlocks');
+        final blocks = await StorageService.getPlanBlocks(username);
+        for (final item in blocks) {
+          if (item.isDeleted) continue;
+          final start = DateTime.fromMillisecondsSinceEpoch(item.startTime);
+          final title = item.titleSnapshot?.trim().isNotEmpty == true
+              ? item.titleSnapshot!
+              : '待办规划块';
+          if (!_matches(
+            terms,
+            [title, item.remark, _day(item.startTime)],
+            targetDate: date,
+            recordDate: start,
+          )) {
+            continue;
+          }
+          results.add(
+            _result(
+              id: 'plan_block_${item.id}',
+              title: title,
+              subtitle: '规划块 · ${_day(item.startTime)}',
+              icon: Icons.view_timeline_outlined,
+              type: SearchResultType.planBlock,
+              label: '待办规划块',
+              record: item,
+              fields: {
+                '开始': _day(item.startTime),
+                '结束': _day(item.endTime),
+                '计划时长': '${item.plannedMinutes} 分钟',
+                '备注': item.remark ?? '',
+              },
+            ),
+          );
         }
-        results.add(_result(
-          id: 'plan_block_${item.id}',
-          title: title,
-          subtitle: '规划块 · ${_day(item.startTime)}',
-          icon: Icons.view_timeline_outlined,
-          type: SearchResultType.planBlock,
-          label: '待办规划块',
-          record: item,
-          fields: {
-            '开始': _day(item.startTime),
-            '结束': _day(item.endTime),
-            '计划时长': '${item.plannedMinutes} 分钟',
-            '备注': item.remark ?? ''
-          },
-        ));
       }
     } catch (error) {
       debugPrint('Schedule global search failed: $error');

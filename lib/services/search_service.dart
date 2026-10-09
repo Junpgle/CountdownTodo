@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models.dart';
+import '../models/search_scope.dart';
 import '../screens/about_screen.dart';
 import '../screens/team_management_screen.dart';
 import '../screens/team_announcement_screen.dart';
@@ -88,7 +89,6 @@ class SearchService {
     'mac_island_without_notch',
   };
 
-  int _latestSearchId = 0;
   Future<void>? _warmupFuture;
   String? _preparedTimeLogsUsername;
   Future<void>? _timeLogsReadyFuture;
@@ -758,34 +758,67 @@ class SearchService {
     ),
   ];
 
-  Future<List<SearchResult>> search(String query) async {
+  Future<List<SearchResult>> search(
+    String query, {
+    SearchScope scope = SearchScope.all,
+    bool recordHistory = true,
+    SearchSourceObserver? onSourceQueried,
+  }) async {
     if (query.trim().isEmpty) {
-      return await guessSearch();
+      return scope == SearchScope.all ? await guessSearch() : [];
     }
-
-    final currentSearchId = ++_latestSearchId;
     final q = query.toLowerCase().trim();
 
     // 🚀 异步记录搜索历史
-    DatabaseHelper.instance
-        .insertSearchHistory(q)
-        .catchError((e) => debugPrint("Record search history error: $e"));
+    if (recordHistory) {
+      DatabaseHelper.instance
+          .insertSearchHistory(q)
+          .catchError((e) => debugPrint("Record search history error: $e"));
+    }
 
     final searchTerms = _extractSearchTerms(q);
     final scoredResults = <SearchResultWithScore>[];
-    final featureSearch = _searchHabitsAndChallenges(searchTerms)
-        .catchError((_) => <SearchResult>[]);
+    final featureSearch =
+        scope.includesAny(const [
+          SearchResultType.habit,
+          SearchResultType.challenge,
+        ])
+        ? _searchHabitsAndChallenges(
+            searchTerms,
+            scope,
+            onSourceQueried,
+          ).catchError((_) => <SearchResult>[])
+        : Future.value(<SearchResult>[]);
     final databaseSearch =
-        _searchDatabase(q, searchTerms).catchError((_) => <SearchResult>[]);
+        scope.includesAny(const [
+          SearchResultType.todo,
+          SearchResultType.todoGroup,
+          SearchResultType.course,
+          SearchResultType.countdown,
+          SearchResultType.log,
+          SearchResultType.tag,
+          SearchResultType.app,
+        ])
+        ? _searchDatabase(
+            q,
+            searchTerms,
+            scope,
+            onSourceQueried,
+          ).catchError((_) => <SearchResult>[])
+        : Future.value(<SearchResult>[]);
     final username = await StorageService.getLoginSession() ?? 'default';
     final extraSearch = GlobalSearchExtraService.search(
       username,
       searchTerms,
       targetDate: _parseDateQuery(q),
+      scope: scope,
+      onSourceQueried: onSourceQueried,
     ).catchError((_) => <SearchResult>[]);
 
     // 1. 静态索引扫描
-    for (var s in _staticSettings.where(_isStaticSettingAvailable)) {
+    for (var s in _staticSettings.where(
+      (item) => scope.includes(item.type) && _isStaticSettingAvailable(item),
+    )) {
       int score = _calculateScore(
         s.title.toLowerCase(),
         s.subtitle?.toLowerCase(),
@@ -797,9 +830,11 @@ class SearchService {
     }
 
     // 2. 习惯、挑战与数据库查询互不依赖，并行执行以缩短输入后的等待。
-    final searchResults =
-        await Future.wait([featureSearch, databaseSearch, extraSearch]);
-    if (currentSearchId != _latestSearchId) return [];
+    final searchResults = await Future.wait([
+      featureSearch,
+      databaseSearch,
+      extraSearch,
+    ]);
 
     for (final item in searchResults[0]) {
       final score = _calculateScore(
@@ -827,8 +862,9 @@ class SearchService {
         searchTerms,
       );
       // DB 已过滤，保底给 score=1，避免备注命中却被丢弃
-      scoredResults
-          .add(SearchResultWithScore(item, (score > 0 ? score : 1) + 10));
+      scoredResults.add(
+        SearchResultWithScore(item, (score > 0 ? score : 1) + 10),
+      );
     }
 
     for (final item in searchResults[2]) {
@@ -839,8 +875,9 @@ class SearchService {
         q,
         searchTerms,
       );
-      scoredResults
-          .add(SearchResultWithScore(item, (score > 0 ? score : 1) + 10));
+      scoredResults.add(
+        SearchResultWithScore(item, (score > 0 ? score : 1) + 10),
+      );
     }
 
     scoredResults.sort((a, b) => b.score.compareTo(a.score));
@@ -856,20 +893,22 @@ class SearchService {
     }
 
     // 6. 动态动作注入
-    if (q.contains('新') || q.contains('加')) {
+    if (scope.includes(SearchResultType.action) &&
+        (q.contains('新') || q.contains('加'))) {
       finalResults.insert(
-          0,
-          SearchResult(
-            id: 'action_new_todo',
-            title: '快速新建待办',
-            subtitle: '点击立即创建新任务',
-            icon: Icons.add_task,
-            type: SearchResultType.action,
-            extraData: {'action': 'new_todo'},
-          ));
+        0,
+        SearchResult(
+          id: 'action_new_todo',
+          title: '快速新建待办',
+          subtitle: '点击立即创建新任务',
+          icon: Icons.add_task,
+          type: SearchResultType.action,
+          extraData: {'action': 'new_todo'},
+        ),
+      );
     }
 
-    return finalResults;
+    return finalResults.where((item) => scope.includes(item.type)).toList();
   }
 
   static bool _isStaticSettingAvailable(SearchResult result) {
@@ -936,73 +975,87 @@ class SearchService {
   }
 
   Future<List<SearchResult>> _searchHabitsAndChallenges(
-      List<String> searchTerms) async {
+    List<String> searchTerms,
+    SearchScope scope,
+    SearchSourceObserver? onSourceQueried,
+  ) async {
     final results = <SearchResult>[];
 
-    try {
-      final goals = await HabitRepository.getGoals();
-      for (final goal in goals) {
-        if (goal.isDeleted) continue;
-        final sourceLabel = switch (goal.sourceType) {
-          HabitSourceType.recurringTodo => '完成型',
-          HabitSourceType.pomodoroTag => '专注时长型',
-          HabitSourceType.quantityCheckIn => '数量型',
-          HabitSourceType.timeCheckIn => '时间点型',
-          HabitSourceType.durationCheckIn => '独立时长型',
-        };
-        final searchable = '${goal.name} 习惯 $sourceLabel'
-            '${goal.isArchived ? ' 已归档 归档习惯' : ''}';
-        if (!_matchesAllTerms(searchable, searchTerms)) continue;
+    if (scope.includes(SearchResultType.habit)) {
+      onSourceQueried?.call('habits');
+      try {
+        final goals = await HabitRepository.getGoals();
+        for (final goal in goals) {
+          if (goal.isDeleted) continue;
+          final sourceLabel = switch (goal.sourceType) {
+            HabitSourceType.recurringTodo => '完成型',
+            HabitSourceType.pomodoroTag => '专注时长型',
+            HabitSourceType.quantityCheckIn => '数量型',
+            HabitSourceType.timeCheckIn => '时间点型',
+            HabitSourceType.durationCheckIn => '独立时长型',
+          };
+          final searchable =
+              '${goal.name} 习惯 $sourceLabel'
+              '${goal.isArchived ? ' 已归档 归档习惯' : ''}';
+          if (!_matchesAllTerms(searchable, searchTerms)) continue;
 
-        results.add(SearchResult(
-          id: 'db_habit_${goal.uuid}',
-          title: goal.name.isEmpty ? '未命名习惯' : goal.name,
-          subtitle: '习惯 · $sourceLabel${goal.isArchived ? ' · 已归档' : ''}',
-          icon: Icons.track_changes_rounded,
-          type: SearchResultType.habit,
-          extraData: {
-            'route': '/habits',
-            'habit_uuid': goal.uuid,
-          },
-        ));
-      }
-    } catch (_) {}
+          results.add(
+            SearchResult(
+              id: 'db_habit_${goal.uuid}',
+              title: goal.name.isEmpty ? '未命名习惯' : goal.name,
+              subtitle: '习惯 · $sourceLabel${goal.isArchived ? ' · 已归档' : ''}',
+              icon: Icons.track_changes_rounded,
+              type: SearchResultType.habit,
+              extraData: {'route': '/habits', 'habit_uuid': goal.uuid},
+            ),
+          );
+        }
+      } catch (_) {}
+    }
 
-    try {
-      // 未开始挑战时，静态“挑战中心”入口已经足够；避免每次输入关键词
-      // 都为用户创建一份默认挑战状态。
-      if (!await ThirtyDayChallengeRepository.hasStarted()) return results;
-      final state = await ThirtyDayChallengeRepository.load();
-      final taskTitles = state.tasks.map((task) => task.title).toList();
-      final searchable = [
-        state.challengeTitle,
-        '挑战',
-        '挑战中心',
-        '30天',
-        ...taskTitles,
-      ].join(' ');
+    if (scope.includes(SearchResultType.challenge)) {
+      onSourceQueried?.call('challenges');
+      try {
+        // 未开始挑战时，静态“挑战中心”入口已经足够；避免每次输入关键词
+        // 都为用户创建一份默认挑战状态。
+        if (!await ThirtyDayChallengeRepository.hasStarted()) return results;
+        final state = await ThirtyDayChallengeRepository.load();
+        final taskTitles = state.tasks.map((task) => task.title).toList();
+        final searchable = [
+          state.challengeTitle,
+          '挑战',
+          '挑战中心',
+          '30天',
+          ...taskTitles,
+        ].join(' ');
 
-      if (_matchesAllTerms(searchable, searchTerms)) {
-        final normalizedTerms = searchTerms.map((term) => term.toLowerCase());
-        final matchedTasks = state.tasks
-            .where((task) => normalizedTerms
-                .any((term) => task.title.toLowerCase().contains(term)))
-            .take(2)
-            .map((task) => task.title)
-            .join('、');
-        final progress = '${state.completedCount}/${state.tasks.length} 项已完成';
-        results.add(SearchResult(
-          id: 'db_challenge_current',
-          title: state.challengeTitle,
-          subtitle: matchedTasks.isEmpty
-              ? '挑战 · $progress'
-              : '挑战 · $progress · 相关任务：$matchedTasks',
-          icon: Icons.auto_awesome_rounded,
-          type: SearchResultType.challenge,
-          extraData: {'route': '/challenge'},
-        ));
-      }
-    } catch (_) {}
+        if (_matchesAllTerms(searchable, searchTerms)) {
+          final normalizedTerms = searchTerms.map((term) => term.toLowerCase());
+          final matchedTasks = state.tasks
+              .where(
+                (task) => normalizedTerms.any(
+                  (term) => task.title.toLowerCase().contains(term),
+                ),
+              )
+              .take(2)
+              .map((task) => task.title)
+              .join('、');
+          final progress = '${state.completedCount}/${state.tasks.length} 项已完成';
+          results.add(
+            SearchResult(
+              id: 'db_challenge_current',
+              title: state.challengeTitle,
+              subtitle: matchedTasks.isEmpty
+                  ? '挑战 · $progress'
+                  : '挑战 · $progress · 相关任务：$matchedTasks',
+              icon: Icons.auto_awesome_rounded,
+              type: SearchResultType.challenge,
+              extraData: {'route': '/challenge'},
+            ),
+          );
+        }
+      } catch (_) {}
+    }
 
     return results;
   }
@@ -1044,7 +1097,11 @@ class SearchService {
   }
 
   Future<List<SearchResult>> _searchDatabase(
-      String query, List<String> searchTerms) async {
+    String query,
+    List<String> searchTerms,
+    SearchScope scope,
+    SearchSourceObserver? onSourceQueried,
+  ) async {
     final dbItems = <SearchResult>[];
     final db = DatabaseHelper.instance;
     final username = await StorageService.getLoginSession() ?? 'default';
@@ -1060,7 +1117,8 @@ class SearchService {
     final endOfDay = startOfDay?.add(const Duration(days: 1));
     final now = DateTime.now();
     final targetDateValue = targetDate;
-    final isTodayQuery = isDateQuery &&
+    final isTodayQuery =
+        isDateQuery &&
         targetDateValue != null &&
         targetDateValue.year == now.year &&
         targetDateValue.month == now.month &&
@@ -1069,32 +1127,36 @@ class SearchService {
         ? '搜索到${DateFormat('yyyy年M月d日').format(startOfDay)}的结果'
         : null;
 
-    // ── 待办事项 ──────────────────────────────────────────────────────────
-    List<Map<String, dynamic>> todos = [];
-    try {
-      if (isDateQuery) {
-        // Date searches must use the storage facade so recurring series are
-        // materialized for the requested day before filtering.
-        final allTodos = await StorageService.getTodos(username);
-        final matchedTodos = allTodos.where((t) {
-          if (t.isDeleted) return false;
-          final dueDate = t.dueDate;
-          if (dueDate != null &&
-              !dueDate.isBefore(startOfDay!) &&
-              dueDate.isBefore(endOfDay!)) {
-            return true;
-          }
-          final createdDate = t.createdDate;
-          if (createdDate != null) {
-            final created = DateTime.fromMillisecondsSinceEpoch(createdDate);
-            if (!created.isBefore(startOfDay!) && created.isBefore(endOfDay!)) {
+    if (scope.includes(SearchResultType.todo)) {
+      onSourceQueried?.call('todos');
+      // ── 待办事项 ──────────────────────────────────────────────────────────
+      List<Map<String, dynamic>> todos = [];
+      try {
+        if (isDateQuery) {
+          // Date searches must use the storage facade so recurring series are
+          // materialized for the requested day before filtering.
+          final allTodos = await StorageService.getTodos(username);
+          final matchedTodos = allTodos.where((t) {
+            if (t.isDeleted) return false;
+            final dueDate = t.dueDate;
+            if (dueDate != null &&
+                !dueDate.isBefore(startOfDay!) &&
+                dueDate.isBefore(endOfDay!)) {
               return true;
             }
-          }
-          return false;
-        }).toList();
-        todos = matchedTodos
-            .map((t) => {
+            final createdDate = t.createdDate;
+            if (createdDate != null) {
+              final created = DateTime.fromMillisecondsSinceEpoch(createdDate);
+              if (!created.isBefore(startOfDay!) &&
+                  created.isBefore(endOfDay!)) {
+                return true;
+              }
+            }
+            return false;
+          }).toList();
+          todos = matchedTodos
+              .map(
+                (t) => {
                   'uuid': t.id,
                   'content': t.title,
                   'is_completed': t.isDone ? 1 : 0,
@@ -1103,464 +1165,521 @@ class SearchService {
                   'created_date': t.createdDate,
                   'team_name': t.teamName,
                   'remark': t.remark,
-                })
-            .toList();
-      } else {
-        final todoMap = <String, Map<String, dynamic>>{};
-        for (final term in searchTerms) {
-          for (final row in await db.searchTodos(term)) {
-            todoMap[row['uuid'].toString()] = row;
+                },
+              )
+              .toList();
+        } else {
+          final todoMap = <String, Map<String, dynamic>>{};
+          for (final term in searchTerms) {
+            for (final row in await db.searchTodos(term)) {
+              todoMap[row['uuid'].toString()] = row;
+            }
           }
+          todos = todoMap.values.where((t) {
+            final haystack = [
+              t['content']?.toString(),
+              t['remark']?.toString(),
+              t['team_name']?.toString(),
+            ].where((s) => s != null && s.isNotEmpty).join(' ').toLowerCase();
+            return _matchesAllTerms(haystack, searchTerms);
+          }).toList();
         }
-        todos = todoMap.values.where((t) {
-          final haystack = [
-            t['content']?.toString(),
-            t['remark']?.toString(),
-            t['team_name']?.toString(),
-          ].where((s) => s != null && s.isNotEmpty).join(' ').toLowerCase();
-          return _matchesAllTerms(haystack, searchTerms);
-        }).toList();
+      } catch (e) {
+        // debugPrint('Todo search error: $e');
       }
-    } catch (e) {
-      // debugPrint('Todo search error: $e');
-    }
 
-    for (var t in todos) {
-      // 构建副标题：备注（优先）+ 截止时间 + 归属团队
-      // 🚀 修复：备注始终显示在副标题第一行，而非仅作兜底
-      final metaParts = <String>[];
-      final dueDateMs = t['due_date'];
-      if (dueDateMs != null && dueDateMs != 0) {
-        metaParts.add(
-            '截止 ${DateFormat('MM/dd').format(DateTime.fromMillisecondsSinceEpoch(dueDateMs is int ? dueDateMs : int.tryParse(dueDateMs.toString()) ?? 0))}');
-      }
-      final createdDateMs = t['created_date'];
-      if (createdDateMs != null && createdDateMs != 0) {
-        metaParts.add(
-            '开始 ${DateFormat('MM/dd').format(DateTime.fromMillisecondsSinceEpoch(createdDateMs is int ? createdDateMs : int.tryParse(createdDateMs.toString()) ?? 0))}');
-      }
-      if (t['team_name'] != null && (t['team_name'] as String).isNotEmpty) {
-        metaParts.add('团队: ${t['team_name']}');
-      }
-      final remarkStr = t['remark']?.toString().trim();
-      // subtitle = 备注（若有）＋元信息（若有）
-      final subtitle = [
-        if (remarkStr != null && remarkStr.isNotEmpty) remarkStr,
-        if (metaParts.isNotEmpty) metaParts.join(' · '),
-      ].join('  |  ');
-      final displaySubtitle = subtitle.isNotEmpty ? subtitle : '个人待办';
-      dbItems.add(SearchResult(
-        id: 'db_todo_${t['uuid']}',
-        title: t['content'] ?? '未命名任务',
-        subtitle: displaySubtitle,
-        icon: t['is_completed'] == 1
-            ? Icons.check_circle
-            : Icons.radio_button_unchecked,
-        type: SearchResultType.todo,
-        extraData: {
-          'uuid': t['uuid'],
-          'table': 'todos',
-          'is_completed': t['is_completed'],
-          'due_date': dueDateMs,
-          'team_name': t['team_name'],
-          'remark': remarkStr,
-          'date_query_hint': ?dateQueryHint,
-        },
-      ));
-    }
-
-    // ── 课程 ─────────────────────────────────────────────────────────────
-    try {
-      final courseMap = <String, Map<String, dynamic>>{};
-      if (isDateQuery) {
-        final day = DateFormat('yyyy-MM-dd').format(startOfDay!);
-        for (final course in await CourseService.getAllCourses(username)) {
-          if (course.date != day) continue;
-          courseMap[course.uuid] = {
-            'uuid': course.uuid,
-            'course_name': course.courseName,
-            'teacher_name': course.teacherName,
-            'room_name': course.roomName,
-            'week_index': course.weekIndex,
-            'weekday': course.weekday,
-            'start_time': course.startTime,
-            'end_time': course.endTime,
-            'course_record': course,
-          };
+      for (var t in todos) {
+        // 构建副标题：备注（优先）+ 截止时间 + 归属团队
+        // 🚀 修复：备注始终显示在副标题第一行，而非仅作兜底
+        final metaParts = <String>[];
+        final dueDateMs = t['due_date'];
+        if (dueDateMs != null && dueDateMs != 0) {
+          metaParts.add(
+            '截止 ${DateFormat('MM/dd').format(DateTime.fromMillisecondsSinceEpoch(dueDateMs is int ? dueDateMs : int.tryParse(dueDateMs.toString()) ?? 0))}',
+          );
         }
-      } else {
-        for (final term in searchTerms) {
-          for (final row in await db.searchCourses(term)) {
-            courseMap[row['uuid'].toString()] = row;
-          }
+        final createdDateMs = t['created_date'];
+        if (createdDateMs != null && createdDateMs != 0) {
+          metaParts.add(
+            '开始 ${DateFormat('MM/dd').format(DateTime.fromMillisecondsSinceEpoch(createdDateMs is int ? createdDateMs : int.tryParse(createdDateMs.toString()) ?? 0))}',
+          );
         }
-      }
-      final courses = courseMap.values.where((c) {
-        if (isDateQuery) return true;
-        final haystack = [c['course_name'], c['teacher_name'], c['room_name']]
-            .where((s) => s != null)
-            .map((s) => s.toString())
-            .join(' ')
-            .toLowerCase();
-        return _matchesAllTerms(haystack, searchTerms);
-      }).toList();
-      for (var c in courses) {
-        // 构建时间描述：第几周 + 星期几 + 第几节
-        final weekIdx = c['week_index'];
-        final weekday = c['weekday'];
-        const weekdayNames = ['', '周一', '周二', '周三', '周四', '周五', '周六', '周日'];
-        final weekdayStr = (weekday != null && weekday >= 1 && weekday <= 7)
-            ? weekdayNames[weekday]
-            : '';
-        final startSlot = c['start_time'];
-        final endSlot = c['end_time'];
-        final timePart = (startSlot != null && endSlot != null)
-            ? '第 $startSlot-$endSlot 节'
-            : '';
-        final weekPart = weekIdx != null ? '第 $weekIdx 周' : '';
-        final subtitle = [weekPart, weekdayStr, timePart, c['room_name'] ?? '']
-            .where((s) => s.isNotEmpty)
-            .join(' · ');
-
-        dbItems.add(SearchResult(
-          id: 'db_course_${c['uuid']}',
-          title: c['course_name'] ?? '未知课程',
-          subtitle:
-              subtitle.isNotEmpty ? subtitle : (c['teacher_name'] ?? '未知教师'),
-          icon: Icons.school,
-          type: SearchResultType.course,
-          extraData: {
-            'uuid': c['uuid'],
-            'table': 'courses',
-            'teacher_name': c['teacher_name'],
-            'room_name': c['room_name'],
-            'week_index': weekIdx,
-            'weekday': weekday,
-            if (c['course_record'] != null) 'course_record': c['course_record'],
-            'date_query_hint': ?dateQueryHint,
-          },
-        ));
-      }
-    } catch (e) {
-      // debugPrint('Course search error: $e');
-    }
-
-    // ── 倒计时 ────────────────────────────────────────────────────────────
-    try {
-      final countdownMap = <String, Map<String, dynamic>>{};
-      if (isDateQuery) {
-        for (final item in await StorageService.getCountdowns(username)) {
-          if (item.isDeleted ||
-              item.targetDate.isBefore(startOfDay!) ||
-              !item.targetDate.isBefore(endOfDay!)) {
-            continue;
-          }
-          countdownMap[item.id] = item.toJson();
+        if (t['team_name'] != null && (t['team_name'] as String).isNotEmpty) {
+          metaParts.add('团队: ${t['team_name']}');
         }
-      } else {
-        for (final term in searchTerms) {
-          for (final row in await db.searchCountdowns(term)) {
-            countdownMap[row['uuid'].toString()] = row;
-          }
-        }
-      }
-      final countdowns = countdownMap.values.where((cd) {
-        if (isDateQuery) return true;
-        final haystack = [cd['title'], cd['team_name']]
-            .where((s) => s != null)
-            .map((s) => s.toString())
-            .join(' ')
-            .toLowerCase();
-        return _matchesAllTerms(haystack, searchTerms);
-      }).toList();
-      for (var cd in countdowns) {
-        String subtitle = '未设置日期';
-        final targetMs = cd['target_time'];
-        if (targetMs != null) {
-          final target = DateTime.fromMillisecondsSinceEpoch(targetMs is int
-              ? targetMs
-              : int.tryParse(targetMs.toString()) ?? 0);
-          final diff = target.difference(now).inDays;
-          final dateStr = DateFormat('yyyy/MM/dd').format(target);
-          subtitle =
-              diff >= 0 ? '还有 $diff 天 · $dateStr' : '已过 ${-diff} 天 · $dateStr';
-        }
-        dbItems.add(SearchResult(
-          id: 'db_countdown_${cd['uuid']}',
-          title: cd['title'] ?? '未命名倒计时',
-          subtitle: subtitle,
-          icon: Icons.timer_outlined,
-          type: SearchResultType.countdown,
-          extraData: {
-            'uuid': cd['uuid'],
-            'table': 'countdowns',
-            'fields': {
-              '目标日期': targetMs == null ? '' : subtitle,
-              '所属团队': cd['team_name']?.toString() ?? '',
+        final remarkStr = t['remark']?.toString().trim();
+        // subtitle = 备注（若有）＋元信息（若有）
+        final subtitle = [
+          if (remarkStr != null && remarkStr.isNotEmpty) remarkStr,
+          if (metaParts.isNotEmpty) metaParts.join(' · '),
+        ].join('  |  ');
+        final displaySubtitle = subtitle.isNotEmpty ? subtitle : '个人待办';
+        dbItems.add(
+          SearchResult(
+            id: 'db_todo_${t['uuid']}',
+            title: t['content'] ?? '未命名任务',
+            subtitle: displaySubtitle,
+            icon: t['is_completed'] == 1
+                ? Icons.check_circle
+                : Icons.radio_button_unchecked,
+            type: SearchResultType.todo,
+            extraData: {
+              'uuid': t['uuid'],
+              'table': 'todos',
+              'is_completed': t['is_completed'],
+              'due_date': dueDateMs,
+              'team_name': t['team_name'],
+              'remark': remarkStr,
+              'date_query_hint': ?dateQueryHint,
             },
-            'detail_label': '倒计时',
-            'date_query_hint': ?dateQueryHint,
-          },
-        ));
+          ),
+        );
       }
-    } catch (e) {
-      // debugPrint('Countdown search error: $e');
     }
 
-    // ── 时间日志 ──────────────────────────────────────────────────────────
-    try {
-      // Keep the legacy SharedPreferences-to-SQL migration guarantee while
-      // all actual search filtering stays inside SQLite.
-      await _prepareTimeLogs();
-      List<Map<String, dynamic>> matchedLogs;
-      if (isDateQuery) {
-        matchedLogs = await db.searchTimeLogsByDate(
-          startOfDay!.millisecondsSinceEpoch,
-          endOfDay!.millisecondsSinceEpoch,
-        );
-      } else {
-        final logMap = <String, Map<String, dynamic>>{};
-        for (final term in searchTerms) {
-          for (final row in await db.searchTimeLogs(term)) {
-            logMap[row['uuid'].toString()] = row;
+    if (scope.includes(SearchResultType.course)) {
+      onSourceQueried?.call('courses');
+      // ── 课程 ─────────────────────────────────────────────────────────────
+      try {
+        final courseMap = <String, Map<String, dynamic>>{};
+        if (isDateQuery) {
+          final day = DateFormat('yyyy-MM-dd').format(startOfDay!);
+          for (final course in await CourseService.getAllCourses(username)) {
+            if (course.date != day) continue;
+            courseMap[course.uuid] = {
+              'uuid': course.uuid,
+              'course_name': course.courseName,
+              'teacher_name': course.teacherName,
+              'room_name': course.roomName,
+              'week_index': course.weekIndex,
+              'weekday': course.weekday,
+              'start_time': course.startTime,
+              'end_time': course.endTime,
+              'course_record': course,
+            };
+          }
+        } else {
+          for (final term in searchTerms) {
+            for (final row in await db.searchCourses(term)) {
+              courseMap[row['uuid'].toString()] = row;
+            }
           }
         }
-        matchedLogs = logMap.values.where((log) {
-          final haystack = [log['title'], log['remark']]
-              .whereType<String>()
+        final courses = courseMap.values.where((c) {
+          if (isDateQuery) return true;
+          final haystack = [c['course_name'], c['teacher_name'], c['room_name']]
+              .where((s) => s != null)
+              .map((s) => s.toString())
               .join(' ')
               .toLowerCase();
           return _matchesAllTerms(haystack, searchTerms);
         }).toList();
-      }
+        for (var c in courses) {
+          // 构建时间描述：第几周 + 星期几 + 第几节
+          final weekIdx = c['week_index'];
+          final weekday = c['weekday'];
+          const weekdayNames = ['', '周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+          final weekdayStr = (weekday != null && weekday >= 1 && weekday <= 7)
+              ? weekdayNames[weekday]
+              : '';
+          final startSlot = c['start_time'];
+          final endSlot = c['end_time'];
+          final timePart = (startSlot != null && endSlot != null)
+              ? '第 $startSlot-$endSlot 节'
+              : '';
+          final weekPart = weekIdx != null ? '第 $weekIdx 周' : '';
+          final subtitle = [
+            weekPart,
+            weekdayStr,
+            timePart,
+            c['room_name'] ?? '',
+          ].where((s) => s.isNotEmpty).join(' · ');
 
-      for (final log in matchedLogs) {
-        final startMs = (log['start_time'] as num?)?.toInt() ?? 0;
-        final endMs = (log['end_time'] as num?)?.toInt() ?? startMs;
-        final start = DateTime.fromMillisecondsSinceEpoch(startMs);
-        final end = DateTime.fromMillisecondsSinceEpoch(endMs);
-        final mins = end.difference(start).inMinutes;
-        final title = log['title']?.toString() ?? '';
-        final remark = log['remark']?.toString();
-        dbItems.add(SearchResult(
-          id: 'db_log_${log['uuid']}',
-          title: title.isNotEmpty ? title : '未命名专注',
-          subtitle: '$mins 分钟 · ${DateFormat('MM/dd HH:mm').format(start)}'
-              '${remark?.isNotEmpty == true ? ' · $remark' : ''}',
-          icon: Icons.history_edu_rounded,
-          type: SearchResultType.log,
-          extraData: {
-            'uuid': log['uuid'],
-            'table': 'time_logs',
-            'date_query_hint': ?dateQueryHint,
-          },
-        ));
-      }
-    } catch (e) {
-      // debugPrint('Time log search error: $e');
-    }
-
-    // ── 时间日志标签 ─────────────────────────────────────────────────────
-    // 搜索标签名，点击可跳转到该标签的折线图统计界面
-    try {
-      final allTags = await PomodoroService.getTags();
-      final matchedTags = allTags
-          .where((t) => _matchesAllTerms(t.name.toLowerCase(), searchTerms));
-      for (var tag in matchedTags) {
-        dbItems.add(SearchResult(
-          id: 'db_tag_${tag.uuid}',
-          title: tag.name,
-          subtitle: '专注标签 · 点击查看折线图统计',
-          icon: Icons.label_rounded,
-          type: SearchResultType.tag,
-          extraData: {
-            'tag_uuid': tag.uuid,
-            'tag_name': tag.name,
-            'tag_color': tag.color,
-            'route': '/time_log/tag',
-          },
-        ));
-      }
-    } catch (e) {
-      // debugPrint('Tag search error: $e');
-    }
-
-    // ── 屏幕使用时间 (App 搜索) ─────────────────────────────────────────
-    // 日期查询时：直接展示目标日期的聚合屏幕时间；普通关键词查询时：按应用名匹配历史缓存。
-    if (isDateQuery) {
-      try {
-        final seenApps = <String>{};
-
-        void addScreenTimeApps(List<dynamic> stats,
-            {required bool includeAll}) {
-          for (var item in stats) {
-            if (item is! Map) continue;
-            final appName = item['app_name']?.toString().trim() ?? '';
-            if (appName.isEmpty) continue;
-
-            final normalized = appName.toLowerCase();
-            if (seenApps.contains(normalized)) continue;
-
-            final matchesQuery =
-                includeAll || _matchesAllTerms(normalized, searchTerms);
-            if (!matchesQuery) continue;
-
-            seenApps.add(normalized);
-            final subtitle = '屏幕使用时间 · 点击查看应用详情';
-
-            dbItems.add(SearchResult(
-              id: 'db_app_$normalized',
-              title: appName,
-              subtitle: subtitle,
-              icon: Icons.smartphone_rounded,
-              type: SearchResultType.app,
+          dbItems.add(
+            SearchResult(
+              id: 'db_course_${c['uuid']}',
+              title: c['course_name'] ?? '未知课程',
+              subtitle: subtitle.isNotEmpty
+                  ? subtitle
+                  : (c['teacher_name'] ?? '未知教师'),
+              icon: Icons.school,
+              type: SearchResultType.course,
               extraData: {
-                'app_name': appName,
-                'route': '/screen_time/app',
-                'search_date_ms': startOfDay!.millisecondsSinceEpoch,
+                'uuid': c['uuid'],
+                'table': 'courses',
+                'teacher_name': c['teacher_name'],
+                'room_name': c['room_name'],
+                'week_index': weekIdx,
+                'weekday': weekday,
+                if (c['course_record'] != null)
+                  'course_record': c['course_record'],
                 'date_query_hint': ?dateQueryHint,
               },
-            ));
-          }
-        }
-
-        final history = await StorageService.getScreenTimeHistory();
-        final targetDateKey = DateFormat('yyyy-MM-dd').format(startOfDay!);
-        final targetDayStats = history[targetDateKey];
-
-        if (targetDayStats != null && targetDayStats.isNotEmpty) {
-          addScreenTimeApps(targetDayStats, includeAll: true);
-        } else if (isTodayQuery) {
-          final screenTimeCache = await StorageService.getScreenTimeCache();
-          if (screenTimeCache.isNotEmpty) {
-            addScreenTimeApps(screenTimeCache, includeAll: true);
-          }
+            ),
+          );
         }
       } catch (e) {
-        // debugPrint('Screen time search error: $e');
-      }
-    } else {
-      try {
-        final seenApps = <String>{};
-
-        void addScreenTimeApps(List<dynamic> stats) {
-          for (var item in stats) {
-            if (item is! Map) continue;
-            final appName = item['app_name']?.toString().trim() ?? '';
-            if (appName.isEmpty) continue;
-
-            final normalized = appName.toLowerCase();
-            if (seenApps.contains(normalized)) continue;
-            if (!normalized.contains(q)) continue;
-
-            seenApps.add(normalized);
-            dbItems.add(SearchResult(
-              id: 'db_app_$normalized',
-              title: appName,
-              subtitle: '屏幕使用时间 · 点击查看应用详情',
-              icon: Icons.smartphone_rounded,
-              type: SearchResultType.app,
-              extraData: {
-                'app_name': appName,
-                'route': '/screen_time/app',
-              },
-            ));
-          }
-        }
-
-        final screenTimeCache = await StorageService.getScreenTimeCache();
-        if (screenTimeCache.isNotEmpty) {
-          addScreenTimeApps(screenTimeCache);
-        }
-
-        final history = await StorageService.getScreenTimeHistory();
-        for (final dayEntry in history.entries) {
-          final dayStats = dayEntry.value;
-          if (dayStats.isEmpty) continue;
-          addScreenTimeApps(dayStats);
-        }
-      } catch (e) {
-        // debugPrint('Screen time search error: $e');
+        // debugPrint('Course search error: $e');
       }
     }
 
-    // ── 番茄钟 ──────────────────────────────────────────────────────────
-    {
+    if (scope.includes(SearchResultType.countdown)) {
+      onSourceQueried?.call('countdowns');
+      // ── 倒计时 ────────────────────────────────────────────────────────────
       try {
-        final allPoms = await PomodoroService.getRecords();
-        final tagNames = {
-          for (final tag in await PomodoroService.getTags()) tag.uuid: tag.name,
-        };
-        final matchedPoms = allPoms.where((p) {
-          if (isDateQuery) {
-            final start = DateTime.fromMillisecondsSinceEpoch(p.startTime);
-            return start.isAfter(
-                    startOfDay!.subtract(const Duration(milliseconds: 1))) &&
-                start.isBefore(endOfDay!);
+        final countdownMap = <String, Map<String, dynamic>>{};
+        if (isDateQuery) {
+          for (final item in await StorageService.getCountdowns(username)) {
+            if (item.isDeleted ||
+                item.targetDate.isBefore(startOfDay!) ||
+                !item.targetDate.isBefore(endOfDay!)) {
+              continue;
+            }
+            countdownMap[item.id] = item.toJson();
           }
-          return _matchesAllTerms(
+        } else {
+          for (final term in searchTerms) {
+            for (final row in await db.searchCountdowns(term)) {
+              countdownMap[row['uuid'].toString()] = row;
+            }
+          }
+        }
+        final countdowns = countdownMap.values.where((cd) {
+          if (isDateQuery) return true;
+          final haystack = [cd['title'], cd['team_name']]
+              .where((s) => s != null)
+              .map((s) => s.toString())
+              .join(' ')
+              .toLowerCase();
+          return _matchesAllTerms(haystack, searchTerms);
+        }).toList();
+        for (var cd in countdowns) {
+          String subtitle = '未设置日期';
+          final targetMs = cd['target_time'];
+          if (targetMs != null) {
+            final target = DateTime.fromMillisecondsSinceEpoch(
+              targetMs is int
+                  ? targetMs
+                  : int.tryParse(targetMs.toString()) ?? 0,
+            );
+            final diff = target.difference(now).inDays;
+            final dateStr = DateFormat('yyyy/MM/dd').format(target);
+            subtitle = diff >= 0
+                ? '还有 $diff 天 · $dateStr'
+                : '已过 ${-diff} 天 · $dateStr';
+          }
+          dbItems.add(
+            SearchResult(
+              id: 'db_countdown_${cd['uuid']}',
+              title: cd['title'] ?? '未命名倒计时',
+              subtitle: subtitle,
+              icon: Icons.timer_outlined,
+              type: SearchResultType.countdown,
+              extraData: {
+                'uuid': cd['uuid'],
+                'table': 'countdowns',
+                'fields': {
+                  '目标日期': targetMs == null ? '' : subtitle,
+                  '所属团队': cd['team_name']?.toString() ?? '',
+                },
+                'detail_label': '倒计时',
+                'date_query_hint': ?dateQueryHint,
+              },
+            ),
+          );
+        }
+      } catch (e) {
+        // debugPrint('Countdown search error: $e');
+      }
+    }
+
+    if (scope.includes(SearchResultType.log)) {
+      onSourceQueried?.call('timeLogs');
+      // ── 时间日志 ──────────────────────────────────────────────────────────
+      try {
+        // Keep the legacy SharedPreferences-to-SQL migration guarantee while
+        // all actual search filtering stays inside SQLite.
+        await _prepareTimeLogs();
+        List<Map<String, dynamic>> matchedLogs;
+        if (isDateQuery) {
+          matchedLogs = await db.searchTimeLogsByDate(
+            startOfDay!.millisecondsSinceEpoch,
+            endOfDay!.millisecondsSinceEpoch,
+          );
+        } else {
+          final logMap = <String, Map<String, dynamic>>{};
+          for (final term in searchTerms) {
+            for (final row in await db.searchTimeLogs(term)) {
+              logMap[row['uuid'].toString()] = row;
+            }
+          }
+          matchedLogs = logMap.values.where((log) {
+            final haystack = [
+              log['title'],
+              log['remark'],
+            ].whereType<String>().join(' ').toLowerCase();
+            return _matchesAllTerms(haystack, searchTerms);
+          }).toList();
+        }
+
+        for (final log in matchedLogs) {
+          final startMs = (log['start_time'] as num?)?.toInt() ?? 0;
+          final endMs = (log['end_time'] as num?)?.toInt() ?? startMs;
+          final start = DateTime.fromMillisecondsSinceEpoch(startMs);
+          final end = DateTime.fromMillisecondsSinceEpoch(endMs);
+          final mins = end.difference(start).inMinutes;
+          final title = log['title']?.toString() ?? '';
+          final remark = log['remark']?.toString();
+          dbItems.add(
+            SearchResult(
+              id: 'db_log_${log['uuid']}',
+              title: title.isNotEmpty ? title : '未命名专注',
+              subtitle:
+                  '$mins 分钟 · ${DateFormat('MM/dd HH:mm').format(start)}'
+                  '${remark?.isNotEmpty == true ? ' · $remark' : ''}',
+              icon: Icons.history_edu_rounded,
+              type: SearchResultType.log,
+              extraData: {
+                'uuid': log['uuid'],
+                'table': 'time_logs',
+                'date_query_hint': ?dateQueryHint,
+              },
+            ),
+          );
+        }
+      } catch (e) {
+        // debugPrint('Time log search error: $e');
+      }
+    }
+
+    if (scope.includes(SearchResultType.tag)) {
+      onSourceQueried?.call('tags');
+      // ── 时间日志标签 ─────────────────────────────────────────────────────
+      // 搜索标签名，点击可跳转到该标签的折线图统计界面
+      try {
+        final allTags = await PomodoroService.getTags();
+        final matchedTags = allTags.where(
+          (t) => _matchesAllTerms(t.name.toLowerCase(), searchTerms),
+        );
+        for (var tag in matchedTags) {
+          dbItems.add(
+            SearchResult(
+              id: 'db_tag_${tag.uuid}',
+              title: tag.name,
+              subtitle: '专注标签 · 点击查看折线图统计',
+              icon: Icons.label_rounded,
+              type: SearchResultType.tag,
+              extraData: {
+                'tag_uuid': tag.uuid,
+                'tag_name': tag.name,
+                'tag_color': tag.color,
+                'route': '/time_log/tag',
+              },
+            ),
+          );
+        }
+      } catch (e) {
+        // debugPrint('Tag search error: $e');
+      }
+    }
+
+    if (scope.includes(SearchResultType.app)) {
+      onSourceQueried?.call('screenTime');
+      // ── 屏幕使用时间 (App 搜索) ─────────────────────────────────────────
+      // 日期查询时：直接展示目标日期的聚合屏幕时间；普通关键词查询时：按应用名匹配历史缓存。
+      if (isDateQuery) {
+        try {
+          final seenApps = <String>{};
+
+          void addScreenTimeApps(
+            List<dynamic> stats, {
+            required bool includeAll,
+          }) {
+            for (var item in stats) {
+              if (item is! Map) continue;
+              final appName = item['app_name']?.toString().trim() ?? '';
+              if (appName.isEmpty) continue;
+
+              final normalized = appName.toLowerCase();
+              if (seenApps.contains(normalized)) continue;
+
+              final matchesQuery =
+                  includeAll || _matchesAllTerms(normalized, searchTerms);
+              if (!matchesQuery) continue;
+
+              seenApps.add(normalized);
+              final subtitle = '屏幕使用时间 · 点击查看应用详情';
+
+              dbItems.add(
+                SearchResult(
+                  id: 'db_app_$normalized',
+                  title: appName,
+                  subtitle: subtitle,
+                  icon: Icons.smartphone_rounded,
+                  type: SearchResultType.app,
+                  extraData: {
+                    'app_name': appName,
+                    'route': '/screen_time/app',
+                    'search_date_ms': startOfDay!.millisecondsSinceEpoch,
+                    'date_query_hint': ?dateQueryHint,
+                  },
+                ),
+              );
+            }
+          }
+
+          final history = await StorageService.getScreenTimeHistory();
+          final targetDateKey = DateFormat('yyyy-MM-dd').format(startOfDay!);
+          final targetDayStats = history[targetDateKey];
+
+          if (targetDayStats != null && targetDayStats.isNotEmpty) {
+            addScreenTimeApps(targetDayStats, includeAll: true);
+          } else if (isTodayQuery) {
+            final screenTimeCache = await StorageService.getScreenTimeCache();
+            if (screenTimeCache.isNotEmpty) {
+              addScreenTimeApps(screenTimeCache, includeAll: true);
+            }
+          }
+        } catch (e) {
+          // debugPrint('Screen time search error: $e');
+        }
+      } else {
+        try {
+          final seenApps = <String>{};
+
+          void addScreenTimeApps(List<dynamic> stats) {
+            for (var item in stats) {
+              if (item is! Map) continue;
+              final appName = item['app_name']?.toString().trim() ?? '';
+              if (appName.isEmpty) continue;
+
+              final normalized = appName.toLowerCase();
+              if (seenApps.contains(normalized)) continue;
+              if (!normalized.contains(q)) continue;
+
+              seenApps.add(normalized);
+              dbItems.add(
+                SearchResult(
+                  id: 'db_app_$normalized',
+                  title: appName,
+                  subtitle: '屏幕使用时间 · 点击查看应用详情',
+                  icon: Icons.smartphone_rounded,
+                  type: SearchResultType.app,
+                  extraData: {'app_name': appName, 'route': '/screen_time/app'},
+                ),
+              );
+            }
+          }
+
+          final screenTimeCache = await StorageService.getScreenTimeCache();
+          if (screenTimeCache.isNotEmpty) {
+            addScreenTimeApps(screenTimeCache);
+          }
+
+          final history = await StorageService.getScreenTimeHistory();
+          for (final dayEntry in history.entries) {
+            final dayStats = dayEntry.value;
+            if (dayStats.isEmpty) continue;
+            addScreenTimeApps(dayStats);
+          }
+        } catch (e) {
+          // debugPrint('Screen time search error: $e');
+        }
+      }
+    }
+
+    if (scope.includes(SearchResultType.log)) {
+      onSourceQueried?.call('pomodoro');
+      // ── 番茄钟 ──────────────────────────────────────────────────────────
+      {
+        try {
+          final allPoms = await PomodoroService.getRecords();
+          final tagNames = {
+            for (final tag in await PomodoroService.getTags())
+              tag.uuid: tag.name,
+          };
+          final matchedPoms = allPoms.where((p) {
+            if (isDateQuery) {
+              final start = DateTime.fromMillisecondsSinceEpoch(p.startTime);
+              return start.isAfter(
+                    startOfDay!.subtract(const Duration(milliseconds: 1)),
+                  ) &&
+                  start.isBefore(endOfDay!);
+            }
+            return _matchesAllTerms(
               [
                 p.todoTitle,
                 p.note,
                 ...p.tagUuids.map((id) => tagNames[id]),
               ].whereType<String>().join(' '),
-              searchTerms);
-        }).toList();
-        for (var p in matchedPoms) {
-          final start = DateTime.fromMillisecondsSinceEpoch(p.startTime);
-          final end = p.endTime != null
-              ? DateTime.fromMillisecondsSinceEpoch(p.endTime!)
-              : start.add(Duration(minutes: p.effectiveDuration ~/ 60));
-          final mins = p.effectiveDuration ~/ 60;
-          dbItems.add(SearchResult(
-            id: 'db_pom_${p.uuid}',
-            title: p.todoTitle?.isNotEmpty == true ? p.todoTitle! : '专注记录',
-            subtitle:
-                '$mins 分钟 · ${DateFormat('HH:mm').format(start)} - ${DateFormat('HH:mm').format(end)} · ${p.isCompleted ? "完成" : "中断"}',
-            icon: Icons.timer_outlined,
-            type: SearchResultType.log, // 与时间日志归在一组
-            extraData: {
-              'uuid': p.uuid,
-              'table': 'pomodoro_records',
-              'date_query_hint': ?dateQueryHint,
-            },
-          ));
+              searchTerms,
+            );
+          }).toList();
+          for (var p in matchedPoms) {
+            final start = DateTime.fromMillisecondsSinceEpoch(p.startTime);
+            final end = p.endTime != null
+                ? DateTime.fromMillisecondsSinceEpoch(p.endTime!)
+                : start.add(Duration(minutes: p.effectiveDuration ~/ 60));
+            final mins = p.effectiveDuration ~/ 60;
+            dbItems.add(
+              SearchResult(
+                id: 'db_pom_${p.uuid}',
+                title: p.todoTitle?.isNotEmpty == true ? p.todoTitle! : '专注记录',
+                subtitle:
+                    '$mins 分钟 · ${DateFormat('HH:mm').format(start)} - ${DateFormat('HH:mm').format(end)} · ${p.isCompleted ? "完成" : "中断"}',
+                icon: Icons.timer_outlined,
+                type: SearchResultType.log, // 与时间日志归在一组
+                extraData: {
+                  'uuid': p.uuid,
+                  'table': 'pomodoro_records',
+                  'date_query_hint': ?dateQueryHint,
+                },
+              ),
+            );
+          }
+        } catch (e) {
+          // debugPrint('Pomodoro search error: $e');
         }
-      } catch (e) {
-        // debugPrint('Pomodoro search error: $e');
       }
     }
 
-    // ── 待办文件夹 ────────────────────────────────────────────────────────
-    try {
-      final groupMap = <String, Map<String, dynamic>>{};
-      for (final term in searchTerms) {
-        for (final row in await db.searchTodoGroups(term)) {
-          groupMap[row['uuid'].toString()] = row;
+    if (scope.includes(SearchResultType.todoGroup)) {
+      onSourceQueried?.call('todoGroups');
+      // ── 待办文件夹 ────────────────────────────────────────────────────────
+      try {
+        final groupMap = <String, Map<String, dynamic>>{};
+        for (final term in searchTerms) {
+          for (final row in await db.searchTodoGroups(term)) {
+            groupMap[row['uuid'].toString()] = row;
+          }
         }
+        final groups = groupMap.values.where((g) {
+          final haystack = [g['name'], g['team_name']]
+              .where((s) => s != null)
+              .map((s) => s.toString())
+              .join(' ')
+              .toLowerCase();
+          return _matchesAllTerms(haystack, searchTerms);
+        }).toList();
+        for (var g in groups) {
+          dbItems.add(
+            SearchResult(
+              id: 'db_group_${g['uuid']}',
+              title: g['name'] ?? '未命名文件夹',
+              subtitle: g['team_name'] != null
+                  ? '团队文件夹 · ${g['team_name']}'
+                  : '个人文件夹',
+              icon: Icons.folder_rounded,
+              type: SearchResultType.todoGroup,
+              extraData: {'uuid': g['uuid'], 'table': 'todo_groups'},
+            ),
+          );
+        }
+      } catch (e) {
+        // debugPrint('Todo group search error: $e');
       }
-      final groups = groupMap.values.where((g) {
-        final haystack = [g['name'], g['team_name']]
-            .where((s) => s != null)
-            .map((s) => s.toString())
-            .join(' ')
-            .toLowerCase();
-        return _matchesAllTerms(haystack, searchTerms);
-      }).toList();
-      for (var g in groups) {
-        dbItems.add(SearchResult(
-          id: 'db_group_${g['uuid']}',
-          title: g['name'] ?? '未命名文件夹',
-          subtitle:
-              g['team_name'] != null ? '团队文件夹 · ${g['team_name']}' : '个人文件夹',
-          icon: Icons.folder_rounded,
-          type: SearchResultType.todoGroup,
-          extraData: {'uuid': g['uuid'], 'table': 'todo_groups'},
-        ));
-      }
-    } catch (e) {
-      // debugPrint('Todo group search error: $e');
     }
+
     return dbItems;
   }
 
