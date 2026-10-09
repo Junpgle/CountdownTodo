@@ -1129,7 +1129,10 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
     final text = _inputCtrl.text.trim();
     if (text.isEmpty) return;
 
-    final financeContext = _usesContextInjection
+    // An external model cannot call the app's read-only query tools, so the
+    // copied request must carry its data through smart context injection.
+    final useContextInjection = _smartContext;
+    final financeContext = useContextInjection
         ? await FinanceAiContextService.buildContext(
             userMessage: text,
             conversationContext: _recentConversationTextForContext(),
@@ -1137,7 +1140,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
             dateRangeOverride: _financeContextDateRangeOverride(),
           )
         : '';
-    final habitContext = _usesContextInjection
+    final habitContext = useContextInjection
         ? await HabitAiContextService.buildContext(
             userMessage: text,
             conversationContext: _recentConversationTextForContext(),
@@ -1149,6 +1152,8 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
       pendingUserText: text,
       financeContext: financeContext,
       habitContext: habitContext ?? '',
+      contextInjection: useContextInjection,
+      queryTools: false,
     );
     final manualPrompt = AiTodoContextBuilder.buildManualCopyPrompt(
       apiMessages,
@@ -1161,9 +1166,9 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
       context,
       SnackBar(
         content: Text(
-          _contextMode == AiContextMode.functionCalling
-              ? '已复制对话提示词。外部AI无法调用App查询工具；需要附带数据时请切换为“智能注入”。'
-              : '已复制完整提示词，可粘贴到外部AI',
+          useContextInjection
+              ? '已按智能注入模式复制提示词，可粘贴到外部AI'
+              : '已复制提示词；智能上下文当前关闭，未附带业务数据',
         ),
       ),
     );

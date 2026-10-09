@@ -2,6 +2,8 @@ part of 'todo_chat_screen.dart';
 
 // ignore_for_file: annotate_overrides, unused_element, unused_element_parameter
 
+const double _todoChatWideSidebarWidth = 304.0;
+
 Widget _keepTodoChatButtonBackground(
   BuildContext context,
   Set<WidgetState> states,
@@ -39,9 +41,11 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
 
   Widget _buildFloatingResponsiveAppBar(bool isDark, ColorScheme colorScheme) {
     final topInset = MediaQuery.paddingOf(context).top;
-    return Positioned(
+    return AnimatedPositioned(
+      duration: const Duration(milliseconds: 320),
+      curve: Curves.easeOutCubic,
       top: 0,
-      left: 0,
+      left: _isWide && _sidebarVisible ? _todoChatWideSidebarWidth : 0,
       right: 0,
       child: SizedBox(
         height: floatingGlassTopBarHeight(context),
@@ -160,7 +164,7 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
         AnimatedContainer(
           duration: const Duration(milliseconds: 320),
           curve: Curves.easeOutCubic,
-          width: _sidebarVisible ? 304 : 0,
+          width: _sidebarVisible ? _todoChatWideSidebarWidth : 0,
           decoration: BoxDecoration(
             color: colorScheme.surface,
             border: Border(
@@ -176,7 +180,7 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
               alignment: Alignment.centerLeft,
               widthFactor: _sidebarVisible ? 1 : 0,
               child: SizedBox(
-                width: 304,
+                width: _todoChatWideSidebarWidth,
                 child: _buildHistorySidebarContent(context, isWideMode: true),
               ),
             ),
@@ -687,6 +691,7 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
   }
 
   void _showHistorySidebar() {
+    final historyPanelTopMargin = floatingGlassTopBarHeight(context) + 20;
     showAppGeneralDialog(
       context: context,
       barrierDismissible: true,
@@ -713,14 +718,14 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
                 child: OptionalLiquidGlassPanel(
                   width: MediaQuery.of(context).size.width * 0.75,
                   height: MediaQuery.of(context).size.height,
-                  margin: const EdgeInsets.only(top: kToolbarHeight + 20),
+                  margin: EdgeInsets.only(top: historyPanelTopMargin),
                   borderRadius: 16,
                   highContrast: true,
                   tint: Theme.of(context).colorScheme.surface,
                   fallback: Container(
                     width: MediaQuery.of(context).size.width * 0.75,
                     height: MediaQuery.of(context).size.height,
-                    margin: const EdgeInsets.only(top: kToolbarHeight + 20),
+                    margin: EdgeInsets.only(top: historyPanelTopMargin),
                     decoration: BoxDecoration(
                       color: Theme.of(context).colorScheme.surface,
                       borderRadius: const BorderRadius.only(
@@ -752,10 +757,15 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
     required bool isWideMode,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
+    final headerTopPadding = isWideMode && AppPlatform.isMacOS
+        ? MediaQuery.paddingOf(context).top
+        : isWideMode
+        ? 18.0
+        : 16.0;
     return Column(
       children: [
         Padding(
-          padding: EdgeInsets.fromLTRB(16, isWideMode ? 18 : 16, 12, 10),
+          padding: EdgeInsets.fromLTRB(16, headerTopPadding, 12, 10),
           child: Row(
             children: [
               Text(
