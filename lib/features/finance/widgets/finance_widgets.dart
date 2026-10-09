@@ -163,6 +163,8 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
                 ),
               ),
             ),
+          _buildInsightCard(context, colorScheme, period),
+          const SizedBox(height: 24),
           Text(
             _spendingChartTitle(period),
             style: Theme.of(context).textTheme.titleMedium
@@ -175,7 +177,6 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
               child: _buildSpendingChart(context, colorScheme, period),
             ),
           ),
-          _buildInsightCard(context, colorScheme, period),
           const SizedBox(height: 24),
           Text(
             period.isPlanned ? '计划支出占比' : '各类别支出占比',
