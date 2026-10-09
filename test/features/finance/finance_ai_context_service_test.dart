@@ -160,14 +160,20 @@ void main() {
         asOfAt: asOfAt,
       ),
       transactions: [transaction],
-      categories: const [],
+      categories: [
+        FinanceCategory(
+          uuid: 'deleted-context-category',
+          name: '历史分类',
+          isDeleted: true,
+        ),
+      ],
       paymentMethods: const [],
       budgets: const [],
       budgetSummaries: const {},
       asOfAt: asOfAt,
     );
 
-    expect(context, contains('分类已删除或不可用'));
+    expect(context, contains('分类: 历史分类（已删除）'));
     expect(context, isNot(contains('分类: 未分类')));
   });
 

@@ -284,7 +284,10 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
     final values = await Future.wait<dynamic>([
       // 这个范围已经包含本月，后续在内存中切出本月账单，避免重复查询。
       FinanceRepository.getTransactions(from: overviewFrom, to: overviewTo),
-      FinanceRepository.getCategories(includeArchived: true),
+      FinanceRepository.getCategories(
+        includeArchived: true,
+        includeDeleted: true,
+      ),
       FinanceRepository.getPaymentMethods(includeArchived: true),
       FinanceRepository.getRecurringRules(enabledOnly: true),
     ]);
@@ -472,9 +475,10 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
   ) async {
     final colorScheme = Theme.of(context).colorScheme;
     final category = _categoryMap[transaction.categoryUuid];
-    final categoryDisplayName = category == null
-        ? null
-        : financeCategoryDisplayName(category, _categories);
+    final categoryDisplayName = financeCategoryReferenceDisplayName(
+      transaction.categoryUuid,
+      _categories,
+    );
     final result = await PageTransitions.pushFromRect<FinanceTransaction>(
       context: context,
       page: FinanceTransactionDetailScreen(

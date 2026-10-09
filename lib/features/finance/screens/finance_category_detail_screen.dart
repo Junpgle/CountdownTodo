@@ -115,6 +115,7 @@ class _FinanceCategoryDetailScreenState
       );
       final refreshedCategories = await FinanceRepository.getCategories(
         includeArchived: true,
+        includeDeleted: true,
       );
       if (!mounted || generation != _loadGeneration) return;
 
@@ -205,7 +206,7 @@ class _FinanceCategoryDetailScreenState
   }
 
   String _categoryLabel(FinanceCategory category) =>
-      '${financeCategoryDisplayName(category, categories.values)}'
+      '${financeCategoryReferenceDisplayName(category.uuid, categories.values)}'
       '${category.isArchived ? '（已归档）' : ''}';
 
   bool _belongsToRoot(FinanceTransaction transaction) {
@@ -224,7 +225,6 @@ class _FinanceCategoryDetailScreenState
   List<FinanceCategory> _childCategories(FinanceCategory root) =>
       categories.values
           .where((category) =>
-              !category.isDeleted &&
               category.uuid != root.uuid &&
               _rootFor(category).uuid == root.uuid)
           .toList();
@@ -328,7 +328,10 @@ class _FinanceCategoryDetailScreenState
       }
     } else {
       categoryTitle = _categoryLabel(root);
-      if (hasSubcategories) {
+      if (root.isDeleted) {
+        sectionTitle = '历史账单';
+        emptyMessage = '这个分类没有可展示的历史账单';
+      } else if (hasSubcategories) {
         sectionTitle = isPlanned ? '计划小类' : '小类';
         emptyMessage = isPlanned
             ? '这个大类下暂无可展示的计划小类账单'

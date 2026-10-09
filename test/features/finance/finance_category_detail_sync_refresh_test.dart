@@ -242,9 +242,13 @@ void main() {
     );
     expect(mergedCount, greaterThan(0));
 
-    await _waitFor(tester, () => find.text('分类已删除').evaluate().isNotEmpty);
+    await _waitFor(
+      tester,
+      () => find.text('待删除分类（已删除）').evaluate().isNotEmpty,
+    );
     expect(find.text('未分类'), findsNothing);
-    expect(find.text('分类已删除或不可用'), findsWidgets);
+    expect(find.text('分类已删除或不可用'), findsNothing);
+    expect(find.text('待删除分类（已删除）'), findsWidgets);
     expect(
       find.byKey(const ValueKey('finance-category-detail-deleted-detail-root')),
       findsOneWidget,

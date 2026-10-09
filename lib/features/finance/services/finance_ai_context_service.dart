@@ -937,7 +937,10 @@ abstract final class FinanceAiContextService {
   _loadCatalog() async {
     try {
       final values = await Future.wait<dynamic>([
-        FinanceRepository.getCategories(includeArchived: true),
+        FinanceRepository.getCategories(
+          includeArchived: true,
+          includeDeleted: true,
+        ),
         FinanceRepository.getPaymentMethods(includeArchived: true),
       ]);
       return (

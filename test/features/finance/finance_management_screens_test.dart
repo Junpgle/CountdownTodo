@@ -4335,21 +4335,22 @@ void main() {
           clock: () => now,
           summary: FinanceSummary.fromTransactions([transaction]),
           transactions: [transaction],
-          categories: const {},
+          categories: {
+            'deleted-overview-category': FinanceCategory(
+              uuid: 'deleted-overview-category',
+              name: '历史分类',
+              isDeleted: true,
+            ),
+          },
           onAdd: () {},
           addActionKey: GlobalKey(),
           onRefresh: () async {},
         ),
       ),
-    );
-    await tester.scrollUntilVisible(
-      _key('finance-overview-category-deleted-overview-category'),
-      250,
-      maxScrolls: 20,
-      scrollable: find.byType(Scrollable).first,
+      size: const Size(900, 1500),
     );
 
-    expect(find.text('分类已删除或不可用'), findsOneWidget);
+    expect(find.textContaining('历史分类（已删除）'), findsOneWidget);
     expect(
       _key('finance-overview-category-deleted-overview-category'),
       findsOneWidget,

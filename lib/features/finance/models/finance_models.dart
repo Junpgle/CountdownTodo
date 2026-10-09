@@ -1424,12 +1424,23 @@ String financeCategoryReferenceDisplayName(
 ) {
   final normalizedUuid = categoryUuid?.trim();
   if (normalizedUuid == null || normalizedUuid.isEmpty) return '未分类';
-  for (final category in categories) {
-    if (category.uuid == normalizedUuid) {
-      return financeCategoryDisplayName(category, categories);
-    }
+  final allCategories = categories.toList();
+  final byUuid = {for (final category in allCategories) category.uuid: category};
+  var current = byUuid[normalizedUuid];
+  if (current == null) return '分类已删除或不可用';
+
+  final names = <String>[];
+  final visited = <String>{};
+  while (current != null && visited.add(current.uuid)) {
+    final name = financeCategorySiblingDisplayName(current, allCategories);
+    names.insert(0, current.isDeleted ? '$name（已删除）' : name);
+    final parentUuid = current.parentUuid?.trim();
+    if (parentUuid == null || parentUuid.isEmpty) break;
+    final parent = byUuid[parentUuid];
+    if (parent == null || parent.type != current.type) break;
+    current = parent;
   }
-  return '分类已删除或不可用';
+  return names.join(' - ');
 }
 
 /// Adds a stable ordinal when a category has a same-type sibling with the

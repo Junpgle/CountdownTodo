@@ -1011,7 +1011,14 @@ void main() {
           categoryUuid: 'deleted-category',
         ),
       ],
-      categories: const {},
+      categories: {
+        'deleted-category': FinanceCategory(
+          uuid: 'deleted-category',
+          name: '历史分类',
+          icon: '🗂️',
+          isDeleted: true,
+        ),
+      },
       paymentMethods: {
         'csv-account-first': FinancePaymentMethod(
           uuid: 'csv-account-first',
@@ -1051,7 +1058,7 @@ void main() {
     );
     expect(
       csv,
-      contains('2026-09-07,支出,-1.00,分类已删除或不可用,未指定'),
+      contains('2026-09-07,支出,-1.00,🗂️ 历史分类（已删除）,未指定'),
     );
   });
 

@@ -117,6 +117,7 @@ class _FinanceTransactionDetailScreenState
         }
         final categories = await FinanceRepository.getCategories(
           includeArchived: true,
+          includeDeleted: true,
         );
         final paymentMethods = await FinanceRepository.getPaymentMethods(
           includeArchived: true,
@@ -133,9 +134,10 @@ class _FinanceTransactionDetailScreenState
           transaction = latestTransaction;
           _isUnavailable = false;
           category = latestCategory;
-          categoryDisplayName = latestCategory == null
-              ? null
-              : financeCategoryDisplayName(latestCategory, categories);
+          categoryDisplayName = financeCategoryReferenceDisplayName(
+            latestTransaction.categoryUuid,
+            categories,
+          );
           paymentMethod = latestPaymentMethod;
           _paymentMethods = paymentMethods;
         });
@@ -167,9 +169,10 @@ class _FinanceTransactionDetailScreenState
   String _categoryLabel() {
     final value = category;
     return value == null
-        ? transaction.categoryUuid?.trim().isNotEmpty == true
-              ? '分类已删除或不可用'
-              : '未分类'
+        ? categoryDisplayName ??
+              (transaction.categoryUuid?.trim().isNotEmpty == true
+                  ? '分类已删除或不可用'
+                  : '未分类')
         : '${value.icon} ${categoryDisplayName ?? value.name}${value.isArchived ? '（已归档）' : ''}';
   }
 

@@ -96,10 +96,12 @@ abstract final class FinanceRepository {
   static Future<List<FinanceCategory>> getCategories({
     FinanceCategoryType? type,
     bool includeArchived = false,
+    bool includeDeleted = false,
   }) {
     return FinanceStorage.getCategories(
       type: type,
       includeArchived: includeArchived,
+      includeDeleted: includeDeleted,
     );
   }
 
@@ -551,7 +553,10 @@ abstract final class FinanceRepository {
                     transaction.categoryUuid,
                     categories.values,
                   )
-                : '${category.icon} ${financeCategoryDisplayName(category, categories.values)}',
+                : '${category.icon} ${financeCategoryReferenceDisplayName(
+                    transaction.categoryUuid,
+                    categories.values,
+                  )}',
           ),
           sanitizeFinanceCsvText(paymentLabel),
           sanitizeFinanceCsvText(transaction.merchant ?? ''),
