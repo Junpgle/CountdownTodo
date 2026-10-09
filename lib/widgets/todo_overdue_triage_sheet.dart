@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -206,324 +207,364 @@ class _TodoOverdueTriageSheetState extends State<TodoOverdueTriageSheet> {
     final isAllSelected =
         _selectedIds.length == _overdueTodos.length && _overdueTodos.isNotEmpty;
 
-    return Center(
+    final screenHeight = MediaQuery.sizeOf(context).height;
+    final maxDialogHeight = math.min(screenHeight * 0.78, 560.0);
+
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 680),
-        child: Container(
-          decoration: BoxDecoration(
-            color: colorScheme.surface,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        constraints: BoxConstraints(maxWidth: 520, maxHeight: maxDialogHeight),
+        child: OptionalLiquidGlassCard(
+          borderRadius: 24,
+          tint: colorScheme.primary.withValues(alpha: isDark ? 0.16 : 0.08),
+          fallbackDecoration: BoxDecoration(
+            color:
+                (isDark
+                        ? colorScheme.surfaceContainerHighest
+                        : colorScheme.surface)
+                    .withValues(alpha: 0.92),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.12)
+                  : colorScheme.outline.withValues(alpha: 0.18),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.2),
+                blurRadius: 28,
+                offset: const Offset(0, 10),
+              ),
+            ],
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // ── 顶部拖拽指示条与标题 ──
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 12, 12),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.redAccent.withValues(alpha: 0.12),
-                        shape: BoxShape.circle,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // ── 顶部拖拽指示条与标题 ──
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 12, 12),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.redAccent.withValues(alpha: 0.12),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.history_toggle_off_rounded,
+                          size: 20,
+                          color: isDark
+                              ? Colors.redAccent.shade100
+                              : Colors.redAccent.shade700,
+                        ),
                       ),
-                      child: Icon(
-                        Icons.history_toggle_off_rounded,
-                        size: 20,
-                        color: isDark
-                            ? Colors.redAccent.shade100
-                            : Colors.redAccent.shade700,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            '逾期待办整理',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          Text(
-                            '可一键批量顺延，或利用空闲时间块智能排期',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: colorScheme.onSurface.withValues(
-                                alpha: 0.6,
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              '逾期待办整理',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
                               ),
                             ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close_rounded),
-                      onPressed: () => Navigator.of(context).pop(),
-                      tooltip: '关闭',
-                    ),
-                  ],
-                ),
-              ),
-
-              const Divider(height: 1),
-
-              // ── 全选与统计栏 ──
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 8,
-                ),
-                child: Row(
-                  children: [
-                    InkWell(
-                      onTap: _toggleSelectAll,
-                      borderRadius: BorderRadius.circular(8),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 4,
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Checkbox(
-                              value: isAllSelected,
-                              tristate:
-                                  _selectedIds.isNotEmpty &&
-                                  _selectedIds.length < _overdueTodos.length,
-                              onChanged: (_) => _toggleSelectAll(),
-                              materialTapTargetSize:
-                                  MaterialTapTargetSize.shrinkWrap,
-                              visualDensity: VisualDensity.compact,
-                            ),
-                            const SizedBox(width: 4),
                             Text(
-                              isAllSelected ? '取消全选' : '全选',
-                              style: const TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w500,
+                              '可一键批量顺延，或利用空闲时间块智能排期',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: colorScheme.onSurface.withValues(
+                                  alpha: 0.6,
+                                ),
                               ),
                             ),
                           ],
                         ),
                       ),
-                    ),
-                    const Spacer(),
-                    Text(
-                      '已选 ${_selectedIds.length} / ${_overdueTodos.length} 项',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: colorScheme.onSurface.withValues(alpha: 0.6),
+                      IconButton(
+                        icon: const Icon(Icons.close_rounded),
+                        onPressed: () => Navigator.of(context).pop(),
+                        tooltip: '关闭',
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
 
-              // ── 任务列表 ──
-              Flexible(
-                child: _overdueTodos.isEmpty
-                    ? const Padding(
-                        padding: EdgeInsets.all(32.0),
-                        child: Center(child: Text('🎉 当前没有逾期待办')),
-                      )
-                    : ListView.separated(
-                        shrinkWrap: true,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 4,
-                        ),
-                        itemCount: _overdueTodos.length,
-                        separatorBuilder: (_, _) => const SizedBox(height: 8),
-                        itemBuilder: (context, index) {
-                          final todo = _overdueTodos[index];
-                          final isSelected = _selectedIds.contains(todo.id);
-                          final slots = _foundSlots[todo.id];
-                          final isSearching = _searchingSlotIds.contains(
-                            todo.id,
-                          );
+                const Divider(height: 1),
 
-                          return OptionalLiquidGlassCard(
-                            key: ValueKey('overdue_todo_${todo.id}'),
-                            borderRadius: 14,
-                            fallbackDecoration: BoxDecoration(
-                              color: colorScheme.surfaceContainerLow,
-                              borderRadius: BorderRadius.circular(14),
-                              border: Border.all(
-                                color: isSelected
-                                    ? colorScheme.primary.withValues(alpha: 0.3)
-                                    : colorScheme.outlineVariant.withValues(
-                                        alpha: 0.4,
-                                      ),
-                              ),
-                            ),
-                            child: Padding(
-                              padding: const EdgeInsets.fromLTRB(8, 10, 12, 10),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.center,
-                                    children: [
-                                      Checkbox(
-                                        value: isSelected,
-                                        onChanged: (_) => _toggleItem(todo.id),
-                                        visualDensity: VisualDensity.compact,
-                                      ),
-                                      const SizedBox(width: 4),
-                                      Expanded(
-                                        child: InkWell(
-                                          onTap: () => _toggleItem(todo.id),
-                                          borderRadius: BorderRadius.circular(
-                                            8,
-                                          ),
-                                          child: Padding(
-                                            padding: const EdgeInsets.symmetric(
-                                              vertical: 4,
-                                            ),
-                                            child: Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              children: [
-                                                Text(
-                                                  todo.title,
-                                                  style: TextStyle(
-                                                    fontSize: 14,
-                                                    fontWeight: FontWeight.w600,
-                                                    decoration: isSelected
-                                                        ? null
-                                                        : TextDecoration
-                                                              .lineThrough,
-                                                    color: isSelected
-                                                        ? colorScheme.onSurface
-                                                        : colorScheme.onSurface
-                                                              .withValues(
-                                                                alpha: 0.4,
-                                                              ),
-                                                  ),
-                                                  maxLines: 2,
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
-                                                ),
-                                                if (todo.dueDate != null)
-                                                  Text(
-                                                    _formatOverdueTime(
-                                                      todo.dueDate!,
-                                                    ),
-                                                    style: TextStyle(
-                                                      fontSize: 11,
-                                                      color: Colors
-                                                          .redAccent
-                                                          .shade200,
-                                                      fontWeight:
-                                                          FontWeight.w500,
-                                                    ),
-                                                  ),
-                                              ],
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      // ── 单项智能排期按钮 ──
-                                      if (isSearching)
-                                        const SizedBox(
-                                          width: 24,
-                                          height: 24,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                          ),
-                                        )
-                                      else
-                                        OutlinedButton.icon(
-                                          onPressed: () =>
-                                              _findSlotsForTodo(todo),
-                                          icon: const Icon(
-                                            Icons.calendar_today_rounded,
-                                            size: 13,
-                                          ),
-                                          label: const Text(
-                                            '智能排期',
-                                            style: TextStyle(fontSize: 12),
-                                          ),
-                                          style: OutlinedButton.styleFrom(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 10,
-                                              vertical: 4,
-                                            ),
-                                            visualDensity:
-                                                VisualDensity.compact,
-                                            shape: RoundedRectangleBorder(
-                                              borderRadius:
-                                                  BorderRadius.circular(10),
-                                            ),
-                                          ),
-                                        ),
-                                    ],
-                                  ),
-
-                                  // ── 展示智能查找出的可用时段推荐 ──
-                                  if (slots != null && slots.isNotEmpty) ...[
-                                    const SizedBox(height: 8),
-                                    Padding(
-                                      padding: const EdgeInsets.only(
-                                        left: 42,
-                                        bottom: 4,
-                                      ),
-                                      child: Wrap(
-                                        spacing: 8,
-                                        runSpacing: 6,
-                                        children: slots.map((slot) {
-                                          final isToday =
-                                              slot.start.day ==
-                                              widget.service.clock().day;
-                                          final prefix = isToday ? '今天' : '明天';
-                                          final timeStr =
-                                              '$prefix ${DateFormat('HH:mm').format(slot.start)}–${DateFormat('HH:mm').format(slot.end)} (${slot.minutes}分)';
-                                          return ActionChip(
-                                            avatar: const Icon(
-                                              Icons.add_task_rounded,
-                                              size: 14,
-                                            ),
-                                            label: Text(
-                                              timeStr,
-                                              style: const TextStyle(
-                                                fontSize: 11,
-                                              ),
-                                            ),
-                                            backgroundColor: colorScheme
-                                                .primaryContainer
-                                                .withValues(alpha: 0.5),
-                                            onPressed: () =>
-                                                _applySlotSchedule(todo, slot),
-                                          );
-                                        }).toList(),
-                                      ),
-                                    ),
-                                  ],
-                                ],
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-              ),
-
-              const Divider(height: 1),
-
-              // ── 底部批量操作栏 ──
-              SafeArea(
-                child: Padding(
+                // ── 全选与统计栏 ──
+                Padding(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 16,
-                    vertical: 12,
+                    vertical: 8,
                   ),
+                  child: Row(
+                    children: [
+                      InkWell(
+                        onTap: _toggleSelectAll,
+                        borderRadius: BorderRadius.circular(8),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 4,
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Checkbox(
+                                value: isAllSelected,
+                                tristate:
+                                    _selectedIds.isNotEmpty &&
+                                    _selectedIds.length < _overdueTodos.length,
+                                onChanged: (_) => _toggleSelectAll(),
+                                materialTapTargetSize:
+                                    MaterialTapTargetSize.shrinkWrap,
+                                visualDensity: VisualDensity.compact,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                isAllSelected ? '取消全选' : '全选',
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const Spacer(),
+                      Text(
+                        '已选 ${_selectedIds.length} / ${_overdueTodos.length} 项',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: colorScheme.onSurface.withValues(alpha: 0.6),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // ── 任务列表 ──
+                Flexible(
+                  child: _overdueTodos.isEmpty
+                      ? const Padding(
+                          padding: EdgeInsets.all(32.0),
+                          child: Center(child: Text('🎉 当前没有逾期待办')),
+                        )
+                      : ListView.separated(
+                          shrinkWrap: true,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 4,
+                          ),
+                          itemCount: _overdueTodos.length,
+                          separatorBuilder: (_, _) => const SizedBox(height: 8),
+                          itemBuilder: (context, index) {
+                            final todo = _overdueTodos[index];
+                            final isSelected = _selectedIds.contains(todo.id);
+                            final slots = _foundSlots[todo.id];
+                            final isSearching = _searchingSlotIds.contains(
+                              todo.id,
+                            );
+
+                            return OptionalLiquidGlassCard(
+                              key: ValueKey('overdue_todo_${todo.id}'),
+                              borderRadius: 14,
+                              fallbackDecoration: BoxDecoration(
+                                color: colorScheme.surfaceContainerLow,
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(
+                                  color: isSelected
+                                      ? colorScheme.primary.withValues(
+                                          alpha: 0.3,
+                                        )
+                                      : colorScheme.outlineVariant.withValues(
+                                          alpha: 0.4,
+                                        ),
+                                ),
+                              ),
+                              child: Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  8,
+                                  10,
+                                  12,
+                                  10,
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.center,
+                                      children: [
+                                        Checkbox(
+                                          value: isSelected,
+                                          onChanged: (_) =>
+                                              _toggleItem(todo.id),
+                                          visualDensity: VisualDensity.compact,
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Expanded(
+                                          child: InkWell(
+                                            onTap: () => _toggleItem(todo.id),
+                                            borderRadius: BorderRadius.circular(
+                                              8,
+                                            ),
+                                            child: Padding(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    vertical: 4,
+                                                  ),
+                                              child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    todo.title,
+                                                    style: TextStyle(
+                                                      fontSize: 14,
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                      decoration: isSelected
+                                                          ? null
+                                                          : TextDecoration
+                                                                .lineThrough,
+                                                      color: isSelected
+                                                          ? colorScheme
+                                                                .onSurface
+                                                          : colorScheme
+                                                                .onSurface
+                                                                .withValues(
+                                                                  alpha: 0.4,
+                                                                ),
+                                                    ),
+                                                    maxLines: 2,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                  ),
+                                                  if (todo.dueDate != null)
+                                                    Text(
+                                                      _formatOverdueTime(
+                                                        todo.dueDate!,
+                                                      ),
+                                                      style: TextStyle(
+                                                        fontSize: 11,
+                                                        color: Colors
+                                                            .redAccent
+                                                            .shade200,
+                                                        fontWeight:
+                                                            FontWeight.w500,
+                                                      ),
+                                                    ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        // ── 单项智能排期按钮 ──
+                                        if (isSearching)
+                                          const SizedBox(
+                                            width: 24,
+                                            height: 24,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                            ),
+                                          )
+                                        else
+                                          OutlinedButton.icon(
+                                            onPressed: () =>
+                                                _findSlotsForTodo(todo),
+                                            icon: const Icon(
+                                              Icons.calendar_today_rounded,
+                                              size: 13,
+                                            ),
+                                            label: const Text(
+                                              '智能排期',
+                                              style: TextStyle(fontSize: 12),
+                                            ),
+                                            style: OutlinedButton.styleFrom(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 10,
+                                                    vertical: 4,
+                                                  ),
+                                              visualDensity:
+                                                  VisualDensity.compact,
+                                              shape: RoundedRectangleBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(10),
+                                              ),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+
+                                    // ── 展示智能查找出的可用时段推荐 ──
+                                    if (slots != null && slots.isNotEmpty) ...[
+                                      const SizedBox(height: 8),
+                                      Padding(
+                                        padding: const EdgeInsets.only(
+                                          left: 42,
+                                          bottom: 4,
+                                        ),
+                                        child: Wrap(
+                                          spacing: 8,
+                                          runSpacing: 6,
+                                          children: slots.map((slot) {
+                                            final isToday =
+                                                slot.start.day ==
+                                                widget.service.clock().day;
+                                            final prefix = isToday
+                                                ? '今天'
+                                                : '明天';
+                                            final timeStr =
+                                                '$prefix ${DateFormat('HH:mm').format(slot.start)}–${DateFormat('HH:mm').format(slot.end)} (${slot.minutes}分)';
+                                            return ActionChip(
+                                              avatar: const Icon(
+                                                Icons.add_task_rounded,
+                                                size: 14,
+                                              ),
+                                              label: Text(
+                                                timeStr,
+                                                style: const TextStyle(
+                                                  fontSize: 11,
+                                                ),
+                                              ),
+                                              backgroundColor: colorScheme
+                                                  .primaryContainer
+                                                  .withValues(alpha: 0.5),
+                                              onPressed: () =>
+                                                  _applySlotSchedule(
+                                                    todo,
+                                                    slot,
+                                                  ),
+                                            );
+                                          }).toList(),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                ),
+
+                const Divider(height: 1),
+
+                // ── 底部批量操作栏 ──
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
                   child: Row(
                     children: [
                       Expanded(
@@ -534,12 +575,15 @@ class _TodoOverdueTriageSheetState extends State<TodoOverdueTriageSheet> {
                                   OverdueRescheduleTarget.clear,
                                 ),
                           style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            padding: const EdgeInsets.symmetric(vertical: 10),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
                           ),
-                          child: const Text('清除截止日'),
+                          child: const Text(
+                            '清除截止日',
+                            style: TextStyle(fontSize: 13),
+                          ),
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -551,12 +595,15 @@ class _TodoOverdueTriageSheetState extends State<TodoOverdueTriageSheet> {
                                   OverdueRescheduleTarget.tomorrow,
                                 ),
                           style: FilledButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            padding: const EdgeInsets.symmetric(vertical: 10),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
                           ),
-                          child: const Text('顺延至明日'),
+                          child: const Text(
+                            '顺延至明日',
+                            style: TextStyle(fontSize: 13),
+                          ),
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -568,19 +615,22 @@ class _TodoOverdueTriageSheetState extends State<TodoOverdueTriageSheet> {
                                   OverdueRescheduleTarget.today,
                                 ),
                           style: FilledButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            padding: const EdgeInsets.symmetric(vertical: 10),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
                           ),
-                          child: const Text('顺延至今日'),
+                          child: const Text(
+                            '顺延至今日',
+                            style: TextStyle(fontSize: 13),
+                          ),
                         ),
                       ),
                     ],
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -598,11 +648,10 @@ Future<void> showTodoOverdueTriageSheet({
   required VoidCallback onRefreshRequested,
   TodoOverdueTriageService service = const TodoOverdueTriageService(),
 }) {
-  return showAppModalBottomSheet<void>(
+  return showAppDialog<void>(
     context: context,
-    isScrollControlled: true,
-    useSafeArea: true,
-    backgroundColor: Colors.transparent,
+    barrierDismissible: true,
+    barrierColor: Colors.black.withValues(alpha: 0.35),
     builder: (ctx) => TodoOverdueTriageSheet(
       username: username,
       initialOverdueTodos: overdueTodos,

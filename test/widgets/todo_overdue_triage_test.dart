@@ -217,5 +217,50 @@ void main() {
 
       expect(todosChangedCalled, isTrue);
     });
+
+    testWidgets('showTodoOverdueTriageSheet opens compact dialog and closes', (
+      tester,
+    ) async {
+      final overdueTodos = [
+        TodoItem(
+          id: '1',
+          title: '复习概率论',
+          dueDate: DateTime(2026, 10, 8, 18, 0),
+        ),
+      ];
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => ElevatedButton(
+                onPressed: () => showTodoOverdueTriageSheet(
+                  context: context,
+                  username: 'test_user',
+                  overdueTodos: overdueTodos,
+                  allTodos: overdueTodos,
+                  onTodosChanged: (_) {},
+                  onRefreshRequested: () {},
+                ),
+                child: const Text('打开整理'),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('打开整理'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(Dialog), findsOneWidget);
+      expect(find.text('逾期待办整理'), findsOneWidget);
+      expect(find.text('复习概率论'), findsOneWidget);
+
+      // 点击右上角关闭按钮
+      await tester.tap(find.byTooltip('关闭'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(Dialog), findsNothing);
+    });
   });
 }
