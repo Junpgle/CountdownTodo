@@ -61,7 +61,9 @@ bool _hasFocusedEditable(WidgetTester tester) => tester
     .any((field) => field.focusNode.hasFocus);
 
 Future<Database> _seed(WidgetTester tester) async {
-  SharedPreferences.setMockInitialValues({});
+  SharedPreferences.setMockInitialValues({
+    'tip_shown_coach_finance_intro': true,
+  });
   final db = (await tester.runAsync(() async {
     final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
     await DatabaseHelper.ensureFinanceSchema(db);

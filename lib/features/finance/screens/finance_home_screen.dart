@@ -16,6 +16,7 @@ import '../../../widgets/floating_glass_control.dart';
 import '../../../widgets/home_bottom_navigation_content.dart';
 import '../../../utils/page_transitions.dart';
 import '../widgets/finance_widgets.dart';
+import '../widgets/finance_intro_guide.dart';
 import 'finance_automation_screen.dart';
 import 'ai_usage_cost_screen.dart';
 import 'finance_budget_screen.dart';
@@ -91,6 +92,12 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
   Timer? _financeChangeRefreshTimer;
   final GlobalKey _overviewAddActionKey = GlobalKey();
   final GlobalKey _bottomAddActionKey = GlobalKey();
+  final GlobalKey _budgetActionKey = GlobalKey();
+  final GlobalKey _moreActionKey = GlobalKey();
+  bool _guideScheduled = false;
+  bool _guideAttempted = false;
+  bool _showingGuide = false;
+  bool _quickEntryInProgress = false;
 
   Map<String, FinanceCategory> get _categoryMap => {
     for (final item in _categories) item.uuid: item,
@@ -146,6 +153,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
   @override
   void initState() {
     super.initState();
+    _quickEntryInProgress = widget.openQuickEntry;
     FinanceStorage.revision.addListener(_onFinanceStorageChanged);
     final initialMonth = widget.initialMonth ?? widget.clock();
     _month = DateTime(initialMonth.year, initialMonth.month);
@@ -174,8 +182,14 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
       });
     }
     if (widget.openQuickEntry) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _openEntry();
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted) return;
+        try {
+          await _openEntry();
+        } finally {
+          _quickEntryInProgress = false;
+          if (mounted) _scheduleIntroGuide();
+        }
       });
     }
   }
@@ -237,6 +251,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
       _scheduleUpcomingTransactionRefresh();
       _scheduleNextAutoGeneration();
       if (!_isCategoryLedgerRoute) {
+        _scheduleIntroGuide();
         _startBackgroundMaintenance(generation);
         if (shouldReconcileRecurringRules) {
           unawaited(_reconcileAutoGeneration());
@@ -250,6 +265,62 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
           _loadError = error.toString();
         });
       }
+    }
+  }
+
+  void _scheduleIntroGuide() {
+    if (_guideScheduled ||
+        _guideAttempted ||
+        _quickEntryInProgress ||
+        _isCategoryLedgerRoute ||
+        _isLoading ||
+        _loadError != null ||
+        _selectedIndex != 0) {
+      return;
+    }
+    _guideScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _guideScheduled = false;
+      if (!mounted ||
+          _quickEntryInProgress ||
+          _selectedIndex != 0 ||
+          ModalRoute.of(context)?.isCurrent == false) {
+        return;
+      }
+      _guideAttempted = true;
+      unawaited(_showIntroGuide());
+    });
+  }
+
+  Future<void> _showIntroGuide({bool force = false}) async {
+    if (_showingGuide ||
+        !mounted ||
+        _isLoading ||
+        _loadError != null ||
+        _quickEntryInProgress ||
+        _isCategoryLedgerRoute ||
+        (!force && _selectedIndex != 0)) {
+      return;
+    }
+    _showingGuide = true;
+    try {
+      if (_selectedIndex != 0) {
+        setState(() => _selectedIndex = 0);
+        await WidgetsBinding.instance.endOfFrame;
+        if (!mounted) return;
+      }
+      await FinanceIntroGuide.show(
+        context: context,
+        addKey: _bottomAddActionKey,
+        budgetKey: _budgetActionKey,
+        moreKey: _moreActionKey,
+        onOpenSettings: _openSettings,
+        force: force,
+      );
+    } catch (error) {
+      debugPrint('记账新手指引暂时无法显示：$error');
+    } finally {
+      _showingGuide = false;
     }
   }
 
@@ -838,15 +909,18 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
             : null,
         actions: [
           IconButton(
+            key: _budgetActionKey,
             style: floatingGlassPlainIconButtonStyle(),
             tooltip: '预算',
             onPressed: _openBudgets,
             icon: const Icon(Icons.track_changes_outlined),
           ),
           PopupMenuButton<String>(
+            key: _moreActionKey,
             style: floatingGlassPlainIconButtonStyle(),
             tooltip: '更多操作',
             onSelected: (value) {
+              if (value == 'guide') _showIntroGuide(force: true);
               if (value == 'settings') _openSettings();
               if (value == 'text') _openTextRecognition();
               if (value == 'automation') _openAutomation();
@@ -912,6 +986,15 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
                   title: Text('记账设置'),
                 ),
               ),
+              if (!_isCategoryLedgerRoute)
+                const PopupMenuItem(
+                  value: 'guide',
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.help_outline_rounded),
+                    title: Text('记账新手指引'),
+                  ),
+                ),
               const PopupMenuItem(
                 value: 'trash',
                 child: ListTile(
@@ -1015,6 +1098,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
         onTabSelected: (index) {
           if (index == 0) {
             setState(() => _selectedIndex = 0);
+            _scheduleIntroGuide();
           } else if (index == 2) {
             setState(() => _selectedIndex = 1);
           }
