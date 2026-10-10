@@ -519,7 +519,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(queries, hasLength(1));
     expect(queries.single.minutes, 75);
-    expect(find.text('预计用时 1小时15分钟'), findsOneWidget);
+    expect(find.text('预计专注用时 1小时15分钟'), findsOneWidget);
     expect(
       tester
           .widget<PlanAvailabilityPanel>(find.byType(PlanAvailabilityPanel))
@@ -1307,7 +1307,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('10:45'), findsOneWidget);
-    expect(find.textContaining('历史估时'), findsNothing);
+    expect(find.byKey(const ValueKey('time-estimation-evidence')), findsNothing);
     expect(find.text('按规划时长'), findsOneWidget);
   });
   testWidgets('真实编辑器通过真实隔离存储：采用取消零写入，保存一条规划及oplog', (tester) async {

@@ -14,9 +14,10 @@ import '../services/database_helper.dart';
 import '../screens/home_settings_screen.dart';
 import '../services/todo_classification_service.dart';
 import '../services/item_semantics_service.dart';
-import '../utils/time_utils.dart';
 import '../utils/local_image_provider.dart';
 import '../services/time_estimation_service.dart';
+import '../services/time_estimation_repository.dart';
+import '../widgets/time_estimation_hint.dart';
 import '../services/suggestion_feedback_service.dart';
 import '../services/feature_tip_service.dart';
 import '../services/fixed_schedule_recurrence_service.dart';
@@ -48,6 +49,12 @@ class AddTodoScreen extends StatefulWidget {
   final String? initialTeamUuid;
   final String? initialTeamName;
   final AddTodoInitialMode initialMode;
+  final Future<TimeEstimationResult> Function(
+    String title,
+    String? groupId,
+    String username,
+  )?
+  estimate;
 
   const AddTodoScreen({
     super.key,
@@ -60,6 +67,7 @@ class AddTodoScreen extends StatefulWidget {
     this.initialTeamUuid,
     this.initialTeamName,
     this.initialMode = AddTodoInitialMode.todo,
+    this.estimate,
   });
 
   @override
@@ -67,7 +75,7 @@ class AddTodoScreen extends StatefulWidget {
 }
 
 class _AddTodoScreenState extends State<AddTodoScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   final TextEditingController _titleCtrl = TextEditingController();
   final TextEditingController _remarkCtrl = TextEditingController();
   final TextEditingController _aiInputCtrl = TextEditingController();
@@ -159,12 +167,20 @@ class _AddTodoScreenState extends State<AddTodoScreen>
   TimeEstimationResult? _estimationResult;
   TodoClassificationSuggestion? _classificationSuggestion;
   Timer? _estimationDebounce;
+  int _estimateSequence = 0;
+  late Future<String> _estimateAccount;
+  bool _estimateAccountInvalid = false;
   DateTime? _suggestedDueDate;
   List<TodoGroup> _localTodoGroups = [];
 
   @override
   void initState() {
     super.initState();
+    _estimateAccount = TimeEstimationRepository.activeUsername();
+    WidgetsBinding.instance.addObserver(this);
+    StorageService.scopedDataRefreshNotifier.addListener(
+      _validateEstimateAccount,
+    );
     _manualCaptureKind = widget.initialMode == AddTodoInitialMode.fixedSchedule
         ? _ManualCaptureKind.fixedSchedule
         : _ManualCaptureKind.todo;
@@ -205,7 +221,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     _titleCtrl.addListener(_onTitleChanged);
     _remarkCtrl.addListener(_onTitleChanged);
     _loadCategoryDefaults().then((_) {
-      if (_selectedGroupId != null &&
+      if (mounted && _selectedGroupId != null &&
           _categoryReminderDefaults.containsKey(_selectedGroupId)) {
         setState(() {
           _reminderMinutes = _categoryReminderDefaults[_selectedGroupId]!;
@@ -309,19 +325,57 @@ class _AddTodoScreenState extends State<AddTodoScreen>
   }
 
   Future<void> _loadCategoryDefaults() async {
-    final username = await StorageService.getLoginSession();
-    if (username != null) {
-      final defaults =
-          await StorageService.getCategoryReminderMinutes(username);
-      setState(() {
-        _username = username;
-        _categoryReminderDefaults = defaults;
-      });
+    final username = await _estimateAccount;
+    final session = await StorageService.getLoginSession();
+    if (session == null || session != username) return;
+    final defaults = await StorageService.getCategoryReminderMinutes(username);
+    if (!mounted) return;
+    final current = await TimeEstimationRepository.activeUsername();
+    if (!mounted || current != username) return;
+    setState(() {
+      _username = session;
+      _categoryReminderDefaults = defaults;
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant AddTodoScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialGroupId != widget.initialGroupId) {
+      _selectedGroupId = widget.initialGroupId;
+      _onTitleChanged();
     }
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _validateEstimateAccount();
+  }
+
+  void _validateEstimateAccount() => unawaited(_checkEstimateAccount());
+  Future<void> _checkEstimateAccount() async {
+    final expected = await _estimateAccount;
+    if (!mounted || await TimeEstimationRepository.activeUsername() == expected) {
+      return;
+    }
+    if (!mounted) return;
+    _estimationDebounce?.cancel();
+    ++_estimateSequence;
+    setState(() {
+      _estimateAccountInvalid = true;
+      _estimationResult = null;
+      _suggestedDueDate = null;
+      _classificationSuggestion = null;
+    });
+  }
+
+  @override
   void dispose() {
+    ++_estimateSequence;
+    WidgetsBinding.instance.removeObserver(this);
+    StorageService.scopedDataRefreshNotifier.removeListener(
+      _validateEstimateAccount,
+    );
     _titleCtrl.removeListener(_onTitleChanged);
     _remarkCtrl.removeListener(_onTitleChanged);
     _estimationDebounce?.cancel();
@@ -335,41 +389,65 @@ class _AddTodoScreenState extends State<AddTodoScreen>
 
   void _onTitleChanged() {
     _estimationDebounce?.cancel();
-    if (_manualCaptureKind == _ManualCaptureKind.fixedSchedule) return;
-    final text = _titleCtrl.text.trim();
-    if (text.length < 2) {
-      if (mounted &&
-          (_estimationResult != null || _classificationSuggestion != null)) {
-        setState(() {
-          _estimationResult = null;
-          _suggestedDueDate = null;
-          _classificationSuggestion = null;
-        });
-      }
+    final sequence = ++_estimateSequence;
+    if (mounted) {
+      setState(() {
+        _estimationResult = null;
+        _suggestedDueDate = null;
+        _classificationSuggestion = null;
+      });
+    }
+    if (_estimateAccountInvalid ||
+        _manualCaptureKind == _ManualCaptureKind.fixedSchedule) {
       return;
     }
+    final text = _titleCtrl.text.trim();
+    if (text.length < 2) return;
+    final group = _selectedGroupId;
+    final remark = _remarkCtrl.text;
     _estimationDebounce = Timer(const Duration(milliseconds: 500), () async {
-      final result = await TimeEstimationService.estimate(
-        text,
-        groupId: _selectedGroupId,
-      );
-      if (mounted) {
+      try {
+        final username = await _estimateAccount;
+        await TimeEstimationRepository.checkAccount(username);
+        if (!mounted || sequence != _estimateSequence) return;
+        final result =
+            await (widget.estimate?.call(text, group, username) ??
+                TimeEstimationService.estimate(
+                  text,
+                  groupId: group,
+                  username: username,
+                ));
+        if (!mounted || sequence != _estimateSequence) return;
+        await TimeEstimationRepository.checkAccount(username);
+        if (!mounted || sequence != _estimateSequence) return;
         final classification = await TodoClassificationService.recommendForText(
           title: text,
-          remark: _remarkCtrl.text,
+          remark: remark,
           groups: _localTodoGroups,
           categoryReminderDefaults: _categoryReminderDefaults,
           dueDate: _dueDate,
         );
+        await TimeEstimationRepository.checkAccount(username);
+        if (!mounted ||
+            sequence != _estimateSequence ||
+            group != _selectedGroupId ||
+            text != _titleCtrl.text.trim() ||
+            _manualCaptureKind != _ManualCaptureKind.todo) {
+          return;
+        }
         setState(() {
           _estimationResult = result;
           _classificationSuggestion = classification;
-          // Suggest due date (don't auto-fill)
           if (!_isAllDay) {
-            _suggestedDueDate =
-                _createdAt.add(Duration(minutes: result.estimatedMinutes));
+            _suggestedDueDate = _createdAt.add(
+              Duration(minutes: result.estimatedMinutes),
+            );
           }
         });
+      } on TimeEstimationAccountChanged {
+        _validateEstimateAccount();
+      } catch (_) {
+        // A suggestion failure must not discard the user's draft.
       }
     });
   }
@@ -754,6 +832,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       return;
     }
     _estimationDebounce?.cancel();
+    ++_estimateSequence;
     setState(() {
       _manualCaptureKind = next;
       if (next == _ManualCaptureKind.fixedSchedule) {
@@ -762,6 +841,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         _classificationSuggestion = null;
       }
     });
+    if (next == _ManualCaptureKind.todo) _onTitleChanged();
   }
 
   DateTime _scheduleAt(TimeOfDay time) => DateTime(
@@ -1499,6 +1579,8 @@ class _AddTodoScreenState extends State<AddTodoScreen>
               TextButton(
                 onPressed: () {
                   _recordNegativeClassificationFeedback();
+                  _estimationDebounce?.cancel();
+                  ++_estimateSequence;
                   setState(() {
                     _estimationResult = null;
                     _suggestedDueDate = null;
@@ -1524,13 +1606,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
 
           // Duration suggestion
           if (est != null)
-            _buildSuggestionItem(
-              icon: Icons.timer_outlined,
-              label: '预估耗时: ~${formatMinutesChinese(est.estimatedMinutes)}',
-              sub: _estimationConfidenceLabel(est),
-              subColor: _estimationConfidenceColor(est),
-              showAccept: false,
-            ),
+            TimeEstimationHint(result: est),
 
           // Due date suggestion
           if (hasDueDate)
@@ -1698,19 +1774,6 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     );
   }
 
-  String _estimationConfidenceLabel(TimeEstimationResult est) {
-    final pct = (est.confidence * 100).round();
-    if (est.confidence >= 0.6) return '高置信度 $pct%';
-    if (est.confidence >= 0.35) return '中置信度 $pct%';
-    return '低置信度 $pct%';
-  }
-
-  Color _estimationConfidenceColor(TimeEstimationResult est) {
-    if (est.confidence >= 0.6) return Colors.green;
-    if (est.confidence >= 0.35) return Colors.orange;
-    return Colors.grey;
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -1826,6 +1889,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       }
       _classificationSuggestion = null;
     });
+    _onTitleChanged();
   }
 
   void _recordNegativeClassificationFeedback() {
@@ -2375,6 +2439,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                                   _reminderMinutes = 5;
                                 }
                               });
+                              _onTitleChanged();
                             }
                           },
                         ),

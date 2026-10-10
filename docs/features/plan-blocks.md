@@ -1,6 +1,6 @@
 # Todo plan blocks
 
-Last verified: 2026-10-08 (availability recommendations; existing platform integrations retain their own verification boundaries).
+Last verified: 2026-10-10 (availability and estimation focused regressions; existing native platform integrations retain their own verification boundaries).
 
 A todo describes an outcome and due semantics; a `TodoPlanBlock` describes a
 scheduled execution window. Multiple blocks may point to one todo.
@@ -51,7 +51,30 @@ two recommendations are visible immediately. **自定义寻找时段** opens a b
 dialog with date, duration, window, avoidance and 3/5/8 candidate controls (five
 by default). Select a result to return to the page; a custom selection remains
 visible even when it was outside the original first two. The predicted duration
-is shown as **预计用时** and can be adjusted.
+is shown as **预计专注用时** and can be adjusted.
+
+Both todo creation and plan editing use a compact estimate/reference row and an
+**估时依据** information button. Its read-only sheet shows the actual sample count,
+at most three title groups, cumulative focus durations and insufficient-data or
+read-failure explanations. Reference labels describe evidence strength rather
+than a probability; the estimate is not remaining task time.
+
+Calibration uses current-account completed, undeleted, nonconflicted concrete
+todo UUIDs, summing explicit actual seconds across valid ended/abandoned focus
+records. Identical titles and recurring instances remain separate samples.
+Missing/invalid actual records make that task incomplete; zero never falls back
+to planned duration. Valid plan linkage is only a fallback owner when a direct
+todo UUID is absent. Contradictory ownership excludes both tasks, and title text
+never establishes ownership. Plan caches and unexecuted plans are not added.
+
+SQL aggregates before limiting to 500 recent tasks, batches exact JSON tag
+associations and reads a consistent account-checked snapshot. Weighted medians
+use only available similarity/category layers; sparse or diffuse history blends
+with keyword estimates. “历史参考较充分” requires at least five recent strong
+similar samples with stable durations. Opening evidence neither reads more
+history nor changes the draft. Estimates do not alter Pomodoro rounds; stale
+title/group/account/lifecycle requests and user draft edits invalidate late
+results. No schema, backend, sync-write or native-calendar changes are involved.
 
 Prediction/search only fill the draft; saving remains explicit and uses the
 existing fresh occupancy checks. User edits or closing the page invalidate late
@@ -122,9 +145,10 @@ status write retries only the status. Native startup failures after a run marker
 is persisted are recognized before retrying.
 
 This is a local recommendation, not an atomic cross-device/system-calendar
-reservation. Manual dragging/resizing, AI batch planning and global sync keep
-their existing paths. No database schema, backend protocol or native permission
-was added.
+reservation. Manual dragging/resizing keeps soft conflict semantics and uses
+the guarded save/undo flow described below. AI batch planning and global sync
+keep their existing paths. No database schema, backend protocol or native
+permission was added.
 
 
 ## Flexible planning settings and actual execution
@@ -168,3 +192,27 @@ records never creates or edits a planning block.
 已有后续安排先展示，可查看已有规划或明确再新建；正在专注时仅查看当前专注。保存前新增或变动的后续安排要求重新核对，保留输入。原来源变更、待办完成／删除／冲突、账号切换、占用或截止失效都阻止保存。新规划和oplog同一事务，再次校验后写入；连击与专注重试复用新规划身份。
 
 验收证据见[第三轮验收报告](../reports/2026-10-09-missed-plan-recovery-acceptance.md)。
+
+## 规划冲突检查与快捷改期（2026-10-09）
+
+首页今日规划及规划日视图增加紧凑的时间重叠入口，按真实规划UUID计数。进入、相关数据更新、前台恢复及跨午夜刷新；只在前台设置下一次日期／规划结束唤醒，没有后台轮询。列表可检查所选日、今天或未来七个本地日期，展开显示来源与实际重叠区间。
+
+复用空闲查询的课程调休、固定日程、有效规划、兼容旧执行区间和同日定时手机日历规则，一次读取范围内来源。相邻时间不算冲突，自身UUID排除；手机日历全天及跨日期事项仍不占用，专注与时间日志不作为新预约。过去日期及已结束／完成／漏做／跳过／取消规划不产生待改期提醒。读取失败或来源时间待定明确显示未完成，手机日历失败仅在用户明确选择应用内检查时降级。
+
+来源可以只读查看，另一规划使用独立只读详情，避免打开日视图时触发自动状态维护。专注中的规划仅可查看当前专注。可调整的规划在整页共享编辑器中带入原待办、时长和配置，锁定待办关联，先展示两个推荐；自定义查找弹窗保留五个候选、3／5／8选择及账户避让偏好。不会自动采用推荐。
+
+保存更新原UUID，保留实际专注、番茄关联、设备与日历身份；其他规划、来源和待办不变。推荐和手动区间都重新读取来源，检查占用、截止、当前时间及最新避让；写事务中再检查原记录内容、状态、账户、关联待办和占用。取消及查看零写入，失败保留输入，规划和oplog原子写入；专注重试沿用已保存身份。全天24小时一屏及拖动新建／移动／缩放保持原行为。
+
+验收证据见[第四轮验收报告](../reports/2026-10-09-plan-conflict-review-acceptance.md)。
+
+## 规划拖动撤销与可靠保存（2026-10-09）
+
+全天24小时一屏保持不滚动。长按移动始终保留时长，接近午夜限制开始位置；左右边缘缩放累计从按下起的位移后吸附，最小时长沿用所选粒度。拖动预览与原记录分离，多小时分段共用同一手势；取消、移回原位和无变化零写入。
+
+松手只提交一次受校验更新，保存期间禁止重复操作。失败结束预览并刷新真实记录；成功显示约6秒的前后时段及撤销提示。提示消失后，工具区仍保留“撤销上次调整”图标；仅记录最近一次成功移动或缩放，失败及取消不替换。切日、切账号、离页清除记录，后台取消未提交预览，前台恢复复核资格。
+
+只允许未结束的 planned／reminded／delayed 真实规划调整。专注中、关联当前专注运行标记、历史状态、无效待办、映射来源及实际记录不参与拖动保存。写事务校验账号、原版本、更新时间、完整内容、待办和专注状态。撤销同样校验本次保存结果及原时段有效性，保留UUID、配置、实际投入、记录、设备和日历身份；它产生新版本和oplog，不倒写旧版本。规划与oplog失败一起回滚，暂时读取或保存失败保留重试机会。
+
+直接拖动和撤销保持手动安排的软冲突规则，不额外弹出占用确认；第四轮入口随真实数据刷新。午休／用餐等避让仍仅约束主动查找和编辑器保存。没有依赖、数据库迁移、后端接口或系统权限变更。
+
+验收证据见[第五轮验收报告](../reports/2026-10-09-plan-drag-undo-acceptance.md)。

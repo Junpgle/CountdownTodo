@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:intl/intl.dart';
 import '../models.dart';
 import '../services/course_service.dart';
@@ -18,6 +19,7 @@ import '../widgets/floating_glass_control.dart';
 import '../widgets/plan_block_editor_sheet.dart';
 import '../widgets/missed_plan_recovery_flow.dart';
 import '../widgets/plan_conflict_review.dart';
+import '../services/plan_drag_service.dart';
 
 // 复用 TimeLog 的颜色和基础常量
 const double kTimeAxisW = 46.0;
@@ -28,12 +30,14 @@ class TodoPlanScreen extends StatefulWidget {
   final String username;
   final DateTime? initialDate;
   final String? initialTodoId;
+  final PlanDragService? dragService;
 
   const TodoPlanScreen({
     super.key,
     required this.username,
     this.initialDate,
     this.initialTodoId,
+    this.dragService,
   });
 
   @override
@@ -54,12 +58,22 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
   String? _loadError;
   final Set<String> _mappedBlockIds = <String>{};
   int _loadGeneration = 0;
+  late PlanDragService _dragService;
+  PlanDragChange? _lastDrag;
+  bool _dragBusy = false;
+  bool _dragForeground = true;
+  int _dragGeneration = 0, _undoCheck = 0;
+  DateTime? _loadedDate;
+  String? _runningPlanId;
+  Timer? _undoExpiry;
+  ScaffoldFeatureController<SnackBar, SnackBarClosedReason>? _dragNotice;
 
   bool _showCoachMarks = false;
 
   @override
   void initState() {
     super.initState();
+    _dragService = widget.dragService ?? PlanDragService();
     WidgetsBinding.instance.addObserver(this);
     final now = DateTime.now();
     final initial = widget.initialDate ?? now;
@@ -115,6 +129,7 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
 
   @override
   void dispose() {
+    _clearDragHistory();
     WidgetsBinding.instance.removeObserver(this);
     StorageService.scopedDataRefreshNotifier
         .removeListener(_onScopedDataRefresh);
@@ -123,7 +138,132 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) _loadData();
+    _dragForeground = state == AppLifecycleState.resumed;
+    _undoExpiry?.cancel();
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_loadData());
+      unawaited(_checkUndo());
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant TodoPlanScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.username != widget.username ||
+        oldWidget.initialDate != widget.initialDate ||
+        oldWidget.dragService != widget.dragService) {
+      _clearDragHistory();
+      _dragService = widget.dragService ?? PlanDragService();
+      final date = widget.initialDate ?? _dragService.now;
+      _focusedDate = DateTime(date.year, date.month, date.day);
+      _loadedDate = null;
+      unawaited(_loadData());
+    }
+  }
+
+  void _clearDragHistory() {
+    ++_dragGeneration;
+    ++_undoCheck;
+    _lastDrag = null;
+    _undoExpiry?.cancel();
+    _dragNotice?.close();
+    _dragNotice = null;
+  }
+
+  void _notice(String text, {PlanDragChange? change}) {
+    _dragNotice?.close();
+    _dragNotice = ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      duration: const Duration(seconds: 6),
+      persist: false,
+      behavior: SnackBarBehavior.floating,
+      margin: EdgeInsets.fromLTRB(12, 0, max(72, MediaQuery.sizeOf(context).width - 432), max(12,
+        MediaQuery.sizeOf(context).height - floatingGlassTopBarHeight(context) - 180)),
+      content: Text(text, maxLines: 3, overflow: TextOverflow.ellipsis),
+      action: change == null ? null : SnackBarAction(label: '撤销',
+        onPressed: () => unawaited(_undoDrag(change))),
+    ));
+    final notice = _dragNotice;
+    notice?.closed.then((_) {
+      if (_dragNotice == notice) _dragNotice = null;
+    });
+  }
+
+  String _dragTime(int value) =>
+      DateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(value));
+
+  Future<void> _checkUndo() async {
+    final change = _lastDrag;
+    if (change == null || _dragBusy || !_dragForeground) return;
+    final check = ++_undoCheck;
+    try {
+      await _dragService.validateUndo(change);
+      if (!mounted || check != _undoCheck || _lastDrag != change || !_dragForeground) return;
+      _undoExpiry?.cancel();
+      final now = _dragService.now;
+      final midnight = DateTime(now.year, now.month, now.day + 1);
+      final ends = [midnight.millisecondsSinceEpoch,
+        change.before.block.endTime, change.after.block.endTime]..sort();
+      _undoExpiry = Timer(DateTime.fromMillisecondsSinceEpoch(ends.first)
+        .difference(now), () => unawaited(_checkUndo()));
+    } on PlanDragException catch (error) {
+      if (mounted && check == _undoCheck && _lastDrag == change && error.stale) {
+        setState(_clearDragHistory);
+      }
+    }
+  }
+
+  Future<void> _saveDrag(PlanDragSnapshot original, PlanDragTimes times) async {
+    if (_dragBusy) return;
+    final generation = _dragGeneration;
+    final service = _dragService;
+    setState(() => _dragBusy = true);
+    _undoExpiry?.cancel();
+    try {
+      final change = await service.save(original, times);
+      if (!mounted || generation != _dragGeneration || change == null) return;
+      setState(() => _lastDrag = change);
+      final before = change.before.block;
+      final after = change.after.block;
+      _notice('已调整「${after.titleSnapshot ?? '规划'}」\n'
+        '${_dragTime(before.startTime)}–${_dragTime(before.endTime)} → '
+        '${_dragTime(after.startTime)}–${_dragTime(after.endTime)}', change: change);
+    } catch (error) {
+      if (mounted && generation == _dragGeneration) {
+        _notice(error is PlanDragException ? error.message : '保存失败，请重试');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _dragBusy = false);
+        await _loadData();
+        unawaited(_checkUndo());
+      }
+    }
+  }
+
+  Future<void> _undoDrag(PlanDragChange change) async {
+    if (_dragBusy || change != _lastDrag) return;
+    final generation = _dragGeneration;
+    final service = _dragService;
+    setState(() => _dragBusy = true);
+    _undoExpiry?.cancel();
+    try {
+      await service.undo(change);
+      if (mounted && generation == _dragGeneration && change == _lastDrag) {
+        setState(_clearDragHistory);
+        _notice('已恢复原时段');
+      }
+    } catch (error) {
+      if (mounted && generation == _dragGeneration) {
+        if (error is PlanDragException && error.stale) setState(_clearDragHistory);
+        _notice(error is PlanDragException ? error.message : '撤销失败，请重试');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _dragBusy = false);
+        await _loadData();
+        unawaited(_checkUndo());
+      }
+    }
   }
 
   void _onScopedDataRefresh() {
@@ -145,11 +285,14 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
     final loadGeneration = ++_loadGeneration;
     final focusedDate = _focusedDate;
     setState(() {
-      _isLoading = true;
+      _isLoading = _loadedDate != focusedDate;
       _loadError = null;
     });
     late final List<dynamic> results;
     try {
+      if ((await StorageService.getLoginSession() ?? 'default') != widget.username) {
+        throw const PlanDragException('账号已切换，请重新打开规划', stale: true);
+      }
       results = await Future.wait([
         StorageService.getPlanBlocksByDay(widget.username, focusedDate),
         StorageService.getTodos(widget.username),
@@ -157,13 +300,18 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
         CourseService.getAllCourses(widget.username),
         PomodoroService.getTags(),
         const PlanExecutionRepository().read(widget.username, focusedDate),
+        PomodoroService.loadRunState(),
       ]);
+      if ((await StorageService.getLoginSession() ?? 'default') != widget.username) {
+        throw const PlanDragException('账号已切换，请重新打开规划', stale: true);
+      }
     } catch (error) {
       debugPrint('TodoPlan load failed: $error');
       if (mounted && loadGeneration == _loadGeneration) {
         setState(() {
           _isLoading = false;
-          _loadError = '规划或实际记录读取失败，请重试';
+          _loadError = error is PlanDragException ? error.message : '规划或实际记录读取失败，请重试';
+          if (error is PlanDragException && error.stale) _clearDragHistory();
         });
       }
       return;
@@ -184,7 +332,7 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
     final records = execution.records;
 
     // 自动标记过期未完成的规划块为 missed
-    final now = DateTime.now().millisecondsSinceEpoch;
+    final now = _dragService.now.millisecondsSinceEpoch;
     final missedBlocks = <TodoPlanBlock>[];
     for (final b in blocks) {
       if ((b.status == TodoPlanStatus.planned ||
@@ -210,12 +358,16 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
       _tags = tags;
       _pomodoroRecords = records;
       _timeLogs = execution.logs;
+      final run = results[6] as PomodoroRunState?;
+      _runningPlanId = run?.phase == PomodoroPhase.focusing ? run?.planBlockId : null;
+      _loadedDate = focusedDate;
       _mappedBlockIds
         ..clear()
         ..addAll(_buildMappedBlocks(todos, courses, blocks)
             .map((block) => block.id));
       _isLoading = false;
     });
+    unawaited(_checkUndo());
   }
 
   List<TodoPlanBlock> _buildMappedBlocks(
@@ -299,16 +451,16 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
 
   void _prevDay() {
     setState(() {
-      final date = _focusedDate.subtract(const Duration(days: 1));
-      _focusedDate = DateTime(date.year, date.month, date.day);
+      _clearDragHistory();
+      _focusedDate = DateTime(_focusedDate.year, _focusedDate.month, _focusedDate.day - 1);
     });
     unawaited(_loadData());
   }
 
   void _nextDay() {
     setState(() {
-      final date = _focusedDate.add(const Duration(days: 1));
-      _focusedDate = DateTime(date.year, date.month, date.day);
+      _clearDragHistory();
+      _focusedDate = DateTime(_focusedDate.year, _focusedDate.month, _focusedDate.day + 1);
     });
     unawaited(_loadData());
   }
@@ -322,6 +474,7 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
     );
     if (picked != null) {
       setState(() {
+        _clearDragHistory();
         _focusedDate = picked;
       });
       unawaited(_loadData());
@@ -412,6 +565,7 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
                     ),
                     Expanded(
                       child: _PlanGridView(
+                        key: ValueKey('plan-grid-${widget.username}-$_focusedDate'),
                         date: _focusedDate,
                         blocks: displayBlocks,
                         mappedBlockIds: _mappedBlockIds,
@@ -424,6 +578,11 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
                         username: widget.username,
                         initialTodoId: widget.initialTodoId,
                         onRefresh: _loadData,
+                        dragService: _dragService,
+                        dragBusy: _dragBusy,
+                        focusingPlanId: _runningPlanId,
+                        onSaveDrag: _saveDrag,
+                        onUndoDrag: _lastDrag == null ? null : () => unawaited(_undoDrag(_lastDrag!)),
                       ),
                     ),
                   ],
@@ -569,8 +728,14 @@ class _PlanGridView extends StatefulWidget {
   final String username;
   final String? initialTodoId;
   final VoidCallback onRefresh;
+  final PlanDragService dragService;
+  final bool dragBusy;
+  final String? focusingPlanId;
+  final Future<void> Function(PlanDragSnapshot, PlanDragTimes) onSaveDrag;
+  final VoidCallback? onUndoDrag;
 
   const _PlanGridView({
+    super.key,
     required this.date,
     required this.blocks,
     required this.mappedBlockIds,
@@ -583,20 +748,123 @@ class _PlanGridView extends StatefulWidget {
     required this.username,
     this.initialTodoId,
     required this.onRefresh,
+    required this.dragService,
+    required this.dragBusy,
+    required this.focusingPlanId,
+    required this.onSaveDrag,
+    required this.onUndoDrag,
   });
 
   @override
   State<_PlanGridView> createState() => _PlanGridViewState();
 }
 
-class _PlanGridViewState extends State<_PlanGridView> {
+class _PlanGridViewState extends State<_PlanGridView> with WidgetsBindingObserver {
   int? _dragStartBlock;
   int? _dragEndBlock;
   int _minutesPerBlock = 15;
-  TodoPlanBlock? _movingBlock;
-  DateTime? _movingStart;
-  DateTime? _movingEnd;
-  int _lastMoveDelta = 0;
+  PlanDragSnapshot? _gesture;
+  PlanDragTimes? _preview;
+  PlanDragKind? _gestureKind;
+  Offset? _pointerOrigin;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed && !_saving) _cancelGesture();
+  }
+
+  @override
+  void didUpdateWidget(covariant _PlanGridView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final gesture = _gesture;
+    if (gesture == null || _saving) return;
+    final latest = widget.blocks.where((b) => b.id == gesture.block.id).firstOrNull;
+    if (latest == null || !gesture.matches(latest) ||
+        widget.focusingPlanId == latest.id || widget.dragBusy) {
+      _gesture = null;
+      _preview = null;
+      _gestureKind = null;
+      _pointerOrigin = null;
+    }
+  }
+
+  void _beginGesture(TodoPlanBlock block, PlanDragKind kind, Offset position) {
+    if (widget.dragBusy || _saving || _gesture != null) return;
+    try {
+      final snapshot = widget.dragService.capture(widget.username, widget.date, block);
+      setState(() {
+        _gesture = snapshot;
+        _gestureKind = kind;
+        _pointerOrigin = position;
+        _preview = PlanDragTimes(DateTime.fromMillisecondsSinceEpoch(block.startTime),
+          DateTime.fromMillisecondsSinceEpoch(block.endTime));
+        _dragStartBlock = null;
+        _dragEndBlock = null;
+      });
+    } on PlanDragException catch (error) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
+    }
+  }
+
+  void _updateGesture(Offset position, double width, double hourH) {
+    final original = _gesture;
+    final origin = _pointerOrigin;
+    final kind = _gestureKind;
+    if (original == null || origin == null || kind == null || _saving) return;
+    final delta = position - origin;
+    final minutes = delta.dx / width * 60 +
+      (kind == PlanDragKind.move ? delta.dy / hourH * 60 : 0);
+    final block = original.block;
+    final times = PlanDragGeometry.adjust(date: original.date,
+      original: PlanDragTimes(DateTime.fromMillisecondsSinceEpoch(block.startTime),
+        DateTime.fromMillisecondsSinceEpoch(block.endTime)),
+      deltaMinutes: minutes, step: _minutesPerBlock, kind: kind);
+    setState(() => _preview = times);
+  }
+
+  void _cancelGesture() {
+    if (!mounted || _saving) return;
+    setState(() {
+      _gesture = null;
+      _preview = null;
+      _gestureKind = null;
+      _pointerOrigin = null;
+      _dragStartBlock = null;
+      _dragEndBlock = null;
+    });
+  }
+
+  Future<void> _finishGesture() async {
+    final original = _gesture;
+    final times = _preview;
+    if (_saving || original == null || times == null) return;
+    if (times.matches(original.block)) {
+      _cancelGesture();
+      return;
+    }
+    setState(() => _saving = true);
+    try {
+      await widget.onSaveDrag(original, times);
+    } finally {
+      if (mounted) {
+        _saving = false;
+        _cancelGesture();
+      }
+    }
+  }
 
   int get _blocksPerHour => 60 ~/ _minutesPerBlock;
 
@@ -618,6 +886,7 @@ class _PlanGridViewState extends State<_PlanGridView> {
   }
 
   void _handleDragStart(Offset pos, double width, double hourH) {
+    if (widget.dragBusy || _gesture != null) return;
     final idx = _getIndex(pos, width, hourH);
     if (idx != null) {
       setState(() {
@@ -680,34 +949,6 @@ class _PlanGridViewState extends State<_PlanGridView> {
     );
   }
 
-  Future<void> _updateBlockTime(
-    TodoPlanBlock block,
-    DateTime start,
-    DateTime end,
-  ) async {
-    if (!end.isAfter(start)) return;
-    block.startTime = start.millisecondsSinceEpoch;
-    block.endTime = end.millisecondsSinceEpoch;
-    block.plannedMinutes = end.difference(start).inMinutes;
-    block.markAsChanged();
-    await StorageService.savePlanBlocks(widget.username, [block]);
-    widget.onRefresh();
-  }
-
-  int _snapMinutes(double minutes) =>
-      (minutes / _minutesPerBlock).round() * _minutesPerBlock;
-
-  DateTime _dayStart() =>
-      DateTime(widget.date.year, widget.date.month, widget.date.day);
-
-  DateTime _clampToDay(DateTime value) {
-    final start = _dayStart();
-    final end = start.add(const Duration(days: 1));
-    if (value.isBefore(start)) return start;
-    if (value.isAfter(end)) return end;
-    return value;
-  }
-
   @override
   Widget build(BuildContext context) {
     final executionEntries = PlanExecutionEntry.forDay(
@@ -739,12 +980,15 @@ class _PlanGridViewState extends State<_PlanGridView> {
                       (h) => Positioned(
                             top: h * hourH + 1,
                             right: 6,
-                            child: Text('${h.toString().padLeft(2, '0')}:00',
+                            height: max(1.0, hourH - 1),
+                            child: FittedBox(fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerRight,
+                              child: Text('${h.toString().padLeft(2, '0')}:00',
                                 style: TextStyle(
                                     fontSize: 9,
                                     fontWeight: FontWeight.w600,
                                     color:
-                                        Colors.grey.withValues(alpha: 0.66))),
+                                        Colors.grey.withValues(alpha: 0.66)))),
                           )),
                 ),
               ),
@@ -757,10 +1001,12 @@ class _PlanGridViewState extends State<_PlanGridView> {
                       _handleDragUpdate(d.localPosition, gridW, hourH),
                   onPanEnd: (d) =>
                       _handleDragEnd(autoFillEstimateOnTodoChange: false),
+                  onPanCancel: _cancelGesture,
                   onTapDown: (d) =>
                       _handleDragStart(d.localPosition, gridW, hourH),
                   onTapUp: (d) =>
                       _handleDragEnd(autoFillEstimateOnTodoChange: true),
+                  onTapCancel: _clearRecordSelection,
                   child: Container(
                     height: totalH,
                     decoration: BoxDecoration(
@@ -778,6 +1024,12 @@ class _PlanGridViewState extends State<_PlanGridView> {
                               hourH,
                               executionLaneCount,
                             )),
+                        if (_gesture != null && _preview != null)
+                          ..._buildBlockItems(_gesture!.block
+                            ..startTime = _preview!.start.millisecondsSinceEpoch
+                            ..endTime = _preview!.end.millisecondsSinceEpoch
+                            ..plannedMinutes = _preview!.minutes,
+                            gridW, hourH, executionLaneCount, previewOnly: true),
                         if (executionEntries.isNotEmpty)
                           Positioned.fill(child: PlanExecutionTimelineLayer(
                             date: widget.date,
@@ -789,6 +1041,21 @@ class _PlanGridViewState extends State<_PlanGridView> {
                         if (_dragStartBlock != null && _dragEndBlock != null)
                           ..._buildDraggingBlocks(gridW, hourH),
                         _buildNowLine(gridW, hourH),
+                        if (_preview != null)
+                          Positioned(left: 8, right: 8,
+                            top: _preview!.start.hour >= 12 ? 8 : null,
+                            bottom: _preview!.start.hour < 12 ? 8 : null,
+                            child: IgnorePointer(child: Material(
+                              color: Theme.of(context).colorScheme.secondaryContainer,
+                              borderRadius: BorderRadius.circular(12),
+                              child: Padding(padding: const EdgeInsets.all(8),
+                                child: Text(_saving ? '正在保存调整…' :
+                                  '${DateFormat('HH:mm').format(_preview!.start)} → '
+                                  '${DateFormat('HH:mm').format(_preview!.end)} · ${_preview!.minutes}分钟',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(color: Theme.of(context).colorScheme.onSecondaryContainer)),
+                              ),
+                            ))),
                       ],
                     ),
                   ),
@@ -804,7 +1071,7 @@ class _PlanGridViewState extends State<_PlanGridView> {
   Widget _buildGranularityBar() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 6, 12, 8),
-      child: Wrap(
+      child: Row(children: [Expanded(child: Wrap(
         spacing: 6,
         runSpacing: 4,
         crossAxisAlignment: WrapCrossAlignment.center,
@@ -821,6 +1088,7 @@ class _PlanGridViewState extends State<_PlanGridView> {
             selected: {_minutesPerBlock},
             showSelectedIcon: false,
             onSelectionChanged: (value) {
+              if (widget.dragBusy || _gesture != null) return;
               setState(() {
                 _minutesPerBlock = value.first;
                 _dragStartBlock = null;
@@ -831,7 +1099,14 @@ class _PlanGridViewState extends State<_PlanGridView> {
           const SizedBox(width: 6),
           Text('分钟', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
         ],
-      ),
+      )),
+      if (widget.dragBusy) const SizedBox(width: 36, height: 24,
+        child: Center(child: SizedBox(width: 18, height: 18,
+          child: CircularProgressIndicator(strokeWidth: 2)))),
+      if (!widget.dragBusy && widget.onUndoDrag != null)
+        IconButton(key: const ValueKey('plan-drag-undo'), tooltip: '撤销上次调整',
+          onPressed: widget.onUndoDrag, icon: const Icon(Icons.undo_rounded)),
+      ]),
     );
   }
 
@@ -869,12 +1144,13 @@ class _PlanGridViewState extends State<_PlanGridView> {
   }
 
   List<Widget> _buildBlockItems(
-      TodoPlanBlock block, double width, double hourH, int laneCount) {
+      TodoPlanBlock block, double width, double hourH, int laneCount,
+      {bool previewOnly = false}) {
     final start = DateTime.fromMillisecondsSinceEpoch(block.startTime);
     final end = DateTime.fromMillisecondsSinceEpoch(block.endTime);
     final dayStart =
         DateTime(widget.date.year, widget.date.month, widget.date.day);
-    final dayEnd = dayStart.add(const Duration(days: 1));
+    final dayEnd = DateTime(dayStart.year, dayStart.month, dayStart.day + 1);
     if (!end.isAfter(dayStart) || !start.isBefore(dayEnd)) return const [];
 
     final clippedStart = start.isBefore(dayStart) ? dayStart : start;
@@ -883,6 +1159,11 @@ class _PlanGridViewState extends State<_PlanGridView> {
         .cast<TodoItem?>()
         .firstWhere((t) => t?.id == block.todoId, orElse: () => null);
     final isMappedBlock = widget.mappedBlockIds.contains(block.id);
+    final canDrag = !previewOnly && !isMappedBlock && !widget.dragBusy &&
+      PlanDragService.canAdjust(block, widget.dragService.now) &&
+      widget.focusingPlanId != block.id && todo != null &&
+      !todo.isDone && !todo.isDeleted && !todo.hasConflict;
+    final hiddenAnchor = !previewOnly && _gesture?.block.id == block.id;
     final isMappedCourse = block.id.startsWith('mapped_course_');
     final color = isMappedCourse
         ? Colors.teal
@@ -914,62 +1195,30 @@ class _PlanGridViewState extends State<_PlanGridView> {
       final segmentW =
           max(2.0, width * segmentEnd.difference(segmentStart).inMinutes / 60);
       widgets.add(Positioned(
+        key: ValueKey('${previewOnly ? 'preview' : 'anchor'}-${block.id}-$hour'),
         top: hour * hourH + 1,
         left: left + 1,
         width: max(1.0, segmentW - 2),
         height: max(1.0, hourH / laneCount - 2),
-        child: GestureDetector(
-          onTap: isMappedBlock
+        child: Opacity(opacity: hiddenAnchor ? 0 : 1,
+          child: IgnorePointer(ignoring: previewOnly ||
+            (_gesture != null && _gesture!.block.id != block.id),
+          child: GestureDetector(
+          key: ValueKey('${previewOnly ? 'plan-preview' : 'plan-drag-block'}-${block.id}-$hour'),
+          onTap: widget.dragBusy || _gesture != null ? null : isMappedBlock
               ? () => _openMappedBlockDetail(block)
               : () => _showEditBlockSheet(block),
-          onLongPressStart: isMappedBlock
-              ? null
-              : (_) {
-                  _movingBlock = block;
-                  _movingStart = start;
-                  _movingEnd = end;
-                  _lastMoveDelta = 0;
-                },
-          onLongPressMoveUpdate: isMappedBlock
-              ? null
-              : (details) {
-                  if (_movingBlock?.uuid != block.uuid ||
-                      _movingStart == null ||
-                      _movingEnd == null) {
-                    return;
-                  }
-                  final deltaMinutes = _snapMinutes(
-                    details.offsetFromOrigin.dy / hourH * 60 +
-                        details.offsetFromOrigin.dx / width * 60,
-                  );
-                  if (deltaMinutes == _lastMoveDelta) return;
-                  _lastMoveDelta = deltaMinutes;
-                  final nextStart = _clampToDay(
-                      _movingStart!.add(Duration(minutes: deltaMinutes)));
-                  final duration = _movingEnd!.difference(_movingStart!);
-                  var nextEnd = nextStart.add(duration);
-                  final dayEnd = _dayStart().add(const Duration(days: 1));
-                  if (nextEnd.isAfter(dayEnd)) {
-                    nextEnd = dayEnd;
-                  }
-                  setState(() {
-                    block.startTime = nextStart.millisecondsSinceEpoch;
-                    block.endTime = nextEnd.millisecondsSinceEpoch;
-                    block.plannedMinutes =
-                        nextEnd.difference(nextStart).inMinutes;
-                  });
-                },
-          onLongPressEnd: isMappedBlock
-              ? null
-              : (_) async {
-                  _movingBlock = null;
-                  _movingStart = null;
-                  _movingEnd = null;
-                  _lastMoveDelta = 0;
-                  block.markAsChanged();
-                  await StorageService.savePlanBlocks(widget.username, [block]);
-                  widget.onRefresh();
-                },
+          onLongPressStart: canDrag
+              ? (details) => _beginGesture(block, PlanDragKind.move, details.globalPosition)
+              : null,
+          onLongPressMoveUpdate: canDrag
+              ? (details) => _updateGesture(details.globalPosition, width, hourH)
+              : null,
+          onLongPressEnd: canDrag ? (_) => unawaited(_finishGesture()) : null,
+          onLongPressCancel: canDrag ? _cancelGesture : null,
+          onPanStart: canDrag || previewOnly ? null : (_) => _clearRecordSelection(),
+          onPanUpdate: canDrag || previewOnly ? null : (_) {},
+          onPanEnd: canDrag || previewOnly ? null : (_) {},
           child: Stack(
             children: [
               Container(
@@ -982,7 +1231,7 @@ class _PlanGridViewState extends State<_PlanGridView> {
                   horizontal: 5,
                   vertical: laneCount > 1 ? 0 : 1,
                 ),
-                child: Row(
+                child: segmentW < 28 ? const SizedBox.shrink() : Row(
                   children: [
                     Icon(
                         block.status == TodoPlanStatus.finished
@@ -1002,7 +1251,7 @@ class _PlanGridViewState extends State<_PlanGridView> {
                         maxLines: 1,
                       ),
                     ),
-                    if (segmentW > 60 && isMappedBlock) ...[
+                    if (segmentW > 100 * MediaQuery.textScalerOf(context).scale(1) && isMappedBlock) ...[
                       const SizedBox(width: 4),
                       Text(
                         isMappedCourse ? '课程' : '待办',
@@ -1013,7 +1262,7 @@ class _PlanGridViewState extends State<_PlanGridView> {
                         maxLines: 1,
                       ),
                     ],
-                    if (segmentW > 68)
+                    if (segmentW > 180 * MediaQuery.textScalerOf(context).scale(1))
                       Text(
                         '${DateFormat('HH:mm').format(start)}-${DateFormat('HH:mm').format(end)}',
                         style: TextStyle(
@@ -1021,7 +1270,7 @@ class _PlanGridViewState extends State<_PlanGridView> {
                             color: color.withValues(alpha: 0.72)),
                         maxLines: 1,
                       ),
-                    if (segmentW > 92 && actualMinutes > 0) ...[
+                    if (segmentW > 230 * MediaQuery.textScalerOf(context).scale(1) && actualMinutes > 0) ...[
                       const SizedBox(width: 4),
                       Text(
                         '$actualMinutes/${block.plannedMinutes}m',
@@ -1035,76 +1284,44 @@ class _PlanGridViewState extends State<_PlanGridView> {
                   ],
                 ),
               ),
-              if (isStartSegment && !isMappedBlock)
+              if (isStartSegment && !isMappedBlock && (canDrag || previewOnly))
                 Positioned(
                   left: 0,
                   top: 0,
                   bottom: 0,
                   width: 12,
                   child: GestureDetector(
+                    key: ValueKey('${previewOnly ? 'preview-' : ''}plan-resize-start-${block.id}'),
                     behavior: HitTestBehavior.translucent,
-                    onHorizontalDragUpdate: (details) {
-                      final delta = _snapMinutes(details.delta.dx / width * 60);
-                      if (delta == 0) return;
-                      final nextStart = _clampToDay(
-                        DateTime.fromMillisecondsSinceEpoch(block.startTime)
-                            .add(Duration(minutes: delta)),
-                      );
-                      final endTime =
-                          DateTime.fromMillisecondsSinceEpoch(block.endTime);
-                      if (!endTime.isAfter(nextStart
-                          .add(Duration(minutes: _minutesPerBlock - 1)))) {
-                        return;
-                      }
-                      setState(() {
-                        block.startTime = nextStart.millisecondsSinceEpoch;
-                        block.plannedMinutes =
-                            endTime.difference(nextStart).inMinutes;
-                      });
-                    },
-                    onHorizontalDragEnd: (_) => _updateBlockTime(
-                      block,
-                      DateTime.fromMillisecondsSinceEpoch(block.startTime),
-                      DateTime.fromMillisecondsSinceEpoch(block.endTime),
-                    ),
+                    dragStartBehavior: DragStartBehavior.down,
+                    onHorizontalDragStart: canDrag ? (details) =>
+                      _beginGesture(block, PlanDragKind.resizeStart, details.globalPosition) : null,
+                    onHorizontalDragUpdate: canDrag ? (details) =>
+                      _updateGesture(details.globalPosition, width, hourH) : null,
+                    onHorizontalDragEnd: canDrag ? (_) => unawaited(_finishGesture()) : null,
+                    onHorizontalDragCancel: canDrag ? _cancelGesture : null,
                     child: Align(
                       alignment: Alignment.centerLeft,
                       child: Container(width: 3, color: color),
                     ),
                   ),
                 ),
-              if (isEndSegment && !isMappedBlock)
+              if (isEndSegment && !isMappedBlock && (canDrag || previewOnly))
                 Positioned(
                   right: 0,
                   top: 0,
                   bottom: 0,
                   width: 12,
                   child: GestureDetector(
+                    key: ValueKey('${previewOnly ? 'preview-' : ''}plan-resize-end-${block.id}'),
                     behavior: HitTestBehavior.translucent,
-                    onHorizontalDragUpdate: (details) {
-                      final delta = _snapMinutes(details.delta.dx / width * 60);
-                      if (delta == 0) return;
-                      final nextEnd = _clampToDay(
-                        DateTime.fromMillisecondsSinceEpoch(block.endTime)
-                            .add(Duration(minutes: delta)),
-                      );
-                      final startTime =
-                          DateTime.fromMillisecondsSinceEpoch(block.startTime);
-                      if (!nextEnd.isAfter(startTime
-                          .add(Duration(minutes: _minutesPerBlock - 1)))) {
-                        return;
-                      }
-                      setState(() {
-                        block.endTime = nextEnd.millisecondsSinceEpoch;
-                        block.plannedMinutes =
-                            nextEnd.difference(startTime).inMinutes;
-                      });
-                    },
-                    onHorizontalDragEnd: (_) => _updateBlockTime(
-                      block,
-                      DateTime.fromMillisecondsSinceEpoch(block.startTime),
-                      DateTime.fromMillisecondsSinceEpoch(block.endTime),
-                    ),
+                    dragStartBehavior: DragStartBehavior.down,
+                    onHorizontalDragStart: canDrag ? (details) =>
+                      _beginGesture(block, PlanDragKind.resizeEnd, details.globalPosition) : null,
+                    onHorizontalDragUpdate: canDrag ? (details) =>
+                      _updateGesture(details.globalPosition, width, hourH) : null,
+                    onHorizontalDragEnd: canDrag ? (_) => unawaited(_finishGesture()) : null,
+                    onHorizontalDragCancel: canDrag ? _cancelGesture : null,
                     child: Align(
                       alignment: Alignment.centerRight,
                       child: Container(width: 3, color: color),
@@ -1113,7 +1330,7 @@ class _PlanGridViewState extends State<_PlanGridView> {
                 ),
             ],
           ),
-        ),
+        ))),
       ));
     }
     return widgets;

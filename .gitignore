@@ -176,6 +176,7 @@ todo.md
 !/test/models/json_compatibility_test.dart
 !/test/widgets/
 /test/widgets/*
+!/test/widgets/home_dashboard_scroll_section_test.dart
 !/test/widgets/todo_completion_celebration_test.dart
 !/test/widgets/todo_overdue_triage_test.dart
 !/test/widgets/feature_guide_liquid_glass_test.dart
@@ -274,3 +275,17 @@ todo.md
 
 !/test/services/plan_conflict_review_service_test.dart
 !/test/widgets/plan_conflict_review_test.dart
+!/test/services/plan_drag_service_test.dart
+!/test/widgets/plan_drag_undo_test.dart
+!/test/services/time_estimation_service_test.dart
+!/test/services/time_estimation_repository_test.dart
+!/test/widgets/time_estimation_hint_test.dart
+!/test/widgets/time_estimation_flow_test.dart
+
+!/test/services/ai_settings_navigation_service_test.dart
+!/test/widgets/ai_settings_navigation_card_test.dart
+!/test/widgets/settings_focus_page_test.dart
+!/test/services/app_settings_catalog_test.dart
+!/test/widgets/settings_destination_flow_test.dart
+!/test/services/settings_global_search_test.dart
+!/test/widgets/settings_global_search_flow_test.dart

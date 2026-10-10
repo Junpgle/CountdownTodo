@@ -14,6 +14,7 @@ import '../services/plan_availability_service.dart';
 import '../services/plan_conflict_review_service.dart';
 import '../services/missed_plan_recovery_service.dart';
 import '../services/time_estimation_service.dart';
+import '../services/time_estimation_repository.dart';
 import '../services/pomodoro_service.dart';
 import '../services/pomodoro_control_service.dart';
 import '../utils/app_dialogs.dart';
@@ -21,6 +22,7 @@ import '../utils/page_transitions.dart';
 import '../utils/todo_recurrence_picker.dart';
 import 'plan_availability_panel.dart';
 import 'optional_liquid_glass_surface.dart';
+import 'time_estimation_hint.dart';
 
 Future<T?> showPlanBlockEditorPage<T>({
   required BuildContext context,
@@ -120,7 +122,8 @@ class PlanBlockEditorSheet extends StatefulWidget {
   State<PlanBlockEditorSheet> createState() => _PlanBlockEditorSheetState();
 }
 
-class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet> {
+class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
+    with WidgetsBindingObserver {
   String? _selectedTodoId;
   late DateTime _start, _end;
   late TextEditingController _remarkCtrl;
@@ -129,6 +132,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet> {
   int _pomodoroRounds = 0;
   late List<_TodoPlanSelectEntry> _todoEntries;
   int? _estimatedMinutes;
+  TimeEstimationResult? _estimateResult;
   int _estimateSequence = 0, _draftRevision = 0, _savedDraftRevision = -1;
   bool _busy = false, _recommendationStale = false, _focusStarted = false;
   PlanAvailabilitySelection? _recommendation;
@@ -151,6 +155,10 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    StorageService.scopedDataRefreshNotifier.addListener(
+      _validateEstimateAccount,
+    );
     _start = widget.startTime;
     _end = widget.endTime;
     _persistedBlock = widget.block == null
@@ -230,11 +238,48 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet> {
     super.didUpdateWidget(oldWidget);
     final previous = _selectedTodoId;
     _rebuildTodoEntries();
-    if (_selectedTodoId != previous) _manualChange();
+    final priorTodo = oldWidget.todos
+        .where((t) => t.id == previous)
+        .firstOrNull;
+    final todo = _selectedTodo;
+    if (_selectedTodoId != previous ||
+        oldWidget.username != widget.username ||
+        priorTodo?.title != todo?.title ||
+        priorTodo?.groupId != todo?.groupId) {
+      _manualChange();
+      _estimatedMinutes = null;
+      _estimateResult = null;
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _validateEstimateAccount();
+  }
+
+  void _validateEstimateAccount() => unawaited(_checkEstimateAccount());
+  Future<void> _checkEstimateAccount() async {
+    try {
+      await TimeEstimationRepository.checkAccount(widget.username);
+    } on TimeEstimationAccountChanged {
+      if (mounted) {
+        setState(() {
+          _manualChange();
+          _estimatedMinutes = null;
+          _estimateResult = null;
+          _initialEstimatePending = false;
+        });
+      }
+    }
   }
 
   @override
   void dispose() {
+    ++_estimateSequence;
+    WidgetsBinding.instance.removeObserver(this);
+    StorageService.scopedDataRefreshNotifier.removeListener(
+      _validateEstimateAccount,
+    );
     _remarkCtrl.dispose();
     super.dispose();
   }
@@ -248,21 +293,31 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet> {
 
     final sequence = ++_estimateSequence;
     final revision = _draftRevision;
+    final username = widget.username;
+    final title = todo.title;
+    final group = todo.groupId;
     TimeEstimationResult result;
     try {
+      await TimeEstimationRepository.checkAccount(username);
       result =
           await (widget.estimate?.call(todo) ??
               TimeEstimationService.estimate(
                 todo.title,
                 groupId: todo.groupId,
+                username: username,
+                clock: widget.clock,
               ));
+      await TimeEstimationRepository.checkAccount(username);
     } catch (_) {
       return; // A suggestion failure must not discard or block the draft.
     }
     if (!mounted ||
         sequence != _estimateSequence ||
         revision != _draftRevision ||
+        widget.username != username ||
         _selectedTodoId != todoId ||
+        _selectedTodo?.title != title ||
+        _selectedTodo?.groupId != group ||
         _recommendation != null) {
       return;
     }
@@ -273,14 +328,12 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet> {
 
     setState(() {
       _estimatedMinutes = estMin;
+      _estimateResult = result;
       // Auto-fill end time
       if (newEnd.isAfter(_start)) {
         _end = newEnd;
       }
-      // Suggest pomodoro rounds based on estimated duration
-      if (estMin >= _pomodoroMinutes) {
-        _pomodoroRounds = (estMin / _pomodoroMinutes).round().clamp(1, 6);
-      }
+      // Estimated focus time does not change the user's Pomodoro configuration.
     });
   }
 
@@ -959,6 +1012,8 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet> {
                     }
                     setState(() {
                       _selectedTodoId = value;
+                      _estimatedMinutes = null;
+                      _estimateResult = null;
                       _manualChange();
                     });
                     if (widget.autoFillEstimateOnTodoChange) {
@@ -978,15 +1033,10 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet> {
                 ),
               ),
             ),
-          if (_estimatedMinutes != null)
+          if (_estimateResult != null)
             Padding(
               padding: const EdgeInsets.only(top: 8),
-              child: Text(
-                '${widget.autoRecommendTime ? '预计用时' : '历史估时'} ${formatMinutesChinese(_estimatedMinutes!)}',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: colors.primary,
-                ),
-              ),
+              child: TimeEstimationHint(result: _estimateResult!),
             ),
           const SizedBox(height: 20),
           Wrap(
