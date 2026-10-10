@@ -113,7 +113,7 @@ class AiTodoContextBuilder {
     if (customRange != null) {
       final start = DateFormat('yyyy-MM-dd').format(customRange.start);
       final end = DateFormat('yyyy-MM-dd').format(
-        customRange.endExclusive.subtract(const Duration(days: 1)),
+        AppTimeFormats.localDayStartOffset(customRange.endExclusive, -1),
       );
       final queryText = userMessage
           .replaceAll(_explicitIsoDateRangePattern, '')
@@ -842,7 +842,7 @@ ${sections.join('\n')}
       final period = _resolveCoursePeriod(userMessage, nowValue);
       if (period != null) {
         parts.add(
-          '课程${_formatCompactDate(period.start)}-${_formatCompactDate(period.end.subtract(const Duration(days: 1)))}',
+          '课程${_formatCompactDate(period.start)}-${_formatCompactDate(AppTimeFormats.localDayStartOffset(period.end, -1))}',
         );
       } else {
         parts.add('课程今日起');
@@ -909,7 +909,7 @@ ${sections.join('\n')}
       if (period != null) {
         final start = _formatCompactDate(period.start);
         final end = _formatCompactDate(
-          period.end.subtract(const Duration(days: 1)),
+          AppTimeFormats.localDayStartOffset(period.end, -1),
         );
         parts.add(start == end ? '专注记录$start' : '专注记录$start-$end');
       } else {
@@ -1833,7 +1833,7 @@ ${sections.join('\n')}
         : _DateRange(
             label: '全部可用课程日期',
             start: allDates.first,
-            end: allDates.last.add(const Duration(days: 1)),
+            end: AppTimeFormats.localDayStartOffset(allDates.last, 1),
           );
     final period = _resolveCoursePeriod(userMessage, now);
     final scopedCourses = _selectCoursesForPeriod(activeCourses, period, now);
@@ -1848,10 +1848,10 @@ ${sections.join('\n')}
         .join('\n');
     final header = period == null
         ? '课程表（当前时间: ${_formatDateTime(now)}，今日起展示 ${selectedCourses.length}/${scopedCourses.length} 节）'
-        : '课程表（当前时间: ${_formatDateTime(now)}，${period.label}范围: ${_formatDate(period.start)} 至 ${_formatDate(period.end.subtract(const Duration(days: 1)))}，共${selectedCourses.length}节）';
+        : '课程表（当前时间: ${_formatDateTime(now)}，${period.label}范围: ${_formatDate(period.start)} 至 ${_formatDate(AppTimeFormats.localDayStartOffset(period.end, -1))}，共${selectedCourses.length}节）';
     final rangeLine = availableRange == null
         ? ''
-        : '\n${availableRange.label}: ${_formatDate(availableRange.start)} 至 ${_formatDate(availableRange.end.subtract(const Duration(days: 1)))}';
+        : '\n${availableRange.label}: ${_formatDate(availableRange.start)} 至 ${_formatDate(AppTimeFormats.localDayStartOffset(availableRange.end, -1))}';
     return '$header$rangeLine\n${lines.isEmpty ? '暂无匹配课程' : lines}';
   }
 
@@ -1902,7 +1902,7 @@ ${sections.join('\n')}
     return _DateRange(
       label: '最近$months个月',
       start: start,
-      end: todayStart.add(const Duration(days: 1)),
+      end: AppTimeFormats.localDayStartOffset(todayStart, 1),
     );
   }
 
@@ -1936,8 +1936,8 @@ ${sections.join('\n')}
     final todayStart = DateTime(now.year, now.month, now.day);
     return _DateRange(
       label: '最近$days天',
-      start: todayStart.subtract(Duration(days: days - 1)),
-      end: todayStart.add(const Duration(days: 1)),
+      start: AppTimeFormats.localDayStartOffset(todayStart, -(days - 1)),
+      end: AppTimeFormats.localDayStartOffset(todayStart, 1),
     );
   }
 
@@ -1977,32 +1977,42 @@ ${sections.join('\n')}
         _ => null,
       };
       if (targetWeekday != null) {
-        final thisWeekStart = todayStart.subtract(
-          Duration(days: now.weekday - DateTime.monday),
+        final thisWeekStart = AppTimeFormats.localDayStartOffset(
+          todayStart,
+          -(now.weekday - DateTime.monday),
         );
         final weekdayOffset = targetWeekday - DateTime.monday;
         final DateTime targetDay;
         if (text.contains('上周') ||
             text.contains('上星期') ||
             text.contains('上礼拜')) {
-          targetDay = thisWeekStart.add(Duration(days: weekdayOffset - 7));
+          targetDay = AppTimeFormats.localDayStartOffset(
+            thisWeekStart,
+            weekdayOffset - 7,
+          );
         } else if (text.contains('下周') ||
             text.contains('下星期') ||
             text.contains('下礼拜')) {
-          targetDay = thisWeekStart.add(Duration(days: weekdayOffset + 7));
+          targetDay = AppTimeFormats.localDayStartOffset(
+            thisWeekStart,
+            weekdayOffset + 7,
+          );
         } else if (text.contains('本周') ||
             text.contains('这周') ||
             text.contains('本星期') ||
             text.contains('这星期')) {
-          targetDay = thisWeekStart.add(Duration(days: weekdayOffset));
+          targetDay = AppTimeFormats.localDayStartOffset(
+            thisWeekStart,
+            weekdayOffset,
+          );
         } else {
           final daysAhead = (targetWeekday - now.weekday + 7) % 7;
-          targetDay = todayStart.add(Duration(days: daysAhead));
+          targetDay = AppTimeFormats.localDayStartOffset(todayStart, daysAhead);
         }
         return _DateRange(
           label: '指定星期',
           start: targetDay,
-          end: targetDay.add(const Duration(days: 1)),
+          end: AppTimeFormats.localDayStartOffset(targetDay, 1),
         );
       }
     }
@@ -2011,7 +2021,7 @@ ${sections.join('\n')}
       return _DateRange(
         label: '未来$futureDays天',
         start: todayStart,
-        end: todayStart.add(Duration(days: futureDays)),
+        end: AppTimeFormats.localDayStartOffset(todayStart, futureDays),
       );
     }
     if (text.contains('未来一周') ||
@@ -2023,49 +2033,53 @@ ${sections.join('\n')}
       return _DateRange(
         label: '未来一周',
         start: todayStart,
-        end: todayStart.add(const Duration(days: 7)),
+        end: AppTimeFormats.localDayStartOffset(todayStart, 7),
       );
     }
     if (text.contains('今天') || text.contains('今日')) {
       return _DateRange(
         label: '今日',
         start: todayStart,
-        end: todayStart.add(const Duration(days: 1)),
+        end: AppTimeFormats.localDayStartOffset(todayStart, 1),
       );
     }
     if (text.contains('明天') || text.contains('明日')) {
-      final start = todayStart.add(const Duration(days: 1));
+      final start = AppTimeFormats.localDayStartOffset(todayStart, 1);
       return _DateRange(
         label: '明日',
         start: start,
-        end: start.add(const Duration(days: 1)),
+        end: AppTimeFormats.localDayStartOffset(start, 1),
       );
     }
     if (text.contains('后天') || text.contains('后日')) {
-      final start = todayStart.add(const Duration(days: 2));
+      final start = AppTimeFormats.localDayStartOffset(todayStart, 2);
       return _DateRange(
         label: '后日',
         start: start,
-        end: start.add(const Duration(days: 1)),
+        end: AppTimeFormats.localDayStartOffset(start, 1),
       );
     }
     if (text.contains('下周')) {
-      final thisWeekStart = todayStart.subtract(
-        Duration(days: now.weekday - 1),
+      final thisWeekStart = AppTimeFormats.localDayStartOffset(
+        todayStart,
+        -(now.weekday - 1),
       );
-      final start = thisWeekStart.add(const Duration(days: 7));
+      final start = AppTimeFormats.localDayStartOffset(thisWeekStart, 7);
       return _DateRange(
         label: '下周',
         start: start,
-        end: start.add(const Duration(days: 7)),
+        end: AppTimeFormats.localDayStartOffset(start, 7),
       );
     }
     if (text.contains('本周') || text.contains('这周')) {
-      final start = todayStart.subtract(Duration(days: now.weekday - 1));
+      final start = AppTimeFormats.localDayStartOffset(
+        todayStart,
+        -(now.weekday - 1),
+      );
       return _DateRange(
         label: '本周',
         start: start,
-        end: start.add(const Duration(days: 7)),
+        end: AppTimeFormats.localDayStartOffset(start, 7),
       );
     }
     return null;
@@ -2370,7 +2384,7 @@ ${lines.isEmpty ? '暂无' : lines}''';
         return _TimeLogPeriod(
           label: match.group(0)!,
           start: start,
-          end: start.add(const Duration(days: 1)),
+          end: AppTimeFormats.localDayStartOffset(start, 1),
         );
       }
     }
@@ -2391,7 +2405,7 @@ ${lines.isEmpty ? '暂无' : lines}''';
       return _TimeLogPeriod(
         label: DateFormat('yyyy-MM-dd').format(start),
         start: start,
-        end: start.add(const Duration(days: 1)),
+        end: AppTimeFormats.localDayStartOffset(start, 1),
       );
     }
 
@@ -2496,7 +2510,7 @@ ${lines.isEmpty ? '暂无' : lines}''';
           : now.year;
       final start = DateTime(year, (quarter - 1) * 3 + 1);
       final end = year == now.year && quarter == currentQuarter
-          ? todayStart.add(const Duration(days: 1))
+          ? AppTimeFormats.localDayStartOffset(todayStart, 1)
           : DateTime(year, start.month + 3);
       return _TimeLogPeriod(
         label: '$year年第$quarter季度',
@@ -2513,7 +2527,7 @@ ${lines.isEmpty ? '暂无' : lines}''';
         label: '$year年',
         start: DateTime(year),
         end: year == now.year
-            ? todayStart.add(const Duration(days: 1))
+            ? AppTimeFormats.localDayStartOffset(todayStart, 1)
             : DateTime(year + 1),
       );
     }
@@ -2541,7 +2555,7 @@ ${lines.isEmpty ? '暂无' : lines}''';
       return _TimeLogPeriod(
         label: '最近一年',
         start: start,
-        end: todayStart.add(const Duration(days: 1)),
+        end: AppTimeFormats.localDayStartOffset(todayStart, 1),
       );
     }
     if (text.contains('上上个月') || text.contains('上上月')) {
@@ -2559,11 +2573,11 @@ ${lines.isEmpty ? '暂无' : lines}''';
       );
     }
     _TimeLogPeriod relativeDay(int offset, String label) {
-      final start = todayStart.add(Duration(days: offset));
+      final start = AppTimeFormats.localDayStartOffset(todayStart, offset);
       return _TimeLogPeriod(
         label: label,
         start: start,
-        end: start.add(const Duration(days: 1)),
+        end: AppTimeFormats.localDayStartOffset(start, 1),
       );
     }
 
@@ -2586,29 +2600,31 @@ ${lines.isEmpty ? '暂无' : lines}''';
       return _TimeLogPeriod(
         label: '今日',
         start: todayStart,
-        end: todayStart.add(const Duration(days: 1)),
+        end: AppTimeFormats.localDayStartOffset(todayStart, 1),
       );
     }
     if (text.contains('昨天') || text.contains('昨日')) {
-      final start = todayStart.subtract(const Duration(days: 1));
+      final start = AppTimeFormats.localDayStartOffset(todayStart, -1);
       return _TimeLogPeriod(label: '昨日', start: start, end: todayStart);
     }
     if (_matchesAny(text, ['上上周', '上上星期', '上上礼拜'])) {
-      final thisWeekStart = todayStart.subtract(
-        Duration(days: now.weekday - DateTime.monday),
+      final thisWeekStart = AppTimeFormats.localDayStartOffset(
+        todayStart,
+        -(now.weekday - DateTime.monday),
       );
-      final end = thisWeekStart.subtract(const Duration(days: 7));
+      final end = AppTimeFormats.localDayStartOffset(thisWeekStart, -7);
       return _TimeLogPeriod(
         label: '上上周',
-        start: end.subtract(const Duration(days: 7)),
+        start: AppTimeFormats.localDayStartOffset(end, -7),
         end: end,
       );
     }
     if (text.contains('上周') || text.contains('上星期') || text.contains('上礼拜')) {
-      final thisWeekStart = todayStart.subtract(
-        Duration(days: now.weekday - DateTime.monday),
+      final thisWeekStart = AppTimeFormats.localDayStartOffset(
+        todayStart,
+        -(now.weekday - DateTime.monday),
       );
-      final start = thisWeekStart.subtract(const Duration(days: 7));
+      final start = AppTimeFormats.localDayStartOffset(thisWeekStart, -7);
       return _TimeLogPeriod(label: '上周', start: start, end: thisWeekStart);
     }
     final recentDayRange = _resolveRecentDayRange(text, now);
@@ -2650,7 +2666,7 @@ ${lines.isEmpty ? '暂无' : lines}''';
       return _TimeLogPeriod(
         label: '本季度',
         start: currentQuarterStart,
-        end: todayStart.add(const Duration(days: 1)),
+        end: AppTimeFormats.localDayStartOffset(todayStart, 1),
       );
     }
     if (text.contains('去年')) {
@@ -2664,15 +2680,18 @@ ${lines.isEmpty ? '暂无' : lines}''';
       return _TimeLogPeriod(
         label: '今年',
         start: DateTime(now.year),
-        end: todayStart.add(const Duration(days: 1)),
+        end: AppTimeFormats.localDayStartOffset(todayStart, 1),
       );
     }
     if (text.contains('本周') || text.contains('这周')) {
-      final start = todayStart.subtract(Duration(days: now.weekday - 1));
+      final start = AppTimeFormats.localDayStartOffset(
+        todayStart,
+        -(now.weekday - 1),
+      );
       return _TimeLogPeriod(
         label: '本周',
         start: start,
-        end: todayStart.add(const Duration(days: 1)),
+        end: AppTimeFormats.localDayStartOffset(todayStart, 1),
       );
     }
     if (text.contains('本月') || text.contains('这个月')) {
@@ -2680,7 +2699,7 @@ ${lines.isEmpty ? '暂无' : lines}''';
       return _TimeLogPeriod(
         label: '本月',
         start: start,
-        end: todayStart.add(const Duration(days: 1)),
+        end: AppTimeFormats.localDayStartOffset(todayStart, 1),
       );
     }
     return null;
@@ -2732,7 +2751,7 @@ ${lines.isEmpty ? '暂无' : lines}''';
     return _DateRange(
       label: '自定义',
       start: start,
-      end: end.add(const Duration(days: 1)),
+      end: AppTimeFormats.localDayStartOffset(end, 1),
     );
   }
 
@@ -2783,7 +2802,7 @@ ${lines.isEmpty ? '暂无' : lines}''';
     return _TimeLogPeriod(
       label: '自定义',
       start: start,
-      end: inclusiveEnd.add(const Duration(days: 1)),
+      end: AppTimeFormats.localDayStartOffset(inclusiveEnd, 1),
     );
   }
 
@@ -3029,30 +3048,33 @@ ${lines.isEmpty ? '暂无' : lines}''';
       return _DateRange(
         label: '今日',
         start: todayStart,
-        end: todayStart.add(const Duration(days: 1)),
+        end: AppTimeFormats.localDayStartOffset(todayStart, 1),
       );
     }
     if (text.contains('明天') || text.contains('明日')) {
-      final start = todayStart.add(const Duration(days: 1));
+      final start = AppTimeFormats.localDayStartOffset(todayStart, 1);
       return _DateRange(
         label: '明日',
         start: start,
-        end: start.add(const Duration(days: 1)),
+        end: AppTimeFormats.localDayStartOffset(start, 1),
       );
     }
     if (text.contains('本周') || text.contains('这周')) {
-      final start = todayStart.subtract(Duration(days: now.weekday - 1));
+      final start = AppTimeFormats.localDayStartOffset(
+        todayStart,
+        -(now.weekday - 1),
+      );
       return _DateRange(
         label: '本周',
         start: start,
-        end: start.add(const Duration(days: 7)),
+        end: AppTimeFormats.localDayStartOffset(start, 7),
       );
     }
     if (text.contains('最近') || text.contains('近期')) {
       return _DateRange(
         label: '最近14天',
         start: todayStart,
-        end: todayStart.add(const Duration(days: 14)),
+        end: AppTimeFormats.localDayStartOffset(todayStart, 14),
       );
     }
     final futureDays = _parseFutureDays(text);
@@ -3060,7 +3082,7 @@ ${lines.isEmpty ? '暂无' : lines}''';
       return _DateRange(
         label: '未来$futureDays天',
         start: todayStart,
-        end: todayStart.add(Duration(days: futureDays)),
+        end: AppTimeFormats.localDayStartOffset(todayStart, futureDays),
       );
     }
     return null;
