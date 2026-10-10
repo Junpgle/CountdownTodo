@@ -108,6 +108,114 @@ void main() {
     expect(chunks.expand((chunk) => chunk.toolCalls), isEmpty);
   });
 
+  test('续聊中的完整新规划请求隔离旧草案历史并正常生成新操作卡', () async {
+    const request =
+        '请从现在开始安排我今天剩下的时间，截止晚上21:30，避开晚餐。'
+        '我要完成：公考行测复习、公考申论复习、习概小论文选题和提交、预备党员在线党课学习。'
+        '请生成规划块操作卡供我核对，不要自动保存。';
+    final planningTools = [
+      ...tools,
+      ...AiNativeToolDefinitionBuilder.buildNativeToolDefinitions(request),
+    ];
+    var rounds = 0;
+    final chunks = await AiToolChatRunner.run(
+      messages: const [
+        {'role': 'system', 'content': '基础系统提示'},
+        {'role': 'system', 'content': '只读查询工具说明'},
+        {'role': 'user', 'content': '帮我规划今天的待办'},
+        {
+          'role': 'assistant',
+          'content': '已生成1条待确认操作草案，请核对。'
+              '\n[READ_ONLY_TOOL_HISTORY]旧对话中的待办查询结果[/READ_ONLY_TOOL_HISTORY]',
+        },
+        {'role': 'user', 'content': request},
+      ],
+      planningRequestText: request,
+      tools: planningTools,
+      requirePlanningProposal: true,
+      streamRound: (history, _) async* {
+        rounds++;
+        expect(
+          history.where((message) => message['role'] == 'user').map(
+            (message) => message['content'],
+          ),
+          [request],
+        );
+        expect(
+          history.any(
+            (message) =>
+                '${message['content']}'.contains('旧对话中的待办查询结果') ||
+                '${message['content']}'.contains('已生成1条待确认操作草案'),
+          ),
+          isFalse,
+        );
+        if (rounds == 1) {
+          expect(history.last['role'], 'user');
+          yield const AiChatStreamChunk(
+            toolCalls: [
+              AiChatFunctionCall(
+                id: 'current-todos',
+                name: 'query_app_data',
+                arguments: '{"domain":"todos","view":"list"}',
+              ),
+            ],
+          );
+        } else {
+          expect(history.last['role'], 'tool');
+          yield const AiChatStreamChunk(
+            toolCalls: [
+              AiChatFunctionCall(
+                id: 'new-planning-draft',
+                name: 'propose_cdt_actions',
+                arguments:
+                    '{"actions":[{"action":"create_plan_block","blocks":[{"newTodoTitle":"行测","startTime":"2026-10-10 18:00","dueDate":"2026-10-10 18:30"}]}]}',
+              ),
+            ],
+          );
+        }
+      },
+      executeRead: (_) async => {
+        'ok': true,
+        'items': [
+          {'id': 'todo-xingce', 'title': '行测'},
+        ],
+      },
+    ).toList();
+
+    expect(rounds, 2);
+    expect(
+      chunks.expand((chunk) => chunk.toolCalls).last.name,
+      'propose_cdt_actions',
+    );
+  });
+
+  test('不完整的规划追问仍保留之前对话上下文', () async {
+    const request = '那按之前的安排继续到晚上九点半';
+    var historyRetained = false;
+    await AiToolChatRunner.run(
+      messages: const [
+        {'role': 'system', 'content': '基础系统提示'},
+        {'role': 'user', 'content': '行测和申论排到晚上九点半'},
+        {'role': 'assistant', 'content': '晚餐后安排行测，再安排申论。'},
+        {'role': 'user', 'content': request},
+      ],
+      planningRequestText: request,
+      tools: [
+        ...tools,
+        ...AiNativeToolDefinitionBuilder.buildNativeToolDefinitions(request),
+      ],
+      requirePlanningProposal: true,
+      streamRound: (history, _) async* {
+        historyRetained = history.any(
+          (message) => message['content'] == '晚餐后安排行测，再安排申论。',
+        );
+        yield const AiChatStreamChunk(content: '请确认之前设置的具体时间。');
+      },
+      executeRead: (_) async => throw StateError('不能执行写入'),
+    ).toList();
+    expect(historyRetained, isTrue);
+  });
+
   test('真正缺少时段时允许澄清，不把普通规划咨询强制变成操作', () async {
     var rounds = 0;
     final chunks = await AiToolChatRunner.run(

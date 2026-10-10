@@ -364,6 +364,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
               executeRead: _createQueryToolService().execute,
               cancelToken: _cancelGeneration,
               includeReasoningContent: includeReasoningContent,
+              planningRequestText: requestText,
               requirePlanningProposal: (RegExp(r'生成|确认|确定|^可以|^要的|^好的|^需要')
                   .hasMatch(requestText) ||
                   AiNativeToolDefinitionBuilder.isMissingActionCardReport(requestText)) &&
@@ -754,16 +755,29 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
       return false;
     }
     final latest = _messages.reversed
-        .where((message) => message.role == ChatRole.assistant &&
-            message.content != _planningConfirmationHint).firstOrNull;
+        .where(
+          (message) =>
+              message.role == ChatRole.assistant &&
+              message.content != _planningConfirmationHint,
+        )
+        .firstOrNull;
     if (latest?.todoActions?.any((action) => action.isPlanBlockAction &&
-        !action.isAdded && !action.isIgnored) != true) return false;
+        !action.isAdded && !action.isIgnored) != true) {
+      return false;
+    }
     final sessionId = _activeSessionId;
-    if (sessionId == null) return false;
-    final user = ChatMessage(role: ChatRole.user, content: text,
-        usageSummary: _takePendingVoiceUsageSummary());
-    final reply = ChatMessage(role: ChatRole.assistant,
-      content: _planningConfirmationHint);
+    if (sessionId == null) {
+      return false;
+    }
+    final user = ChatMessage(
+      role: ChatRole.user,
+      content: text,
+      usageSummary: _takePendingVoiceUsageSummary(),
+    );
+    final reply = ChatMessage(
+      role: ChatRole.assistant,
+      content: _planningConfirmationHint,
+    );
     setState(() {
       _messages.addAll([user, reply]);
       _actionRailCollapsed = false;

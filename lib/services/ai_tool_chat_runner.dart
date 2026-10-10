@@ -26,12 +26,16 @@ abstract final class AiToolChatRunner {
     Completer<void>? cancelToken,
     bool includeReasoningContent = false,
     bool requirePlanningProposal = false,
+    String planningRequestText = '',
     int maxQueryRounds = 4,
     int maxCalls = 8,
   }) async* {
-    final history = [
-      for (final message in messages) Map<String, dynamic>.from(message),
-    ];
+    final history = _initialHistory(
+      messages,
+      compactForPlanning:
+          requirePlanningProposal &&
+          _isSelfContainedPlanningRequest(planningRequestText),
+    );
     final allowed = {
       for (final tool in tools) (tool['function'] as Map)['name'] as String,
     };
@@ -240,5 +244,47 @@ abstract final class AiToolChatRunner {
         yield AiChatStreamChunk(toolResults: {call.id: result});
       }
     }
+  }
+
+  static List<Map<String, dynamic>> _initialHistory(
+    List<Map<String, dynamic>> messages, {
+    required bool compactForPlanning,
+  }) {
+    final copied = [
+      for (final message in messages) Map<String, dynamic>.from(message),
+    ];
+    if (!compactForPlanning) return copied;
+
+    final currentUserIndex = copied.lastIndexWhere(
+      (message) => message['role'] == 'user',
+    );
+    if (currentUserIndex < 0) return copied;
+
+    // A complete, explicit schedule is a new planning request even when it is
+    // sent in a long-running chat that contains an older pending proposal.
+    // Keep the current system instructions and request, while excluding stale
+    // proposal summaries and read-only results from the prior turn.
+    return [
+      for (final message in copied)
+        if (message['role'] == 'system') message,
+      {
+        'role': 'system',
+        'content':
+            '当前用户消息已明确给出本轮任务和时间要求。请只根据当前请求与本轮查询结果重新生成规划草案；'
+            '历史对话中的旧草案和旧答复不属于本轮计划。',
+      },
+      copied[currentUserIndex],
+    ];
+  }
+
+  static bool _isSelfContainedPlanningRequest(String text) {
+    final request = text.trim();
+    if (request.isEmpty || request.length < 18) return false;
+    final hasPlanningIntent = RegExp(r'安排|规划|排程|联排').hasMatch(request);
+    final hasTimeBoundary = RegExp(
+      r'(?:\d{1,2}\s*(?::|：|点)|(?:截止|截至|到|之前).{0,10}(?:晚上|今晚|下午|夜里|早上|上午|中午|\d)|从现在|剩下的时间|今天|明天)',
+    ).hasMatch(request);
+    final listSeparators = RegExp(r'[、，,；;]|以及|还有|然后|再').allMatches(request);
+    return hasPlanningIntent && hasTimeBoundary && listSeparators.length >= 2;
   }
 }
