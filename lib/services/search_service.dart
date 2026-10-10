@@ -242,6 +242,8 @@ class SearchService {
       return scope == SearchScope.all ? await guessSearch() : [];
     }
     final q = query.toLowerCase().trim();
+    final searchNow = DateTime.now();
+    final targetDate = _parseDateQuery(q, now: searchNow);
 
     // 🚀 异步记录搜索历史
     if (recordHistory) {
@@ -278,13 +280,15 @@ class SearchService {
             searchTerms,
             scope,
             onSourceQueried,
+            targetDate: targetDate,
+            now: searchNow,
           ).catchError((_) => <SearchResult>[])
         : Future.value(<SearchResult>[]);
     final username = await StorageService.getLoginSession() ?? 'default';
     final extraSearch = GlobalSearchExtraService.search(
       username,
       searchTerms,
-      targetDate: _parseDateQuery(q),
+      targetDate: targetDate,
       scope: scope,
       onSourceQueried: onSourceQueried,
     ).catchError((_) => <SearchResult>[]);
@@ -398,36 +402,37 @@ class SearchService {
     return terms.every((term) => lower.contains(term.toLowerCase()));
   }
 
-  DateTime? _parseDateQuery(String query) {
-    final now = DateTime.now();
+  DateTime? _parseDateQuery(String query, {DateTime? now}) {
+    final current = now ?? DateTime.now();
     switch (query) {
       case '今天':
       case '今日':
       case '今':
       case 'today':
-        return now;
+        return current;
       case '昨天':
       case '昨日':
       case 'yesterday':
-        return now.subtract(const Duration(days: 1));
+        return AppTimeFormats.localDayStartOffset(current, -1);
       case '前天':
-        return now.subtract(const Duration(days: 2));
+        return AppTimeFormats.localDayStartOffset(current, -2);
       case '大前天':
-        return now.subtract(const Duration(days: 3));
+        return AppTimeFormats.localDayStartOffset(current, -3);
       case '明天':
       case '明日':
       case 'tomorrow':
-        return now.add(const Duration(days: 1));
+        return AppTimeFormats.localDayStartOffset(current, 1);
       case '后天':
-        return now.add(const Duration(days: 2));
+        return AppTimeFormats.localDayStartOffset(current, 2);
       case '大后天':
-        return now.add(const Duration(days: 3));
+        return AppTimeFormats.localDayStartOffset(current, 3);
     }
     final full = RegExp(r'^(\d{4})[./\-/年](\d{1,2})[./\-/月](\d{1,2})[日号]?$')
         .firstMatch(query);
     final short =
         RegExp(r'^(\d{1,2})[./\-/月](\d{1,2})[日号]?$').firstMatch(query);
-    final year = full == null ? now.year : int.tryParse(full.group(1)!) ?? 0;
+    final year =
+        full == null ? current.year : int.tryParse(full.group(1)!) ?? 0;
     final month =
         int.tryParse((full ?? short)?.group(full == null ? 1 : 2) ?? '') ?? 0;
     final day =
@@ -437,6 +442,19 @@ class SearchService {
     return parsed.year == year && parsed.month == month && parsed.day == day
         ? parsed
         : null;
+  }
+
+  @visibleForTesting
+  DateTime? parseDateQueryForTest(String query, {required DateTime now}) =>
+      _parseDateQuery(query, now: now);
+
+  @visibleForTesting
+  static ({DateTime start, DateTime end}) dateRangeForSearch(DateTime date) {
+    final start = AppTimeFormats.dayStart(date);
+    return (
+      start: start,
+      end: AppTimeFormats.localDayStartOffset(start, 1),
+    );
   }
 
   Future<List<SearchResult>> _searchHabitsAndChallenges(
@@ -565,22 +583,21 @@ class SearchService {
     String query,
     List<String> searchTerms,
     SearchScope scope,
-    SearchSourceObserver? onSourceQueried,
-  ) async {
+    SearchSourceObserver? onSourceQueried, {
+    required DateTime? targetDate,
+    required DateTime now,
+  }) async {
     final dbItems = <SearchResult>[];
     final db = DatabaseHelper.instance;
     final username = await StorageService.getLoginSession() ?? 'default';
     final q = query.toLowerCase().trim();
 
-    // ── 日期查询解析 (支持 "今天", "昨天", "04/24" 等) ────────────────────
-    final targetDate = _parseDateQuery(q);
-
     final isDateQuery = targetDate != null;
-    final startOfDay = targetDate != null
-        ? DateTime(targetDate.year, targetDate.month, targetDate.day)
-        : null;
-    final endOfDay = startOfDay?.add(const Duration(days: 1));
-    final now = DateTime.now();
+    final dateRange = targetDate == null
+        ? null
+        : dateRangeForSearch(targetDate);
+    final startOfDay = dateRange?.start;
+    final endOfDay = dateRange?.end;
     final targetDateValue = targetDate;
     final isTodayQuery =
         isDateQuery &&
