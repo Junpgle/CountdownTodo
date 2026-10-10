@@ -903,18 +903,42 @@ class AppDialogs {
     required String title,
     String? message,
     Widget? content,
+    Widget? icon,
     String cancelLabel = '取消',
     String confirmLabel = '确定',
+    Widget? confirmIcon,
+    Color? confirmColor,
+    Color? confirmTextColor,
     bool destructive = false,
     bool barrierDismissible = true,
   }) async {
     final glassConfiguration = LiquidGlassEffectService.configuration;
     if (glassConfiguration.enabled) {
       final colorScheme = Theme.of(context).colorScheme;
+      final effectiveContent = content ??
+          (message == null
+              ? null
+              : Text(
+                  message,
+                  style: TextStyle(
+                    color: colorScheme.onSurfaceVariant,
+                    fontSize: 14,
+                    height: 1.45,
+                  ),
+                ));
       final result = await GlassDialog.show<bool>(
         context: context,
         title: title,
-        content: content ?? (message == null ? null : Text(message)),
+        content: icon != null
+            ? Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  icon,
+                  const SizedBox(height: 12),
+                  if (effectiveContent != null) effectiveContent,
+                ],
+              )
+            : effectiveContent,
         barrierDismissible: barrierDismissible,
         barrierColor: colorScheme.scrim.withValues(alpha: 0.42),
         quality: glassConfiguration.mode == LiquidGlassEffectMode.enhanced
@@ -939,30 +963,231 @@ class AppDialogs {
       return result ?? false;
     }
 
-    final result = await showDialog<bool>(
+    final result = await showAppDialog<bool>(
       context: context,
       barrierDismissible: barrierDismissible,
       builder: (dialogContext) {
         final colorScheme = Theme.of(dialogContext).colorScheme;
+        final buttonColor =
+            confirmColor ?? (destructive ? colorScheme.error : null);
+        final buttonTextColor = confirmTextColor ??
+            (destructive
+                ? colorScheme.onError
+                : (buttonColor != null
+                    ? (ThemeData.estimateBrightnessForColor(buttonColor) ==
+                            Brightness.dark
+                        ? Colors.white
+                        : Colors.black)
+                    : null));
+
         return AlertDialog(
+          icon: icon,
           title: Text(title),
-          content: content ?? (message == null ? null : Text(message)),
+          content: content ??
+              (message == null
+                  ? null
+                  : Text(
+                      message,
+                      style: TextStyle(
+                        color: colorScheme.onSurfaceVariant,
+                        fontSize: 14,
+                        height: 1.45,
+                      ),
+                    )),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(false),
               child: Text(cancelLabel),
             ),
-            FilledButton(
-              style: destructive
-                  ? FilledButton.styleFrom(
-                      backgroundColor: colorScheme.error,
-                      foregroundColor: colorScheme.onError,
-                    )
-                  : null,
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: Text(confirmLabel),
-            ),
+            if (confirmIcon != null)
+              FilledButton.icon(
+                style: buttonColor != null
+                    ? FilledButton.styleFrom(
+                        backgroundColor: buttonColor,
+                        foregroundColor: buttonTextColor,
+                      )
+                    : null,
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                icon: confirmIcon,
+                label: Text(confirmLabel),
+              )
+            else
+              FilledButton(
+                style: buttonColor != null
+                    ? FilledButton.styleFrom(
+                        backgroundColor: buttonColor,
+                        foregroundColor: buttonTextColor,
+                      )
+                    : null,
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                child: Text(confirmLabel),
+              ),
           ],
+        );
+      },
+    );
+    return result ?? false;
+  }
+
+  /// Displays a confirmation action sheet matching the app's bottom sheet styling.
+  static Future<bool> confirmSheet(
+    BuildContext context, {
+    required String title,
+    String? subtitle,
+    String? message,
+    Widget? content,
+    IconData? icon,
+    String cancelLabel = '取消',
+    String confirmLabel = '确定',
+    IconData? confirmIcon,
+    Color? confirmColor,
+    Color? confirmTextColor,
+    bool destructive = false,
+    bool useRootNavigator = true,
+  }) async {
+    final result = await showAppModalBottomSheet<bool>(
+      context: context,
+      showDragHandle: true,
+      useSafeArea: true,
+      useRootNavigator: useRootNavigator,
+      builder: (sheetContext) {
+        final colorScheme = Theme.of(sheetContext).colorScheme;
+        final buttonColor =
+            confirmColor ?? (destructive ? colorScheme.error : null);
+        final buttonTextColor = confirmTextColor ??
+            (destructive
+                ? colorScheme.onError
+                : (buttonColor != null
+                    ? (ThemeData.estimateBrightnessForColor(buttonColor) ==
+                            Brightness.dark
+                        ? Colors.white
+                        : Colors.black)
+                    : null));
+
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    if (icon != null) ...[
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: destructive
+                              ? colorScheme.errorContainer
+                              : (confirmColor != null
+                                  ? confirmColor.withValues(alpha: 0.15)
+                                  : colorScheme.primaryContainer
+                                      .withValues(alpha: 0.7)),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          icon,
+                          size: 22,
+                          color: destructive
+                              ? colorScheme.onErrorContainer
+                              : (confirmColor ?? colorScheme.primary),
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                    ],
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            title,
+                            style: Theme.of(sheetContext)
+                                .textTheme
+                                .titleLarge
+                                ?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 18,
+                                ),
+                          ),
+                          if (subtitle != null && subtitle.isNotEmpty) ...[
+                            const SizedBox(height: 2),
+                            Text(
+                              subtitle,
+                              style: Theme.of(sheetContext)
+                                  .textTheme
+                                  .bodySmall
+                                  ?.copyWith(
+                                    color: colorScheme.onSurfaceVariant,
+                                  ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                if (content != null)
+                  content
+                else if (message != null)
+                  Text(
+                    message,
+                    style: TextStyle(
+                      fontSize: 14,
+                      height: 1.5,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                const SizedBox(height: 20),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.of(sheetContext).pop(false),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                        child: Text(cancelLabel),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FilledButton.icon(
+                        style: buttonColor != null
+                            ? FilledButton.styleFrom(
+                                backgroundColor: buttonColor,
+                                foregroundColor: buttonTextColor,
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 12),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                              )
+                            : FilledButton.styleFrom(
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 12),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                              ),
+                        onPressed: () => Navigator.of(sheetContext).pop(true),
+                        icon:
+                            Icon(confirmIcon ?? Icons.check_rounded, size: 18),
+                        label: Text(confirmLabel),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
         );
       },
     );

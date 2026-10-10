@@ -70,39 +70,167 @@ class _VersionHistorySheetState extends State<VersionHistorySheet>
     }
   }
 
-  Future<void> _handleRollback(dynamic logId, {bool isLocal = false}) async {
-    final confirmed = await AppDialogs.confirm(
-      context,
-      title: isLocal ? '确认本地回滚' : '确认云端回滚',
-      message: isLocal ? '确定要恢复至本地暂存的此版本吗？' : '确定要将该项恢复至此历史版本吗？回滚操作将同步至所有设备。',
-      confirmLabel: '确认回滚',
-    );
+  Future<void> _handleRollback(dynamic itemOrId, {bool isLocal = false}) async {
+    final colorScheme = Theme.of(context).colorScheme;
+    final logId = itemOrId is Map ? itemOrId['id'] : itemOrId;
+    final isMap = itemOrId is Map;
 
-    if (confirmed) {
-      final username = await StorageService.getCurrentUsername();
-      final res = await ApiService.rollbackItem(
-        logId,
-        isLocal: isLocal,
-        table: widget.table,
-        username: username,
-      );
+    String? timeStr;
+    String operator = '系统';
+    String opType = 'UPDATE';
 
-      if (res['success'] == true) {
-        // 🚀 Uni-Sync 4.0: 回滚成功后立即触发本地刷新与同步
-        if (username != null) {
-          await StorageService.syncData(username);
-        }
-
-        if (mounted) {
-          AppSnackBars.success(context, res['message'] ?? '已成功回滚版本');
-          Navigator.pop(context);
-        }
-      } else {
-        if (mounted) {
-          AppSnackBars.error(context, '回滚失败: ${res['error']}');
+    if (isMap) {
+      operator = itemOrId['operator_name']?.toString() ?? '系统';
+      opType = itemOrId['op_type']?.toString() ?? 'UPDATE';
+      final rawTimestamp = itemOrId['timestamp'];
+      if (rawTimestamp != null) {
+        final timestampMs = rawTimestamp is int
+            ? rawTimestamp
+            : int.tryParse(rawTimestamp.toString());
+        if (timestampMs != null && timestampMs > 0) {
+          final dt = DateTime.fromMillisecondsSinceEpoch(timestampMs);
+          timeStr = AppTimeFormats.format(dt, 'yyyy-MM-dd HH:mm:ss');
         }
       }
     }
+
+    final confirmed = await AppDialogs.confirmSheet(
+      context,
+      title: isLocal ? '确认本地回滚' : '确认云端回滚',
+      subtitle: widget.title,
+      icon: isLocal
+          ? Icons.restore_page_outlined
+          : Icons.settings_backup_restore_rounded,
+      content: _buildRollbackSheetContent(
+        context: context,
+        isLocal: isLocal,
+        timeStr: timeStr,
+        operator: operator,
+        opType: opType,
+      ),
+      confirmIcon: Icons.restore_rounded,
+      confirmLabel: '确认回滚',
+      confirmColor: colorScheme.primary,
+    );
+
+    if (confirmed) {
+      if (!mounted) return;
+      AppDialogs.showLoading(
+        context,
+        isLocal ? '正在回滚本地版本...' : '正在执行云端回滚...',
+      );
+
+      try {
+        final username = await StorageService.getCurrentUsername();
+        final res = await ApiService.rollbackItem(
+          logId,
+          isLocal: isLocal,
+          table: widget.table,
+          username: username,
+        );
+
+        if (!mounted) return;
+        AppDialogs.close(context);
+
+        if (res['success'] == true) {
+          // 🚀 Uni-Sync 4.0: 回滚成功后立即触发本地刷新与同步
+          if (username != null) {
+            await StorageService.syncData(username);
+          }
+
+          if (mounted) {
+            AppSnackBars.success(context, res['message'] ?? '已成功回滚版本');
+            Navigator.pop(context);
+          }
+        } else {
+          if (mounted) {
+            AppSnackBars.error(context, '回滚失败: ${res['error']}');
+          }
+        }
+      } catch (e) {
+        if (!mounted) return;
+        AppDialogs.close(context);
+        AppSnackBars.error(context, '回滚异常: $e');
+      }
+    }
+  }
+
+  Widget _buildRollbackSheetContent({
+    required BuildContext context,
+    required bool isLocal,
+    String? timeStr,
+    required String operator,
+    required String opType,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    Icons.history_rounded,
+                    size: 16,
+                    color: colorScheme.primary,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    '目标版本信息',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: colorScheme.onSurface,
+                    ),
+                  ),
+                  const Spacer(),
+                  if (timeStr != null)
+                    Text(
+                      timeStr,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '修改人：$operator · 操作：$opType',
+                style: TextStyle(
+                  fontSize: 12.5,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Text(
+            isLocal
+                ? '确定要恢复至本地暂存的此历史记录吗？'
+                : '确定要将该项恢复至此云端历史版本吗？回滚操作将自动同步至所有设备并覆盖当前最新数据。',
+            style: TextStyle(
+              fontSize: 13,
+              height: 1.45,
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+      ],
+    );
   }
 
   @override
@@ -289,7 +417,7 @@ class _VersionHistorySheetState extends State<VersionHistorySheet>
               // 🚀 核心修复：只有非第一项（非当前最新版）才显示还原按钮
               if (index != 0)
                 TextButton.icon(
-                  onPressed: () => _handleRollback(item['id'],
+                  onPressed: () => _handleRollback(item,
                       isLocal: item['is_local'] == true),
                   icon: const Icon(Icons.settings_backup_restore, size: 14),
                   label: const Text('还原此版本', style: TextStyle(fontSize: 12)),
