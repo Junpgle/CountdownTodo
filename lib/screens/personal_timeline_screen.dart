@@ -35,6 +35,34 @@ enum TimelineDimension { daily, weekly, monthly, yearly }
 
 enum _TimelinePosterAction { share, save }
 
+@visibleForTesting
+({DateTime start, DateTime end}) timelineDateRange(
+  TimelineDimension dimension,
+  DateTime date,
+) {
+  final day = AppTimeFormats.dayStart(date);
+  return switch (dimension) {
+    TimelineDimension.daily => (
+      start: day,
+      end: AppTimeFormats.localDayStartOffset(day, 1),
+    ),
+    TimelineDimension.weekly => _weeklyRange(day),
+    TimelineDimension.monthly => (
+      start: DateTime(day.year, day.month, 1),
+      end: DateTime(day.year, day.month + 1, 1),
+    ),
+    TimelineDimension.yearly => (
+      start: DateTime(day.year, 1, 1),
+      end: DateTime(day.year + 1, 1, 1),
+    ),
+  };
+}
+
+({DateTime start, DateTime end}) _weeklyRange(DateTime day) {
+  final start = AppTimeFormats.localDayStartOffset(day, -(day.weekday - 1));
+  return (start: start, end: AppTimeFormats.localDayStartOffset(start, 7));
+}
+
 class PersonalTimelineScreen extends StatefulWidget {
   final String username;
   final TimelineDimension initialDimension;
@@ -157,30 +185,10 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
       _mlInsights = [];
     });
 
-    DateTime start;
-    DateTime end;
-
-    final day =
-        DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day);
-
-    switch (_dimension) {
-      case TimelineDimension.daily:
-        start = day;
-        end = day.add(const Duration(days: 1));
-        break;
-      case TimelineDimension.weekly:
-        start = day.subtract(Duration(days: day.weekday - 1));
-        end = start.add(const Duration(days: 7));
-        break;
-      case TimelineDimension.monthly:
-        start = DateTime(day.year, day.month, 1);
-        end = DateTime(day.year, day.month + 1, 1);
-        break;
-      case TimelineDimension.yearly:
-        start = DateTime(day.year, 1, 1);
-        end = DateTime(day.year + 1, 1, 1);
-        break;
-    }
+    final dateRange = timelineDateRange(_dimension, _selectedDate);
+    final start = dateRange.start;
+    final end = dateRange.end;
+    final day = AppTimeFormats.dayStart(_selectedDate);
 
     try {
       // 1. Get Timeline Summary for Range
@@ -256,7 +264,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
           if (_isProductiveScreenCategory(cat)) productiveScreen += duration;
           if (_isDistractionScreenCategory(cat)) distractionScreen += duration;
         }
-        cursor = cursor.add(const Duration(days: 1));
+        cursor = AppTimeFormats.localDayStartOffset(cursor, 1);
       }
 
       final todos = await StorageService.getTodos(widget.username);
@@ -565,7 +573,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
     _isLoadingAllTimeMedals = true;
     try {
       final start = DateTime(2020);
-      final end = DateTime.now().add(const Duration(days: 1));
+      final end = AppTimeFormats.localDayStartOffset(DateTime.now(), 1);
 
       // 1. Get Global Timeline Summary
       final summary = await TimelineService.instance
@@ -1119,9 +1127,9 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
   ) {
     switch (dimension) {
       case TimelineDimension.daily:
-        return date.add(Duration(days: direction));
+        return AppTimeFormats.localDayStartOffset(date, direction);
       case TimelineDimension.weekly:
-        return date.add(Duration(days: direction * 7));
+        return AppTimeFormats.localDayStartOffset(date, direction * 7);
       case TimelineDimension.monthly:
         return DateTime(date.year, date.month + direction, 1);
       case TimelineDimension.yearly:
@@ -1135,8 +1143,11 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
       case TimelineDimension.daily:
         return DateFormat('yyyy年MM月dd日').format(day);
       case TimelineDimension.weekly:
-        final start = day.subtract(Duration(days: day.weekday - 1));
-        final end = start.add(const Duration(days: 6));
+        final start = AppTimeFormats.localDayStartOffset(
+          day,
+          -(day.weekday - 1),
+        );
+        final end = AppTimeFormats.localDayStartOffset(start, 6);
         return '${DateFormat('MM/dd').format(start)} - ${DateFormat('MM/dd').format(end)}';
       case TimelineDimension.monthly:
         return DateFormat('yyyy年MM月').format(day);
@@ -1154,8 +1165,14 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
       case TimelineDimension.daily:
         return a.year == b.year && a.month == b.month && a.day == b.day;
       case TimelineDimension.weekly:
-        final aStart = a.subtract(Duration(days: a.weekday - 1));
-        final bStart = b.subtract(Duration(days: b.weekday - 1));
+        final aStart = AppTimeFormats.localDayStartOffset(
+          AppTimeFormats.dayStart(a),
+          -(a.weekday - 1),
+        );
+        final bStart = AppTimeFormats.localDayStartOffset(
+          AppTimeFormats.dayStart(b),
+          -(b.weekday - 1),
+        );
         return aStart.year == bStart.year &&
             aStart.month == bStart.month &&
             aStart.day == bStart.day;
@@ -1951,9 +1968,11 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
       case TimelineDimension.daily:
         return DateFormat('yyyy年MM月dd日').format(_selectedDate);
       case TimelineDimension.weekly:
-        final start =
-            _selectedDate.subtract(Duration(days: _selectedDate.weekday - 1));
-        final end = start.add(const Duration(days: 6));
+        final start = AppTimeFormats.localDayStartOffset(
+          AppTimeFormats.dayStart(_selectedDate),
+          -(_selectedDate.weekday - 1),
+        );
+        final end = AppTimeFormats.localDayStartOffset(start, 6);
         return '${DateFormat('MM/dd').format(start)} - ${DateFormat('MM/dd').format(end)}';
       case TimelineDimension.monthly:
         return DateFormat('yyyy年MM月').format(_selectedDate);
@@ -1994,10 +2013,16 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
     setState(() {
       switch (_dimension) {
         case TimelineDimension.daily:
-          _selectedDate = _selectedDate.add(Duration(days: direction));
+          _selectedDate = AppTimeFormats.localDayStartOffset(
+            _selectedDate,
+            direction,
+          );
           break;
         case TimelineDimension.weekly:
-          _selectedDate = _selectedDate.add(Duration(days: direction * 7));
+          _selectedDate = AppTimeFormats.localDayStartOffset(
+            _selectedDate,
+            direction * 7,
+          );
           break;
         case TimelineDimension.monthly:
           _selectedDate =
@@ -2042,8 +2067,8 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
       case TimelineDimension.daily:
         return DateFormat('yyyy.MM.dd').format(day);
       case TimelineDimension.weekly:
-        start = day.subtract(Duration(days: day.weekday - 1));
-        end = start.add(const Duration(days: 6));
+        start = AppTimeFormats.localDayStartOffset(day, -(day.weekday - 1));
+        end = AppTimeFormats.localDayStartOffset(start, 6);
         final displayEnd = end.isAfter(today) ? today : end;
         return '${DateFormat('yyyy.MM.dd').format(start)} - ${DateFormat('yyyy.MM.dd').format(displayEnd)}';
       case TimelineDimension.monthly:
@@ -2364,10 +2389,10 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
               _selectedDate.year, _selectedDate.month, _selectedDate.day);
           break;
         case TimelineDimension.weekly:
-          rangeStart =
-              _selectedDate.subtract(Duration(days: _selectedDate.weekday - 1));
-          rangeStart =
-              DateTime(rangeStart.year, rangeStart.month, rangeStart.day);
+          rangeStart = AppTimeFormats.localDayStartOffset(
+            AppTimeFormats.dayStart(_selectedDate),
+            -(_selectedDate.weekday - 1),
+          );
           break;
         case TimelineDimension.monthly:
           rangeStart = DateTime(_selectedDate.year, _selectedDate.month, 1);

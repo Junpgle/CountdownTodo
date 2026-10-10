@@ -11,6 +11,7 @@ import '../features/habits/services/habit_progress_calculator.dart';
 import '../features/finance/models/finance_models.dart';
 import '../features/finance/services/finance_repository.dart';
 import '../features/finance/services/finance_storage.dart';
+import '../utils/time_utils.dart';
 import 'storage/habit_storage.dart';
 
 class TimelineService {
@@ -20,8 +21,9 @@ class TimelineService {
   Future<List<TimelineEvent>> getEventsForDay(
       String username, DateTime date) async {
     final db = await DatabaseHelper.instance.databaseForUser(username);
-    final startOfDay = DateTime(date.year, date.month, date.day);
-    final endOfDay = startOfDay.add(const Duration(days: 1));
+    final dayBounds = dayBoundsForDate(date);
+    final startOfDay = dayBounds.start;
+    final endOfDay = dayBounds.end;
     final startOfDayMs = startOfDay.millisecondsSinceEpoch;
     final endOfDayMs = endOfDay.millisecondsSinceEpoch;
     final dayStr = DateFormat('yyyy-MM-dd').format(date);
@@ -294,8 +296,9 @@ class TimelineService {
     FinanceTransaction transaction,
     DateTime date,
   ) {
-    final startOfDay = DateTime(date.year, date.month, date.day);
-    final endOfDay = startOfDay.add(const Duration(days: 1));
+    final dayBounds = dayBoundsForDate(date);
+    final startOfDay = dayBounds.start;
+    final endOfDay = dayBounds.end;
     final fallbackTime = startOfDay.add(const Duration(hours: 12));
     final occurred = transaction.occurrenceLocalTime;
     if (occurred == null) return fallbackTime;
@@ -313,6 +316,22 @@ class TimelineService {
       timestamp = fallbackTime;
     }
     return timestamp;
+  }
+
+  @visibleForTesting
+  static ({DateTime start, DateTime end}) dayBoundsForDate(DateTime date) {
+    final start = AppTimeFormats.dayStart(date);
+    return (
+      start: start,
+      end: AppTimeFormats.localDayStartOffset(start, 1),
+    );
+  }
+
+  @visibleForTesting
+  static bool isSingleCalendarDayRange(DateTime start, DateTime end) {
+    final startDay = AppTimeFormats.dayStart(start);
+    final lastIncludedDay = AppTimeFormats.localDayStartOffset(end, -1);
+    return AppTimeFormats.isSameDay(startDay, lastIncludedDay);
   }
 
   static String financeTransactionTitle(
@@ -363,9 +382,8 @@ class TimelineService {
 
   Future<TimelineSummary> getSummaryForDay(
       String username, DateTime date) async {
-    final startOfDay = DateTime(date.year, date.month, date.day);
-    final endOfDay = startOfDay.add(const Duration(days: 1));
-    return getSummaryForRange(username, startOfDay, endOfDay);
+    final dayBounds = dayBoundsForDate(date);
+    return getSummaryForRange(username, dayBounds.start, dayBounds.end);
   }
 
   Future<TimelineSummary> getSummaryForRange(
@@ -535,9 +553,13 @@ class TimelineService {
 
         if (bestDay != null) {
           final productiveDay = bestDay;
-          final dayStart = productiveDay.millisecondsSinceEpoch;
-          final dayEnd =
-              productiveDay.add(const Duration(days: 1)).millisecondsSinceEpoch;
+          final dayStart = AppTimeFormats.dayStart(
+            productiveDay,
+          ).millisecondsSinceEpoch;
+          final dayEnd = AppTimeFormats.localDayStartOffset(
+            productiveDay,
+            1,
+          ).millisecondsSinceEpoch;
           final dayCompletions = await db.rawQuery(
             'SELECT (SELECT COUNT(*) FROM todos WHERE is_deleted=0 AND is_completed=1 AND updated_at >= ? AND updated_at < ?) + '
             '(SELECT COUNT(*) FROM countdowns WHERE is_deleted=0 AND is_completed=1 AND updated_at >= ? AND updated_at < ?) as c',
@@ -1180,9 +1202,8 @@ class TimelineService {
     required DateTime now,
   }) async {
     final goals = await HabitStorage.getHabitGoals(includeArchived: true);
-    final startDay = DateTime(start.year, start.month, start.day);
-    final endDay = DateTime(end.year, end.month, end.day)
-        .subtract(const Duration(days: 1));
+    final startDay = AppTimeFormats.dayStart(start);
+    final endDay = AppTimeFormats.localDayStartOffset(end, -1);
     if (endDay.isBefore(startDay)) return const TimelineHabitSummary();
 
     final progressByHabit = <HabitGoal, List<HabitDayProgress>>{};
@@ -1212,15 +1233,17 @@ class TimelineService {
   Future<int> _calculateConsecutiveActiveDays(
       dynamic db, DateTime start, DateTime end) async {
     final today = DateTime.now();
-    final todayDay = DateTime(today.year, today.month, today.day);
-    final startDay = DateTime(start.year, start.month, start.day);
-    final reportLastDay = DateTime(end.year, end.month, end.day)
-        .subtract(const Duration(days: 1));
-    final isSingleDay = end.difference(start).inDays <= 1;
+    final todayDay = AppTimeFormats.dayStart(today);
+    final startDay = AppTimeFormats.dayStart(start);
+    final reportLastDay = AppTimeFormats.localDayStartOffset(end, -1);
+    final isSingleDay = isSingleCalendarDayRange(start, end);
 
     if (isSingleDay) {
       final anchor = startDay.isAfter(todayDay) ? todayDay : startDay;
-      final cutoff = anchor.add(const Duration(days: 1)).millisecondsSinceEpoch;
+      final cutoff = AppTimeFormats.localDayStartOffset(
+        anchor,
+        1,
+      ).millisecondsSinceEpoch;
       final rows = await db.rawQuery(
         'SELECT DISTINCT day FROM ('
         'SELECT strftime(\'%Y-%m-%d\', datetime(created_at / 1000, \'unixepoch\', \'localtime\')) as day FROM todos WHERE is_deleted = 0 AND created_at < ? '
@@ -1237,7 +1260,7 @@ class TimelineService {
       var streak = 0;
       while (activeDays.contains(DateFormat('yyyy-MM-dd').format(cursor))) {
         streak++;
-        cursor = cursor.subtract(const Duration(days: 1));
+        cursor = AppTimeFormats.localDayStartOffset(cursor, -1);
       }
       return streak;
     }
@@ -1246,8 +1269,10 @@ class TimelineService {
         reportLastDay.isAfter(todayDay) ? todayDay : reportLastDay;
     if (rangeEndDay.isBefore(startDay)) return 0;
     final rangeStartMs = startDay.millisecondsSinceEpoch;
-    final rangeEndMs =
-        rangeEndDay.add(const Duration(days: 1)).millisecondsSinceEpoch;
+    final rangeEndMs = AppTimeFormats.localDayStartOffset(
+      rangeEndDay,
+      1,
+    ).millisecondsSinceEpoch;
 
     final rows = await db.rawQuery(
       'SELECT DISTINCT day FROM ('
@@ -1282,7 +1307,7 @@ class TimelineService {
       } else {
         current = 0;
       }
-      cursor = cursor.add(const Duration(days: 1));
+      cursor = AppTimeFormats.localDayStartOffset(cursor, 1);
     }
     return longest;
   }
