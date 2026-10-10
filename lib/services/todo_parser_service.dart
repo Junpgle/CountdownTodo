@@ -1,4 +1,5 @@
 import '../models.dart';
+import '../utils/time_utils.dart';
 
 // 新增：文本切片类型，方便 UI 高亮显示
 enum SegmentType { text, time, location, recurrence, duration }
@@ -79,7 +80,10 @@ class TodoParserService {
   // ══════════════════════════════════════════════
   // 公共入口
   // ══════════════════════════════════════════════
-  static List<ParsedTodoResult> parseMulti(String input) {
+  static List<ParsedTodoResult> parseMulti(
+    String input, {
+    DateTime? referenceTime,
+  }) {
     if (input.trim().isEmpty) return [];
 
     final results = <ParsedTodoResult>[];
@@ -87,7 +91,7 @@ class TodoParserService {
 
     for (var sentence in sentences) {
       if (sentence.trim().isEmpty) continue;
-      final result = parse(sentence.trim());
+      final result = parse(sentence.trim(), referenceTime: referenceTime);
       if (result.isValid && result.hasContent) {
         results.add(result);
       }
@@ -154,7 +158,8 @@ class TodoParserService {
   // ══════════════════════════════════════════════
   // 核心提取逻辑：基于区间蒙版（Masking）彻底分离各部分
   // ══════════════════════════════════════════════
-  static ParsedTodoResult parse(String input) {
+  static ParsedTodoResult parse(String input, {DateTime? referenceTime}) {
+    final now = referenceTime ?? DateTime.now();
     String original = input.trim();
     if (original.isEmpty) return ParsedTodoResult(title: '', isValid: false);
 
@@ -240,7 +245,7 @@ class TodoParserService {
         final yStr = udm.namedGroup('y');
         final year = yStr != null
             ? int.parse(yStr.replaceAll('年', ''))
-            : DateTime.now().year;
+            : now.year;
         recurrenceEndDate = DateTime(year, int.parse(udm.namedGroup('m')!),
             int.parse(udm.namedGroup('d')!));
         applyMask(udm, SegmentType.recurrence);
@@ -282,14 +287,14 @@ class TodoParserService {
       final str = relDate.group(1)!;
       if (str.endsWith('早')) timePrefixHint = '早上';
       if (str.endsWith('晚')) timePrefixHint = '晚上';
-      parsedDate = _parseRelativeDay(str);
+      parsedDate = _parseRelativeDay(str, referenceTime: now);
       applyMask(relDate, SegmentType.time);
     } else {
       final nDays = RegExp(r'(?<num>\d+|一|二|两|三|四|五|六|七|八|九|十)\s*天\s*后')
           .firstMatch(masked);
       if (nDays != null) {
         int v = _parseCnNum(nDays.namedGroup('num')!).toInt();
-        parsedDate = DateTime.now().add(Duration(days: v));
+        parsedDate = AppTimeFormats.localDayStartOffset(now, v);
         applyMask(nDays, SegmentType.time);
       } else {
         final weekday =
@@ -298,7 +303,8 @@ class TodoParserService {
         if (weekday != null) {
           parsedDate = _getWeekdayDate(
               _weekdayCharToInt(weekday.namedGroup('day')!),
-              weekday.namedGroup('next') == '下周');
+              weekday.namedGroup('next') == '下周',
+              referenceTime: now);
           applyMask(weekday, SegmentType.time);
         } else {
           // 修改点1: 确保所有的提取分组 (<y>, <m>, <d>) 都存在于每个表达式中，避免 namedGroup('y') 抛出异常
@@ -310,7 +316,6 @@ class TodoParserService {
           for (var p in specificPatterns) {
             final m = p.firstMatch(masked);
             if (m != null) {
-              final now = DateTime.now();
               int month = int.parse(m.namedGroup('m')!);
               int day = int.parse(m.namedGroup('d')!);
               int year = m.namedGroup('y') != null
@@ -363,7 +368,6 @@ class TodoParserService {
     }
 
     // ================= 组合与计算结果 =================
-    final now = DateTime.now();
     DateTime baseDate = parsedDate ?? DateTime(now.year, now.month, now.day);
 
     if (hasTimeInfo) {
@@ -481,14 +485,17 @@ class TodoParserService {
     return map[s] ?? 0;
   }
 
-  static DateTime _parseRelativeDay(String prefix) {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
+  static DateTime _parseRelativeDay(
+    String prefix, {
+    DateTime? referenceTime,
+  }) {
+    final now = referenceTime ?? DateTime.now();
+    final today = AppTimeFormats.dayStart(now);
     if (['明天', '明日', '明早', '明晚'].contains(prefix)) {
-      return today.add(const Duration(days: 1));
+      return AppTimeFormats.localDayStartOffset(today, 1);
     }
     if (['后天', '后日', '后早', '后晚'].contains(prefix)) {
-      return today.add(const Duration(days: 2));
+      return AppTimeFormats.localDayStartOffset(today, 2);
     }
     return today; // 今天
   }
@@ -507,13 +514,17 @@ class TodoParserService {
     return map[char] ?? 1;
   }
 
-  static DateTime _getWeekdayDate(int weekday, bool isNextWeek) {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
+  static DateTime _getWeekdayDate(
+    int weekday,
+    bool isNextWeek, {
+    DateTime? referenceTime,
+  }) {
+    final now = referenceTime ?? DateTime.now();
+    final today = AppTimeFormats.dayStart(now);
     int daysUntil = weekday - today.weekday;
     if (daysUntil <= 0) daysUntil += 7;
     if (isNextWeek) daysUntil += 7;
-    return today.add(Duration(days: daysUntil));
+    return AppTimeFormats.localDayStartOffset(today, daysUntil);
   }
 
   static int _adjustHour(String? prefix, int hour) {

@@ -23,6 +23,20 @@ void main() {
       expect(result.timeSemantics, ParsedTimeSemantics.dateOnly);
     });
 
+    test('relative dates use calendar days across the DST fallback', () {
+      final tomorrow = TodoParserService.parse(
+        '明天取快递',
+        referenceTime: DateTime(2026, 11, 1, 12),
+      );
+      final afterTomorrow = TodoParserService.parse(
+        '后天交报告',
+        referenceTime: DateTime(2026, 10, 31, 12),
+      );
+
+      expect(tomorrow.startTime, DateTime(2026, 11, 2));
+      expect(afterTomorrow.startTime, DateTime(2026, 11, 2));
+    });
+
     test('a single clock time is a deadline and does not gain one hour', () {
       final result = TodoParserService.parse('明天18点前交作业');
 
