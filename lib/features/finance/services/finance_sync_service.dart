@@ -25,6 +25,8 @@ class FinanceSyncRequest {
     required this.fingerprint,
     this.categoryNamesCapabilityKey = '',
     this.supportsCategoryNames = false,
+    this.categoryIconsCapabilityKey = '',
+    this.supportsCategoryIcons = false,
     this.balanceCapabilityKey = '',
     this.balanceBootstrapKey = '',
     this.supportsBalances = false,
@@ -39,6 +41,8 @@ class FinanceSyncRequest {
   final Map<String, String> fingerprint;
   final String categoryNamesCapabilityKey;
   final bool supportsCategoryNames;
+  final String categoryIconsCapabilityKey;
+  final bool supportsCategoryIcons;
   final String balanceCapabilityKey;
   final String balanceBootstrapKey;
   final bool supportsBalances;
@@ -73,6 +77,7 @@ class FinanceSyncRequest {
         final nameCustomized =
             _asBool(item['name_customized'] ?? item['nameCustomized']);
         if (nameCustomized && !supportsCategoryNames) return false;
+        if (iconCustomized && !supportsCategoryIcons) return false;
         if (!iconCustomized && !nameCustomized) return false;
       }
       if (fullSync) return true;
@@ -172,6 +177,8 @@ abstract final class FinanceSyncService {
     final bootstrapKey = '$_scopePrefix${scope}_$username';
     final categoryNamesCapabilityKey =
         'finance_category_names_v1_${scope}_$username';
+    final categoryIconsCapabilityKey =
+        'finance_category_icons_v1_${scope}_$username';
     final cursorKey =
         'finance_last_sync_time_${ApiService.syncServerKey}_$username';
     final initialized = prefs.getBool(bootstrapKey) == true;
@@ -193,6 +200,8 @@ abstract final class FinanceSyncService {
       fingerprint: _fingerprint(bundle),
       categoryNamesCapabilityKey: categoryNamesCapabilityKey,
       supportsCategoryNames: prefs.getBool(categoryNamesCapabilityKey) ?? false,
+      categoryIconsCapabilityKey: categoryIconsCapabilityKey,
+      supportsCategoryIcons: prefs.getBool(categoryIconsCapabilityKey) ?? false,
       balanceCapabilityKey: balanceCapabilityKey,
       balanceBootstrapKey: balanceBootstrapKey,
       supportsBalances: supportsBalances,
@@ -236,6 +245,15 @@ abstract final class FinanceSyncService {
       await prefs.setBool(
         request.categoryNamesCapabilityKey,
         SyncCapabilityService.supportsFinanceCategoryNames(
+          response['sync_capabilities'],
+        ),
+      );
+    }
+    if (request.categoryIconsCapabilityKey.isNotEmpty) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(
+        request.categoryIconsCapabilityKey,
+        SyncCapabilityService.supportsFinanceCategoryIcons(
           response['sync_capabilities'],
         ),
       );
@@ -287,6 +305,24 @@ abstract final class FinanceSyncService {
                 const [])
             .whereType<Map>()
             .where((item) => !localNameOverrides
+                .contains(item['uuid']?.toString() ?? item['id']?.toString()))
+            .toList(growable: false);
+      }
+    }
+    if (!request.supportsCategoryIcons) {
+      final localIconOverrides = (currentBundle['categories'] as List? ?? [])
+          .whereType<Map>()
+          .where((item) =>
+              _isSystemCategoryUuid(item['uuid']?.toString()) &&
+              _asBool(item['icon_customized'] ?? item['iconCustomized']))
+          .map((item) => item['uuid']?.toString())
+          .whereType<String>()
+          .toSet();
+      if (localIconOverrides.isNotEmpty) {
+        remoteBundle['categories'] = (remoteBundle['categories'] as List? ??
+                const [])
+            .whereType<Map>()
+            .where((item) => !localIconOverrides
                 .contains(item['uuid']?.toString() ?? item['id']?.toString()))
             .toList(growable: false);
       }
@@ -388,6 +424,7 @@ abstract final class FinanceSyncService {
     required int cursor,
     required bool fullSync,
     bool supportsCategoryNames = false,
+    bool supportsCategoryIcons = false,
   }) {
     final request = FinanceSyncRequest(
       username: 'test',
@@ -398,6 +435,7 @@ abstract final class FinanceSyncService {
       bundle: bundle,
       fingerprint: const {},
       supportsCategoryNames: supportsCategoryNames,
+      supportsCategoryIcons: supportsCategoryIcons,
     );
     final payload = request.payload;
     return {

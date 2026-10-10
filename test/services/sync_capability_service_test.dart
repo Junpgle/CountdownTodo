@@ -146,6 +146,25 @@ void main() {
       );
     });
 
+    test('recognizes the finance category icon override capability', () {
+      expect(
+        SyncCapabilityService.supportsFinanceCategoryIcons(
+          {'finance_category_icons_v1': 1},
+        ),
+        isTrue,
+      );
+      expect(
+        SyncCapabilityService.supportsFinanceCategoryIcons(
+          {'finance_category_icons_v1': 0},
+        ),
+        isFalse,
+      );
+      expect(
+        SyncCapabilityService.supportsFinanceCategoryIcons(null),
+        isFalse,
+      );
+    });
+
     test('finance acknowledgement is gated by both switch and capability', () {
       expect(
         SyncCapabilityService.shouldAcknowledgeFinanceChanges(

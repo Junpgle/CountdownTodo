@@ -3039,6 +3039,102 @@ void main() {
     expect(importedRow['name_customized'], 1);
   });
 
+  test('系统分类自定义图标等待服务端能力并避免旧回包覆盖', () async {
+    SharedPreferences.setMockInitialValues({
+      'current_login_user': 'finance-system-icon-sync-test',
+    });
+    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    addTearDown(() async {
+      FinanceStorage.databaseOverride = null;
+      await db.close();
+    });
+    await DatabaseHelper.ensureFinanceSchema(db);
+    FinanceStorage.databaseOverride = db;
+    await FinanceStorage.ensureReady();
+
+    final food = FinanceCategory.fromMap(
+      (await db.query(
+        'finance_categories',
+        where: 'uuid = ?',
+        whereArgs: ['finance-system-category-food'],
+      )).single,
+    )
+      ..icon = '🥗'
+      ..iconCustomized = true
+      ..markAsChanged();
+    await FinanceStorage.saveCategory(food);
+    await FinanceStorage.ensureReady();
+
+    final firstRequest = await FinanceSyncService.prepare(
+      username: 'finance-system-icon-sync-test',
+      forceFullSync: false,
+    );
+    expect(firstRequest.supportsCategoryIcons, isFalse);
+    expect(firstRequest.payload['finance_categories_changes'], isEmpty);
+
+    final oldServerResponse = _balanceSyncResponse()
+      ..['server_finance_categories'] = [
+        FinanceCategory(
+          uuid: 'finance-system-category-food',
+          name: '餐饮',
+          icon: '🍜',
+          isSystem: true,
+          version: 100,
+          createdAt: 1,
+          updatedAt: 1000000000000,
+        ).toMap(),
+      ];
+    await FinanceSyncService.finish(
+      request: firstRequest,
+      supported: true,
+      response: oldServerResponse,
+    );
+
+    var row = (await db.query(
+      'finance_categories',
+      where: 'uuid = ?',
+      whereArgs: ['finance-system-category-food'],
+    )).single;
+    expect(row['icon'], '🥗');
+    expect(row['icon_customized'], 1);
+    expect(row['pending_sync'], 1);
+
+    final secondRequest = await FinanceSyncService.prepare(
+      username: 'finance-system-icon-sync-test',
+      forceFullSync: false,
+    );
+    expect(secondRequest.supportsCategoryIcons, isFalse);
+    expect(secondRequest.payload['finance_categories_changes'], isEmpty);
+    await FinanceSyncService.finish(
+      request: secondRequest,
+      supported: true,
+      response: _balanceSyncResponse()
+        ..['sync_capabilities'] = {
+          'finance_v1': 1,
+          'finance_category_icons_v1': 1,
+        },
+    );
+
+    final thirdRequest = await FinanceSyncService.prepare(
+      username: 'finance-system-icon-sync-test',
+      forceFullSync: false,
+    );
+    expect(thirdRequest.supportsCategoryIcons, isTrue);
+    expect(
+      thirdRequest.payload['finance_categories_changes'].map(
+        (item) => item['icon'],
+      ),
+      contains('🥗'),
+    );
+
+    row = (await db.query(
+      'finance_categories',
+      where: 'uuid = ?',
+      whereArgs: ['finance-system-category-food'],
+    )).single;
+    expect(row['pending_sync'], 1);
+  });
+
   test('云端系统分类名称和图标覆盖不会被新设备默认值覆盖', () async {
     SharedPreferences.setMockInitialValues({
       'current_login_user': 'finance-remote-icon-test',
