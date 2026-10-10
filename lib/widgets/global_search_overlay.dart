@@ -131,6 +131,7 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
   String? _lastRecordedQuery;
   bool _searchFailed = false;
   Timer? _debounce;
+  Timer? _focusTimer;
 
   // 记录每个类型是否已展开（默认只显示前 3 条）
   final Map<SearchResultType, bool> _expanded = {};
@@ -177,7 +178,8 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
     );
     _animController.forward();
 
-    Future.delayed(const Duration(milliseconds: 50), () {
+    _focusTimer = Timer(const Duration(milliseconds: 50), () {
+      _focusTimer = null;
       if (!mounted) return;
       _inputFocusNode.requestFocus();
       _onQueryChanged(_controller.text); // 保留初始化期间已经输入的内容
@@ -203,6 +205,7 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
     _inputFocusNode.dispose();
     _keyboardFocusNode.dispose();
     _debounce?.cancel();
+    _focusTimer?.cancel();
     _animController.dispose();
     super.dispose();
   }
