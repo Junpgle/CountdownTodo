@@ -471,7 +471,8 @@ mixin _StorageTodos on _StorageServiceBase {
       final day = DateTime.tryParse(dayKey);
       if (day == null) continue;
       final startMs = day.millisecondsSinceEpoch;
-      final endMs = day.add(const Duration(days: 1)).millisecondsSinceEpoch;
+      final endMs = time_utils.AppTimeFormats.localDayStartOffset(day, 1)
+          .millisecondsSinceEpoch;
       final rows = await DatabaseHelper.instance.getTodoMaps(
         includeDeleted: true,
         includeConflictData: true,

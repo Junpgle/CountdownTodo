@@ -215,5 +215,63 @@ void main() {
         expect(todo.isDateOnly, isFalse);
       },
     );
+
+    test(
+      'schedule conflict refresh includes the last hour on DST fallback day',
+      () async {
+        final prefs = await StorageService.prefs;
+        await prefs.setString('current_login_user', 'dst_conflict_test');
+        await prefs.setBool('conflict_detection_enabled', true);
+        expect(await StorageService.getConflictDetectionEnabled(), isTrue);
+
+        final runId = DateTime.now().microsecondsSinceEpoch;
+        final firstId = 'dst-conflict-first-$runId';
+        final secondId = 'dst-conflict-second-$runId';
+        final first = TodoItem(
+          id: firstId,
+          title: '夏令时晚间安排一',
+          createdDate: DateTime(2026, 11, 1, 23, 15).millisecondsSinceEpoch,
+          dueDate: DateTime(2026, 11, 1, 23, 45),
+        );
+        final second = TodoItem(
+          id: secondId,
+          title: '夏令时晚间安排二',
+          createdDate: DateTime(2026, 11, 1, 23, 30).millisecondsSinceEpoch,
+          dueDate: DateTime(2026, 11, 1, 23, 55),
+        );
+
+        await StorageService.saveTodos(
+          'dst_conflict_test',
+          [first],
+          sync: false,
+        );
+        await StorageService.saveTodos(
+          'dst_conflict_test',
+          [second],
+          sync: false,
+        );
+
+        final saved = await StorageService.getTodos(
+          'dst_conflict_test',
+          includeDeleted: true,
+        );
+        final conflictTodos = saved
+            .where((todo) => todo.id == firstId || todo.id == secondId)
+            .toList();
+        expect(conflictTodos, hasLength(2));
+        expect(
+          conflictTodos.every((todo) => todo.hasConflict),
+          isTrue,
+          reason: conflictTodos
+              .map(
+                (todo) =>
+                    '${todo.id}: start=${todo.effectiveStartTime} '
+                    'due=${todo.dueDate} dateOnly=${todo.isDateOnly} '
+                    'conflict=${todo.hasConflict}',
+              )
+              .join('\n'),
+        );
+      },
+    );
   });
 }
