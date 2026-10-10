@@ -84,6 +84,7 @@ import '../features/journal/screens/journal_home_screen.dart';
 // 引入拆分后的组件
 import '../widgets/home_sections.dart';
 import '../widgets/home_app_bar.dart';
+import '../widgets/home_dashboard_scroll_section.dart';
 import '../widgets/countdown_section_widget.dart';
 import '../widgets/course_section_widget.dart';
 import '../widgets/todo_section_widget.dart';

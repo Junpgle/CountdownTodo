@@ -647,13 +647,16 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
 
                                       Widget buildScrollableSection(
                                           String key) {
-                                        return AppSystemUiRegion(
-                                          backgroundBrightness:
-                                              cardBackgroundBrightness,
-                                          child: Padding(
-                                            padding: const EdgeInsets.only(
-                                                bottom: 24.0),
-                                            child: sectionsMap[key]!,
+                                        return HomeDashboardScrollSection(
+                                          key: ValueKey<String>(key),
+                                          child: AppSystemUiRegion(
+                                            backgroundBrightness:
+                                                cardBackgroundBrightness,
+                                            child: Padding(
+                                              padding: const EdgeInsets.only(
+                                                  bottom: 24.0),
+                                              child: sectionsMap[key]!,
+                                            ),
                                           ),
                                         );
                                       }
@@ -713,6 +716,12 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                               itemCount: widgets.length +
                                                   (hasCopyright ? 1 : 0) +
                                                   1,
+                                              findChildIndexCallback: (key) {
+                                                final index = widgets.indexWhere(
+                                                  (widget) => widget.key == key,
+                                                );
+                                                return index < 0 ? null : index;
+                                              },
                                               itemBuilder: (context, index) {
                                                 if (index < widgets.length) {
                                                   return widgets[index];
