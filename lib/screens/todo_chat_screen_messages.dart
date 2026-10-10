@@ -115,7 +115,11 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
                               if (msg.recognition != null)
                                 _buildRecognitionMessage(msg, isDark)
                               else
-                                AiChatMarkdown(data: msg.content),
+                                AiChatMarkdown(
+                                  data: AiActionParser.cleanActionContent(
+                                    msg.content,
+                                  ),
+                                ),
                               if (msg.usageSummary != null)
                                 _buildUsageSummaryFooter(msg.usageSummary!),
                               if (msg.smartContext.trim().isNotEmpty)
@@ -123,6 +127,21 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
                             ],
                           ),
                   ),
+                  if (!isUser)
+                    for (final target in msg.settingsTargets)
+                      AiSettingsNavigationCard(
+                        key: ValueKey('${msg.id}-$target'),
+                        target: target,
+                        username: widget.username,
+                        onReturned: () async {
+                          if (!mounted) return;
+                          await Future.wait([
+                            _loadPromptSettings(),
+                            _loadDeepThinking(),
+                            _loadChatConfig(),
+                          ]);
+                        },
+                      ),
                   if (!_shouldDetachActions &&
                       msg.todoActions != null &&
                       msg.todoActions!.isNotEmpty)
@@ -576,7 +595,7 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
         ),
         if (msg.content.isNotEmpty) ...[
           const SizedBox(height: 7),
-          AiChatMarkdown(data: msg.content),
+          AiChatMarkdown(data: AiActionParser.cleanActionContent(msg.content)),
         ],
         if (info.todoResults.isNotEmpty) ...[
           const SizedBox(height: 8),

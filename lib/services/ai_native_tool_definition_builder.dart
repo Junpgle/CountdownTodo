@@ -59,6 +59,11 @@ class AiNativeToolDefinitionBuilder {
       'description': 'yyyy-MM-dd',
     },
     'todoId': {'type': 'string'},
+    'newTodoTitle': {
+      'type': 'string',
+      'description':
+          '规划事项确实没有对应待办时填写待建标题，不填写todoId。用户点击确认卡后由App创建待办并分配真实ID，不能声称已创建。',
+    },
     'todo_id': {'type': 'string'},
     'todoUuid': {'type': 'string'},
     'scheduleId': {'type': 'string'},
@@ -295,8 +300,15 @@ class AiNativeToolDefinitionBuilder {
   static List<Map<String, dynamic>> buildNativeToolDefinitions(
     String userMessage, {
     String previousUserMessage = '',
+    String previousAssistantMessage = '',
   }) {
-    final message = userMessage.trim();
+    // A short assent can continue a planning discussion. Keep this scoped to
+    // planning; it must not reactivate old delete/complete requests.
+    final message = resolvePlanningRequest(
+      userMessage,
+      previousUserMessage: previousUserMessage,
+      previousAssistantMessage: previousAssistantMessage,
+    );
     if (message.isEmpty) return const [];
 
     final actionPrompt = AiTodoContextBuilder.buildActionProtocolPrompt(
@@ -709,6 +721,49 @@ class AiNativeToolDefinitionBuilder {
     }
 
     return tools;
+  }
+
+  static bool isMissingActionCardReport(String text) {
+    const card = r'(?:操作块|规划块|操作卡(?:片)?|卡片)';
+    const missing = r'(?:没|未|找不到|看不到|不显示|不见|在哪|哪里)';
+    return RegExp('$missing.*$card|$card.*$missing').hasMatch(text);
+  }
+
+  static String resolvePlanningRequest(
+    String userMessage, {
+    String previousUserMessage = '',
+    String previousAssistantMessage = '',
+  }) {
+    final message = userMessage.trim();
+    final isAssent = RegExp(
+      r'^(?:可以|好|好的|好啊|行|嗯|嗯嗯|确认|确定|继续|开始吧|生成吧|要的|需要|是的|就这样|按这个来|照这个安排)[！!。\.\s]*$',
+    ).hasMatch(message);
+    final planning = RegExp(r'规划|计划块|时间块|plan\s*block', caseSensitive: false);
+    if (planning.hasMatch(message) && !isMissingActionCardReport(message)) {
+      return message;
+    }
+    final isPlanningDetail =
+        RegExp(r'^(?:避开|排除|到|截止|截至|从|可以联排|联排|连排|先|把|加上|也加|不要安排)')
+            .hasMatch(message) &&
+        RegExp(r'时间|晚餐|午餐|点|时|分钟|联排|连排|问卷|加上').hasMatch(message);
+    final isSchedulingRequest = RegExp(r'(?:我要|帮我|请).*(?:安排|排一下)')
+        .hasMatch(message);
+    final isTaskDescription = RegExp(r'我(?:打算|准备|想|要).*(?:做|学|复习|安排)')
+        .hasMatch(message);
+    if (!isAssent && !isPlanningDetail && !isSchedulingRequest &&
+        !isTaskDescription && !isMissingActionCardReport(message)) return message;
+    final previousPlanningRequest =
+        planning.hasMatch(previousUserMessage) &&
+        allowedCdtActionNames(buildNativeToolDefinitions(previousUserMessage))
+            .contains('create_plan_block');
+    final offeredPlanning =
+        planning.hasMatch(previousAssistantMessage) &&
+        RegExp(r'方案|草案|时段|生成|安排|要不要|是否需要|需要我')
+            .hasMatch(previousAssistantMessage);
+    if (!previousPlanningRequest && !offeredPlanning) {
+      return message;
+    }
+    return '请按刚才讨论的方案生成规划块';
   }
 
   static const List<String> _nativeCdtActionNames = [

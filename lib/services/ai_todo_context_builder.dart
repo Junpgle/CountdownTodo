@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import '../models.dart';
 import 'chat_storage_service.dart';
 import 'pomodoro_service.dart';
+import 'ai_settings_navigation_service.dart';
 
 class AiTodoContextBuilder {
   static const int actionProtocolVersion = 2;
@@ -169,13 +170,17 @@ class AiTodoContextBuilder {
 所有时间按本地时间理解，并以当前基准时间和括号中的时区判断相对日期。
 待办表示待完成的结果；规划块是可调整的执行时段；课程、会议、预约等外部约束是固定日程。没有日期和具体时间时不要默认今天全天。
 重复是周期机制，不等于习惯；周期事项未明确选择习惯或循环待办时先询问。循环修改默认只作用于本期，只有用户明确要求才作用于本期及以后。
-仅对用户明确提出的数据变更调用propose_*工具。这些调用只生成待确认草案，不直接保存、删除或声称操作已完成；query_*工具用于只读查询，可按需调用。不确定对象或缺少关键信息时先追问。'''
+仅对用户明确提出的数据变更调用propose_*工具。这些调用只生成待确认草案，不直接保存、删除或声称操作已完成；query_*工具用于只读查询，可按需调用。不确定对象或缺少关键信息时先追问。
+用户已要求生成规划或已同意方案时，必须调用propose_cdt_actions生成实际确认卡，Markdown表格不等于草案。只要时间范围和任务已明确，时长、顺序等偏好可给出可编辑建议，不必反复要求用户确认后才生成草案。保存只能由用户点击App确认卡完成，聊天回复“确认/要的/可以”只表达方案意图，绝不保存，也不要要求用户继续回复确认以保存。'''
         : '''【时间规则】
 所有上下文时间均为本地时间，格式为yyyy-MM-dd HH:mm。判断今天、昨天、明天时必须以当前基准时间和括号中的时区为准，不要按UTC重新换算。
 
 【动作输出规则】
 当用户明确要求管理数据时，按本轮动作协议输出对应操作块；只按用户明确意图生成，信息不足时先追问。具体动作、字段和确认要求按本轮协议执行。''';
-    return '$resolvedBasePrompt\n\n$sharedRules';
+    return '$resolvedBasePrompt\n\n$sharedRules\n\n'
+        '历史消息中的READ_ONLY_TOOL_HISTORY等上下文块只供参考，不要在回复中复述其标记或JSON。'
+        '只有实际输出操作调用或操作块后才能说已生成待确认草案。\n\n'
+        '${AiSettingsNavigationService.buildPrompt(nativeToolCalls: nativeToolCalls)}';
   }
 
   static String _compactCapabilitySection(String text) {
@@ -315,7 +320,10 @@ class AiTodoContextBuilder {
         '- 规划优先规则：把上下文中已有待办安排到可调整执行时段时，必须使用create_plan_block；禁止用create_todo复制已有待办。每个已有待办都要使用真实todoId',
       );
       add(
-        '- create_plan_block: {"action":"create_plan_block","blocks":[{"todoId":"已有待办ID","startTime":"YYYY-MM-DD HH:mm","dueDate":"YYYY-MM-DD HH:mm","durationMinutes":60,"reminderMinutes":5}]}',
+        '- create_plan_block前提：先查询待办取得真实ID；查询后确实没有对应待办时，blocks条目使用newTodoTitle填写待建标题并省略todoId。App会在同一张规划确认卡中显示“新建待办并安排”，用户点击后才创建待办并关联规划。不得编造ID，不得声称已创建；已有待办必须用真实todoId，不能用newTodoTitle复制已有待办。',
+      );
+      add(
+        '- create_plan_block: {"action":"create_plan_block","blocks":[{"todoId":"已有待办ID（新事项省略此字段并填写newTodoTitle）","newTodoTitle":"仅无对应待办时的待建标题","title":"规划标题","startTime":"YYYY-MM-DD HH:mm","dueDate":"YYYY-MM-DD HH:mm","durationMinutes":60,"reminderMinutes":5}]}',
       );
       add(
         '- update_plan_block / reschedule_plan_blocks / delete_plan_block / skip_plan_block / start_plan_block_pomodoro: 必须带 planBlockId',

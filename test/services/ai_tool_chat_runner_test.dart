@@ -3,6 +3,9 @@ import 'dart:convert';
 
 import 'package:countdown_todo/models/chat_message.dart';
 import 'package:countdown_todo/services/ai_chat_service.dart';
+import 'package:countdown_todo/services/ai_action_parser.dart';
+import 'package:countdown_todo/services/ai_native_tool_call_parser.dart';
+import 'package:countdown_todo/services/ai_native_tool_definition_builder.dart';
 import 'package:countdown_todo/services/ai_query_tool_service.dart';
 import 'package:countdown_todo/services/ai_tool_chat_runner.dart';
 import 'package:countdown_todo/services/ai_tool_result_context.dart';
@@ -45,6 +48,228 @@ void main() {
   const messages = <Map<String, dynamic>>[
     {'role': 'user', 'content': '查询上个月的账单'},
   ];
+
+  test('仅文字声称规划已生成时自动补一次工具调用，错误文字不显示', () async {
+    final planningTools =
+        AiNativeToolDefinitionBuilder.buildNativeToolDefinitions('生成规划块');
+    var rounds = 0;
+    final chunks = await AiToolChatRunner.run(
+      messages: const [
+        {'role': 'user', 'content': '可以，生成规划块'},
+      ],
+      tools: planningTools,
+      maxQueryRounds: 0,
+      requirePlanningProposal: true,
+      streamRound: (history, roundTools) async* {
+        if (++rounds == 1) {
+          yield const AiChatStreamChunk(content: '规划块草案已生成，我已为它们创建待办，回复确认以保存。');
+        } else {
+          expect(history.last['content'], contains('没有返回规划工具调用'));
+          expect(AiNativeToolDefinitionBuilder.allowedToolNames(roundTools), {
+            'propose_cdt_actions',
+          });
+          yield const AiChatStreamChunk(
+            toolCalls: [
+              AiChatFunctionCall(
+                id: 'new-plans',
+                name: 'propose_cdt_actions',
+                arguments: '{"actions":[{"action":"create_plan_block","blocks":[{"newTodoTitle":"行测","startTime":"2026-10-10 16:20","dueDate":"2026-10-10 17:45"}]}]}',
+              ),
+            ],
+          );
+        }
+      },
+      executeRead: (_) async => throw StateError('不得执行写入'),
+    ).toList();
+    expect(rounds, 2);
+    expect(chunks.map((chunk) => chunk.content).join(), isEmpty);
+    expect(chunks.expand((chunk) => chunk.toolCalls), hasLength(1));
+  });
+
+  test('模型两次都只声称生成时明确报告失败，不无限重试也不伪造卡片', () async {
+    var rounds = 0;
+    final chunks = await AiToolChatRunner.run(
+      messages: const [
+        {'role': 'user', 'content': '要的'},
+      ],
+      tools: AiNativeToolDefinitionBuilder.buildNativeToolDefinitions('生成规划块'),
+      requirePlanningProposal: true,
+      streamRound: (_, _) async* {
+        rounds++;
+        yield const AiChatStreamChunk(content: '规划块草案已生成，请回复确认以保存。');
+      },
+      executeRead: (_) async => throw StateError('不能写入'),
+    ).toList();
+    expect(rounds, 2);
+    expect(
+      chunks.map((chunk) => chunk.content).join(),
+      contains('没有返回可执行的规划草案'),
+    );
+    expect(chunks.expand((chunk) => chunk.toolCalls), isEmpty);
+  });
+
+  test('真正缺少时段时允许澄清，不把普通规划咨询强制变成操作', () async {
+    var rounds = 0;
+    final chunks = await AiToolChatRunner.run(
+      messages: const [
+        {'role': 'user', 'content': '帮我规划行测'},
+      ],
+      tools: AiNativeToolDefinitionBuilder.buildNativeToolDefinitions('帮我规划行测'),
+      streamRound: (_, _) async* {
+        rounds++;
+        yield const AiChatStreamChunk(content: '请告诉我哪一天、从几点到几点。');
+      },
+      executeRead: (_) async => throw StateError('不能写入'),
+    ).toList();
+    expect(rounds, 1);
+    expect(chunks.map((chunk) => chunk.content).join(), contains('哪一天'));
+  });
+
+  test('可以接续公考规划，查询上限后仍通过真实SSE生成可解析规划草案', () async {
+    final proposalTools =
+        AiNativeToolDefinitionBuilder.buildNativeToolDefinitions(
+          '可以',
+          previousUserMessage: '从现在开始安排公考行测、申论和习概选题，帮我规划到晚上九点半',
+        );
+    final allTools = [...tools, ...proposalTools];
+    var requests = 0;
+    var reads = 0;
+    final chunks = await AiToolChatRunner.run(
+      messages: const [
+        {'role': 'user', 'content': '可以'},
+      ],
+      tools: allTools,
+      maxQueryRounds: 1,
+      streamRound: (history, roundTools) => AiChatService.streamChat(
+        apiUrl: '${AiChatService.mimoApiBaseUrl}/chat/completions',
+        apiKey: 'fixture-key',
+        model: 'mimo-v2.6-flash',
+        provider: 'mimo',
+        deepThinking: false,
+        messages: history,
+        tools: roundTools,
+        clientFactory: () => _FixtureClient((body) {
+          requests++;
+          if (requests == 1) {
+            return _sse({
+              'tool_calls': [
+                {
+                  'index': 0,
+                  'id': 'todos',
+                  'type': 'function',
+                  'function': {
+                    'name': 'query_app_data',
+                    'arguments': '{"domain":"todos","keyword":"习概"}',
+                  },
+                },
+              ],
+            }, 'tool_calls');
+          }
+          expect(AiNativeToolDefinitionBuilder.allowedToolNames(roundTools), {
+            'propose_cdt_actions',
+          });
+          expect(history.last['role'], 'system');
+          return _sse({
+            'tool_calls': [
+              {
+                'index': 0,
+                'id': 'plans',
+                'type': 'function',
+                'function': {
+                  'name': 'propose_cdt_actions',
+                  'arguments': jsonEncode({
+                    'actions': [
+                      {
+                        'action': 'create_plan_block',
+                        'blocks': [
+                          {
+                            'todoId': 'xigai-1',
+                            'startTime': '2026-10-10 20:30',
+                            'dueDate': '2026-10-10 21:30',
+                          },
+                        ],
+                      },
+                    ],
+                  }),
+                },
+              },
+            ],
+          }, 'tool_calls');
+        }),
+      ),
+      executeRead: (call) async {
+        reads++;
+        expect(call.name, 'query_app_data');
+        return {
+          'ok': true,
+          'items': [
+            {'id': 'xigai-1', 'title': '习概选题'},
+          ],
+        };
+      },
+    ).toList();
+    expect(requests, 2);
+    expect(reads, 1);
+    final actionText = AiNativeToolCallParser.appendToAssistantText(
+      '[READ_ONLY_TOOL_HISTORY]{"queries":[]}[/READ_ONLY_TOOL_HISTORY]',
+      chunks.expand((chunk) => chunk.toolCalls).toList(),
+      allowedToolNames: AiNativeToolDefinitionBuilder.allowedToolNames(
+        allTools,
+      ),
+      allowedCdtActionNames:
+          AiNativeToolDefinitionBuilder.allowedCdtActionNames(allTools),
+      allowedFinanceActionNames: const {},
+    );
+    expect(actionText, isNot(contains('READ_ONLY_TOOL_HISTORY')));
+    final actions = AiActionParser.extractTodoActions(
+      actionText,
+      originalText: '可以',
+      existingTodoTitles: const {'xigai-1': '习概选题'},
+    );
+    expect(actions, hasLength(1));
+    expect(actions.single.todoId, 'xigai-1');
+    expect(actions.single.isAdded, false);
+  });
+
+  test('查询调用数量上限保留提案工具，不再执行额外读取', () async {
+    var rounds = 0;
+    var reads = 0;
+    await AiToolChatRunner.run(
+      messages: messages,
+      tools: [
+        ...tools,
+        {
+          'type': 'function',
+          'function': {'name': 'propose_cdt_actions'},
+        },
+      ],
+      maxCalls: 1,
+      streamRound: (_, roundTools) async* {
+        if (++rounds == 1) {
+          yield const AiChatStreamChunk(toolCalls: [_queryCall]);
+        } else {
+          expect(AiNativeToolDefinitionBuilder.allowedToolNames(roundTools), {
+            'propose_cdt_actions',
+          });
+          yield const AiChatStreamChunk(
+            toolCalls: [
+              AiChatFunctionCall(
+                id: 'proposal',
+                name: 'propose_cdt_actions',
+                arguments: '{}',
+              ),
+            ],
+          );
+        }
+      },
+      executeRead: (_) async {
+        reads++;
+        return {'ok': true};
+      },
+    ).toList();
+    expect(rounds, 2);
+    expect(reads, 1);
+  });
 
   test('真实SSE工具调用回传匹配ID和JSON，第二次请求生成最终答复', () async {
     var requests = 0;

@@ -9,6 +9,19 @@ abstract final class AiToolResultContext {
   static const maxHistoryChars = 2000;
   static const historyMessages = 3;
 
+  /// History envelopes belong to model context, never to the visible reply or
+  /// the action parser. Also hide an unfinished envelope while streaming.
+  static String withoutHistory(String text) {
+    return text
+        .replaceAll(
+          RegExp(
+            r'\[(READ_ONLY_TOOL_HISTORY|FINANCE_DRAFT_CONTEXT|FINANCE_ACTION_CONTEXT|SETTINGS_NAVIGATION_CONTEXT)\][\s\S]*?(?:\[/\1\]|$)',
+          ),
+          '',
+        )
+        .trim();
+  }
+
   static Map<String, dynamic> forModel(
     Map<String, dynamic> result, {
     int maxChars = maxResultChars,

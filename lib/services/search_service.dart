@@ -40,7 +40,8 @@ import '../features/habits/screens/habit_detail_screen.dart';
 import '../features/habits/screens/habit_center_screen.dart';
 import '../features/thirty_day_challenge/repositories/thirty_day_challenge_repository.dart';
 import '../features/thirty_day_challenge/screens/challenge_center_screen.dart';
-import '../utils/app_platform.dart';
+import 'app_settings_catalog.dart';
+import '../utils/ai_settings_navigation.dart';
 import '../utils/app_dialogs.dart';
 
 class SearchResultWithScore {
@@ -67,27 +68,6 @@ class SearchService {
             !excludedRecurrenceSeriesIds.contains(item.recurrenceSeriesId))
         .toList();
   }
-
-  static const _windowsOnlySettings = {
-    'float_window_style',
-    'force_refresh',
-    'island_priority',
-    'tai_db',
-  };
-  static const _androidOnlySettings = {
-    'live_updates',
-    'island_support',
-    'test_notification',
-  };
-  static const _macOsOnlySettings = {
-    'mac_status_bar',
-    'mac_island_shortcut',
-    'mac_island_reminders',
-    'mac_island_clipboard_links',
-    'mac_island_clipboard_browser',
-    'mac_island_test',
-    'mac_island_without_notch',
-  };
 
   Future<void>? _warmupFuture;
   String? _preparedTimeLogsUsername;
@@ -121,8 +101,24 @@ class SearchService {
     ).then<void>((_) {});
   }
 
-  // --- 静态设置项索引库 ---
-  static final List<SearchResult> _staticSettings = [
+  // Settings are generated from the same directory used by AI navigation.
+  // Keep only non-settings feature/legacy entry points in the static list.
+  static Iterable<SearchResult> get _staticSettings sync* {
+    for (final item in AppSettingsCatalog.available) {
+      yield SearchResult(
+        id: 'setting_${item.id}',
+        title: item.title,
+        subtitle: item.description,
+        icon: Icons.settings_outlined,
+        type: SearchResultType.setting,
+        breadcrumb: item.path,
+        extraData: {'route': '/settings', 'target': item.id},
+      );
+    }
+    yield* _staticEntries;
+  }
+
+  static final List<SearchResult> _staticEntries = [
     SearchResult(
       id: 'setting_login',
       title: '账户登录 / 注册',
@@ -132,310 +128,6 @@ class SearchService {
       breadcrumb: '设置 > 账号',
       extraData: {'route': '/login'},
     ),
-    SearchResult(
-      id: 'setting_server_choice',
-      title: '云端线路选择（阿里云直连/Cloudflare 中转）',
-      subtitle: '切换阿里云 HTTP 直连或 HTTPS 中转线路',
-      icon: Icons.cloud_queue,
-      type: SearchResultType.setting,
-      breadcrumb: '设置 > 账号',
-      extraData: {'route': '/settings', 'target': 'server_choice'},
-    ),
-    SearchResult(
-      id: 'setting_sync_interval',
-      title: '自动同步频率 / 同步间隔',
-      subtitle: '设置后台自动同步的时间间隔',
-      icon: Icons.sync_outlined,
-      type: SearchResultType.setting,
-      breadcrumb: '设置 > 账号',
-      extraData: {'route': '/settings', 'target': 'sync_interval'},
-    ),
-    SearchResult(
-      id: 'setting_conflict_detection',
-      title: '冲突检测 / 待办时间冲突',
-      subtitle: '检测待办时间重叠并提示冲突',
-      icon: Icons.warning_amber_outlined,
-      type: SearchResultType.setting,
-      breadcrumb: '设置 > 账号',
-      extraData: {'route': '/settings', 'target': 'conflict_detection'},
-    ),
-    SearchResult(
-      id: 'setting_lan_sync',
-      title: '局域网同步 / 离线同步',
-      subtitle: '在同一局域网内直接传输数据',
-      icon: Icons.sync_alt,
-      type: SearchResultType.setting,
-      breadcrumb: '设置 > 高级',
-      extraData: {'route': '/settings', 'target': 'lan_sync'},
-    ),
-    SearchResult(
-      id: 'setting_mcp',
-      title: 'MCP / 模型上下文协议 / 外部 AI 接入',
-      subtitle: '让兼容的 AI 客户端读取或管理个人待办',
-      icon: Icons.hub_outlined,
-      type: SearchResultType.setting,
-      breadcrumb: '设置 > 数据与互联',
-      extraData: {'route': '/settings', 'target': 'mcp'},
-    ),
-    SearchResult(
-      id: 'setting_animation',
-      title: '动画效果 / 界面动效',
-      subtitle: '调整应用转场与视觉效果',
-      icon: Icons.animation,
-      type: SearchResultType.setting,
-      breadcrumb: '设置 > 视觉',
-      extraData: {'route': '/settings', 'target': 'animation'},
-    ),
-    SearchResult(
-      id: 'setting_wallpaper',
-      title: '壁纸设置 / 背景图片',
-      subtitle: '自定义首页背景',
-      icon: Icons.image,
-      type: SearchResultType.setting,
-      breadcrumb: '设置 > 视觉',
-      extraData: {'route': '/settings', 'target': 'wallpaper'},
-    ),
-    SearchResult(
-      id: 'setting_llm_config',
-      title: 'AI 助手 / LLM 设置',
-      subtitle: '配置智能助手的 API 密钥与模型',
-      icon: Icons.auto_awesome,
-      type: SearchResultType.setting,
-      breadcrumb: '设置 > 高级',
-      extraData: {'route': '/settings', 'target': 'llm_config'},
-    ),
-    SearchResult(
-      id: 'setting_ai_assistant',
-      title: 'AI 助手设置 / 智能上下文',
-      subtitle: '切换工具查询或智能注入，调整预览、提示词与深度思考',
-      icon: Icons.auto_awesome_rounded,
-      type: SearchResultType.setting,
-      breadcrumb: '设置 > AI',
-      extraData: {'route': '/settings', 'target': 'ai_assistant'},
-    ),
-    SearchResult(
-      id: 'setting_llm_retry',
-      title: '图片识别重试次数 / AI 重试',
-      subtitle: '识别超时后自动重试的次数',
-      icon: Icons.replay_outlined,
-      type: SearchResultType.setting,
-      breadcrumb: '设置 > 系统与外观',
-      extraData: {'route': '/settings', 'target': 'llm_retry'},
-    ),
-    SearchResult(
-      id: 'setting_cache_clean',
-      title: '清理缓存 / 存储空间',
-      subtitle: '删除临时文件并重算缓存大小',
-      icon: Icons.cleaning_services,
-      type: SearchResultType.setting,
-      breadcrumb: '设置 > 高级',
-      extraData: {'route': '/settings', 'target': 'cache'},
-    ),
-    SearchResult(
-      id: 'setting_band_sync',
-      title: '手环同步 / 小米手环',
-      subtitle: '与小米手环同步待办、课程、倒计时',
-      icon: Icons.watch,
-      type: SearchResultType.setting,
-      breadcrumb: '设置 > 高级',
-      extraData: {'route': '/settings', 'target': 'band_sync'},
-    ),
-    SearchResult(
-      id: 'setting_about',
-      title: '关于应用 / 版本更新',
-      subtitle: '查看当前版本、公告与更新日志',
-      icon: Icons.info_outline,
-      type: SearchResultType.setting,
-      breadcrumb: '设置 > 关于',
-      extraData: {'route': '/about'},
-    ),
-    // 🚀 课表相关
-    SearchResult(
-      id: 'setting_course_import',
-      title: '课表导入 / 课程导入 / 导入课表 / 课程表',
-      subtitle: '支持教务系统、智能文件嗅探导入',
-      icon: Icons.school,
-      type: SearchResultType.setting,
-      breadcrumb: '设置 > 课表',
-      extraData: {'route': '/settings', 'target': 'smart_import'},
-    ),
-    SearchResult(
-      id: 'setting_course_adapt',
-      title: '请求课表适配 / 申请适配',
-      subtitle: '如果没有你的学校，点此申请',
-      icon: Icons.auto_awesome,
-      type: SearchResultType.setting,
-      breadcrumb: '设置 > 课表',
-      extraData: {'route': '/settings', 'target': 'course_adapt'},
-    ),
-    SearchResult(
-      id: 'setting_course_sync',
-      title: '课表同步 / 从云端获取课表',
-      subtitle: '将云端备份的课程同步到本机',
-      icon: Icons.cloud_download,
-      type: SearchResultType.setting,
-      breadcrumb: '设置 > 课表',
-      extraData: {'route': '/settings', 'target': 'course_sync'},
-    ),
-    SearchResult(
-      id: 'setting_course_upload',
-      title: '上传课表 / 课表备份',
-      subtitle: '将本地课表保存到云端',
-      icon: Icons.cloud_upload,
-      type: SearchResultType.setting,
-      breadcrumb: '设置 > 课表',
-      extraData: {'route': '/settings', 'target': 'course_upload'},
-    ),
-    // 🚀 学期相关
-    SearchResult(
-      id: 'setting_semester_start',
-      title: '开学日期 / 学期开始',
-      subtitle: '设置当前学期的起始日期',
-      icon: Icons.calendar_today,
-      type: SearchResultType.setting,
-      breadcrumb: '设置 > 学期',
-      extraData: {'route': '/settings', 'target': 'semester_start'},
-    ),
-    SearchResult(
-      id: 'setting_semester_end',
-      title: '放假日期 / 学期结束',
-      subtitle: '设置当前学期的结束日期',
-      icon: Icons.event,
-      type: SearchResultType.setting,
-      breadcrumb: '设置 > 学期',
-      extraData: {'route': '/settings', 'target': 'semester_end'},
-    ),
-    // 🚀 通知相关
-    SearchResult(
-      id: 'setting_notifications',
-      title: '通知设置 / 消息提醒 / 课程提醒',
-      subtitle: '管理系统通知、课程闹钟提醒',
-      icon: Icons.notifications,
-      type: SearchResultType.setting,
-      breadcrumb: '设置 > 通知',
-      extraData: {'route': '/settings', 'target': 'notifications'},
-    ),
-    SearchResult(
-      id: 'setting_live_updates',
-      title: '实时活动 / 动态岛通知 / Live Updates',
-      subtitle: 'Android 16+ 实时状态显示支持',
-      icon: Icons.notifications_active,
-      type: SearchResultType.setting,
-      breadcrumb: '设置 > 高级',
-      extraData: {'route': '/settings', 'target': 'live_updates'},
-    ),
-    SearchResult(
-      id: 'setting_tai_db',
-      title: 'Tai 屏幕时间数据库 / 屏幕时间数据',
-      subtitle: '选择 Tai 生成的 data.db 文件',
-      icon: Icons.timer_outlined,
-      type: SearchResultType.setting,
-      breadcrumb: '设置 > 平台专属',
-      extraData: {'route': '/settings', 'target': 'tai_db'},
-    ),
-    SearchResult(
-      id: 'setting_force_refresh_island',
-      title: '强制刷新悬浮窗位置 / 刷新灵动岛',
-      subtitle: '将灵动岛悬浮窗重置到屏幕中央',
-      icon: Icons.refresh_rounded,
-      type: SearchResultType.setting,
-      breadcrumb: '设置 > 平台专属',
-      extraData: {'route': '/settings', 'target': 'force_refresh'},
-    ),
-    SearchResult(
-      id: 'setting_island_priority',
-      title: '灵动岛优先级设置 / 悬浮窗优先级',
-      subtitle: '配置哪些应用可以抢占灵动岛显示',
-      icon: Icons.priority_high_rounded,
-      type: SearchResultType.setting,
-      breadcrumb: '设置 > 平台专属',
-      extraData: {'route': '/settings', 'target': 'island_priority'},
-    ),
-    SearchResult(
-      id: 'setting_island_support',
-      title: '检测状态栏超级岛支持 / OriginOS 超级岛',
-      subtitle: '检测 Android 设备的状态栏超级岛能力',
-      icon: Icons.phone_android_outlined,
-      type: SearchResultType.setting,
-      breadcrumb: '设置 > 平台专属',
-      extraData: {'route': '/settings', 'target': 'island_support'},
-    ),
-    SearchResult(
-      id: 'setting_mac_status_bar',
-      title: '启用刘海灵动岛 / macOS 顶部灵动岛',
-      subtitle: '专注时在屏幕顶部显示倒计时',
-      icon: Icons.call_to_action_rounded,
-      type: SearchResultType.setting,
-      breadcrumb: '设置 > 平台专属',
-      extraData: {'route': '/settings', 'target': 'mac_status_bar'},
-    ),
-    SearchResult(
-      id: 'setting_mac_island_shortcut',
-      title: '隐藏恢复灵动岛快捷键 / macOS 快捷键',
-      subtitle: '设置全局快捷键临时隐藏或恢复灵动岛',
-      icon: Icons.keyboard_command_key_rounded,
-      type: SearchResultType.setting,
-      breadcrumb: '设置 > 平台专属',
-      extraData: {'route': '/settings', 'target': 'mac_island_shortcut'},
-    ),
-    SearchResult(
-      id: 'setting_mac_island_reminders',
-      title: '在灵动岛显示提醒 / 顶部提醒',
-      subtitle: '让待办、课程和计划提醒在灵动岛展开',
-      icon: Icons.notifications_active_outlined,
-      type: SearchResultType.setting,
-      breadcrumb: '设置 > 平台专属',
-      extraData: {'route': '/settings', 'target': 'mac_island_reminders'},
-    ),
-    SearchResult(
-      id: 'setting_mac_island_clipboard_links',
-      title: '检测剪贴板网址 / 灵动岛网址提示',
-      subtitle: '复制网页链接时在灵动岛提示打开',
-      icon: Icons.link_rounded,
-      type: SearchResultType.setting,
-      breadcrumb: '设置 > 平台专属',
-      extraData: {'route': '/settings', 'target': 'mac_island_clipboard_links'},
-    ),
-    SearchResult(
-      id: 'setting_mac_island_clipboard_browser',
-      title: '剪贴板网址默认浏览器 / 灵动岛浏览器',
-      subtitle: '设置复制网址时默认使用的浏览器',
-      icon: Icons.language_rounded,
-      type: SearchResultType.setting,
-      breadcrumb: '设置 > 平台专属',
-      extraData: {
-        'route': '/settings',
-        'target': 'mac_island_clipboard_browser',
-      },
-    ),
-    SearchResult(
-      id: 'setting_mac_island_test',
-      title: '测试灵动岛提醒 / 测试顶部提醒',
-      subtitle: '立即显示一条测试提醒，检查位置和交互',
-      icon: Icons.play_circle_outline_rounded,
-      type: SearchResultType.setting,
-      breadcrumb: '设置 > 平台专属',
-      extraData: {'route': '/settings', 'target': 'mac_island_test'},
-    ),
-    SearchResult(
-      id: 'setting_mac_island_without_notch',
-      title: '无刘海屏幕也显示灵动岛 / 外接显示器',
-      subtitle: '在无刘海 Mac 顶部显示居中胶囊',
-      icon: Icons.desktop_mac_outlined,
-      type: SearchResultType.setting,
-      breadcrumb: '设置 > 平台专属',
-      extraData: {'route': '/settings', 'target': 'mac_island_without_notch'},
-    ),
-    SearchResult(
-      id: 'setting_test_notification',
-      title: '测试通知 / 验证推送',
-      subtitle: '发送一条测试通知以验证权限是否正常',
-      icon: Icons.notification_important,
-      type: SearchResultType.setting,
-      breadcrumb: '设置 > 通知',
-      extraData: {'route': '/settings', 'target': 'test_notification'},
-    ),
-    // 🚀 团队协作
     SearchResult(
       id: 'setting_team_management',
       title: '团队协作 / 创建团队 / 加入团队',
@@ -471,224 +163,6 @@ class SearchService {
       type: SearchResultType.setting,
       breadcrumb: '设置 > 团队',
       extraData: {'route': '/teams', 'target': 'members'},
-    ),
-    // 🚀 最近新增的系统设置：这里保持与各设置页的 targetId 一致，
-    // 这样搜索结果可以直接打开对应设置项，而不是只打开设置首页。
-    SearchResult(
-      id: 'setting_theme',
-      title: '深色模式 / 主题模式',
-      subtitle: '跟随系统、浅色或深色显示',
-      icon: Icons.dark_mode_outlined,
-      type: SearchResultType.setting,
-      breadcrumb: '设置 > 系统与外观',
-      extraData: {'route': '/settings', 'target': 'theme'},
-    ),
-    SearchResult(
-      id: 'setting_theme_color',
-      title: '全局主题颜色 / 配色',
-      subtitle: '自定义应用的主色调',
-      icon: Icons.color_lens_outlined,
-      type: SearchResultType.setting,
-      breadcrumb: '设置 > 系统与外观',
-      extraData: {'route': '/settings', 'target': 'theme_color'},
-    ),
-    SearchResult(
-      id: 'setting_home_layout',
-      title: '首页组件顺序 / 首页布局',
-      subtitle: '调整首页模块排列、分组和习惯展示数量',
-      icon: Icons.dashboard_customize_outlined,
-      type: SearchResultType.setting,
-      breadcrumb: '设置 > 系统与外观',
-      extraData: {'route': '/settings', 'target': 'home_layout'},
-    ),
-    SearchResult(
-      id: 'setting_sidebar_menu',
-      title: '侧边栏菜单 / 侧边栏排序',
-      subtitle: '隐藏不常用功能并调整侧边栏入口顺序',
-      icon: Icons.tune_rounded,
-      type: SearchResultType.setting,
-      breadcrumb: '设置 > 系统与外观',
-      extraData: {'route': '/settings', 'target': 'sidebar_menu'},
-    ),
-    SearchResult(
-      id: 'setting_home_text',
-      title: '首页文字自定义 / 问候语',
-      subtitle: '自定义首页问候语、日期格式和用户名显示',
-      icon: Icons.text_fields_outlined,
-      type: SearchResultType.setting,
-      breadcrumb: '设置 > 系统与外观',
-      extraData: {'route': '/settings', 'target': 'home_text'},
-    ),
-    SearchResult(
-      id: 'setting_update_source',
-      title: '更新检查源 / 版本更新源',
-      subtitle: '选择 GitHub 或阿里云更新源',
-      icon: Icons.cloud_sync_outlined,
-      type: SearchResultType.setting,
-      breadcrumb: '设置 > 系统与外观',
-      extraData: {'route': '/settings', 'target': 'update_source'},
-    ),
-    SearchResult(
-      id: 'setting_help_center',
-      title: '帮助与反馈 / 使用指南',
-      subtitle: '查看功能说明、快速上手和常见问题',
-      icon: Icons.help_outline_rounded,
-      type: SearchResultType.setting,
-      breadcrumb: '设置 > 系统与外观',
-      extraData: {'route': '/settings', 'target': 'help_center'},
-    ),
-    SearchResult(
-      id: 'setting_changelog',
-      title: '更新日志',
-      subtitle: '查看当前版本及历史更新内容',
-      icon: Icons.system_update_outlined,
-      type: SearchResultType.setting,
-      breadcrumb: '设置 > 系统与外观',
-      extraData: {'route': '/settings', 'target': 'changelog'},
-    ),
-    SearchResult(
-      id: 'setting_feature_guide',
-      title: '版本引导 / 新功能介绍',
-      subtitle: '重新查看功能介绍与使用引导',
-      icon: Icons.school_outlined,
-      type: SearchResultType.setting,
-      breadcrumb: '设置 > 系统与外观',
-      extraData: {'route': '/settings', 'target': 'feature_guide'},
-    ),
-    SearchResult(
-      id: 'setting_data_migration',
-      title: '旧版本地数据一键迁移 / 数据迁移',
-      subtitle: '迁移待办、课程、课表与习惯数据',
-      icon: Icons.move_to_inbox_outlined,
-      type: SearchResultType.setting,
-      breadcrumb: '设置 > 系统与外观',
-      extraData: {'route': '/settings', 'target': 'migration'},
-    ),
-    SearchResult(
-      id: 'setting_calendar_read',
-      title: '读取手机日历',
-      subtitle: '仅本机只读展示到首页、周视图和半月/月视图，不写入也不同步',
-      icon: Icons.phone_android_outlined,
-      type: SearchResultType.setting,
-      breadcrumb: '设置 > 数据与互联',
-      extraData: {'route': '/settings', 'target': 'calendar_read'},
-    ),
-    SearchResult(
-      id: 'setting_calendar_sync',
-      title: '系统日历同步 / 日历 ICS',
-      subtitle: '将课程、待办和倒数日写入或导出到日历',
-      icon: Icons.calendar_month_outlined,
-      type: SearchResultType.setting,
-      breadcrumb: '设置 > 数据与互联',
-      extraData: {'route': '/settings', 'target': 'calendar_sync'},
-    ),
-    SearchResult(
-      id: 'setting_batch_tag',
-      title: '批量添加标签 / 批量标签',
-      subtitle: '为番茄钟和时间日志批量添加标签',
-      icon: Icons.label_outline,
-      type: SearchResultType.setting,
-      breadcrumb: '设置 > 数据与互联',
-      extraData: {'route': '/settings', 'target': 'batch_tag'},
-    ),
-    SearchResult(
-      id: 'setting_recurrence_merge',
-      title: '重复待办合并 / 循环系列合并',
-      subtitle: '手动选择并归并被拆开的循环系列',
-      icon: Icons.merge_type_rounded,
-      type: SearchResultType.setting,
-      breadcrumb: '设置 > 数据与互联',
-      extraData: {'route': '/settings', 'target': 'recurrence_merge'},
-    ),
-    SearchResult(
-      id: 'setting_data_export',
-      title: '数据导出 / 备份数据',
-      subtitle: '将待办、课程、倒数日等数据导出为文件',
-      icon: Icons.upload_file_outlined,
-      type: SearchResultType.setting,
-      breadcrumb: '设置 > 数据与互联',
-      extraData: {'route': '/settings', 'target': 'data_export'},
-    ),
-    SearchResult(
-      id: 'setting_data_import',
-      title: '数据导入 / 恢复备份',
-      subtitle: '从备份文件恢复或合并数据',
-      icon: Icons.download_outlined,
-      type: SearchResultType.setting,
-      breadcrumb: '设置 > 数据与互联',
-      extraData: {'route': '/settings', 'target': 'data_import'},
-    ),
-    SearchResult(
-      id: 'setting_no_course_behavior',
-      title: '无课时板块行为 / 无课安排',
-      subtitle: '设置没有课程时首页课表板块的显示方式',
-      icon: Icons.view_agenda_outlined,
-      type: SearchResultType.setting,
-      breadcrumb: '设置 > 课表与学期',
-      extraData: {'route': '/settings', 'target': 'no_course_behavior'},
-    ),
-    SearchResult(
-      id: 'setting_course_calendar_adjustment',
-      title: '校历偏移动态调整 / 调休与停课',
-      subtitle: '设置停课日期，以及补哪一天的课',
-      icon: Icons.event_repeat_outlined,
-      type: SearchResultType.setting,
-      breadcrumb: '设置 > 课表与学期',
-      extraData: {'route': '/settings', 'target': 'course_calendar_adjustment'},
-    ),
-    SearchResult(
-      id: 'setting_semester_management',
-      title: '学期管理 / 多学期课表',
-      subtitle: '添加、编辑或清除学期课程数据',
-      icon: Icons.school_outlined,
-      type: SearchResultType.setting,
-      breadcrumb: '设置 > 课表与学期',
-      extraData: {'route': '/settings', 'target': 'semester_management'},
-    ),
-    SearchResult(
-      id: 'setting_semester_sync',
-      title: '同步学期日期 / 从云端同步开学放假时间',
-      subtitle: '将另一设备设置的学期日期同步到本机',
-      icon: Icons.sync_outlined,
-      type: SearchResultType.setting,
-      breadcrumb: '设置 > 课表与学期',
-      extraData: {'route': '/settings', 'target': 'semester_sync'},
-    ),
-    SearchResult(
-      id: 'setting_permissions',
-      title: '权限管理 / 应用权限',
-      subtitle: '查看和管理通知、日历、悬浮窗等权限',
-      icon: Icons.security_outlined,
-      type: SearchResultType.setting,
-      breadcrumb: '设置 > 权限管理',
-      extraData: {'route': '/settings', 'target': 'permissions'},
-    ),
-    SearchResult(
-      id: 'setting_notification_management',
-      title: '通知管理 / 浏览器通知 / 消息提醒',
-      subtitle: '管理待办、课程、番茄钟和实时活动提醒',
-      icon: Icons.notifications_outlined,
-      type: SearchResultType.setting,
-      breadcrumb: '设置 > 通知管理',
-      extraData: {'route': '/settings', 'target': 'notifications'},
-    ),
-    SearchResult(
-      id: 'setting_float_window',
-      title: '悬浮窗与灵动岛 / 动态岛',
-      subtitle: '配置桌面悬浮窗、灵动岛和实时活动',
-      icon: Icons.stars_rounded,
-      type: SearchResultType.setting,
-      breadcrumb: '设置 > 平台专属',
-      extraData: {'route': '/settings', 'target': 'float_window_style'},
-    ),
-    SearchResult(
-      id: 'setting_android_live_updates',
-      title: 'Android 16 实时活动 / Live Updates',
-      subtitle: '配置实时状态显示支持',
-      icon: Icons.notifications_active_outlined,
-      type: SearchResultType.setting,
-      breadcrumb: '设置 > 平台专属',
-      extraData: {'route': '/settings', 'target': 'live_updates'},
     ),
     // 业务入口：即使用户还没有创建具体数据，也可以通过搜索打开模块。
     SearchResult(
@@ -817,7 +291,7 @@ class SearchService {
 
     // 1. 静态索引扫描
     for (var s in _staticSettings.where(
-      (item) => scope.includes(item.type) && _isStaticSettingAvailable(item),
+      (item) => scope.includes(item.type),
     )) {
       int score = _calculateScore(
         s.title.toLowerCase(),
@@ -909,15 +383,6 @@ class SearchService {
     }
 
     return finalResults.where((item) => scope.includes(item.type)).toList();
-  }
-
-  static bool _isStaticSettingAvailable(SearchResult result) {
-    final target = result.extraData?['target']?.toString();
-    if (target == null) return true;
-    if (_windowsOnlySettings.contains(target)) return AppPlatform.isWindows;
-    if (_androidOnlySettings.contains(target)) return AppPlatform.isAndroid;
-    if (_macOsOnlySettings.contains(target)) return AppPlatform.isMacOS;
-    return true;
   }
 
   List<String> _extractSearchTerms(String query) {
@@ -2052,12 +1517,14 @@ class SearchNavigationHandler {
   }
 
   static Future<void> _push(
-      BuildContext context, GlobalKey sourceKey, Widget page) async {
+      BuildContext context, GlobalKey sourceKey, Widget page,
+      {RouteSettings? settings}) async {
     if (!context.mounted) return;
     await PageTransitions.pushFromRect(
       context: context,
       page: page,
       sourceKey: sourceKey,
+      settings: settings,
     );
   }
 
@@ -2271,11 +1738,27 @@ class SearchNavigationHandler {
         page = TimeLogScreen(username: username);
         break;
       case '/settings':
-        page = SettingsPage(
-          initialTarget: target,
-          openInitialTargetAsRoot: true,
+        if (target == null) {
+          page = const SettingsPage();
+          break;
+        }
+        final settingsPage = AiSettingsNavigation.pageFor(
+          target, username: username,
         );
-        break;
+        if (settingsPage == null) {
+          AppSnackBars.showSnackBar(
+            context, const SnackBar(content: Text('这项设置当前不可用，请重新搜索')),
+          );
+          return;
+        }
+        final destination = AppSettingsCatalog.available.firstWhere(
+          (item) => item.id == target,
+        );
+        await _push(
+          context, sourceKey, settingsPage,
+          settings: RouteSettings(name: destination.path),
+        );
+        return;
       case '/about':
         page = const AboutScreen();
         break;

@@ -136,6 +136,11 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
         }
         _isLoading = false;
       });
+      if (widget.initialTarget != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _scrollToTarget(widget.initialTarget!);
+        });
+      }
     }
   }
 

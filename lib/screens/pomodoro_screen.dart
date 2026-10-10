@@ -16,6 +16,7 @@ import '../services/feature_tip_service.dart';
 // ══════════════════════════════════════════════════════════════
 class PomodoroScreen extends StatefulWidget {
   final String username;
+  final String? initialSettingsTarget;
 
   /// Notification action received while the app was not already showing this
   /// route. The dashboard consumes the native event to bring this page to the
@@ -32,6 +33,7 @@ class PomodoroScreen extends StatefulWidget {
   const PomodoroScreen({
     super.key,
     required this.username,
+    this.initialSettingsTarget,
     this.initialTab = 0,
     this.initialDimension = 0,
     this.initialNotificationAction,
@@ -104,7 +106,10 @@ class _PomodoroScreenState extends State<PomodoroScreen>
   bool _showCoachMarks = false;
 
   Future<void> _checkCoachMarks() async {
-    if (_showCoachMarks || !mounted || !_workbenchReady) return;
+    if (widget.initialSettingsTarget != null ||
+        _showCoachMarks || !mounted || !_workbenchReady) {
+      return;
+    }
     final hasSeenCoachMarks =
         await FeatureTipService.hasTipBeenShown('coach_pomodoro_intro');
     if (hasSeenCoachMarks) return;
@@ -190,6 +195,34 @@ class _PomodoroScreenState extends State<PomodoroScreen>
     _dispatchPendingNotificationAction();
   }
 
+  bool _initialSettingsOpened = false;
+
+  Future<void> _openInitialSettings() async {
+    final label = switch (widget.initialSettingsTarget) {
+      'pomodoro_settings' || 'pomodoro_focus' => '专注时长 (分钟)',
+      'pomodoro_break' => '休息时长 (分钟)',
+      'pomodoro_cycles' => '循环次数',
+      _ => null,
+    };
+    if (label == null || _initialSettingsOpened) return;
+    _initialSettingsOpened = true;
+    // Container transitions briefly mount their destination offstage. Wait
+    // until the page has entered before presenting its existing settings editor.
+    for (var frame = 0; frame < 90 && mounted; frame++) {
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted || _disposed) return;
+      final route = ModalRoute.of(context);
+      if (route == null ||
+          (!route.offstage &&
+              route.isCurrent &&
+              (route.animation == null ||
+                  route.animation!.status == AnimationStatus.completed))) {
+        _workbenchState?.showSettingsEntry(focusLabel: label);
+        return;
+      }
+    }
+  }
+
   void _dispatchPendingNotificationAction() {
     if (_disposed || !mounted || !_workbenchReady) return;
     if (_workbenchState == null || _pendingNotificationAction == null) return;
@@ -221,6 +254,7 @@ class _PomodoroScreenState extends State<PomodoroScreen>
       });
     }
     _dispatchPendingNotificationAction();
+    unawaited(_openInitialSettings());
   }
 
   @override
