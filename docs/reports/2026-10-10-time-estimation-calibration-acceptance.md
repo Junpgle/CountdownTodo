@@ -1,6 +1,6 @@
 # 第六轮：预计用时校准与依据展示验收
 
-日期：2026-10-10（北京时间）。用户已回复“同意”批准[第六轮方案](../proposals/2026-10-09-time-estimation-calibration.md)。状态：实现完成，相关本地验收通过，等待用户验收；未开始第七轮。
+日期：2026-10-10（北京时间）。用户已回复“同意”批准[第六轮方案](../proposals/2026-10-09-time-estimation-calibration.md)，交付后回复“确认通过”。状态：实现及用户验收通过；第七轮另提方案。
 
 ## 交付结果
 
@@ -84,6 +84,12 @@ flutter analyze --no-pub \
 
 日志：`/tmp/time_estimation_final_analyze.log`。7个独立服务／组件／新测试文件格式检查零变化，旧大型页面只格式化本轮相关区域；`git diff --check`通过。
 
+### 验收复核补充
+
+复核发现：父组件直接修改同一 `TodoItem` 对象的标题或分类，再重建规划编辑器时，`oldWidget` 与新组件持有同一对象，旧估时可能不失效。为标题、分类分别新增正式界面测试，两项先实际失败（`/tmp/time_estimation_refresh_baseline.log`），随后以独立的不可变标题／分类快照比较刷新输入，清除旧估时与推荐身份，保留已填时段，不重新填草稿或写业务数据。
+
+补充修复后4个正式界面回归文件 **73项通过**（包括两项新增测试）：`time_estimation_flow_test.dart`、`plan_block_editor_sheet_test.dart`、`todo_edit_plan_entry_test.dart`、`plan_availability_panel_test.dart`。日志：`/tmp/time_estimation_refresh_tests.log`。相关2个源码／测试文件静态检查无问题，日志：`/tmp/time_estimation_refresh_analyze.log`。本段为此前383项完整聚焦回归之后的追加验证，未将不同批次测试合并声称一次完整运行。
+
 ## 浏览器视觉与实际操作
 
 在独立localhost端口8958、合成账号 `synthetic-estimation-20261010` 中运行正式 `AddTodoScreen`、`PlanBlockEditorSheet`、估时服务及Web SQLite。种子数据为六个同名已完成待办，各有三轮25分钟实际专注；待规划项目仍未完成。仅候选占用加载使用合成空安排，手机日历明确停用；没有读取个人日历。预览自身的现有团队请求指向本机无服务端口，不调用远程估时或大模型。
@@ -119,4 +125,4 @@ flutter build web --no-pub \
 
 未执行全仓 `flutter analyze`／全套 `flutter test`、Android／iOS／macOS／Windows实机、真实账号同步及个人数据长期估时评测。普通／玻璃和大字体结论来自上述Widget测试；浏览器截图验证普通主题下正式页面，不能替代原生渲染、软键盘、系统权限和设备日历的实机验收。
 
-请用户验收第六轮；确认通过后再提交第七轮完整方案。
+用户已确认第六轮通过，第七轮仍采用“完整方案 → 批准 → 实施 → 验收”的流程。

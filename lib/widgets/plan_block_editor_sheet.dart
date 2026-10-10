@@ -133,6 +133,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
   late List<_TodoPlanSelectEntry> _todoEntries;
   int? _estimatedMinutes;
   TimeEstimationResult? _estimateResult;
+  (String?, String?) _selectedTodoMetadata = (null, null);
   int _estimateSequence = 0, _draftRevision = 0, _savedDraftRevision = -1;
   bool _busy = false, _recommendationStale = false, _focusStarted = false;
   PlanAvailabilitySelection? _recommendation;
@@ -231,21 +232,21 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
         }
       }
     }
+    _selectedTodoMetadata = _currentTodoMetadata;
   }
+
+  (String?, String?) get _currentTodoMetadata =>
+      (_selectedTodo?.title, _selectedTodo?.groupId);
 
   @override
   void didUpdateWidget(covariant PlanBlockEditorSheet oldWidget) {
     super.didUpdateWidget(oldWidget);
     final previous = _selectedTodoId;
+    final priorMetadata = _selectedTodoMetadata;
     _rebuildTodoEntries();
-    final priorTodo = oldWidget.todos
-        .where((t) => t.id == previous)
-        .firstOrNull;
-    final todo = _selectedTodo;
     if (_selectedTodoId != previous ||
         oldWidget.username != widget.username ||
-        priorTodo?.title != todo?.title ||
-        priorTodo?.groupId != todo?.groupId) {
+        priorMetadata != _selectedTodoMetadata) {
       _manualChange();
       _estimatedMinutes = null;
       _estimateResult = null;
@@ -1012,6 +1013,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
                     }
                     setState(() {
                       _selectedTodoId = value;
+                      _selectedTodoMetadata = _currentTodoMetadata;
                       _estimatedMinutes = null;
                       _estimateResult = null;
                       _manualChange();

@@ -74,7 +74,9 @@ with keyword estimates. “历史参考较充分” requires at least five recen
 similar samples with stable durations. Opening evidence neither reads more
 history nor changes the draft. Estimates do not alter Pomodoro rounds; stale
 title/group/account/lifecycle requests and user draft edits invalidate late
-results. No schema, backend, sync-write or native-calendar changes are involved.
+results. Title/group snapshots also invalidate evidence when the same mutable
+todo object is updated in place by a parent refresh, preserving the draft time.
+No schema, backend, sync-write or native-calendar changes are involved.
 
 Prediction/search only fill the draft; saving remains explicit and uses the
 existing fresh occupancy checks. User edits or closing the page invalidate late
