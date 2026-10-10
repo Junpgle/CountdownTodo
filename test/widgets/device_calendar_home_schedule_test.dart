@@ -32,6 +32,10 @@ void main() {
     final now = DateTime.now();
     final start = now.add(const Duration(minutes: 5));
     final end = start.add(const Duration(minutes: 30));
+    final expectedScheduleTitle =
+        DateUtils.dateOnly(start) == DateUtils.dateOnly(now)
+            ? '今日日程'
+            : '明日日程';
 
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (call) async {
@@ -69,7 +73,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('今日日程'), findsOneWidget);
+    expect(find.text(expectedScheduleTitle), findsOneWidget);
     expect(find.text('首页手机日程'), findsOneWidget);
     expect(find.text('手机日历'), findsOneWidget);
 
