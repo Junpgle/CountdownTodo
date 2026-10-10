@@ -935,7 +935,7 @@ class AppDialogs {
                 children: [
                   icon,
                   const SizedBox(height: 12),
-                  if (effectiveContent != null) effectiveContent,
+                  ?effectiveContent,
                 ],
               )
             : effectiveContent,
