@@ -129,19 +129,29 @@ abstract final class FinanceRepository {
     required int asOfAt,
     required int nowAt,
   }) {
-    final asOfMonthKey = financeMonthKey(
-      DateTime.fromMillisecondsSinceEpoch(asOfAt),
-    );
+    final asOfDate = DateTime.fromMillisecondsSinceEpoch(asOfAt);
+    final asOfMonthKey = financeMonthKey(asOfDate);
     const snapshotTimezoneDriftMs = 28 * 60 * 60 * 1000;
+    final nextMonthStartAt =
+        DateTime(asOfDate.year, asOfDate.month + 1).millisecondsSinceEpoch;
     final latestByMethod = <String, FinanceBudget>{};
     for (final budget in budgets) {
       final paymentMethodUuid = budget.paymentMethodUuid;
       final snapshotAt = budget.effectiveBalanceSnapshotAt;
       final monthOrder = budget.monthKey.compareTo(asOfMonthKey);
+      // A month-key snapshot may land in the next local month after sync from
+      // another timezone. Apply that allowance only near this month's end;
+      // later snapshots within the same month are never historical baselines.
+      final crossedMonthWithinTimezoneDrift =
+          snapshotAt >= nextMonthStartAt &&
+          asOfAt >= nextMonthStartAt - snapshotTimezoneDriftMs &&
+          snapshotAt <= asOfAt + snapshotTimezoneDriftMs;
       if (paymentMethodUuid == null ||
           paymentMethodUuid.isEmpty ||
           monthOrder > 0 ||
-          (monthOrder == 0 && snapshotAt > asOfAt + snapshotTimezoneDriftMs) ||
+          (monthOrder == 0 &&
+              snapshotAt > asOfAt &&
+              !crossedMonthWithinTimezoneDrift) ||
           (monthOrder < 0 && snapshotAt > asOfAt) ||
           snapshotAt > nowAt) {
         continue;
