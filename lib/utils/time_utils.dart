@@ -90,6 +90,11 @@ class AppTimeFormats {
     return DateTime(time.year, time.month, time.day);
   }
 
+  /// Returns a local midnight offset by calendar days, including DST changes.
+  static DateTime localDayStartOffset(DateTime time, int days) {
+    return DateTime(time.year, time.month, time.day + days);
+  }
+
   static bool isSameDay(DateTime left, DateTime right) {
     return left.year == right.year &&
         left.month == right.month &&
