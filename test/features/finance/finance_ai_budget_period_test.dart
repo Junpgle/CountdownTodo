@@ -69,6 +69,7 @@ void main() {
 
   test('最近一笔支出跨月查询仍能找到最近的实际账单', () async {
     final now = DateTime(2026, 10, 1, 12);
+    final futureOccurrence = DateTime(2026, 10, 1, 13);
     await FinanceStorage.saveTransaction(
       FinanceTransaction(
         uuid: 'recent-income',
@@ -84,8 +85,8 @@ void main() {
         amountMinor: 9000,
         categoryUuid: 'test-food',
         transactionDate: '2026-10-01',
-        occurredAt: DateTime.utc(2026, 10, 1, 13).millisecondsSinceEpoch,
-        timezoneOffsetMinutes: 0,
+        occurredAt: futureOccurrence.millisecondsSinceEpoch,
+        timezoneOffsetMinutes: futureOccurrence.timeZoneOffset.inMinutes,
         createdAt: now.millisecondsSinceEpoch,
       ),
     );
