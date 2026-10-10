@@ -222,6 +222,52 @@ void main() {
     );
   });
 
+  for (final change in ['title', 'group']) {
+    testWidgets('规划已有估时遇到同一待办对象的$change原地刷新时失效，保留时段', (tester) async {
+      final target = TodoItem(id: 'todo-target', title: '复习高数');
+      final todos = [target];
+      Future<void> show() => tester.pumpWidget(
+        MaterialApp(
+          home: PlanBlockEditorSheet(
+            fullPage: true,
+            username: PlanAvailabilityFixture.username,
+            startTime: now.add(const Duration(days: 1)),
+            endTime: now.add(const Duration(days: 1, minutes: 30)),
+            todos: todos,
+            todoGroups: const [],
+            initialTodoId: target.id,
+            autoRecommendTime: true,
+            onSaved: () {},
+            estimate: (_) async => result,
+            clock: () => now,
+            availabilityLoader: (q, {bool forceRefresh = false}) async =>
+                PlanAvailabilitySnapshot(
+                  todo: target,
+                  busy: const [],
+                  coverage: '合成安排',
+                ),
+          ),
+        ),
+      );
+      await show();
+      addTearDown(() async => tester.pumpWidget(const SizedBox.shrink()));
+      await drain(tester);
+      expect(evidence, findsOneWidget);
+      expect(find.text('09:15'), findsOneWidget);
+      if (change == 'title') {
+        target.title = '整理笔记';
+      } else {
+        target.groupId = 'group-changed';
+      }
+      await show();
+      await drain(tester);
+      expect(evidence, findsNothing);
+      expect(find.text('09:15'), findsOneWidget);
+      expect(await fixture.db.query('todo_plan_blocks'), isEmpty);
+      expect(await fixture.db.query('op_logs'), isEmpty);
+    });
+  }
+
   testWidgets('正式规划入口按75分钟找两个建议，不增加番茄轮数', (tester) async {
     final queries = <PlanAvailabilityQuery>[];
     final target = TodoItem(id: 'todo-target', title: '复习高数');
