@@ -84,4 +84,53 @@ void main() {
     expect(find.text('手机日历 · 只读'), findsOneWidget);
     expect(find.text('会议室'), findsOneWidget);
   });
+
+  testWidgets('keeps ended today events visible when tomorrow has no events',
+      (tester) async {
+    final todayStart = DateUtils.dateOnly(DateTime.now());
+    final eventEnd = todayStart.add(const Duration(milliseconds: 1));
+
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+      if (call.method == 'checkPermission') return true;
+      if (call.method == 'readEvents') {
+        return [
+          {
+            'id': 'ended-home-device-event',
+            'calendarId': 'device-calendar',
+            'title': '已结束的首页日程',
+            'startMs': todayStart.millisecondsSinceEpoch,
+            'endMs': eventEnd.millisecondsSinceEpoch,
+            'allDay': false,
+            'location': '',
+          },
+        ];
+      }
+      return null;
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: CourseSectionWidget(
+            dashboardCourseData: const {
+              'title': '暂无课表',
+              'courses': <dynamic>[],
+            },
+            username: 'home-calendar-test',
+            todos: const [],
+            isLight: true,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('今日已全部结束，显示明日安排'), findsNothing);
+    expect(find.text('已结束 1 项'), findsOneWidget);
+
+    await tester.tap(find.text('已结束 1 项'));
+    await tester.pumpAndSettle();
+    expect(find.text('已结束的首页日程'), findsOneWidget);
+  });
 }

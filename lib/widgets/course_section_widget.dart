@@ -480,8 +480,7 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
       ..._tomorrowDeviceCalendarEvents.map(_TodayScheduleItem.deviceCalendar),
     ]..sort((a, b) => a.startMs.compareTo(b.startMs));
 
-    final showingTomorrow = activeItems.isEmpty &&
-        (todayItems.isNotEmpty || tomorrowItems.isNotEmpty);
+    final showingTomorrow = activeItems.isEmpty && tomorrowItems.isNotEmpty;
     final items = showingTomorrow ? tomorrowItems : activeItems;
 
     final scheduleTitle = showingTomorrow ? '明日日程' : '今日日程';
