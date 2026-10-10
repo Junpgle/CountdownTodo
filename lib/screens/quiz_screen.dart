@@ -1,9 +1,12 @@
-import '../widgets/floating_glass_control.dart';
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+
 import '../models.dart';
-import '../storage_service.dart';
 import '../services/notification_service.dart';
+import '../storage_service.dart';
 import '../utils/app_dialogs.dart';
+import '../widgets/floating_glass_control.dart';
 
 // 新增：用于保存会话状态的类
 class QuizSession {
@@ -45,6 +48,9 @@ class _QuizScreenState extends State<QuizScreen>
   late Animation<double> _shakeAnimation;
   bool? _lastAnswerCorrect; // null=无反馈, true=正确, false=错误
   Color _feedbackColor = Colors.transparent;
+  Timer? _answerAdvanceTimer;
+  Timer? _correctFlashDimTimer;
+  Timer? _correctFlashClearTimer;
 
   @override
   void initState() {
@@ -62,6 +68,7 @@ class _QuizScreenState extends State<QuizScreen>
 
   @override
   void dispose() {
+    _cancelAnswerTimers();
     NotificationService.cancelQuizNotification();
     _pageController.dispose();
     _shakeController.dispose();
@@ -97,6 +104,7 @@ class _QuizScreenState extends State<QuizScreen>
   }
 
   void startNewTest() async {
+    _cancelAnswerTimers();
     setState(() {
       isLoading = true;
     });
@@ -133,7 +141,11 @@ class _QuizScreenState extends State<QuizScreen>
       _feedbackColor = Colors.transparent;
     });
 
-    _pageController.jumpToPage(0);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _pageController.hasClients) {
+        _pageController.jumpToPage(0);
+      }
+    });
 
     // 新增：保存到静态会话中
     _currentSession = QuizSession(
@@ -164,7 +176,13 @@ class _QuizScreenState extends State<QuizScreen>
   }
 
   void _submitAnswer() {
-    if (_answerController.text.isEmpty) return;
+    if (_answerController.text.isEmpty ||
+        _answerAdvanceTimer?.isActive == true) {
+      return;
+    }
+
+    _correctFlashDimTimer?.cancel();
+    _correctFlashClearTimer?.cancel();
 
     bool isCorrect = int.tryParse(_answerController.text) ==
         questions[currentIndex].correctAnswer;
@@ -187,7 +205,8 @@ class _QuizScreenState extends State<QuizScreen>
     }
 
     // 延迟后自动切换到下一题
-    Future.delayed(const Duration(milliseconds: 800), () {
+    _answerAdvanceTimer = Timer(const Duration(milliseconds: 800), () {
+      _answerAdvanceTimer = null;
       if (!mounted) return;
       if (currentIndex < questions.length - 1) {
         _goToNextQuestion();
@@ -198,18 +217,31 @@ class _QuizScreenState extends State<QuizScreen>
   }
 
   void _playCorrectFlash() {
-    Future.delayed(const Duration(milliseconds: 300), () {
+    _correctFlashDimTimer?.cancel();
+    _correctFlashClearTimer?.cancel();
+    _correctFlashDimTimer = Timer(const Duration(milliseconds: 300), () {
+      _correctFlashDimTimer = null;
       if (!mounted) return;
       setState(() {
         _feedbackColor = Colors.green.withValues(alpha: 0.1);
       });
     });
-    Future.delayed(const Duration(milliseconds: 600), () {
+    _correctFlashClearTimer = Timer(const Duration(milliseconds: 600), () {
+      _correctFlashClearTimer = null;
       if (!mounted) return;
       setState(() {
         _feedbackColor = Colors.transparent;
       });
     });
+  }
+
+  void _cancelAnswerTimers() {
+    _answerAdvanceTimer?.cancel();
+    _answerAdvanceTimer = null;
+    _correctFlashDimTimer?.cancel();
+    _correctFlashDimTimer = null;
+    _correctFlashClearTimer?.cancel();
+    _correctFlashClearTimer = null;
   }
 
   void _goToNextQuestion() {
@@ -238,6 +270,7 @@ class _QuizScreenState extends State<QuizScreen>
 
   void _prevQuestion() {
     if (currentIndex > 0) {
+      _cancelAnswerTimers();
       setState(() {
         currentIndex--;
         if (questions[currentIndex].isAnswered) {
@@ -267,6 +300,7 @@ class _QuizScreenState extends State<QuizScreen>
   }
 
   void _onPageChanged(int page) {
+    _cancelAnswerTimers();
     setState(() {
       currentIndex = page;
       if (questions[currentIndex].isAnswered) {
@@ -534,7 +568,9 @@ class _QuizScreenState extends State<QuizScreen>
                   child: const Text("上一题"),
                 ),
                 ElevatedButton(
-                  onPressed: _submitAnswer,
+                  onPressed: _answerAdvanceTimer?.isActive == true
+                      ? null
+                      : _submitAnswer,
                   style: ElevatedButton.styleFrom(
                       backgroundColor: Theme.of(context).colorScheme.primary,
                       foregroundColor: Colors.white),
