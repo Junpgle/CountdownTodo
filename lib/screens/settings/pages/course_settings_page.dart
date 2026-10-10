@@ -50,6 +50,7 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
   bool _isLoading = true;
   bool _initialEditorOpened = false;
   String? _highlightTarget;
+  Timer? _highlightTimer;
 
   String _username = '';
   int? _userId;
@@ -104,6 +105,7 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
 
   @override
   void dispose() {
+    _highlightTimer?.cancel();
     final route = _loadingDialogRoute;
     final navigator = _loadingDialogNavigator;
     if (route != null &&
@@ -130,7 +132,9 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
         curve: Curves.easeInOut,
         alignment: 0.15,
       );
-      Future.delayed(const Duration(milliseconds: 3000), () {
+      _highlightTimer?.cancel();
+      _highlightTimer = Timer(const Duration(milliseconds: 3000), () {
+        _highlightTimer = null;
         if (mounted) setState(() => _highlightTarget = null);
       });
     }

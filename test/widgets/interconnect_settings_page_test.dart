@@ -34,4 +34,18 @@ void main() {
     expect(find.text('重复待办合并'), findsOneWidget);
     expect(find.text('手动选择并归并被拆开的循环系列'), findsOneWidget);
   });
+
+  testWidgets('退出互联设置页会取消定位高亮计时器', (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: InterconnectSettingsPage(
+          username: 'tester',
+          initialTarget: 'mcp',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
 }
