@@ -1,7 +1,10 @@
-import 'package:flutter/material.dart';
-import 'package:intl/intl.dart' hide TextDirection;
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
+
+import 'package:flutter/material.dart';
+import 'package:intl/intl.dart' hide TextDirection;
+
 import '../storage_service.dart';
 import '../utils/page_transitions.dart';
 import '../widgets/floating_bottom_bar.dart';
@@ -133,6 +136,7 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
   Map<String, List<dynamic>> _historyStats = {};
   Map<String, String> _cloudMappings = {};
   bool _isLoading = true;
+  Timer? _historyLoadTimer;
 
   late DateTime _selectedDate;
   late DateTime _todayNormalized;
@@ -144,10 +148,17 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
     _todayNormalized = DateTime(now.year, now.month, now.day);
     _selectedDate = _todayNormalized;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      Future.delayed(const Duration(milliseconds: 300), () {
+      _historyLoadTimer = Timer(const Duration(milliseconds: 300), () {
+        _historyLoadTimer = null;
         if (mounted) _loadHistory();
       });
     });
+  }
+
+  @override
+  void dispose() {
+    _historyLoadTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadHistory() async {
