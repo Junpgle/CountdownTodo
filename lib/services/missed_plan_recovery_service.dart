@@ -288,6 +288,10 @@ class MissedPlanRecoveryService {
         windowEnd: 1440,
         excludeBlockId: expectedVersion == null ? null : draft.id,
         appOnly: template?.appOnly ?? false,
+        bufferBefore: template?.bufferBefore ?? 0,
+        bufferAfter: template?.bufferAfter ?? 0,
+        bufferOverride: template?.bufferOverride ?? false,
+        bufferDefaultsKey: template?.bufferDefaultsKey,
         avoidWindows: template?.avoidWindows ?? const [],
       );
       selection = PlanAvailabilitySelection(

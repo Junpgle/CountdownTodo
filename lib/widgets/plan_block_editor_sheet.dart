@@ -409,12 +409,21 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
     if (!_restored) return;
     if (_offsetChanged) throw StateError('时区已变化，请先确认当前显示的日期与时间');
     final preferences = await PlanAvailabilityPreferences.load(widget.username);
+    if (preferences.bufferError != null &&
+        !(_manualQuery?.bufferOverride ?? false)) {
+      throw PlanAvailabilityException(preferences.bufferError!);
+    }
     var appOnly = _manualQuery?.appOnly ?? _recommendation?.query.appOnly ?? false;
     while (true) {
       final query = PlanAvailabilityQuery(username: widget.username,
         todoId: _selectedTodoId!, date: _start,
         minutes: _end.difference(_start).inMinutes, windowStart: 0, windowEnd: 1440,
-        appOnly: appOnly, avoidWindows: _manualQuery?.avoidWindows ?? [
+        appOnly: appOnly,
+        bufferBefore: _manualQuery?.bufferBefore ?? preferences.bufferBefore,
+        bufferAfter: _manualQuery?.bufferAfter ?? preferences.bufferAfter,
+        bufferOverride: _manualQuery?.bufferOverride ?? false,
+        bufferDefaultsKey: _manualQuery?.bufferDefaultsKey ?? preferences.bufferKey,
+        avoidWindows: _manualQuery?.avoidWindows ?? [
           for (final i in preferences.selectedIndices) preferences.options[i],
         ]);
       try {
@@ -1115,6 +1124,10 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
           windowEnd: 1440,
           excludeBlockId: block.id,
           appOnly: _manualQuery?.appOnly ?? false,
+          bufferBefore: _manualQuery?.bufferBefore ?? 0,
+          bufferAfter: _manualQuery?.bufferAfter ?? 0,
+          bufferOverride: _manualQuery?.bufferOverride ?? false,
+          bufferDefaultsKey: _manualQuery?.bufferDefaultsKey,
           avoidWindows: _manualQuery?.avoidWindows ?? const [],
         );
         final latest = await service.availability.read(

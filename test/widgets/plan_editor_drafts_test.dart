@@ -7,6 +7,7 @@ import 'package:countdown_todo/models.dart';
 import 'package:countdown_todo/models/plan_availability.dart';
 import 'package:countdown_todo/screens/plan_editor_drafts_screen.dart';
 import 'package:countdown_todo/services/plan_editor_draft_repository.dart';
+import 'package:countdown_todo/services/plan_availability_preferences.dart';
 import 'package:countdown_todo/services/plan_todo_guard.dart';
 import 'package:countdown_todo/services/api_service.dart';
 import 'package:countdown_todo/widgets/plan_block_editor_sheet.dart';
@@ -112,6 +113,8 @@ void main() {
     bool sheet = false,
     bool list = false,
     bool occupied = false,
+    bool neighboring = false,
+    ValueChanged<PlanAvailabilityQuery>? onRead,
     bool failSave = false,
     bool productionSaver = false,
     bool calendarFailure = false,
@@ -192,6 +195,7 @@ void main() {
                             return b;
                           },
                     availabilityLoader: (q, {forceRefresh = false}) async {
+                      onRead?.call(q);
                       if (calendarFailure && !q.appOnly) {
                         throw const PlanAvailabilityException(
                           '合成手机日历失败',
@@ -206,6 +210,14 @@ void main() {
                                 PlanBusyInterval(
                                   day.add(const Duration(hours: 8)),
                                   day.add(const Duration(hours: 12)),
+                                  source: PlanBusySource.fixedSchedule,
+                                ),
+                              ]
+                            : neighboring
+                            ? [
+                                PlanBusyInterval(
+                                  day.add(const Duration(hours: 8)),
+                                  day.add(const Duration(hours: 9)),
                                   source: PlanBusySource.fixedSchedule,
                                 ),
                               ]
@@ -238,6 +250,54 @@ void main() {
     ApiService.clearBaseUrlOverride();
     await f.dispose();
   });
+
+  testWidgets(
+    'restored draft rejects nonoverlapping neighbor inside current remembered buffer',
+    (t) async {
+      final d = await seed();
+      await PlanAvailabilityPreferences.save(
+        identity.username,
+        PlanAvailabilityPreferences.defaultWindows,
+        {},
+        bufferBefore: 10,
+        bufferAfter: 5,
+      );
+      await open(t, draft: d, neighboring: true);
+      await action(t, key('plan-save'));
+      expect(find.textContaining('草稿时段已过期、被占用或不符合避让'), findsOneWidget);
+      expect(saves, isEmpty);
+      expect(await repo.list(identity), hasLength(1));
+      expect(
+        t.widget<TextField>(key('plan-remark')).controller!.text,
+        d.fields.remark,
+      );
+    },
+  );
+  testWidgets(
+    'restored draft app-only fallback retains both buffers and task duration',
+    (t) async {
+      final d = await seed();
+      final queries = <PlanAvailabilityQuery>[];
+      await PlanAvailabilityPreferences.save(
+        identity.username,
+        PlanAvailabilityPreferences.defaultWindows,
+        {},
+        bufferBefore: 10,
+        bufferAfter: 5,
+      );
+      await open(t, draft: d, calendarFailure: true, onRead: queries.add);
+      await t.ensureVisible(key('plan-save'));
+      await t.tap(key('plan-save'));
+      await t.pump(const Duration(milliseconds: 500));
+      await action(t, find.text('仅检查应用内日程'));
+      expect(saves, hasLength(1));
+      final q = queries.where((query) => query.appOnly).last;
+      expect(q.appOnly, isTrue);
+      expect(q.bufferBefore, 10);
+      expect(q.bufferAfter, 5);
+      expect(q.minutes, 60);
+    },
+  );
 
   testWidgets('untouched return has no prompt or persisted draft', (t) async {
     await open(t);

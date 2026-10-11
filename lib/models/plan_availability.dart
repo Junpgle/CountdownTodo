@@ -37,6 +37,10 @@ class PlanAvailabilityQuery {
     this.appOnly = false,
     this.resultLimit = 5,
     this.avoidWindows = const [],
+    this.bufferBefore = 0,
+    this.bufferAfter = 0,
+    this.bufferOverride = false,
+    this.bufferDefaultsKey,
   });
   final String username;
   final String todoId;
@@ -48,6 +52,22 @@ class PlanAvailabilityQuery {
   final bool appOnly;
   final int resultLimit;
   final List<PlanDailyTimeWindow> avoidWindows;
+  final int bufferBefore, bufferAfter;
+
+  /// Explicit one-query choice (including a failed preference write).
+  final bool bufferOverride;
+  final String? bufferDefaultsKey;
+  bool get hasBuffers => bufferBefore != 0 || bufferAfter != 0;
+  String get bufferSummary => bufferOverride && !hasBuffers
+      ? '本次未留缓冲'
+      : '已按开始前$bufferBefore分钟、结束后$bufferAfter分钟查找';
+  DateTime get sourceStart =>
+      dayStart.subtract(Duration(minutes: bufferBefore));
+  DateTime get sourceEnd => dayEnd.add(Duration(minutes: bufferAfter));
+  PlanTimeSlot buffered(PlanBusyInterval busy) => PlanTimeSlot(
+    busy.start.subtract(Duration(minutes: bufferAfter)),
+    busy.end.add(Duration(minutes: bufferBefore)),
+  );
   DateTime get dayStart => DateTime(date.year, date.month, date.day);
   DateTime get dayEnd => DateTime(date.year, date.month, date.day + 1);
 }

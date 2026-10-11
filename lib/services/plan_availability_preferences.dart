@@ -6,10 +6,19 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/plan_availability.dart';
 
 class PlanAvoidancePreferences {
-  const PlanAvoidancePreferences(this.options, this.selectedIndices);
+  const PlanAvoidancePreferences(
+    this.options,
+    this.selectedIndices, {
+    this.bufferBefore = 0,
+    this.bufferAfter = 0,
+    this.bufferError,
+  });
 
   final List<PlanDailyTimeWindow> options;
   final Set<int> selectedIndices;
+  final int bufferBefore, bufferAfter;
+  final String? bufferError;
+  String get bufferKey => '$bufferBefore:$bufferAfter';
 }
 
 /// Local, account-scoped defaults for the next availability search.
@@ -29,14 +38,48 @@ class PlanAvailabilityPreferences {
     final pending = _pendingWrites;
     if (pending != null) await pending;
     final prefs = await SharedPreferences.getInstance();
+    await prefs.reload();
     final raw = prefs.get(_key(username));
     final options = List<PlanDailyTimeWindow>.of(defaultWindows);
     final selected = <int>{};
-    if (raw is! String) return PlanAvoidancePreferences(options, selected);
+    if (raw == null) return PlanAvoidancePreferences(options, selected);
+    var before = 0, after = 0;
+    String? bufferError;
+    if (raw is! String) {
+      return PlanAvoidancePreferences(
+        options,
+        selected,
+        bufferError: '查找设置无法读取，请重置前后缓冲后再查找',
+      );
+    }
     try {
       final data = jsonDecode(raw);
-      if (data is! Map || data['version'] != 1 || data['windows'] is! List) {
-        return PlanAvoidancePreferences(options, selected);
+      if (data is! Map || ![1, 2].contains(data['version'])) {
+        return PlanAvoidancePreferences(
+          options,
+          selected,
+          bufferError: '查找设置版本无法识别，请重置前后缓冲后再查找',
+        );
+      }
+      if (data['version'] == 2) {
+        final b = data['buffer_before'], a = data['buffer_after'];
+        if (b is! int || a is! int || b < 0 || a < 0 || b > 120 || a > 120) {
+          bufferError = '缓冲设置无法读取，请重置前后缓冲后再查找';
+        } else {
+          before = b;
+          after = a;
+        }
+      }
+      if (data['windows'] is! List) {
+        return PlanAvoidancePreferences(
+          options,
+          selected,
+          bufferBefore: before,
+          bufferAfter: after,
+          bufferError: data['version'] == 2
+              ? bufferError ?? '查找设置无法读取，请重置前后缓冲后再查找'
+              : null,
+        );
       }
       final entries = data['windows'] as List;
       for (var i = 0; i < entries.length; i++) {
@@ -64,19 +107,37 @@ class PlanAvailabilityPreferences {
         if (entry['enabled'] == true) selected.add(index);
       }
     } on FormatException {
-      // Corrupt or old local data should not prevent planning.
+      bufferError = '查找设置无法读取，请重置前后缓冲后再查找';
     }
-    return PlanAvoidancePreferences(options, selected);
+    return PlanAvoidancePreferences(
+      options,
+      selected,
+      bufferBefore: before,
+      bufferAfter: after,
+      bufferError: bufferError,
+    );
+  }
+
+  static Future<void> validateBuffers(PlanAvailabilityQuery query) async {
+    if (query.bufferDefaultsKey == null || query.bufferOverride) return;
+    final current = await load(query.username);
+    if (current.bufferError != null) {
+      throw PlanAvailabilityException(current.bufferError!);
+    }
+    if (current.bufferKey != query.bufferDefaultsKey) {
+      throw const PlanAvailabilityException('缓冲默认设置已变化，请重新查找；当前输入已保留');
+    }
   }
 
   static Future<void> save(
     String username,
     List<PlanDailyTimeWindow> options,
-    Set<PlanDailyTimeWindow> selected,
-  ) {
+    Set<PlanDailyTimeWindow> selected, {
+    int? bufferBefore,
+    int? bufferAfter,
+  }) {
     // Capture now, before awaiting earlier writes or widget disposal.
-    final raw = jsonEncode({
-      'version': 1,
+    final windows = {
       'windows': [
         for (final window in options)
           {
@@ -86,11 +147,36 @@ class PlanAvailabilityPreferences {
             'enabled': selected.contains(window),
           },
       ],
-    });
+    };
     final previous = _pendingWrites;
     final write = () async {
       if (previous != null) await previous;
       final prefs = await SharedPreferences.getInstance();
+      await prefs.reload();
+      var before = bufferBefore, after = bufferAfter;
+      if (before == null || after == null) {
+        final old = prefs.getString(_key(username));
+        try {
+          final data = old == null ? null : jsonDecode(old);
+          if (data is Map && data['version'] == 2) {
+            before ??= data['buffer_before'] as int;
+            after ??= data['buffer_after'] as int;
+          }
+        } catch (_) {
+          throw StateError('缓冲设置无法读取，请先重置');
+        }
+      }
+      before ??= 0;
+      after ??= 0;
+      if (before < 0 || before > 120 || after < 0 || after > 120) {
+        throw StateError('前后缓冲须为0–120分钟');
+      }
+      final raw = jsonEncode({
+        ...windows,
+        'version': 2,
+        'buffer_before': before,
+        'buffer_after': after,
+      });
       if (!await prefs.setString(_key(username), raw)) {
         throw StateError('Unable to save availability preferences');
       }

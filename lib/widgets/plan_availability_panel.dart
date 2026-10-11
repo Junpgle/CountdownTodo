@@ -1,4 +1,7 @@
 import 'dart:async';
+import 'dart:convert';
+
+import 'plan_buffer_controls.dart';
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -75,6 +78,9 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
   PlanAvailabilityException? _error;
   DateTime? _selectedStart;
   int _resultLimit = 5;
+  int _bufferBefore = 0, _bufferAfter = 0, _preferenceWriteSequence = 0;
+  bool _bufferOverride = false;
+  String? _bufferDefaultsKey, _bufferError;
   final List<PlanDailyTimeWindow> _avoidOptions = List.of(
     PlanAvailabilityPreferences.defaultWindows,
   );
@@ -95,6 +101,10 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
     appOnly: _appOnly,
     resultLimit: _resultLimit,
     avoidWindows: List.unmodifiable(_enabledAvoid),
+    bufferBefore: _bufferBefore,
+    bufferAfter: _bufferAfter,
+    bufferOverride: _bufferOverride,
+    bufferDefaultsKey: _bufferDefaultsKey,
   );
 
   @override
@@ -111,6 +121,9 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
       _end = initialQuery.windowEnd;
       _resultLimit = initialQuery.resultLimit;
       _appOnly = initialQuery.appOnly;
+      _bufferBefore = initialQuery.bufferBefore;
+      _bufferAfter = initialQuery.bufferAfter;
+      _bufferOverride = initialQuery.bufferOverride;
     }
     _duration = TextEditingController(text: '$_minutes');
     unawaited(_loadAvoidPreferences());
@@ -123,6 +136,36 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
   }
 
   DateTime _day(DateTime value) => DateTime(value.year, value.month, value.day);
+
+  String _preferenceKey(List<PlanDailyTimeWindow> options, Set<int> selected,
+      int before, int after, String? error) => jsonEncode([
+    for (var i = 0; i < options.length; i++)
+      [options[i].label, options[i].startMinutes, options[i].endMinutes,
+        selected.contains(i)],
+    if (!_bufferOverride) [before, after, error],
+  ]);
+
+  Future<void> _reloadPreferencesIfChanged() async {
+    final sequence = _avoidPreferencesSequence, username = widget.username;
+    try {
+      final saved = await (widget.avoidancePreferencesLoader?.call(username) ??
+          PlanAvailabilityPreferences.load(username));
+      if (!mounted || sequence != _avoidPreferencesSequence ||
+          username != widget.username) {
+        return;
+      }
+      final currentIndices = <int>{for (var i = 0; i < _avoidOptions.length; i++)
+        if (_enabledAvoid.contains(_avoidOptions[i])) i};
+      if (_preferenceKey(_avoidOptions, currentIndices, _bufferBefore,
+              _bufferAfter, _bufferError) !=
+          _preferenceKey(saved.options, saved.selectedIndices,
+              saved.bufferBefore, saved.bufferAfter, saved.bufferError)) {
+        await _loadAvoidPreferences();
+      }
+    } catch (_) {
+      if (mounted) await _loadAvoidPreferences();
+    }
+  }
 
   Future<void> _loadAvoidPreferences() async {
     final sequence = ++_avoidPreferencesSequence;
@@ -141,7 +184,7 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
       debugPrint('Unable to load availability preferences: $error');
       saved = PlanAvoidancePreferences(
         PlanAvailabilityPreferences.defaultWindows,
-        const {},
+        const {}, bufferError: '查找设置读取失败，请重试',
       );
     }
     if (!mounted ||
@@ -153,6 +196,12 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
       ..clear()
       ..addAll(saved.options);
     _enabledAvoid.addAll(saved.selectedIndices.map((i) => _avoidOptions[i]));
+    if (!_bufferOverride) {
+      _bufferBefore = saved.bufferBefore;
+      _bufferAfter = saved.bufferAfter;
+    }
+    _bufferDefaultsKey = saved.bufferKey;
+    _bufferError = _bufferOverride ? null : saved.bufferError;
     _avoidPreferencesLoaded = true;
     _invalidate();
     if ((widget.autoLookupAndSelect ||
@@ -176,16 +225,24 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
   void _avoidChanged() {
     _invalidate();
     final username = widget.username;
+    final writeSequence = ++_preferenceWriteSequence;
     unawaited(
       PlanAvailabilityPreferences.save(
         username,
         _avoidOptions,
         _enabledAvoid,
+        bufferBefore: _bufferOverride ? null : _bufferBefore,
+        bufferAfter: _bufferOverride ? null : _bufferAfter,
       ).catchError((Object error) {
         debugPrint('Unable to save availability preferences: $error');
-        if (!mounted || username != widget.username) return;
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('避让设置未能保存，请重试')));
+        if (!mounted || username != widget.username ||
+            writeSequence != _preferenceWriteSequence) {
+          return;
+        }
+        setState(() => _bufferOverride = true);
+        widget.onQueryChanged?.call(_query);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('本次查找已使用，默认设置未能记住，请重试')));
       }),
     );
   }
@@ -194,6 +251,8 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
   void didUpdateWidget(covariant PlanAvailabilityPanel old) {
     super.didUpdateWidget(old);
     if (old.username != widget.username) {
+      _bufferOverride = false;
+      _preferenceWriteSequence++;
       unawaited(_loadAvoidPreferences());
     }
     final changed =
@@ -256,7 +315,7 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) _invalidate();
+    if (state == AppLifecycleState.resumed) unawaited(_loadAvoidPreferences());
   }
 
   void _invalidate() {
@@ -451,7 +510,63 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
     ],
   );
 
+  Widget _bufferControls() => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      PlanBufferControls(
+        before: _bufferBefore,
+        after: _bufferAfter,
+        enabled: _avoidPreferencesLoaded && !_loading,
+        onChanged: (before, after) {
+          _bufferBefore = before;
+          _bufferAfter = after;
+          _bufferOverride = false;
+          _bufferError = null;
+          _bufferDefaultsKey = '$before:$after';
+          _avoidChanged();
+        },
+      ),
+      if (_bufferOverride)
+        TextButton(onPressed: () {
+          _bufferOverride = false;
+          unawaited(_loadAvoidPreferences());
+        }, child: const Text('恢复记住的缓冲')),
+    ],
+  );
+
+  Widget _bufferStatus() => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      if (_query.hasBuffers || _bufferOverride)
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Text(_query.bufferSummary,
+            key: const ValueKey('plan-buffer-summary'),
+            style: Theme.of(context).textTheme.bodySmall),
+        ),
+      if (_bufferError != null) ...[
+        Text(_bufferError!,
+          style: TextStyle(color: Theme.of(context).colorScheme.error)),
+        TextButton(key: const ValueKey('plan-reset-buffers'), onPressed: () {
+          _bufferBefore = 0; _bufferAfter = 0; _bufferOverride = false;
+          _bufferError = null; _bufferDefaultsKey = '0:0'; _avoidChanged();
+        }, child: const Text('重置前后缓冲')),
+      ],
+      if (_result != null && _result!.slots.isEmpty && _query.hasBuffers)
+        TextButton(key: const ValueKey('plan-search-without-buffers'),
+          onPressed: _loading ? null : () {
+            _bufferBefore = 0; _bufferAfter = 0; _bufferOverride = true;
+            _invalidate(); unawaited(_lookup());
+          }, child: const Text('本次不留缓冲再查找')),
+    ],
+  );
+
   Future<void> _lookup({bool selectFirst = false}) async {
+    if (_bufferError != null) {
+      setState(() => _error = PlanAvailabilityException(_bufferError!));
+      widget.onAutoLookupPendingChanged?.call(false);
+      return;
+    }
     final query = _query;
     final selectionRevision = widget.autoSelectionRevision;
     final invalid = PlanAvailabilityService.invalidReason(
@@ -701,7 +816,11 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
       },
     );
     await dialogRoute?.completed;
-    if (!mounted || selection == null) return;
+    if (!mounted) return;
+    if (selection == null) {
+      await _reloadPreferencesIfChanged();
+      return;
+    }
     if (sequence != _sequence ||
         revision != widget.autoSelectionRevision ||
         !PlanAvailabilityService.accepts(
@@ -723,6 +842,10 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
       _end = query.windowEnd;
       _resultLimit = query.resultLimit;
       _appOnly = query.appOnly;
+      _bufferBefore = query.bufferBefore;
+      _bufferAfter = query.bufferAfter;
+      _bufferOverride = query.bufferOverride;
+      _bufferDefaultsKey = query.bufferDefaultsKey;
       _enabledAvoid
         ..clear()
         ..addAll(query.avoidWindows);
@@ -800,6 +923,7 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: Text(_result!.message!),
             ),
+          _bufferStatus(),
           for (final slot in visible) _slotButton(slot),
           if (_snapshot != null)
             Padding(
@@ -1043,6 +1167,8 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
                     ],
                   ),
                   _avoidControls(),
+                  const SizedBox(height: 12),
+                  _bufferControls(),
                   const SizedBox(height: 8),
                   FilledButton.icon(
                     key: const ValueKey('plan-lookup-slots'),
@@ -1091,6 +1217,7 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       child: Text(_result!.message!),
                     ),
+                  _bufferStatus(),
                   if (_result != null &&
                       _snapshot != null &&
                       _result!.slots.isNotEmpty) ...[

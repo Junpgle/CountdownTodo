@@ -305,3 +305,6 @@ todo.md
 !/test/services/plan_editor_draft_integrity_test.dart
 
 !/test/widgets/plan_editor_drafts_test.dart
+
+!/test/services/plan_availability_buffers_test.dart
+!/test/widgets/plan_availability_buffers_test.dart

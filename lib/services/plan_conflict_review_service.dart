@@ -349,6 +349,10 @@ class PlanConflictReviewService {
         windowStart: 0,
         windowEnd: 1440,
         appOnly: manualQuery?.appOnly ?? false,
+        bufferBefore: manualQuery?.bufferBefore ?? 0,
+        bufferAfter: manualQuery?.bufferAfter ?? 0,
+        bufferOverride: manualQuery?.bufferOverride ?? false,
+        bufferDefaultsKey: manualQuery?.bufferDefaultsKey,
         avoidWindows: avoidance,
       );
       selection = PlanAvailabilitySelection(

@@ -13,6 +13,7 @@ import 'database_helper.dart';
 import 'plan_todo_guard.dart';
 import 'device_calendar_read_service.dart';
 import 'plan_availability_service.dart';
+import 'plan_availability_preferences.dart';
 
 typedef PlanAvailabilityLoader = Future<PlanAvailabilitySnapshot> Function(
   PlanAvailabilityQuery query, {
@@ -208,8 +209,8 @@ class PlanAvailabilityRepository {
       Object record,
     ) {
       if (end.isAfter(start) &&
-          end.isAfter(query.dayStart) &&
-          start.isBefore(query.dayEnd)) {
+          end.isAfter(query.sourceStart) &&
+          start.isBefore(query.sourceEnd)) {
         busy.add(
           PlanBusyInterval(
             start,
@@ -233,7 +234,14 @@ class PlanAvailabilityRepository {
         unknown.add('课程“${course.courseName}”：日期待定');
         continue;
       }
-      if (DateFormat('yyyy-MM-dd').format(date) != day) continue;
+      final sourceStartDay = DateTime(
+        query.sourceStart.year,
+        query.sourceStart.month,
+        query.sourceStart.day,
+      );
+      if (date.isBefore(sourceStartDay) || !date.isBefore(query.sourceEnd)) {
+        continue;
+      }
       if (!CourseScheduleSemantics.hasUsableTime(course)) {
         unknown.add('课程“${course.courseName}”：时间待定');
         continue;
@@ -282,8 +290,8 @@ class PlanAvailabilityRepository {
         .where(
           (item) =>
               !item.isDeleted &&
-              item.endTime > query.dayStart.millisecondsSinceEpoch &&
-              item.startTime < query.dayEnd.millisecondsSinceEpoch,
+              item.endTime > query.sourceStart.millisecondsSinceEpoch &&
+              item.startTime < query.sourceEnd.millisecondsSinceEpoch,
         )
         .map((item) => item.todoId)
         .toSet();
@@ -345,8 +353,8 @@ class PlanAvailabilityRepository {
       busy: List.unmodifiable(
         busy.where(
           (item) =>
-              item.end.isAfter(query.dayStart) &&
-              item.start.isBefore(query.dayEnd),
+              item.end.isAfter(query.sourceStart) &&
+              item.start.isBefore(query.sourceEnd),
         ),
       ),
       unknownTimes: List.unmodifiable(unknown),
@@ -438,10 +446,14 @@ class PlanAvailabilityRepository {
     bool forceRefresh = false,
     bool requireCalendar = false,
   }) async {
+    if (query.bufferBefore < 0 || query.bufferBefore > 120 ||
+        query.bufferAfter < 0 || query.bufferAfter > 120) {
+      throw const PlanAvailabilityException('前后缓冲须为0–120分钟的整数');
+    }
     final sources = await _readSources(
       query.username,
-      query.dayStart,
-      query.dayEnd,
+      query.sourceStart,
+      query.sourceEnd,
       appOnly: query.appOnly,
       forceRefresh: forceRefresh,
       requireCalendar: requireCalendar,
@@ -509,6 +521,7 @@ class PlanAvailabilityRepository {
     Future<void> Function(DatabaseExecutor executor)? beforeWrite,
   }) async {
     final query = selection.query;
+    await PlanAvailabilityPreferences.validateBuffers(query);
     final identity = await PlanTodoIdentity.capture(query.username);
     if (draft.todoId != query.todoId ||
         draft.id != (query.excludeBlockId ?? draft.id) ||
@@ -541,6 +554,7 @@ class PlanAvailabilityRepository {
       sync: sync,
       beforeWrite: (executor) async {
         await identity.check();
+        await PlanAvailabilityPreferences.validateBuffers(query);
         final original = query.excludeBlockId == null
             ? <Map<String, Object?>>[]
             : await executor.query(

@@ -49,6 +49,12 @@ abstract final class PlanAvailabilityService {
         query.minutes > query.windowEnd - query.windowStart) {
       return '需要时长必须大于零，且不能超过可安排范围';
     }
+    if (query.bufferBefore < 0 ||
+        query.bufferBefore > 120 ||
+        query.bufferAfter < 0 ||
+        query.bufferAfter > 120) {
+      return '前后缓冲须为0–120分钟的整数';
+    }
     if (query.resultLimit < 1 || query.resultLimit > 20) {
       return '推荐数量需在 1–20 个之间';
     }
@@ -111,7 +117,7 @@ abstract final class PlanAvailabilityService {
         [
               ...snapshot.busy
                   .where((item) => item.end.isAfter(item.start))
-                  .map((item) => PlanTimeSlot(item.start, item.end)),
+                  .map(query.buffered),
               ...query.avoidWindows.map((item) => item.onDate(query.date)),
             ]
             .where(
@@ -177,7 +183,7 @@ abstract final class PlanAvailabilityService {
     return PlanAvailabilityResult(
       slots,
       message: slots.isEmpty
-          ? '${deadlineLimited ? '截止前' : '当天'}没有连续 ${query.minutes} 分钟的可用时段'
+          ? '${deadlineLimited ? '截止前' : '当天'}没有连续 ${query.minutes} 分钟的可用时段${query.hasBuffers ? '（开始前${query.bufferBefore}分钟、结束后${query.bufferAfter}分钟缓冲）' : ''}'
           : null,
     );
   }
@@ -223,11 +229,11 @@ abstract final class PlanAvailabilityService {
           return range.start.isBefore(slot.end) &&
               slot.start.isBefore(range.end);
         }) &&
-        !snapshot.busy.any(
-          (item) =>
-              item.end.isAfter(item.start) &&
-              item.start.isBefore(slot.end) &&
-              slot.start.isBefore(item.end),
-        );
+        !snapshot.busy.any((item) {
+          final range = query.buffered(item);
+          return item.end.isAfter(item.start) &&
+              range.start.isBefore(slot.end) &&
+              slot.start.isBefore(range.end);
+        });
   }
 }
