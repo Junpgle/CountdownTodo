@@ -76,7 +76,9 @@ class PlanSplitScreen extends StatefulWidget {
     required this.initialQuery,
     this.repository,
     this.clock,
+    this.requireDurationConfirmation = false,
   });
+  final bool requireDurationConfirmation;
   final TodoItem todo;
   final PlanSplitQuery initialQuery;
   final PlanAvailabilityRepository? repository;
@@ -94,6 +96,7 @@ class _PlanSplitScreenState extends State<PlanSplitScreen>
   Object? _error;
   bool _loading = false;
   int _sequence = 0;
+  bool _durationConfirmed = false;
   DateTime get _now => widget.clock?.call() ?? DateTime.now();
   @override
   void initState() {
@@ -102,8 +105,18 @@ class _PlanSplitScreenState extends State<PlanSplitScreen>
     StorageService.scopedDataRefreshNotifier.addListener(_invalidate);
     DeviceCalendarReadService.revision.addListener(_invalidate);
     _identity = PlanTodoIdentity.capture(widget.initialQuery.base.username);
+    _identity.then<void>(
+      (_) {},
+      onError: (Object e, StackTrace trace) {
+        if (mounted) setState(() => _error = e);
+      },
+    );
     _query = widget.initialQuery;
-    _search();
+    if (widget.requireDurationConfirmation) {
+      _error = const PlanAvailabilityException('未取得估时，请在修改条件中确认本次总时长');
+    } else {
+      _search();
+    }
   }
 
   @override
@@ -131,6 +144,7 @@ class _PlanSplitScreenState extends State<PlanSplitScreen>
   }
 
   Future<void> _search() async {
+    if (widget.requireDurationConfirmation && !_durationConfirmed) return;
     final sequence = ++_sequence;
     setState(() {
       _loading = true;
@@ -274,6 +288,7 @@ class _PlanSplitScreenState extends State<PlanSplitScreen>
     // The dialog's text fields are gone before their controller is disposed.
     // Route completion may outlive the returned future during a reverse animation.
     if (mounted && updated != null) {
+      _durationConfirmed = true;
       _query = updated;
       await _search();
     }
@@ -371,7 +386,17 @@ class _PlanSplitScreenState extends State<PlanSplitScreen>
                       : '读取失败，请重试',
                   style: TextStyle(color: colors.error),
                 ),
-                TextButton(onPressed: _search, child: const Text('重试')),
+                TextButton(
+                  onPressed:
+                      widget.requireDurationConfirmation && !_durationConfirmed
+                      ? _criteria
+                      : _search,
+                  child: Text(
+                    widget.requireDurationConfirmation && !_durationConfirmed
+                        ? '确认本次时长'
+                        : '重试',
+                  ),
+                ),
                 if (_error is PlanAvailabilityException &&
                     (_error as PlanAvailabilityException).canUseAppOnly)
                   TextButton(
@@ -386,6 +411,14 @@ class _PlanSplitScreenState extends State<PlanSplitScreen>
                 TextButton(
                   onPressed: _withoutBuffers,
                   child: const Text('本次不留缓冲重试'),
+                ),
+              if (_result != null &&
+                  (_result!.groups.isEmpty || _result!.incomplete))
+                OutlinedButton.icon(
+                  key: const ValueKey('split-return-single'),
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.arrow_back),
+                  label: const Text('返回连续安排'),
                 ),
               if (_result != null && !_result!.incomplete)
                 for (var i = 0; i < _result!.groups.length; i++)

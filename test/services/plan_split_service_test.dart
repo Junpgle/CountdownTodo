@@ -212,8 +212,9 @@ void main() {
     () {
       final first = DateTime.utc(2026, 11, 1, 5, 30).toLocal(),
           second = DateTime.utc(2026, 11, 1, 6, 30).toLocal();
-      if (first.timeZoneOffset == second.timeZoneOffset)
+      if (first.timeZoneOffset == second.timeZoneOffset) {
         return; // Dedicated TZ run below covers the fold.
+      }
       expect(first.hour, 1);
       expect(second.hour, 1);
       final rounded = PlanAvailabilityService.minuteCeiling(

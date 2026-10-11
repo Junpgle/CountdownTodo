@@ -2,9 +2,14 @@
 library;
 
 import 'package:countdown_todo/models.dart';
+import 'package:countdown_todo/models/plan_availability.dart';
+import 'package:countdown_todo/models/plan_split.dart';
+import 'package:countdown_todo/screens/plan_split_screen.dart';
 import 'package:countdown_todo/services/api_service.dart';
+import 'package:countdown_todo/services/plan_availability_repository.dart';
 import 'package:countdown_todo/services/plan_editor_draft_repository.dart';
 import 'package:countdown_todo/services/plan_todo_guard.dart';
+import 'package:countdown_todo/storage_service.dart';
 import 'package:countdown_todo/widgets/plan_block_editor_sheet.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -142,9 +147,13 @@ void main() {
         },
       );
       await adopt(t);
+      StorageService.scopedDataRefreshNotifier.notifyListeners();
+      await t.pumpAndSettle();
+      expect(key('plan-split-stale'), findsOneWidget);
       await tap(t, key('plan-save-focus'));
       expect(await f.db.query('todo_plan_blocks'), hasLength(2));
       expect(starts.single.plannedMinutes, 45);
+      expect(key('plan-split-stale'), findsNothing);
       await tap(t, key('plan-save-focus'));
       expect(calls, 2);
       expect(starts.map((b) => b.id).toSet(), hasLength(1));
@@ -203,6 +212,57 @@ void main() {
       expect(await f.db.query(PlanEditorDraftRepository.table), isEmpty);
     },
   );
+  testWidgets(
+    'empty split results offer a clear return to continuous planning',
+    (t) async {
+      await f.fixed(
+        'all-day',
+        day.add(const Duration(hours: 8)),
+        day.add(const Duration(hours: 22)),
+      );
+      await open(t, size: const Size(320, 900), scale: 1.8);
+      await tap(t, key('plan-open-split'));
+      expect(key('split-return-single'), findsOneWidget);
+      await tap(t, key('split-return-single'));
+      expect(key('plan-open-split'), findsOneWidget);
+      expect(key('plan-split-preview'), findsNothing);
+    },
+  );
+  testWidgets(
+    'missing estimate waits for the user to confirm split duration',
+    (t) async {
+      await t.pumpWidget(
+        MaterialApp(
+          home: PlanSplitScreen(
+            todo: todo,
+            initialQuery: PlanSplitQuery(
+              PlanAvailabilityQuery(
+                username: identity.username,
+                todoId: todo.id,
+                date: day,
+                minutes: 90,
+              ),
+            ),
+            repository: PlanAvailabilityRepository(
+              databaseOverride: f.db,
+              clock: () => now,
+            ),
+            clock: () => now,
+            requireDurationConfirmation: true,
+          ),
+        ),
+      );
+      await t.pumpAndSettle();
+      expect(
+        find.text('未取得估时，请在修改条件中确认本次总时长'),
+        findsOneWidget,
+      );
+      expect(key('split-adopt-0'), findsNothing);
+      await tap(t, key('split-criteria'));
+      await tap(t, key('split-search'));
+      expect(key('split-adopt-0'), findsOneWidget);
+    },
+  );
   for (final spec in [
     (const Size(320, 900), 1.8, Brightness.dark),
     (const Size(1280, 900), 1.0, Brightness.light),
@@ -223,4 +283,84 @@ void main() {
       },
     );
   }
+  testWidgets(
+    'missing estimate requires manual confirmation before any result',
+    (t) async {
+      await t.pumpWidget(
+        MaterialApp(
+          home: PlanSplitScreen(
+            todo: todo,
+            initialQuery: PlanSplitQuery(
+              PlanAvailabilityQuery(
+                username: identity.username,
+                todoId: todo.id,
+                date: day,
+                minutes: 90,
+              ),
+            ),
+            requireDurationConfirmation: true,
+            clock: () => now,
+          ),
+        ),
+      );
+      await t.pumpAndSettle();
+      expect(find.text('未取得估时，请在修改条件中确认本次总时长'), findsOneWidget);
+      expect(key('split-adopt-0'), findsNothing);
+      await tap(t, find.text('确认本次时长'));
+      await tap(t, key('split-search'));
+      expect(key('split-adopt-0'), findsOneWidget);
+    },
+  );
+  testWidgets(
+    'restored split timezone must be acknowledged before group save',
+    (t) async {
+      final slots = [
+        PlanTimeSlot(
+          day.add(const Duration(hours: 8)),
+          day.add(const Duration(hours: 8, minutes: 45)),
+        ),
+        PlanTimeSlot(
+          day.add(const Duration(hours: 9)),
+          day.add(const Duration(hours: 9, minutes: 45)),
+        ),
+      ];
+      final r = PlanEditorDraftRepository(database: f.db);
+      final d = await r.keep(
+        identity,
+        PlanDraftFields(
+          todoId: todo.id,
+          title: todo.title,
+          start: slots.first.start.millisecondsSinceEpoch,
+          end: slots.first.end.millisecondsSinceEpoch,
+          remark: '',
+          reminder: 5,
+          pomodoro: 25,
+          rounds: 0,
+          origin: 'timeline',
+          offsetMinutes: slots.first.start.timeZoneOffset.inMinutes + 60,
+          split: PlanSplitDraft(
+            PlanSplitQuery(
+              PlanAvailabilityQuery(
+                username: identity.username,
+                todoId: todo.id,
+                date: day,
+                minutes: 90,
+              ),
+            ),
+            slots,
+            ['first', 'second'],
+          ),
+        ),
+        targetId: 'first',
+      );
+      await open(t, draft: d);
+      expect(find.text('修改日期'), findsNothing);
+      expect(find.text('修改分段条件'), findsOneWidget);
+      await tap(t, key('plan-save'));
+      expect(await f.db.query('todo_plan_blocks'), isEmpty);
+      await tap(t, find.text('确认当前时区时间'));
+      await tap(t, key('plan-save'));
+      expect(await f.db.query('todo_plan_blocks'), hasLength(2));
+    },
+  );
 }

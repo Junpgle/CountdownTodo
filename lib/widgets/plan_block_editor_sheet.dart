@@ -166,7 +166,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
   List<TodoPlanBlock> _savedSplitBlocks = [];
   DateTime? _singleStart, _singleEnd;
   PlanAvailabilityQuery? _singleQuery;
-  bool _splitAdjusted = false;
+  bool _splitAdjusted = false, _splitStale = false;
   bool get _canSplit => widget.fullPage && _supportsDraft && _selectedTodo != null;
 
   bool _autoRecommendationPending = false;
@@ -418,8 +418,8 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
           key: const ValueKey('plan-draft-restored')),
         Wrap(spacing: 8, children: [
           TextButton.icon(key: const ValueKey('plan-draft-date'),
-            onPressed: _busy ? null : _pickDraftDate,
-            icon: const Icon(Icons.edit_calendar_outlined), label: const Text('修改日期')),
+            onPressed: _busy ? null : _split == null ? _pickDraftDate : _chooseSplit,
+            icon: const Icon(Icons.edit_calendar_outlined), label: Text(_split == null ? '修改日期' : '修改分段条件')),
           if (_offsetChanged) TextButton(onPressed: () => setState(() {
             _touch(); _offsetChanged = false;
           }), child: const Text('确认当前时区时间')),
@@ -692,7 +692,12 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
     if (state == AppLifecycleState.resumed) _validateEstimateAccount();
   }
 
-  void _validateEstimateAccount() => unawaited(_checkEstimateAccount());
+  void _validateEstimateAccount() {
+    unawaited(_checkEstimateAccount());
+    if (mounted && _split != null && _persistedBlock == null) {
+      setState(() => _splitStale = true);
+    }
+  }
   Future<void> _checkEstimateAccount() async {
     try {
       await TimeEstimationRepository.checkAccount(widget.username);
@@ -965,80 +970,218 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
 
   Future<void> _chooseSplit() async {
     if (_busy || !_canSplit) return;
-    final initial = _split?.query ?? PlanSplitQuery(PlanAvailabilityQuery(
-      username: widget.username, todoId: _selectedTodoId!, date: _manualQuery?.date ?? _start,
-      minutes: _end.difference(_start).inMinutes,
-      windowStart: _manualQuery?.windowStart ?? 480, windowEnd: _manualQuery?.windowEnd ?? 1320,
-      avoidWindows: _manualQuery?.avoidWindows ?? const [],
-      appOnly: _manualQuery?.appOnly ?? false,
-      bufferBefore: _manualQuery?.bufferBefore ?? 0, bufferAfter: _manualQuery?.bufferAfter ?? 0,
-      bufferOverride: _manualQuery?.bufferOverride ?? false, bufferDefaultsKey: _manualQuery?.bufferDefaultsKey,
-      avoidanceOverride: _manualQuery?.avoidanceOverride ?? false, avoidanceDefaultsKey: _manualQuery?.avoidanceDefaultsKey));
+    final initial =
+        _split?.query ??
+        PlanSplitQuery(
+          PlanAvailabilityQuery(
+            username: widget.username,
+            todoId: _selectedTodoId!,
+            date: _manualQuery?.date ?? _start,
+            minutes: _end.difference(_start).inMinutes,
+            windowStart: _manualQuery?.windowStart ?? 480,
+            windowEnd: _manualQuery?.windowEnd ?? 1320,
+            avoidWindows: _manualQuery?.avoidWindows ?? const [],
+            appOnly: _manualQuery?.appOnly ?? false,
+            bufferBefore: _manualQuery?.bufferBefore ?? 0,
+            bufferAfter: _manualQuery?.bufferAfter ?? 0,
+            bufferOverride: _manualQuery?.bufferOverride ?? false,
+            bufferDefaultsKey: _manualQuery?.bufferDefaultsKey,
+            avoidanceOverride: _manualQuery?.avoidanceOverride ?? false,
+            avoidanceDefaultsKey: _manualQuery?.avoidanceDefaultsKey,
+          ),
+        );
     final result = await Navigator.of(context).push<PlanSplitSelection>(
-      MaterialPageRoute(builder: (_) => PlanSplitScreen(todo: _selectedTodo!, initialQuery: initial, clock: widget.clock)));
+      MaterialPageRoute(
+        builder: (_) => PlanSplitScreen(
+          todo: _selectedTodo!,
+          initialQuery: initial,
+          clock: widget.clock,
+          requireDurationConfirmation:
+              _split == null &&
+              widget.autoRecommendTime &&
+              _estimatedMinutes == null &&
+              _recommendation == null,
+        ),
+      ),
+    );
     if (!mounted || result == null) return;
     setState(() {
-      if (_split == null) { _singleStart=_start; _singleEnd=_end; _singleQuery=_manualQuery; }
-      _touch(); _manualChange(); _split=result; _splitAdjusted=false;
-      _splitIds=[_targetPlanId, for(var i=1;i<result.slots.length;i++) const Uuid().v4()];
-      _start=result.slots.first.start; _end=result.slots.first.end;
+      if (_split == null) {
+        _singleStart = _start;
+        _singleEnd = _end;
+        _singleQuery = _manualQuery;
+      }
+      _touch();
+      _manualChange();
+      _split = result;
+      _splitAdjusted = false;
+      _splitStale = false;
+      _splitIds = [
+        _targetPlanId,
+        for (var i = 1; i < result.slots.length; i++) const Uuid().v4(),
+      ];
+      _start = result.slots.first.start;
+      _end = result.slots.first.end;
     });
   }
 
   Future<void> _returnSingle() async {
     if (_busy) return;
     if (_splitAdjusted) {
-      final yes=await showDialog<bool>(context:context,builder:(c)=>AlertDialog(
-        title:const Text('放弃已调整的分段？'),content:const Text('备注、提醒和番茄设置会保留。'),
-        actions:[TextButton(onPressed:()=>Navigator.pop(c,false),child:const Text('取消')),
-          FilledButton(onPressed:()=>Navigator.pop(c,true),child:const Text('返回单段'))]));
+      final yes = await showDialog<bool>(
+        context: context,
+        builder: (c) => AlertDialog(
+          title: const Text('放弃已调整的分段？'),
+          content: const Text('备注、提醒和番茄设置会保留。'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(c, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(c, true),
+              child: const Text('返回单段'),
+            ),
+          ],
+        ),
+      );
       if (yes != true || !mounted) return;
     }
-    setState(() { _touch(); _manualChange(); _start=_singleStart ?? _start;
-      _end=_singleEnd ?? _end; _manualQuery=_singleQuery; _split=null; _splitIds=[]; });
+    setState(() {
+      _touch();
+      _manualChange();
+      _start = _singleStart ?? _start;
+      _end = _singleEnd ?? _end;
+      _manualQuery = _singleQuery;
+      _split = null;
+      _splitIds = [];
+    });
   }
 
   Future<void> _adjustSplit(int index) async {
     if (_busy) return;
-    final selection=_split!, old=selection.slots[index];
-    final date=await showDatePicker(context:context,initialDate:old.start,
-      firstDate:selection.query.base.dayStart,lastDate:selection.query.endDate.subtract(const Duration(days:1)));
+    final selection = _split!, old = selection.slots[index];
+    final date = await showDatePicker(
+      context: context,
+      initialDate: old.start,
+      firstDate: selection.query.base.dayStart,
+      lastDate: selection.query.endDate.subtract(const Duration(days: 1)),
+    );
     if (date == null || !mounted) return;
-    final time=await showTimePicker(context:context,initialTime:TimeOfDay.fromDateTime(old.start));
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(old.start),
+    );
     if (time == null || !mounted) return;
-    setState(()=>_busy=true);
+    setState(() => _busy = true);
     try {
-      final start=DateTime(date.year,date.month,date.day,time.hour,time.minute);
-      final replacement=PlanTimeSlot(start,start.add(Duration(minutes:old.minutes)));
-      final pairs=[for(var i=0;i<selection.slots.length;i++) (i==index?replacement:selection.slots[i],_splitIds[i])]
-        ..sort((a,b)=>a.$1.start.compareTo(b.$1.start));
+      final start = DateTime(
+        date.year,
+        date.month,
+        date.day,
+        time.hour,
+        time.minute,
+      );
+      final replacement = PlanTimeSlot(
+        start,
+        start.add(Duration(minutes: old.minutes)),
+      );
+      final pairs = [
+        for (var i = 0; i < selection.slots.length; i++)
+          (i == index ? replacement : selection.slots[i], _splitIds[i]),
+      ]..sort((a, b) => a.$1.start.compareTo(b.$1.start));
       if (pairs.first.$2 != _targetPlanId) {
         throw const PlanAvailabilityException('第1段须保持最早，请重新选择整组');
       }
-      final slots=pairs.map((p)=>p.$1).toList();
-      final fresh=await PlanAvailabilityRepository(clock:widget.clock).readSplit(selection.query,forceRefresh:true,
-        requireCalendar:selection.snapshot.includesCalendar);
-      if (!PlanSplitService.accepts(selection.query,slots,fresh,now:widget.clock?.call()??DateTime.now())) {
+      final slots = pairs.map((p) => p.$1).toList();
+      final fresh = await PlanAvailabilityRepository(clock: widget.clock)
+          .readSplit(
+            selection.query,
+            forceRefresh: true,
+            requireCalendar: selection.snapshot.includesCalendar,
+          );
+      if (!PlanSplitService.accepts(
+        selection.query,
+        slots,
+        fresh,
+        now: widget.clock?.call() ?? DateTime.now(),
+      )) {
         throw const PlanAvailabilityException('调整后的整组时段不可用，请避开其他分段和日程');
       }
-      if (mounted) { setState(() { _touch(); _manualChange(); _splitAdjusted=true;
-        _split=PlanSplitSelection(selection.query,slots,fresh); _splitIds=pairs.map((p)=>p.$2).toList();
-        _targetPlanId=_splitIds.first; _start=slots.first.start; _end=slots.first.end; }); }
-    } catch(e) { _reportError(e); } finally { if(mounted) setState(()=>_busy=false); }
+      if (mounted) {
+        setState(() {
+          _touch();
+          _manualChange();
+          _splitAdjusted = true;
+          _splitStale = false;
+          _split = PlanSplitSelection(selection.query, slots, fresh);
+          _splitIds = pairs.map((p) => p.$2).toList();
+          _targetPlanId = _splitIds.first;
+          _start = slots.first.start;
+          _end = slots.first.end;
+        });
+      }
+    } catch (e) {
+      _reportError(e);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
-  Widget _splitPreview() => Card(child:Padding(padding:const EdgeInsets.all(16),child:Column(
-    key:const ValueKey('plan-split-preview'),crossAxisAlignment:CrossAxisAlignment.stretch,children:[
-      Text('${_split!.slots.length}段 · 共${_split!.query.total}分钟',style:Theme.of(context).textTheme.titleMedium),
-      for(var i=0;i<_split!.slots.length;i++) Padding(padding:const EdgeInsets.symmetric(vertical:6),
-        child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
-          Text('第${i+1}段 · ${splitTimeLabel(_split!.slots[i])}'),
-          if(_pomodoroRounds>0) Text('本段专注${_pomodoroRounds*_pomodoroMinutes}分钟；固定轮数可能超出时段'),
-          Align(alignment:Alignment.centerRight,child:TextButton(onPressed:_busy?null:()=>_adjustSplit(i),child:const Text('调整本段'))),
-        ])),
-      Wrap(spacing:8,children:[TextButton(onPressed:_busy?null:_chooseSplit,child:const Text('重新选择整组')),
-        TextButton(onPressed:_busy?null:_returnSingle,child:const Text('返回单段'))]),
-    ])));
+  Widget _splitPreview() => Card(
+    child: Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        key: const ValueKey('plan-split-preview'),
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            '${_split!.slots.length}段 · 共${_split!.query.total}分钟',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          if (_splitStale)
+            const Text(
+              '安排或状态已变化，保存前将重新核对整组；也可重新选择整组。',
+              key: ValueKey('plan-split-stale'),
+            ),
+          for (var i = 0; i < _split!.slots.length; i++)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text('第${i + 1}段 · ${splitTimeLabel(_split!.slots[i])}'),
+                  if (_pomodoroRounds > 0)
+                    Text(
+                      '本段专注${_pomodoroRounds * _pomodoroMinutes}分钟；固定轮数可能超出时段',
+                    ),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      onPressed: _busy ? null : () => _adjustSplit(i),
+                      child: const Text('调整本段'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          Wrap(
+            spacing: 8,
+            children: [
+              TextButton(
+                onPressed: _busy ? null : _chooseSplit,
+                child: const Text('重新选择整组'),
+              ),
+              TextButton(
+                onPressed: _busy ? null : _returnSingle,
+                child: const Text('返回单段'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    ),
+  );
 
   Future<TodoPlanBlock> _saveDraft() async {
     if (_draftLoading) throw StateError('正在恢复草稿，请稍候');
@@ -1068,46 +1211,57 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
     }
     final TodoPlanBlock saved;
     if (_split != null) {
+      if (_offsetChanged) throw StateError('时区已变化，请先确认当前显示的日期与时间');
       await _confirmNewArrangements(_selectedTodoId!);
-      final blocks = [for (var i=0;i<_split!.slots.length;i++) TodoPlanBlock(
-        id: _splitIds[i], todoId: _selectedTodoId!,
-        startTime: _split!.slots[i].start.millisecondsSinceEpoch,
-        endTime: _split!.slots[i].end.millisecondsSinceEpoch,
-      )..titleSnapshot = _selectedTodo?.title
-       ..plannedMinutes = _split!.slots[i].minutes
-       ..remark = _remarkCtrl.text.isEmpty ? null : _remarkCtrl.text
-       ..reminderMinutes = _reminderMinutes
-       ..pomodoroMinutes = _pomodoroMinutes
-       ..pomodoroRounds = _pomodoroRounds];
-      final all = await PlanAvailabilityRepository(clock: widget.clock).saveSplit(
-        _split!, blocks, beforeWrite: (executor) => _checkLinkedTodo(executor, blocks.first));
+      final blocks = [
+        for (var i = 0; i < _split!.slots.length; i++)
+          TodoPlanBlock(
+              id: _splitIds[i],
+              todoId: _selectedTodoId!,
+              startTime: _split!.slots[i].start.millisecondsSinceEpoch,
+              endTime: _split!.slots[i].end.millisecondsSinceEpoch,
+            )
+            ..titleSnapshot = _selectedTodo?.title
+            ..plannedMinutes = _split!.slots[i].minutes
+            ..remark = _remarkCtrl.text.isEmpty ? null : _remarkCtrl.text
+            ..reminderMinutes = _reminderMinutes
+            ..pomodoroMinutes = _pomodoroMinutes
+            ..pomodoroRounds = _pomodoroRounds,
+      ];
+      final all = await PlanAvailabilityRepository(clock: widget.clock)
+          .saveSplit(
+            _split!,
+            blocks,
+            beforeWrite: (executor) => _checkLinkedTodo(executor, blocks.first),
+          );
       _savedSplitBlocks = all;
+      _splitStale = false;
       saved = all.first;
     } else {
-    await _verifyRestoredTime();
-    if (_recommendation != null && _recommendationStale) {
-      throw const PlanAvailabilityException('推荐时段已失效，请重新查找或手动修改时间');
-    }
-    final draft = _persistedBlock == null
-        ? TodoPlanBlock(
-            id: _targetPlanId,
-            todoId: _selectedTodoId!,
-            startTime: _start.millisecondsSinceEpoch,
-            endTime: _end.millisecondsSinceEpoch,
-          )
-        : TodoPlanBlock.fromJson(_persistedBlock!.toJson());
-    draft
-      ..todoId = _selectedTodoId!
-      ..titleSnapshot = _selectedTodo?.title
-      ..startTime = _start.millisecondsSinceEpoch
-      ..endTime = _end.millisecondsSinceEpoch
-      ..plannedMinutes = _end.difference(_start).inMinutes
-      ..remark = _remarkCtrl.text.isEmpty ? null : _remarkCtrl.text
-      ..reminderMinutes = _reminderMinutes
-      ..pomodoroMinutes = _pomodoroMinutes
-      ..pomodoroRounds = _pomodoroRounds;
-    await _confirmNewArrangements(draft.todoId);
-    saved = await _persist(draft, _recommendation);
+      await _verifyRestoredTime();
+      if (_recommendation != null && _recommendationStale) {
+        throw const PlanAvailabilityException('推荐时段已失效，请重新查找或手动修改时间');
+      }
+      final draft = _persistedBlock == null
+          ? TodoPlanBlock(
+              id: _targetPlanId,
+              todoId: _selectedTodoId!,
+              startTime: _start.millisecondsSinceEpoch,
+              endTime: _end.millisecondsSinceEpoch,
+            )
+          : TodoPlanBlock.fromJson(_persistedBlock!.toJson());
+      draft
+        ..todoId = _selectedTodoId!
+        ..titleSnapshot = _selectedTodo?.title
+        ..startTime = _start.millisecondsSinceEpoch
+        ..endTime = _end.millisecondsSinceEpoch
+        ..plannedMinutes = _end.difference(_start).inMinutes
+        ..remark = _remarkCtrl.text.isEmpty ? null : _remarkCtrl.text
+        ..reminderMinutes = _reminderMinutes
+        ..pomodoroMinutes = _pomodoroMinutes
+        ..pomodoroRounds = _pomodoroRounds;
+      await _confirmNewArrangements(draft.todoId);
+      saved = await _persist(draft, _recommendation);
     }
     _persistedBlock = saved;
     _savedDraftRevision = _draftRevision;
@@ -1115,12 +1269,17 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
     _userTouched = false;
     if (_localDraft != null) {
       try {
-        await _drafts.delete(_saveIdentity!, _localDraft!.id, _localDraft!.revision);
+        await _drafts.delete(
+          _saveIdentity!,
+          _localDraft!.id,
+          _localDraft!.revision,
+        );
         _localDraft = null;
       } catch (_) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('规划已保存，但本机草稿清理失败；恢复时会识别已有规划')));
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('规划已保存，但本机草稿清理失败；恢复时会识别已有规划')),
+          );
         }
       }
     }
@@ -1131,7 +1290,6 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
     }
     return saved;
   }
-
   void _reportError(Object error, {bool focus = false}) {
     if (!mounted) return;
     final text = error is PlanAvailabilityException

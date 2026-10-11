@@ -115,12 +115,12 @@ class PlanDraftSummary {
     this.start,
     this.end,
     this.updatedAt,
-    this.readable, {this.parts = 1, this.total = 0,}
+    this.readable, {this.parts = 1, this.total = 0, this.lastEnd = 0,}
   );
   final String id, title;
   final int revision, start, end, updatedAt;
   final bool readable;
-  final int parts, total;
+  final int parts, total, lastEnd;
 }
 
 class PlanDraftResume {
@@ -183,6 +183,7 @@ class PlanEditorDraftRepository {
             _isReadableRow(r),
             parts: _splitSummary(r)?.slots.length ?? 1,
             total: _splitSummary(r)?.query.total ?? 0,
+            lastEnd: _splitSummary(r)?.slots.last.end.millisecondsSinceEpoch ?? 0,
           ),
         )
         .toList();

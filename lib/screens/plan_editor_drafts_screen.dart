@@ -292,7 +292,7 @@ class _PlanEditorDraftsScreenState extends State<PlanEditorDraftsScreen>
                                 row.title,
                                 style: Theme.of(context).textTheme.titleMedium,
                               ),
-                              Text(row.parts > 1 ? '${row.parts}段 · 共${row.total}分钟 · 从${_time(row.start)}起' : '${_time(row.start)} — ${_time(row.end)}'),
+                              Text(row.parts > 1 ? '${row.parts}段 · 共${row.total}分钟 · 日期${DateFormat('M/d').format(DateTime.fromMillisecondsSinceEpoch(row.start))}至${DateFormat('M/d').format(DateTime.fromMillisecondsSinceEpoch(row.lastEnd))}' : '${_time(row.start)} — ${_time(row.end)}'),
                               Text('保留于 ${_time(row.updatedAt)}'),
                               if (!row.readable) const Text('草稿无法读取，格式暂不支持'),
                               Wrap(

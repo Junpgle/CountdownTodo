@@ -201,6 +201,7 @@ void main() {
     final list = await draftRepo.list(identity);
     expect(list.single.parts, 2);
     expect(list.single.total, 90);
+    expect(list.single.lastEnd, s.slots.last.end.millisecondsSinceEpoch);
     final read = await draftRepo.read(identity, d.id);
     expect(read.fields.fingerprint, d.fields.fingerprint);
     expect(await count('todo_plan_blocks'), 0);
@@ -246,6 +247,18 @@ void main() {
       );
       await expectLater(r.read(identity, d.id), throwsStateError);
       expect((await r.list(identity)).single.readable, isFalse);
+      (raw['split'] as Map)['total'] = 90;
+      for (final timestamp in [0, 8640000000000001]) {
+        (raw['split'] as Map)['date'] = timestamp;
+        await f.db.update(
+          PlanEditorDraftRepository.table,
+          {'form_json': jsonEncode(raw)},
+          where: 'uuid=?',
+          whereArgs: [d.id],
+        );
+        await expectLater(r.read(identity, d.id), throwsStateError);
+        expect((await r.list(identity)).single.readable, isFalse);
+      }
     },
   );
   test(

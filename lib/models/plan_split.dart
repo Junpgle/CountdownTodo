@@ -95,7 +95,9 @@ class PlanSplitDraft {
           'windowStart',
           'windowEnd',
         ].every((k) => raw[k] is int) ||
-        raw['segments'] is! List) {
+        raw['segments'] is! List ||
+        raw['date'] <= 0 ||
+        raw['date'] > 8640000000000000) {
       throw const FormatException('分段草稿格式无效');
     }
     final q = PlanSplitQuery(
