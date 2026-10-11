@@ -353,6 +353,28 @@ void main() {
       expect(p.options.first.startMinutes, 750);
     },
   );
+  testWidgets('resetting malformed settings repairs them for the next window',
+      (t) async {
+    SharedPreferences.setMockInitialValues({
+      'plan_availability_avoidance_buffers': 'not-json',
+    });
+    var reads = 0;
+    await host(
+      t,
+      results: true,
+      loader: (q, {bool forceRefresh = false}) async {
+        reads++;
+        return sources();
+      },
+    );
+
+    expect(reads, 0);
+    await action(t, key('plan-reset-buffers'));
+    expect(reads, 1);
+    final repaired = await PlanAvailabilityPreferences.load('buffers');
+    expect(repaired.bufferError, isNull);
+    expect(repaired.bufferKey, '0:0');
+  });
   for (final width in [320.0, 390.0, 1280.0]) {
     testWidgets('controls and status fit width $width at 1.8 dark text', (
       t,

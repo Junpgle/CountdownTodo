@@ -265,8 +265,11 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
     _selectedAvoidanceIndices,
   );
 
-  void _avoidChanged({bool avoidanceChanged = false}) {
-    if (avoidanceChanged) {
+  void _avoidChanged({
+    bool avoidanceChanged = false,
+    bool repairPreferences = false,
+  }) {
+    if (avoidanceChanged || repairPreferences) {
       _avoidanceOverride = false;
       _avoidanceDefaultsKey = _currentAvoidanceKey;
     }
@@ -280,8 +283,8 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
         _enabledAvoid,
         bufferBefore: _bufferOverride ? null : _bufferBefore,
         bufferAfter: _bufferOverride ? null : _bufferAfter,
-        updateAvoidance: avoidanceChanged,
-        updateBuffers: !avoidanceChanged,
+        updateAvoidance: avoidanceChanged || repairPreferences,
+        updateBuffers: !avoidanceChanged || repairPreferences,
       ).catchError((Object error) {
         debugPrint('Unable to save availability preferences: $error');
         if (!mounted || username != widget.username ||
@@ -605,7 +608,8 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
           style: TextStyle(color: Theme.of(context).colorScheme.error)),
         TextButton(key: const ValueKey('plan-reset-buffers'), onPressed: () {
           _bufferBefore = 0; _bufferAfter = 0; _bufferOverride = false;
-          _bufferError = null; _bufferDefaultsKey = '0:0'; _avoidChanged();
+          _bufferError = null; _bufferDefaultsKey = '0:0';
+          _avoidChanged(repairPreferences: true);
         }, child: const Text('重置前后缓冲')),
       ],
       if (_result != null && _result!.slots.isEmpty && _query.hasBuffers)
