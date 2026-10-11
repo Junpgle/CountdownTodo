@@ -17,6 +17,9 @@ import 'focus_do_not_disturb_service.dart';
 import '../utils/time_utils.dart';
 
 class NotificationService {
+  static const int financeBudgetAlertNotificationBaseId = 61000;
+  static const int financeBudgetAlertNotificationRange = 9000;
+
   static const MethodChannel _channel =
       MethodChannel('com.math_quiz.junpgle.com.math_quiz_app/notifications');
 
@@ -306,7 +309,11 @@ class NotificationService {
     }
     await ensureInitialized();
     if (!await _hasFinanceBudgetAlertPermission()) return false;
-    final id = _stableNotificationId(alertKey, base: 52000, range: 9000);
+    final id = _stableNotificationId(
+      alertKey,
+      base: financeBudgetAlertNotificationBaseId,
+      range: financeBudgetAlertNotificationRange,
+    );
 
     if (_isDesktopSupported) {
       await _plugin.show(

@@ -11,6 +11,9 @@ import 'scheduled_reminder_registry.dart';
 import 'focus_do_not_disturb_service.dart';
 
 class NotificationService {
+  static const int financeBudgetAlertNotificationBaseId = 61000;
+  static const int financeBudgetAlertNotificationRange = 9000;
+
   static final StreamController<MethodCall> _eventCtrl =
       StreamController<MethodCall>.broadcast();
   static final Map<int, Timer> _reminderTimers = {};
