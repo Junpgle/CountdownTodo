@@ -32,8 +32,9 @@ scheduled execution window. Multiple blocks may point to one todo.
   current completion rule can mark a block finished at 80% of planned duration.
 - Calendar sync creates/updates events and persists the external event ID so
   later updates or deletion target the same event.
-- Statistics include planned versus actual time, completion/missed metrics,
-  per-todo summaries and recommendation text.
+- Statistics separate real plan budgets, ended-plan status completion, verified
+  focus and time logs, with deduplicated attribution and paginated evidence.
+  See [planning review](plan-review.md) for range and legacy-data rules.
 - AI actions can create, update, delete, reschedule, skip and start plan blocks.
 
 Plan blocks do not turn a todo's date-only/deadline field into an execution

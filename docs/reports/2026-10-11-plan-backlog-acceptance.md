@@ -1,6 +1,6 @@
 # 第七轮：待规划清单与快速安排验收
 
-日期：2026-10-11（北京时间）。用户以“批准”同意[完整方案](../proposals/2026-10-10-plan-backlog.md)。状态：实现与本地验收完成，等待用户验收；未启动第八轮。
+日期：2026-10-11（北京时间）。用户以“批准”同意[完整方案](../proposals/2026-10-10-plan-backlog.md)。状态：实现与本地验收完成，用户随后回复“通过”，第七轮验收通过；第八轮进入方案准备阶段，尚未获准实施。
 
 ## 交付结果
 
@@ -31,7 +31,7 @@
 | 异步与适配 | 旧请求不覆盖新搜索／重试；搜索切列表保留；历史日期有说明；320／390／720×360／1280×900、1.8字体与键盘，浅色普通／深色启用玻璃设置，无溢出；320大字体顶栏日期和更多导航可达 |
 | 第三至六轮回归 | 恢复、冲突、改期、拖动／撤销、空闲推荐与偏好、实际执行记录、设备日历、估时及原待办入口 |
 
-测试使用生产迁移后的隔离SQLite、合成数据及模拟平台桥，不使用个人账号或个人日历。初次运行中的错误与修复保留日志：`/tmp/plan_backlog_initial_tests.log`、`/tmp/plan_backlog_early_regression.log`、`/tmp/plan_backlog_widget_tests.log`。其中补齐了截止字段文本类型、弹窗待选择时不应等待所有动画静止、懒加载列表需滚动后寻找控件等问题。
+测试使用生产迁移后的隔离SQLite、合成数据及模拟平台桥，不使用个人账号或个人日历。初次运行中的错误与修复保留日志：`/tmp/plan_backlog_initial_tests.log`、`/tmp/plan_backlog_early_regression.log`、`/tmp/plan_backlog_services_tests.log`、`/tmp/plan_backlog_widget_tests.log`。其中补齐了截止字段文本类型、弹窗待选择时不应等待所有动画静止、懒加载列表需滚动后寻找控件等问题。
 
 完整回归为第六轮报告列出的28个测试文件，加以下3个文件：
 
@@ -63,6 +63,7 @@ flutter test --no-pub \
 - [手机规划推荐](/tmp/plan-backlog-evidence/mobile-plan.png)
 - [手机保存后的已有安排](/tmp/plan-backlog-evidence/mobile-arranged.png)
 - [手机时间轴](/tmp/plan-backlog-evidence/mobile-timeline.png)
+- [320宽度日期导航菜单](/tmp/plan-backlog-evidence/mobile-toolbar-menu.png)
 
 预览构建：
 
@@ -82,4 +83,4 @@ flutter build web --no-pub \
 
 未执行全仓测试／全仓静态分析，未验证Android／iOS／macOS／Windows实机、真实账号多设备同步、设备日历授权或长期真实任务数据。浏览器证据来自Web合成预览，Widget适配不能替代原生键盘、玻璃渲染和系统权限验收。查看原待办与返回原时间轴后的既有初始化／状态维护，不属于新清单只读查询的零写入承诺。
 
-用户确认本轮通过后，再准备第八轮完整方案。
+用户已确认本轮通过。下一步提交第八轮完整方案，待用户同意后实施。
