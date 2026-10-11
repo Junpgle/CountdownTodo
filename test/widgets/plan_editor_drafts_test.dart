@@ -425,7 +425,10 @@ void main() {
       expect(await repo.list(identity), hasLength(1));
       await f.db.update('todos', {'is_completed': 0});
       await action(t, find.text('重试恢复'));
-      expect(t.widget<TextField>(key('plan-remark')).controller!.text, '恢复完整备注');
+      expect(
+        t.widget<TextField>(key('plan-remark')).controller!.text,
+        '恢复完整备注',
+      );
       expect(t.widget<FilledButton>(key('plan-save')).onPressed, isNotNull);
     },
   );
@@ -515,7 +518,8 @@ void main() {
       );
       await open(t, draft: d, productionSaver: true);
       await t.ensureVisible(key('plan-save'));
-      await t.tap(key('plan-save')); await t.pump(const Duration(milliseconds: 500));
+      await t.tap(key('plan-save'));
+      await t.pump(const Duration(milliseconds: 500));
       expect(find.text('此待办已有新的安排'), findsOneWidget);
       expect(await f.db.query('todo_plan_blocks'), hasLength(1));
       await action(t, find.text('仍追加这次规划'));
@@ -528,7 +532,8 @@ void main() {
     final d = await seed();
     await open(t, draft: d, calendarFailure: true);
     await t.ensureVisible(key('plan-save'));
-      await t.tap(key('plan-save')); await t.pump(const Duration(milliseconds: 500));
+    await t.tap(key('plan-save'));
+    await t.pump(const Duration(milliseconds: 500));
     expect(find.text('手机日历读取失败'), findsOneWidget);
     expect(saves, isEmpty);
     await action(t, find.text('仅检查应用内日程'));

@@ -35,6 +35,8 @@ scheduled execution window. Multiple blocks may point to one todo.
 - Statistics separate real plan budgets, ended-plan status completion, verified
   focus and time logs, with deduplicated attribution and paginated evidence.
   See [planning review](plan-review.md) for range and legacy-data rules.
+- Ordinary new plans support explicit local drafts and unsaved-exit protection.
+  See [planning drafts](plan-editor-drafts.md) for restoration and local-only limits.
 - AI actions can create, update, delete, reschedule, skip and start plan blocks.
 
 Plan blocks do not turn a todo's date-only/deadline field into an execution
