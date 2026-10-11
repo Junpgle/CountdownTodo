@@ -702,6 +702,7 @@ class PomodoroService {
   static const _keyRunState = 'pomodoro_run_state';
   static const _keyTags = 'pomodoro_tags_v2';
   static const _keyRecords = 'pomodoro_records'; // 本地缓存记录列表
+  static Future<void> _recordMutationQueue = Future<void>.value();
 
   // ── 流控（用于 UI 实时响应状态变更，替代轮询） ──────────
   static final _runStateCtrl = StreamController<PomodoroRunState?>.broadcast();
@@ -1089,8 +1090,33 @@ class PomodoroService {
   /// 添加一条专注记录，本地保存后立即尝试上传云端
   static Future<void> addRecord(PomodoroRecord record,
       {bool isSyncSource = false}) async {
+    // The record write and its plan-block delta must be serialized together.
+    // Otherwise two concurrent writes of the same UUID can both observe no
+    // previous record and add the duration twice.
+    final previousMutation = _recordMutationQueue;
+    final releaseMutation = Completer<void>();
+    _recordMutationQueue = releaseMutation.future;
+    await previousMutation;
+    try {
+      await _addRecord(record, isSyncSource: isSyncSource);
+    } finally {
+      releaseMutation.complete();
+    }
+  }
+
+  static Future<void> _addRecord(PomodoroRecord record,
+      {required bool isSyncSource}) async {
     // 1. 写入 SQLite & OpLog
     final db = await DatabaseHelper.instance.database;
+    final previousRows = await db.query(
+      'pomodoro_records',
+      where: 'uuid = ?',
+      whereArgs: [record.uuid],
+      limit: 1,
+    );
+    final previousRecord = previousRows.isEmpty
+        ? null
+        : PomodoroRecord.fromJson(previousRows.first);
     final batch = db.batch();
 
     if (!isSyncSource) {
@@ -1141,42 +1167,11 @@ class PomodoroService {
     await prefs.remove(scopedKey);
     await prefs.remove(_keyRecords);
 
-    // 🚀 核心联动：如果关联了规划块，自动回写规划块的达成情况
-    if (record.planBlockId != null && record.planBlockId!.isNotEmpty) {
-      final prefs = await SharedPreferences.getInstance();
-      final username =
-          prefs.getString(StorageService.keyCurrentUser) ?? 'default';
-      try {
-        final blocks =
-            await StorageService.getPlanBlocks(username, includeDeleted: true);
-        final idx = blocks.indexWhere((b) => b.uuid == record.planBlockId);
-        if (idx != -1) {
-          final pb = blocks[idx];
-          // 1. 累计专注时长
-          pb.actualFocusSeconds +=
-              (record.actualDuration ?? record.plannedDuration);
-          // 2. 记录 ID 关联
-          if (!pb.pomodoroRecordIds.contains(record.uuid)) {
-            pb.pomodoroRecordIds.add(record.uuid);
-          }
-          // 3. 状态自动机：如果时长达标（超过计划时长的 80%），标记为已完成
-          if (pb.status == TodoPlanStatus.planned ||
-              pb.status == TodoPlanStatus.focusing) {
-            if (pb.actualFocusSeconds >= pb.plannedMinutes * 60 * 0.8) {
-              pb.status = TodoPlanStatus.finished;
-            } else {
-              pb.status = TodoPlanStatus.planned;
-            }
-          }
-          pb.markAsChanged();
-          // 4. 保存
-          await StorageService.savePlanBlocks(username, [pb]);
-          // debugPrint('[PomodoroService] 规划块联动更新成功: ${pb.uuid}');
-        }
-      } catch (e) {
-        // debugPrint('[PomodoroService] 规划块联动失败: $e');
-      }
-    }
+    await _updateLinkedPlanBlocks(
+      previousRecord,
+      record,
+      isSyncSource: isSyncSource,
+    );
 
     // debugPrint(
     //     '[PomodoroService] addRecord OK (SQL+Cache), uuid=${record.uuid}');
@@ -1189,6 +1184,80 @@ class PomodoroService {
       if (username.isNotEmpty) {
         StorageService.requestSync(username);
       }
+    }
+  }
+
+  static Future<void> _updateLinkedPlanBlocks(
+    PomodoroRecord? previousRecord,
+    PomodoroRecord record, {
+    required bool isSyncSource,
+  }) async {
+    final affectedBlockIds = <String>{
+      if (previousRecord?.planBlockId?.isNotEmpty == true)
+        previousRecord!.planBlockId!,
+      if (record.planBlockId?.isNotEmpty == true) record.planBlockId!,
+    };
+    if (affectedBlockIds.isEmpty) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    final username =
+        prefs.getString(StorageService.keyCurrentUser) ?? 'default';
+    try {
+      final blocks =
+          await StorageService.getPlanBlocks(username, includeDeleted: true);
+      for (final block in blocks) {
+        final containsLegacyLink =
+            block.pomodoroRecordIds.contains(record.uuid);
+        if (!affectedBlockIds.contains(block.uuid) && !containsLegacyLink) {
+          continue;
+        }
+
+        final previouslyLinked = previousRecord != null &&
+            !previousRecord.isDeleted &&
+            (previousRecord.planBlockId == block.uuid ||
+                ((previousRecord.planBlockId?.isEmpty ?? true) &&
+                    containsLegacyLink));
+        final currentlyLinked =
+            !record.isDeleted && record.planBlockId == block.uuid;
+        final previousSeconds =
+            previouslyLinked ? previousRecord.effectiveDuration : 0;
+        final currentSeconds =
+            currentlyLinked ? record.effectiveDuration : 0;
+        final secondsDelta = currentSeconds - previousSeconds;
+
+        final oldLinkCount = block.pomodoroRecordIds
+            .where((uuid) => uuid == record.uuid)
+            .length;
+        block.pomodoroRecordIds.removeWhere((uuid) => uuid == record.uuid);
+        if (currentlyLinked) block.pomodoroRecordIds.add(record.uuid);
+        final linkChanged = currentlyLinked
+            ? oldLinkCount != 1
+            : oldLinkCount != 0;
+
+        if (secondsDelta == 0 && !linkChanged) continue;
+
+        block.actualFocusSeconds =
+            max(0, block.actualFocusSeconds + secondsDelta);
+        if (secondsDelta != 0 &&
+            (block.status == TodoPlanStatus.planned ||
+                block.status == TodoPlanStatus.focusing)) {
+          if (block.actualFocusSeconds >= block.plannedMinutes * 60 * 0.8) {
+            block.status = TodoPlanStatus.finished;
+          } else {
+            block.status = TodoPlanStatus.planned;
+          }
+        }
+        block.markAsChanged();
+        await StorageService.savePlanBlocks(
+          username,
+          [block],
+          sync: !isSyncSource,
+          isSyncSource: isSyncSource,
+        );
+      }
+    } catch (_) {
+      // Keep the Pomodoro record write available if its plan block is missing
+      // or its independent storage update fails.
     }
   }
 
