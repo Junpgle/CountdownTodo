@@ -197,6 +197,12 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
     if (!_supportsDraft || (widget.saver != null && widget.draftRepository == null)) return;
     final sequence = ++_draftReadSequence;
     final todoId = _selectedTodoId;
+    if (_draftOffer != null || _draftLoadError != null) {
+      setState(() {
+        _draftOffer = null;
+        _draftLoadError = null;
+      });
+    }
     if (todoId == null || _localDraft != null) return;
     try {
       await _identityReady;

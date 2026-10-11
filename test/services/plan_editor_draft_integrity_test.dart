@@ -96,9 +96,17 @@ void main() {
     );
   });
   test('actual business export excludes retained draft content', () async {
-    await repo.keep(identity, fields(remark: 'LOCAL_DRAFT_PRIVATE_SENTINEL'), targetId: 'reserved');
-    final result = await DataExportService.exportData(username: identity.username,
-      selectedTypes: ['todo_plan_blocks'], saveToFile: true, options: const ExportOptions());
+    await repo.keep(
+      identity,
+      fields(remark: 'LOCAL_DRAFT_PRIVATE_SENTINEL'),
+      targetId: 'reserved',
+    );
+    final result = await DataExportService.exportData(
+      username: identity.username,
+      selectedTypes: ['todo_plan_blocks'],
+      saveToFile: true,
+      options: const ExportOptions(),
+    );
     expect(result.success, isTrue, reason: result.errorMessage);
     final raw = await File(result.filePath!).readAsString();
     final json = jsonDecode(raw) as Map;
@@ -106,30 +114,51 @@ void main() {
     expect(raw, isNot(contains('LOCAL_DRAFT_PRIVATE_SENTINEL')));
     expect(raw, isNot(contains(PlanEditorDraftRepository.table)));
   });
-  test('actual cloud request excludes local draft table and contents', () async {
-    await repo.keep(identity, fields(remark: 'LOCAL_DRAFT_PRIVATE_SENTINEL'), targetId: 'reserved');
-    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-    Map? sent;
-    server.listen((request) async {
-      sent = jsonDecode(await utf8.decoder.bind(request).join()) as Map;
-      request.response.headers.contentType = ContentType.json;
-      request.response.write('{"success":true}');
-      await request.response.close();
-    });
-    try {
-      ApiService.setBaseUrlOverride('http://127.0.0.1:${server.port}');
-      final blocks = await StorageService.getPlanBlocks(identity.username);
-      final result = await HttpOverrides.runWithHttpOverrides(() => ApiService.postDeltaSync(
-        userId: 0, lastSyncTime: 0, deviceId: 'synthetic-device',
-        todosChanges: const [], countdownsChanges: const [],
-        planBlocksChanges: blocks.map((b) => b.toJson()).toList(),
-      ), _LocalHttpOverrides());
-      expect(result['success'], isTrue);
-      expect(sent!['todo_plan_blocks_changes'], isEmpty);
-      expect(jsonEncode(sent), isNot(contains('LOCAL_DRAFT_PRIVATE_SENTINEL')));
-      expect(jsonEncode(sent), isNot(contains(PlanEditorDraftRepository.table)));
-    } finally { await server.close(force: true); }
-  });
+  test(
+    'actual cloud request excludes local draft table and contents',
+    () async {
+      await repo.keep(
+        identity,
+        fields(remark: 'LOCAL_DRAFT_PRIVATE_SENTINEL'),
+        targetId: 'reserved',
+      );
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      Map? sent;
+      server.listen((request) async {
+        sent = jsonDecode(await utf8.decoder.bind(request).join()) as Map;
+        request.response.headers.contentType = ContentType.json;
+        request.response.write('{"success":true}');
+        await request.response.close();
+      });
+      try {
+        ApiService.setBaseUrlOverride('http://127.0.0.1:${server.port}');
+        final blocks = await StorageService.getPlanBlocks(identity.username);
+        final result = await HttpOverrides.runWithHttpOverrides(
+          () => ApiService.postDeltaSync(
+            userId: 0,
+            lastSyncTime: 0,
+            deviceId: 'synthetic-device',
+            todosChanges: const [],
+            countdownsChanges: const [],
+            planBlocksChanges: blocks.map((b) => b.toJson()).toList(),
+          ),
+          _LocalHttpOverrides(),
+        );
+        expect(result['success'], isTrue);
+        expect(sent!['todo_plan_blocks_changes'], isEmpty);
+        expect(
+          jsonEncode(sent),
+          isNot(contains('LOCAL_DRAFT_PRIVATE_SENTINEL')),
+        );
+        expect(
+          jsonEncode(sent),
+          isNot(contains(PlanEditorDraftRepository.table)),
+        );
+      } finally {
+        await server.close(force: true);
+      }
+    },
+  );
   test(
     'upgrade from preceding schema keeps real todos and creates drafts',
     () async {
