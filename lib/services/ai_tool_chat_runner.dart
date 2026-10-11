@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'ai_chat_service.dart';
 import 'ai_query_tool_service.dart';
+import 'ai_planning_draft_validator.dart';
 import 'ai_tool_result_context.dart';
 import 'ai_settings_navigation_service.dart';
 
@@ -27,6 +28,7 @@ abstract final class AiToolChatRunner {
     bool includeReasoningContent = false,
     bool requirePlanningProposal = false,
     String planningRequestText = '',
+    DateTime? planningNow,
     int maxQueryRounds = 4,
     int maxCalls = 8,
   }) async* {
@@ -43,6 +45,8 @@ abstract final class AiToolChatRunner {
     var indexOffset = 0;
     var proposalsProduced = false;
     var planningRepairAttempted = false;
+    var planningScheduleRepairAttempted = false;
+    final planningRequestTime = planningNow ?? DateTime.now();
     final hasPlanningTool = tools.any((tool) {
       final function = tool['function'] as Map;
       return function['name'] == 'propose_cdt_actions' &&
@@ -66,9 +70,13 @@ abstract final class AiToolChatRunner {
         return (!finalRound || !isQuery) &&
             (!proposalsProduced || isQuery) &&
             (!planningRepairAttempted ||
+                (tool['function'] as Map)['name'] == 'propose_cdt_actions') &&
+            (!planningScheduleRepairAttempted ||
                 (tool['function'] as Map)['name'] == 'propose_cdt_actions');
       }).toList();
-      if (finalRound && !planningRepairAttempted) {
+      if (finalRound &&
+          !planningRepairAttempted &&
+          !planningScheduleRepairAttempted) {
         history.add({
           'role': 'system',
           'content':
@@ -81,7 +89,8 @@ abstract final class AiToolChatRunner {
       var reasoning = '';
       final calls = <AiChatFunctionCall>[];
       var maxIndex = -1;
-      final runRound = planningRepairAttempted
+      final runRound =
+          planningRepairAttempted || planningScheduleRepairAttempted
           ? streamProposalRound ?? streamRound
           : streamRound;
       await for (final chunk in runRound(history, roundTools)) {
@@ -97,16 +106,20 @@ abstract final class AiToolChatRunner {
           // calls arrived. Never flash a false "created/saved" claim.
           content: hasPlanningTool ? '' : chunk.content,
           reasoningContent: chunk.reasoningContent,
-          toolCallDeltas: [
-            for (final delta in chunk.toolCallDeltas)
-              AiChatFunctionCallDelta(
-                index: delta.index + indexOffset,
-                id: delta.id,
-                name: delta.name,
-                arguments: delta.arguments,
-              ),
-          ],
-          toolCalls: chunk.toolCalls,
+          // Planning calls are held until their times pass app-side checks;
+          // otherwise an invalid draft could leak into the confirmation card.
+          toolCallDeltas: hasPlanningTool
+              ? const []
+              : [
+                  for (final delta in chunk.toolCallDeltas)
+                    AiChatFunctionCallDelta(
+                      index: delta.index + indexOffset,
+                      id: delta.id,
+                      name: delta.name,
+                      arguments: delta.arguments,
+                    ),
+                ],
+          toolCalls: hasPlanningTool ? const [] : chunk.toolCalls,
           finishReason: chunk.finishReason,
           usage: chunk.usage,
           usageSummary: chunk.usageSummary,
@@ -114,12 +127,69 @@ abstract final class AiToolChatRunner {
       }
       indexOffset += maxIndex + 1;
       if (cancelled()) return;
+      final cdtProposalOnly =
+          calls.isNotEmpty &&
+          calls.every((call) => call.name == 'propose_cdt_actions');
+      if (hasPlanningTool && cdtProposalOnly) {
+        final validationIssue = AiPlanningDraftValidator.validateFromNow(
+          requestText: planningRequestText,
+          actions: _decodeCdtProposalActions(calls),
+          now: planningRequestTime,
+        );
+        if (validationIssue != null) {
+          if (planningScheduleRepairAttempted) {
+            yield AiChatStreamChunk(
+              content: '这次规划草案未通过时间校验，没有生成确认卡。$validationIssue',
+            );
+            return;
+          }
+          planningScheduleRepairAttempted = true;
+          history.add({
+            'role': 'assistant',
+            'content': content,
+            if (includeReasoningContent) 'reasoning_content': reasoning,
+            'tool_calls': [
+              for (final call in calls)
+                {
+                  'id': call.id,
+                  'type': 'function',
+                  'function': {'name': call.name, 'arguments': call.arguments},
+                },
+            ],
+          });
+          for (final call in calls) {
+            history.add({
+              'role': 'tool',
+              'tool_call_id': call.id,
+              'content': jsonEncode({
+                'ok': false,
+                'status': 'invalid_planning_draft',
+                'message': validationIssue,
+              }),
+            });
+          }
+          history.add({
+            'role': 'system',
+            'content':
+                '刚才的规划草案未交给App，也没有生成确认卡。$validationIssue'
+                '本轮请求时的本地时间是${_formatPlanningTime(planningRequestTime)}。'
+                '请重新安排所有可在用户要求时段内完成的任务：从该当前时间开始，'
+                '每个规划块必须在截止时间前结束，时间不能互相重叠；确实排不下的任务不要塞入过去或重叠时段，'
+                '改为只安排能完成的部分，并在说明中列出未安排的任务。现在直接调用propose_cdt_actions生成新的待确认草案。',
+          });
+          continue;
+        }
+      }
+      if (hasPlanningTool && calls.isNotEmpty) {
+        yield AiChatStreamChunk(toolCalls: calls);
+      }
       if (calls.isEmpty && hasPlanningTool && !proposalsProduced) {
         final claimsDraft = RegExp(
           r'草案.{0,12}已生成|已(?:生成|创建|新建|保存)|我已为|回复.{0,12}确认.{0,20}保存',
         ).hasMatch(content);
         if ((requirePlanningProposal || claimsDraft) &&
-            !planningRepairAttempted) {
+            !planningRepairAttempted &&
+            !planningScheduleRepairAttempted) {
           planningRepairAttempted = true;
           history.add({
             'role': 'assistant',
@@ -276,6 +346,34 @@ abstract final class AiToolChatRunner {
       copied[currentUserIndex],
     ];
   }
+
+  static List<Map<String, dynamic>> _decodeCdtProposalActions(
+    List<AiChatFunctionCall> calls,
+  ) {
+    final actions = <Map<String, dynamic>>[];
+    for (final call in calls) {
+      if (call.name != 'propose_cdt_actions') continue;
+      try {
+        final decoded = jsonDecode(call.arguments);
+        if (decoded is! Map || decoded['actions'] is! List) continue;
+        actions.addAll(
+          (decoded['actions'] as List).whereType<Map>().map(
+            (item) => Map<String, dynamic>.from(item),
+          ),
+        );
+      } catch (_) {
+        // The regular action parser reports malformed arguments as no draft.
+      }
+    }
+    return actions;
+  }
+
+  static String _formatPlanningTime(DateTime value) =>
+      '${value.year.toString().padLeft(4, '0')}-'
+      '${value.month.toString().padLeft(2, '0')}-'
+      '${value.day.toString().padLeft(2, '0')} '
+      '${value.hour.toString().padLeft(2, '0')}:'
+      '${value.minute.toString().padLeft(2, '0')}';
 
   static bool _isSelfContainedPlanningRequest(String text) {
     final request = text.trim();

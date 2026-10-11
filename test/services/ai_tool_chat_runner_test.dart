@@ -125,20 +125,22 @@ void main() {
         {'role': 'user', 'content': '帮我规划今天的待办'},
         {
           'role': 'assistant',
-          'content': '已生成1条待确认操作草案，请核对。'
+          'content':
+              '已生成1条待确认操作草案，请核对。'
               '\n[READ_ONLY_TOOL_HISTORY]旧对话中的待办查询结果[/READ_ONLY_TOOL_HISTORY]',
         },
         {'role': 'user', 'content': request},
       ],
       planningRequestText: request,
+      planningNow: DateTime(2026, 10, 10, 16),
       tools: planningTools,
       requirePlanningProposal: true,
       streamRound: (history, _) async* {
         rounds++;
         expect(
-          history.where((message) => message['role'] == 'user').map(
-            (message) => message['content'],
-          ),
+          history
+              .where((message) => message['role'] == 'user')
+              .map((message) => message['content']),
           [request],
         );
         expect(
@@ -167,8 +169,7 @@ void main() {
               AiChatFunctionCall(
                 id: 'new-planning-draft',
                 name: 'propose_cdt_actions',
-                arguments:
-                    '{"actions":[{"action":"create_plan_block","blocks":[{"newTodoTitle":"行测","startTime":"2026-10-10 18:00","dueDate":"2026-10-10 18:30"}]}]}',
+                arguments: '{"actions":[{"action":"create_plan_block","blocks":[{"newTodoTitle":"行测","startTime":"2026-10-10 18:00","dueDate":"2026-10-10 18:30"}]}]}',
               ),
             ],
           );
@@ -187,6 +188,67 @@ void main() {
       chunks.expand((chunk) => chunk.toolCalls).last.name,
       'propose_cdt_actions',
     );
+  });
+
+  test('超过用户截止时间的安排不会进入确认卡，模型按当前时间重排一次', () async {
+    const request = '从现在开始规划今天剩下的时间，截止晚上21:30。行测和申论，请生成规划块。';
+    final planningTools = [
+      ...tools,
+      ...AiNativeToolDefinitionBuilder.buildNativeToolDefinitions(request),
+    ];
+    var rounds = 0;
+    final chunks = await AiToolChatRunner.run(
+      messages: const [
+        {'role': 'user', 'content': request},
+      ],
+      tools: planningTools,
+      planningRequestText: request,
+      planningNow: DateTime(2026, 10, 10, 19, 23),
+      requirePlanningProposal: true,
+      streamRound: (history, roundTools) async* {
+        rounds++;
+        if (rounds == 1) {
+          yield const AiChatStreamChunk(
+            content: '已经为你安排好了。',
+            toolCalls: [
+              AiChatFunctionCall(
+                id: 'invalid-plan',
+                name: 'propose_cdt_actions',
+                arguments:
+                    '{"actions":[{"action":"create_plan_block","blocks":['
+                    '{"newTodoTitle":"行测","startTime":"2026-10-10 19:25","dueDate":"2026-10-10 21:45"}]}]}',
+              ),
+            ],
+          );
+        } else {
+          expect(history.last['role'], 'system');
+          expect(history.last['content'], contains('19:23'));
+          expect(history.last['content'], contains('截止时间'));
+          expect(AiNativeToolDefinitionBuilder.allowedToolNames(roundTools), {
+            'propose_cdt_actions',
+          });
+          yield const AiChatStreamChunk(
+            toolCalls: [
+              AiChatFunctionCall(
+                id: 'repaired-plan',
+                name: 'propose_cdt_actions',
+                arguments:
+                    '{"actions":[{"action":"create_plan_block","blocks":['
+                    '{"newTodoTitle":"行测","startTime":"2026-10-10 19:25","dueDate":"2026-10-10 20:00"},'
+                    '{"newTodoTitle":"申论","startTime":"2026-10-10 20:05","dueDate":"2026-10-10 21:00"}]}]}',
+              ),
+            ],
+          );
+        }
+      },
+      executeRead: (_) async => throw StateError('不能执行写入'),
+    ).toList();
+
+    expect(rounds, 2);
+    final returnedCalls = chunks.expand((chunk) => chunk.toolCalls).toList();
+    expect(returnedCalls, hasLength(1));
+    expect(returnedCalls.single.id, 'repaired-plan');
+    expect(chunks.map((chunk) => chunk.content).join(), isEmpty);
   });
 
   test('不完整的规划追问仍保留之前对话上下文', () async {
