@@ -90,9 +90,7 @@ class PlanBufferControls extends StatelessWidget {
                 border: const OutlineInputBorder(),
               ),
               child: DropdownButton<int>(
-                key: ValueKey(
-                  'plan-buffer-${leading ? 'before' : 'after'}-$value',
-                ),
+                key: ValueKey('plan-buffer-${leading ? 'before' : 'after'}'),
                 value: value,
                 isExpanded: true,
                 isDense: true,

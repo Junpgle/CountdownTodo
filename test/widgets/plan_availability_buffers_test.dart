@@ -7,6 +7,7 @@ import 'package:countdown_todo/services/plan_availability_preferences.dart';
 import 'package:countdown_todo/services/plan_availability_repository.dart';
 import 'package:countdown_todo/widgets/plan_availability_panel.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 // Uses the already resolved plugin interface to simulate disk-write failure.
@@ -16,6 +17,12 @@ import 'package:shared_preferences_platform_interface/shared_preferences_platfor
 final day = DateTime(2026, 10, 12), now = DateTime(2026, 10, 11, 7);
 final todo = TodoItem(id: 'buffer-task', title: '复习高数');
 Finder key(String s) => find.byKey(ValueKey(s));
+Finder buffer(String side, int value) => find.byWidgetPredicate(
+  (w) =>
+      w is DropdownButton<int> &&
+      w.key == ValueKey('plan-buffer-$side') &&
+      w.value == value,
+);
 PlanAvailabilitySnapshot sources() => PlanAvailabilitySnapshot(
   todo: todo,
   busy: [
@@ -39,7 +46,7 @@ Future<void> pick(
   int previous,
   String value,
 ) async {
-  await action(t, key('plan-buffer-$side-$previous'));
+  await action(t, buffer(side, previous));
   await action(t, find.text(value).last);
 }
 
@@ -102,6 +109,18 @@ class _FailingStore extends InMemorySharedPreferencesStore {
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
   testWidgets(
+    'changing a buffer preserves focused dropdown state through menu dismissal',
+    (t) async {
+      await host(t);
+      final before = t.state(buffer('before', 0));
+      await pick(t, 'before', 0, '10 分钟');
+      expect(t.state(buffer('before', 10)), same(before));
+      await t.sendKeyEvent(LogicalKeyboardKey.tab);
+      await t.pumpAndSettle();
+      expect(t.takeException(), isNull);
+    },
+  );
+  testWidgets(
     'buffer controls live in custom dialog; defaults restore before automatic query',
     (t) async {
       await remember(10, 5);
@@ -116,11 +135,11 @@ void main() {
       );
       expect(queries.single.bufferBefore, 10);
       expect(queries.single.bufferAfter, 5);
-      expect(key('plan-buffer-before-10'), findsNothing);
+      expect(buffer('before', 10), findsNothing);
       expect(find.text('已按开始前10分钟、结束后5分钟查找'), findsOneWidget);
       await action(t, key('plan-find-time'));
-      expect(key('plan-buffer-before-10'), findsOneWidget);
-      expect(key('plan-buffer-after-5'), findsOneWidget);
+      expect(buffer('before', 10), findsOneWidget);
+      expect(buffer('after', 5), findsOneWidget);
     },
   );
   testWidgets(
@@ -154,10 +173,10 @@ void main() {
       }
       await t.enterText(key('plan-buffer-custom-input'), '17');
       await action(t, key('plan-buffer-custom-confirm'));
-      expect(key('plan-buffer-before-17'), findsOneWidget);
+      expect(buffer('before', 17), findsOneWidget);
       await pick(t, 'before', 17, '自定义…');
       await action(t, find.text('取消'));
-      expect(key('plan-buffer-before-17'), findsOneWidget);
+      expect(buffer('before', 17), findsOneWidget);
       expect(
         (await PlanAvailabilityPreferences.load('buffers')).bufferKey,
         '17:0',
@@ -181,7 +200,7 @@ void main() {
       expect(selections, isEmpty);
       expect(queries.last.bufferBefore, 15);
       expect(find.text('已按开始前15分钟、结束后0分钟查找'), findsOneWidget);
-      expect(key('plan-buffer-before-15'), findsNothing);
+      expect(buffer('before', 15), findsNothing);
     },
   );
   testWidgets(
@@ -221,9 +240,9 @@ void main() {
         '120:120',
       );
       await action(t, key('plan-find-time'));
-      expect(key('plan-buffer-before-0'), findsOneWidget);
+      expect(buffer('before', 0), findsOneWidget);
       await action(t, find.text('恢复记住的缓冲'));
-      expect(key('plan-buffer-before-120'), findsOneWidget);
+      expect(buffer('before', 120), findsOneWidget);
     },
   );
   testWidgets(
@@ -294,7 +313,7 @@ void main() {
     pending.complete(sources());
     await t.pumpAndSettle();
     expect(reads, 1);
-    expect(key('plan-buffer-before-15'), findsOneWidget);
+    expect(buffer('before', 15), findsOneWidget);
     expect(
       find.byWidgetPredicate(
         (w) => w is OutlinedButton && w.key.toString().contains('plan-slot-'),
@@ -344,10 +363,10 @@ void main() {
       addTearDown(t.view.resetDevicePixelRatio);
       await remember(10, 5);
       await host(t, scale: 1.8, brightness: Brightness.dark);
-      await t.ensureVisible(key('plan-buffer-before-10'));
+      await t.ensureVisible(buffer('before', 10));
       await t.pumpAndSettle();
       expect(t.takeException(), isNull);
-      await t.ensureVisible(key('plan-buffer-after-5'));
+      await t.ensureVisible(buffer('after', 5));
       await t.pumpAndSettle();
       expect(t.takeException(), isNull);
     });

@@ -1,6 +1,6 @@
 # Todo plan blocks
 
-Last verified: 2026-10-11 (planning review and related focused regressions; existing native platform integrations retain their own verification boundaries).
+Last verified: 2026-10-11 (availability buffers and related focused regressions; existing native platform integrations retain their own verification boundaries).
 
 A todo describes an outcome and due semantics; a `TodoPlanBlock` describes a
 scheduled execution window. Multiple blocks may point to one todo.
@@ -114,8 +114,9 @@ Today starts at the next valid minute; timed
 and date-only todo deadlines limit candidate endings.
 
 The snapshot checks adjusted course occurrences, fixed schedules, active plan
-blocks and compatible same-day legacy execution intervals. Cross-day fixed
-schedules/plans are clipped to the query date. Plan states planned/reminded/
+blocks and compatible same-day legacy execution intervals. Availability retains
+raw source bounds, including adjacent-day sources needed by buffers; calendar
+display retains its own date clipping. Plan states planned/reminded/
 delayed/focusing occupy time. Only planned/reminded/delayed plans can use
 recommendations when editing, and only that plan UUID is excluded.
 
@@ -155,6 +156,13 @@ the guarded save/undo flow described below. AI batch planning and global sync
 keep their existing paths. No database schema, backend protocol or native
 permission was added.
 
+
+Optional task-before/task-after buffers are independent, default to zero and
+are remembered locally per account alongside avoidance. The custom search
+dialog holds the controls; recommendations and guarded saves share the same
+buffer calculation. An explicit one-query zero-buffer retry preserves defaults.
+See [availability buffers](plan-availability-buffers.md) for boundaries and failure
+behavior.
 
 ## Flexible planning settings and actual execution
 
