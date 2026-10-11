@@ -39,7 +39,9 @@ class PlanAvailabilityPanel extends StatefulWidget {
     this.resultsOnly = false,
     this.autoLookupResults = true,
     this.initialQuery,
+    this.configurationOnly = false,
   });
+  final bool configurationOnly;
   final bool resultsOnly;
   final bool autoLookupResults;
   final PlanAvailabilityQuery? initialQuery;
@@ -1041,7 +1043,7 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
     final editable =
         widget.editingBlock == null ||
         PlanAvailabilityService.canReschedule(widget.editingBlock!);
-    final open = _expanded && editable;
+    final open = (widget.configurationOnly || _expanded) && editable;
     final transitionDuration = MediaQuery.disableAnimationsOf(context)
         ? Duration.zero
         : const Duration(milliseconds: 260);
@@ -1057,7 +1059,7 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            OutlinedButton.icon(
+            if (!widget.configurationOnly) OutlinedButton.icon(
               key: const ValueKey('plan-find-time'),
               style: OutlinedButton.styleFrom(
                 side: BorderSide.none,
@@ -1156,14 +1158,14 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
                     ],
                   ),
                   const SizedBox(height: 12),
-                  Text('需要多长时间？', style: theme.textTheme.labelLarge),
+                  Text(widget.configurationOnly ? '本次总时长（30–720分钟）' : '需要多长时间？', style: theme.textTheme.labelLarge),
                   const SizedBox(height: 8),
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
                     crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
-                      for (final value in [15, 30, 45, 60])
+                      for (final value in (widget.configurationOnly ? [30, 60, 90, 120] : [15, 30, 45, 60]))
                         ChoiceChip(
                           key: ValueKey('plan-duration-$value'),
                           label: Text('$value 分钟'),
@@ -1209,7 +1211,7 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
                       ),
                     ),
                   const SizedBox(height: 16),
-                  Wrap(
+                  if (!widget.configurationOnly) Wrap(
                     spacing: 8,
                     runSpacing: 4,
                     crossAxisAlignment: WrapCrossAlignment.center,
@@ -1232,7 +1234,7 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
                   const SizedBox(height: 12),
                   _bufferControls(),
                   const SizedBox(height: 8),
-                  FilledButton.icon(
+                  if (!widget.configurationOnly) FilledButton.icon(
                     key: const ValueKey('plan-lookup-slots'),
                     style: FilledButton.styleFrom(
                       padding: const EdgeInsets.symmetric(

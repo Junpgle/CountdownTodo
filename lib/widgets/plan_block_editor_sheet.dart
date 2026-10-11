@@ -12,6 +12,9 @@ import '../services/plan_todo_guard.dart';
 import '../services/plan_editor_draft_repository.dart';
 import '../services/plan_availability_preferences.dart';
 import '../models/plan_availability.dart';
+import '../models/plan_split.dart';
+import '../services/plan_split_service.dart';
+import '../screens/plan_split_screen.dart';
 import '../storage_service.dart';
 import '../screens/pomodoro_screen.dart';
 import '../services/plan_availability_repository.dart';
@@ -158,6 +161,14 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
   TodoPlanBlock? _persistedBlock;
   String? _operationError;
   PlanAvailabilityQuery? _manualQuery;
+  PlanSplitSelection? _split;
+  List<String> _splitIds = [];
+  List<TodoPlanBlock> _savedSplitBlocks = [];
+  DateTime? _singleStart, _singleEnd;
+  PlanAvailabilityQuery? _singleQuery;
+  bool _splitAdjusted = false;
+  bool get _canSplit => widget.fullPage && _supportsDraft && _selectedTodo != null;
+
   bool _autoRecommendationPending = false;
   bool _initialEstimatePending = false;
   bool _allowAutoRecommendation = false;
@@ -186,6 +197,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
     pomodoro: _pomodoroMinutes, rounds: _pomodoroRounds,
     origin: _localDraft?.fields.origin ?? (_backlog != null ? 'backlog' : widget.draftOrigin),
     offsetMinutes: _start.timeZoneOffset.inMinutes,
+    split: _split == null ? null : PlanSplitDraft(_split!.query, _split!.slots, _splitIds),
   );
   bool get _dirty => _userTouched && _fields.fingerprint != _baseline;
   void _touch() => _userTouched = true;
@@ -232,6 +244,13 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
       }
       if (!mounted) return;
       final f = prepared.draft.fields;
+      PlanSplitSelection? restoredSplit;
+      if (f.split != null) {
+        final payload = PlanSplitDraft.fromJson(f.split!.toJson(), widget.username, f.todoId);
+        final q = await splitWithCurrentDefaults(payload.query);
+        restoredSplit = PlanSplitSelection(q, payload.slots, const PlanSplitSnapshot([]));
+      }
+      if (!mounted) return;
       setState(() {
         _estimateSequence++;
         _draftRevision++;
@@ -248,6 +267,10 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
         _reminderMinutes = f.reminder;
         _pomodoroMinutes = f.pomodoro;
         _pomodoroRounds = f.rounds;
+        _split = restoredSplit;
+        _splitIds = f.split?.ids.toList() ?? [];
+        _singleStart = null; _singleEnd = null; _singleQuery = null;
+        _splitAdjusted = false;
         _restored = true;
         _offsetChanged = f.offsetMinutes != _start.timeZoneOffset.inMinutes;
         _recommendation = null;
@@ -487,11 +510,18 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
         widget.clock?.call() ?? DateTime.now(),
       );
     }
+    if (_split != null && _backlog == null) {
+      final latest = await PlanTodoGuard.arrangements(executor, draft.todoId,
+        widget.clock?.call() ?? DateTime.now());
+      if (latest != (_approvedArrangements ?? '[]')) {
+        throw const PlanAvailabilityException('待办安排已变化，请重新确认追加整组');
+      }
+    }
     await identity.check();
   }
 
   Future<void> _confirmNewArrangements(String todoId) async {
-    if (_backlog == null || widget.saver != null) return;
+    if ((_backlog == null && _split == null) || widget.saver != null) return;
     await _identityReady;
     if (_identityError != null) throw _identityError!;
     final db = await DatabaseHelper.instance.databaseForUser(widget.username);
@@ -502,7 +532,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
       widget.clock?.call() ?? DateTime.now(),
     );
     if (latest ==
-        (_approvedArrangements ?? _backlog!.arrangements)) {
+        (_approvedArrangements ?? _backlog?.arrangements ?? '[]')) {
       return;
     }
     if (latest == '[]') {
@@ -933,6 +963,83 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
     );
   }
 
+  Future<void> _chooseSplit() async {
+    if (_busy || !_canSplit) return;
+    final initial = _split?.query ?? PlanSplitQuery(PlanAvailabilityQuery(
+      username: widget.username, todoId: _selectedTodoId!, date: _manualQuery?.date ?? _start,
+      minutes: _end.difference(_start).inMinutes,
+      windowStart: _manualQuery?.windowStart ?? 480, windowEnd: _manualQuery?.windowEnd ?? 1320,
+      avoidWindows: _manualQuery?.avoidWindows ?? const [],
+      appOnly: _manualQuery?.appOnly ?? false,
+      bufferBefore: _manualQuery?.bufferBefore ?? 0, bufferAfter: _manualQuery?.bufferAfter ?? 0,
+      bufferOverride: _manualQuery?.bufferOverride ?? false, bufferDefaultsKey: _manualQuery?.bufferDefaultsKey,
+      avoidanceOverride: _manualQuery?.avoidanceOverride ?? false, avoidanceDefaultsKey: _manualQuery?.avoidanceDefaultsKey));
+    final result = await Navigator.of(context).push<PlanSplitSelection>(
+      MaterialPageRoute(builder: (_) => PlanSplitScreen(todo: _selectedTodo!, initialQuery: initial, clock: widget.clock)));
+    if (!mounted || result == null) return;
+    setState(() {
+      if (_split == null) { _singleStart=_start; _singleEnd=_end; _singleQuery=_manualQuery; }
+      _touch(); _manualChange(); _split=result; _splitAdjusted=false;
+      _splitIds=[_targetPlanId, for(var i=1;i<result.slots.length;i++) const Uuid().v4()];
+      _start=result.slots.first.start; _end=result.slots.first.end;
+    });
+  }
+
+  Future<void> _returnSingle() async {
+    if (_busy) return;
+    if (_splitAdjusted) {
+      final yes=await showDialog<bool>(context:context,builder:(c)=>AlertDialog(
+        title:const Text('放弃已调整的分段？'),content:const Text('备注、提醒和番茄设置会保留。'),
+        actions:[TextButton(onPressed:()=>Navigator.pop(c,false),child:const Text('取消')),
+          FilledButton(onPressed:()=>Navigator.pop(c,true),child:const Text('返回单段'))]));
+      if (yes != true || !mounted) return;
+    }
+    setState(() { _touch(); _manualChange(); _start=_singleStart ?? _start;
+      _end=_singleEnd ?? _end; _manualQuery=_singleQuery; _split=null; _splitIds=[]; });
+  }
+
+  Future<void> _adjustSplit(int index) async {
+    if (_busy) return;
+    final selection=_split!, old=selection.slots[index];
+    final date=await showDatePicker(context:context,initialDate:old.start,
+      firstDate:selection.query.base.dayStart,lastDate:selection.query.endDate.subtract(const Duration(days:1)));
+    if (date == null || !mounted) return;
+    final time=await showTimePicker(context:context,initialTime:TimeOfDay.fromDateTime(old.start));
+    if (time == null || !mounted) return;
+    setState(()=>_busy=true);
+    try {
+      final start=DateTime(date.year,date.month,date.day,time.hour,time.minute);
+      final replacement=PlanTimeSlot(start,start.add(Duration(minutes:old.minutes)));
+      final pairs=[for(var i=0;i<selection.slots.length;i++) (i==index?replacement:selection.slots[i],_splitIds[i])]
+        ..sort((a,b)=>a.$1.start.compareTo(b.$1.start));
+      if (pairs.first.$2 != _targetPlanId) {
+        throw const PlanAvailabilityException('第1段须保持最早，请重新选择整组');
+      }
+      final slots=pairs.map((p)=>p.$1).toList();
+      final fresh=await PlanAvailabilityRepository(clock:widget.clock).readSplit(selection.query,forceRefresh:true,
+        requireCalendar:selection.snapshot.includesCalendar);
+      if (!PlanSplitService.accepts(selection.query,slots,fresh,now:widget.clock?.call()??DateTime.now())) {
+        throw const PlanAvailabilityException('调整后的整组时段不可用，请避开其他分段和日程');
+      }
+      if (mounted) { setState(() { _touch(); _manualChange(); _splitAdjusted=true;
+        _split=PlanSplitSelection(selection.query,slots,fresh); _splitIds=pairs.map((p)=>p.$2).toList();
+        _targetPlanId=_splitIds.first; _start=slots.first.start; _end=slots.first.end; }); }
+    } catch(e) { _reportError(e); } finally { if(mounted) setState(()=>_busy=false); }
+  }
+
+  Widget _splitPreview() => Card(child:Padding(padding:const EdgeInsets.all(16),child:Column(
+    key:const ValueKey('plan-split-preview'),crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+      Text('${_split!.slots.length}段 · 共${_split!.query.total}分钟',style:Theme.of(context).textTheme.titleMedium),
+      for(var i=0;i<_split!.slots.length;i++) Padding(padding:const EdgeInsets.symmetric(vertical:6),
+        child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+          Text('第${i+1}段 · ${splitTimeLabel(_split!.slots[i])}'),
+          if(_pomodoroRounds>0) Text('本段专注${_pomodoroRounds*_pomodoroMinutes}分钟；固定轮数可能超出时段'),
+          Align(alignment:Alignment.centerRight,child:TextButton(onPressed:_busy?null:()=>_adjustSplit(i),child:const Text('调整本段'))),
+        ])),
+      Wrap(spacing:8,children:[TextButton(onPressed:_busy?null:_chooseSplit,child:const Text('重新选择整组')),
+        TextButton(onPressed:_busy?null:_returnSingle,child:const Text('返回单段'))]),
+    ])));
+
   Future<TodoPlanBlock> _saveDraft() async {
     if (_draftLoading) throw StateError('正在恢复草稿，请稍候');
     if (_draftRestoreFailed) throw StateError('草稿未能恢复，请先重试或返回列表');
@@ -959,6 +1066,24 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
         throw StateError('这份草稿已保存为规划，请从规划草稿查看，勿重复提交');
       }
     }
+    final TodoPlanBlock saved;
+    if (_split != null) {
+      await _confirmNewArrangements(_selectedTodoId!);
+      final blocks = [for (var i=0;i<_split!.slots.length;i++) TodoPlanBlock(
+        id: _splitIds[i], todoId: _selectedTodoId!,
+        startTime: _split!.slots[i].start.millisecondsSinceEpoch,
+        endTime: _split!.slots[i].end.millisecondsSinceEpoch,
+      )..titleSnapshot = _selectedTodo?.title
+       ..plannedMinutes = _split!.slots[i].minutes
+       ..remark = _remarkCtrl.text.isEmpty ? null : _remarkCtrl.text
+       ..reminderMinutes = _reminderMinutes
+       ..pomodoroMinutes = _pomodoroMinutes
+       ..pomodoroRounds = _pomodoroRounds];
+      final all = await PlanAvailabilityRepository(clock: widget.clock).saveSplit(
+        _split!, blocks, beforeWrite: (executor) => _checkLinkedTodo(executor, blocks.first));
+      _savedSplitBlocks = all;
+      saved = all.first;
+    } else {
     await _verifyRestoredTime();
     if (_recommendation != null && _recommendationStale) {
       throw const PlanAvailabilityException('推荐时段已失效，请重新查找或手动修改时间');
@@ -982,7 +1107,8 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
       ..pomodoroMinutes = _pomodoroMinutes
       ..pomodoroRounds = _pomodoroRounds;
     await _confirmNewArrangements(draft.todoId);
-    final saved = await _persist(draft, _recommendation);
+    saved = await _persist(draft, _recommendation);
+    }
     _persistedBlock = saved;
     _savedDraftRevision = _draftRevision;
     _baseline = _fields.fingerprint;
@@ -1079,6 +1205,26 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
           throw const PlanAvailabilityException('规划或待办已变化，请读取最新记录');
         }
         todo = freshTodo;
+      }
+      if (!_focusStarted && _split != null) {
+        final db = await DatabaseHelper.instance.databaseForUser(widget.username);
+        await PlanTodoGuard.validate(db, _saveIdentity!, block.todoId);
+        for (final saved in _savedSplitBlocks) {
+          final rows = await db.query('todo_plan_blocks', where:'uuid=?',whereArgs:[saved.id]);
+          if (rows.isEmpty || rows.single['version'] != saved.version ||
+              rows.single['updated_at'] != saved.updatedAt || rows.single['is_deleted'] == 1 ||
+              rows.single['has_conflict'] == 1) {
+            throw const PlanAvailabilityException('分段规划已变化，请核对已有安排');
+          }
+        }
+        final fresh = await PlanAvailabilityRepository(clock:widget.clock).readSplit(_split!.query,
+          forceRefresh:true,requireCalendar:_split!.snapshot.includesCalendar);
+        final clean = PlanSplitSnapshot([for(final day in fresh.days) PlanAvailabilitySnapshot(
+          todo:day.todo,coverage:day.coverage,busy:day.busy.where((b)=>
+            b.source != PlanBusySource.planBlock || !_splitIds.contains(b.id)).toList())]);
+        if (!PlanSplitService.accepts(_split!.query,_split!.slots,clean,now:widget.clock?.call()??DateTime.now())) {
+          throw const PlanAvailabilityException('分段时段已变化，规划已保存；专注未启动');
+        }
       }
       if (!_focusStarted && widget.saver == null && _recommendation != null) {
         final repository = PlanAvailabilityRepository(clock: widget.clock);
@@ -1444,7 +1590,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
             onChanged:
                 widget.recovery != null ||
                     widget.conflictEdit != null ||
-                    !_hasSelectableTodos
+                    !_hasSelectableTodos || _split != null
                 ? null
                 : (value) {
                     if (value == null || value.startsWith('__todo_header_')) {
@@ -1482,6 +1628,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
               child: TimeEstimationHint(result: _estimateResult!),
             ),
           const SizedBox(height: 20),
+          if (_split != null) _splitPreview() else ...[
           Wrap(
             spacing: 12,
             runSpacing: 4,
@@ -1534,8 +1681,9 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
                     ],
                   ),
           ),
+          ],
           const SizedBox(height: 16),
-          if (_initialEstimatePending)
+          if (_split == null && _initialEstimatePending)
             const Padding(
               key: ValueKey('plan-initial-estimate'),
               padding: EdgeInsets.symmetric(vertical: 12),
@@ -1547,7 +1695,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
                 ],
               ),
             )
-          else
+          else if (_split == null)
             PlanAvailabilityPanel(
               username: widget.username,
               resultsOnly: widget.fullPage,
@@ -1604,6 +1752,10 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
                 _automaticBaseline();
               }),
             ),
+          if (_canSplit && _split == null)
+            Align(alignment: Alignment.centerLeft, child: TextButton.icon(
+              key: const ValueKey('plan-open-split'), onPressed: _busy || _initialEstimatePending ? null : _chooseSplit,
+              icon: const Icon(Icons.splitscreen_outlined), label: const Text('分段安排'))),
           if (_recommendation != null)
             Padding(
               padding: const EdgeInsets.only(top: 10),
@@ -1684,7 +1836,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
                     }),
                   ),
                   option(
-                    '番茄轮数',
+                    _split == null ? '番茄轮数' : '每段番茄轮数',
                     _pomodoroRounds,
                     [0, 1, 2, 3, 4, 5, 6],
                     (m) => m == 0 ? '按规划时长' : '$m 轮',
@@ -1728,7 +1880,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
               (_selectedTodoId == null && !_focusStarted)
           ? null
           : _save,
-      child: Text(_focusStarted ? '关闭' : '保存规划'),
+      child: Text(_focusStarted ? '关闭' : _split != null ? '保存全部${_split!.slots.length}段' : '保存规划'),
     );
     final focus = OutlinedButton.icon(
       key: const ValueKey('plan-save-focus'),
@@ -1743,7 +1895,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
           ? null
           : _saveAndStartFocus,
       icon: const Icon(Icons.play_arrow_rounded, size: 20),
-      label: Text(_focusStarted ? '重试更新专注状态' : '保存并开始专注'),
+      label: Text(_focusStarted ? '重试更新专注状态' : _split != null ? '保存全部并开始第1段' : '保存并开始专注'),
     );
     return Container(
       decoration: BoxDecoration(
