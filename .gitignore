@@ -296,3 +296,4 @@ todo.md
 !/test/services/plan_backlog_repository_test.dart
 !/test/services/plan_todo_guard_test.dart
 !/test/widgets/plan_backlog_screen_test.dart
+!/test/services/pomodoro_record_sync_test.dart

@@ -986,12 +986,15 @@ class ApiService {
 
   /// 批量上传专注记录
   static Future<bool> uploadPomodoroRecords(
-      List<Map<String, dynamic>> records) async {
+    List<Map<String, dynamic>> records, {
+    http.Client? client,
+  }) async {
     try {
       final response = await _request(
         'POST',
         '/api/pomodoro/records',
         body: {'records': records},
+        client: client,
       );
       if (response.statusCode != 200) return false;
       final data = jsonDecode(response.body);

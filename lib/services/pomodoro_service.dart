@@ -4,6 +4,7 @@ import 'dart:math' show max;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import 'package:sqflite/sqflite.dart';
+import 'package:http/http.dart' as http;
 import 'package:countdown_todo/services/database_helper.dart';
 import '../models.dart';
 import '../storage_service.dart';
@@ -1532,6 +1533,7 @@ class PomodoroService {
 
   static Future<void> syncRecordsToCloud({
     bool forceFullSync = false,
+    http.Client? client,
   }) async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -1543,27 +1545,36 @@ class PomodoroService {
       final lastRecoveryUpload = prefs.getInt(recoveryUploadKey) ?? 0;
       final all = await _getAllRecordsRaw();
       if (all.isEmpty) return;
+      final pendingOps = await db.query(
+        'op_logs',
+        where: 'is_synced = 0 AND target_table = ?',
+        whereArgs: ['pomodoro_records'],
+        orderBy: 'timestamp ASC',
+      );
 
       final Map<String, PomodoroRecord> dedup = {};
+      final operationIdsByRecord = <String, List<Object>>{};
 
       if (!forceFullSync) {
-        final pendingOps = await db.query(
-          'op_logs',
-          where: 'is_synced = 0 AND target_table = ?',
-          whereArgs: ['pomodoro_records'],
-          orderBy: 'timestamp ASC',
-        );
         for (final op in pendingOps) {
           final raw = op['data_json']?.toString();
           if (raw == null || raw.isEmpty) continue;
           try {
             final j = jsonDecode(raw);
+            late final PomodoroRecord record;
             if (j is Map<String, dynamic>) {
-              final r = PomodoroRecord.fromJson(j);
-              dedup[r.uuid] = r;
+              record = PomodoroRecord.fromJson(j);
             } else if (j is Map) {
-              final r = PomodoroRecord.fromJson(j.cast<String, dynamic>());
-              dedup[r.uuid] = r;
+              record = PomodoroRecord.fromJson(j.cast<String, dynamic>());
+            } else {
+              continue;
+            }
+            dedup[record.uuid] = record;
+            final operationId = op['id'];
+            if (operationId != null) {
+              operationIdsByRecord
+                  .putIfAbsent(record.uuid, () => <Object>[])
+                  .add(operationId);
             }
           } catch (_) {}
         }
@@ -1588,24 +1599,50 @@ class PomodoroService {
       }
 
       final dirty = dedup.values.toList();
+      final uploadedRecordIds = dedup.keys.toSet();
+      final operationIdsToAcknowledge = <Object>{};
+      if (forceFullSync) {
+        final localRecordIds = all.map((record) => record.uuid).toSet();
+        for (final op in pendingOps) {
+          final operationId = op['id'];
+          final recordId = op['target_uuid']?.toString();
+          if (operationId != null && localRecordIds.contains(recordId)) {
+            operationIdsToAcknowledge.add(operationId);
+          }
+        }
+      } else {
+        for (final entry in operationIdsByRecord.entries) {
+          if (uploadedRecordIds.contains(entry.key)) {
+            operationIdsToAcknowledge.addAll(entry.value);
+          }
+        }
+      }
 
       // debugPrint(
       //   '[PomodoroService] syncRecordsToCloud forceFullSync=$forceFullSync, upload=${dirty.length}/${all.length}',
       // );
       if (dirty.isEmpty) return;
       final ok = await ApiService.uploadPomodoroRecords(
-          dirty.map((r) => r.toJson()).toList());
+        dirty.map((r) => r.toJson()).toList(),
+        client: client,
+      );
       if (ok) {
         var latestUploadedAt = lastRecoveryUpload;
         for (final r in dirty) {
           if (r.updatedAt > latestUploadedAt) latestUploadedAt = r.updatedAt;
         }
-        await db.update(
-          'op_logs',
-          {'is_synced': 1, 'sync_error': ''},
-          where: 'is_synced = 0 AND target_table = ?',
-          whereArgs: ['pomodoro_records'],
-        );
+        if (operationIdsToAcknowledge.isNotEmpty) {
+          final batch = db.batch();
+          for (final operationId in operationIdsToAcknowledge) {
+            batch.update(
+              'op_logs',
+              {'is_synced': 1, 'sync_error': ''},
+              where: 'id = ? AND is_synced = 0 AND target_table = ?',
+              whereArgs: [operationId, 'pomodoro_records'],
+            );
+          }
+          await batch.commit(noResult: true);
+        }
         await prefs.setInt(
             lastUploadKey, DateTime.now().millisecondsSinceEpoch);
         if (latestUploadedAt > lastRecoveryUpload) {
