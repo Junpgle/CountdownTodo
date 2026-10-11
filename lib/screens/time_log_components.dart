@@ -1299,11 +1299,20 @@ class _LogEntrySheetState extends State<_LogEntrySheet> {
   }
 
   Future<void> _pickDate(bool isStart) async {
+    final now = DateTime.now();
+    final firstDate = DateTime(2020);
+    final lastDate = DateTime(now.year, now.month, now.day);
+    final selectedDate = isStart ? _start : _end;
+    final initialDate = selectedDate.isBefore(firstDate)
+        ? firstDate
+        : selectedDate.isAfter(lastDate)
+        ? lastDate
+        : selectedDate;
     final d = await showAppDatePicker(
         context: context,
-        initialDate: isStart ? _start : _end,
-        firstDate: DateTime(2020),
-        lastDate: DateTime.now().add(const Duration(days: 1)));
+        initialDate: initialDate,
+        firstDate: firstDate,
+        lastDate: lastDate);
     if (d == null || !mounted) return;
     setState(() {
       if (isStart) {
@@ -1318,6 +1327,11 @@ class _LogEntrySheetState extends State<_LogEntrySheet> {
     if (!_end.isAfter(_start)) {
       AppSnackBars.showSnackBar(context,
           const SnackBar(content: Text('结束时间必须晚于开始时间')));
+      return;
+    }
+    if (_end.isAfter(DateTime.now())) {
+      AppSnackBars.showSnackBar(context,
+          const SnackBar(content: Text('结束时间不能晚于现在')));
       return;
     }
 

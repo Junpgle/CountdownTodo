@@ -33,6 +33,7 @@ class PlanReviewEntry {
   int get seconds => values['seconds'] is int ? values['seconds'] as int : 0;
   String? get planId => values['planId'] as String?;
   String? get todoId => values['todoId'] as String?;
+  bool get verified => values['verified'] == 1;
 }
 
 class PlanReviewCursor {
@@ -261,8 +262,13 @@ class PlanReviewRepository {
       final args = [...sql.args, ?todoId, ?planId];
       final totals = (await _query(tx, '''${sql.cte}
         SELECT COUNT(*) n, COALESCE(SUM(durationMs),0)/1000 seconds,
-          (SELECT MIN(end) FROM plans WHERE ${sql.planRange} AND valid=1
-            AND status NOT IN (3,7) AND end>${instant.millisecondsSinceEpoch}) boundary
+          (SELECT MIN(boundary) FROM (
+            SELECT MIN(end) boundary FROM plans WHERE ${sql.planRange} AND valid=1
+              AND status NOT IN (3,7) AND end>${instant.millisecondsSinceEpoch}
+            UNION ALL
+            SELECT MIN(end) boundary FROM logs
+              WHERE end>${instant.millisecondsSinceEpoch}
+          )) boundary
           FROM ($entries)''', args)).single;
       // Covers writes in this connection and commits in other connections.
       // No full-history metadata decoding, cache table or persistence write.
@@ -477,7 +483,8 @@ class _ReviewSql {
     logs AS (SELECT l.uuid id, l.title title, l.start_time start, l.end_time end,
       CASE WHEN ${conflict('time_logs', 'l')}
         AND typeof(l.start_time)='integer' AND l.start_time>0
-        AND typeof(l.end_time)='integer' AND l.end_time>l.start_time AND l.end_time<=8640000000000000
+        AND typeof(l.end_time)='integer' AND l.end_time>l.start_time
+        AND l.end_time<=$instant AND l.end_time<=8640000000000000
         THEN 1 ELSE 0 END valid FROM time_logs l
       WHERE COALESCE(l.is_deleted,0)=0 AND l.start_time<$hi AND (l.end_time>$lo OR l.start_time>=$lo))
   ''';
@@ -492,7 +499,10 @@ class _ReviewSql {
     SUM(CASE WHEN valid=1 AND status NOT IN (3,7) AND end>$instant THEN 1 ELSE 0 END) upcoming,
     SUM(CASE WHEN valid=1 AND status=3 THEN 1 ELSE 0 END) cancelled,
     SUM(CASE WHEN valid=1 AND status=7 THEN 1 ELSE 0 END) skipped,
-    MIN(CASE WHEN valid=1 AND status NOT IN (3,7) AND end>$instant THEN end END) boundary
+    (SELECT MIN(boundary) FROM (
+      SELECT MIN(end) boundary FROM plans WHERE valid=1 AND status NOT IN (3,7) AND end>$instant
+      UNION ALL SELECT MIN(end) boundary FROM logs WHERE end>$instant
+    )) boundary
     FROM plans WHERE $planRange''';
   String get focusAggregate =>
       '''SELECT COALESCE(SUM(CASE WHEN valid=1 THEN seconds ELSE 0 END),0) seconds,
@@ -504,16 +514,16 @@ class _ReviewSql {
     FROM logs WHERE valid=1 AND end>$lo''';
 
   String _planEntries(String condition, {String reason = "''"}) =>
-      '''SELECT id,'plan' kind,title,start,end,minutes*60 seconds,$reason reason,id planId,todoId,status,minutes*60000 durationMs
+      '''SELECT id,'plan' kind,title,start,end,minutes*60 seconds,$reason reason,id planId,todoId,status,minutes*60000 durationMs,valid verified
     FROM plans WHERE $planRange AND $condition''';
   String _focusEntries(String condition) =>
       '''SELECT id,'focus' kind,ownerTitle title,start,end,
     CASE WHEN valid=1 THEN seconds ELSE 0 END seconds,
-    CASE WHEN valid=0 THEN CASE WHEN seconds IS NULL THEN '旧记录时长待核对' ELSE '记录时间、状态或同步冲突待核对' END
+    CASE WHEN valid=0 THEN CASE WHEN seconds IS NULL THEN '旧记录时长待核对' ELSE '记录时长、时间、状态或同步冲突待核对' END
       WHEN category='attribution' THEN '归属待核对'
       WHEN category='unlinked' THEN '未关联规划' ELSE '已关联规划' END ||
       CASE WHEN historical=1 THEN ' · 历史待办已删除或不存在，保留标题快照' ELSE '' END reason,
-    ownerPlan planId,ownerId todoId,NULL status,CASE WHEN valid=1 THEN seconds*1000 ELSE 0 END durationMs FROM focus WHERE $condition''';
+    ownerPlan planId,ownerId todoId,NULL status,CASE WHEN valid=1 THEN seconds*1000 ELSE 0 END durationMs,valid verified FROM focus WHERE $condition''';
   String entries(PlanReviewFilter filter) => switch (filter) {
     PlanReviewFilter.plans => _planEntries('valid=1 AND status NOT IN (3,7)'),
     PlanReviewFilter.ended => _planEntries(
@@ -532,11 +542,11 @@ class _ReviewSql {
     ),
     PlanReviewFilter.logs =>
       '''SELECT id,'log' kind,title,start,end,(MIN(end,$hi)-MAX(start,$lo))/1000 seconds,
-      '日志记录时长，可与其他记录重叠' reason,NULL planId,NULL todoId,NULL status,MIN(end,$hi)-MAX(start,$lo) durationMs FROM logs WHERE valid=1 AND end>$lo''',
+      '日志记录时长，可与其他记录重叠' reason,NULL planId,NULL todoId,NULL status,MIN(end,$hi)-MAX(start,$lo) durationMs,1 verified FROM logs WHERE valid=1 AND end>$lo''',
     PlanReviewFilter.issues =>
       '''${_planEntries('valid=0 OR (valid=1 AND status IN (0,2,4,5) AND end<=$instant) OR (valid=1 AND status=6 AND end>$instant)', reason: "'规划状态、时长或同步冲突待核对'")}
       UNION ALL ${_focusEntries("valid=0 OR category='attribution'")}
-      UNION ALL SELECT id,'log' kind,title,start,end,0 seconds,'日志时间或同步冲突待核对' reason,NULL planId,NULL todoId,NULL status,0 durationMs FROM logs WHERE valid=0''',
+      UNION ALL SELECT id,'log' kind,title,start,end,0 seconds,'日志时间或同步冲突待核对' reason,NULL planId,NULL todoId,NULL status,0 durationMs,0 verified FROM logs WHERE valid=0''',
   };
 
   String get dayAggregate {

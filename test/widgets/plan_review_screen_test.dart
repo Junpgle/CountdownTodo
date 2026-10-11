@@ -156,6 +156,17 @@ void main() {
   testWidgets('overview explains metrics and scope, no old AI label', (
     tester,
   ) async {
+    await f.db.insert('pomodoro_records', {
+      'uuid': 'invalid',
+      'todo_title': '坏时长记录',
+      'start_time': DateTime(2026, 10, 8, 12).millisecondsSinceEpoch,
+      'end_time': DateTime(2026, 10, 8, 12, 25).millisecondsSinceEpoch,
+      'actual_duration': '未知',
+      'planned_duration': 1500,
+      'status': 'completed',
+      'created_at': 1,
+      'updated_at': 1,
+    });
     await show(tester);
     expect(find.text('1小时'), findsOneWidget);
     expect(find.text('20分钟'), findsOneWidget);
@@ -170,6 +181,9 @@ void main() {
       findsOneWidget,
     );
     await tap(tester, find.text('知道了'));
+    await tap(tester, find.text('1项需要核对'));
+    expect(find.textContaining('专注 时长待核对'), findsOneWidget);
+    expect(find.textContaining('专注 0分钟'), findsNothing);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox.shrink());
   });

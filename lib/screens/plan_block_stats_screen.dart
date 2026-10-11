@@ -1102,7 +1102,7 @@ class _PlanReviewDetailScreenState
                                             ? '计划'
                                             : e.kind == 'log'
                                             ? '日志'
-                                            : '专注'} ${reviewDuration(e.seconds)}${e.reason.isEmpty ? '' : ' · ${e.reason}'}',
+                                            : '专注'} ${e.verified ? reviewDuration(e.seconds) : '时长待核对'}${e.reason.isEmpty ? '' : ' · ${e.reason}'}',
                                       ),
                                     ],
                                   ),

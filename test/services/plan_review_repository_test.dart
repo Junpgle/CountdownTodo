@@ -303,6 +303,46 @@ void main() {
     expect(s.actual('seconds'), 40);
     expect((await page(PlanReviewFilter.logs)).seconds, 70);
   });
+  test('future time logs are not counted as completed work', () async {
+    final currentStart = DateTime(now.year, now.month, now.day);
+    final nextDay = DateTime(now.year, now.month, now.day + 1);
+    final futureEnd = DateTime(2026, 10, 9, 17);
+    await f.db.insert('time_logs', {
+      'uuid': 'future-log',
+      'title': '未来日志',
+      'start_time': DateTime(2026, 10, 9, 16).millisecondsSinceEpoch,
+      'end_time': futureEnd.millisecondsSinceEpoch,
+      'created_at': now.millisecondsSinceEpoch,
+      'updated_at': now.millisecondsSinceEpoch,
+      'device_id': 'fixture',
+      'team_uuid': '',
+    });
+
+    final summary = await repo.read(
+      PlanAvailabilityFixture.username,
+      currentStart,
+      nextDay,
+    );
+    final logs = await repo.page(
+      PlanAvailabilityFixture.username,
+      currentStart,
+      nextDay,
+      PlanReviewFilter.logs,
+    );
+    final issues = await repo.page(
+      PlanAvailabilityFixture.username,
+      currentStart,
+      nextDay,
+      PlanReviewFilter.issues,
+    );
+
+    expect(summary.log('seconds'), 0);
+    expect(summary.issues, 1);
+    expect(summary.nextBoundary, futureEnd);
+    expect(logs.total, 0);
+    expect(logs.nextBoundary, futureEnd);
+    expect(issues.rows.single.id, 'future-log');
+  });
   test(
     'invalid real planning data goes to review instead of denominator',
     () async {
@@ -375,10 +415,16 @@ void main() {
             'updated_at': at(0),
           });
           await t.insert('todo_plan_blocks', {
-            ...TodoPlanBlock(id: 'old-plan-$i', todoId: 'todo-target',
-              titleSnapshot: '无关历史规划', startTime: 1, endTime: 1000,
-              plannedMinutes: 1, status: TodoPlanStatus.finished,
-              remark: '历史私密备注' * 100).toDbJson(),
+            ...TodoPlanBlock(
+              id: 'old-plan-$i',
+              todoId: 'todo-target',
+              titleSnapshot: '无关历史规划',
+              startTime: 1,
+              endTime: 1000,
+              plannedMinutes: 1,
+              status: TodoPlanStatus.finished,
+              remark: '历史私密备注' * 100,
+            ).toDbJson(),
             'calendar_event_id': '',
             'created_at': at(0),
             'updated_at': at(0),

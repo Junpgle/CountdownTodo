@@ -1,6 +1,6 @@
 # Todo plan blocks
 
-Last verified: 2026-10-10 (availability and estimation focused regressions; existing native platform integrations retain their own verification boundaries).
+Last verified: 2026-10-11 (planning review and related focused regressions; existing native platform integrations retain their own verification boundaries).
 
 A todo describes an outcome and due semantics; a `TodoPlanBlock` describes a
 scheduled execution window. Multiple blocks may point to one todo.
