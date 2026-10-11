@@ -4,6 +4,7 @@ import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
 
 import '../models.dart';
+import '../models/plan_split.dart';
 import 'database_helper.dart';
 import 'plan_todo_guard.dart';
 
@@ -20,7 +21,9 @@ class PlanDraftFields {
     required this.rounds,
     required this.origin,
     required this.offsetMinutes,
+    this.split,
   });
+  final PlanSplitDraft? split;
   final String todoId, title, remark, origin;
   final int start, end, reminder, pomodoro, rounds, offsetMinutes;
 
@@ -35,6 +38,7 @@ class PlanDraftFields {
     'rounds': rounds,
     'origin': origin,
     'offset': offsetMinutes,
+    if (split != null) 'split': split!.toJson(),
   };
   String get fingerprint => jsonEncode(toJson());
 
@@ -67,6 +71,7 @@ class PlanDraftFields {
       rounds: value['rounds'],
       origin: value['origin'],
       offsetMinutes: value['offset'],
+      split: value.containsKey('split') ? PlanSplitDraft.fromJson(value['split'], '', value['todo']) : null,
     );
     if (f.todoId.trim().isEmpty ||
         f.title.trim().isEmpty ||
@@ -80,6 +85,10 @@ class PlanDraftFields {
         f.offsetMinutes.abs() > 1440 ||
         !['timeline', 'todo', 'backlog'].contains(f.origin)) {
       throw const FormatException('草稿内容无效');
+    }
+    if (f.split != null && (f.split!.slots.first.start.millisecondsSinceEpoch != f.start ||
+        f.split!.slots.first.end.millisecondsSinceEpoch != f.end)) {
+      throw const FormatException('分段草稿摘要不一致');
     }
     return f;
   }
@@ -106,11 +115,12 @@ class PlanDraftSummary {
     this.start,
     this.end,
     this.updatedAt,
-    this.readable,
+    this.readable, {this.parts = 1, this.total = 0,}
   );
   final String id, title;
   final int revision, start, end, updatedAt;
   final bool readable;
+  final int parts, total;
 }
 
 class PlanDraftResume {
@@ -171,14 +181,20 @@ class PlanEditorDraftRepository {
             r['end_time'] is int ? r['end_time'] as int : 0,
             r['updated_at'] is int ? r['updated_at'] as int : 0,
             _isReadableRow(r),
+            parts: _splitSummary(r)?.slots.length ?? 1,
+            total: _splitSummary(r)?.query.total ?? 0,
           ),
         )
         .toList();
   }
 
+  PlanSplitDraft? _splitSummary(Map<String, Object?> row) {
+    try { return PlanDraftFields.fromJson(jsonDecode(row['form_json'] as String)).split; } catch (_) { return null; }
+  }
+
   bool _isReadableRow(Map<String, Object?> row) {
     try {
-      if (row['format_version'] != 1 ||
+      if (![1, 2].contains(row['format_version']) ||
           row['uuid'] is! String ||
           row['target_uuid'] is! String ||
           (row['target_uuid'] as String).isEmpty ||
@@ -195,7 +211,9 @@ class PlanEditorDraftRepository {
       final fields = PlanDraftFields.fromJson(
         jsonDecode(row['form_json'] as String),
       );
-      return row['todo_uuid'] == fields.todoId &&
+      return row['format_version'] == (fields.split == null ? 1 : 2) &&
+          (fields.split == null || fields.split!.ids.first == row['target_uuid']) &&
+          row['todo_uuid'] == fields.todoId &&
           row['title'] == fields.title &&
           row['start_time'] == fields.start &&
           row['end_time'] == fields.end;
@@ -225,13 +243,15 @@ class PlanEditorDraftRepository {
           r['start_time'] is! int ||
           r['end_time'] is! int ||
           r['form_json'] is! String ||
-          r['format_version'] != 1) {
+          ![1, 2].contains(r['format_version'])) {
         throw const FormatException();
       }
       final fields = PlanDraftFields.fromJson(
         jsonDecode(r['form_json'] as String),
       );
-      if (r['todo_uuid'] != fields.todoId ||
+      if (r['format_version'] != (fields.split == null ? 1 : 2) ||
+          (fields.split != null && fields.split!.ids.first != r['target_uuid']) ||
+          r['todo_uuid'] != fields.todoId ||
           r['title'] != fields.title ||
           r['start_time'] != fields.start ||
           r['end_time'] != fields.end ||
@@ -262,7 +282,7 @@ class PlanEditorDraftRepository {
     if (utf8.encode(raw).length > maxPayloadBytes) {
       throw StateError('草稿内容过大，尚未保留；请先复制备注后缩短内容');
     }
-    if (targetId.isEmpty ||
+    if ((fields.split != null && fields.split!.ids.first != targetId) || targetId.isEmpty ||
         (previous != null && previous.targetId != targetId)) {
       throw StateError('草稿目标已变化，请重新打开');
     }
@@ -277,7 +297,7 @@ class PlanEditorDraftRepository {
         'member_id': identity.userId,
         'target_uuid': targetId,
         'revision': revision,
-        'format_version': 1,
+        'format_version': fields.split == null ? 1 : 2,
         'todo_uuid': fields.todoId,
         'title': fields.title,
         'start_time': fields.start,
@@ -330,28 +350,28 @@ class PlanEditorDraftRepository {
     PlanEditorDraft draft,
   ) async {
     final db = await _db(identity);
-    final rows = await db.query(
-      'todo_plan_blocks',
-      where: 'uuid=?',
-      whereArgs: [draft.targetId],
-      limit: 1,
-    );
-    await identity.check();
-    if (rows.isEmpty) return null;
-    final b = TodoPlanBlock.fromJson(rows.single);
     final f = draft.fields;
-    if (rows.single['has_conflict'] == 1 ||
-        b.isDeleted ||
-        b.todoId != f.todoId ||
-        b.startTime != f.start ||
-        b.endTime != f.end ||
-        (b.remark ?? '') != f.remark ||
-        b.reminderMinutes != f.reminder ||
-        b.pomodoroMinutes != f.pomodoro ||
-        b.pomodoroRounds != f.rounds) {
-      throw StateError('这份草稿对应的规划已变化或删除，请查看最新安排');
+    final ids = f.split?.ids ?? [draft.targetId];
+    final saved = <TodoPlanBlock>[];
+    for (var i=0; i<ids.length; i++) {
+      final rows = await db.query('todo_plan_blocks', where: 'uuid=?', whereArgs: [ids[i]], limit: 1);
+      await identity.check();
+      if (rows.isEmpty) continue;
+      final b = TodoPlanBlock.fromJson(rows.single);
+      final start = f.split?.slots[i].start.millisecondsSinceEpoch ?? f.start;
+      final end = f.split?.slots[i].end.millisecondsSinceEpoch ?? f.end;
+      if (rows.single['has_conflict'] == 1 || b.isDeleted || b.todoId != f.todoId ||
+          b.startTime != start || b.endTime != end ||
+          (b.remark ?? '') != f.remark || b.reminderMinutes != f.reminder ||
+          b.pomodoroMinutes != f.pomodoro || b.pomodoroRounds != f.rounds) {
+        throw StateError('这份草稿对应的规划已变化或删除，请查看最新安排');
+      }
+      saved.add(b);
     }
-    return b;
+    if (saved.isNotEmpty && saved.length != ids.length) {
+      throw StateError('部分分段目标已存在，请核对已有安排，未新增任何分段');
+    }
+    return saved.firstOrNull;
   }
 
   Future<PlanDraftResume> prepare(

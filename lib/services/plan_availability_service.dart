@@ -21,13 +21,8 @@ abstract final class PlanAvailabilityService {
       }.contains(block.status);
 
   static DateTime minuteCeiling(DateTime value) {
-    final minute = DateTime(
-      value.year,
-      value.month,
-      value.day,
-      value.hour,
-      value.minute,
-    );
+    final minute = value.subtract(Duration(seconds: value.second,
+        milliseconds: value.millisecond, microseconds: value.microsecond));
     return value.isAfter(minute)
         ? minute.add(const Duration(minutes: 1))
         : minute;
@@ -71,7 +66,7 @@ abstract final class PlanAvailabilityService {
     return null;
   }
 
-  static PlanAvailabilityResult find(
+  static PlanAvailabilityResult freeGaps(
     PlanAvailabilityQuery query,
     PlanAvailabilitySnapshot snapshot, {
     required DateTime now,
@@ -155,6 +150,14 @@ abstract final class PlanAvailabilityService {
     addGap(end);
     // Offer different gaps first, then add later non-overlapping alternatives
     // within long gaps. A completely free day can still provide five choices.
+    return PlanAvailabilityResult(gaps, message: gaps.isEmpty
+      ? '${deadlineLimited ? '截止前' : '当天'}没有连续 ${query.minutes} 分钟的可用时段${query.hasBuffers ? '（开始前${query.bufferBefore}分钟、结束后${query.bufferAfter}分钟缓冲）' : ''}' : null);
+  }
+
+  static PlanAvailabilityResult find(PlanAvailabilityQuery query,
+      PlanAvailabilitySnapshot snapshot, {required DateTime now}) {
+    final available = freeGaps(query, snapshot, now: now);
+    final gaps = available.slots;
     final slots = gaps
         .take(query.resultLimit)
         .map(
@@ -180,12 +183,7 @@ abstract final class PlanAvailabilityService {
       if (!added) break;
     }
     slots.sort((a, b) => a.start.compareTo(b.start));
-    return PlanAvailabilityResult(
-      slots,
-      message: slots.isEmpty
-          ? '${deadlineLimited ? '截止前' : '当天'}没有连续 ${query.minutes} 分钟的可用时段${query.hasBuffers ? '（开始前${query.bufferBefore}分钟、结束后${query.bufferAfter}分钟缓冲）' : ''}'
-          : null,
-    );
+    return PlanAvailabilityResult(slots, message: available.message);
   }
 
   static bool accepts(

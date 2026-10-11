@@ -271,6 +271,70 @@ mixin _StorageFixed on _StorageServiceBase {
     }
   }
 
+  Future<List<TodoPlanBlock>> savePlanBlocksCreated(
+    String username, List<TodoPlanBlock> drafts, {
+    required Future<void> Function(DatabaseExecutor executor) beforeWrite,
+    bool sync = true,
+  }) async {
+    if (drafts.length < 2 || drafts.length > 6 ||
+        drafts.map((b) => b.id).toSet().length != drafts.length ||
+        drafts.any((b) => b.id.isEmpty || b.todoId != drafts.first.todoId ||
+          b.status != TodoPlanStatus.planned || b.isDeleted ||
+          b.startTime <= 0 || b.endTime <= b.startTime ||
+          b.endTime - b.startTime != b.plannedMinutes * 60000 ||
+          b.plannedMinutes < 15 || b.plannedMinutes > 120 ||
+          b.actualFocusSeconds != 0 || b.pomodoroRecordIds.isNotEmpty || b.calendarEventId != null)) {
+      throw StateError('分段新建内容无效');
+    }
+    final db = await DatabaseHelper.instance.databaseForUser(username);
+    var created = false;
+    final saved = await db.transaction((txn) async {
+      final existing = <TodoPlanBlock>[];
+      for (final draft in drafts) {
+        final rows = await txn.query('todo_plan_blocks', where: 'uuid=?', whereArgs: [draft.id]);
+        if (rows.isNotEmpty) {
+          final block = TodoPlanBlock.fromJson(rows.single);
+          if (rows.single['has_conflict'] == 1 || block.isDeleted ||
+              block.status != TodoPlanStatus.planned || block.actualFocusSeconds != 0 ||
+              block.pomodoroRecordIds.isNotEmpty || block.version != draft.version ||
+              (block.titleSnapshot ?? '') != (draft.titleSnapshot ?? '') ||
+              block.todoId != draft.todoId || block.startTime != draft.startTime ||
+              block.endTime != draft.endTime || block.plannedMinutes != draft.plannedMinutes ||
+              (block.remark ?? '') != (draft.remark ?? '') ||
+              block.reminderMinutes != draft.reminderMinutes ||
+              block.pomodoroMinutes != draft.pomodoroMinutes || block.pomodoroRounds != draft.pomodoroRounds) {
+            throw StateError('分段目标已存在或变化，请核对已有规划');
+          }
+          existing.add(block);
+        }
+      }
+      if (existing.isNotEmpty && existing.length != drafts.length) {
+        throw StateError('部分分段已存在，请核对已有规划；尚未新增任何分段');
+      }
+      await beforeWrite(txn);
+      if (existing.isNotEmpty) return existing;
+      final result = [for (final b in drafts) TodoPlanBlock.fromJson(b.toJson())];
+      for (final block in result) {
+        block.titleSnapshot ??= '';
+        final data = block.toDbJson();
+        await txn.insert('todo_plan_blocks', data);
+        await txn.insert('op_logs', {
+          'op_type': 'UPSERT', 'target_table': 'todo_plan_blocks',
+          'target_uuid': block.id, 'data_json': jsonEncode(data),
+          'timestamp': DateTime.now().millisecondsSinceEpoch,
+          'is_synced': 0, 'sync_error': '',
+        });
+      }
+      created = true;
+      return result;
+    });
+    if (created) {
+      if (sync) requestSync(username);
+      triggerRefresh(const {DataRefreshDomain.planBlocks});
+    }
+    return saved;
+  }
+
   Future<TodoPlanBlock> savePlanBlockEdited(
     String username,
     TodoPlanBlock draft, {

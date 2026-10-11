@@ -308,3 +308,7 @@ todo.md
 
 !/test/services/plan_availability_buffers_test.dart
 !/test/widgets/plan_availability_buffers_test.dart
+
+!/test/services/plan_split_service_test.dart
+!/test/services/plan_split_repository_test.dart
+!/test/widgets/plan_split_flow_test.dart
