@@ -168,6 +168,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
   PlanAvailabilityQuery? _singleQuery;
   bool _splitAdjusted = false, _splitStale = false;
   bool get _canSplit => widget.fullPage && _supportsDraft && _selectedTodo != null;
+  bool get _splitPersisted => _split != null && _savedSplitBlocks.isNotEmpty;
 
   bool _autoRecommendationPending = false;
   bool _initialEstimatePending = false;
@@ -969,7 +970,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
   }
 
   Future<void> _chooseSplit() async {
-    if (_busy || !_canSplit) return;
+    if (_busy || !_canSplit || _splitPersisted) return;
     final initial =
         _split?.query ??
         PlanSplitQuery(
@@ -1026,7 +1027,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
   }
 
   Future<void> _returnSingle() async {
-    if (_busy) return;
+    if (_busy || _splitPersisted) return;
     if (_splitAdjusted) {
       final yes = await showDialog<bool>(
         context: context,
@@ -1059,7 +1060,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
   }
 
   Future<void> _adjustSplit(int index) async {
-    if (_busy) return;
+    if (_busy || _splitPersisted) return;
     final selection = _split!, old = selection.slots[index];
     final date = await showDatePicker(
       context: context,
@@ -1086,14 +1087,12 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
         start,
         start.add(Duration(minutes: old.minutes)),
       );
-      final pairs = [
+      // Reserve stable group-position UUIDs until the first atomic commit.
+      // Reordering times must not replace the original draft's target anchor.
+      final slots = [
         for (var i = 0; i < selection.slots.length; i++)
-          (i == index ? replacement : selection.slots[i], _splitIds[i]),
-      ]..sort((a, b) => a.$1.start.compareTo(b.$1.start));
-      if (pairs.first.$2 != _targetPlanId) {
-        throw const PlanAvailabilityException('第1段须保持最早，请重新选择整组');
-      }
-      final slots = pairs.map((p) => p.$1).toList();
+          i == index ? replacement : selection.slots[i],
+      ]..sort((a, b) => a.start.compareTo(b.start));
       final fresh = await PlanAvailabilityRepository(clock: widget.clock)
           .readSplit(
             selection.query,
@@ -1115,8 +1114,6 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
           _splitAdjusted = true;
           _splitStale = false;
           _split = PlanSplitSelection(selection.query, slots, fresh);
-          _splitIds = pairs.map((p) => p.$2).toList();
-          _targetPlanId = _splitIds.first;
           _start = slots.first.start;
           _end = slots.first.end;
         });
@@ -1144,6 +1141,11 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
               '安排或状态已变化，保存前将重新核对整组；也可重新选择整组。',
               key: ValueKey('plan-split-stale'),
             ),
+          if (_splitPersisted)
+            const Text(
+              '分段已保存；这里只能重试启动第1段或关闭此页面。',
+              key: ValueKey('plan-split-persisted'),
+            ),
           for (var i = 0; i < _split!.slots.length; i++)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 6),
@@ -1158,7 +1160,9 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
                   Align(
                     alignment: Alignment.centerRight,
                     child: TextButton(
-                      onPressed: _busy ? null : () => _adjustSplit(i),
+                      onPressed: _busy || _splitPersisted
+                          ? null
+                          : () => _adjustSplit(i),
                       child: const Text('调整本段'),
                     ),
                   ),
@@ -1169,11 +1173,11 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
             spacing: 8,
             children: [
               TextButton(
-                onPressed: _busy ? null : _chooseSplit,
+                onPressed: _busy || _splitPersisted ? null : _chooseSplit,
                 child: const Text('重新选择整组'),
               ),
               TextButton(
-                onPressed: _busy ? null : _returnSingle,
+                onPressed: _busy || _splitPersisted ? null : _returnSingle,
                 child: const Text('返回单段'),
               ),
             ],
@@ -1935,6 +1939,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
           TextField(
             key: const ValueKey('plan-remark'),
             controller: _remarkCtrl,
+            readOnly: _splitPersisted,
             onChanged: (_) => setState(() {
               _touch();
               _draftRevision++;
@@ -1947,7 +1952,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
             builder: (context, constraints) {
               final columns = constraints.maxWidth >= 460 && scale < 1.6
                   ? 3
-                  : (constraints.maxWidth >= 240 ? 2 : 1);
+                  : (constraints.maxWidth >= 240 && scale < 1.6 ? 2 : 1);
               final fieldWidth =
                   (constraints.maxWidth - 12 * (columns - 1)) / columns;
               Widget option(
@@ -1975,7 +1980,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
                         ),
                       )
                       .toList(),
-                  onChanged: changed,
+                  onChanged: _splitPersisted ? null : changed,
                 ),
               );
               return Wrap(
@@ -2038,7 +2043,15 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
               (_selectedTodoId == null && !_focusStarted)
           ? null
           : _save,
-      child: Text(_focusStarted ? '关闭' : _split != null ? '保存全部${_split!.slots.length}段' : '保存规划'),
+      child: Text(
+        _focusStarted
+            ? '关闭'
+            : _splitPersisted
+            ? '完成'
+            : _split != null
+            ? '保存全部${_split!.slots.length}段'
+            : '保存规划',
+      ),
     );
     final focus = OutlinedButton.icon(
       key: const ValueKey('plan-save-focus'),
@@ -2053,7 +2066,15 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
           ? null
           : _saveAndStartFocus,
       icon: const Icon(Icons.play_arrow_rounded, size: 20),
-      label: Text(_focusStarted ? '重试更新专注状态' : _split != null ? '保存全部并开始第1段' : '保存并开始专注'),
+      label: Text(
+        _focusStarted
+            ? '重试更新专注状态'
+            : _splitPersisted
+            ? '重试开始第1段'
+            : _split != null
+            ? '保存全部并开始第1段'
+            : '保存并开始专注',
+      ),
     );
     return Container(
       decoration: BoxDecoration(

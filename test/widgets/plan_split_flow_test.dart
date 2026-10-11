@@ -34,6 +34,7 @@ void main() {
     PlanEditorDraft? draft,
     Size size = const Size(390, 900),
     double scale = 1,
+    bool use24Hour = false,
     Brightness brightness = Brightness.light,
     Future<void> Function(TodoPlanBlock, TodoItem)? focus,
   }) async {
@@ -51,7 +52,10 @@ void main() {
           ),
         ),
         builder: (c, child) => MediaQuery(
-          data: MediaQuery.of(c).copyWith(textScaler: TextScaler.linear(scale)),
+          data: MediaQuery.of(c).copyWith(
+            textScaler: TextScaler.linear(scale),
+            alwaysUse24HourFormat: use24Hour,
+          ),
           child: child!,
         ),
         home: Builder(
@@ -154,6 +158,24 @@ void main() {
       expect(await f.db.query('todo_plan_blocks'), hasLength(2));
       expect(starts.single.plannedMinutes, 45);
       expect(key('plan-split-stale'), findsNothing);
+      expect(key('plan-split-persisted'), findsOneWidget);
+      expect(find.text('完成'), findsOneWidget);
+      expect(find.text('重试开始第1段'), findsOneWidget);
+      expect(t.widget<TextField>(key('plan-remark')).readOnly, isTrue);
+      expect(
+        t
+            .widget<TextButton>(find.widgetWithText(TextButton, '返回单段'))
+            .onPressed,
+        isNull,
+      );
+      expect(
+        t
+            .widget<DropdownButtonFormField<int>>(
+              key('plan-option-每段番茄轮数'),
+            )
+            .onChanged,
+        isNull,
+      );
       await tap(t, key('plan-save-focus'));
       expect(calls, 2);
       expect(starts.map((b) => b.id).toSet(), hasLength(1));
@@ -186,6 +208,25 @@ void main() {
       expect(await f.db.query('op_logs'), isEmpty);
       expect(calls, 0);
       expect(key('plan-split-preview'), findsOneWidget);
+    },
+  );
+  testWidgets(
+    'moving the first segment later keeps the displayed group chronological',
+    (t) async {
+      await open(t);
+      await adopt(t);
+      await tap(t, find.text('调整本段').first);
+      await tap(t, find.text('OK').last);
+      await tap(t, find.byTooltip('Switch to text input mode'));
+      final fields = find.byType(TextField);
+      await t.enterText(fields.at(fields.evaluate().length - 2), '10');
+      await t.enterText(fields.last, '00');
+      await t.tap(find.text('OK').last);
+      await t.pumpAndSettle();
+
+      expect(t.takeException(), isNull);
+      expect(find.textContaining('第1段 · 10/8 08:45'), findsOneWidget);
+      expect(find.textContaining('第2段 · 10/8 10:00'), findsOneWidget);
     },
   );
   testWidgets(
@@ -228,41 +269,37 @@ void main() {
       expect(key('plan-split-preview'), findsNothing);
     },
   );
-  testWidgets(
-    'missing estimate waits for the user to confirm split duration',
-    (t) async {
-      await t.pumpWidget(
-        MaterialApp(
-          home: PlanSplitScreen(
-            todo: todo,
-            initialQuery: PlanSplitQuery(
-              PlanAvailabilityQuery(
-                username: identity.username,
-                todoId: todo.id,
-                date: day,
-                minutes: 90,
-              ),
+  testWidgets('missing estimate waits for the user to confirm split duration', (
+    t,
+  ) async {
+    await t.pumpWidget(
+      MaterialApp(
+        home: PlanSplitScreen(
+          todo: todo,
+          initialQuery: PlanSplitQuery(
+            PlanAvailabilityQuery(
+              username: identity.username,
+              todoId: todo.id,
+              date: day,
+              minutes: 90,
             ),
-            repository: PlanAvailabilityRepository(
-              databaseOverride: f.db,
-              clock: () => now,
-            ),
-            clock: () => now,
-            requireDurationConfirmation: true,
           ),
+          repository: PlanAvailabilityRepository(
+            databaseOverride: f.db,
+            clock: () => now,
+          ),
+          clock: () => now,
+          requireDurationConfirmation: true,
         ),
-      );
-      await t.pumpAndSettle();
-      expect(
-        find.text('未取得估时，请在修改条件中确认本次总时长'),
-        findsOneWidget,
-      );
-      expect(key('split-adopt-0'), findsNothing);
-      await tap(t, key('split-criteria'));
-      await tap(t, key('split-search'));
-      expect(key('split-adopt-0'), findsOneWidget);
-    },
-  );
+      ),
+    );
+    await t.pumpAndSettle();
+    expect(find.text('未取得估时，请在修改条件中确认本次总时长'), findsOneWidget);
+    expect(key('split-adopt-0'), findsNothing);
+    await tap(t, key('split-criteria'));
+    await tap(t, key('split-search'));
+    expect(key('split-adopt-0'), findsOneWidget);
+  });
   for (final spec in [
     (const Size(320, 900), 1.8, Brightness.dark),
     (const Size(1280, 900), 1.0, Brightness.light),
@@ -361,6 +398,71 @@ void main() {
       await tap(t, find.text('确认当前时区时间'));
       await tap(t, key('plan-save'));
       expect(await f.db.query('todo_plan_blocks'), hasLength(2));
+    },
+  );
+  testWidgets(
+    'moving second segment before first preserves total and stable draft anchor',
+    (t) async {
+      final slots = [
+        PlanTimeSlot(
+          day.add(const Duration(hours: 10)),
+          day.add(const Duration(hours: 10, minutes: 45)),
+        ),
+        PlanTimeSlot(
+          day.add(const Duration(hours: 12)),
+          day.add(const Duration(hours: 12, minutes: 45)),
+        ),
+      ];
+      final r = PlanEditorDraftRepository(database: f.db);
+      final d = await r.keep(
+        identity,
+        PlanDraftFields(
+          todoId: todo.id,
+          title: todo.title,
+          start: slots.first.start.millisecondsSinceEpoch,
+          end: slots.first.end.millisecondsSinceEpoch,
+          remark: '',
+          reminder: 5,
+          pomodoro: 25,
+          rounds: 0,
+          origin: 'timeline',
+          offsetMinutes: slots.first.start.timeZoneOffset.inMinutes,
+          split: PlanSplitDraft(
+            PlanSplitQuery(
+              PlanAvailabilityQuery(
+                username: identity.username,
+                todoId: todo.id,
+                date: day,
+                minutes: 90,
+              ),
+            ),
+            slots,
+            ['anchor', 'second'],
+          ),
+        ),
+        targetId: 'anchor',
+      );
+      await open(t, draft: d, use24Hour: true);
+      await tap(t, find.text('调整本段').at(1));
+      await tap(t, find.text('OK'));
+      await tap(t, find.byTooltip('Switch to text input mode'));
+      final inputs = find.descendant(
+        of: find.byType(TimePickerDialog),
+        matching: find.byType(TextField),
+      );
+      await t.enterText(inputs.at(0), '8');
+      await t.enterText(inputs.at(1), '00');
+      await tap(t, find.text('OK'));
+      await tap(t, find.byTooltip('更多操作'));
+      await tap(t, find.text('保留草稿'));
+      final restored = await r.read(identity, d.id);
+      expect(restored.targetId, 'anchor');
+      expect(restored.fields.split!.ids, ['anchor', 'second']);
+      expect(restored.fields.split!.slots.map((s) => s.start.hour), [8, 10]);
+      expect(restored.fields.split!.slots.map((s) => s.minutes), [45, 45]);
+      expect(await f.db.query('todo_plan_blocks'), isEmpty);
+      await tap(t, find.text('返回单段'));
+      expect(find.text('放弃已调整的分段？'), findsOneWidget);
     },
   );
 }
