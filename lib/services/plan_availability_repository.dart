@@ -521,7 +521,7 @@ class PlanAvailabilityRepository {
     Future<void> Function(DatabaseExecutor executor)? beforeWrite,
   }) async {
     final query = selection.query;
-    await PlanAvailabilityPreferences.validateBuffers(query);
+    await PlanAvailabilityPreferences.validateQueryDefaults(query);
     final identity = await PlanTodoIdentity.capture(query.username);
     if (draft.todoId != query.todoId ||
         draft.id != (query.excludeBlockId ?? draft.id) ||
@@ -554,7 +554,7 @@ class PlanAvailabilityRepository {
       sync: sync,
       beforeWrite: (executor) async {
         await identity.check();
-        await PlanAvailabilityPreferences.validateBuffers(query);
+        await PlanAvailabilityPreferences.validateQueryDefaults(query);
         final original = query.excludeBlockId == null
             ? <Map<String, Object?>>[]
             : await executor.query(

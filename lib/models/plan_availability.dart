@@ -41,6 +41,8 @@ class PlanAvailabilityQuery {
     this.bufferAfter = 0,
     this.bufferOverride = false,
     this.bufferDefaultsKey,
+    this.avoidanceOverride = false,
+    this.avoidanceDefaultsKey,
   });
   final String username;
   final String todoId;
@@ -57,6 +59,8 @@ class PlanAvailabilityQuery {
   /// Explicit one-query choice (including a failed preference write).
   final bool bufferOverride;
   final String? bufferDefaultsKey;
+  final bool avoidanceOverride;
+  final String? avoidanceDefaultsKey;
   bool get hasBuffers => bufferBefore != 0 || bufferAfter != 0;
   String get bufferSummary => bufferOverride && !hasBuffers
       ? '本次未留缓冲'

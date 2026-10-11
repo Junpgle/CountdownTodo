@@ -292,6 +292,8 @@ class MissedPlanRecoveryService {
         bufferAfter: template?.bufferAfter ?? 0,
         bufferOverride: template?.bufferOverride ?? false,
         bufferDefaultsKey: template?.bufferDefaultsKey,
+        avoidanceOverride: template?.avoidanceOverride ?? false,
+        avoidanceDefaultsKey: template?.avoidanceDefaultsKey,
         avoidWindows: template?.avoidWindows ?? const [],
       );
       selection = PlanAvailabilitySelection(

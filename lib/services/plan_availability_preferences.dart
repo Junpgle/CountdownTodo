@@ -19,6 +19,23 @@ class PlanAvoidancePreferences {
   final int bufferBefore, bufferAfter;
   final String? bufferError;
   String get bufferKey => '$bufferBefore:$bufferAfter';
+  String get avoidanceKey => keyFor(options, selectedIndices);
+
+  static String keyFor(
+    List<PlanDailyTimeWindow> options,
+    Set<int> selectedIndices,
+  ) => keyForWindows([
+    for (var i = 0; i < options.length; i++)
+      if (selectedIndices.contains(i)) options[i],
+  ]);
+
+  static String keyForWindows(Iterable<PlanDailyTimeWindow> windows) {
+    final entries = [
+      for (final window in windows)
+        [window.label, window.startMinutes, window.endMinutes],
+    ]..sort((a, b) => jsonEncode(a).compareTo(jsonEncode(b)));
+    return jsonEncode(entries);
+  }
 }
 
 /// Local, account-scoped defaults for the next availability search.
@@ -118,14 +135,32 @@ class PlanAvailabilityPreferences {
     );
   }
 
-  static Future<void> validateBuffers(PlanAvailabilityQuery query) async {
-    if (query.bufferDefaultsKey == null || query.bufferOverride) return;
+  static Future<void> validateQueryDefaults(PlanAvailabilityQuery query) async {
+    final validateBuffers =
+        query.bufferDefaultsKey != null && !query.bufferOverride;
+    final validateAvoidance =
+        query.avoidanceDefaultsKey != null && !query.avoidanceOverride;
+    if (!validateBuffers && !validateAvoidance) return;
     final current = await load(query.username);
-    if (current.bufferError != null) {
-      throw PlanAvailabilityException(current.bufferError!);
+    if (validateBuffers) {
+      if (current.bufferError != null) {
+        throw PlanAvailabilityException(current.bufferError!);
+      }
+      if (current.bufferKey != query.bufferDefaultsKey) {
+        throw const PlanAvailabilityException('缓冲默认设置已变化，请重新查找；当前输入已保留');
+      }
     }
-    if (current.bufferKey != query.bufferDefaultsKey) {
-      throw const PlanAvailabilityException('缓冲默认设置已变化，请重新查找；当前输入已保留');
+    if (validateAvoidance) {
+      if (current.bufferError != null) {
+        throw PlanAvailabilityException(current.bufferError!);
+      }
+      if (current.avoidanceKey != query.avoidanceDefaultsKey) {
+        throw const PlanAvailabilityException('避让默认设置已变化，请重新查找；当前输入已保留');
+      }
+      if (PlanAvoidancePreferences.keyForWindows(query.avoidWindows) !=
+          query.avoidanceDefaultsKey) {
+        throw const PlanAvailabilityException('查找避让条件已变化，请重新查找；当前输入已保留');
+      }
     }
   }
 

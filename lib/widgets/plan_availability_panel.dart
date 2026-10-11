@@ -79,8 +79,8 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
   DateTime? _selectedStart;
   int _resultLimit = 5;
   int _bufferBefore = 0, _bufferAfter = 0, _preferenceWriteSequence = 0;
-  bool _bufferOverride = false;
-  String? _bufferDefaultsKey, _bufferError;
+  bool _bufferOverride = false, _avoidanceOverride = false;
+  String? _bufferDefaultsKey, _bufferError, _avoidanceDefaultsKey;
   final List<PlanDailyTimeWindow> _avoidOptions = List.of(
     PlanAvailabilityPreferences.defaultWindows,
   );
@@ -105,6 +105,8 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
     bufferAfter: _bufferAfter,
     bufferOverride: _bufferOverride,
     bufferDefaultsKey: _bufferDefaultsKey,
+    avoidanceOverride: _avoidanceOverride,
+    avoidanceDefaultsKey: _avoidanceDefaultsKey,
   );
 
   @override
@@ -124,6 +126,9 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
       _bufferBefore = initialQuery.bufferBefore;
       _bufferAfter = initialQuery.bufferAfter;
       _bufferOverride = initialQuery.bufferOverride;
+      _bufferDefaultsKey = initialQuery.bufferDefaultsKey;
+      _avoidanceOverride = initialQuery.avoidanceOverride;
+      _avoidanceDefaultsKey = initialQuery.avoidanceDefaultsKey;
     }
     _duration = TextEditingController(text: '$_minutes');
     unawaited(_loadAvoidPreferences());
@@ -170,6 +175,10 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
   Future<void> _loadAvoidPreferences() async {
     final sequence = ++_avoidPreferencesSequence;
     final username = widget.username;
+    final initialQuery = widget.initialQuery;
+    final preserveAvoidance = initialQuery != null || _avoidanceOverride;
+    final preservedAvoidance = initialQuery?.avoidWindows ??
+        (_avoidanceOverride ? List<PlanDailyTimeWindow>.of(_enabledAvoid) : null);
     _avoidPreferencesLoaded = false;
     _avoidOptions
       ..clear()
@@ -195,13 +204,37 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
     _avoidOptions
       ..clear()
       ..addAll(saved.options);
-    _enabledAvoid.addAll(saved.selectedIndices.map((i) => _avoidOptions[i]));
+    if (preserveAvoidance && preservedAvoidance != null) {
+      for (final window in preservedAvoidance) {
+        final index = _avoidOptions.indexWhere((option) =>
+            option.label == window.label &&
+            option.startMinutes == window.startMinutes &&
+            option.endMinutes == window.endMinutes);
+        if (index == -1) {
+          _avoidOptions.add(window);
+          _enabledAvoid.add(window);
+        } else {
+          _enabledAvoid.add(_avoidOptions[index]);
+        }
+      }
+    } else {
+      _enabledAvoid.addAll(saved.selectedIndices.map((i) => _avoidOptions[i]));
+    }
+    if (initialQuery != null) {
+      _avoidanceOverride = initialQuery.avoidanceOverride;
+      _avoidanceDefaultsKey =
+          initialQuery.avoidanceDefaultsKey ?? saved.avoidanceKey;
+    } else if (!_avoidanceOverride) {
+      _avoidanceDefaultsKey = saved.avoidanceKey;
+    }
     if (!_bufferOverride) {
       _bufferBefore = saved.bufferBefore;
       _bufferAfter = saved.bufferAfter;
+      _bufferDefaultsKey = saved.bufferKey;
+      _bufferError = saved.bufferError;
+    } else {
+      _bufferError = null;
     }
-    _bufferDefaultsKey = saved.bufferKey;
-    _bufferError = _bufferOverride ? null : saved.bufferError;
     _avoidPreferencesLoaded = true;
     _invalidate();
     if ((widget.autoLookupAndSelect ||
@@ -222,7 +255,21 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
     }
   }
 
-  void _avoidChanged() {
+  Set<int> get _selectedAvoidanceIndices => {
+    for (var i = 0; i < _avoidOptions.length; i++)
+      if (_enabledAvoid.contains(_avoidOptions[i])) i,
+  };
+
+  String get _currentAvoidanceKey => PlanAvoidancePreferences.keyFor(
+    _avoidOptions,
+    _selectedAvoidanceIndices,
+  );
+
+  void _avoidChanged({bool avoidanceChanged = false}) {
+    if (avoidanceChanged) {
+      _avoidanceOverride = false;
+      _avoidanceDefaultsKey = _currentAvoidanceKey;
+    }
     _invalidate();
     final username = widget.username;
     final writeSequence = ++_preferenceWriteSequence;
@@ -239,7 +286,13 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
             writeSequence != _preferenceWriteSequence) {
           return;
         }
-        setState(() => _bufferOverride = true);
+        setState(() {
+          if (avoidanceChanged) {
+            _avoidanceOverride = true;
+          } else {
+            _bufferOverride = true;
+          }
+        });
         widget.onQueryChanged?.call(_query);
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text('本次查找已使用，默认设置未能记住，请重试')));
@@ -252,6 +305,7 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
     super.didUpdateWidget(old);
     if (old.username != widget.username) {
       _bufferOverride = false;
+      _avoidanceOverride = false;
       _preferenceWriteSequence++;
       unawaited(_loadAvoidPreferences());
     }
@@ -440,7 +494,7 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
       _avoidOptions.add(chosen);
     }
     _enabledAvoid.add(chosen);
-    _avoidChanged();
+    _avoidChanged(avoidanceChanged: true);
   }
 
   Widget _avoidControls() => ExpansionTile(
@@ -471,7 +525,7 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
                       } else {
                         _enabledAvoid.remove(_avoidOptions[index]);
                       }
-                      _avoidChanged();
+                      _avoidChanged(avoidanceChanged: true);
                     },
             ),
             TextButton(
@@ -493,7 +547,7 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
                     : () {
                         _enabledAvoid.remove(_avoidOptions[index]);
                         _avoidOptions.removeAt(index);
-                        _avoidChanged();
+                        _avoidChanged(avoidanceChanged: true);
                       },
               ),
           ],
@@ -846,6 +900,8 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
       _bufferAfter = query.bufferAfter;
       _bufferOverride = query.bufferOverride;
       _bufferDefaultsKey = query.bufferDefaultsKey;
+      _avoidanceOverride = query.avoidanceOverride;
+      _avoidanceDefaultsKey = query.avoidanceDefaultsKey;
       _enabledAvoid
         ..clear()
         ..addAll(query.avoidWindows);

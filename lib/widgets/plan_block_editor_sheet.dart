@@ -423,6 +423,9 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
         bufferAfter: _manualQuery?.bufferAfter ?? preferences.bufferAfter,
         bufferOverride: _manualQuery?.bufferOverride ?? false,
         bufferDefaultsKey: _manualQuery?.bufferDefaultsKey ?? preferences.bufferKey,
+        avoidanceOverride: _manualQuery?.avoidanceOverride ?? false,
+        avoidanceDefaultsKey:
+            _manualQuery?.avoidanceDefaultsKey ?? preferences.avoidanceKey,
         avoidWindows: _manualQuery?.avoidWindows ?? [
           for (final i in preferences.selectedIndices) preferences.options[i],
         ]);
@@ -1128,6 +1131,8 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
           bufferAfter: _manualQuery?.bufferAfter ?? 0,
           bufferOverride: _manualQuery?.bufferOverride ?? false,
           bufferDefaultsKey: _manualQuery?.bufferDefaultsKey,
+          avoidanceOverride: _manualQuery?.avoidanceOverride ?? false,
+          avoidanceDefaultsKey: _manualQuery?.avoidanceDefaultsKey,
           avoidWindows: _manualQuery?.avoidWindows ?? const [],
         );
         final latest = await service.availability.read(

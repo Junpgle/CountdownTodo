@@ -353,6 +353,9 @@ class PlanConflictReviewService {
         bufferAfter: manualQuery?.bufferAfter ?? 0,
         bufferOverride: manualQuery?.bufferOverride ?? false,
         bufferDefaultsKey: manualQuery?.bufferDefaultsKey,
+        avoidanceOverride: manualQuery?.avoidanceOverride ?? false,
+        avoidanceDefaultsKey:
+            manualQuery?.avoidanceDefaultsKey ?? preferences.avoidanceKey,
         avoidWindows: avoidance,
       );
       selection = PlanAvailabilitySelection(
