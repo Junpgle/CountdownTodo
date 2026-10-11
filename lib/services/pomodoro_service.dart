@@ -495,8 +495,8 @@ class PomodoroSettings {
 
     int toMinutes(dynamic v, int def) {
       final n = JsonValueParser.toInt(v, fallback: def);
-      // 若 > 60 认为是秒，转换为分钟
-      return n > 60 ? n ~/ 60 : n;
+      // 若 >= 60 认为是秒，转换为分钟；恰好 60 秒也应是 1 分钟。
+      return n >= 60 ? n ~/ 60 : n;
     }
 
     return PomodoroSettings(
