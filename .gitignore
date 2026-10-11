@@ -119,6 +119,7 @@ todo.md
 !/test/services/plan_availability_repository_test.dart
 !/test/services/plan_availability_preferences_test.dart
 !/test/services/device_calendar_refresh_test.dart
+!/test/services/plan_editor_draft_repository_test.dart
 !/test/support/
 /test/support/*
 !/test/support/search_scope_fixture.dart
@@ -300,3 +301,7 @@ todo.md
 !/test/widgets/plan_review_screen_test.dart
 !/test/services/pomodoro_record_sync_test.dart
 !/test/services/pomodoro_plan_linkage_test.dart
+
+!/test/services/plan_editor_draft_integrity_test.dart
+
+!/test/widgets/plan_editor_drafts_test.dart

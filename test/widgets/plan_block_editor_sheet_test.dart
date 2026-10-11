@@ -1077,6 +1077,40 @@ void main() {
     await LiquidGlassEffectService.setEnabled(false);
     GlassPerformanceMonitor.stop();
   });
+  testWidgets('编辑器有实际修改时返回会确认，继续编辑后可明确放弃', (tester) async {
+    await showEditor(tester, saver: identitySaver, fullPage: true);
+    await tester.enterText(find.byType(TextField).last, '临时备注');
+    await tester.pump();
+
+    await tester.tap(find.byType(BackButton));
+    await tester.pumpAndSettle();
+    expect(find.text('保留这次规划？'), findsOneWidget);
+
+    await tester.tap(find.text('继续编辑'));
+    await tester.pumpAndSettle();
+    expect(find.byType(PlanBlockEditorSheet), findsOneWidget);
+    expect(find.text('保留这次规划？'), findsNothing);
+
+    await tester.tap(find.byType(BackButton));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('放弃修改'));
+    await tester.pumpAndSettle();
+    expect(find.byType(PlanBlockEditorSheet), findsNothing);
+    expect(key('open-editor'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('未改动的编辑器返回不弹退出确认', (tester) async {
+    await showEditor(tester, saver: identitySaver, fullPage: true);
+
+    await tester.tap(find.byType(BackButton));
+    await tester.pumpAndSettle();
+
+    expect(find.text('保留这次规划？'), findsNothing);
+    expect(find.byType(PlanBlockEditorSheet), findsNothing);
+    expect(key('open-editor'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
   for (final size in [const Size(320, 640), const Size(720, 360)]) {
     testWidgets('避让设置与编辑时间在短屏大字体可达 size=$size', (tester) async {
       await showEditor(
@@ -1307,7 +1341,10 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('10:45'), findsOneWidget);
-    expect(find.byKey(const ValueKey('time-estimation-evidence')), findsNothing);
+    expect(
+      find.byKey(const ValueKey('time-estimation-evidence')),
+      findsNothing,
+    );
     expect(find.text('按规划时长'), findsOneWidget);
   });
   testWidgets('真实编辑器通过真实隔离存储：采用取消零写入，保存一条规划及oplog', (tester) async {

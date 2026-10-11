@@ -12,6 +12,7 @@ import '../storage_service.dart';
 import '../widgets/plan_block_editor_sheet.dart';
 import '../widgets/todo_section_widget.dart';
 import 'pomodoro_screen.dart';
+import 'plan_editor_drafts_screen.dart';
 
 class PlanBacklogScreen extends StatefulWidget {
   const PlanBacklogScreen({
@@ -227,6 +228,9 @@ class _PlanBacklogScreenState extends State<PlanBacklogScreen>
           fullPage: true,
           clock: widget.clock,
           backlogContext: saveContext,
+          draftOrigin: 'backlog',
+          onManageDrafts: () => openPlanEditorDrafts(context, widget.username,
+            onSaved: () => saved = true),
           onViewExisting: () => _viewExistingDuringDraft(row),
           onSaved: () => saved = true,
         ),

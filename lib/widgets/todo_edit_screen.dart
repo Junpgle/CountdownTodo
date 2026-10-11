@@ -1583,6 +1583,9 @@ class TodoEditScreenState extends State<TodoEditScreen> {
         endTime: start.add(const Duration(minutes: 30)),
         autoFillEstimateOnTodoChange: false,
         autoRecommendTime: true,
+        draftOrigin: 'todo',
+        onManageDrafts: () => openPlanEditorDrafts(context, widget.username,
+          onSaved: () { if (mounted) _loadRelatedPlans(); }),
         onSaved: () {
           if (mounted) _loadRelatedPlans();
         },

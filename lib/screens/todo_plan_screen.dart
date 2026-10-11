@@ -13,6 +13,7 @@ import '../widgets/plan_execution_view.dart';
 import 'course_screens.dart';
 import 'plan_block_stats_screen.dart';
 import 'plan_backlog_screen.dart';
+import 'plan_editor_drafts_screen.dart';
 import '../utils/page_transitions.dart';
 import '../services/feature_tip_service.dart';
 import '../widgets/coach_mark_overlay.dart';
@@ -568,6 +569,9 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
                 _nextDay();
               } else if (value == 'refresh') {
                 _loadData();
+              } else if (value == 'drafts') {
+                openPlanEditorDrafts(context, widget.username,
+                  onSaved: () => unawaited(_loadData()));
               } else {
                 Navigator.of(context).push(
                   PageTransitions.material(
@@ -583,6 +587,7 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
               if (compactDateNavigation)
                 const PopupMenuItem(value: 'next', child: Text('后一天')),
               const PopupMenuItem(value: 'stats', child: Text('规划统计')),
+              const PopupMenuItem(value: 'drafts', child: Text('规划草稿')),
               const PopupMenuItem(value: 'refresh', child: Text('刷新')),
             ],
           ),
@@ -1001,6 +1006,8 @@ class _PlanGridViewState extends State<_PlanGridView> with WidgetsBindingObserve
         initialTodoId: widget.initialTodoId,
         autoFillEstimateOnTodoChange: autoFillEstimateOnTodoChange,
         onSaved: widget.onRefresh,
+        onManageDrafts: () => openPlanEditorDrafts(context, widget.username,
+          onSaved: widget.onRefresh),
       ),
     );
   }
