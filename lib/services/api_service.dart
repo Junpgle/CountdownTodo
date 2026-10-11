@@ -1011,7 +1011,8 @@ class ApiService {
       int? fromMs,
       int? toMs,
       bool includeDeleted = false,
-      bool useUpdatedAt = false]) async {
+      bool useUpdatedAt = false,
+      http.Client? client]) async {
     try {
       final params = <String, String>{};
       if (userId != null) params['user_id'] = userId.toString();
@@ -1023,7 +1024,7 @@ class ApiService {
       }
       final uri = Uri.parse('$_effectiveBaseUrl/api/pomodoro/records')
           .replace(queryParameters: params.isEmpty ? null : params);
-      final response = await _request('GET', uri.toString());
+      final response = await _request('GET', uri.toString(), client: client);
       if (response.statusCode == 200) return jsonDecode(response.body);
       return [];
     } catch (e) {
@@ -1124,13 +1125,15 @@ class ApiService {
           {int? fromMs,
           int? toMs,
           bool includeDeleted = false,
-          bool useUpdatedAt = false}) =>
+          bool useUpdatedAt = false,
+          http.Client? client}) =>
       fetchPomodoroRecords(
         null,
         fromMs,
         toMs,
         includeDeleted,
         useUpdatedAt,
+        client,
       );
 
   // ==========================================

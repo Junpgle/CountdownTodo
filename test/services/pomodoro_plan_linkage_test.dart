@@ -1,9 +1,27 @@
+import 'dart:convert';
+
 import 'package:countdown_todo/models.dart';
 import 'package:countdown_todo/services/pomodoro_service.dart';
 import 'package:countdown_todo/storage_service.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
 
 import '../support/plan_availability_fixture.dart';
+
+class _PomodoroFetchClient extends http.BaseClient {
+  _PomodoroFetchClient(this.records);
+
+  final List<Map<String, dynamic>> records;
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    return http.StreamedResponse(
+      Stream.value(utf8.encode(jsonEncode(records))),
+      200,
+      headers: const {'content-type': 'application/json'},
+    );
+  }
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -53,14 +71,59 @@ void main() {
       expect(await _recordIds('plan-b'), isEmpty);
     },
   );
+
+  test('merging a cloud record updates its linked plan progress', () async {
+    final stalePlanSnapshot = _block('plan-a', plannedMinutes: 10);
+    await fixture.block(stalePlanSnapshot);
+    final remote = _record(planBlockId: 'plan-a', actualDuration: 600);
+
+    expect(await PomodoroService.mergeRecordsLww([remote]), isTrue);
+
+    // The enclosing account sync later persists the plan-block snapshot it
+    // loaded before merging Pomodoro records. Reconcile after that save.
+    await StorageService.savePlanBlocks(
+      PlanAvailabilityFixture.username,
+      [stalePlanSnapshot],
+      sync: false,
+      isSyncSource: true,
+    );
+    expect((await _blockFromStorage('plan-a')).actualFocusSeconds, 0);
+
+    await PomodoroService.reconcilePlanBlockProgress(
+      PlanAvailabilityFixture.username,
+    );
+
+    final block = await _blockFromStorage('plan-a');
+    expect(block.actualFocusSeconds, 600);
+    expect(block.pomodoroRecordIds, [remote.uuid]);
+    expect(block.status, TodoPlanStatus.finished);
+  });
+
+  test('downloading cloud records updates linked plan progress', () async {
+    await fixture.block(_block('plan-a', plannedMinutes: 10));
+    final remote = _record(planBlockId: 'plan-a', actualDuration: 600);
+    final client = _PomodoroFetchClient([remote.toJson()]);
+
+    expect(
+      await PomodoroService.syncRecordsFromCloud(fromMs: 0, client: client),
+      isTrue,
+    );
+
+    final block = await _blockFromStorage('plan-a');
+    expect(block.actualFocusSeconds, 600);
+    expect(block.pomodoroRecordIds, [remote.uuid]);
+    expect(block.status, TodoPlanStatus.finished);
+    client.close();
+  });
 }
 
-TodoPlanBlock _block(String id) => TodoPlanBlock(
+TodoPlanBlock _block(String id, {int plannedMinutes = 20}) => TodoPlanBlock(
   id: id,
   todoId: 'todo-target',
+  titleSnapshot: '合成规划',
   startTime: 1000,
   endTime: 2_000_000,
-  plannedMinutes: 20,
+  plannedMinutes: plannedMinutes,
 );
 
 PomodoroRecord _record({

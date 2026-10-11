@@ -2353,6 +2353,7 @@ mixin _StorageSync on _StorageServiceBase {
       }
 
       // 合并 Pomodoro (Tags & Records)
+      bool pomodoroChanged = false;
       if (syncPomodoro) {
         try {
           // 顺序：拉取标签 -> 上传标签 -> 上传记录 -> 拉取记录
@@ -2360,7 +2361,7 @@ mixin _StorageSync on _StorageServiceBase {
           await PomodoroService.syncTagsToCloud();
           await PomodoroService.syncRecordsToCloud(
               forceFullSync: forceFullSync);
-          bool pomodoroChanged = await PomodoroService.syncRecordsFromCloud(
+          pomodoroChanged = await PomodoroService.syncRecordsFromCloud(
               forceFullSync: forceFullSync);
           if (pomodoroChanged) hasChanges = true;
         } catch (pe) {
@@ -2462,6 +2463,10 @@ mixin _StorageSync on _StorageServiceBase {
         }
         _pendingSyncOplogUuids.clear(); // 🚀 清除保护，防止跨同步周期的旧 UUID 干扰
         _forceFlushProtectedUuids.clear(); // 🚀 清除 force-flush 保护
+      }
+
+      if (syncPomodoro && syncPlanBlocks && pomodoroChanged) {
+        await PomodoroService.reconcilePlanBlockProgress(username);
       }
 
       // 将从旧云端响应中恢复出的系列关系作为一次真实本地修复重新上传。
