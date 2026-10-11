@@ -1852,6 +1852,64 @@ void main() {
       }
     });
 
+    test('旧服务器返回的账户预算不覆盖本地余额快照', () async {
+      final now = DateTime.now();
+      final snapshotAt = now.subtract(const Duration(days: 10)).millisecondsSinceEpoch;
+      final monthKey = financeMonthKey(
+        DateTime.fromMillisecondsSinceEpoch(snapshotAt),
+      );
+      final local = FinanceBudget(
+        uuid: 'local-only-balance',
+        monthKey: monthKey,
+        paymentMethodUuid: account,
+        amountMinor: 30000,
+        balanceSnapshotAt: snapshotAt,
+        version: 2,
+        createdAt: snapshotAt,
+        updatedAt: now.millisecondsSinceEpoch - 1000,
+        pendingSync: false,
+      );
+      await db.insert('finance_budgets', local.toMap());
+
+      final initial = await FinanceSyncService.prepare(
+        username: user,
+        forceFullSync: false,
+      );
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(initial.bootstrapKey, true);
+      await prefs.setBool(initial.balanceCapabilityKey, true);
+      await prefs.setBool(initial.balanceBootstrapKey, true);
+      final request = await FinanceSyncService.prepare(
+        username: user,
+        forceFullSync: false,
+      );
+      expect(request.fullSync, false);
+
+      final legacyRemote = FinanceBudget(
+        uuid: local.uuid,
+        monthKey: monthKey,
+        paymentMethodUuid: account,
+        amountMinor: 10000,
+        version: 3,
+        createdAt: local.createdAt,
+        updatedAt: now.millisecondsSinceEpoch - 500,
+        pendingSync: false,
+      ).toMap()..remove('balance_snapshot_at');
+      final response = _balanceSyncResponse()
+        ..['server_finance_budgets'] = [legacyRemote];
+
+      await FinanceSyncService.finish(
+        request: request,
+        response: response,
+        supported: true,
+      );
+
+      final preserved = (await FinanceStorage.getBudget(local.uuid))!;
+      expect(await FinanceSyncService.balanceSyncSupport(), false);
+      expect(preserved.amountMinor, local.amountMinor);
+      expect(preserved.effectiveBalanceSnapshotAt, snapshotAt);
+    });
+
     test('无息还款记录账户，删除保留已发生扣款、撤销才移除', () async {
       final loan = FinanceLoan(
         uuid: 'zero-interest-loan',

@@ -276,6 +276,18 @@ abstract final class FinanceSyncService {
       'templates': response['server_finance_entry_templates'] ?? const [],
     };
     if (!supportsBalances) {
+      // An older server can still return legacy account rows from its generic
+      // budget table, but it cannot preserve the snapshot instant. Keep those
+      // balances local until this response confirms the account-balance
+      // protocol, just as we do for account-linked loan repayments.
+      remoteBundle['budgets'] = (remoteBundle['budgets'] as List)
+          .whereType<Map>()
+          .where(
+            (item) => !FinanceSyncRequest._hasPaymentMethod(
+              Map<String, dynamic>.from(item),
+            ),
+          )
+          .toList(growable: false);
       final localAccountRepayments =
           (currentBundle['loan_installments'] as List? ?? [])
               .whereType<Map>()
