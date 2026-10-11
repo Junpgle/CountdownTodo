@@ -349,7 +349,7 @@ void main() {
     },
   );
   testWidgets(
-    'restored split timezone must be acknowledged before group save',
+    'restored split acknowledges a later offset change when the first matches',
     (t) async {
       final slots = [
         PlanTimeSlot(
@@ -357,10 +357,26 @@ void main() {
           day.add(const Duration(hours: 8, minutes: 45)),
         ),
         PlanTimeSlot(
-          day.add(const Duration(hours: 9)),
-          day.add(const Duration(hours: 9, minutes: 45)),
+          day.add(const Duration(days: 1, hours: 9)),
+          day.add(const Duration(days: 1, hours: 9, minutes: 45)),
         ),
       ];
+      final query = PlanSplitQuery(
+        PlanAvailabilityQuery(
+          username: identity.username,
+          todoId: todo.id,
+          date: day,
+          minutes: 90,
+        ),
+        days: 2,
+      );
+      final savedOffsets = PlanSplitDraft(
+        query,
+        slots,
+        ['first', 'second'],
+      ).currentZoneOffsets.toList();
+      final lastOffset = savedOffsets.length - 1;
+      savedOffsets[lastOffset] += savedOffsets[lastOffset] == 14 * 60 ? -60 : 60;
       final r = PlanEditorDraftRepository(database: f.db);
       final d = await r.keep(
         identity,
@@ -374,18 +390,12 @@ void main() {
           pomodoro: 25,
           rounds: 0,
           origin: 'timeline',
-          offsetMinutes: slots.first.start.timeZoneOffset.inMinutes + 60,
+          offsetMinutes: slots.first.start.timeZoneOffset.inMinutes,
           split: PlanSplitDraft(
-            PlanSplitQuery(
-              PlanAvailabilityQuery(
-                username: identity.username,
-                todoId: todo.id,
-                date: day,
-                minutes: 90,
-              ),
-            ),
+            query,
             slots,
             ['first', 'second'],
+            savedZoneOffsets: savedOffsets,
           ),
         ),
         targetId: 'first',
@@ -393,6 +403,10 @@ void main() {
       await open(t, draft: d);
       expect(find.text('修改日期'), findsNothing);
       expect(find.text('修改分段条件'), findsOneWidget);
+      await tap(t, find.byTooltip('更多操作'));
+      await tap(t, find.text('保留草稿'));
+      expect((await r.read(identity, d.id)).revision, d.revision);
+      expect(find.text('时区已变化，请先确认当前显示的日期与时间'), findsOneWidget);
       await tap(t, key('plan-save'));
       expect(await f.db.query('todo_plan_blocks'), isEmpty);
       await tap(t, find.text('确认当前时区时间'));

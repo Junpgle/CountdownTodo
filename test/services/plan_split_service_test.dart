@@ -168,6 +168,60 @@ void main() {
       expect(PlanSplitService.accepts(q, g, s, now: now), isTrue);
     }
   });
+  test('restored split detects timezone drift after its first segment', () {
+    final date = DateTime(2026, 3, 2);
+    final query = PlanSplitQuery(
+      PlanAvailabilityQuery(
+        username: 'default',
+        todoId: 'todo',
+        date: date,
+        minutes: 90,
+      ),
+      days: 7,
+    );
+    // These instants represent Mar 2 08:00 and Mar 8 08:00 in New York.
+    // Panama shares New York's -05:00 offset at the first segment, but not
+    // after New York's 2026 spring DST transition.
+    final slots = [
+      PlanTimeSlot(
+        DateTime.utc(2026, 3, 2, 13).toLocal(),
+        DateTime.utc(2026, 3, 2, 13, 45).toLocal(),
+      ),
+      PlanTimeSlot(
+        DateTime.utc(2026, 3, 8, 12).toLocal(),
+        DateTime.utc(2026, 3, 8, 12, 45).toLocal(),
+      ),
+    ];
+    final currentOffsets = PlanSplitDraft(
+      query,
+      slots,
+      const ['first', 'second'],
+    ).currentZoneOffsets;
+    final firstOffset = currentOffsets[query.days + 1];
+    final currentLaterOffset = currentOffsets[currentOffsets.length - 2];
+    final savedLaterOffset = currentLaterOffset == firstOffset
+        ? (firstOffset == 14 * 60 ? firstOffset - 60 : firstOffset + 60)
+        : firstOffset;
+    final savedOffsets = currentOffsets.toList();
+    savedOffsets[query.days] = savedLaterOffset;
+    savedOffsets[currentOffsets.length - 2] = savedLaterOffset;
+    savedOffsets[currentOffsets.length - 1] = savedLaterOffset;
+    final draft = PlanSplitDraft(
+      query,
+      slots,
+      const ['first', 'second'],
+      savedZoneOffsets: savedOffsets,
+    );
+    expect(savedOffsets[query.days + 1], firstOffset);
+    expect(savedOffsets.last, isNot(currentOffsets.last));
+    expect(draft.timeZoneChanged, isTrue);
+    final restored = PlanSplitDraft.fromJson(
+      draft.toJson(),
+      'default',
+      'todo',
+    );
+    expect(restored.timeZoneChanged, isTrue);
+  });
   test('incomplete computation is distinguished from no free time', () {
     final r = PlanSplitService.find(
       query(),

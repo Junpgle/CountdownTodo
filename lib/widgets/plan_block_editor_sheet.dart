@@ -273,7 +273,8 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
         _singleStart = null; _singleEnd = null; _singleQuery = null;
         _splitAdjusted = false;
         _restored = true;
-        _offsetChanged = f.offsetMinutes != _start.timeZoneOffset.inMinutes;
+        _offsetChanged = f.offsetMinutes != _start.timeZoneOffset.inMinutes ||
+            (f.split?.timeZoneChanged ?? false);
         _recommendation = null;
         _manualQuery = null;
         _estimatedMinutes = null;
@@ -301,6 +302,10 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
 
   Future<bool> _keepDraft() async {
     if (_busy || _draftRestoreFailed || !_supportsDraft || _persistedBlock != null) return false;
+    if (_offsetChanged) {
+      _reportError(StateError('时区已变化，请先确认当前显示的日期与时间'));
+      return false;
+    }
     setState(() => _busy = true);
     try {
       await _identityReady;

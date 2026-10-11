@@ -65,10 +65,47 @@ class PlanSplitResult {
 
 /// Local draft payload. No occupancy snapshot or one-off relaxation survives exit.
 class PlanSplitDraft {
-  const PlanSplitDraft(this.query, this.slots, this.ids);
+  const PlanSplitDraft(
+    this.query,
+    this.slots,
+    this.ids, {
+    this.savedZoneOffsets,
+  });
   final PlanSplitQuery query;
   final List<PlanTimeSlot> slots;
   final List<String> ids;
+  final List<int>? savedZoneOffsets;
+
+  /// Captures each local midnight in the search range and both endpoints of
+  /// every segment. A single offset at the first segment misses DST changes
+  /// later in a multi-day draft.
+  List<int> get currentZoneOffsets {
+    if (query.days < 1 || query.days > 7) return const [];
+    return [
+      for (var i = 0; i <= query.days; i++)
+        DateTime(
+          query.base.date.year,
+          query.base.date.month,
+          query.base.date.day + i,
+        ).timeZoneOffset.inMinutes,
+      for (final slot in slots) ...[
+        slot.start.timeZoneOffset.inMinutes,
+        slot.end.timeZoneOffset.inMinutes,
+      ],
+    ];
+  }
+
+  bool get timeZoneChanged {
+    final saved = savedZoneOffsets;
+    if (saved == null) return false; // Older v2 drafts use the legacy check.
+    final current = currentZoneOffsets;
+    if (saved.length != current.length) return true;
+    for (var i = 0; i < saved.length; i++) {
+      if (saved[i] != current[i]) return true;
+    }
+    return false;
+  }
+
   Map<String, Object> toJson() => {
     'date': query.base.date.millisecondsSinceEpoch,
     'days': query.days,
@@ -76,6 +113,7 @@ class PlanSplitDraft {
     'total': query.total,
     'windowStart': query.base.windowStart,
     'windowEnd': query.base.windowEnd,
+    'zoneOffsets': savedZoneOffsets ?? currentZoneOffsets,
     'segments': [
       for (var i = 0; i < slots.length; i++)
         {
@@ -99,6 +137,14 @@ class PlanSplitDraft {
         raw['date'] <= 0 ||
         raw['date'] > 8640000000000000) {
       throw const FormatException('分段草稿格式无效');
+    }
+    List<int>? savedZoneOffsets;
+    if (raw.containsKey('zoneOffsets')) {
+      final offsets = raw['zoneOffsets'];
+      if (offsets is! List || offsets.any((value) => value is! int)) {
+        throw const FormatException('分段草稿时区信息无效');
+      }
+      savedZoneOffsets = List<int>.unmodifiable(offsets.cast<int>());
     }
     final q = PlanSplitQuery(
       PlanAvailabilityQuery(
@@ -138,6 +184,9 @@ class PlanSplitDraft {
         q.base.windowEnd <= q.base.windowStart ||
         slots.length < 2 ||
         slots.length > 6 ||
+        (savedZoneOffsets != null &&
+            (savedZoneOffsets.length != q.days + 1 + slots.length * 2 ||
+                savedZoneOffsets.any((offset) => offset.abs() > 14 * 60))) ||
         ids.toSet().length != ids.length ||
         slots.fold<int>(0, (n, s) => n + s.minutes) != q.total) {
       throw const FormatException('分段草稿内容无效');
@@ -156,6 +205,11 @@ class PlanSplitDraft {
         throw const FormatException('分段草稿时段无效');
       }
     }
-    return PlanSplitDraft(q, List.unmodifiable(slots), List.unmodifiable(ids));
+    return PlanSplitDraft(
+      q,
+      List.unmodifiable(slots),
+      List.unmodifiable(ids),
+      savedZoneOffsets: savedZoneOffsets,
+    );
   }
 }
