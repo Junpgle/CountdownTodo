@@ -48,6 +48,10 @@ class PlanAvailabilityPreferences {
 
   static String _key(String username) =>
       'plan_availability_avoidance_$username';
+  static String _windowsKey(String username) =>
+      'plan_availability_avoidance_windows_$username';
+  static String _buffersKey(String username) =>
+      'plan_availability_buffers_$username';
   static Future<void>? _pendingWrites;
 
   static Future<PlanAvoidancePreferences> load(String username) async {
@@ -56,47 +60,37 @@ class PlanAvailabilityPreferences {
     if (pending != null) await pending;
     final prefs = await SharedPreferences.getInstance();
     await prefs.reload();
-    final raw = prefs.get(_key(username));
     final options = List<PlanDailyTimeWindow>.of(defaultWindows);
     final selected = <int>{};
-    if (raw == null) return PlanAvoidancePreferences(options, selected);
     var before = 0, after = 0;
     String? bufferError;
-    if (raw is! String) {
-      return PlanAvoidancePreferences(
-        options,
-        selected,
-        bufferError: '查找设置无法读取，请重置前后缓冲后再查找',
-      );
-    }
-    try {
-      final data = jsonDecode(raw);
-      if (data is! Map || ![1, 2].contains(data['version'])) {
-        return PlanAvoidancePreferences(
-          options,
-          selected,
-          bufferError: '查找设置版本无法识别，请重置前后缓冲后再查找',
-        );
-      }
-      if (data['version'] == 2) {
-        final b = data['buffer_before'], a = data['buffer_after'];
-        if (b is! int || a is! int || b < 0 || a < 0 || b > 120 || a > 120) {
-          bufferError = '缓冲设置无法读取，请重置前后缓冲后再查找';
-        } else {
-          before = b;
-          after = a;
+    final legacyRaw = prefs.get(_key(username));
+    final rawWindows = prefs.get(_windowsKey(username));
+    final rawBuffers = prefs.get(_buffersKey(username));
+    Map? legacy;
+    var legacyInvalid = false;
+    if (legacyRaw != null && (rawWindows == null || rawBuffers == null)) {
+      if (legacyRaw is! String) {
+        legacyInvalid = true;
+      } else {
+        try {
+          final data = jsonDecode(legacyRaw);
+          if (data is Map && [1, 2].contains(data['version'])) {
+            legacy = data;
+          } else {
+            legacyInvalid = true;
+          }
+        } on FormatException {
+          legacyInvalid = true;
         }
       }
-      if (data['windows'] is! List) {
-        return PlanAvoidancePreferences(
-          options,
-          selected,
-          bufferBefore: before,
-          bufferAfter: after,
-          bufferError: data['version'] == 2
-              ? bufferError ?? '查找设置无法读取，请重置前后缓冲后再查找'
-              : null,
-        );
+    }
+
+    void readWindows(Object? value, {required int version}) {
+      final data = value is String ? jsonDecode(value) : null;
+      if (data is! Map || data['version'] != version || data['windows'] is! List) {
+        bufferError ??= '查找设置无法读取，请重置前后缓冲后再查找';
+        return;
       }
       final entries = data['windows'] as List;
       for (var i = 0; i < entries.length; i++) {
@@ -123,9 +117,46 @@ class PlanAvailabilityPreferences {
         }
         if (entry['enabled'] == true) selected.add(index);
       }
-    } on FormatException {
+    }
+
+    if (rawWindows != null) {
+      try {
+        readWindows(rawWindows, version: 1);
+      } on FormatException {
+        bufferError = '查找设置无法读取，请重置前后缓冲后再查找';
+      }
+    } else if (legacy != null) {
+      readWindows(jsonEncode(legacy), version: legacy['version'] as int);
+    } else if (legacyInvalid) {
       bufferError = '查找设置无法读取，请重置前后缓冲后再查找';
     }
+
+    if (rawBuffers != null) {
+      try {
+        final data = rawBuffers is String ? jsonDecode(rawBuffers) : null;
+        final b = data is Map && data['version'] == 1 ? data['before'] : null;
+        final a = data is Map && data['version'] == 1 ? data['after'] : null;
+        if (b is! int || a is! int || b < 0 || a < 0 || b > 120 || a > 120) {
+          bufferError = '缓冲设置无法读取，请重置前后缓冲后再查找';
+        } else {
+          before = b;
+          after = a;
+        }
+      } on FormatException {
+        bufferError = '缓冲设置无法读取，请重置前后缓冲后再查找';
+      }
+    } else if (legacy != null && legacy['version'] == 2) {
+      final b = legacy['buffer_before'], a = legacy['buffer_after'];
+      if (b is! int || a is! int || b < 0 || a < 0 || b > 120 || a > 120) {
+        bufferError = '缓冲设置无法读取，请重置前后缓冲后再查找';
+      } else {
+        before = b;
+        after = a;
+      }
+    } else if (legacyInvalid) {
+      bufferError = '查找设置无法读取，请重置前后缓冲后再查找';
+    }
+
     return PlanAvoidancePreferences(
       options,
       selected,
@@ -170,50 +201,101 @@ class PlanAvailabilityPreferences {
     Set<PlanDailyTimeWindow> selected, {
     int? bufferBefore,
     int? bufferAfter,
+    bool updateAvoidance = true,
+    bool updateBuffers = true,
   }) {
     // Capture now, before awaiting earlier writes or widget disposal.
-    final windows = {
-      'windows': [
-        for (final window in options)
-          {
-            'label': window.label,
-            'start': window.startMinutes,
-            'end': window.endMinutes,
-            'enabled': selected.contains(window),
-          },
-      ],
-    };
+    final windows = [
+      for (final window in options)
+        {
+          'label': window.label,
+          'start': window.startMinutes,
+          'end': window.endMinutes,
+          'enabled': selected.contains(window),
+        },
+    ];
     final previous = _pendingWrites;
     final write = () async {
       if (previous != null) await previous;
       final prefs = await SharedPreferences.getInstance();
       await prefs.reload();
-      var before = bufferBefore, after = bufferAfter;
-      if (before == null || after == null) {
-        final old = prefs.getString(_key(username));
-        try {
-          final data = old == null ? null : jsonDecode(old);
-          if (data is Map && data['version'] == 2) {
-            before ??= data['buffer_before'] as int;
-            after ??= data['buffer_after'] as int;
-          }
-        } catch (_) {
-          throw StateError('缓冲设置无法读取，请先重置');
+
+      if (updateAvoidance) {
+        final raw = jsonEncode({'version': 1, 'windows': windows});
+        if (!await prefs.setString(_windowsKey(username), raw)) {
+          throw StateError('Unable to save availability avoidance settings');
         }
       }
-      before ??= 0;
-      after ??= 0;
-      if (before < 0 || before > 120 || after < 0 || after > 120) {
-        throw StateError('前后缓冲须为0–120分钟');
-      }
-      final raw = jsonEncode({
-        ...windows,
-        'version': 2,
-        'buffer_before': before,
-        'buffer_after': after,
-      });
-      if (!await prefs.setString(_key(username), raw)) {
-        throw StateError('Unable to save availability preferences');
+
+      if (updateBuffers) {
+        var before = bufferBefore, after = bufferAfter;
+        if (before == null || after == null) {
+          final raw = prefs.get(_buffersKey(username));
+          Map? data;
+          var splitBufferData = false;
+          if (raw is String) {
+            try {
+              final decoded = jsonDecode(raw);
+              if (decoded is Map && decoded['version'] == 1) {
+                data = decoded;
+                splitBufferData = true;
+              }
+            } catch (_) {
+              throw StateError('缓冲设置无法读取，请先重置');
+            }
+          } else if (raw == null) {
+            final legacyRaw = prefs.get(_key(username));
+            if (legacyRaw is String) {
+              try {
+                final decoded = jsonDecode(legacyRaw);
+                if (decoded is Map && [1, 2].contains(decoded['version'])) {
+                  data = decoded;
+                }
+              } catch (_) {
+                throw StateError('缓冲设置无法读取，请先重置');
+              }
+            } else if (legacyRaw != null) {
+              throw StateError('缓冲设置无法读取，请先重置');
+            }
+          } else {
+            throw StateError('缓冲设置无法读取，请先重置');
+          }
+          if (data != null) {
+            final storedBefore = splitBufferData
+                ? data['before']
+                : data['version'] == 2
+                ? data['buffer_before']
+                : 0;
+            final storedAfter = splitBufferData
+                ? data['after']
+                : data['version'] == 2
+                ? data['buffer_after']
+                : 0;
+            if (storedBefore is! int ||
+                storedAfter is! int ||
+                storedBefore < 0 ||
+                storedAfter < 0 ||
+                storedBefore > 120 ||
+                storedAfter > 120) {
+              throw StateError('缓冲设置无法读取，请先重置');
+            }
+            before ??= storedBefore;
+            after ??= storedAfter;
+          }
+        }
+        before ??= 0;
+        after ??= 0;
+        if (before < 0 || before > 120 || after < 0 || after > 120) {
+          throw StateError('前后缓冲须为0–120分钟');
+        }
+        final raw = jsonEncode({
+          'version': 1,
+          'before': before,
+          'after': after,
+        });
+        if (!await prefs.setString(_buffersKey(username), raw)) {
+          throw StateError('Unable to save availability buffers');
+        }
       }
     }();
     final pending = write.catchError((Object _) {});

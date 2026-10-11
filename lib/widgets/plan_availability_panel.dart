@@ -280,6 +280,8 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
         _enabledAvoid,
         bufferBefore: _bufferOverride ? null : _bufferBefore,
         bufferAfter: _bufferOverride ? null : _bufferAfter,
+        updateAvoidance: avoidanceChanged,
+        updateBuffers: !avoidanceChanged,
       ).catchError((Object error) {
         debugPrint('Unable to save availability preferences: $error');
         if (!mounted || username != widget.username ||
