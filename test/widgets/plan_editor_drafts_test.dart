@@ -423,6 +423,10 @@ void main() {
       expect(t.widget<FilledButton>(key('plan-save')).onPressed, isNull);
       expect(saves, isEmpty);
       expect(await repo.list(identity), hasLength(1));
+      await f.db.update('todos', {'is_completed': 0});
+      await action(t, find.text('重试恢复'));
+      expect(t.widget<TextField>(key('plan-remark')).controller!.text, '恢复完整备注');
+      expect(t.widget<FilledButton>(key('plan-save')).onPressed, isNotNull);
     },
   );
   testWidgets('failed formal save retains draft and modified form', (t) async {

@@ -1365,6 +1365,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
   }
 
   Widget _form(double width, double scale, EdgeInsets padding) {
+    if (_draftRestoreFailed) return Padding(padding: padding, child: _draftNotice());
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
     final horizontalTimes = width >= 360 && scale < 1.7;
@@ -1823,7 +1824,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
             if (value == 'manage') widget.onManageDrafts?.call();
           },
           itemBuilder: (_) => [
-            PopupMenuItem(value: 'keep', enabled: !_busy && !_draftLoading && _persistedBlock == null,
+            PopupMenuItem(value: 'keep', enabled: !_busy && !_draftLoading && !_draftRestoreFailed && _persistedBlock == null,
               child: const Text('保留草稿')),
             if (widget.onManageDrafts != null)
               const PopupMenuItem(value: 'manage', child: Text('规划草稿')),
@@ -1860,7 +1861,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
                     constraints.maxHeight < 320 ||
                     (constraints.maxHeight < 480 && scale > 1.3);
                 return IgnorePointer(
-                  ignoring: _busy || _draftLoading || _draftRestoreFailed,
+                  ignoring: _busy || _draftLoading,
                   child: compact
                       ? SingleChildScrollView(
                           child: Column(children: [form, footer]),
@@ -1943,7 +1944,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
                             constraints.maxHeight < 320 ||
                             (constraints.maxHeight < 480 && scale > 1.3);
                         return IgnorePointer(
-                          ignoring: _busy || _draftLoading || _draftRestoreFailed,
+                          ignoring: _busy || _draftLoading,
                           child: compact
                               ? SingleChildScrollView(
                                   child: Column(
