@@ -12,6 +12,7 @@ import '../services/plan_execution_repository.dart';
 import '../widgets/plan_execution_view.dart';
 import 'course_screens.dart';
 import 'plan_block_stats_screen.dart';
+import 'plan_backlog_screen.dart';
 import '../utils/page_transitions.dart';
 import '../services/feature_tip_service.dart';
 import '../widgets/coach_mark_overlay.dart';
@@ -521,15 +522,26 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
           PlanConflictIndicator(username: widget.username, date: _focusedDate,
             compact: true, onSaved: _loadData),
           IconButton(
-            icon: const Icon(Icons.bar_chart_rounded),
-            tooltip: '规划统计',
+            icon: const Icon(Icons.playlist_add_check_rounded),
+            tooltip: '待规划',
             onPressed: () => Navigator.of(context).push(
-              PageTransitions.material(
-                builder: (_) => PlanBlockStatsScreen(username: widget.username),
-              ),
+              PageTransitions.material(builder: (_) => PlanBacklogScreen(
+                username: widget.username, date: _focusedDate)),
             ),
           ),
-          IconButton(icon: const Icon(Icons.refresh), onPressed: _loadData),
+          PopupMenuButton<String>(
+            tooltip: '更多',
+            onSelected: (value) {
+              if (value == 'refresh') { _loadData(); } else {
+                Navigator.of(context).push(PageTransitions.material(
+                  builder: (_) => PlanBlockStatsScreen(username: widget.username)));
+              }
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'stats', child: Text('规划统计')),
+              PopupMenuItem(value: 'refresh', child: Text('刷新')),
+            ],
+          ),
         ],
       ),
       body: FloatingGlassTopBarContentFade(

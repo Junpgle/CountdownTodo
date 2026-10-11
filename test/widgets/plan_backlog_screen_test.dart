@@ -1,0 +1,284 @@
+import 'dart:async';
+
+import 'package:countdown_todo/models.dart';
+import 'package:countdown_todo/screens/plan_backlog_screen.dart';
+import 'package:countdown_todo/screens/todo_plan_screen.dart';
+import 'package:countdown_todo/services/api_service.dart';
+import 'package:countdown_todo/services/plan_backlog_repository.dart';
+import 'package:countdown_todo/services/liquid_glass_effect_service.dart';
+import 'package:countdown_todo/widgets/plan_block_editor_sheet.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../support/plan_availability_fixture.dart';
+
+class ControlledRepository extends PlanBacklogRepository {
+  ControlledRepository(this.requests);
+  final List<Completer<PlanBacklogPage>> requests;
+  @override
+  Future<PlanBacklogPage> read(
+    String username,
+    DateTime target, {
+    bool scheduled = false,
+    String search = '',
+    String? folder,
+    PlanBacklogCursor? cursor,
+  }) {
+    final request = Completer<PlanBacklogPage>();
+    requests.add(request);
+    return request.future;
+  }
+}
+
+void main() {
+  late PlanAvailabilityFixture f;
+  final now = PlanAvailabilityFixture.now;
+  Future<void> drain(WidgetTester tester) async {
+    for (var i = 0; i < 5; i++) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 60)),
+      );
+      await tester.pump(const Duration(milliseconds: 300));
+    }
+    await tester.pump(const Duration(milliseconds: 500));
+  }
+
+  Future<void> show(
+    WidgetTester tester, {
+    Size size = const Size(1000, 900),
+    double scale = 1,
+    double keyboard = 0,
+    Brightness brightness = Brightness.light,
+    PlanBacklogRepository? repository,
+    bool fromTimeline = false,
+  }) async {
+    tester.view.physicalSize = size;
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(
+          useMaterial3: true,
+          colorScheme: ColorScheme.fromSeed(
+            seedColor: Colors.teal,
+            brightness: brightness,
+          ),
+        ),
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(
+            textScaler: TextScaler.linear(scale),
+            viewInsets: EdgeInsets.only(bottom: keyboard),
+          ),
+          child: child!,
+        ),
+        home: fromTimeline
+            ? TodoPlanScreen(
+                username: PlanAvailabilityFixture.username,
+                initialDate: PlanAvailabilityFixture.day,
+              )
+            : PlanBacklogScreen(
+                username: PlanAvailabilityFixture.username,
+                date: PlanAvailabilityFixture.day,
+                clock: () => now,
+                repository: repository,
+              ),
+      ),
+    );
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    });
+    if (repository is! ControlledRepository) await drain(tester);
+  }
+
+  setUp(() async {
+    f = PlanAvailabilityFixture();
+    await f.initialize();
+    debugDefaultTargetPlatformOverride = null;
+    ApiService.setBaseUrlOverride('http://127.0.0.1:1');
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('tip_shown_coach_plan_grid', true);
+    await LiquidGlassEffectService.setEnabled(false);
+  });
+  tearDown(() async {
+    ApiService.clearBaseUrlOverride();
+    await f.dispose();
+  });
+
+  testWidgets(
+    'formal entry waits for estimation, cancel is zero-write; save once moves to arranged',
+    (tester) async {
+      await show(tester);
+      final before = await f.db.query('op_logs');
+      await tester.tap(find.text('安排').first);
+      await drain(tester);
+      expect(find.byType(PlanBlockEditorSheet), findsOneWidget);
+      final editor = tester.widget<PlanBlockEditorSheet>(
+        find.byType(PlanBlockEditorSheet),
+      );
+      expect(editor.fullPage, true);
+      expect(editor.autoRecommendTime, true);
+      expect(editor.initialTodoId, 'todo-target');
+      expect(editor.startTime.day, 8);
+      expect(find.textContaining('已选用'), findsOneWidget);
+      await tester.pageBack();
+      await drain(tester);
+      expect(await f.db.query('op_logs'), before);
+      expect(await f.db.query('todo_plan_blocks'), isEmpty);
+      await tester.tap(find.text('安排').first);
+      await drain(tester);
+      final save = find.byKey(const ValueKey('plan-save'));
+      await tester.ensureVisible(save);
+      await tester.tap(save);
+      await tester.tap(save, warnIfMissed: false);
+      await drain(tester);
+      expect(await f.db.query('todo_plan_blocks'), hasLength(1));
+      expect((await f.db.query('op_logs')).length, before.length + 1);
+      expect(find.byType(PlanBlockEditorSheet), findsNothing);
+      await tester.tap(find.text('已有安排').first);
+      await drain(tester);
+      expect(find.text('复习高数'), findsOneWidget);
+      expect(find.text('查看安排'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'new remote arrangement prompts explicit append; cancellation preserves draft',
+    (tester) async {
+      await show(tester);
+      await tester.tap(find.text('安排').first);
+      await drain(tester);
+      // Place the remote reservation outside the proposed candidate, so this
+      // exercises same-task addition independently of occupancy conflicts.
+      await tester.runAsync(
+        () => f.block(
+          TodoPlanBlock(
+            id: 'remote-new',
+            todoId: 'todo-target',
+            startTime: DateTime(2026, 10, 9, 18).millisecondsSinceEpoch,
+            endTime: DateTime(2026, 10, 9, 19).millisecondsSinceEpoch,
+          ),
+        ),
+      );
+      final save = find.byKey(const ValueKey('plan-save'));
+      await tester.ensureVisible(save);
+      await tester.tap(save);
+      await drain(tester);
+      expect(find.text('此待办已有新的安排'), findsOneWidget);
+      await tester.tapAt(const Offset(10, 10));
+      await drain(tester);
+      expect(find.byType(PlanBlockEditorSheet), findsOneWidget);
+      expect(await f.db.query('todo_plan_blocks'), hasLength(1));
+      await tester.ensureVisible(save);
+      await tester.tap(save);
+      await drain(tester);
+      await tester.tap(find.text('仍追加这次规划'));
+      await drain(tester);
+      expect(await f.db.query('todo_plan_blocks'), hasLength(2));
+      expect(await f.db.query('op_logs'), hasLength(1));
+    },
+  );
+
+  testWidgets(
+    'completed during editing rejects without writing and keeps draft',
+    (tester) async {
+      await show(tester);
+      await tester.tap(find.text('安排').first);
+      await drain(tester);
+      await tester.runAsync(() => f.db.update('todos', {'is_completed': 1}));
+      final save = find.byKey(const ValueKey('plan-save'));
+      await tester.ensureVisible(save);
+      await tester.tap(save);
+      await drain(tester);
+      expect(find.byType(PlanBlockEditorSheet), findsOneWidget);
+      expect(find.text('待办已完成或失效，请选择未完成的待办'), findsOneWidget);
+      expect(await f.db.query('op_logs'), isEmpty);
+      expect(await f.db.query('todo_plan_blocks'), isEmpty);
+    },
+  );
+
+  testWidgets(
+    'old requests cannot overwrite search or retry and read failure is explicit',
+    (tester) async {
+      final requests = <Completer<PlanBacklogPage>>[];
+      final actual = await const PlanBacklogRepository().read(
+        PlanAvailabilityFixture.username,
+        PlanAvailabilityFixture.day,
+      );
+      await show(tester, repository: ControlledRepository(requests));
+      await tester.enterText(find.byType(TextField), 'missing');
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(requests, hasLength(2));
+      requests[1].completeError(StateError('合成读取故障'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('清单读取失败'), findsOneWidget);
+      requests[0].complete(actual);
+      await tester.pumpAndSettle();
+      expect(find.text('复习高数'), findsNothing);
+      await tester.tap(find.text('重试'));
+      await tester.pump();
+      requests[2].complete(actual);
+      await tester.pumpAndSettle();
+      expect(find.text('复习高数'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'search persists across tabs and literal percent does not match every task',
+    (tester) async {
+      await f.todo('literal-task', '进度100%_完成');
+      await show(tester);
+      await tester.enterText(find.byType(TextField), '%_');
+      await drain(tester);
+      expect(find.text('进度100%_完成'), findsOneWidget);
+      expect(find.text('复习高数'), findsNothing);
+      await tester.tap(find.text('已有安排'));
+      await drain(tester);
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).controller!.text,
+        '%_',
+      );
+      expect(find.text('没有符合筛选条件的待办'), findsOneWidget);
+    },
+  );
+
+  for (final size in [
+    const Size(320, 640),
+    const Size(390, 844),
+    const Size(720, 360),
+    const Size(1280, 900),
+  ]) {
+    for (final brightness in Brightness.values) {
+      testWidgets(
+        'queue usable without overflow $size $brightness large type keyboard',
+        (tester) async {
+          await show(
+            tester,
+            size: size,
+            scale: 1.8,
+            keyboard: 120,
+            brightness: brightness,
+          );
+          await tester.scrollUntilVisible(
+            find.text('安排'),
+            140,
+            scrollable: find.byType(Scrollable).first,
+          );
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull);
+          await tester.scrollUntilVisible(
+            find.byType(TextField),
+            -140,
+            scrollable: find.byType(Scrollable).first,
+          );
+          await tester.enterText(find.byType(TextField), '复习');
+          await drain(tester);
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
+  }
+}

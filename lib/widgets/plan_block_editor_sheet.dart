@@ -3,9 +3,11 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:sqflite/sqflite.dart';
 
 import '../models.dart';
 import '../services/database_helper.dart';
+import '../services/plan_todo_guard.dart';
 import '../models/plan_availability.dart';
 import '../storage_service.dart';
 import '../screens/pomodoro_screen.dart';
@@ -90,6 +92,8 @@ class PlanBlockEditorSheet extends StatefulWidget {
   final bool fullPage;
   final PlanConflictEditContext? conflictEdit;
   final PlanConflictReviewService? conflictService;
+  final PlanBacklogSaveContext? backlogContext;
+  final Future<void> Function()? onViewExisting;
 
   const PlanBlockEditorSheet({
     super.key,
@@ -116,6 +120,8 @@ class PlanBlockEditorSheet extends StatefulWidget {
     this.fullPage = false,
     this.conflictEdit,
     this.conflictService,
+    this.backlogContext,
+    this.onViewExisting,
   });
 
   @override
@@ -143,6 +149,59 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
   bool _autoRecommendationPending = false;
   bool _initialEstimatePending = false;
   bool _allowAutoRecommendation = false;
+  PlanTodoIdentity? _saveIdentity;
+  late Future<void> _identityReady;
+  Object? _identityError;
+  String? _approvedArrangements;
+
+  Future<void> _captureSaveIdentity() async {
+    try {
+      _saveIdentity = widget.backlogContext?.identity ??
+          await PlanTodoIdentity.capture(widget.username);
+      await _saveIdentity!.check();
+    } catch (error) { _identityError = error; }
+  }
+
+  Future<void> _checkLinkedTodo(DatabaseExecutor executor, TodoPlanBlock draft) async {
+    await _identityReady;
+    if (_identityError != null) throw _identityError!;
+    final identity = _saveIdentity!;
+    await PlanTodoGuard.validate(executor, identity, draft.todoId);
+    if (widget.backlogContext != null) {
+      if (draft.todoId != widget.backlogContext!.todoId) {
+        throw const PlanAvailabilityException('待办已变化，请重新打开清单');
+      }
+      await PlanTodoGuard.validateBacklog(executor, widget.backlogContext!,
+          _approvedArrangements ?? widget.backlogContext!.arrangements,
+          DateTime.fromMillisecondsSinceEpoch(draft.startTime),
+          widget.clock?.call() ?? DateTime.now());
+    }
+    await identity.check();
+  }
+
+  Future<void> _confirmNewArrangements(String todoId) async {
+    if (widget.backlogContext == null || widget.saver != null) return;
+    await _identityReady;
+    if (_identityError != null) throw _identityError!;
+    final db = await DatabaseHelper.instance.databaseForUser(widget.username);
+    await PlanTodoGuard.validate(db, _saveIdentity!, todoId);
+    final latest = await PlanTodoGuard.arrangements(db, todoId,
+        widget.clock?.call() ?? DateTime.now());
+    if (latest == (_approvedArrangements ?? widget.backlogContext!.arrangements)) return;
+    if (latest == '[]') { _approvedArrangements = latest; return; }
+    if (!mounted) throw const PlanAvailabilityException('页面已关闭');
+    final append = await showDialog<bool>(context: context, builder: (context) => AlertDialog(
+      title: const Text('此待办已有新的安排'),
+      content: const Text('编辑期间安排已变化。查看已有安排，或确认仍追加这次规划。'),
+      actions: [TextButton(onPressed: () => Navigator.pop(context, false),
+        child: const Text('查看已有安排')),
+        FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('仍追加这次规划'))]));
+    if (append != true) {
+      if (append == false) await widget.onViewExisting?.call();
+      throw const PlanAvailabilityException('尚未追加，草稿已保留');
+    }
+    _approvedArrangements = latest;
+  }
 
   void _manualChange() {
     _autoRecommendationPending = false;
@@ -156,6 +215,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
   @override
   void initState() {
     super.initState();
+    _identityReady = _captureSaveIdentity();
     WidgetsBinding.instance.addObserver(this);
     StorageService.scopedDataRefreshNotifier.addListener(
       _validateEstimateAccount,
@@ -502,6 +562,11 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
         draft,
         expectedVersion: existing?.version,
         expectedUpdatedAt: existing?.updatedAt,
+        beforeWrite: (executor) async {
+          if (existing == null || existing.todoId != draft.todoId) {
+            await _checkLinkedTodo(executor, draft);
+          }
+        },
       );
     }
     return StorageService.savePlanBlockEdited(
@@ -516,18 +581,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
           throw const PlanAvailabilityException('账号已切换，请重新打开编辑器');
         }
         if (existing == null || existing.todoId != draft.todoId) {
-          final rows = await executor.query(
-            'todos',
-            columns: ['is_completed', 'is_deleted'],
-            where: 'uuid = ?',
-            whereArgs: [draft.todoId],
-            limit: 1,
-          );
-          if (rows.isEmpty ||
-              rows.single['is_completed'] == 1 ||
-              rows.single['is_deleted'] == 1) {
-            throw const PlanAvailabilityException('待办已完成或失效，请选择未完成的待办');
-          }
+          await _checkLinkedTodo(executor, draft);
         }
       },
     );
@@ -566,6 +620,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
       ..reminderMinutes = _reminderMinutes
       ..pomodoroMinutes = _pomodoroMinutes
       ..pomodoroRounds = _pomodoroRounds;
+    await _confirmNewArrangements(draft.todoId);
     final saved = await _persist(draft, _recommendation);
     _persistedBlock = saved;
     _savedDraftRevision = _draftRevision;
@@ -634,21 +689,18 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
           where: 'uuid = ?',
           whereArgs: [block.id],
         );
-        final todos = await db.query(
-          'todos',
-          where: 'uuid = ?',
-          whereArgs: [block.todoId],
-        );
+        await _identityReady;
+        if (_identityError != null) throw _identityError!;
+        final freshTodo = await PlanTodoGuard.read(db, _saveIdentity!, block.todoId);
         if (blocks.isEmpty ||
             blocks.single['version'] != block.version ||
             blocks.single['updated_at'] != block.updatedAt ||
             blocks.single['is_deleted'] == 1 ||
-            todos.isEmpty ||
-            todos.single['is_completed'] == 1 ||
-            todos.single['is_deleted'] == 1) {
+            freshTodo.isDone ||
+            freshTodo.isDeleted) {
           throw const PlanAvailabilityException('规划或待办已变化，请读取最新记录');
         }
-        todo = TodoItem.fromSql(todos.single)..id = block.todoId;
+        todo = freshTodo;
       }
       if (!_focusStarted && widget.saver == null && _recommendation != null) {
         final repository = PlanAvailabilityRepository(clock: widget.clock);

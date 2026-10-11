@@ -10,6 +10,7 @@ import '../models/plan_availability.dart';
 import '../storage_service.dart';
 import 'course_calendar_adjustment_service.dart';
 import 'database_helper.dart';
+import 'plan_todo_guard.dart';
 import 'device_calendar_read_service.dart';
 import 'plan_availability_service.dart';
 
@@ -128,7 +129,13 @@ class PlanAvailabilityRepository {
     } catch (_) {
       throw const PlanAvailabilityException('课程日期规则读取失败，请重试');
     }
-    final todoRows = await _rows(db, 'todos');
+    final identity = await PlanTodoIdentity.capture(
+      await StorageService.getLoginSession() ?? 'default');
+    final todoRows = await db.rawQuery('''SELECT t.*,
+      ${PlanTodoGuard.completionSql('t', 'c')} AS member_completed
+      FROM todos t LEFT JOIN todo_completions c ON c.todo_uuid=t.uuid AND c.user_id=?
+      ORDER BY t.uuid''', [identity.userId]);
+    await identity.check();
     final fixedRows = await _rows(db, 'fixed_schedules');
     final planRows = await _rows(db, 'todo_plan_blocks');
     try {
@@ -136,7 +143,7 @@ class PlanAvailabilityRepository {
         courses: courses,
         courseFingerprint: fingerprint,
         todos: todoRows.map((row) {
-          final todo = TodoItem.fromSql(row);
+          final todo = TodoItem.fromSql({...row, 'is_completed': row['member_completed']});
           // Preserve the storage key for legacy IDs; this read does not migrate.
           todo.id = row['uuid'].toString();
           return todo;
@@ -495,6 +502,7 @@ class PlanAvailabilityRepository {
     Future<void> Function(DatabaseExecutor executor)? beforeWrite,
   }) async {
     final query = selection.query;
+    final identity = await PlanTodoIdentity.capture(query.username);
     if (draft.todoId != query.todoId ||
         draft.id != (query.excludeBlockId ?? draft.id) ||
         draft.startTime != selection.slot.start.millisecondsSinceEpoch ||
@@ -525,7 +533,13 @@ class PlanAvailabilityRepository {
       expectedUpdatedAt: expectedUpdatedAt,
       sync: sync,
       beforeWrite: (executor) async {
-        await _checkAccount(query.username);
+        await identity.check();
+        final original = query.excludeBlockId == null ? <Map<String,Object?>>[] :
+            await executor.query('todo_plan_blocks', columns: ['todo_uuid'],
+                where: 'uuid=?', whereArgs: [query.excludeBlockId]);
+        if (original.isEmpty || original.single['todo_uuid'] != draft.todoId) {
+          await PlanTodoGuard.validate(executor, identity, draft.todoId);
+        }
         if (fresh.settingsFingerprint !=
                 await _settingsFingerprint(query.username) ||
             fresh.calendarRevision !=

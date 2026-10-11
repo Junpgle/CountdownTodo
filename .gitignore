@@ -292,3 +292,7 @@ todo.md
 !/test/widgets/settings_destination_flow_test.dart
 !/test/services/settings_global_search_test.dart
 !/test/widgets/settings_global_search_flow_test.dart
+
+!/test/services/plan_backlog_repository_test.dart
+!/test/services/plan_todo_guard_test.dart
+!/test/widgets/plan_backlog_screen_test.dart

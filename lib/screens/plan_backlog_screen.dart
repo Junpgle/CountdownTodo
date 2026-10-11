@@ -1,0 +1,550 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+
+import '../models.dart';
+import '../services/database_helper.dart';
+import '../services/plan_backlog_repository.dart';
+import '../services/plan_todo_guard.dart';
+import '../services/pomodoro_service.dart';
+import '../storage_service.dart';
+import '../widgets/plan_block_editor_sheet.dart';
+import '../widgets/todo_section_widget.dart';
+import 'pomodoro_screen.dart';
+
+class PlanBacklogScreen extends StatefulWidget {
+  const PlanBacklogScreen({
+    super.key,
+    required this.username,
+    required this.date,
+    this.repository,
+    this.clock,
+  });
+  final String username;
+  final DateTime date;
+  final PlanBacklogRepository? repository;
+  final DateTime Function()? clock;
+  @override
+  State<PlanBacklogScreen> createState() => _PlanBacklogScreenState();
+}
+
+class _PlanBacklogScreenState extends State<PlanBacklogScreen>
+    with WidgetsBindingObserver {
+  final _search = TextEditingController();
+  late DateTime _date;
+  late final PlanBacklogRepository _repository;
+  PlanTodoIdentity? _identity;
+  PlanBacklogPage? _page;
+  List<PlanBacklogRow> _rows = [];
+  bool _scheduled = false,
+      _loading = true,
+      _opening = false,
+      _foreground = true,
+      _normalized = false;
+  String? _folder, _error;
+  int _sequence = 0;
+  Timer? _debounce, _boundary;
+  StreamSubscription<PomodoroRunState?>? _focus;
+  DateTime get _now => widget.clock?.call() ?? DateTime.now();
+  @override
+  void initState() {
+    super.initState();
+    _repository =
+        widget.repository ?? PlanBacklogRepository(clock: widget.clock);
+    final today = DateUtils.dateOnly(_now);
+    _date = DateUtils.dateOnly(widget.date);
+    if (_date.isBefore(today)) {
+      _date = today;
+      _normalized = true;
+    }
+    WidgetsBinding.instance.addObserver(this);
+    StorageService.scopedDataRefreshNotifier.addListener(_refresh);
+    _focus = PomodoroService.onRunStateChanged.listen((_) => _refresh());
+    _load();
+  }
+
+  void _refresh() {
+    if (mounted && _foreground && !_opening) unawaited(_load());
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _foreground = state == AppLifecycleState.resumed;
+    if (_foreground) {
+      _refresh();
+    } else {
+      _boundary?.cancel();
+      _sequence++;
+    }
+  }
+
+  @override
+  void dispose() {
+    _sequence++;
+    _debounce?.cancel();
+    _boundary?.cancel();
+    _focus?.cancel();
+    StorageService.scopedDataRefreshNotifier.removeListener(_refresh);
+    WidgetsBinding.instance.removeObserver(this);
+    _search.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load({bool more = false}) async {
+    final sequence = ++_sequence;
+    _boundary?.cancel();
+    if (_date.isBefore(DateUtils.dateOnly(_now))) {
+      _date = DateUtils.dateOnly(_now);
+      _normalized = true;
+    }
+    setState(() {
+      _loading = true;
+      _error = null;
+      if (!more) _rows = [];
+    });
+    try {
+      await _identity?.check();
+      final page = await _repository.read(
+        widget.username,
+        _date,
+        scheduled: _scheduled,
+        search: _search.text,
+        folder: _folder,
+        cursor: more ? _page?.next : null,
+      );
+      if (!mounted || sequence != _sequence || !_foreground) return;
+      await _identity?.check();
+      if (!mounted || sequence != _sequence) return;
+      _identity ??= page.identity;
+      setState(() {
+        _rows = more && !page.restarted ? [..._rows, ...page.rows] : page.rows;
+        _page = page;
+        _loading = false;
+      });
+      final delay = page.nextBoundary.difference(_now);
+      if (!_opening) {
+        _boundary = Timer(
+          delay.isNegative ? const Duration(milliseconds: 1) : delay,
+          _refresh,
+        );
+      }
+    } catch (e) {
+      if (mounted && sequence == _sequence) {
+        setState(() {
+          _error = _message(e);
+          _loading = false;
+          _page = null;
+          _rows = [];
+        });
+      }
+    }
+  }
+
+  String _message(Object e) => e is StateError
+      ? e.message.toString()
+      : e.toString().replaceFirst('PlanAvailabilityException: ', '');
+  Future<void> _pickDate() async {
+    final today = DateUtils.dateOnly(_now);
+    final chosen = await showDatePicker(
+      context: context,
+      initialDate: _date.isBefore(today) ? today : _date,
+      firstDate: today,
+      lastDate: DateTime(today.year + 10),
+    );
+    if (chosen != null && mounted) {
+      setState(() => _date = chosen);
+      await _load();
+    }
+  }
+
+  Future<void> _view(PlanBacklogRow row) async {
+    if (_opening || _identity == null) return;
+    _opening = true;
+    _boundary?.cancel();
+    try {
+      await _identity!.check();
+      final db = await DatabaseHelper.instance.databaseForUser(widget.username);
+      final todo = await PlanTodoGuard.read(
+        db,
+        _identity!,
+        row.id,
+        requireEligible: false,
+      );
+      final todos = await StorageService.getTodos(widget.username);
+      final groups = await StorageService.getTodoGroups(widget.username);
+      await _identity!.check();
+      if (!mounted) return;
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => TodoEditScreen(
+            todo: todo,
+            todos: todos,
+            todoGroups: groups,
+            username: widget.username,
+            onTodosChanged: (items) =>
+                StorageService.saveTodos(widget.username, items),
+            onGroupsChanged: (items) =>
+                StorageService.saveTodoGroups(widget.username, items),
+          ),
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(_message(e))));
+      }
+    } finally {
+      _opening = false;
+      if (mounted) await _load();
+    }
+  }
+
+  Future<void> _arrange(PlanBacklogRow row) async {
+    if (_opening || _identity == null) return;
+    _opening = true;
+    _boundary?.cancel();
+    try {
+      final (todo, saveContext) = await _repository.prepare(_identity!, row.id);
+      if (todo.dueDate != null && todo.dueDate!.isBefore(_date)) {
+        throw StateError('截止早于目标日期，请先查看／编辑待办');
+      }
+      if (_date.isBefore(DateUtils.dateOnly(_now))) {
+        throw StateError('目标日期已过去，请重新选择日期');
+      }
+      if (!mounted) return;
+      var saved = false;
+      await showPlanBlockEditorPage<void>(
+        context: context,
+        builder: (_) => PlanBlockEditorSheet(
+          username: widget.username,
+          todos: [todo],
+          todoGroups: _page?.groups ?? [],
+          initialTodoId: todo.id,
+          startTime: DateTime(_date.year, _date.month, _date.day, 9),
+          endTime: DateTime(_date.year, _date.month, _date.day, 9, 30),
+          autoRecommendTime: true,
+          fullPage: true,
+          clock: widget.clock,
+          backlogContext: saveContext,
+          onViewExisting: () => _viewExistingDuringDraft(row),
+          onSaved: () => saved = true,
+        ),
+      );
+      if (mounted && saved) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('规划已保存，可在“已有安排”查看')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(_message(e))));
+      }
+    } finally {
+      _opening = false;
+      if (mounted) await _load();
+    }
+  }
+
+  Future<void> _viewExistingDuringDraft(PlanBacklogRow row) async {
+    // Keep the draft route on the stack; returning from details preserves it.
+    _opening = false;
+    await _view(row);
+    _opening = true;
+  }
+
+  Future<void> _viewFocus(PlanBacklogRow row) async {
+    if (_opening || _identity == null) return;
+    _opening = true;
+    _boundary?.cancel();
+    try {
+      await _identity!.check();
+      final db = await DatabaseHelper.instance.databaseForUser(widget.username);
+      if (!(await PlanTodoGuard.focusIds(db, _identity!)).contains(row.id)) {
+        throw StateError('专注状态已变化，请刷新清单');
+      }
+      if (!mounted) return;
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => PomodoroScreen(username: widget.username),
+        ),
+      );
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(_message(error))));
+      }
+    } finally {
+      _opening = false;
+      if (mounted) await _load();
+    }
+  }
+
+  String _heading(int group) => switch (group) {
+    0 => '截止早于 ${DateFormat('M月d日').format(_date)}',
+    1 => '${DateFormat('M月d日').format(_date)} 到期',
+    2 => '之后到期',
+    _ => '未设截止',
+  };
+  String _details(PlanBacklogRow row) {
+    if (row.needsReview) {
+      return '安排需检查 · 请查看待办处理';
+    }
+    if (row.focusing) {
+      return row.paused ? '已暂停 · 查看当前专注' : '正在专注 · 查看当前专注';
+    }
+    if (row.legacy) {
+      return '旧式时间安排 · ${DateFormat('M/d HH:mm').format(row.todo.effectiveStartTime)}';
+    }
+    if (row.planCount > 0) {
+      return '${DateFormat('M/d HH:mm').format(DateTime.fromMillisecondsSinceEpoch(row.nextStart!))}—${DateFormat('M/d HH:mm').format(DateTime.fromMillisecondsSinceEpoch(row.nextEnd!))}${row.planCount > 1 ? ' · 另有 ${row.planCount - 1} 项安排' : ''}';
+    }
+    final due = row.todo.dueDate;
+    return due == null
+        ? '选择合适的时间开始'
+        : due.isBefore(_date)
+        ? '截止早于目标日期 · 请先查看待办'
+        : '${DateFormat(row.todo.isDateOnly ? 'M月d日' : 'M月d日 HH:mm').format(due)} 前完成';
+  }
+
+  Widget _row(PlanBacklogRow row) {
+    final cs = Theme.of(context).colorScheme;
+    final expired = row.todo.dueDate?.isBefore(_date) ?? false;
+    final group =
+        (_page?.groups ?? [])
+            .where((g) => g.id == row.todo.groupId)
+            .firstOrNull
+            ?.name ??
+        '未分组';
+    return Card(
+      elevation: 0,
+      margin: const EdgeInsets.only(bottom: 10),
+      color: cs.surfaceContainerLow,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: LayoutBuilder(
+          builder: (context, c) => Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                row.todo.title,
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              const SizedBox(height: 6),
+              Text(group, style: TextStyle(color: cs.onSurfaceVariant)),
+              const SizedBox(height: 6),
+              Text(
+                _details(row),
+                style: TextStyle(
+                  color: row.needsReview || expired
+                      ? cs.error
+                      : cs.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                children: [
+                  if (row.focusing && !row.needsReview)
+                    FilledButton.tonal(
+                      onPressed: () => _viewFocus(row),
+                      child: const Text('查看专注'),
+                    )
+                  else if (row.arranged || expired)
+                    OutlinedButton(
+                      onPressed: () => _view(row),
+                      child: Text(row.arranged ? '查看安排' : '查看／编辑待办'),
+                    )
+                  else
+                    FilledButton.tonal(
+                      onPressed: () => _arrange(row),
+                      child: const Text('安排'),
+                    ),
+                  if (row.arranged &&
+                      !row.needsReview &&
+                      !row.focusing &&
+                      !expired)
+                    TextButton(
+                      onPressed: () => _arrange(row),
+                      child: const Text('追加规划'),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final groups = _page?.groups ?? const <TodoGroup>[];
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('待规划'),
+        actions: [
+          IconButton(
+            tooltip: '刷新清单',
+            onPressed: _loading ? null : () => _load(),
+            icon: const Icon(Icons.refresh_rounded),
+          ),
+        ],
+      ),
+      body: Align(
+        alignment: Alignment.topCenter,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 860),
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            children: [
+              Wrap(
+                alignment: WrapAlignment.spaceBetween,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 12,
+                runSpacing: 8,
+                children: [
+                  Text(
+                    '把未安排的事，放进合适的时间',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: _pickDate,
+                    icon: const Icon(Icons.calendar_today_rounded, size: 18),
+                    label: Text('目标：${DateFormat('M月d日').format(_date)}'),
+                  ),
+                ],
+              ),
+              if (_normalized)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 8),
+                  child: Text('原规划日期已过去，目标日期已切换到今天'),
+                ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _search,
+                decoration: const InputDecoration(
+                  prefixIcon: Icon(Icons.search_rounded),
+                  hintText: '搜索待办标题',
+                  border: OutlineInputBorder(),
+                ),
+                onChanged: (_) {
+                  _debounce?.cancel();
+                  _sequence++;
+                  _debounce = Timer(
+                    const Duration(milliseconds: 250),
+                    () => _load(),
+                  );
+                },
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 12,
+                runSpacing: 10,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  SegmentedButton<bool>(
+                    segments: const [
+                      ButtonSegment(value: false, label: Text('待安排')),
+                      ButtonSegment(value: true, label: Text('已有安排')),
+                    ],
+                    selected: {_scheduled},
+                    onSelectionChanged: (value) {
+                      setState(() => _scheduled = value.single);
+                      _load();
+                    },
+                  ),
+                  PopupMenuButton<String>(
+                    tooltip: '筛选文件夹',
+                    initialValue: _folder ?? '__all',
+                    onSelected: (v) {
+                      setState(() => _folder = v == '__all' ? null : v);
+                      _load();
+                    },
+                    itemBuilder: (_) => [
+                      const PopupMenuItem(value: '__all', child: Text('全部文件夹')),
+                      const PopupMenuItem(value: '', child: Text('未分组')),
+                      for (final group in groups)
+                        PopupMenuItem(value: group.id, child: Text(group.name)),
+                    ],
+                    child: Padding(
+                      padding: const EdgeInsets.all(10),
+                      child: Text(
+                        '文件夹：${_folder == null ? '全部' : groups.where((g) => g.id == _folder).firstOrNull?.name ?? '未分组'} ▾',
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              if (_error != null)
+                Column(
+                  children: [
+                    Text('清单读取失败：$_error'),
+                    TextButton(
+                      onPressed: () => _load(),
+                      child: const Text('重试'),
+                    ),
+                  ],
+                )
+              else ...[
+                if (_page != null)
+                  Text(
+                    '${_scheduled ? '已有安排' : '待安排'} ${_page!.total} 项',
+                    style: Theme.of(context).textTheme.labelLarge,
+                  ),
+                if (!_loading && _rows.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 48),
+                    child: Column(
+                      children: [
+                        const Icon(Icons.event_available_rounded, size: 40),
+                        const SizedBox(height: 12),
+                        Text(
+                          _search.text.trim().isNotEmpty || _folder != null
+                              ? '没有符合筛选条件的待办'
+                              : _scheduled
+                              ? '还没有有效安排'
+                              : '目前没有待安排的任务',
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          '完成、删除的待办不会出现在这里',
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  ),
+                for (var i = 0; i < _rows.length; i++) ...[
+                  if (i == 0 || _rows[i - 1].sortGroup != _rows[i].sortGroup)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      child: Text(
+                        _heading(_rows[i].sortGroup),
+                        style: Theme.of(context).textTheme.titleSmall,
+                      ),
+                    ),
+                  _row(_rows[i]),
+                ],
+                if (_loading)
+                  const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(24),
+                      child: CircularProgressIndicator(),
+                    ),
+                  )
+                else if (_page?.next != null)
+                  TextButton(
+                    onPressed: () => _load(more: true),
+                    child: const Text('加载更多'),
+                  ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
