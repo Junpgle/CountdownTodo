@@ -45,8 +45,24 @@ void main() {
         ),
       );
       expect((await read()).total, 0);
+      await f.block(
+        TodoPlanBlock(
+          id: 'later-plan',
+          todoId: 'todo-target',
+          startTime: DateTime(2026, 10, 11, 10).millisecondsSinceEpoch,
+          endTime: DateTime(2026, 10, 11, 11).millisecondsSinceEpoch,
+        ),
+      );
       final page = await read(scheduled: true);
-      expect(page.rows.single.planCount, 1);
+      expect(page.rows.single.planCount, 2);
+      expect(
+        page.rows.single.nextStart,
+        DateTime(2026, 10, 9, 23).millisecondsSinceEpoch,
+      );
+      expect(
+        page.rows.single.nextEnd,
+        DateTime(2026, 10, 10, 1).millisecondsSinceEpoch,
+      );
       expect(page.rows.single.id, 'todo-target');
     },
   );
@@ -81,6 +97,19 @@ void main() {
       expect((await read()).total, 1);
       await f.db.update('todo_completions', {'is_completed': 1});
       expect((await read()).total, 0);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('current_user_id', 1);
+      expect((await read()).total, 0);
+      await f.db.insert('todo_completions', {
+        'todo_uuid': 'todo-target',
+        'user_id': 1,
+        'is_completed': 0,
+      });
+      expect((await read()).total, 1);
+      await f.db.update('todos', {'collab_type': 0});
+      expect((await read()).total, 0);
+      await f.db.update('todos', {'is_completed': 0});
+      expect((await read()).total, 1);
     },
   );
   test('literal wildcards and 1000 rows use stable bounded pages; changes reset cursor', () async {
@@ -266,6 +295,12 @@ void main() {
         repo.prepare((await read(scheduled: true)).identity, 'todo-target'),
         throwsA(anything),
       );
+      await f.db.update('todo_plan_blocks', {
+        'start_time': DateTime(2026, 10, 8, 10).millisecondsSinceEpoch,
+        'end_time': DateTime(2026, 10, 8, 11).millisecondsSinceEpoch,
+        'status': 99,
+      });
+      expect((await read(scheduled: true)).rows.single.needsReview, true);
     },
   );
   test(
@@ -342,7 +377,7 @@ void main() {
       );
       await f.db.update(
         'todos',
-        {'group_id': 'missing-folder'},
+        {'group_id': 'missing-folder', 'has_conflict': null},
         where: 'uuid=?',
         whereArgs: ['todo-target'],
       );

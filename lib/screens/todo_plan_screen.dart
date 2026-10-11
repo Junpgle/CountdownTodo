@@ -489,41 +489,63 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
     final displayBlocks = [..._planBlocks, ...mappedBlocks]
       ..sort((a, b) => a.startTime.compareTo(b.startTime));
     final topBarHeight = floatingGlassTopBarHeight(context);
+    final compactDateNavigation =
+        MediaQuery.sizeOf(context).width < 360 ||
+        MediaQuery.textScalerOf(context).scale(18) > 24;
+    final shortDate =
+        MediaQuery.sizeOf(context).width < 400 || compactDateNavigation;
     return Scaffold(
       backgroundColor: theme.colorScheme.surface,
       extendBodyBehindAppBar: true,
       appBar: FloatingGlassAppBar(
         flexibleSpace: const FloatingGlassTopBarBackground(),
+        leadingWidth: 56,
+        titleSpacing: 0,
+        actionsPadding: const EdgeInsets.only(right: 4),
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            IconButton(
-              icon: const Icon(Icons.chevron_left),
-              onPressed: _prevDay,
-            ),
-            Flexible(child: GestureDetector(
-              onTap: _pickDate,
-              child: Text(
-                DateFormat('MM月dd日').format(_focusedDate),
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 18,
+            if (!compactDateNavigation)
+              IconButton(
+                tooltip: '前一天',
+                icon: const Icon(Icons.chevron_left),
+                onPressed: _prevDay,
+              ),
+            Flexible(
+              child: Tooltip(
+                message: DateFormat('yyyy年M月d日').format(_focusedDate),
+                child: GestureDetector(
+                  onTap: _pickDate,
+                  child: Text(
+                    DateFormat(shortDate ? 'M/d' : 'MM月dd日')
+                        .format(_focusedDate),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 18,
+                    ),
+                  ),
                 ),
               ),
-            )),
-            IconButton(
-              icon: const Icon(Icons.chevron_right),
-              onPressed: _nextDay,
             ),
+            if (!compactDateNavigation)
+              IconButton(
+                tooltip: '后一天',
+                icon: const Icon(Icons.chevron_right),
+                onPressed: _nextDay,
+              ),
           ],
         ),
         centerTitle: true,
         actions: [
-          PlanConflictIndicator(
-            username: widget.username,
-            date: _focusedDate,
-            compact: true,
-            onSaved: _loadData,
+          // Composite controls own their width; an empty indicator must not
+          // acquire the app bar's automatic 48 px glass action shell.
+          SizedBox(
+            child: PlanConflictIndicator(
+              username: widget.username,
+              date: _focusedDate,
+              compact: true,
+              onSaved: _loadData,
+            ),
           ),
           IconButton(
             icon: const Icon(Icons.playlist_add_check_rounded),
@@ -540,7 +562,11 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
           PopupMenuButton<String>(
             tooltip: '更多',
             onSelected: (value) {
-              if (value == 'refresh') {
+              if (value == 'previous') {
+                _prevDay();
+              } else if (value == 'next') {
+                _nextDay();
+              } else if (value == 'refresh') {
                 _loadData();
               } else {
                 Navigator.of(context).push(
@@ -551,9 +577,13 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
                 );
               }
             },
-            itemBuilder: (_) => const [
-              PopupMenuItem(value: 'stats', child: Text('规划统计')),
-              PopupMenuItem(value: 'refresh', child: Text('刷新')),
+            itemBuilder: (_) => [
+              if (compactDateNavigation)
+                const PopupMenuItem(value: 'previous', child: Text('前一天')),
+              if (compactDateNavigation)
+                const PopupMenuItem(value: 'next', child: Text('后一天')),
+              const PopupMenuItem(value: 'stats', child: Text('规划统计')),
+              const PopupMenuItem(value: 'refresh', child: Text('刷新')),
             ],
           ),
         ],

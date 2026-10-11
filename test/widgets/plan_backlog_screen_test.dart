@@ -105,6 +105,7 @@ void main() {
     ApiService.setBaseUrlOverride('http://127.0.0.1:1');
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('tip_shown_coach_plan_grid', true);
+    await prefs.setBool('tip_shown_todo_plan_guide', true);
     await LiquidGlassEffectService.setEnabled(false);
   });
   tearDown(() async {
@@ -437,4 +438,28 @@ void main() {
       );
     }
   }
+  testWidgets(
+    '320 large-type toolbar keeps date and backlog reachable, day navigation in more',
+    (tester) async {
+      await show(
+        tester,
+        size: const Size(320, 640),
+        scale: 1.8,
+        fromTimeline: true,
+      );
+      expect(find.text('10/8'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.tap(find.byTooltip('更多'));
+      await tester.pumpAndSettle();
+      expect(find.text('前一天'), findsOneWidget);
+      expect(find.text('后一天'), findsOneWidget);
+      await tester.tap(find.text('后一天'));
+      await drain(tester);
+      expect(find.text('10/9'), findsOneWidget);
+      await tester.tap(find.byTooltip('待规划'));
+      await drain(tester);
+      expect(find.byType(PlanBacklogScreen), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
 }

@@ -178,7 +178,7 @@ class PlanBacklogRepository {
           COALESCE(r.due_date,0) AS sort_due
         FROM representatives r LEFT JOIN plans p ON p.todo_uuid=r.uuid
       ), filtered AS (SELECT * FROM classified WHERE
-        (plan_count>0 OR focused=1 OR bad=1 OR legacy=1 OR has_conflict=1)=?
+        (plan_count>0 OR focused=1 OR bad=1 OR legacy=1 OR COALESCE(has_conflict,0)=1)=?
         AND content LIKE ? ESCAPE '\\' ${folder == null ? '' : 'AND COALESCE(group_id,\'\')=?'})''';
       final args = <Object?>[
         day.millisecondsSinceEpoch,
