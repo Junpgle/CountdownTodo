@@ -1,4 +1,8 @@
 import 'dart:async';
+import 'dart:convert';
+
+import 'package:countdown_todo/services/pomodoro_service.dart';
+import 'package:countdown_todo/services/plan_todo_guard.dart';
 
 import 'package:countdown_todo/models.dart';
 import 'package:countdown_todo/screens/plan_backlog_screen.dart';
@@ -200,6 +204,155 @@ void main() {
     },
   );
 
+  for (final mutation in [
+    'is_deleted',
+    'has_conflict',
+    'member',
+    'focus',
+    'oplog',
+  ]) {
+    testWidgets('formal save rejects $mutation and retains draft', (
+      tester,
+    ) async {
+      await show(tester);
+      await tester.tap(find.text('安排').first);
+      await drain(tester);
+      await tester.runAsync(() async {
+        final prefs = await SharedPreferences.getInstance();
+        switch (mutation) {
+          case 'member':
+            await prefs.setInt('current_user_id', 99);
+          case 'focus':
+            await prefs.setString(
+              'pomodoro_run_state_${PlanAvailabilityFixture.username}',
+              jsonEncode(
+                PomodoroRunState(
+                  phase: PomodoroPhase.focusing,
+                  todoUuid: 'todo-target',
+                ).toJson(),
+              ),
+            );
+          case 'oplog':
+            await f.db.execute(
+              "CREATE TRIGGER fail_log BEFORE INSERT ON op_logs BEGIN SELECT RAISE(ABORT,'synthetic'); END",
+            );
+          default:
+            await f.db.update('todos', {mutation: 1});
+        }
+      });
+      final save = find.byKey(const ValueKey('plan-save'));
+      await tester.ensureVisible(save);
+      await tester.tap(save);
+      await drain(tester);
+      expect(find.byType(PlanBlockEditorSheet), findsOneWidget);
+      expect(find.byKey(const ValueKey('plan-save-error')), findsOneWidget);
+      expect(await f.db.query('todo_plan_blocks'), isEmpty);
+      expect(await f.db.query('op_logs'), isEmpty);
+    });
+  }
+  testWidgets(
+    'independent member can plan with global completed and own unfinished',
+    (tester) async {
+      await f.db.update('todos', {'collab_type': 1, 'is_completed': 1});
+      await f.db.insert('todo_completions', {
+        'todo_uuid': 'todo-target',
+        'user_id': 0,
+        'is_completed': 0,
+      });
+      await show(tester);
+      await tester.tap(find.text('安排').first);
+      await drain(tester);
+      expect(find.textContaining('已选用'), findsOneWidget);
+      final save = find.byKey(const ValueKey('plan-save'));
+      await tester.ensureVisible(save);
+      await tester.tap(save);
+      await drain(tester);
+      expect(await f.db.query('todo_plan_blocks'), hasLength(1));
+      expect(await f.db.query('op_logs'), hasLength(1));
+    },
+  );
+  testWidgets('expired deadline only offers view', (tester) async {
+    await f.db.update('todos', {
+      'due_date': DateTime(2026, 10, 7, 20).millisecondsSinceEpoch,
+    });
+    await show(tester);
+    expect(find.text('安排'), findsNothing);
+    expect(find.text('查看／编辑待办'), findsOneWidget);
+    expect(find.textContaining('截止早于目标日期'), findsOneWidget);
+  });
+
+  testWidgets(
+    'manual new plan uses member completion and rejects later member completion',
+    (tester) async {
+      await f.db.update('todos', {'collab_type': 1, 'is_completed': 1});
+      await f.db.insert('todo_completions', {
+        'todo_uuid': 'todo-target',
+        'user_id': 0,
+        'is_completed': 0,
+      });
+      final identity = await PlanTodoIdentity.capture(
+        PlanAvailabilityFixture.username,
+      );
+      final todo = await PlanTodoGuard.read(f.db, identity, 'todo-target');
+      var saved = false;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: PlanBlockEditorSheet(
+            username: identity.username,
+            startTime: PlanAvailabilityFixture.day.add(
+              const Duration(hours: 10),
+            ),
+            endTime: PlanAvailabilityFixture.day.add(const Duration(hours: 11)),
+            todos: [todo],
+            todoGroups: const [],
+            initialTodoId: todo.id,
+            autoFillEstimateOnTodoChange: false,
+            fullPage: true,
+            clock: () => now,
+            onSaved: () => saved = true,
+          ),
+        ),
+      );
+      addTearDown(() async => tester.pumpWidget(const SizedBox.shrink()));
+      await drain(tester);
+      await tester.runAsync(
+        () => f.db.update('todo_completions', {'is_completed': 1}),
+      );
+      final save = find.byKey(const ValueKey('plan-save'));
+      await tester.ensureVisible(save);
+      await tester.tap(save);
+      await drain(tester);
+      expect(find.byKey(const ValueKey('plan-save-error')), findsOneWidget);
+      expect(saved, false);
+      expect(await f.db.query('op_logs'), isEmpty);
+      await tester.runAsync(
+        () => f.db.update('todo_completions', {'is_completed': 0}),
+      );
+      await tester.ensureVisible(save);
+      await tester.tap(save);
+      await drain(tester);
+      expect(saved, true);
+      expect(await f.db.query('todo_plan_blocks'), hasLength(1));
+      expect(await f.db.query('op_logs'), hasLength(1));
+    },
+  );
+  testWidgets('past target opens today with visible explanation', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PlanBacklogScreen(
+          username: PlanAvailabilityFixture.username,
+          date: DateTime(2026, 10, 1),
+          clock: () => now,
+        ),
+      ),
+    );
+    addTearDown(() async => tester.pumpWidget(const SizedBox.shrink()));
+    await drain(tester);
+    expect(find.text('原规划日期已过去，目标日期已切换到今天'), findsOneWidget);
+    expect(find.text('目标：10月7日'), findsOneWidget);
+  });
   testWidgets(
     'old requests cannot overwrite search or retry and read failure is explicit',
     (tester) async {
@@ -255,6 +408,9 @@ void main() {
       testWidgets(
         'queue usable without overflow $size $brightness large type keyboard',
         (tester) async {
+          await LiquidGlassEffectService.setEnabled(
+            brightness == Brightness.dark,
+          );
           await show(
             tester,
             size: size,

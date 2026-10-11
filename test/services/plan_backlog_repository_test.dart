@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:countdown_todo/services/pomodoro_service.dart';
@@ -290,6 +291,197 @@ void main() {
         expect(await f.db.query(table), before[table]);
       }
       expect({for (final key in prefs.getKeys()) key: prefs.get(key)}, keys);
+    },
+  );
+  test('two focus bindings are review rows, never free tasks', () async {
+    await f.todo('other-task', '另一项');
+    await f.block(
+      TodoPlanBlock(
+        id: 'bound-plan',
+        todoId: 'other-task',
+        startTime: 1,
+        endTime: 2,
+        status: TodoPlanStatus.finished,
+      ),
+    );
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      'pomodoro_run_state_${PlanAvailabilityFixture.username}',
+      jsonEncode(
+        PomodoroRunState(
+          phase: PomodoroPhase.focusing,
+          todoUuid: 'todo-target',
+          planBlockId: 'bound-plan',
+        ).toJson(),
+      ),
+    );
+    expect((await read()).total, 0);
+    final page = await read(scheduled: true);
+    expect(page.rows, hasLength(2));
+    expect(page.rows.every((r) => r.needsReview), true);
+    await expectLater(
+      repo.prepare(page.identity, 'todo-target'),
+      throwsA(anything),
+    );
+  });
+  test(
+    'folder normalization, counts, empty title and deleted tasks use one scope',
+    () async {
+      await f.db.insert('todo_groups', {
+        'uuid': 'study-group',
+        'name': '学习',
+        'created_at': 1,
+        'updated_at': 1,
+      });
+      await f.todo('study-task', '学习项目');
+      await f.db.update(
+        'todos',
+        {'group_id': 'study-group'},
+        where: 'uuid=?',
+        whereArgs: ['study-task'],
+      );
+      await f.db.update(
+        'todos',
+        {'group_id': 'missing-folder'},
+        where: 'uuid=?',
+        whereArgs: ['todo-target'],
+      );
+      expect((await read(folder: 'study-group')).rows.single.id, 'study-task');
+      expect((await read(folder: '')).rows.single.id, 'todo-target');
+      await f.todo('empty-title', '   ');
+      await f.todo('completed-task', '已完成', done: true);
+      await f.todo('deleted-task', '已删除');
+      await f.db.update(
+        'todos',
+        {'is_deleted': 1},
+        where: 'uuid=?',
+        whereArgs: ['deleted-task'],
+      );
+      expect((await read()).total, 2);
+    },
+  );
+  test(
+    'bounded metadata batches and page projection avoid per-todo reads',
+    () async {
+      await f.db.transaction((txn) async {
+        for (var i = 0; i < 1000; i++) {
+          await txn.insert('todos', {
+            'uuid': 'projection-$i',
+            'content': '任务$i',
+            'remark': 'large ignored remark',
+            'original_text': 'ignored',
+            'created_at': 1,
+            'updated_at': 1,
+            'created_date': 0,
+          });
+        }
+      });
+      final queries = <String>[];
+      final measured = PlanBacklogRepository(
+        clock: () => PlanAvailabilityFixture.now,
+        onQuery: queries.add,
+      );
+      final page = await measured.read(
+        PlanAvailabilityFixture.username,
+        PlanAvailabilityFixture.day,
+      );
+      expect(page.rows, hasLength(50));
+      expect(page.total, 1001);
+      expect(queries.length, lessThanOrEqualTo(14));
+      expect(
+        queries.any(
+          (q) =>
+              q.contains('remark') ||
+              q.contains('original_text') ||
+              q.contains('SELECT t.*'),
+        ),
+        false,
+      );
+      expect(queries.where((q) => q.contains('LIMIT 200')).length, 9);
+    },
+  );
+  test('end boundary resets cursor even without a data write', () async {
+    var instant = PlanAvailabilityFixture.now;
+    final moving = PlanBacklogRepository(clock: () => instant);
+    for (var i = 0; i < 51; i++) {
+      await f.todo('boundary-task-$i', '边界$i');
+    }
+    await f.block(
+      TodoPlanBlock(
+        id: 'ending-plan',
+        todoId: 'todo-target',
+        startTime: instant
+            .subtract(const Duration(hours: 1))
+            .millisecondsSinceEpoch,
+        endTime: instant.add(const Duration(minutes: 1)).millisecondsSinceEpoch,
+      ),
+    );
+    final first = await moving.read(
+      PlanAvailabilityFixture.username,
+      PlanAvailabilityFixture.day,
+    );
+    expect(first.nextBoundary, instant.add(const Duration(minutes: 1)));
+    instant = instant.add(const Duration(minutes: 2));
+    final second = await moving.read(
+      PlanAvailabilityFixture.username,
+      PlanAvailabilityFixture.day,
+      cursor: first.next,
+    );
+    expect(second.restarted, true);
+    expect(second.total, 52);
+  });
+  for (final size in [50, 51, 500]) {
+    test(
+      '$size tasks have exact totals and no missing or duplicate pages',
+      () async {
+        await f.db.delete('todos');
+        await f.db.transaction((txn) async {
+          for (var i = 0; i < size; i++) {
+            await txn.insert('todos', {
+              'uuid': 'sized-${i.toString().padLeft(4, '0')}',
+              'content': '任务$i',
+              'created_at': 1,
+              'updated_at': 1,
+              'created_date': 0,
+            });
+          }
+        });
+        final ids = <String>{};
+        var page = await read();
+        while (true) {
+          expect(page.total, size);
+          expect(page.rows.length, lessThanOrEqualTo(50));
+          for (final row in page.rows) {
+            expect(ids.add(row.id), true);
+          }
+          if (page.next == null) break;
+          page = await read(cursor: page.next);
+        }
+        expect(ids.length, size);
+      },
+    );
+  }
+  test(
+    'member identity changing during SQL read rejects the old snapshot',
+    () async {
+      final prefs = await SharedPreferences.getInstance();
+      var changed = false;
+      final racing = PlanBacklogRepository(
+        clock: () => PlanAvailabilityFixture.now,
+        onQuery: (_) {
+          if (!changed) {
+            changed = true;
+            unawaited(prefs.setInt('current_user_id', 99));
+          }
+        },
+      );
+      await expectLater(
+        racing.read(
+          PlanAvailabilityFixture.username,
+          PlanAvailabilityFixture.day,
+        ),
+        throwsA(anything),
+      );
     },
   );
 }

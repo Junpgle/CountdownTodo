@@ -56,9 +56,23 @@ class PlanBacklogPage {
 /// One SQLite snapshot, sparse projection, keyset pagination after series selection.
 /// No business writes, migrations, calendar reads or estimation work.
 class PlanBacklogRepository {
-  const PlanBacklogRepository({this.clock, this.databaseOverride});
+  const PlanBacklogRepository({
+    this.clock,
+    this.databaseOverride,
+    this.onQuery,
+  });
   final DateTime Function()? clock;
   final Database? databaseOverride;
+  final void Function(String sql)? onQuery;
+  Future<List<Map<String, Object?>>> _query(
+    DatabaseExecutor db,
+    String sql, [
+    List<Object?>? args,
+  ]) {
+    onQuery?.call(sql);
+    return db.rawQuery(sql, args);
+  }
+
   DateTime get now => clock?.call() ?? DateTime.now();
 
   Future<PlanBacklogPage> read(
@@ -110,7 +124,9 @@ class PlanBacklogRepository {
       // future. UUID gives the existing first-in-input tie rule a stable input.
       final sql =
           '''WITH eligible AS (
-        SELECT t.uuid,t.content,t.group_id,
+        SELECT t.uuid,t.content,
+          CASE WHEN EXISTS (SELECT 1 FROM todo_groups g WHERE g.uuid=t.group_id AND COALESCE(g.is_deleted,0)=0)
+            THEN t.group_id ELSE NULL END AS group_id,
           CASE WHEN LENGTH(t.due_date)>0 AND t.due_date NOT GLOB '*[^0-9]*'
             THEN CAST(t.due_date AS INTEGER)
             ELSE CAST(ROUND((julianday(t.due_date)-2440587.5)*86400000) AS INTEGER) END AS due_date,
@@ -183,13 +199,15 @@ class PlanBacklogRepository {
       // Business writes advance version/updated_at. Stream bounded metadata
       // batches rather than materializing titles/remarks from the entire DB.
       final revision = await _revision(txn, identity);
-      final boundariesRow = await txn.rawQuery(
+      final boundariesRow = await _query(
+        txn,
         """SELECT MIN(end_time) boundary
         FROM todo_plan_blocks WHERE COALESCE(is_deleted,0)=0 AND status IN (0,2,4,5)
         AND typeof(end_time)='integer' AND end_time>?""",
         [ms],
       );
-      final count = await txn.rawQuery(
+      final count = await _query(
+        txn,
         '$sql SELECT COUNT(*) n, (SELECT MIN(due_date) FROM classified WHERE legacy=1) legacy_boundary FROM filtered',
         args,
       );
@@ -218,7 +236,8 @@ class PlanBacklogRepository {
           .toString();
       final restarted = cursor != null && cursor.fingerprint != fingerprint;
       final validCursor = restarted ? null : cursor;
-      final rows = await txn.rawQuery(
+      final rows = await _query(
+        txn,
         '''$sql SELECT * FROM filtered
         ${validCursor == null ? '' : 'WHERE sort_group>? OR (sort_group=? AND (sort_due>? OR (sort_due=? AND uuid>?)))'}
         ORDER BY sort_group,sort_due,uuid LIMIT 51''',
@@ -237,11 +256,9 @@ class PlanBacklogRepository {
           .take(50)
           .map((r) => PlanBacklogRow(r, run?.isPaused ?? false))
           .toList();
-      final groups = await txn.query(
-        'todo_groups',
-        columns: ['uuid', 'name'],
-        where: 'COALESCE(is_deleted,0)=0',
-        orderBy: 'name,uuid',
+      final groups = await _query(
+        txn,
+        'SELECT uuid,name FROM todo_groups WHERE COALESCE(is_deleted,0)=0 ORDER BY name,uuid',
       );
       final boundaries = [
         boundariesRow.single['boundary'] as int?,
@@ -315,7 +332,8 @@ class PlanBacklogRepository {
       String? after;
       while (true) {
         final seek = after == null ? '' : 'AND $key>? ';
-        final rows = await db.rawQuery(
+        final rows = await _query(
+          db,
           'SELECT $projection FROM $table WHERE $where '
           'AND $key IS NOT NULL $seek'
           'ORDER BY $key LIMIT 200',

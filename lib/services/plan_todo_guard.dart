@@ -6,6 +6,7 @@ import 'package:sqflite/sqflite.dart';
 import '../models.dart';
 import '../models/plan_availability.dart';
 import 'pomodoro_service.dart';
+import 'storage/storage_key_scope.dart';
 
 /// Identity travels with a read/draft, including the independent team member.
 class PlanTodoIdentity {
@@ -26,7 +27,8 @@ class PlanTodoIdentity {
   Future<void> check() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.reload();
-    if ((prefs.getString('current_login_user') ?? 'default') != username ||
+    final active = prefs.getString('current_login_user');
+    if ((active == null || active.isEmpty ? 'default' : active) != username ||
         (prefs.getInt('current_user_id') ?? 0) != userId) {
       throw const PlanAvailabilityException('账号或成员身份已切换，请重新打开页面');
     }
@@ -38,12 +40,11 @@ class PlanTodoGuard {
       'CASE WHEN $t.collab_type = 1 AND $c.is_completed IS NOT NULL '
       'THEN $c.is_completed ELSE $t.is_completed END';
 
-  static Future<TodoItem> read(
+  static Future<List<Map<String, Object?>>> projectedRows(
     DatabaseExecutor db,
     PlanTodoIdentity identity,
-    String todoId, {
-    bool requireEligible = true,
-  }) async {
+    String todoId,
+  ) async {
     await identity.check();
     final rows = await db.rawQuery(
       '''SELECT t.*,
@@ -52,6 +53,18 @@ class PlanTodoGuard {
       WHERE t.uuid=? LIMIT 1''',
       [identity.userId, todoId],
     );
+    await identity.check();
+    return rows;
+  }
+
+  static Future<TodoItem> read(
+    DatabaseExecutor db,
+    PlanTodoIdentity identity,
+    String todoId, {
+    bool requireEligible = true,
+  }) async {
+    await identity.check();
+    final rows = await projectedRows(db, identity, todoId);
     if (rows.isEmpty) throw const PlanAvailabilityException('待办已删除或不存在');
     final row = {
       ...rows.single,
@@ -75,7 +88,12 @@ class PlanTodoGuard {
   static Future<PomodoroRunState?> runState(PlanTodoIdentity identity) async {
     await identity.check();
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString('pomodoro_run_state_${identity.username}');
+    final raw = prefs.getString(
+      StorageKeyScope.scoped(
+        'pomodoro_run_state',
+        prefs.getString('current_login_user'),
+      ),
+    );
     if (raw == null) return null;
     try {
       final json = jsonDecode(raw);

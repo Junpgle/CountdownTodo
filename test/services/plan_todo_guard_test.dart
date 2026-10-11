@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:countdown_todo/services/missed_plan_recovery_service.dart';
+import 'package:countdown_todo/services/plan_conflict_review_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:countdown_todo/models.dart';
@@ -137,5 +139,54 @@ void main() {
     );
     expect(await f.db.query('todo_plan_blocks'), isEmpty);
     expect(await f.db.query('op_logs'), isEmpty);
+  });
+  test('recovery and reschedule share the independent-member completion projection', () async {
+    await f.db.update('todos', {'collab_type': 1, 'is_completed': 1});
+    await f.db.insert('todo_completions', {
+      'todo_uuid': 'todo-target',
+      'user_id': 0,
+      'is_completed': 0,
+    });
+    final missed = TodoPlanBlock(
+      id: 'old-missed',
+      todoId: 'todo-target',
+      status: TodoPlanStatus.missed,
+      startTime: now.subtract(const Duration(hours: 2)).millisecondsSinceEpoch,
+      endTime: now.subtract(const Duration(hours: 1)).millisecondsSinceEpoch,
+    );
+    final planned = draft('current-planned');
+    await f.block(missed);
+    await f.block(planned);
+    final recovery = MissedPlanRecoveryService(clock: () => now);
+    final conflict = PlanConflictReviewService(clock: () => now);
+    final rc = await recovery.read(identity.username, missed.id);
+    final cc = await conflict.prepareEdit(identity.username, planned.id);
+    expect(rc.todo.isDone, false);
+    expect(cc.todo.isDone, false);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('current_user_id', 1);
+    await expectLater(recovery.validate(rc), throwsA(anything));
+    await expectLater(
+      conflict.save(cc, planned, null, expectedBlock: planned, sync: false),
+      throwsA(anything),
+    );
+  });
+  test('guest focus uses the existing unscoped preference key', () async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('current_login_user');
+    await prefs.setString(
+      'pomodoro_run_state',
+      jsonEncode(
+        PomodoroRunState(
+          phase: PomodoroPhase.focusing,
+          todoUuid: 'todo-target',
+          isPaused: true,
+        ).toJson(),
+      ),
+    );
+    final guest = await PlanTodoIdentity.capture('default');
+    final run = await PlanTodoGuard.runState(guest);
+    expect(run?.isPaused, true);
+    expect(run?.todoUuid, 'todo-target');
   });
 }

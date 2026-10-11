@@ -130,11 +130,15 @@ class PlanAvailabilityRepository {
       throw const PlanAvailabilityException('课程日期规则读取失败，请重试');
     }
     final identity = await PlanTodoIdentity.capture(
-      await StorageService.getLoginSession() ?? 'default');
-    final todoRows = await db.rawQuery('''SELECT t.*,
+      await StorageService.getLoginSession() ?? 'default',
+    );
+    final todoRows = await db.rawQuery(
+      '''SELECT t.*,
       ${PlanTodoGuard.completionSql('t', 'c')} AS member_completed
       FROM todos t LEFT JOIN todo_completions c ON c.todo_uuid=t.uuid AND c.user_id=?
-      ORDER BY t.uuid''', [identity.userId]);
+      ORDER BY t.uuid''',
+      [identity.userId],
+    );
     await identity.check();
     final fixedRows = await _rows(db, 'fixed_schedules');
     final planRows = await _rows(db, 'todo_plan_blocks');
@@ -143,7 +147,10 @@ class PlanAvailabilityRepository {
         courses: courses,
         courseFingerprint: fingerprint,
         todos: todoRows.map((row) {
-          final todo = TodoItem.fromSql({...row, 'is_completed': row['member_completed']});
+          final todo = TodoItem.fromSql({
+            ...row,
+            'is_completed': row['member_completed'],
+          });
           // Preserve the storage key for legacy IDs; this read does not migrate.
           todo.id = row['uuid'].toString();
           return todo;
@@ -534,9 +541,14 @@ class PlanAvailabilityRepository {
       sync: sync,
       beforeWrite: (executor) async {
         await identity.check();
-        final original = query.excludeBlockId == null ? <Map<String,Object?>>[] :
-            await executor.query('todo_plan_blocks', columns: ['todo_uuid'],
-                where: 'uuid=?', whereArgs: [query.excludeBlockId]);
+        final original = query.excludeBlockId == null
+            ? <Map<String, Object?>>[]
+            : await executor.query(
+                'todo_plan_blocks',
+                columns: ['todo_uuid'],
+                where: 'uuid=?',
+                whereArgs: [query.excludeBlockId],
+              );
         if (original.isEmpty || original.single['todo_uuid'] != draft.todoId) {
           await PlanTodoGuard.validate(executor, identity, draft.todoId);
         }

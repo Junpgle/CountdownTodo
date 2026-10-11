@@ -519,22 +519,36 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
         ),
         centerTitle: true,
         actions: [
-          PlanConflictIndicator(username: widget.username, date: _focusedDate,
-            compact: true, onSaved: _loadData),
+          PlanConflictIndicator(
+            username: widget.username,
+            date: _focusedDate,
+            compact: true,
+            onSaved: _loadData,
+          ),
           IconButton(
             icon: const Icon(Icons.playlist_add_check_rounded),
             tooltip: '待规划',
             onPressed: () => Navigator.of(context).push(
-              PageTransitions.material(builder: (_) => PlanBacklogScreen(
-                username: widget.username, date: _focusedDate)),
+              PageTransitions.material(
+                builder: (_) => PlanBacklogScreen(
+                  username: widget.username,
+                  date: _focusedDate,
+                ),
+              ),
             ),
           ),
           PopupMenuButton<String>(
             tooltip: '更多',
             onSelected: (value) {
-              if (value == 'refresh') { _loadData(); } else {
-                Navigator.of(context).push(PageTransitions.material(
-                  builder: (_) => PlanBlockStatsScreen(username: widget.username)));
+              if (value == 'refresh') {
+                _loadData();
+              } else {
+                Navigator.of(context).push(
+                  PageTransitions.material(
+                    builder: (_) =>
+                        PlanBlockStatsScreen(username: widget.username),
+                  ),
+                );
               }
             },
             itemBuilder: (_) => const [

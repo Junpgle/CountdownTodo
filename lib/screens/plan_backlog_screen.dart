@@ -251,6 +251,7 @@ class _PlanBacklogScreenState extends State<PlanBacklogScreen>
     _opening = false;
     await _view(row);
     _opening = true;
+    _boundary?.cancel();
   }
 
   Future<void> _viewFocus(PlanBacklogRow row) async {
@@ -316,6 +317,38 @@ class _PlanBacklogScreenState extends State<PlanBacklogScreen>
             .firstOrNull
             ?.name ??
         '未分组';
+    final info = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(row.todo.title, style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: 6),
+        Text(
+          '$group · ${_details(row)}',
+          style: TextStyle(
+            color: row.needsReview || expired ? cs.error : cs.onSurfaceVariant,
+          ),
+        ),
+      ],
+    );
+    final buttons = <Widget>[
+      if (row.focusing && !row.needsReview)
+        FilledButton.tonal(
+          onPressed: () => _viewFocus(row),
+          child: const Text('查看专注'),
+        )
+      else if (row.arranged || expired)
+        OutlinedButton(
+          onPressed: () => _view(row),
+          child: Text(row.arranged ? '查看安排' : '查看／编辑待办'),
+        )
+      else
+        FilledButton.tonal(
+          onPressed: () => _arrange(row),
+          child: const Text('安排'),
+        ),
+      if (row.arranged && !row.needsReview && !row.focusing && !expired)
+        TextButton(onPressed: () => _arrange(row), child: const Text('追加规划')),
+    ];
     return Card(
       elevation: 0,
       margin: const EdgeInsets.only(bottom: 10),
@@ -323,56 +356,33 @@ class _PlanBacklogScreenState extends State<PlanBacklogScreen>
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: LayoutBuilder(
-          builder: (context, c) => Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                row.todo.title,
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              const SizedBox(height: 6),
-              Text(group, style: TextStyle(color: cs.onSurfaceVariant)),
-              const SizedBox(height: 6),
-              Text(
-                _details(row),
-                style: TextStyle(
-                  color: row.needsReview || expired
-                      ? cs.error
-                      : cs.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 8,
-                runSpacing: 4,
+          builder: (context, c) {
+            final compact =
+                c.maxWidth >= 600 ||
+                (c.maxWidth >= 300 &&
+                    MediaQuery.textScalerOf(context).scale(14) <= 20);
+            if (compact) {
+              return Row(
                 children: [
-                  if (row.focusing && !row.needsReview)
-                    FilledButton.tonal(
-                      onPressed: () => _viewFocus(row),
-                      child: const Text('查看专注'),
-                    )
-                  else if (row.arranged || expired)
-                    OutlinedButton(
-                      onPressed: () => _view(row),
-                      child: Text(row.arranged ? '查看安排' : '查看／编辑待办'),
-                    )
-                  else
-                    FilledButton.tonal(
-                      onPressed: () => _arrange(row),
-                      child: const Text('安排'),
-                    ),
-                  if (row.arranged &&
-                      !row.needsReview &&
-                      !row.focusing &&
-                      !expired)
-                    TextButton(
-                      onPressed: () => _arrange(row),
-                      child: const Text('追加规划'),
-                    ),
+                  Expanded(child: info),
+                  const SizedBox(width: 12),
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: buttons,
+                  ),
                 ],
-              ),
-            ],
-          ),
+              );
+            }
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                info,
+                const SizedBox(height: 10),
+                Wrap(spacing: 8, runSpacing: 4, children: buttons),
+              ],
+            );
+          },
         ),
       ),
     );

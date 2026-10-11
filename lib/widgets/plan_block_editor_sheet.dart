@@ -156,13 +156,19 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
 
   Future<void> _captureSaveIdentity() async {
     try {
-      _saveIdentity = widget.backlogContext?.identity ??
+      _saveIdentity =
+          widget.backlogContext?.identity ??
           await PlanTodoIdentity.capture(widget.username);
       await _saveIdentity!.check();
-    } catch (error) { _identityError = error; }
+    } catch (error) {
+      _identityError = error;
+    }
   }
 
-  Future<void> _checkLinkedTodo(DatabaseExecutor executor, TodoPlanBlock draft) async {
+  Future<void> _checkLinkedTodo(
+    DatabaseExecutor executor,
+    TodoPlanBlock draft,
+  ) async {
     await _identityReady;
     if (_identityError != null) throw _identityError!;
     final identity = _saveIdentity!;
@@ -171,10 +177,13 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
       if (draft.todoId != widget.backlogContext!.todoId) {
         throw const PlanAvailabilityException('待办已变化，请重新打开清单');
       }
-      await PlanTodoGuard.validateBacklog(executor, widget.backlogContext!,
-          _approvedArrangements ?? widget.backlogContext!.arrangements,
-          DateTime.fromMillisecondsSinceEpoch(draft.startTime),
-          widget.clock?.call() ?? DateTime.now());
+      await PlanTodoGuard.validateBacklog(
+        executor,
+        widget.backlogContext!,
+        _approvedArrangements ?? widget.backlogContext!.arrangements,
+        DateTime.fromMillisecondsSinceEpoch(draft.startTime),
+        widget.clock?.call() ?? DateTime.now(),
+      );
     }
     await identity.check();
   }
@@ -185,17 +194,37 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
     if (_identityError != null) throw _identityError!;
     final db = await DatabaseHelper.instance.databaseForUser(widget.username);
     await PlanTodoGuard.validate(db, _saveIdentity!, todoId);
-    final latest = await PlanTodoGuard.arrangements(db, todoId,
-        widget.clock?.call() ?? DateTime.now());
-    if (latest == (_approvedArrangements ?? widget.backlogContext!.arrangements)) return;
-    if (latest == '[]') { _approvedArrangements = latest; return; }
+    final latest = await PlanTodoGuard.arrangements(
+      db,
+      todoId,
+      widget.clock?.call() ?? DateTime.now(),
+    );
+    if (latest ==
+        (_approvedArrangements ?? widget.backlogContext!.arrangements)) {
+      return;
+    }
+    if (latest == '[]') {
+      _approvedArrangements = latest;
+      return;
+    }
     if (!mounted) throw const PlanAvailabilityException('页面已关闭');
-    final append = await showDialog<bool>(context: context, builder: (context) => AlertDialog(
-      title: const Text('此待办已有新的安排'),
-      content: const Text('编辑期间安排已变化。查看已有安排，或确认仍追加这次规划。'),
-      actions: [TextButton(onPressed: () => Navigator.pop(context, false),
-        child: const Text('查看已有安排')),
-        FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('仍追加这次规划'))]));
+    final append = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('此待办已有新的安排'),
+        content: const Text('编辑期间安排已变化。查看已有安排，或确认仍追加这次规划。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('查看已有安排'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('仍追加这次规划'),
+          ),
+        ],
+      ),
+    );
     if (append != true) {
       if (append == false) await widget.onViewExisting?.call();
       throw const PlanAvailabilityException('尚未追加，草稿已保留');
@@ -691,7 +720,11 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
         );
         await _identityReady;
         if (_identityError != null) throw _identityError!;
-        final freshTodo = await PlanTodoGuard.read(db, _saveIdentity!, block.todoId);
+        final freshTodo = await PlanTodoGuard.read(
+          db,
+          _saveIdentity!,
+          block.todoId,
+        );
         if (blocks.isEmpty ||
             blocks.single['version'] != block.version ||
             blocks.single['updated_at'] != block.updatedAt ||
