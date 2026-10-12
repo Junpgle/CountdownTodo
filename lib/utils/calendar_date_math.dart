@@ -4,6 +4,11 @@ abstract final class CalendarDateMath {
   static DateTime dateOnly(DateTime value) =>
       DateTime(value.year, value.month, value.day);
 
+  static ({DateTime start, DateTime endExclusive}) dayRange(DateTime value) {
+    final start = dateOnly(value);
+    return (start: start, endExclusive: addDays(start, 1));
+  }
+
   static DateTime addDays(DateTime value, int days) => DateTime(
         value.year,
         value.month,

@@ -9,6 +9,7 @@ import 'package:countdown_todo/services/database_helper.dart';
 import '../models.dart';
 import '../storage_service.dart';
 import '../utils/time_utils.dart';
+import '../utils/calendar_date_math.dart';
 export '../utils/time_utils.dart';
 import 'api_service.dart';
 import 'storage/storage_key_scope.dart';
@@ -1886,18 +1887,19 @@ class PomodoroService {
   /// 今日专注记录（本地，不含已删除）
   static Future<List<PomodoroRecord>> getTodayRecords() async {
     final now = DateTime.now();
-    final start = DateTime(now.year, now.month, now.day);
-    final end = start.add(const Duration(days: 1));
-    return getRecordsInRange(start, end);
+    final range = CalendarDateMath.dayRange(now);
+    return getRecordsInRange(range.start, range.endExclusive);
   }
 
   /// 昨日专注记录（本地，不含已删除）
   static Future<List<PomodoroRecord>> getYesterdayRecords() async {
     final now = DateTime.now();
-    final start = DateTime(now.year, now.month, now.day)
-        .subtract(const Duration(days: 1));
-    final end = start.add(const Duration(days: 1));
-    return getRecordsInRange(start, end);
+    final yesterday = CalendarDateMath.addDays(
+      CalendarDateMath.dateOnly(now),
+      -1,
+    );
+    final range = CalendarDateMath.dayRange(yesterday);
+    return getRecordsInRange(range.start, range.endExclusive);
   }
 
   /// 最近专注：今日有则返回今日，否则返回昨日；同时返回是哪天
