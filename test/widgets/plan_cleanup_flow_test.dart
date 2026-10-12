@@ -180,12 +180,34 @@ void main() {
     expect(find.text('一次最多选择50段'), findsOneWidget);
   });
   testWidgets('team plans are read-only with explicit reasons', (t) async {
+    final semantics = t.ensureSemantics();
     await block('a');
     await f.db.update('todos', {'team_uuid': 'team'});
     await open(t);
     expect(find.text('团队规划请逐条核对'), findsWidgets);
     expect(t.widget<FilledButton>(key('cleanup-cancel')).onPressed, isNull);
     expect(t.widget<Checkbox>(key('cleanup-select-a')).onChanged, isNull);
+    expect(
+      t.getSemantics(key('cleanup-select-a')).label,
+      contains('45分钟'),
+    );
+    final details = find.widgetWithText(TextButton, '查看详情');
+    expect(
+      t.getSemantics(details),
+      matchesSemantics(
+        label: '查看详情',
+        isButton: true,
+        hasEnabledState: true,
+        isEnabled: true,
+        isFocusable: true,
+        hasTapAction: true,
+        hasFocusAction: true,
+      ),
+    );
+    await tap(t, details);
+    expect(find.text('规划核对'), findsOneWidget);
+    expect(await f.db.query('op_logs'), isEmpty);
+    semantics.dispose();
   });
   testWidgets('literal search opens the exact completed task', (t) async {
     await block('a');

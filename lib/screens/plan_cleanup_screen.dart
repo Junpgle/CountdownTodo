@@ -580,7 +580,14 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
         !_working &&
         _pending == null;
     final checked = _selected.contains(item.id);
+    final checkboxLabel = [
+      _date(item.start),
+      _range(item),
+      '${item.minutes}分钟',
+      item.reason.isEmpty ? '可处理' : item.reason,
+    ].join('，');
     return Card(
+      semanticContainer: false,
       elevation: 0,
       color: Theme.of(context).colorScheme.surfaceContainerLow,
       margin: const EdgeInsets.only(bottom: 10),
@@ -594,6 +601,7 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
               children: [
                 Checkbox(
                   key: ValueKey('cleanup-select-${item.id}'),
+                  semanticLabel: checkboxLabel,
                   value: checked,
                   onChanged: enabled
                       ? (value) {
