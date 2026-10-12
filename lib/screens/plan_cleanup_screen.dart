@@ -235,7 +235,6 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
     } else {
       _boundary?.cancel();
       _sequence++;
-      if (_pending == null) _selected.clear();
     }
   }
 

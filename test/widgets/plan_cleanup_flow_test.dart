@@ -445,6 +445,20 @@ void main() {
     expect(find.textContaining('身份已切换'), findsOneWidget);
     expect(t.widget<FilledButton>(key('cleanup-cancel')).onPressed, isNull);
   });
+  testWidgets('same-account resume explains cleared selection', (t) async {
+    await block('resume-selection');
+    await open(t);
+    expect(find.text('已选1段 · 45分钟'), findsOneWidget);
+
+    t.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await t.pump();
+    t.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await t.pumpAndSettle();
+
+    expect(find.text('已选0段 · 0分钟'), findsOneWidget);
+    expect(find.textContaining('原有选择已清空'), findsOneWidget);
+    expect(t.takeException(), isNull);
+  });
   testWidgets(
     'entry requires persisted completion and shows read errors separately',
     (t) async {
