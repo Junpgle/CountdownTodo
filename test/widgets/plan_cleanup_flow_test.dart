@@ -31,6 +31,7 @@ class _CleanupRepo extends PlanCleanupRepository {
   Completer<void>? detailResultGate;
   Completer<void>? detailResultStarted;
   int calls = 0;
+  int reads = 0;
   int detailReads = 0;
   @override
   Future<PlanCleanupPage> read(
@@ -39,6 +40,7 @@ class _CleanupRepo extends PlanCleanupRepository {
     String? folder,
     PlanCleanupCursor? cursor,
   }) async {
+    reads++;
     if (failNextRead) {
       failNextRead = false;
       throw StateError('模拟分页读取失败');
@@ -662,6 +664,35 @@ void main() {
 
     await tap(t, find.text('加载更多待办'));
     expect(find.textContaining('已加载51／总计51'), findsOneWidget);
+    expect(t.takeException(), isNull);
+  });
+  testWidgets('overview ignores boundaries from unfinished todos', (t) async {
+    for (var i = 0; i < 51; i++) {
+      final id = 'boundary-overview-$i';
+      await f.todo(id, '待办$i', done: true);
+      await block('boundary-overview-plan-$i', todo: id, minute: 120 + i);
+    }
+    await f.todo('unfinished-boundary', '未完成待办', done: false);
+    await f.block(
+      TodoPlanBlock(
+        id: 'unfinished-boundary-plan',
+        todoId: 'unfinished-boundary',
+        startTime: now.add(const Duration(minutes: 1)).millisecondsSinceEpoch,
+        endTime: now.add(const Duration(minutes: 46)).millisecondsSinceEpoch,
+        plannedMinutes: 45,
+      ),
+    );
+    await open(t, todo: null);
+    await tap(t, find.text('加载更多待办'));
+    expect(find.textContaining('已加载51／总计51'), findsOneWidget);
+    final readsBeforeBoundary = repo.reads;
+
+    await t.pump(const Duration(minutes: 1));
+    await t.pumpAndSettle();
+
+    expect(repo.reads, readsBeforeBoundary);
+    expect(find.textContaining('已加载51／总计51'), findsOneWidget);
+    expect(find.text('待办50'), findsOneWidget);
     expect(t.takeException(), isNull);
   });
   testWidgets('pagination account switch clears the previous account page', (

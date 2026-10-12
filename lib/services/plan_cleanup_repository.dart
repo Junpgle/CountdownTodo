@@ -208,7 +208,13 @@ class PlanCleanupRepository {
             await tx.rawQuery('$sql SELECT COUNT(*) FROM filtered', args),
           ) ??
           0;
-      final boundary = await _boundary(tx, instant);
+      final fingerprintBoundary = await _boundary(
+        tx,
+        instant,
+        identity: identity,
+        search: search,
+        folder: folder,
+      );
       _tokens[db] ??= ++_nextToken;
       final fingerprint = _hash([
         _tokens[db],
@@ -219,7 +225,7 @@ class PlanCleanupRepository {
         await tx.rawQuery('SELECT total_changes() AS n'),
         await tx.rawQuery('PRAGMA data_version'),
         [rules.focusIds.toList()..sort(), rules.focusReason],
-        boundary?.millisecondsSinceEpoch,
+        fingerprintBoundary?.millisecondsSinceEpoch,
         total,
       ]);
       final restarted = cursor != null && cursor.fingerprint != fingerprint;
@@ -234,6 +240,11 @@ class PlanCleanupRepository {
         ],
       );
       final items = rows.take(50).map(PlanCleanupTodo.new).toList();
+      final nextBoundary = await _boundary(
+        tx,
+        instant,
+        todoIds: items.map((item) => item.id),
+      );
       final groups = await tx.rawQuery(
         'SELECT uuid,name FROM todo_groups WHERE COALESCE(is_deleted,0)=0 ORDER BY name,uuid',
       );
@@ -243,7 +254,7 @@ class PlanCleanupRepository {
         rows: items,
         total: total,
         groups: groups.map(TodoGroup.fromSql).toList(),
-        nextBoundary: boundary,
+        nextBoundary: nextBoundary,
         restarted: restarted,
         next: rows.length > 50
             ? PlanCleanupCursor(
@@ -388,9 +399,38 @@ class PlanCleanupRepository {
     DatabaseExecutor tx,
     DateTime instant, {
     String? todoId,
+    Iterable<String>? todoIds,
+    PlanTodoIdentity? identity,
+    String search = '',
+    String? folder,
   }) async {
     final ms = instant.millisecondsSinceEpoch;
-    final todoFilter = todoId == null ? '' : ' AND todo_uuid=?';
+    if (todoIds != null && todoIds.isEmpty) return null;
+    final todoFilter = todoId != null
+        ? ' AND todo_uuid=?'
+        : todoIds == null
+        ? ''
+        : ' AND todo_uuid IN (${List.filled(todoIds.length, '?').join(',')})';
+    final completedFilter = identity == null
+        ? ''
+        : ''' AND todo_uuid IN (
+        SELECT t.uuid FROM todos t
+        LEFT JOIN todo_completions c ON c.todo_uuid=t.uuid AND c.user_id=?
+        WHERE COALESCE(t.is_deleted,0)=0
+          AND ${PlanTodoGuard.completionSql('t', 'c')}=1
+          AND LENGTH(TRIM(t.uuid))>0 AND LENGTH(TRIM(t.content))>0
+          AND t.content LIKE ? ESCAPE '\\'
+          ${folder == null ? '' : "AND CASE WHEN EXISTS(SELECT 1 FROM todo_groups g WHERE g.uuid=t.group_id AND COALESCE(g.is_deleted,0)=0) THEN t.group_id ELSE '' END=?"}
+      )''';
+    final scopeArgs = <Object?>[
+      ?todoId,
+      ...?todoIds,
+      if (identity != null) ...[
+        identity.userId,
+        '%${_escaped(search)}%',
+        ?folder,
+      ],
+    ];
     const remaining = '''COALESCE(is_deleted,0)=0 AND status IN (0,2,4,5)
       AND typeof(start_time)='integer' AND typeof(end_time)='integer'
       AND start_time>0 AND end_time>start_time
@@ -398,8 +438,10 @@ class PlanCleanupRepository {
     final rows = await tx.rawQuery(
       '''SELECT MIN(boundary) n FROM (
       SELECT start_time boundary FROM todo_plan_blocks WHERE $remaining AND start_time>?$todoFilter
-      UNION ALL SELECT end_time boundary FROM todo_plan_blocks WHERE $remaining AND end_time>?$todoFilter)''',
-      [ms, ?todoId, ms, ?todoId],
+      $completedFilter
+      UNION ALL SELECT end_time boundary FROM todo_plan_blocks WHERE $remaining AND end_time>?$todoFilter
+      $completedFilter)''',
+      [ms, ...scopeArgs, ms, ...scopeArgs],
     );
     final value = rows.single['n'];
     return value is int ? DateTime.fromMillisecondsSinceEpoch(value) : null;

@@ -214,6 +214,7 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
   PlanTodoIdentity? _identity;
   PlanCleanupPage? _page;
   PlanCleanupSnapshot? _snapshot;
+  DateTime? _overviewBoundary;
   List<PlanCleanupTodo> _todos = [];
   List<PlanCleanupItem> _items = [];
   PlanCleanupRequest? _pending, _saved;
@@ -437,9 +438,12 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
               ? [..._todos, ...page.rows]
               : page.rows;
           _page = page;
+          _overviewBoundary = more && !page.restarted
+              ? _earlierBoundary(_overviewBoundary, page.nextBoundary)
+              : page.nextBoundary;
           _loading = false;
         });
-        _arm(page.nextBoundary);
+        _arm(_overviewBoundary);
       }
     } catch (error) {
       if (!mounted || sequence != _sequence) return;
@@ -458,11 +462,21 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
           _pending = null;
           _snapshot = null;
           _page = null;
+          _overviewBoundary = null;
           _items = [];
           _todos = [];
         }
       });
+      if (preservePage) {
+        _arm(_detail ? _snapshot?.nextBoundary : _overviewBoundary);
+      }
     }
+  }
+
+  DateTime? _earlierBoundary(DateTime? first, DateTime? second) {
+    if (first == null) return second;
+    if (second == null) return first;
+    return first.isBefore(second) ? first : second;
   }
 
   void _arm(DateTime? boundary) {
