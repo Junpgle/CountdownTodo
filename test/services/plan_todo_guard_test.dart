@@ -5,6 +5,7 @@ import 'package:countdown_todo/services/plan_conflict_review_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:countdown_todo/models.dart';
+import 'package:countdown_todo/models/plan_availability.dart';
 import 'package:countdown_todo/services/plan_todo_guard.dart';
 import 'package:countdown_todo/services/pomodoro_service.dart';
 import 'package:countdown_todo/storage_service.dart';
@@ -47,6 +48,7 @@ void main() {
           context,
           context.arrangements,
           start,
+          start.add(const Duration(hours: 1)),
           now,
         ),
       ),
@@ -59,8 +61,14 @@ void main() {
       PlanAvailabilityFixture.username,
       draft('local-draft'),
       sync: false,
-      beforeWrite: (txn) =>
-          PlanTodoGuard.validateBacklog(txn, context, allowed, start, now),
+      beforeWrite: (txn) => PlanTodoGuard.validateBacklog(
+        txn,
+        context,
+        allowed,
+        start,
+        start.add(const Duration(hours: 1)),
+        now,
+      ),
     );
     expect((await f.db.query('todo_plan_blocks')).length, 2);
     expect((await f.db.query('op_logs')).length, before.length + 1);
@@ -71,8 +79,51 @@ void main() {
       whereArgs: ['other-device'],
     );
     await expectLater(
-      PlanTodoGuard.validateBacklog(f.db, context, allowed, start, now),
+      PlanTodoGuard.validateBacklog(
+        f.db,
+        context,
+        allowed,
+        start,
+        start.add(const Duration(hours: 1)),
+        now,
+      ),
       throwsA(anything),
+    );
+  });
+  test('backlog plans cannot end after the todo deadline', () async {
+    final deadline = DateTime(2026, 10, 8, 8, 30);
+    await f.db.update('todos', {
+      'due_date': deadline.millisecondsSinceEpoch,
+      'is_all_day': 0,
+    });
+    final context = PlanBacklogSaveContext(
+      identity,
+      'todo-target',
+      await PlanTodoGuard.arrangements(f.db, 'todo-target', now),
+    );
+
+    await expectLater(
+      PlanTodoGuard.validateBacklog(
+        f.db,
+        context,
+        context.arrangements,
+        DateTime(2026, 10, 8, 8),
+        DateTime(2026, 10, 8, 9),
+        now,
+      ),
+      throwsA(isA<PlanAvailabilityException>()),
+    );
+
+    await expectLater(
+      PlanTodoGuard.validateBacklog(
+        f.db,
+        context,
+        context.arrangements,
+        DateTime(2026, 10, 8, 7, 30),
+        deadline,
+        now,
+      ),
+      completes,
     );
   });
   for (final field in ['is_completed', 'is_deleted', 'has_conflict']) {
@@ -80,7 +131,14 @@ void main() {
       final context = PlanBacklogSaveContext(identity, 'todo-target', '[]');
       await f.db.update('todos', {field: 1});
       await expectLater(
-        PlanTodoGuard.validateBacklog(f.db, context, '[]', start, now),
+        PlanTodoGuard.validateBacklog(
+          f.db,
+          context,
+          '[]',
+          start,
+          start.add(const Duration(hours: 1)),
+          now,
+        ),
         throwsA(anything),
       );
     });

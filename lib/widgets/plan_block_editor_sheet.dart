@@ -513,6 +513,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
         _backlog!,
         _approvedArrangements ?? _backlog!.arrangements,
         DateTime.fromMillisecondsSinceEpoch(draft.startTime),
+        DateTime.fromMillisecondsSinceEpoch(draft.endTime),
         widget.clock?.call() ?? DateTime.now(),
       );
     }

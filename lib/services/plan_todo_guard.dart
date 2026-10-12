@@ -164,6 +164,7 @@ class PlanTodoGuard {
     PlanBacklogSaveContext context,
     String expected,
     DateTime start,
+    DateTime end,
     DateTime now,
   ) async {
     await validate(db, context.identity, context.todoId);
@@ -172,6 +173,10 @@ class PlanTodoGuard {
     if (day.isBefore(DateTime(now.year, now.month, now.day)) ||
         (todo.dueDate != null && todo.dueDate!.isBefore(day))) {
       throw const PlanAvailabilityException('目标日期或待办截止已变化，请查看待办');
+    }
+    final deadline = todo.effectiveDueAt;
+    if (deadline != null && end.isAfter(deadline)) {
+      throw const PlanAvailabilityException('规划结束时间晚于待办截止，请调整时段');
     }
     if (await arrangements(db, context.todoId, now) != expected) {
       throw const PlanAvailabilityException('已有安排再次变化，请重试保存并确认追加');
