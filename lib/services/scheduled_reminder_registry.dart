@@ -66,8 +66,8 @@ abstract final class ScheduledReminderRegistry {
         .where((reminder) {
           final triggerValue = reminder['triggerAtMs'];
           final startValue = reminder['startAtMs'] ?? reminder['courseStartMs'];
-          if (_isOutOfRangeTimestamp(triggerValue) ||
-              _isOutOfRangeTimestamp(startValue)) {
+          if (_isInvalidTimestamp(triggerValue) ||
+              _isInvalidTimestamp(startValue)) {
             return false;
           }
           final triggerAt = _dateTimeOf(triggerValue);
@@ -125,32 +125,36 @@ abstract final class ScheduledReminderRegistry {
   }
 
   static DateTime? _dateTimeOf(dynamic value) {
-    if (_isOutOfRangeTimestamp(value)) return null;
-    int? milliseconds;
-    if (value is int) {
-      milliseconds = value;
-    } else if (value is num) {
-      milliseconds = value.toInt();
-    } else if (value is String) {
-      milliseconds = int.tryParse(value);
-    }
+    final milliseconds = timestampMilliseconds(value);
     return milliseconds == null
         ? null
         : DateTime.fromMillisecondsSinceEpoch(milliseconds);
   }
 
-  static bool _isOutOfRangeTimestamp(dynamic value) {
-    if (value is num) {
-      return !value.isFinite ||
+  static int? timestampMilliseconds(dynamic value) {
+    if (value == null) return null;
+    int? milliseconds;
+    if (value is int) {
+      milliseconds = value;
+    } else if (value is num) {
+      if (!value.isFinite ||
           value < -_maxDateTimeMilliseconds ||
-          value > _maxDateTimeMilliseconds;
+          value > _maxDateTimeMilliseconds) {
+        return null;
+      }
+      milliseconds = value.toInt();
+    } else if (value is String) {
+      milliseconds = int.tryParse(value);
     }
-    if (value is String) {
-      final milliseconds = int.tryParse(value);
-      return milliseconds != null &&
-          (milliseconds < -_maxDateTimeMilliseconds ||
-              milliseconds > _maxDateTimeMilliseconds);
+    if (milliseconds == null ||
+        milliseconds < -_maxDateTimeMilliseconds ||
+        milliseconds > _maxDateTimeMilliseconds) {
+      return null;
     }
-    return false;
+    return milliseconds;
+  }
+
+  static bool _isInvalidTimestamp(dynamic value) {
+    return value != null && timestampMilliseconds(value) == null;
   }
 }

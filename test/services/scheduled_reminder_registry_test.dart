@@ -106,4 +106,25 @@ void main() {
 
     expect(retained.map((reminder) => reminder['notifId']), [2, 3]);
   });
+  test('drops malformed timestamps while keeping valid and legacy reminders', () {
+    final now = DateTime(2026, 9, 7, 12);
+    final retained = ScheduledReminderRegistry.retainActive(
+      [
+        {'notifId': 1, 'triggerAtMs': 'not-a-time'},
+        {
+          'notifId': 2,
+          'triggerAtMs': now.add(const Duration(minutes: 10)).millisecondsSinceEpoch,
+        },
+        {
+          'notifId': 3,
+          'triggerAtMs': now.add(const Duration(minutes: 10)).millisecondsSinceEpoch,
+          'startAtMs': <String, Object?>{'bad': 'value'},
+        },
+        {'notifId': 4},
+      ],
+      now: now,
+    );
+
+    expect(retained.map((reminder) => reminder['notifId']), [2, 4]);
+  });
 }
