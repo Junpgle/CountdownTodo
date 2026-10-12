@@ -563,6 +563,12 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
     }
   }
 
+  Future<void> _manualRefresh() => _load(
+    overviewLimit: !_detail && _page != null ? _todos.length : null,
+    detailLimit: _detail && _snapshot != null ? _items.length : null,
+    preserveOverviewOnFailure: true,
+  );
+
   DateTime? _earlierBoundary(DateTime? first, DateTime? second) {
     if (first == null) return second;
     if (second == null) return first;
@@ -1218,7 +1224,7 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
                 tooltip: '重新核对',
                 onPressed: _loading || _working
                     ? null
-                    : () => _load(preserveOverviewOnFailure: true),
+                    : _manualRefresh,
                 icon: const Icon(Icons.refresh),
               ),
           ],
@@ -1236,7 +1242,7 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
                   TextButton(
                     onPressed: _working
                         ? null
-                        : () => _load(preserveOverviewOnFailure: true),
+                        : _manualRefresh,
                     child: const Text('重新核对'),
                   ),
                 ],

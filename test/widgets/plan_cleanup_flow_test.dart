@@ -847,6 +847,22 @@ void main() {
     expect(find.textContaining('已保留当前已加载内容'), findsOneWidget);
     expect(t.takeException(), isNull);
   });
+  testWidgets('manual overview refresh keeps already loaded pages', (t) async {
+    for (var i = 0; i < 51; i++) {
+      final id = 'manual-pages-$i';
+      await f.todo(id, '手动核对待办$i', done: true);
+      await block('manual-pages-plan-$i', todo: id, minute: i);
+    }
+    await open(t, todo: null);
+    await tap(t, find.text('加载更多待办'));
+    expect(find.textContaining('已加载51／总计51'), findsOneWidget);
+
+    await tap(t, find.byTooltip('重新核对'));
+
+    expect(find.textContaining('已加载51／总计51'), findsOneWidget);
+    expect(find.text('手动核对待办50'), findsOneWidget);
+    expect(t.takeException(), isNull);
+  });
   testWidgets('overview search cancels the previous boundary timer', (t) async {
     final testNow = now;
     repo = _CleanupRepo(f.db, clock: () => testNow);
