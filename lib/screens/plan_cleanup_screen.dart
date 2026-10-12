@@ -16,6 +16,13 @@ import '../widgets/todo_section_widget.dart';
 import 'pomodoro_screen.dart';
 import 'settings/calendar_sync_page.dart';
 
+bool _affectsPlanCleanup(DataRefreshSignal signal) =>
+    signal.affects(DataRefreshDomain.todos) ||
+    signal.affects(DataRefreshDomain.todoGroups) ||
+    signal.affects(DataRefreshDomain.planBlocks) ||
+    signal.affects(DataRefreshDomain.pomodoro) ||
+    signal.affects(DataRefreshDomain.timeLogs);
+
 /// The editor's current checkbox is not a persisted completion. The entry
 /// checks SQL independently and never treats a failed read as zero plans.
 class PlanCleanupEntry extends StatefulWidget {
@@ -46,7 +53,7 @@ class _PlanCleanupEntryState extends State<PlanCleanupEntry>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    StorageService.scopedDataRefreshNotifier.addListener(_refresh);
+    StorageService.scopedDataRefreshNotifier.addListener(_onScopedDataRefresh);
     _load();
   }
 
@@ -73,6 +80,13 @@ class _PlanCleanupEntryState extends State<PlanCleanupEntry>
 
   void _refresh() {
     if (mounted && !_opening && _foreground) _load();
+  }
+
+  void _onScopedDataRefresh() {
+    if (!_affectsPlanCleanup(StorageService.scopedDataRefreshNotifier.value)) {
+      return;
+    }
+    _refresh();
   }
 
   Future<void> _load() async {
@@ -114,7 +128,9 @@ class _PlanCleanupEntryState extends State<PlanCleanupEntry>
     _sequence++;
     _boundary?.cancel();
     WidgetsBinding.instance.removeObserver(this);
-    StorageService.scopedDataRefreshNotifier.removeListener(_refresh);
+    StorageService.scopedDataRefreshNotifier.removeListener(
+      _onScopedDataRefresh,
+    );
     super.dispose();
   }
 
@@ -216,7 +232,7 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
     _repository =
         widget.repository ?? PlanCleanupRepository(clock: widget.clock);
     WidgetsBinding.instance.addObserver(this);
-    StorageService.scopedDataRefreshNotifier.addListener(_refresh);
+    StorageService.scopedDataRefreshNotifier.addListener(_onScopedDataRefresh);
     _focus = PomodoroService.onRunStateChanged.listen((_) => _refresh());
     _load(initial: true);
   }
@@ -227,7 +243,9 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
     _boundary?.cancel();
     _debounce?.cancel();
     _focus?.cancel();
-    StorageService.scopedDataRefreshNotifier.removeListener(_refresh);
+    StorageService.scopedDataRefreshNotifier.removeListener(
+      _onScopedDataRefresh,
+    );
     WidgetsBinding.instance.removeObserver(this);
     _search.dispose();
     super.dispose();
@@ -256,6 +274,13 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
       return;
     }
     unawaited(_load());
+  }
+
+  void _onScopedDataRefresh() {
+    if (!_affectsPlanCleanup(StorageService.scopedDataRefreshNotifier.value)) {
+      return;
+    }
+    _refresh();
   }
 
   Future<void> _checkPendingIdentity(PlanCleanupRequest pending) async {

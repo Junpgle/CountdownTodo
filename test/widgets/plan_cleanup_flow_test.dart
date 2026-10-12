@@ -28,6 +28,7 @@ class _CleanupRepo extends PlanCleanupRepository {
   bool malformedId = false;
   Completer<void>? detailReadGate;
   int calls = 0;
+  int detailReads = 0;
   @override
   Future<PlanCleanupPage> read(
     String username, {
@@ -48,6 +49,7 @@ class _CleanupRepo extends PlanCleanupRepository {
     String todoId, {
     PlanCleanupCursor? cursor,
   }) async {
+    detailReads++;
     final gate = detailReadGate;
     if (gate != null) {
       detailReadGate = null;
@@ -383,6 +385,18 @@ void main() {
     await t.pumpAndSettle();
     expect(find.text('已选0段 · 0分钟'), findsOneWidget);
     expect(find.textContaining('原有选择已清空'), findsOneWidget);
+    expect(t.takeException(), isNull);
+  });
+  testWidgets('unrelated data refresh preserves reviewed selection', (t) async {
+    await block('unrelated-refresh');
+    await open(t);
+    final readsBefore = repo.detailReads;
+
+    StorageService.triggerRefresh(const {DataRefreshDomain.finance});
+    await t.pumpAndSettle();
+
+    expect(repo.detailReads, readsBefore);
+    expect(find.text('已选1段 · 45分钟'), findsOneWidget);
     expect(t.takeException(), isNull);
   });
   testWidgets('refresh read failure preserves selection for retry', (t) async {
