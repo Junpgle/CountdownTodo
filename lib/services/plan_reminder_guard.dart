@@ -16,13 +16,20 @@ class PlanReminderGuard {
         r['type'] == 'plan_block' &&
         ScheduledReminderRegistry.sourceOf(r) ==
             ScheduledReminderSources.reminderSchedule;
+    String? planId(Map<String, dynamic> reminder) {
+      final id = reminder['planBlockId']?.toString().trim();
+      return id == null || id.isEmpty ? null : id;
+    }
+
     final ids = reminders
         .where(isPlan)
-        .map((r) => r['planBlockId']?.toString() ?? '')
-        .where((id) => id.isNotEmpty)
+        .map(planId)
+        .whereType<String>()
         .toSet()
         .toList();
-    if (ids.isEmpty) return reminders;
+    if (ids.isEmpty) {
+      return reminders.where((r) => !isPlan(r)).toList(growable: false);
+    }
     final prefs = await SharedPreferences.getInstance();
     await prefs.reload();
     final username = prefs.getString('current_login_user');
@@ -32,23 +39,26 @@ class PlanReminderGuard {
     final db =
         databaseOverride ??
         await DatabaseHelper.instance.databaseForUser(identity.username);
-    final excluded = <String>{};
+    final schedulable = <String>{};
     for (var start = 0; start < ids.length; start += 200) {
       final batch = ids.skip(start).take(200).toList();
       final rows = await db.query(
         'todo_plan_blocks',
         columns: ['uuid'],
         where:
-            'uuid IN (${List.filled(batch.length, '?').join(',')}) AND (COALESCE(is_deleted,0)<>0 OR status IS NULL OR status NOT IN (0,2,4))',
+            'uuid IN (${List.filled(batch.length, '?').join(',')}) AND '
+            'COALESCE(is_deleted,0)=0 AND status IN (0,2,4)',
         whereArgs: batch,
       );
-      excluded.addAll(rows.map((r) => r['uuid'] as String));
+      schedulable.addAll(rows.map((r) => r['uuid'] as String));
     }
     await identity.check();
     return reminders
-        .where(
-          (r) => !isPlan(r) || !excluded.contains(r['planBlockId']?.toString()),
-        )
-        .toList();
+        .where((r) {
+          if (!isPlan(r)) return true;
+          final id = planId(r);
+          return id != null && schedulable.contains(id);
+        })
+        .toList(growable: false);
   }
 }

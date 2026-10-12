@@ -167,6 +167,19 @@ void main() {
     ], databaseOverride: f.db);
     expect(reminders.map((r) => r['planBlockId']), ['planned', 'delayed', 'reminded']);
   });
+  test(
+    'malformed and unknown plan reminder ids are dropped without affecting other sources',
+    () async {
+      final reminders = await PlanReminderGuard.filterSchedulablePlanReminders([
+        {'type': 'plan_block', 'notifId': 33001},
+        {'type': 'plan_block', 'planBlockId': '   ', 'notifId': 33002},
+        {'type': 'plan_block', 'planBlockId': 'missing', 'notifId': 33003},
+        {'type': 'pomodoro', 'planBlockId': 'missing', 'notifId': 40001},
+        {'type': 'habit', 'planBlockId': 'missing', 'notifId': 42001},
+      ], databaseOverride: f.db);
+      expect(reminders.map((r) => r['notifId']), [40001, 42001]);
+    },
+  );
   test('reminder state updates still work for an active plan and write one oplog', () async {
     await block('a');
     final plan = TodoPlanBlock.fromJson((await f.db.query('todo_plan_blocks')).single);
