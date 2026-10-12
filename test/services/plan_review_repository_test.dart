@@ -96,6 +96,17 @@ void main() {
   });
   tearDown(() async => f.dispose());
 
+  test('rejects overlong calendar range across spring DST', () async {
+    await expectLater(
+      repo.read(
+        PlanAvailabilityFixture.username,
+        DateTime(2026, 2, 15),
+        DateTime(2026, 3, 20),
+      ),
+      throwsArgumentError,
+    );
+  });
+
   test('real plan budget excludes course and legacy mapped tasks', () async {
     await f.course('course', day, 800, 1000);
     await f.todo(

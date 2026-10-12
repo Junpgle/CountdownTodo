@@ -6,6 +6,7 @@ import 'package:sqflite/sqflite.dart';
 
 import 'database_helper.dart';
 import 'plan_todo_guard.dart';
+import '../utils/calendar_date_math.dart';
 
 enum PlanReviewFilter {
   plans,
@@ -160,7 +161,7 @@ class PlanReviewRepository {
         'PRAGMA table_info($table)',
       )).any((row) => row['name'] == 'has_conflict');
     }
-    if (!end.isAfter(start) || end.difference(start).inDays > 32) {
+    if (!end.isAfter(start) || CalendarDateMath.daysBetween(start, end) > 32) {
       throw ArgumentError('请选择有效的日、周或月范围');
     }
     return _ReviewSql(start, end, instant, flags, planId);
