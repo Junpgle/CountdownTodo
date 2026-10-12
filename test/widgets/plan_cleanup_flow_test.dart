@@ -400,6 +400,32 @@ void main() {
     expect(find.text('已选1段 · 45分钟'), findsOneWidget);
     expect(t.takeException(), isNull);
   });
+  testWidgets('unchanged detail fingerprint preserves reviewed selection', (
+    t,
+  ) async {
+    await block('unchanged-refresh');
+    await open(t);
+    final readsBefore = repo.detailReads;
+
+    StorageService.triggerRefresh(const {DataRefreshDomain.planBlocks});
+    await t.pumpAndSettle();
+
+    expect(repo.detailReads, readsBefore + 1);
+    expect(find.text('已选1段 · 45分钟'), findsOneWidget);
+    expect(t.takeException(), isNull);
+  });
+  testWidgets('folder refresh does not reread plan details', (t) async {
+    await block('folder-refresh');
+    await open(t);
+    final readsBefore = repo.detailReads;
+
+    StorageService.triggerRefresh(const {DataRefreshDomain.todoGroups});
+    await t.pumpAndSettle();
+
+    expect(repo.detailReads, readsBefore);
+    expect(find.text('已选1段 · 45分钟'), findsOneWidget);
+    expect(t.takeException(), isNull);
+  });
   testWidgets('focus updates refresh only the focused todo', (t) async {
     await block('focus-target');
     await open(t);
@@ -416,6 +442,12 @@ void main() {
     expect(repo.detailReads, readsBefore);
     expect(find.text('已选1段 · 45分钟'), findsOneWidget);
 
+    StorageService.triggerRefresh(const {DataRefreshDomain.pomodoro});
+    await t.pumpAndSettle();
+
+    expect(repo.detailReads, readsBefore + 1);
+    expect(find.text('已选1段 · 45分钟'), findsOneWidget);
+
     await PomodoroService.saveRunState(
       PomodoroRunState(
         phase: PomodoroPhase.focusing,
@@ -424,7 +456,7 @@ void main() {
     );
     await t.pumpAndSettle();
 
-    expect(repo.detailReads, readsBefore + 1);
+    expect(repo.detailReads, readsBefore + 2);
     expect(find.text('已选0段 · 0分钟'), findsOneWidget);
     expect(find.textContaining('专注'), findsWidgets);
 
@@ -433,7 +465,7 @@ void main() {
     );
     await t.pumpAndSettle();
 
-    expect(repo.detailReads, readsBefore + 2);
+    expect(repo.detailReads, readsBefore + 3);
     expect(find.text('已选0段 · 0分钟'), findsOneWidget);
     expect(t.takeException(), isNull);
   });

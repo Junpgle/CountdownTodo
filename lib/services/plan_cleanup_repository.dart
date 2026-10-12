@@ -157,8 +157,10 @@ class PlanCleanupRepository {
       focusReason = e.message;
     }
     await identity.check();
-    final run = await PlanTodoGuard.runState(identity);
-    return _CleanupSql(p, r, focusIds, focusReason, jsonEncode(run?.toJson()));
+    // Keep malformed persisted state as a visible read failure. The focused
+    // todo set above is the only run-state value needed for these fingerprints.
+    await PlanTodoGuard.runState(identity);
+    return _CleanupSql(p, r, focusIds, focusReason);
   }
 
   static String _escaped(String value) => value
@@ -216,7 +218,7 @@ class PlanCleanupRepository {
         folder,
         await tx.rawQuery('SELECT total_changes() AS n'),
         await tx.rawQuery('PRAGMA data_version'),
-        rules.run,
+        [rules.focusIds.toList()..sort(), rules.focusReason],
         boundary?.millisecondsSinceEpoch,
         total,
       ]);
@@ -414,7 +416,12 @@ class PlanCleanupRepository {
     final instant = now.millisecondsSinceEpoch;
     final sink = sha256.startChunkedConversion(digest);
     void add(Object? value) => sink.add(utf8.encode(jsonEncode(value)));
-    add([identity.username, identity.userId, rules.run]);
+    add([
+      identity.username,
+      identity.userId,
+      rules.focusIds.contains(todoId),
+      rules.focusReason,
+    ]);
     add(await PlanTodoGuard.projectedRows(tx, identity, todoId));
     final original = {
       for (final row in normalize?.rows ?? <Map<String, Object?>>[])
@@ -491,11 +498,10 @@ class _CleanupSql {
     this.recordConflict,
     this.focusIds,
     this.focusReason,
-    this.run,
   );
   final bool planConflict, recordConflict;
   final Set<String> focusIds;
-  final String focusReason, run;
+  final String focusReason;
   static const remaining =
       '''COALESCE(p.is_deleted,0)=0 AND p.status IN (0,2,4,5)
     AND typeof(p.start_time)='integer' AND typeof(p.end_time)='integer'

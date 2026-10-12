@@ -16,9 +16,12 @@ import '../widgets/todo_section_widget.dart';
 import 'pomodoro_screen.dart';
 import 'settings/calendar_sync_page.dart';
 
-bool _affectsPlanCleanup(DataRefreshSignal signal) =>
+bool _affectsPlanCleanup(
+  DataRefreshSignal signal, {
+  bool includeTodoGroups = false,
+}) =>
     signal.affects(DataRefreshDomain.todos) ||
-    signal.affects(DataRefreshDomain.todoGroups) ||
+    (includeTodoGroups && signal.affects(DataRefreshDomain.todoGroups)) ||
     signal.affects(DataRefreshDomain.planBlocks) ||
     signal.affects(DataRefreshDomain.pomodoro) ||
     signal.affects(DataRefreshDomain.timeLogs);
@@ -83,7 +86,9 @@ class _PlanCleanupEntryState extends State<PlanCleanupEntry>
   }
 
   void _onScopedDataRefresh() {
-    if (!_affectsPlanCleanup(StorageService.scopedDataRefreshNotifier.value)) {
+    if (!_affectsPlanCleanup(
+      StorageService.scopedDataRefreshNotifier.value,
+    )) {
       return;
     }
     _refresh();
@@ -263,7 +268,7 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
     }
   }
 
-  void _refresh() {
+  void _refresh({bool preserveSelectionWhenUnchanged = false}) {
     if (!mounted || !_foreground || _working || _opening || _saved != null) {
       return;
     }
@@ -274,14 +279,19 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
       }
       return;
     }
-    unawaited(_load());
+    unawaited(
+      _load(preserveSelectionWhenUnchanged: preserveSelectionWhenUnchanged),
+    );
   }
 
   void _onScopedDataRefresh() {
-    if (!_affectsPlanCleanup(StorageService.scopedDataRefreshNotifier.value)) {
+    if (!_affectsPlanCleanup(
+      StorageService.scopedDataRefreshNotifier.value,
+      includeTodoGroups: !_detail,
+    )) {
       return;
     }
-    _refresh();
+    _refresh(preserveSelectionWhenUnchanged: true);
   }
 
   void _onFocusRunStateChanged(PomodoroRunState? state) {
@@ -332,7 +342,11 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
       ? error.message.toString()
       : '处理失败，请重试或重新核对';
 
-  Future<void> _load({bool more = false, bool initial = false}) async {
+  Future<void> _load({
+    bool more = false,
+    bool initial = false,
+    bool preserveSelectionWhenUnchanged = false,
+  }) async {
     if (_working || _saved != null) return;
     final sequence = ++_sequence;
     final hadPage = _detail ? _snapshot != null : _page != null;
@@ -356,12 +370,23 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
         _identity ??= snapshot.identity;
         await _identity!.check();
         if (!mounted || sequence != _sequence) return;
+        final previousSnapshot = _snapshot;
+        final unchanged =
+            preserveSelectionWhenUnchanged &&
+            !more &&
+            previousSnapshot != null &&
+            !snapshot.restarted &&
+            snapshot.fingerprint == previousSnapshot.fingerprint;
         setState(() {
           final append =
               more &&
               !snapshot.restarted &&
-              snapshot.fingerprint == _snapshot?.fingerprint;
-          _items = append ? [..._items, ...snapshot.rows] : snapshot.rows;
+              snapshot.fingerprint == previousSnapshot?.fingerprint;
+          _items = append
+              ? [..._items, ...snapshot.rows]
+              : unchanged
+              ? _items
+              : snapshot.rows;
           _snapshot = PlanCleanupSnapshot(
             identity: snapshot.identity,
             todo: snapshot.todo,
@@ -372,14 +397,14 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
             blockedReason: snapshot.blockedReason,
             nextBoundary: snapshot.nextBoundary,
             restarted: snapshot.restarted,
-            next: snapshot.next,
+            next: unchanged ? previousSnapshot.next : snapshot.next,
           );
-          if (!append && (hadSelection || hadPending)) {
+          if (!append && !unchanged && (hadSelection || hadPending)) {
             _selectionNotice = snapshot.restarted
                 ? '规划列表已变化，已清空原选择，请重新选择'
                 : '已重新核对，原有选择已清空，请重新选择';
           }
-          if (!append) _selected.clear();
+          if (!append && !unchanged) _selected.clear();
           // Only the first explicitly opened page defaults to selection. New
           // pages and refreshes never silently enlarge the reviewed selection.
           if (initial && snapshot.blockedReason.isEmpty) {
@@ -388,7 +413,7 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
             );
           }
           if (snapshot.restarted) _error = '数据已变化，已重新加载；请重新选择规划';
-          _pending = null;
+          if (!unchanged) _pending = null;
           _loading = false;
         });
         _arm(snapshot.nextBoundary);
