@@ -20,6 +20,26 @@ void main() {
     expect(fall.endExclusive, DateTime(2026, 11, 2));
   });
 
+  test(
+    'inclusive local date iteration neither skips nor repeats DST dates',
+    () {
+      expect(
+        CalendarDateMath.datesBetweenInclusive(
+          DateTime(2026, 3, 7),
+          DateTime(2026, 3, 9),
+        ),
+        [DateTime(2026, 3, 7), DateTime(2026, 3, 8), DateTime(2026, 3, 9)],
+      );
+      expect(
+        CalendarDateMath.datesBetweenInclusive(
+          DateTime(2026, 10, 31),
+          DateTime(2026, 11, 2),
+        ),
+        [DateTime(2026, 10, 31), DateTime(2026, 11, 1), DateTime(2026, 11, 2)],
+      );
+    },
+  );
+
   test('date-axis offsets keep equal local times aligned across DST', () {
     expect(
       CalendarDateMath.dayOffset(

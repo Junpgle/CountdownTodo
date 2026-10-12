@@ -15,6 +15,18 @@ abstract final class CalendarDateMath {
     return (start: start, endExclusive: addDays(start, 7));
   }
 
+  static Iterable<DateTime> datesBetweenInclusive(
+    DateTime start,
+    DateTime end,
+  ) sync* {
+    var date = dateOnly(start);
+    final last = dateOnly(end);
+    while (!date.isAfter(last)) {
+      yield date;
+      date = addDays(date, 1);
+    }
+  }
+
   static DateTime addDays(DateTime value, int days) => DateTime(
         value.year,
         value.month,

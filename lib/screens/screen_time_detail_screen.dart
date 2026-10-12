@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart' hide TextDirection;
 
 import '../storage_service.dart';
+import '../utils/calendar_date_math.dart';
 import '../utils/page_transitions.dart';
 import '../widgets/floating_bottom_bar.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
@@ -352,11 +353,10 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
   }
 
   static DateTime _dateOnly(DateTime date) =>
-      DateTime(date.year, date.month, date.day);
+      CalendarDateMath.dateOnly(date);
 
   static DateTime _startOfWeek(DateTime date) {
-    final normalized = _dateOnly(date);
-    return normalized.subtract(Duration(days: normalized.weekday - 1));
+    return CalendarDateMath.weekRange(date).start;
   }
 
   static DateTime _periodStart(DateTime date, ScreenTimeRange range) {
@@ -376,7 +376,7 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
       case ScreenTimeRange.day:
         return periodStart;
       case ScreenTimeRange.week:
-        return periodStart.add(const Duration(days: 6));
+        return CalendarDateMath.addDays(periodStart, 6);
       case ScreenTimeRange.month:
         return DateTime(periodStart.year, periodStart.month + 1, 0);
     }
@@ -386,9 +386,9 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
       DateTime periodStart, ScreenTimeRange range) {
     switch (range) {
       case ScreenTimeRange.day:
-        return periodStart.subtract(const Duration(days: 1));
+        return CalendarDateMath.addDays(periodStart, -1);
       case ScreenTimeRange.week:
-        return periodStart.subtract(const Duration(days: 7));
+        return CalendarDateMath.addDays(periodStart, -7);
       case ScreenTimeRange.month:
         return DateTime(periodStart.year, periodStart.month - 1);
     }
@@ -398,9 +398,9 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
       DateTime periodStart, ScreenTimeRange range, int offset) {
     switch (range) {
       case ScreenTimeRange.day:
-        return periodStart.add(Duration(days: offset));
+        return CalendarDateMath.addDays(periodStart, offset);
       case ScreenTimeRange.week:
-        return periodStart.add(Duration(days: offset * 7));
+        return CalendarDateMath.addDays(periodStart, offset * 7);
       case ScreenTimeRange.month:
         return DateTime(periodStart.year, periodStart.month + offset);
     }
@@ -413,11 +413,7 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
       DateTime periodStart, ScreenTimeRange range, DateTime today) sync* {
     final end = _periodEnd(periodStart, range);
     final cappedEnd = end.isAfter(today) ? today : end;
-    for (DateTime d = periodStart;
-        !d.isAfter(cappedEnd);
-        d = d.add(const Duration(days: 1))) {
-      yield d;
-    }
+    yield* CalendarDateMath.datesBetweenInclusive(periodStart, cappedEnd);
   }
 
   static String _periodLabel(
