@@ -10,12 +10,14 @@ class HistoricalCountdownsScreen extends StatefulWidget {
   final String username;
   final Future<List<CountdownItem>> Function()? loadCountdowns;
   final Future<void> Function(CountdownItem)? deleteCountdown;
+  final DateTime Function()? now;
 
   const HistoricalCountdownsScreen({
     super.key,
     required this.username,
     this.loadCountdowns,
     this.deleteCountdown,
+    this.now,
   });
 
   @override
@@ -32,6 +34,11 @@ class _HistoricalCountdownsScreenState
   bool _oldestFirst = false;
   String? _deletingId;
   int _loadGeneration = 0;
+
+  DateTime _now() => widget.now?.call() ?? DateTime.now();
+
+  DateTime _calendarDate(DateTime value) =>
+      DateTime.utc(value.year, value.month, value.day);
 
   @override
   void initState() {
@@ -53,13 +60,13 @@ class _HistoricalCountdownsScreenState
       final items = await (widget.loadCountdowns?.call() ??
           StorageService.getCountdowns(widget.username));
       if (!mounted || generation != _loadGeneration) return;
-      final now = DateTime.now();
+      final today = _calendarDate(_now());
       setState(() {
-        // Retain the existing history boundary; this page only changes presentation.
+        // Countdown targets are calendar dates, so avoid elapsed-hour math
+        // around daylight-saving transitions.
         _history = items
             .where((item) =>
-                !item.isDeleted &&
-                item.targetDate.difference(now).inDays + 1 < 0)
+                !item.isDeleted && _calendarDate(item.targetDate).isBefore(today))
             .toList()
           ..sort((a, b) => b.targetDate.compareTo(a.targetDate));
         _isLoading = false;
@@ -202,7 +209,9 @@ class _HistoricalCountdownsScreenState
   Widget _buildCard(CountdownItem item) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final days = (item.targetDate.difference(DateTime.now()).inDays + 1).abs();
+    final today = _calendarDate(_now());
+    final targetDate = _calendarDate(item.targetDate);
+    final days = today.difference(targetDate).inDays;
     final busy = _deletingId == item.id;
     return ManagementCard(
       key: ValueKey(item.id),

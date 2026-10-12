@@ -201,6 +201,24 @@ void main() {
     expect(find.text('第一次独立完成项目'), findsNothing);
   });
 
+  testWidgets('倒计时历史按日历日判断夏令时切换边界', (tester) async {
+    await pumpManagementPage(
+        tester,
+        HistoricalCountdownsScreen(
+            username: 'ui-test',
+            now: () => DateTime.utc(2026, 3, 9, 4, 30),
+            loadCountdowns: () async => [
+                  CountdownItem(
+                      id: 'dst-boundary',
+                      title: '夏令时切换前到期',
+                      targetDate: DateTime.utc(2026, 3, 8, 5))
+                ]));
+
+    expect(find.text('共 1 段记录'), findsOneWidget);
+    expect(find.text('夏令时切换前到期'), findsOneWidget);
+    expect(find.text('1 天前结束'), findsOneWidget);
+  });
+
   testWidgets('倒计时删除取消与确认只调用一次', (tester) async {
     var calls = 0;
     final items = historyCountdowns();
