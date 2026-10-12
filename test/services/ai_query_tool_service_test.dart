@@ -352,6 +352,24 @@ void main() {
     expect((await service.execute(query('delete_finance', {})))['ok'], false);
   });
 
+  test('日期范围上限按日历日计算并拒绝跨夏令时超限范围', () async {
+    final start = DateTime.utc(2020, 1, 1);
+    final end = DateTime.utc(2026, 7, 29);
+    expect(end.difference(start).inDays, 2401);
+
+    final result = await service.execute(
+      query('query_finance', {
+        'view': 'summary',
+        'start_date': '2020-01-01',
+        'end_date_exclusive': '2026-07-29',
+      }),
+    );
+
+    expect(result['ok'], false);
+    expect(result['error'], contains('最多2400天'));
+    expect(requestedRanges, isEmpty);
+  });
+
   test('待办按日期和完成状态查询，保留无日期查询，排除删除记录', () async {
     rows = [
       {
