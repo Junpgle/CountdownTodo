@@ -401,7 +401,7 @@ void main() {
     await tap(t, key('cleanup-select-p-51'));
     expect(find.text('一次最多选择50段'), findsOneWidget);
   });
-  testWidgets('search disables stale overview results while filtering', (
+  testWidgets('search hides stale overview results while filtering', (
     t,
   ) async {
     await f.todo('filter-old', '筛选前待办', done: true);
@@ -411,11 +411,8 @@ void main() {
     await t.enterText(key('cleanup-search'), '不存在的待办');
     await t.pump();
 
-    expect(find.text('筛选前待办'), findsOneWidget);
-    expect(
-      t.widget<InkWell>(key('cleanup-todo-filter-old')).onTap,
-      isNull,
-    );
+    expect(find.text('筛选前待办'), findsNothing);
+    expect(key('cleanup-todo-filter-old'), findsNothing);
     expect(find.byType(LinearProgressIndicator), findsOneWidget);
 
     await t.pump(const Duration(milliseconds: 300));
