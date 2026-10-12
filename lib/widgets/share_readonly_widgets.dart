@@ -8,12 +8,14 @@ class ShareTodoSection extends StatefulWidget {
   final List<TodoItem> todos;
   final List<TodoGroup> todoGroups;
   final bool isLight;
+  final DateTime Function()? clock;
 
   const ShareTodoSection({
     super.key,
     required this.todos,
     required this.todoGroups,
     required this.isLight,
+    this.clock,
   });
 
   @override
@@ -52,7 +54,7 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
     final bool useDarkUI = isDarkTheme;
     final colorScheme = Theme.of(context).colorScheme;
 
-    final DateTime now = DateTime.now();
+    final DateTime now = widget.clock?.call() ?? DateTime.now();
     final DateTime today = DateTime(now.year, now.month, now.day);
 
     final displayItems = _buildSortedDisplayItems(now, today);
@@ -787,7 +789,7 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
   Widget _buildTodoCard(BuildContext context, TodoItem todo,
       {bool isOverdue = false, bool isFuture = false}) {
     final colorScheme = Theme.of(context).colorScheme;
-    final now = DateTime.now();
+    final now = widget.clock?.call() ?? DateTime.now();
     final DateTime today = DateTime(now.year, now.month, now.day);
 
     // 进度
@@ -835,7 +837,7 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
         badgeColor = Colors.redAccent.shade200;
         badgeBg = Colors.redAccent.withValues(alpha: 0.12);
       } else if (isFuture) {
-        final days = d.difference(todayDate).inDays;
+        final days = CalendarDateMath.daysBetween(todayDate, d);
         badge = "$days天后";
         badgeColor = colorScheme.secondary;
         badgeBg = colorScheme.secondaryContainer.withValues(alpha: 0.5);

@@ -4,7 +4,9 @@ import 'package:countdown_todo/models.dart';
 import 'package:countdown_todo/screens/historical_countdowns_screen.dart';
 import 'package:countdown_todo/screens/historical_todos_screen.dart';
 import 'package:countdown_todo/screens/team_message_center_screen.dart';
+import 'package:countdown_todo/utils/time_utils.dart';
 import 'package:countdown_todo/widgets/countdown_section_widget.dart';
+import 'package:countdown_todo/widgets/share_readonly_widgets.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -218,6 +220,43 @@ void main() {
     expect(find.text('共 1 段记录'), findsOneWidget);
     expect(find.text('夏令时切换前到期'), findsOneWidget);
     expect(find.text('1 天前结束'), findsOneWidget);
+  });
+
+  test('服务端相对时间按本地日历日计算夏令时切换后的明天', () {
+    final now = DateTime(2026, 3, 8, 12);
+    final tomorrow = DateTime(2026, 3, 9, 9).toUtc().millisecondsSinceEpoch;
+
+    expect(
+      AppTimeFormats.relativeFromServerTimestamp(tomorrow, now: now),
+      '明天 09:00',
+    );
+  });
+
+  testWidgets('分享待办的明天标签在夏令时切换后保持正确', (tester) async {
+    final now = DateTime(2026, 3, 8, 12);
+    final todo = TodoItem(
+      id: 'share-tomorrow',
+      title: '明日任务',
+      createdDate: now.toUtc().millisecondsSinceEpoch,
+      dueDate: DateTime(2026, 3, 9, 9),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ShareTodoSection(
+            todos: [todo],
+            todoGroups: const [],
+            isLight: true,
+            clock: () => now,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('1天后'), findsOneWidget);
+    expect(find.text('0天后'), findsNothing);
   });
 
   testWidgets('主页重要日按日期隐藏昨天到期记录', (tester) async {
