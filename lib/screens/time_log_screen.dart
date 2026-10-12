@@ -11,6 +11,7 @@ import '../services/ai_todo_chat_launcher.dart';
 import '../services/ai_todo_action_executor.dart';
 import '../utils/app_color_utils.dart';
 import '../utils/app_dialogs.dart';
+import '../utils/calendar_date_math.dart';
 import '../utils/page_transitions.dart';
 import '../utils/todo_recurrence_picker.dart';
 import '../utils/theme_color_tokens.dart';
@@ -68,12 +69,12 @@ Color hexColor(String hex, {double opacity = 1.0}) {
   );
 }
 
-DateTime _dayStart(DateTime d) => DateTime(d.year, d.month, d.day);
+DateTime _dayStart(DateTime d) => CalendarDateMath.dateOnly(d);
 
 List<DateTime> _weekDays([DateTime? now]) {
   final n = now ?? DateTime.now();
-  final mon = _dayStart(n.subtract(Duration(days: n.weekday - 1)));
-  return List.generate(7, (i) => mon.add(Duration(days: i)));
+  final monday = CalendarDateMath.weekRange(n).start;
+  return List.generate(7, (i) => CalendarDateMath.addDays(monday, i));
 }
 
 // ══════════════════════════════════════════════════════════
@@ -222,8 +223,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
   @override
   void initState() {
     super.initState();
-    _weekStart = _dayStart(DateTime.now())
-        .subtract(Duration(days: DateTime.now().weekday - 1));
+    _weekStart = CalendarDateMath.weekRange(DateTime.now()).start;
     StorageService.scopedDataRefreshNotifier.addListener(_onScopedDataRefresh);
     _loadData();
 
@@ -373,16 +373,16 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
 
   Widget _buildTitle() {
     if (_view == _ViewMode.week) {
-      final we = _weekStart.add(const Duration(days: 6));
+      final we = CalendarDateMath.addDays(_weekStart, 6);
       return Row(mainAxisSize: MainAxisSize.min, children: [
         _buildTitleChevron(
             Icons.chevron_left,
-            () => setState(() =>
-                _weekStart = _weekStart.subtract(const Duration(days: 7)))),
+            () => setState(
+                () => _weekStart = CalendarDateMath.addDays(_weekStart, -7))),
         const SizedBox(width: 4),
         GestureDetector(
-          onTap: () => setState(() => _weekStart = _dayStart(DateTime.now())
-              .subtract(Duration(days: DateTime.now().weekday - 1))),
+          onTap: () => setState(() =>
+              _weekStart = CalendarDateMath.weekRange(DateTime.now()).start),
           child: Text(
               '${AppTimeFormats.monthDaySlash(_weekStart)} - ${AppTimeFormats.monthDaySlash(we)}',
               style:
@@ -392,30 +392,41 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
         _buildTitleChevron(
             Icons.chevron_right,
             () => setState(
-                () => _weekStart = _weekStart.add(const Duration(days: 7)))),
+                () =>
+                    _weekStart = CalendarDateMath.addDays(_weekStart, 7))),
       ]);
     }
     return Row(mainAxisSize: MainAxisSize.min, children: [
       _buildTitleChevron(
           Icons.chevron_left,
-          () => setState(() =>
-              _focusedDate = _focusedDate.subtract(const Duration(days: 1)))),
+          () => setState(() => _focusedDate = CalendarDateMath.addDays(
+                CalendarDateMath.dateOnly(_focusedDate),
+                -1,
+              ))),
       GestureDetector(
         onTap: () async {
           final p = await showAppDatePicker(
               context: context,
               initialDate: _focusedDate,
               firstDate: DateTime(2020),
-              lastDate: DateTime.now().add(const Duration(days: 1)));
+              lastDate: CalendarDateMath.addDays(
+                CalendarDateMath.dateOnly(DateTime.now()),
+                1,
+              ));
           if (p != null) setState(() => _focusedDate = p);
         },
         child: Text(AppTimeFormats.monthDayCn(_focusedDate),
             style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
       ),
       _buildTitleChevron(
-          Icons.chevron_right,
-          () => setState(
-              () => _focusedDate = _focusedDate.add(const Duration(days: 1)))),
+        Icons.chevron_right,
+        () => setState(
+          () => _focusedDate = CalendarDateMath.addDays(
+            CalendarDateMath.dateOnly(_focusedDate),
+            1,
+          ),
+        ),
+      ),
     ]);
   }
 

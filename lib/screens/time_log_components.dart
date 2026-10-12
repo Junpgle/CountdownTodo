@@ -844,8 +844,7 @@ class _DayGridPainter extends CustomPainter {
     }
 
     final now = DateTime.now();
-    if (now.isAfter(gridStart) &&
-        now.isBefore(gridStart.add(const Duration(days: 1)))) {
+    if (DateUtils.isSameDay(now, gridStart)) {
       final h = now.hour;
       final x = (now.minute + now.second / 60) / 60 * size.width;
 
