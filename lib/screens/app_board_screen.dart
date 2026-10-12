@@ -6,6 +6,7 @@ import '../models.dart';
 import '../storage_service.dart';
 import '../services/course_service.dart';
 import '../services/power_save_mode_service.dart';
+import '../course_import/course_schedule_semantics.dart';
 import '../utils/android_energy_policy.dart';
 import '../utils/calendar_date_math.dart';
 import '../widgets/floating_glass_control.dart';
@@ -154,14 +155,11 @@ class _AppBoardScreenState extends State<AppBoardScreen>
 
   int _calculateCurrentWeek() {
     if (_semesterStart == null) return 1;
-    final start = DateTime(
-        _semesterStart!.year, _semesterStart!.month, _semesterStart!.day);
-    // Adjust to previous Monday
-    final startMonday = start.subtract(Duration(days: start.weekday - 1));
-    final today = DateTime(_now.year, _now.month, _now.day);
-    final diffDays = today.difference(startMonday).inDays;
-    if (diffDays < 0) return 1;
-    return (diffDays ~/ 7) + 1;
+    final week = CourseScheduleSemantics.weekIndexForDate(
+      _semesterStart!,
+      _now,
+    );
+    return week < 1 ? 1 : week;
   }
 
   Future<void> _loadData() async {
@@ -801,7 +799,6 @@ class TodayHourlyTimeline extends StatelessWidget {
   Widget build(BuildContext context) {
     final now = DateTime.now();
     final todayStart = DateTime(now.year, now.month, now.day);
-    final todayEnd = todayStart.add(const Duration(days: 1));
 
     // Filter today's items
     final todayCourses = courses.where((c) {
@@ -812,7 +809,7 @@ class TodayHourlyTimeline extends StatelessWidget {
 
     final todayTasks = todos.where((t) {
       if (t.dueDate == null) return false;
-      return t.dueDate!.isAfter(todayStart) && t.dueDate!.isBefore(todayEnd);
+      return DateUtils.isSameDay(t.dueDate, todayStart);
     }).toList();
 
     return ListView.builder(

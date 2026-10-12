@@ -4,6 +4,7 @@ import '../models.dart';
 import '../services/device_calendar_read_service.dart';
 import '../services/pomodoro_service.dart';
 import '../utils/app_color_utils.dart';
+import '../utils/calendar_date_math.dart';
 
 class CourseMonthView extends StatelessWidget {
   final DateTime selectedMonth;
@@ -60,18 +61,20 @@ class CourseMonthView extends StatelessWidget {
       final firstDayOfMonth =
           DateTime(selectedMonth.year, selectedMonth.month, 1);
       final daysBefore = firstDayOfMonth.weekday - 1;
-      startDate = firstDayOfMonth.subtract(Duration(days: daysBefore));
+      startDate = CalendarDateMath.addDays(firstDayOfMonth, -daysBefore);
       showDays = daysBefore +
           DateTime(selectedMonth.year, selectedMonth.month + 1, 0).day;
     } else {
-      startDate = currentWeekMonday ?? selectedMonth;
+      startDate = CalendarDateMath.dateOnly(currentWeekMonday ?? selectedMonth);
       showDays = 14;
     }
     final int rowCount = (showDays / 7).ceil();
     final List<List<DateTime>> weeks = List.generate(
         rowCount,
-        (w) =>
-            List.generate(7, (d) => startDate.add(Duration(days: w * 7 + d))));
+        (w) => List.generate(
+              7,
+              (d) => CalendarDateMath.addDays(startDate, w * 7 + d),
+            ));
 
     // 2. 预计算所有全局数据 (应用筛选逻辑)
     final Map<String, int> densityMap = {};
@@ -153,8 +156,8 @@ class CourseMonthView extends StatelessWidget {
       double cellHeight) {
     final List<Map<String, dynamic>> weekBars = [];
     final DateTime weekStart = weekDays.first;
-    final DateTime weekEnd =
-        weekDays.last.add(const Duration(hours: 23, minutes: 59, seconds: 59));
+    final DateTime weekEnd = CalendarDateMath.addDays(weekDays.last, 1)
+        .subtract(const Duration(microseconds: 1));
 
     // 1. 收集课程和单日待办 (按天遍历)
     for (int i = 0; i < weekDays.length; i++) {
@@ -243,9 +246,10 @@ class CourseMonthView extends StatelessWidget {
         // 计算在本周内的显示范围 (0-6)
         int startIdx = tStart.isBefore(weekStart)
             ? 0
-            : tStart.difference(weekStart).inDays;
-        int endIdx =
-            tEnd.isAfter(weekEnd) ? 6 : tEnd.difference(weekStart).inDays;
+            : CalendarDateMath.daysBetween(weekStart, tStart);
+        int endIdx = tEnd.isAfter(weekEnd)
+            ? 6
+            : CalendarDateMath.daysBetween(weekStart, tEnd);
 
         weekBars.add({
           'todo': t,
