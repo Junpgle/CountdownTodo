@@ -499,6 +499,9 @@ class _CleanupSql {
   String reasonForRetry(List<String> retryIds) {
     // IDs have already been bound and checked against the request by storage;
     // no values are interpolated here. Retry allows only the cancelled status.
+    final counterOverflow = retryIds.isEmpty
+        ? 'p.version>=9223372036854775807 OR p.updated_at>=9223372036854775807'
+        : '0';
     final status = retryIds.isEmpty
         ? 'p.status NOT IN (0,2,4)'
         : 'p.status NOT IN (0,2,3,4)';
@@ -518,8 +521,7 @@ class _CleanupSql {
         OR typeof(p.planned_minutes)<>'integer' OR p.planned_minutes<=0
         OR p.end_time-p.start_time<>p.planned_minutes*60000
         OR typeof(p.version)<>'integer' OR p.version<1
-        OR p.version>=9223372036854775807 OR typeof(p.updated_at)<>'integer'
-        OR p.updated_at>=9223372036854775807
+        OR typeof(p.updated_at)<>'integer' OR ($counterOverflow)
         THEN '规划时间或版本需核对'
       WHEN $started THEN '规划已开始，仅供查看'
       WHEN $status THEN '规划状态不可批量取消'

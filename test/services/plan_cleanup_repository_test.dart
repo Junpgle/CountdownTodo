@@ -166,6 +166,30 @@ void main() {
       expect(item.reason, '规划时间或版本需核对');
     }
   });
+  test('near-limit plan counters still allow an exact retry', () async {
+    const maximum = 9223372036854775807;
+    await block('near-limit');
+    await f.db.update(
+      'todo_plan_blocks',
+      {'version': maximum - 1, 'updated_at': maximum - 1},
+      where: 'uuid=?',
+      whereArgs: ['near-limit'],
+    );
+    final req = await request();
+
+    await repo.cancel(req, sync: false);
+    await repo.cancel(req, sync: false);
+
+    final row = (await f.db.query(
+      'todo_plan_blocks',
+      where: 'uuid=?',
+      whereArgs: ['near-limit'],
+    )).single;
+    expect(row['status'], TodoPlanStatus.cancelled.index);
+    expect(row['version'], maximum);
+    expect(row['updated_at'], maximum);
+    expect((await f.db.query('op_logs')).length, 1);
+  });
   test('stale reminder maintenance cannot revive cancellation or other sources', () async {
     await block('a'); await block('b', start: day.add(const Duration(hours: 12)));
     final stale = TodoPlanBlock.fromJson((await f.db.query('todo_plan_blocks', where: 'uuid=?', whereArgs: ['a'])).single);
