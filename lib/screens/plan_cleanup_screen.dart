@@ -197,6 +197,7 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
   PlanCleanupRequest? _pending, _saved;
   String? _folder, _error, _reminderError;
   bool _loading = true, _working = false, _opening = false, _foreground = true, _confirming = false;
+  bool _pageLoadError = false;
   int _sequence = 0;
   Timer? _boundary, _debounce;
   StreamSubscription<PomodoroRunState?>? _focus;
@@ -262,6 +263,7 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
     setState(() {
       _loading = true;
       _error = null;
+      _pageLoadError = false;
       if (!more) {
         _selected.clear();
         _pending = null;
@@ -332,14 +334,22 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
       }
     } catch (error) {
       if (!mounted || sequence != _sequence) return;
+      final preservePage =
+          more &&
+          !(error is PlanAvailabilityException && error.message.contains('身份已切换'));
       setState(() {
-        _error = _message(error);
+        _pageLoadError = preservePage;
+        _error = preservePage
+            ? '${_message(error)}；已保留当前已加载内容和选择，可重试加载更多'
+            : _message(error);
         _loading = false;
-        _selected.clear();
-        _snapshot = null;
-        _page = null;
-        _items = [];
-        _todos = [];
+        if (!preservePage) {
+          _selected.clear();
+          _snapshot = null;
+          _page = null;
+          _items = [];
+          _todos = [];
+        }
       });
     }
   }
@@ -754,6 +764,8 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
           ),
         ),
       if (_page?.next != null)
+        if (_pageLoadError) _notice(_error ?? '分页读取失败，请重试', error: true),
+      if (_page?.next != null)
         TextButton(
           onPressed: _loading ? null : () => _load(more: true),
           child: const Text('加载更多待办'),
@@ -824,6 +836,9 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
       children.add(_item(item));
     }
     if (snapshot.next != null) {
+      if (_pageLoadError) {
+        children.add(_notice(_error ?? '分页读取失败，请重试', error: true));
+      }
       children.add(
         TextButton(
           onPressed: _loading || _working || _pending != null

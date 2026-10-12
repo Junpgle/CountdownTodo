@@ -18,7 +18,36 @@ class _CleanupRepo extends PlanCleanupRepository {
   _CleanupRepo(Database db)
     : super(databaseOverride: db, clock: () => PlanAvailabilityFixture.now);
   bool loseResponse = false;
+  bool failNextRead = false;
+  bool failNextDetail = false;
   int calls = 0;
+  @override
+  Future<PlanCleanupPage> read(
+    String username, {
+    String search = '',
+    String? folder,
+    PlanCleanupCursor? cursor,
+  }) async {
+    if (failNextRead) {
+      failNextRead = false;
+      throw StateError('模拟分页读取失败');
+    }
+    return super.read(username, search: search, folder: folder, cursor: cursor);
+  }
+
+  @override
+  Future<PlanCleanupSnapshot> detail(
+    String username,
+    String todoId, {
+    PlanCleanupCursor? cursor,
+  }) async {
+    if (failNextDetail) {
+      failNextDetail = false;
+      throw StateError('模拟分页读取失败');
+    }
+    return super.detail(username, todoId, cursor: cursor);
+  }
+
   @override
   Future<List<TodoPlanBlock>> cancel(
     PlanCleanupRequest request, {
@@ -187,6 +216,67 @@ void main() {
     expect(t.widget<Checkbox>(key('cleanup-select-p-51')).value, isFalse);
     await tap(t, key('cleanup-select-p-51'));
     expect(find.text('一次最多选择50段'), findsOneWidget);
+  });
+  testWidgets('detail paging failure preserves reviewed selection for retry', (
+    t,
+  ) async {
+    for (var i = 0; i < 52; i++) {
+      await block('retry-detail-$i', minute: i);
+    }
+    await open(t);
+    repo.failNextDetail = true;
+    await tap(t, find.text('加载更多规划（不自动选中）'));
+    expect(repo.failNextDetail, isFalse);
+
+    expect(find.textContaining('已加载50／总计52'), findsOneWidget);
+    expect(find.text('已选50段 · 2250分钟'), findsOneWidget);
+    expect(find.textContaining('已保留'), findsOneWidget);
+
+    await tap(t, find.text('加载更多规划（不自动选中）'));
+    expect(find.textContaining('已加载52／总计52'), findsOneWidget);
+    expect(find.text('已选50段 · 2250分钟'), findsOneWidget);
+    expect(t.takeException(), isNull);
+  });
+  testWidgets('overview paging failure keeps loaded rows and retries', (t) async {
+    for (var i = 0; i < 51; i++) {
+      final id = 'retry-overview-$i';
+      await f.todo(id, '待办$i', done: true);
+      await block('retry-overview-plan-$i', todo: id, minute: i);
+    }
+    await open(t, todo: null);
+    repo.failNextRead = true;
+    await tap(t, find.text('加载更多待办'));
+    expect(repo.failNextRead, isFalse);
+
+    expect(find.textContaining('已加载50／总计51'), findsOneWidget);
+    expect(find.text('待办0'), findsOneWidget);
+    expect(find.textContaining('已保留'), findsOneWidget);
+
+    await tap(t, find.text('加载更多待办'));
+    expect(find.textContaining('已加载51／总计51'), findsOneWidget);
+    expect(t.takeException(), isNull);
+  });
+  testWidgets('pagination account switch clears the previous account page', (
+    t,
+  ) async {
+    for (var i = 0; i < 51; i++) {
+      final id = 'switch-overview-$i';
+      await f.todo(id, '切换待办$i', done: true);
+      await block('switch-overview-plan-$i', todo: id, minute: i);
+    }
+    await open(t, todo: null);
+    await (await SharedPreferences.getInstance()).setString(
+      'current_login_user',
+      'other',
+    );
+    t
+        .widget<TextButton>(find.widgetWithText(TextButton, '加载更多待办'))
+        .onPressed!();
+    await t.pumpAndSettle();
+
+    expect(find.text('切换待办0'), findsNothing);
+    expect(find.textContaining('身份已切换'), findsOneWidget);
+    expect(t.takeException(), isNull);
   });
   testWidgets(
     'overview explains when changed data restarts pagination',
