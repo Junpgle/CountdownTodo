@@ -227,6 +227,7 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
       _confirming = false,
       _checkingPendingIdentity = false;
   bool _morePageError = false;
+  bool _initialDetailSelectionPending = true;
   int _sequence = 0;
   Timer? _boundary, _debounce;
   StreamSubscription<PomodoroRunState?>? _focus;
@@ -388,6 +389,8 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
             previousSnapshot != null &&
             !snapshot.restarted &&
             snapshot.fingerprint == previousSnapshot.fingerprint;
+        final applyInitialSelection =
+            initial || _initialDetailSelectionPending;
         setState(() {
           final append =
               more &&
@@ -418,7 +421,7 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
           if (!append && !unchanged) _selected.clear();
           // Only the first explicitly opened page defaults to selection. New
           // pages and refreshes never silently enlarge the reviewed selection.
-          if (initial && snapshot.blockedReason.isEmpty) {
+          if (applyInitialSelection && snapshot.blockedReason.isEmpty) {
             _selected.addAll(
               snapshot.rows.where((r) => r.eligible).map((r) => r.id),
             );
@@ -427,6 +430,7 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
           if (!unchanged) _pending = null;
           _loading = false;
         });
+        _initialDetailSelectionPending = false;
         _arm(snapshot.nextBoundary);
       } else {
         final page = await _repository.read(

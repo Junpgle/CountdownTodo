@@ -553,6 +553,20 @@ void main() {
     expect(find.text('此待办正在专注或已暂停，请先查看当前专注'), findsNothing);
     expect(t.takeException(), isNull);
   });
+  testWidgets('first successful detail read defaults selection after retry', (
+    t,
+  ) async {
+    await block('initial-read-retry');
+    repo.failNextDetail = true;
+    await open(t);
+
+    expect(find.textContaining('模拟分页读取失败'), findsOneWidget);
+    await tap(t, find.widgetWithText(TextButton, '重新核对'));
+
+    expect(find.text('待办已完成 · 可处理1段'), findsOneWidget);
+    expect(find.text('已选1段 · 45分钟'), findsOneWidget);
+    expect(t.takeException(), isNull);
+  });
   testWidgets('unrelated task boundary preserves reviewed selection', (t) async {
     await block('target-boundary');
     await f.todo('other-boundary', '其他待办');
