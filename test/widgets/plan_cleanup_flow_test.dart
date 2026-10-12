@@ -27,6 +27,7 @@ class _CleanupRepo extends PlanCleanupRepository {
   bool failNextRead = false;
   bool failNextDetail = false;
   bool malformedId = false;
+  Completer<void>? readGate;
   Completer<void>? detailReadGate;
   Completer<void>? detailResultGate;
   Completer<void>? detailResultStarted;
@@ -44,6 +45,11 @@ class _CleanupRepo extends PlanCleanupRepository {
     if (failNextRead) {
       failNextRead = false;
       throw StateError('模拟分页读取失败');
+    }
+    final gate = readGate;
+    if (gate != null) {
+      readGate = null;
+      await gate.future;
     }
     return super.read(username, search: search, folder: folder, cursor: cursor);
   }
@@ -887,6 +893,27 @@ void main() {
     expect(repo.reads, readsBeforeSearch + 1);
     expect(find.textContaining('总计1个待办'), findsOneWidget);
     expect(t.takeException(), isNull);
+  });
+  testWidgets('overview hides results from the previous search while loading', (
+    t,
+  ) async {
+    await block('search-visible-plan');
+    await open(t, todo: null);
+    expect(find.text('复习高数'), findsOneWidget);
+
+    final gate = Completer<void>();
+    repo.readGate = gate;
+    await t.enterText(key('cleanup-search'), 'no-match');
+    await t.pump(const Duration(milliseconds: 250));
+    await t.pump();
+
+    expect(find.text('复习高数'), findsNothing);
+    expect(find.textContaining('已加载'), findsNothing);
+    expect(find.byType(LinearProgressIndicator), findsOneWidget);
+
+    gate.complete();
+    await t.pumpAndSettle();
+    expect(find.text('当前筛选下没有待办'), findsOneWidget);
   });
   testWidgets('manual refresh cancels a pending overview search', (t) async {
     await f.todo('manual-search', '搜索目标', done: true);

@@ -993,6 +993,7 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
             _loading = true;
             _error = null;
             _morePageError = false;
+            _todos = [];
           });
           _debounce = Timer(const Duration(milliseconds: 250), () => _load());
         },
@@ -1019,13 +1020,17 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
             ),
         ],
         onChanged: (value) {
-          setState(() => _folder = value == '*' ? null : value);
+          setState(() {
+            _folder = value == '*' ? null : value;
+            _todos = [];
+          });
           _load();
         },
       ),
       const SizedBox(height: 12),
-      if (_page != null) Text('已加载${_todos.length}／总计${_page!.total}个待办'),
-      if (_page?.restarted ?? false)
+      if (_page != null && !_loading)
+        Text('已加载${_todos.length}／总计${_page!.total}个待办'),
+      if (!_loading && (_page?.restarted ?? false))
         _notice('待办列表已变化，已从头重新加载，请核对结果'),
       if (!_loading && _error == null && _todos.isEmpty)
         _notice(
@@ -1069,7 +1074,7 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
         ),
       if (_morePageError && _page != null)
         _notice(_error ?? '列表读取失败，请重试', error: true),
-      if (_page?.next != null)
+      if (!_loading && _page?.next != null)
         TextButton(
           onPressed: _loading ? null : () => _load(more: true),
           child: const Text('加载更多待办'),
