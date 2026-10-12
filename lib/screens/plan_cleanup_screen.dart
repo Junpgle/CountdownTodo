@@ -196,7 +196,13 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
   List<PlanCleanupItem> _items = [];
   PlanCleanupRequest? _pending, _saved;
   String? _folder, _error, _reminderError, _selectionNotice;
-  bool _loading = true, _working = false, _opening = false, _inspecting = false, _foreground = true, _confirming = false;
+  bool _loading = true,
+      _working = false,
+      _opening = false,
+      _inspecting = false,
+      _foreground = true,
+      _confirming = false,
+      _checkingPendingIdentity = false;
   bool _morePageError = false;
   int _sequence = 0;
   Timer? _boundary, _debounce;
@@ -239,13 +245,42 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
   }
 
   void _refresh() {
-    if (mounted &&
-        _foreground &&
-        !_working &&
-        !_opening &&
-        _saved == null &&
-        _pending == null) {
-      unawaited(_load());
+    if (!mounted || !_foreground || _working || _opening || _saved != null) {
+      return;
+    }
+    final pending = _pending;
+    if (pending != null) {
+      if (!_checkingPendingIdentity) {
+        unawaited(_checkPendingIdentity(pending));
+      }
+      return;
+    }
+    unawaited(_load());
+  }
+
+  Future<void> _checkPendingIdentity(PlanCleanupRequest pending) async {
+    if (_checkingPendingIdentity) return;
+    _checkingPendingIdentity = true;
+    try {
+      await pending.identity.check();
+    } catch (error) {
+      if (!mounted || !identical(_pending, pending)) return;
+      if (error is PlanAvailabilityException &&
+          error.message.contains('身份已切换')) {
+        setState(() {
+          _error = _message(error);
+          _selectionNotice = null;
+          _selected.clear();
+          _pending = null;
+          _snapshot = null;
+          _items = [];
+          _morePageError = false;
+        });
+      } else {
+        setState(() => _error = '${_message(error)}；原提交仍可重试');
+      }
+    } finally {
+      _checkingPendingIdentity = false;
     }
   }
 

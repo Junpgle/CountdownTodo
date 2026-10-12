@@ -459,6 +459,33 @@ void main() {
     expect(find.textContaining('原有选择已清空'), findsOneWidget);
     expect(t.takeException(), isNull);
   });
+  testWidgets('foreground account change clears a pending retry page', (
+    t,
+  ) async {
+    await block('pending-account-switch');
+    repo.loseResponse = true;
+    await open(t);
+    await tap(t, key('cleanup-cancel'));
+    await tap(t, key('cleanup-confirm'));
+    expect(find.text('重试本次提交'), findsOneWidget);
+
+    t.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    t.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await t.pumpAndSettle();
+    expect(find.text('重试本次提交'), findsOneWidget);
+
+    await (await SharedPreferences.getInstance()).setString(
+      'current_login_user',
+      'other',
+    );
+    t.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    t.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await t.pumpAndSettle();
+
+    expect(find.text('复习高数'), findsNothing);
+    expect(find.textContaining('身份已切换'), findsOneWidget);
+    expect(t.takeException(), isNull);
+  });
   testWidgets(
     'entry requires persisted completion and shows read errors separately',
     (t) async {
