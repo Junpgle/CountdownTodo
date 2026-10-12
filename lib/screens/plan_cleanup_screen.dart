@@ -405,7 +405,7 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
   }
 
   Future<void> _route(Widget Function() builder) async {
-    if (_opening || _working) return;
+    if (_opening || _working || _loading) return;
     _opening = true;
     _boundary?.cancel();
     try {
@@ -422,7 +422,11 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
   }
 
   Future<void> _viewTodo() async {
-    if (_identity == null || widget.todoId == null || _opening || _working) {
+    if (_identity == null ||
+        widget.todoId == null ||
+        _opening ||
+        _working ||
+        _loading) {
       return;
     }
     _opening = true;
@@ -772,6 +776,11 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
         onChanged: (_) {
           _sequence++;
           _debounce?.cancel();
+          setState(() {
+            _loading = true;
+            _error = null;
+            _morePageError = false;
+          });
           _debounce = Timer(const Duration(milliseconds: 250), () => _load());
         },
       ),
@@ -814,7 +823,8 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
           elevation: 0,
           color: Theme.of(context).colorScheme.surfaceContainerLow,
           child: InkWell(
-            onTap: () => _route(
+            key: ValueKey('cleanup-todo-${todo.id}'),
+            onTap: _loading ? null : () => _route(
               () => PlanCleanupScreen(
                 username: widget.username,
                 todoId: todo.id,
@@ -871,12 +881,12 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
         spacing: 8,
         children: [
           TextButton(
-            onPressed: _working ? null : _viewTodo,
+            onPressed: _working || _loading ? null : _viewTodo,
             child: const Text('查看／编辑待办'),
           ),
           if (snapshot.blockedReason.contains('专注'))
             TextButton(
-              onPressed: _working
+              onPressed: _working || _loading
                   ? null
                   : () =>
                         _route(() => PomodoroScreen(username: widget.username)),

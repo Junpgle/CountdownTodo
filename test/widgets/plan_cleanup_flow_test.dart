@@ -340,6 +340,29 @@ void main() {
     await tap(t, key('cleanup-select-p-51'));
     expect(find.text('一次最多选择50段'), findsOneWidget);
   });
+  testWidgets('search disables stale overview results while filtering', (
+    t,
+  ) async {
+    await f.todo('filter-old', '筛选前待办', done: true);
+    await block('filter-old-plan', todo: 'filter-old');
+    await open(t, todo: null);
+
+    await t.enterText(key('cleanup-search'), '不存在的待办');
+    await t.pump();
+
+    expect(find.text('筛选前待办'), findsOneWidget);
+    expect(
+      t.widget<InkWell>(key('cleanup-todo-filter-old')).onTap,
+      isNull,
+    );
+    expect(find.byType(LinearProgressIndicator), findsOneWidget);
+
+    await t.pump(const Duration(milliseconds: 300));
+    await t.pumpAndSettle();
+    expect(find.text('筛选前待办'), findsNothing);
+    expect(find.text('当前筛选下没有待办'), findsOneWidget);
+    expect(t.takeException(), isNull);
+  });
   testWidgets('refresh locks selection and explains clearing it', (t) async {
     await block('refresh-selection');
     await open(t);
