@@ -141,6 +141,31 @@ void main() {
     await block('b', start: day.add(const Duration(hours: 10, minutes: 15)));
     expect((await request()).unionMinutes, 60);
   });
+  test('maxed plan counters are not offered for cancellation', () async {
+    const maximum = 9223372036854775807;
+    await block('max-version');
+    await block('max-updated', start: day.add(const Duration(hours: 11)));
+    await f.db.update(
+      'todo_plan_blocks',
+      {'version': maximum},
+      where: 'uuid=?',
+      whereArgs: ['max-version'],
+    );
+    await f.db.update(
+      'todo_plan_blocks',
+      {'updated_at': maximum},
+      where: 'uuid=?',
+      whereArgs: ['max-updated'],
+    );
+
+    final snapshot = await repo.detail(user, todoId);
+
+    for (final id in ['max-version', 'max-updated']) {
+      final item = snapshot.rows.singleWhere((row) => row.id == id);
+      expect(item.eligible, isFalse);
+      expect(item.reason, '规划时间或版本需核对');
+    }
+  });
   test('stale reminder maintenance cannot revive cancellation or other sources', () async {
     await block('a'); await block('b', start: day.add(const Duration(hours: 12)));
     final stale = TodoPlanBlock.fromJson((await f.db.query('todo_plan_blocks', where: 'uuid=?', whereArgs: ['a'])).single);

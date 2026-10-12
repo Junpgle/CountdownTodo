@@ -517,7 +517,9 @@ class _CleanupSql {
         OR p.end_time>8640000000000000 OR p.end_time<=p.start_time
         OR typeof(p.planned_minutes)<>'integer' OR p.planned_minutes<=0
         OR p.end_time-p.start_time<>p.planned_minutes*60000
-        OR typeof(p.version)<>'integer' OR p.version<1 OR typeof(p.updated_at)<>'integer'
+        OR typeof(p.version)<>'integer' OR p.version<1
+        OR p.version>=9223372036854775807 OR typeof(p.updated_at)<>'integer'
+        OR p.updated_at>=9223372036854775807
         THEN '规划时间或版本需核对'
       WHEN $started THEN '规划已开始，仅供查看'
       WHEN $status THEN '规划状态不可批量取消'
