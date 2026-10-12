@@ -540,7 +540,22 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
       });
       await _updateReminders(request);
     } catch (error) {
-      if (mounted) setState(() => _error = _message(error));
+      if (mounted) {
+        final identityChanged =
+            error is PlanAvailabilityException &&
+            error.message.contains('身份已切换');
+        setState(() {
+          _error = _message(error);
+          if (identityChanged) {
+            _selectionNotice = null;
+            _selected.clear();
+            _pending = null;
+            _snapshot = null;
+            _items = [];
+            _morePageError = false;
+          }
+        });
+      }
     } finally {
       if (mounted) {
         setState(() { _working = false; _confirming = false; });

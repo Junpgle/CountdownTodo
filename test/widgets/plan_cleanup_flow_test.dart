@@ -486,6 +486,24 @@ void main() {
     expect(find.textContaining('身份已切换'), findsOneWidget);
     expect(t.takeException(), isNull);
   });
+  testWidgets('retry after account change clears the pending page', (t) async {
+    await block('retry-account-switch');
+    repo.loseResponse = true;
+    await open(t);
+    await tap(t, key('cleanup-cancel'));
+    await tap(t, key('cleanup-confirm'));
+    expect(find.text('重试本次提交'), findsOneWidget);
+
+    await (await SharedPreferences.getInstance()).setString(
+      'current_login_user',
+      'other',
+    );
+    await tap(t, key('cleanup-cancel'));
+
+    expect(find.text('复习高数'), findsNothing);
+    expect(find.textContaining('身份已切换'), findsOneWidget);
+    expect(t.takeException(), isNull);
+  });
   testWidgets(
     'entry requires persisted completion and shows read errors separately',
     (t) async {
