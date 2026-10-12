@@ -5,6 +5,7 @@ import '../../services/pomodoro_service.dart';
 import '../../storage_service.dart';
 import '../../widgets/floating_glass_control.dart';
 import '../../utils/app_dialogs.dart';
+import '../../utils/calendar_date_math.dart';
 
 class RebindTagPage extends StatefulWidget {
   final String username;
@@ -97,9 +98,12 @@ class _RebindTagPageState extends State<RebindTagPage>
 
     // 筛选时间范围
     if (_dateRange != null) {
-      final startMs = _dateRange!.start.millisecondsSinceEpoch;
-      final endMs =
-          _dateRange!.end.add(const Duration(days: 1)).millisecondsSinceEpoch;
+      final range = CalendarDateMath.inclusiveDateRange(
+        _dateRange!.start,
+        _dateRange!.end,
+      );
+      final startMs = range.start.millisecondsSinceEpoch;
+      final endMs = range.endExclusive.millisecondsSinceEpoch;
       list = list
           .where((p) => p.startTime >= startMs && p.startTime < endMs)
           .toList();
@@ -130,9 +134,12 @@ class _RebindTagPageState extends State<RebindTagPage>
 
     // 筛选时间范围
     if (_dateRange != null) {
-      final startMs = _dateRange!.start.millisecondsSinceEpoch;
-      final endMs =
-          _dateRange!.end.add(const Duration(days: 1)).millisecondsSinceEpoch;
+      final range = CalendarDateMath.inclusiveDateRange(
+        _dateRange!.start,
+        _dateRange!.end,
+      );
+      final startMs = range.start.millisecondsSinceEpoch;
+      final endMs = range.endExclusive.millisecondsSinceEpoch;
       list = list
           .where((l) => l.startTime >= startMs && l.startTime < endMs)
           .toList();

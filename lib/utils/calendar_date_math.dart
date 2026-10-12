@@ -5,8 +5,15 @@ abstract final class CalendarDateMath {
       DateTime(value.year, value.month, value.day);
 
   static ({DateTime start, DateTime endExclusive}) dayRange(DateTime value) {
-    final start = dateOnly(value);
-    return (start: start, endExclusive: addDays(start, 1));
+    return inclusiveDateRange(value, value);
+  }
+
+  static ({DateTime start, DateTime endExclusive}) inclusiveDateRange(
+    DateTime firstDate,
+    DateTime lastDate,
+  ) {
+    final start = dateOnly(firstDate);
+    return (start: start, endExclusive: addDays(dateOnly(lastDate), 1));
   }
 
   static ({DateTime start, DateTime endExclusive}) weekRange(DateTime value) {
