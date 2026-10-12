@@ -13,6 +13,7 @@ import 'macos_pomodoro_status_bar_service.dart';
 import 'todo_notification_policy.dart';
 import 'item_semantics_service.dart';
 import 'scheduled_reminder_registry.dart';
+import 'plan_reminder_guard.dart';
 import 'focus_do_not_disturb_service.dart';
 import '../utils/time_utils.dart';
 
@@ -701,6 +702,23 @@ class NotificationService {
     }
   }
 
+  static Future<void> removePlanReminders(Set<String> ids, {
+    required Future<void> Function() ensureCurrent,
+  }) {
+    final operation = _scheduleQueue.then<void>((_) async {
+      await ensureCurrent();
+      final existing = await getScheduledReminders(strict: true);
+      final remaining = ScheduledReminderRegistry.withoutPlanBlocks(existing, ids)
+          .where((r) => ScheduledReminderRegistry.sourceOf(r) == ScheduledReminderSources.reminderSchedule).toList();
+      await ensureCurrent();
+      await _scheduleReminders(remaining, clearFirst: false, forceReschedule: true,
+        replaceSource: ScheduledReminderSources.reminderSchedule, strictErrors: true, ensureCurrent: ensureCurrent);
+      await ensureCurrent();
+    });
+    _scheduleQueue = operation.then<void>((_) {}, onError: (_, _) {});
+    return operation;
+  }
+
   static Future<void> scheduleReminders(
     List<Map<String, dynamic>> reminders, {
     bool clearFirst = true,
@@ -724,13 +742,18 @@ class NotificationService {
     required bool clearFirst,
     required bool forceReschedule,
     required String? replaceSource,
+    bool strictErrors = false,
+    Future<void> Function()? ensureCurrent,
   }) async {
-    if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported) return;
+    if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported) {
+      if (strictErrors) throw StateError('当前平台不支持系统提醒更新');
+      return;
+    }
     if (reminders.isEmpty && !clearFirst && replaceSource == null) return;
     await ensureInitialized();
 
     final existing = ScheduledReminderRegistry.retainActive(
-      await getScheduledReminders(),
+      await getScheduledReminders(strict: strictErrors),
     );
     final normalEnabled =
         await AppSettingsStorage.isNormalNotificationEnabled();
@@ -744,6 +767,7 @@ class NotificationService {
       replaceSource: replaceSource,
       replaceAll: clearFirst && replaceSource == null,
     );
+    await ensureCurrent?.call();
 
     if (_isDesktopSupported) {
       final finalIds = merged
@@ -759,8 +783,10 @@ class NotificationService {
           .toSet();
       for (final id in oldIds.difference(finalIds)) {
         try {
+          await ensureCurrent?.call();
           await _plugin.cancel(id: id);
         } catch (_) {
+          if (strictErrors) rethrow;
           // Desktop notification cancellation is best-effort.
         }
       }
@@ -772,9 +798,11 @@ class NotificationService {
               _isPomodoroReminder(reminder))
           .toList(growable: false);
       for (final reminder in desktopReminders) {
+        await ensureCurrent?.call();
         await _scheduleDesktopReminder(reminder, now: now);
       }
 
+      await ensureCurrent?.call();
       await StorageService.saveWindowsScheduledReminders(merged);
       if (Platform.isMacOS) {
         await MacPomodoroStatusBarService.scheduleIslandReminders(
@@ -824,6 +852,7 @@ class NotificationService {
         };
       }).toList();
 
+      await ensureCurrent?.call();
       await _channel.invokeMethod('scheduleReminders', {
         'remindersJson': jsonEncode(payload),
         // Native receives the complete aggregate, so it can rebuild only the
@@ -832,6 +861,7 @@ class NotificationService {
         'forceReschedule': forceReschedule,
       });
     } catch (_) {
+      if (strictErrors) rethrow;
       // Native notification calls are best-effort.
     }
   }
@@ -854,7 +884,7 @@ class NotificationService {
     final pomodoroEndEnabled =
         await AppSettingsStorage.isPomodoroEndNotificationEnabled();
 
-    return reminders
+    return PlanReminderGuard.filterCancelled(reminders
         .where((reminder) {
           final source = ScheduledReminderRegistry.sourceOf(reminder);
           final type = reminder['type']?.toString();
@@ -882,7 +912,7 @@ class NotificationService {
           }
         })
         .map(Map<String, dynamic>.from)
-        .toList(growable: false);
+        .toList(growable: false));
   }
 
   static bool _isPomodoroReminder(Map<String, dynamic> reminder) {
@@ -963,7 +993,7 @@ class NotificationService {
     return int.tryParse(value?.toString() ?? '');
   }
 
-  static Future<List<Map<String, dynamic>>> getScheduledReminders() async {
+  static Future<List<Map<String, dynamic>>> getScheduledReminders({bool strict = false}) async {
     if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported) {
       return [];
     }
@@ -980,6 +1010,7 @@ class NotificationService {
       final List<dynamic> list = jsonDecode(jsonStr);
       return list.map((item) => Map<String, dynamic>.from(item)).toList();
     } catch (e) {
+      if (strict) rethrow;
 //       debugPrint('Error getting scheduled reminders: $e');
       return [];
     }

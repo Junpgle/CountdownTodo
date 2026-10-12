@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
 import 'models.dart';
+import 'models/plan_cleanup.dart';
 
 import 'services/api_service.dart';
 import 'services/band_sync_service.dart';
@@ -345,6 +346,12 @@ class StorageService {
           sync: sync, isSyncSource: isSyncSource);
 
   /// Editor-only conditional write; synchronization retains its existing path.
+  static Future<List<TodoPlanBlock>> cancelPlanBlocksReviewed(
+    String username, PlanCleanupRequest request, {
+    required Future<void> Function(DatabaseExecutor executor, bool retry) validate,
+    bool sync = true,
+  }) => _storage.cancelPlanBlocksReviewed(username, request, validate: validate, sync: sync);
+
   static Future<List<TodoPlanBlock>> savePlanBlocksCreated(
     String username, List<TodoPlanBlock> drafts, {
     required Future<void> Function(DatabaseExecutor executor) beforeWrite,

@@ -234,6 +234,11 @@ abstract class _StorageServiceBase {
   Future<void> saveHabitCheckIns(List<HabitCheckIn> items);
   Future<void> savePlanBlocks(String username, List<TodoPlanBlock> items,
       {bool sync = true, bool isSyncSource = false});
+  Future<List<TodoPlanBlock>> cancelPlanBlocksReviewed(
+    String username, PlanCleanupRequest request, {
+    required Future<void> Function(DatabaseExecutor executor, bool retry) validate,
+    bool sync = true,
+  });
   Future<List<TodoPlanBlock>> savePlanBlocksCreated(
     String username, List<TodoPlanBlock> drafts, {
     required Future<void> Function(DatabaseExecutor executor) beforeWrite,

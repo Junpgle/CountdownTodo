@@ -3,6 +3,21 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:countdown_todo/services/scheduled_reminder_registry.dart';
 
 void main() {
+  test('plan cleanup removes exact plan alarms and preserves other sources and inputs', () {
+    final reminders = <Map<String, dynamic>>[
+      {'notifId': 33001, 'type': 'plan_block', 'planBlockId': 'cancel'},
+      {'notifId': 33002, 'type': 'plan_block', 'planBlockId': 'keep'},
+      {'notifId': 40001, 'type': 'pomodoro', 'planBlockId': 'cancel'},
+      {'notifId': 42001, 'source': 'habit', 'type': 'habit', 'planBlockId': 'cancel'},
+      {'notifId': 30001, 'type': 'todo'},
+      {'notifId': 31001, 'type': 'course'},
+    ];
+    final remaining = ScheduledReminderRegistry.withoutPlanBlocks(reminders, {'cancel'});
+    expect(remaining.map((r) => r['notifId']), [33002, 40001, 42001, 30001, 31001]);
+    expect(reminders.length, 6);
+    remaining.first['text'] = 'copy';
+    expect(reminders[1].containsKey('text'), isFalse);
+  });
   test('replaces only one source and de-duplicates notification ids', () {
     final merged = ScheduledReminderRegistry.merge(
       existing: [
