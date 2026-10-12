@@ -308,7 +308,7 @@ class PlanCleanupRepository {
         fingerprint: fingerprint,
         blockedReason: blocked,
         restarted: restarted,
-        nextBoundary: await _boundary(tx, instant),
+        nextBoundary: await _boundary(tx, instant, todoId: todoId),
         next: rows.length > 50
             ? PlanCleanupCursor(fingerprint, items.last.start, items.last.id)
             : null,
@@ -382,13 +382,18 @@ class PlanCleanupRepository {
     );
   }
 
-  Future<DateTime> _boundary(DatabaseExecutor tx, DateTime instant) async {
+  Future<DateTime> _boundary(
+    DatabaseExecutor tx,
+    DateTime instant, {
+    String? todoId,
+  }) async {
     final ms = instant.millisecondsSinceEpoch;
+    final todoFilter = todoId == null ? '' : ' AND todo_uuid=?';
     final rows = await tx.rawQuery(
       '''SELECT MIN(boundary) n FROM (
-      SELECT start_time boundary FROM todo_plan_blocks WHERE COALESCE(is_deleted,0)=0 AND start_time>?
-      UNION ALL SELECT end_time boundary FROM todo_plan_blocks WHERE COALESCE(is_deleted,0)=0 AND end_time>?)''',
-      [ms, ms],
+      SELECT start_time boundary FROM todo_plan_blocks WHERE COALESCE(is_deleted,0)=0 AND start_time>?$todoFilter
+      UNION ALL SELECT end_time boundary FROM todo_plan_blocks WHERE COALESCE(is_deleted,0)=0 AND end_time>?$todoFilter)''',
+      [ms, ?todoId, ms, ?todoId],
     );
     final midnight = DateTime(instant.year, instant.month, instant.day + 1);
     final value = rows.single['n'];

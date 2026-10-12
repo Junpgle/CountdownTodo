@@ -399,6 +399,29 @@ void main() {
     expect(find.text('已选1段 · 45分钟'), findsOneWidget);
     expect(t.takeException(), isNull);
   });
+  testWidgets('unrelated task boundary preserves reviewed selection', (t) async {
+    await block('target-boundary');
+    await f.todo('other-boundary', '其他待办');
+    await f.block(
+      TodoPlanBlock(
+        id: 'other-boundary-block',
+        todoId: 'other-boundary',
+        startTime: now.add(const Duration(minutes: 1)).millisecondsSinceEpoch,
+        endTime: now.add(const Duration(minutes: 46)).millisecondsSinceEpoch,
+        plannedMinutes: 45,
+      ),
+    );
+    await open(t);
+    expect(find.text('已选1段 · 45分钟'), findsOneWidget);
+    final readsBefore = repo.detailReads;
+
+    await t.pump(const Duration(minutes: 1));
+    await t.pumpAndSettle();
+
+    expect(repo.detailReads, readsBefore);
+    expect(find.text('已选1段 · 45分钟'), findsOneWidget);
+    expect(t.takeException(), isNull);
+  });
   testWidgets('refresh read failure preserves selection for retry', (t) async {
     await block('refresh-retry');
     await open(t);
