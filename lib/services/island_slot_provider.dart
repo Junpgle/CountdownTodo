@@ -62,6 +62,22 @@ class IslandSlotProvider {
   static String detectTodoType(String title) =>
       ItemSemanticsService.specialTodoTypeForTitle(title);
 
+  static int completedFocusSecondsInRange(
+    Iterable<PomodoroRecord> records,
+    DateTime start,
+    DateTime endExclusive,
+  ) {
+    final startMs = start.millisecondsSinceEpoch;
+    final endMs = endExclusive.millisecondsSinceEpoch;
+    return records
+        .where((record) =>
+            !record.isDeleted &&
+            record.status == PomodoroRecordStatus.completed &&
+            record.startTime >= startMs &&
+            record.startTime < endMs)
+        .fold(0, (seconds, record) => seconds + (record.actualDuration ?? 0));
+  }
+
   /// Get slot data for a specific type
   static Future<IslandSlotData> getSlotData(String type,
       {required bool isLeft}) async {
@@ -322,30 +338,25 @@ class IslandSlotProvider {
     try {
       final records = await PomodoroService.getRecords();
       final now = DateTime.now();
-      final todayStart =
-          DateTime(now.year, now.month, now.day).millisecondsSinceEpoch;
-      final yesterdayStart = todayStart - 86400000; // 24 hours in ms
-
-      // Calculate today's focus time
-      int todayFocusSeconds = 0;
-      for (final r in records) {
-        if (r.startTime >= todayStart &&
-            r.status == PomodoroRecordStatus.completed) {
-          todayFocusSeconds += r.actualDuration ?? 0;
-        }
-      }
+      final todayRange = CalendarDateMath.dayRange(now);
+      final yesterdayStart =
+          CalendarDateMath.addDays(todayRange.start, -1);
+      final yesterdayRange = CalendarDateMath.dayRange(yesterdayStart);
+      final todayFocusSeconds = completedFocusSecondsInRange(
+        records,
+        todayRange.start,
+        todayRange.endExclusive,
+      );
 
       // If no focus today, calculate yesterday's
       int displaySeconds = todayFocusSeconds;
       String label = '今日';
       if (todayFocusSeconds == 0) {
-        for (final r in records) {
-          if (r.startTime >= yesterdayStart &&
-              r.startTime < todayStart &&
-              r.status == PomodoroRecordStatus.completed) {
-            displaySeconds += r.actualDuration ?? 0;
-          }
-        }
+        displaySeconds = completedFocusSecondsInRange(
+          records,
+          yesterdayRange.start,
+          yesterdayRange.endExclusive,
+        );
         label = '昨日';
       }
 
