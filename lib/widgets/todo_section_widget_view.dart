@@ -45,14 +45,16 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
     {
       DateTime start = cDate;
       DateTime end = todo.dueDate != null
-          ? DateTime(
-              todo.dueDate!.year,
-              todo.dueDate!.month,
-              todo.dueDate!.day,
-              todo.dueDate!.hour,
-              todo.dueDate!.minute,
-              59,
-            )
+          ? todo.isDateOnly
+              ? todo.effectiveDueAt!
+              : DateTime(
+                  todo.dueDate!.year,
+                  todo.dueDate!.month,
+                  todo.dueDate!.day,
+                  todo.dueDate!.hour,
+                  todo.dueDate!.minute,
+                  59,
+                )
           : DateTime(cDate.year, cDate.month, cDate.day, 23, 59, 59);
       int totalMinutes = end.difference(start).inMinutes;
       if (totalMinutes <= 0) totalMinutes = 1;

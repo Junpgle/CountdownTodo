@@ -265,6 +265,22 @@ class TodoItem {
 
   bool get isDateOnly => timeMode == TodoTimeMode.dateOnly;
 
+  /// Moment when the due date has fully elapsed for progress and overdue UI.
+  /// Date-only tasks remain valid through the end of their local calendar day.
+  DateTime? get effectiveDueAt {
+    final due = dueDate;
+    if (due == null || !isDateOnly) return due;
+    final localDue = due.toLocal();
+    return DateTime(
+      localDue.year,
+      localDue.month,
+      localDue.day,
+      23,
+      59,
+      59,
+    );
+  }
+
   /// 旧版客户端曾允许待办直接保存“开始—结束”执行时间段。
   ///
   /// 新版不再为新待办创建这种时间段，但编辑历史记录时必须识别并原样保留，
