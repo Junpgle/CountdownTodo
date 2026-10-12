@@ -1,6 +1,7 @@
 import 'package:intl/intl.dart';
 import '../storage_service.dart';
 import '../models.dart';
+import '../utils/calendar_date_math.dart';
 import 'course_service.dart';
 import 'item_semantics_service.dart';
 import 'pomodoro_service.dart';
@@ -253,7 +254,7 @@ class IslandSlotProvider {
     }
 
     final day = DateTime(courseDate.year, courseDate.month, courseDate.day);
-    final diff = day.difference(today).inDays;
+    final diff = CalendarDateMath.daysBetween(today, day);
     if (diff <= 0) return '今天';
     if (diff == 1) return '明天';
     if (diff == 2) return '后天';
@@ -287,14 +288,18 @@ class IslandSlotProvider {
       final cds = await StorageService.getCountdowns(username);
       // debugPrint('[IslandSlotProvider] getCountdowns: ${cds.length} items');
       final now = DateTime.now();
-      final active =
-          cds.where((c) => !c.isDeleted && c.targetDate.isAfter(now)).toList();
+      final today = CalendarDateMath.dateOnly(now);
+      final active = cds
+          .where((c) =>
+              !c.isDeleted &&
+              CalendarDateMath.daysBetween(today, c.targetDate) >= 0)
+          .toList();
       // debugPrint('[IslandSlotProvider] active countdowns: ${active.length}');
       active.sort((a, b) => a.targetDate.compareTo(b.targetDate));
 
       if (active.isNotEmpty) {
         final c = active.first;
-        final days = c.targetDate.difference(now).inDays;
+        final days = CalendarDateMath.daysBetween(today, c.targetDate);
         final info = '$days天';
         final display = isLeft ? '[$info] ${c.title}' : '${c.title} [$info]';
         // debugPrint('[IslandSlotProvider] countdown display: $display');

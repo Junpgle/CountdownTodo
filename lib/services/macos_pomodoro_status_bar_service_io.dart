@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models.dart';
 import '../storage_service.dart';
+import '../utils/calendar_date_math.dart';
 import 'ongoing_activity_service.dart';
 import 'pomodoro_service.dart';
 import 'pomodoro_sync_service.dart';
@@ -326,7 +327,9 @@ class MacPomodoroStatusBarService {
       'countdownId': nearest?.id ?? '',
       'countdownTitle': nearest?.title ?? '',
       'countdownTargetMs': nearest?.targetDate.millisecondsSinceEpoch ?? 0,
-      'countdownDays': nearestDay?.difference(today).inDays ?? -1,
+      'countdownDays': nearestDay == null
+          ? -1
+          : CalendarDateMath.daysBetween(today, nearestDay),
     };
   }
 

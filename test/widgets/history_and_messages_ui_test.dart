@@ -4,6 +4,7 @@ import 'package:countdown_todo/models.dart';
 import 'package:countdown_todo/screens/historical_countdowns_screen.dart';
 import 'package:countdown_todo/screens/historical_todos_screen.dart';
 import 'package:countdown_todo/screens/team_message_center_screen.dart';
+import 'package:countdown_todo/widgets/countdown_section_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -217,6 +218,34 @@ void main() {
     expect(find.text('共 1 段记录'), findsOneWidget);
     expect(find.text('夏令时切换前到期'), findsOneWidget);
     expect(find.text('1 天前结束'), findsOneWidget);
+  });
+
+  testWidgets('主页重要日按日期隐藏昨天到期记录', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: CountdownSectionWidget(
+              username: 'calendar-test',
+              isLight: false,
+              onDataChanged: () {},
+              now: () => DateTime(2026, 3, 9, 0, 30),
+              countdowns: [
+                CountdownItem(
+                  id: 'expired',
+                  title: '昨天到期',
+                  targetDate: DateTime(2026, 3, 8, 20),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('暂无有效倒计时'), findsOneWidget);
+    expect(find.text('昨天到期'), findsNothing);
   });
 
   testWidgets('倒计时删除取消与确认只调用一次', (tester) async {

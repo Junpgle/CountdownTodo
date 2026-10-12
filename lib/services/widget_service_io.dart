@@ -10,6 +10,7 @@ import 'package:intl/intl.dart';
 import '../models.dart';
 import '../models/widget_snapshot.dart';
 import '../storage_service.dart';
+import '../utils/calendar_date_math.dart';
 import '../utils/todo_widget_visibility.dart';
 import '../utils/widget_recurrence_series.dart';
 import '../utils/android_energy_policy.dart';
@@ -222,7 +223,7 @@ class WidgetService {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final dueDay = DateTime(dueDate.year, dueDate.month, dueDate.day);
-    final diffDays = dueDay.difference(today).inDays;
+    final diffDays = CalendarDateMath.daysBetween(today, dueDay);
     if (diffDays < 0) {
       return '已逾期';
     } else if (diffDays == 0) {
@@ -342,7 +343,8 @@ class WidgetService {
     // 3. 倒数日：只保留未删除且未过期的
     final List<Map<String, dynamic>> slimCountdowns = countdownsRaw
         .where(
-            (c) => !c.isDeleted && c.targetDate.difference(today).inDays >= 0)
+        (c) => !c.isDeleted &&
+            CalendarDateMath.daysBetween(today, c.targetDate) >= 0)
         .map((c) => {
               'title': c.title,
               'targetDateMs': c.targetDate.millisecondsSinceEpoch,

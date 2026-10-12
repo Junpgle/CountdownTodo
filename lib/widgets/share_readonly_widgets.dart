@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models.dart';
+import '../utils/calendar_date_math.dart';
 
 /// 分享页只读待办组件（支持折叠，与手机端布局一致）
 class ShareTodoSection extends StatefulWidget {
@@ -1333,7 +1334,8 @@ class ShareCountdownSection extends StatelessWidget {
 
     // 过滤：只显示未完成且未过期的倒计时
     final activeCountdowns = countdowns.where((item) {
-      return !item.isCompleted && item.targetDate.difference(today).inDays >= 0;
+      return !item.isCompleted &&
+          CalendarDateMath.daysBetween(today, item.targetDate) >= 0;
     }).toList()
       ..sort((a, b) => a.targetDate.compareTo(b.targetDate));
 
@@ -1362,7 +1364,7 @@ class ShareCountdownSection extends StatelessWidget {
             itemCount: activeCountdowns.length,
             itemBuilder: (context, index) {
               final item = activeCountdowns[index];
-              final diff = item.targetDate.difference(today).inDays;
+              final diff = CalendarDateMath.daysBetween(today, item.targetDate);
               final bool isUrgent = diff <= 3;
               final bool isHoliday = _isHolidayKeyword(item.title);
 

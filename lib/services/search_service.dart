@@ -25,6 +25,7 @@ import '../screens/add_todo_screen.dart';
 import '../screens/fixed_schedule_editor_screen.dart';
 import '../screens/folder_manage_screen.dart';
 import '../screens/todo_plan_screen.dart';
+import '../utils/calendar_date_math.dart';
 import '../features/finance/models/finance_models.dart';
 import '../features/finance/screens/finance_transaction_detail_screen.dart';
 import '../features/finance/screens/finance_loan_screen.dart';
@@ -844,7 +845,7 @@ class SearchService {
                   ? targetMs
                   : int.tryParse(targetMs.toString()) ?? 0,
             );
-            final diff = target.difference(now).inDays;
+            final diff = CalendarDateMath.daysBetween(now, target);
             final dateStr = DateFormat('yyyy/MM/dd').format(target);
             subtitle = diff >= 0
                 ? '还有 $diff 天 · $dateStr'

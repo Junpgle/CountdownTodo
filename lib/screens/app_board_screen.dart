@@ -7,6 +7,7 @@ import '../storage_service.dart';
 import '../services/course_service.dart';
 import '../services/power_save_mode_service.dart';
 import '../utils/android_energy_policy.dart';
+import '../utils/calendar_date_math.dart';
 import '../widgets/floating_glass_control.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
 
@@ -340,7 +341,8 @@ class _AppBoardScreenState extends State<AppBoardScreen>
                     separatorBuilder: (_, _) => const SizedBox(width: 16),
                     itemBuilder: (context, index) {
                       final cd = _countdowns[index];
-                      final diff = cd.targetDate.difference(_now).inDays;
+                      final diff =
+                          CalendarDateMath.daysBetween(_now, cd.targetDate);
                       final isUrgent = diff < 3;
                       return Container(
                         width: 140,

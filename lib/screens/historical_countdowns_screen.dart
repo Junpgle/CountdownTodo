@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models.dart';
 import '../storage_service.dart';
+import '../utils/calendar_date_math.dart';
 import '../widgets/floating_glass_control.dart';
 import '../widgets/management_page.dart';
 import '../utils/app_dialogs.dart';
@@ -37,9 +38,6 @@ class _HistoricalCountdownsScreenState
 
   DateTime _now() => widget.now?.call() ?? DateTime.now();
 
-  DateTime _calendarDate(DateTime value) =>
-      DateTime.utc(value.year, value.month, value.day);
-
   @override
   void initState() {
     super.initState();
@@ -60,13 +58,14 @@ class _HistoricalCountdownsScreenState
       final items = await (widget.loadCountdowns?.call() ??
           StorageService.getCountdowns(widget.username));
       if (!mounted || generation != _loadGeneration) return;
-      final today = _calendarDate(_now());
+      final today = _now();
       setState(() {
         // Countdown targets are calendar dates, so avoid elapsed-hour math
         // around daylight-saving transitions.
         _history = items
             .where((item) =>
-                !item.isDeleted && _calendarDate(item.targetDate).isBefore(today))
+                !item.isDeleted &&
+                CalendarDateMath.daysBetween(item.targetDate, today) > 0)
             .toList()
           ..sort((a, b) => b.targetDate.compareTo(a.targetDate));
         _isLoading = false;
@@ -209,9 +208,7 @@ class _HistoricalCountdownsScreenState
   Widget _buildCard(CountdownItem item) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final today = _calendarDate(_now());
-    final targetDate = _calendarDate(item.targetDate);
-    final days = today.difference(targetDate).inDays;
+    final days = CalendarDateMath.daysBetween(item.targetDate, _now());
     final busy = _deletingId == item.id;
     return ManagementCard(
       key: ValueKey(item.id),
