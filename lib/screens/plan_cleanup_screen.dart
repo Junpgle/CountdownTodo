@@ -234,7 +234,7 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
         widget.repository ?? PlanCleanupRepository(clock: widget.clock);
     WidgetsBinding.instance.addObserver(this);
     StorageService.scopedDataRefreshNotifier.addListener(_onScopedDataRefresh);
-    _focus = PomodoroService.onRunStateChanged.listen((_) => _refresh());
+    _focus = PomodoroService.onRunStateChanged.listen(_onFocusRunStateChanged);
     _load(initial: true);
   }
 
@@ -282,6 +282,22 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
       return;
     }
     _refresh();
+  }
+
+  void _onFocusRunStateChanged(PomodoroRunState? state) {
+    if (!_detail) {
+      _refresh();
+      return;
+    }
+    if (_snapshot?.blockedReason.contains('专注') == true) {
+      _refresh();
+      return;
+    }
+    if (state?.phase == PomodoroPhase.focusing &&
+        (state?.todoUuid == widget.todoId ||
+            _items.any((item) => item.id == state?.planBlockId))) {
+      _refresh();
+    }
   }
 
   Future<void> _checkPendingIdentity(PlanCleanupRequest pending) async {

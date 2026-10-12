@@ -7,6 +7,7 @@ import 'package:countdown_todo/models.dart';
 import 'package:countdown_todo/models/plan_cleanup.dart';
 import 'package:countdown_todo/screens/plan_cleanup_screen.dart';
 import 'package:countdown_todo/services/plan_cleanup_repository.dart';
+import 'package:countdown_todo/services/pomodoro_service.dart';
 import 'package:countdown_todo/storage_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -397,6 +398,43 @@ void main() {
 
     expect(repo.detailReads, readsBefore);
     expect(find.text('已选1段 · 45分钟'), findsOneWidget);
+    expect(t.takeException(), isNull);
+  });
+  testWidgets('focus updates refresh only the focused todo', (t) async {
+    await block('focus-target');
+    await open(t);
+    final readsBefore = repo.detailReads;
+
+    await PomodoroService.saveRunState(
+      PomodoroRunState(
+        phase: PomodoroPhase.focusing,
+        todoUuid: 'other-todo',
+      ),
+    );
+    await t.pumpAndSettle();
+
+    expect(repo.detailReads, readsBefore);
+    expect(find.text('已选1段 · 45分钟'), findsOneWidget);
+
+    await PomodoroService.saveRunState(
+      PomodoroRunState(
+        phase: PomodoroPhase.focusing,
+        todoUuid: 'todo-target',
+      ),
+    );
+    await t.pumpAndSettle();
+
+    expect(repo.detailReads, readsBefore + 1);
+    expect(find.text('已选0段 · 0分钟'), findsOneWidget);
+    expect(find.textContaining('专注'), findsWidgets);
+
+    await PomodoroService.saveRunState(
+      PomodoroRunState(phase: PomodoroPhase.idle),
+    );
+    await t.pumpAndSettle();
+
+    expect(repo.detailReads, readsBefore + 2);
+    expect(find.text('已选0段 · 0分钟'), findsOneWidget);
     expect(t.takeException(), isNull);
   });
   testWidgets('unrelated task boundary preserves reviewed selection', (t) async {
