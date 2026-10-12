@@ -367,6 +367,7 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
     bool preserveSelectionWhenUnchanged = false,
   }) async {
     if (_working || _saved != null) return;
+    _debounce?.cancel();
     final sequence = ++_sequence;
     final hadPage = _detail ? _snapshot != null : _page != null;
     final hadSelection = _selected.isNotEmpty, hadPending = _pending != null;

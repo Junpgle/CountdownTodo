@@ -813,6 +813,28 @@ void main() {
     expect(find.textContaining('总计1个待办'), findsOneWidget);
     expect(t.takeException(), isNull);
   });
+  testWidgets('manual refresh cancels a pending overview search', (t) async {
+    await f.todo('manual-search', '搜索目标', done: true);
+    await block('manual-search-plan', todo: 'manual-search', minute: 120);
+    await open(t, todo: null);
+    final readsBeforeSearch = repo.reads;
+
+    await t.enterText(key('cleanup-search'), '搜索目标');
+    final refresh = find.ancestor(
+      of: find.byIcon(Icons.refresh),
+      matching: find.byType(IconButton),
+    );
+    t.widget<IconButton>(refresh).onPressed!();
+    await t.pump();
+    expect(repo.reads, readsBeforeSearch + 1);
+
+    await t.pump(const Duration(milliseconds: 250));
+    await t.pumpAndSettle();
+
+    expect(repo.reads, readsBeforeSearch + 1);
+    expect(find.textContaining('总计1个待办'), findsOneWidget);
+    expect(t.takeException(), isNull);
+  });
   testWidgets('pagination account switch clears the previous account page', (
     t,
   ) async {
