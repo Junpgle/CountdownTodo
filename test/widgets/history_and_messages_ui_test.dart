@@ -121,6 +121,44 @@ void main() {
     await tapVisible(tester, find.text('取消'));
   });
 
+  testWidgets('恢复回收站待办使用最新记录，避免覆盖并发修改', (tester) async {
+    final stale = TodoItem(
+        id: 'restore', title: '旧标题', remark: '旧备注', isDeleted: true);
+    final current = TodoItem(
+        id: 'restore',
+        title: '最新标题',
+        remark: '最新备注',
+        groupId: 'active-group',
+        isDeleted: true);
+    final loadedTodos = <TodoItem>[stale];
+    TodoItem? savedTodo;
+    await pumpManagementPage(
+        tester,
+        HistoricalTodosScreen(
+            username: 'ui-test',
+            loadTodos: () async => loadedTodos,
+            loadGroups: () async => [
+                  TodoGroup(id: 'active-group', name: '当前文件夹')
+                ],
+            loadTodoById: (_, _) async => current,
+            saveTodo: (_, todo) async {
+              savedTodo = todo;
+              loadedTodos[0] = todo;
+            }));
+
+    await tapVisible(tester, find.text('回收站 1'));
+    await tapVisible(tester, find.text('恢复待办'));
+    await tester.pumpAndSettle();
+
+    expect(savedTodo?.title, '最新标题');
+    expect(savedTodo?.remark, '最新备注');
+    expect(savedTodo?.groupId, 'active-group');
+    expect(savedTodo?.isDeleted, isFalse);
+    expect(stale.title, '旧标题');
+    expect(stale.isDeleted, isTrue);
+    expect(find.text('回收站 0'), findsOneWidget);
+  });
+
   testWidgets('待修复页展示可读原因与恢复入口', (tester) async {
     await pumpManagementPage(tester, historyTodoPage());
     await tapVisible(tester, find.text('待修复 1'));

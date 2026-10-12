@@ -10,8 +10,15 @@ class HistoricalTodosScreen extends StatefulWidget {
   final String username;
   final Future<List<TodoItem>> Function()? loadTodos;
   final Future<List<TodoGroup>> Function()? loadGroups;
+  final Future<TodoItem?> Function(String username, String uuid)? loadTodoById;
+  final Future<void> Function(String username, TodoItem todo)? saveTodo;
   const HistoricalTodosScreen(
-      {super.key, required this.username, this.loadTodos, this.loadGroups});
+      {super.key,
+      required this.username,
+      this.loadTodos,
+      this.loadGroups,
+      this.loadTodoById,
+      this.saveTodo});
 
   @override
   State<HistoricalTodosScreen> createState() => _HistoricalTodosScreenState();
@@ -206,21 +213,27 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
   }
 
   Future<void> _restoreDeletedItem(TodoItem item) async {
-    item.isDeleted = false;
-    item.markAsChanged();
+    final current = await (widget.loadTodoById?.call(widget.username, item.id) ??
+        StorageService.getTodoByUuid(widget.username, item.id));
+    if (current == null) throw StateError('待办已不存在');
+    current.isDeleted = false;
+    current.markAsChanged();
 
     // 🚀 核心修复：自动检测并修复“孤儿”状态
     // 如果该待办所属的分组已不存在，则将其设为未分组，确保其能直接在首页主列表显示
-    final groups = await StorageService.getTodoGroups(widget.username);
-    final activeGroupIds = groups.map((g) => g.id).toSet();
+    final groups = await (widget.loadGroups?.call() ??
+        StorageService.getTodoGroups(widget.username));
+    final activeGroupIds =
+        groups.where((group) => !group.isDeleted).map((group) => group.id).toSet();
 
-    if (item.groupId != null &&
-        item.groupId!.isNotEmpty &&
-        !activeGroupIds.contains(item.groupId)) {
-      item.groupId = null;
+    if (current.groupId != null &&
+        current.groupId!.isNotEmpty &&
+        !activeGroupIds.contains(current.groupId)) {
+      current.groupId = null;
     }
 
-    await StorageService.updateSingleTodo(widget.username, item);
+    await (widget.saveTodo?.call(widget.username, current) ??
+        StorageService.updateSingleTodo(widget.username, current));
     await _loadData();
     if (mounted) {
       AppSnackBars.showSnackBar(context,
