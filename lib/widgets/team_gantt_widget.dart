@@ -1,14 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models.dart';
+import '../utils/calendar_date_math.dart';
 
 class TeamGanttWidget extends StatelessWidget {
   final List<TodoItem> todos;
   final int viewDays;
   final Function(TodoItem)? onTodoTap;
+  final DateTime? now;
 
   const TeamGanttWidget(
-      {super.key, required this.todos, this.viewDays = 30, this.onTodoTap});
+      {super.key,
+      required this.todos,
+      this.viewDays = 30,
+      this.onTodoTap,
+      this.now});
 
   @override
   Widget build(BuildContext context) {
@@ -24,11 +30,13 @@ class TeamGanttWidget extends StatelessWidget {
     }
 
     // 确定时间跨度
-    final now = DateTime.now();
-    final timelineStart = DateTime(now.year, now.month, now.day)
-        .subtract(const Duration(days: 2));
-    final timelineEnd = timelineStart.add(Duration(days: viewDays));
-    final totalDays = timelineEnd.difference(timelineStart).inDays;
+    final now = this.now ?? DateTime.now();
+    final timelineStart = CalendarDateMath.addDays(
+      CalendarDateMath.dateOnly(now),
+      -2,
+    );
+    final timelineEnd = CalendarDateMath.addDays(timelineStart, viewDays);
+    final totalDays = CalendarDateMath.daysBetween(timelineStart, timelineEnd);
     const timelineWidth = 800.0;
     const horizontalPadding = 16.0;
 
@@ -63,9 +71,11 @@ class TeamGanttWidget extends StatelessWidget {
                 // 1. 时间轴刻度
                 Row(
                   children: List.generate(totalDays, (i) {
-                    final date = timelineStart.add(Duration(days: i));
+                    final date = CalendarDateMath.addDays(timelineStart, i);
                     final isToday =
-                        date.day == now.day && date.month == now.month;
+                        date.year == now.year &&
+                        date.month == now.month &&
+                        date.day == now.day;
                     return Container(
                       width: timelineWidth / totalDays,
                       alignment: Alignment.center,
@@ -90,10 +100,11 @@ class TeamGanttWidget extends StatelessWidget {
                   final end = todo.dueDate!;
 
                   // 计算偏移与长度 (相对于 timelineStart)
-                  double startPos = start.difference(timelineStart).inMinutes /
-                      (totalDays * 24 * 60).toDouble();
-                  double duration = end.difference(start).inMinutes /
-                      (totalDays * 24 * 60).toDouble();
+                  double startPos =
+                      CalendarDateMath.dayOffset(timelineStart, start) /
+                          totalDays;
+                  double duration =
+                      CalendarDateMath.dayOffset(start, end) / totalDays;
 
                   startPos = startPos.clamp(0.0, 1.0);
                   if (startPos + duration > 1.0) duration = 1.0 - startPos;
@@ -117,6 +128,7 @@ class TeamGanttWidget extends StatelessWidget {
                           left: timelineWidth * startPos,
                           width: timelineWidth * duration,
                           child: GestureDetector(
+                            key: ValueKey('team-gantt-bar-${todo.id}'),
                             onTap: () => onTodoTap?.call(todo),
                             child: Container(
                               height: 14,
