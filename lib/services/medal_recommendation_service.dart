@@ -1,5 +1,6 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
+import '../utils/calendar_date_math.dart';
 import 'medal_bandit_service.dart';
 import 'medal_feature_extractor.dart';
 import 'timeline_service.dart';
@@ -1613,9 +1614,8 @@ class MedalRecommendationService {
         {
           final spanDays =
               summary.actualStartTime != null && summary.actualEndTime != null
-                  ? summary.actualEndTime!
-                      .difference(summary.actualStartTime!)
-                      .inDays
+                  ? CalendarDateMath.daysBetween(
+                      summary.actualStartTime!, summary.actualEndTime!)
                   : 0;
           progress = (spanDays / 365).clamp(0.0, 1.0);
           earned = spanDays >= 365;

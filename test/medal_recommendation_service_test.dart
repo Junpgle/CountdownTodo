@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:countdown_todo/services/medal_feature_extractor.dart';
 import 'package:countdown_todo/services/medal_recommendation_service.dart';
 import 'package:countdown_todo/services/timeline_service.dart';
 
@@ -317,6 +318,96 @@ void main() {
       for (final medal in MedalRecommendationService.allMedals) {
         expect(validCategories.contains(medal.category), true);
       }
+    });
+  });
+
+  group('calendar-day medal calculations', () {
+    TimelineSummary summary({
+      int consecutiveActiveDays = 0,
+      DateTime? actualStartTime,
+      DateTime? actualEndTime,
+    }) =>
+        TimelineSummary(
+          searchCount: 0,
+          todoCreatedCount: 0,
+          todoEditedCount: 0,
+          todoCompletedCount: 0,
+          countdownCreatedCount: 0,
+          countdownEditedCount: 0,
+          countdownCompletedCount: 0,
+          attendedCourses: const [],
+          pomodoroCount: 0,
+          consecutiveActiveDays: consecutiveActiveDays,
+          actualStartTime: actualStartTime,
+          actualEndTime: actualEndTime,
+        );
+
+    test('persistence affinity counts calendar dates across spring DST', () {
+      final features = MedalFeatureExtractor.extractFeatures(
+        summary(
+          consecutiveActiveDays: 5,
+          actualStartTime: DateTime(2026, 3, 1, 12),
+          actualEndTime: DateTime(2026, 3, 11, 12),
+        ),
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+      );
+
+      expect(features.categoryAffinity['persistence'], closeTo(4 / 15, 1e-9));
+    });
+
+    test('recency factor uses calendar-day span across spring DST', () {
+      final features = MedalFeatureExtractor.extractFeatures(
+        summary(
+          actualStartTime: DateTime(2026, 3, 1, 12),
+          actualEndTime: DateTime(2026, 3, 9, 12),
+        ),
+        600,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+      );
+
+      expect(
+        features.categoryVelocity['focus'],
+        closeTo(features.categoryAffinity['focus']! * 0.7, 1e-9),
+      );
+    });
+
+    test('year companion counts calendar days across spring DST', () {
+      final medal = MedalRecommendationService.allMedals.firstWhere(
+        (item) => item.id == 'habit_year_companion',
+      );
+      final progress = MedalRecommendationService.calculateMedalProgress(
+        medal,
+        summary(
+          actualStartTime: DateTime(2025, 3, 8, 12),
+          actualEndTime: DateTime(2026, 3, 8, 12),
+        ),
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+      );
+
+      expect(progress.earned, isTrue);
+      expect(progress.progress, 1.0);
     });
   });
 }
