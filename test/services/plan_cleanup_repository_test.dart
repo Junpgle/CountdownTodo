@@ -141,7 +141,7 @@ void main() {
     await block('b', start: day.add(const Duration(hours: 10, minutes: 15)));
     expect((await request()).unionMinutes, 60);
   });
-  test('stale reminder maintenance cannot revive cancellation; queued payload excludes cancelled only', () async {
+  test('stale reminder maintenance cannot revive cancellation or other sources', () async {
     await block('a'); await block('b', start: day.add(const Duration(hours: 12)));
     final stale = TodoPlanBlock.fromJson((await f.db.query('todo_plan_blocks', where: 'uuid=?', whereArgs: ['a'])).single);
     await repo.cancel(await request({'a'}), sync: false);
@@ -149,13 +149,23 @@ void main() {
     await StorageService.savePlanBlocks(user, [stale], sync: false);
     expect((await f.db.query('todo_plan_blocks', where: 'uuid=?', whereArgs: ['a'])).single['status'], 3);
     expect((await f.db.query('op_logs')).length, 1);
-    final reminders = await PlanReminderGuard.filterCancelled([
+    final reminders = await PlanReminderGuard.filterSchedulablePlanReminders([
       {'type': 'plan_block', 'planBlockId': 'a', 'notifId': 33001},
       {'type': 'plan_block', 'planBlockId': 'b', 'notifId': 33002},
       {'type': 'pomodoro', 'planBlockId': 'a', 'notifId': 40001},
       {'type': 'habit', 'planBlockId': 'a', 'notifId': 42001},
     ], databaseOverride: f.db);
     expect(reminders.map((r) => r['notifId']), [33002,40001,42001]);
+  });
+  test('queued plan alarms remain only for planned, delayed and reminded blocks', () async {
+    for (final status in TodoPlanStatus.values) {
+      await block(status.name, status: status);
+    }
+    final reminders = await PlanReminderGuard.filterSchedulablePlanReminders([
+      for (var i = 0; i < TodoPlanStatus.values.length; i++)
+        {'type': 'plan_block', 'planBlockId': TodoPlanStatus.values[i].name, 'notifId': 33001 + i},
+    ], databaseOverride: f.db);
+    expect(reminders.map((r) => r['planBlockId']), ['planned', 'delayed', 'reminded']);
   });
   test('reminder state updates still work for an active plan and write one oplog', () async {
     await block('a');

@@ -446,7 +446,7 @@ class NotificationService {
     final pomodoroEndEnabled =
         await AppSettingsStorage.isPomodoroEndNotificationEnabled();
 
-    return PlanReminderGuard.filterCancelled(reminders
+    return PlanReminderGuard.filterSchedulablePlanReminders(reminders
         .where((reminder) {
           final source = ScheduledReminderRegistry.sourceOf(reminder);
           final type = reminder['type']?.toString();

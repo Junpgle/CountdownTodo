@@ -5,10 +5,10 @@ import 'database_helper.dart';
 import 'plan_todo_guard.dart';
 import 'scheduled_reminder_registry.dart';
 
-/// A scheduler may have collected a plan before the user cancelled it. Check
-/// the latest stored status when the queued reminders are actually applied.
+/// A scheduler may hold a stale plan snapshot. Check the latest stored status
+/// when queued reminders are applied; only pending plan states can be alerted.
 class PlanReminderGuard {
-  static Future<List<Map<String, dynamic>>> filterCancelled(
+  static Future<List<Map<String, dynamic>>> filterSchedulablePlanReminders(
     List<Map<String, dynamic>> reminders, {
     Database? databaseOverride,
   }) async {
@@ -39,7 +39,7 @@ class PlanReminderGuard {
         'todo_plan_blocks',
         columns: ['uuid'],
         where:
-            'uuid IN (${List.filled(batch.length, '?').join(',')}) AND (COALESCE(is_deleted,0)<>0 OR status IN (1,3,7))',
+            'uuid IN (${List.filled(batch.length, '?').join(',')}) AND (COALESCE(is_deleted,0)<>0 OR status IS NULL OR status NOT IN (0,2,4))',
         whereArgs: batch,
       );
       excluded.addAll(rows.map((r) => r['uuid'] as String));
