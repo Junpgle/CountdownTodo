@@ -146,6 +146,13 @@ class _PlanBacklogScreenState extends State<PlanBacklogScreen>
   String _message(Object e) => e is StateError
       ? e.message.toString()
       : e.toString().replaceFirst('PlanAvailabilityException: ', '');
+
+  bool _cannotPlanOnTargetDay(TodoItem todo) {
+    if (todo.dueDate != null && todo.dueDate!.isBefore(_date)) return true;
+    final deadline = todo.effectiveDueAt;
+    return deadline != null && deadline.isBefore(_now);
+  }
+
   Future<void> _pickDate() async {
     final today = DateUtils.dateOnly(_now);
     final chosen = await showDatePicker(
@@ -210,6 +217,9 @@ class _PlanBacklogScreenState extends State<PlanBacklogScreen>
       final (todo, saveContext) = await _repository.prepare(_identity!, row.id);
       if (todo.dueDate != null && todo.dueDate!.isBefore(_date)) {
         throw StateError('截止早于目标日期，请先查看／编辑待办');
+      }
+      if (_cannotPlanOnTargetDay(todo)) {
+        throw StateError('待办已截止，请先查看／编辑待办');
       }
       if (_date.isBefore(DateUtils.dateOnly(_now))) {
         throw StateError('目标日期已过去，请重新选择日期');
@@ -306,16 +316,15 @@ class _PlanBacklogScreenState extends State<PlanBacklogScreen>
       return '${DateFormat('M/d HH:mm').format(DateTime.fromMillisecondsSinceEpoch(row.nextStart!))}—${DateFormat('M/d HH:mm').format(DateTime.fromMillisecondsSinceEpoch(row.nextEnd!))}${row.planCount > 1 ? ' · 另有 ${row.planCount - 1} 项安排' : ''}';
     }
     final due = row.todo.dueDate;
-    return due == null
-        ? '选择合适的时间开始'
-        : due.isBefore(_date)
-        ? '截止早于目标日期 · 请先查看待办'
-        : '${DateFormat(row.todo.isDateOnly ? 'M月d日' : 'M月d日 HH:mm').format(due)} 前完成';
+    if (due == null) return '选择合适的时间开始';
+    if (due.isBefore(_date)) return '截止早于目标日期 · 请先查看待办';
+    if (_cannotPlanOnTargetDay(row.todo)) return '已截止 · 请先查看待办';
+    return '${DateFormat(row.todo.isDateOnly ? 'M月d日' : 'M月d日 HH:mm').format(due)} 前完成';
   }
 
   Widget _row(PlanBacklogRow row) {
     final cs = Theme.of(context).colorScheme;
-    final expired = row.todo.dueDate?.isBefore(_date) ?? false;
+    final expired = _cannotPlanOnTargetDay(row.todo);
     final group =
         (_page?.groups ?? [])
             .where((g) => g.id == row.todo.groupId)

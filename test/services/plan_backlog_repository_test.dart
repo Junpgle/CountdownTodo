@@ -465,6 +465,22 @@ void main() {
     expect(second.restarted, true);
     expect(second.total, 52);
   });
+  test('timed due boundary refreshes the backlog when a task expires', () async {
+    final instant = DateTime(2026, 10, 8, 8);
+    final deadline = DateTime(2026, 10, 8, 8, 30);
+    await f.db.update('todos', {
+      'due_date': deadline.millisecondsSinceEpoch,
+      'is_all_day': 0,
+    });
+    final moving = PlanBacklogRepository(clock: () => instant);
+
+    final page = await moving.read(
+      PlanAvailabilityFixture.username,
+      PlanAvailabilityFixture.day,
+    );
+
+    expect(page.nextBoundary, deadline.add(const Duration(milliseconds: 1)));
+  });
   for (final size in [50, 51, 500]) {
     test(
       '$size tasks have exact totals and no missing or duplicate pages',

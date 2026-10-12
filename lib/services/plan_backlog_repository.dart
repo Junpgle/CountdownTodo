@@ -264,6 +264,12 @@ class PlanBacklogRepository {
         boundariesRow.single['boundary'] as int?,
         count.single['legacy_boundary'] as int?,
         ...items
+            .map((row) => row.todo.effectiveDueAt)
+            .whereType<DateTime>()
+            .map((deadline) => deadline.add(const Duration(milliseconds: 1)))
+            .where((boundary) => boundary.isAfter(instant))
+            .map((deadline) => deadline.millisecondsSinceEpoch),
+        ...items
             .where((row) => row.legacy)
             .map((row) => row.todo.dueDate?.millisecondsSinceEpoch),
       ].whereType<int>().toList()..sort();

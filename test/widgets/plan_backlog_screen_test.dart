@@ -55,6 +55,7 @@ void main() {
     double scale = 1,
     double keyboard = 0,
     Brightness brightness = Brightness.light,
+    DateTime Function()? clock,
     PlanBacklogRepository? repository,
     bool fromTimeline = false,
   }) async {
@@ -86,7 +87,7 @@ void main() {
             : PlanBacklogScreen(
                 username: PlanAvailabilityFixture.username,
                 date: PlanAvailabilityFixture.day,
-                clock: () => now,
+                clock: clock ?? () => now,
                 repository: repository,
               ),
       ),
@@ -111,6 +112,27 @@ void main() {
   tearDown(() async {
     ApiService.clearBaseUrlOverride();
     await f.dispose();
+  });
+
+  testWidgets('expired timed todo cannot be arranged on the same day', (
+    tester,
+  ) async {
+    final deadline = DateTime(2026, 10, 8, 8, 30);
+    await f.db.update('todos', {
+      'due_date': deadline.millisecondsSinceEpoch,
+      'is_all_day': 0,
+    });
+    var instant = DateTime(2026, 10, 8, 8);
+    await show(tester, clock: () => instant);
+
+    expect(find.text('安排'), findsOneWidget);
+    instant = deadline.add(const Duration(milliseconds: 1));
+    await tester.pump(const Duration(minutes: 30, milliseconds: 1));
+    await drain(tester);
+
+    expect(find.textContaining('已截止 · 请先查看待办'), findsOneWidget);
+    expect(find.text('安排'), findsNothing);
+    expect(find.text('查看／编辑待办'), findsOneWidget);
   });
 
   testWidgets(
