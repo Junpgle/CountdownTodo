@@ -711,6 +711,8 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
       ),
       const SizedBox(height: 12),
       if (_page != null) Text('已加载${_todos.length}／总计${_page!.total}个待办'),
+      if (_page?.restarted ?? false)
+        _notice('待办列表已变化，已从头重新加载，请核对结果'),
       if (!_loading && _error == null && _todos.isEmpty)
         _notice(
           _search.text.isEmpty && _folder == null ? '没有需要收尾的剩余规划' : '当前筛选下没有待办',

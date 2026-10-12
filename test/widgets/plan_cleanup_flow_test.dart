@@ -179,6 +179,26 @@ void main() {
     await tap(t, key('cleanup-select-p-51'));
     expect(find.text('一次最多选择50段'), findsOneWidget);
   });
+  testWidgets(
+    'overview explains when changed data restarts pagination',
+    (t) async {
+      for (var i = 0; i < 51; i++) {
+        final id = 'overview-$i';
+        await f.todo(id, '待办$i', done: true);
+        await block('overview-plan-$i', todo: id, minute: i);
+      }
+      await open(t, todo: null);
+      expect(find.textContaining('已加载50／总计51'), findsOneWidget);
+
+      await f.todo('overview-new', '新增待办', done: true);
+      await block('overview-new-plan', todo: 'overview-new', minute: -30);
+      await tap(t, find.text('加载更多待办'));
+
+      expect(find.textContaining('已加载50／总计52'), findsOneWidget);
+      expect(find.textContaining('列表已变化'), findsOneWidget);
+      expect(t.takeException(), isNull);
+    },
+  );
   testWidgets('team plans are read-only with explicit reasons', (t) async {
     final semantics = t.ensureSemantics();
     await block('a');
