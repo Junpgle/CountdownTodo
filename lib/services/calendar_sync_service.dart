@@ -419,6 +419,6 @@ class CalendarSyncService {
         end.isAfter(start)) {
       return endDate;
     }
-    return endDate.add(const Duration(days: 1));
+    return CalendarDateMath.addDays(endDate, 1);
   }
 }
