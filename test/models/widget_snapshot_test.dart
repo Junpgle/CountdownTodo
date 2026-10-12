@@ -1,5 +1,6 @@
 import 'package:countdown_todo/models.dart';
 import 'package:countdown_todo/models/widget_snapshot.dart';
+import 'package:countdown_todo/services/widget_service.dart';
 import 'package:countdown_todo/utils/widget_recurrence_series.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -73,6 +74,47 @@ void main() {
     });
 
     expect(restored.recurrenceSeries, isEmpty);
+  });
+
+  test('widget calendar labels use local dates across DST start', () {
+    final now = DateTime(2026, 3, 8, 12);
+    final tomorrow = DateTime(2026, 3, 9);
+    final data = WidgetService.prepareWidgetDataForTesting({
+      'now': now.millisecondsSinceEpoch,
+      'todos': [
+        {
+          'title': '明日任务',
+          'isDone': false,
+          'id': 'tomorrow-task',
+          'dueDate': DateTime(2026, 3, 9, 9).millisecondsSinceEpoch,
+          'createdDate': now.millisecondsSinceEpoch,
+          'createdAt': now.millisecondsSinceEpoch,
+          'visibleUntil': 0,
+        },
+      ],
+      'courses': [
+        {
+          'courseName': '明日课程',
+          'date': '2026-03-09',
+          'startTime': 900,
+          'endTime': 1000,
+          'roomName': '',
+          'formattedStartTime': '09:00',
+          'formattedEndTime': '10:00',
+        },
+      ],
+      'fixedSchedules': const [],
+      'countdowns': [
+        {'title': '明日目标', 'targetDateMs': tomorrow.millisecondsSinceEpoch},
+      ],
+      'timelogs': const [],
+      'poms': const [],
+      'habits': const [],
+    });
+
+    expect(data['todo_1_due'], '明天');
+    expect(data['course_date_1'], '明天 | 3月9日');
+    expect(data['cd_days_1'], '还有 1 天');
   });
 
   test('invalid custom interval is inactive in the widget projection', () {
