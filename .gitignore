@@ -181,6 +181,7 @@ todo.md
 !/test/widgets/todo_completion_celebration_test.dart
 !/test/widgets/todo_overdue_triage_test.dart
 !/test/widgets/feature_guide_liquid_glass_test.dart
+!/test/widgets/initial_view_layout_gate_test.dart
 !/test/widgets/add_todo_screen_test.dart
 !/test/widgets/todo_recurrence_progress_test.dart
 !/test/widgets/todo_recurrence_occurrence_picker_test.dart
