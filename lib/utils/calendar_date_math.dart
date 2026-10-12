@@ -19,4 +19,18 @@ abstract final class CalendarDateMath {
       DateTime.utc(end.year, end.month, end.day)
           .difference(DateTime.utc(start.year, start.month, start.day))
           .inDays;
+
+  /// Returns a date-axis offset where every local calendar date has equal
+  /// width, including dates around daylight-saving transitions.
+  static double dayOffset(DateTime start, DateTime end) {
+    int microsecondsWithinDay(DateTime value) =>
+        (((value.hour * 60 + value.minute) * 60 + value.second) *
+                Duration.microsecondsPerSecond) +
+            value.millisecond * Duration.microsecondsPerMillisecond +
+            value.microsecond;
+
+    return daysBetween(start, end) +
+        (microsecondsWithinDay(end) - microsecondsWithinDay(start)) /
+            const Duration(days: 1).inMicroseconds;
+  }
 }

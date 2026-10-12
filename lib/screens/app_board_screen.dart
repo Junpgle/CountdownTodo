@@ -1000,7 +1000,7 @@ class _GanttChartState extends State<GanttChart> {
 
       final now = DateTime.now();
       final today = DateTime(now.year, now.month, now.day);
-      final todayOffset = today.difference(minDate).inDays * dayWidth;
+      final todayOffset = CalendarDateMath.dayOffset(minDate, today) * dayWidth;
       final viewportWidth = _scrollController.position.viewportDimension;
       final targetOffset = todayOffset - (viewportWidth / 2) + (dayWidth / 2);
       final clampedOffset = targetOffset
@@ -1078,11 +1078,11 @@ class _GanttChartState extends State<GanttChart> {
           final end = task.dueDate!;
           final left = math.max(
             0.0,
-            start.difference(minDate).inHours / 24 * effectiveDayWidth,
+            CalendarDateMath.dayOffset(minDate, start) * effectiveDayWidth,
           );
           final width = math.max(
             effectiveDayWidth * 0.5,
-            end.difference(start).inHours / 24 * effectiveDayWidth,
+            CalendarDateMath.dayOffset(start, end) * effectiveDayWidth,
           );
 
           return Positioned(
@@ -1163,8 +1163,9 @@ class _GanttChartState extends State<GanttChart> {
     final now = DateTime.now();
 
     // Calculate dynamic range based on tasks
-    DateTime minDate = now.subtract(const Duration(days: 7));
-    DateTime maxDate = now.add(const Duration(days: 30));
+    final today = CalendarDateMath.dateOnly(now);
+    DateTime minDate = CalendarDateMath.addDays(today, -7);
+    DateTime maxDate = CalendarDateMath.addDays(today, 30);
 
     for (var t in datedTodos) {
       final start = _taskStartDate(t);
@@ -1174,12 +1175,10 @@ class _GanttChartState extends State<GanttChart> {
     }
 
     // Add buffers
-    minDate = DateTime(minDate.year, minDate.month, minDate.day)
-        .subtract(const Duration(days: 7));
-    maxDate = DateTime(maxDate.year, maxDate.month, maxDate.day)
-        .add(const Duration(days: 7));
+    minDate = CalendarDateMath.addDays(CalendarDateMath.dateOnly(minDate), -7);
+    maxDate = CalendarDateMath.addDays(CalendarDateMath.dateOnly(maxDate), 7);
 
-    final totalDays = maxDate.difference(minDate).inDays;
+    final totalDays = CalendarDateMath.daysBetween(minDate, maxDate);
     final activeRows = _packTasks(activeTodos, minDate, maxDate);
     final completedRows = _packTasks(completedTodos, minDate, maxDate);
 
@@ -1237,7 +1236,7 @@ class _GanttChartState extends State<GanttChart> {
                 children: [
                   Row(
                     children: List.generate(totalDays, (index) {
-                      final date = minDate.add(Duration(days: index));
+                      final date = CalendarDateMath.addDays(minDate, index);
                       final isToday = date.day == now.day &&
                           date.month == now.month &&
                           date.year == now.year;
@@ -1295,7 +1294,8 @@ class _GanttChartState extends State<GanttChart> {
               ),
               // Today Line
               Positioned(
-                left: now.difference(minDate).inHours / 24 * effectiveDayWidth,
+                left: CalendarDateMath.dayOffset(minDate, now) *
+                    effectiveDayWidth,
                 top: 0,
                 bottom: 0,
                 child: Container(
