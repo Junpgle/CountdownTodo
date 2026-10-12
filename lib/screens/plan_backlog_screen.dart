@@ -541,7 +541,7 @@ class _PlanBacklogScreenState extends State<PlanBacklogScreen>
                   ],
                 )
               else ...[
-                if (_page != null)
+                if (_page != null && (!_loading || _rows.isNotEmpty))
                   Text(
                     '${_scheduled ? '已有安排' : '待安排'} ${_page!.total} 项',
                     style: Theme.of(context).textTheme.labelLarge,

@@ -412,6 +412,31 @@ void main() {
       expect(find.text('复习高数'), findsOneWidget);
     },
   );
+  testWidgets('old total is hidden while a changed search is loading', (
+    tester,
+  ) async {
+    final requests = <Completer<PlanBacklogPage>>[];
+    final actual = await const PlanBacklogRepository().read(
+      PlanAvailabilityFixture.username,
+      PlanAvailabilityFixture.day,
+    );
+    await show(tester, repository: ControlledRepository(requests));
+    await tester.pump();
+    expect(requests, hasLength(1));
+    requests.single.complete(actual);
+    await tester.pumpAndSettle();
+    expect(find.text('待安排 1 项'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField), 'missing');
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(requests, hasLength(2));
+    expect(find.text('待安排 1 项'), findsNothing);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+    requests[1].complete(actual);
+    await tester.pumpAndSettle();
+  });
 
   testWidgets(
     'search persists across tabs and literal percent does not match every task',
