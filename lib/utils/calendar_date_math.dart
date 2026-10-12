@@ -9,6 +9,12 @@ abstract final class CalendarDateMath {
     return (start: start, endExclusive: addDays(start, 1));
   }
 
+  static ({DateTime start, DateTime endExclusive}) weekRange(DateTime value) {
+    final day = dateOnly(value);
+    final start = addDays(day, 1 - day.weekday);
+    return (start: start, endExclusive: addDays(start, 7));
+  }
+
   static DateTime addDays(DateTime value, int days) => DateTime(
         value.year,
         value.month,

@@ -7,6 +7,7 @@ import '../../../services/pomodoro_service.dart';
 import '../../../screens/course_screens.dart';
 import '../../../utils/app_color_utils.dart';
 import '../../../utils/app_dialogs.dart';
+import '../../../utils/calendar_date_math.dart';
 import '../../../utils/page_transitions.dart';
 import '../../../utils/todo_recurrence_picker.dart';
 import '../../../widgets/optional_liquid_glass_surface.dart';
@@ -229,14 +230,11 @@ class PomodoroStatsState extends State<PomodoroStats> {
 
   DateTimeRange _getRange() {
     if (_dimension == 0) {
-      final d = DateTime(_selected.year, _selected.month, _selected.day);
-      return DateTimeRange(start: d, end: d.add(const Duration(days: 1)));
+      final range = CalendarDateMath.dayRange(_selected);
+      return DateTimeRange(start: range.start, end: range.endExclusive);
     } else if (_dimension == 1) {
-      final base = DateTime(_selected.year, _selected.month, _selected.day);
-      int weekday = base.weekday;
-      final monday = base.subtract(Duration(days: weekday - 1));
-      final nextMonday = monday.add(const Duration(days: 7));
-      return DateTimeRange(start: monday, end: nextMonday);
+      final range = CalendarDateMath.weekRange(_selected);
+      return DateTimeRange(start: range.start, end: range.endExclusive);
     } else if (_dimension == 2) {
       final start = DateTime(_selected.year, _selected.month, 1);
       final end = DateTime(_selected.year, _selected.month + 1, 1);
@@ -250,15 +248,14 @@ class PomodoroStatsState extends State<PomodoroStats> {
 
   DateTimeRange _getChartRange() {
     if (_dimension == 0) {
-      final base = DateTime(_selected.year, _selected.month, _selected.day);
-      final start = base.subtract(const Duration(days: 5));
-      final end = base.add(const Duration(
-          days: 2)); // exclusive, so includes selected + next day
+      final base = CalendarDateMath.dateOnly(_selected);
+      final start = CalendarDateMath.addDays(base, -5);
+      final end = CalendarDateMath.addDays(base, 2);
       return DateTimeRange(start: start, end: end);
     } else if (_dimension == 1) {
       final range = _getRange();
-      final start = range.start.subtract(const Duration(days: 5 * 7));
-      final end = range.start.add(const Duration(days: 2 * 7));
+      final start = CalendarDateMath.addDays(range.start, -5 * 7);
+      final end = CalendarDateMath.addDays(range.start, 2 * 7);
       return DateTimeRange(start: start, end: end);
     } else if (_dimension == 2) {
       final start = DateTime(_selected.year, _selected.month - 5, 1);
@@ -519,16 +516,16 @@ class PomodoroStatsState extends State<PomodoroStats> {
 
       if (_dimension == 0) {
         // Day
-        start = chartRange.start.add(Duration(days: i));
-        end = start.add(const Duration(days: 1));
+        start = CalendarDateMath.addDays(chartRange.start, i);
+        end = CalendarDateMath.addDays(start, 1);
         label = DateFormat('MM/dd').format(start);
         isSelected = start.year == _selected.year &&
             start.month == _selected.month &&
             start.day == _selected.day;
       } else if (_dimension == 1) {
         // Week
-        start = chartRange.start.add(Duration(days: i * 7));
-        end = start.add(const Duration(days: 7));
+        start = CalendarDateMath.addDays(chartRange.start, i * 7);
+        end = CalendarDateMath.addDays(start, 7);
         label = DateFormat('MM/dd').format(start);
         final selRange = _getRange();
         isSelected = start.isAtSameMomentAs(selRange.start);

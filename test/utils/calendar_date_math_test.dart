@@ -10,6 +10,16 @@ void main() {
     expect(range.endExclusive.difference(range.start).inHours, 23);
   });
 
+  test('local week ranges use Monday and next Monday across DST', () {
+    final spring = CalendarDateMath.weekRange(DateTime(2026, 3, 8));
+    final fall = CalendarDateMath.weekRange(DateTime(2026, 11, 1));
+
+    expect(spring.start, DateTime(2026, 3, 2));
+    expect(spring.endExclusive, DateTime(2026, 3, 9));
+    expect(fall.start, DateTime(2026, 10, 26));
+    expect(fall.endExclusive, DateTime(2026, 11, 2));
+  });
+
   test('date-axis offsets keep equal local times aligned across DST', () {
     expect(
       CalendarDateMath.dayOffset(
