@@ -284,6 +284,7 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
     unawaited(
       _load(
         initial: initial,
+        preserveOverviewOnFailure: true,
         preserveSelectionWhenUnchanged: preserveSelectionWhenUnchanged,
       ),
     );
@@ -354,6 +355,7 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
   Future<void> _load({
     bool more = false,
     bool initial = false,
+    bool preserveOverviewOnFailure = false,
     bool preserveSelectionWhenUnchanged = false,
   }) async {
     if (_working || _saved != null) return;
@@ -454,7 +456,9 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
       final identityChanged =
           error is PlanAvailabilityException && error.message.contains('身份已切换');
       final preservePage =
-          hadPage && !identityChanged && (more || _detail);
+          hadPage &&
+          !identityChanged &&
+          (more || _detail || preserveOverviewOnFailure);
       setState(() {
         _morePageError = preservePage && more;
         _error = preservePage
@@ -472,7 +476,8 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
         }
       });
       if (preservePage) {
-        _arm(_detail ? _snapshot?.nextBoundary : _overviewBoundary);
+        final boundary = _detail ? _snapshot?.nextBoundary : _overviewBoundary;
+        if (boundary?.isAfter(_now) == true) _arm(boundary);
       }
     }
   }

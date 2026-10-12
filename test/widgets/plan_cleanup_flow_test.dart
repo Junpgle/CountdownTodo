@@ -696,6 +696,37 @@ void main() {
     expect(find.text('待办50'), findsOneWidget);
     expect(t.takeException(), isNull);
   });
+  testWidgets('overview timer read failure preserves loaded rows', (t) async {
+    var testNow = now;
+    repo = _CleanupRepo(f.db, clock: () => testNow);
+    await f.todo('visible-boundary', '可见待办', done: true);
+    await f.block(
+      TodoPlanBlock(
+        id: 'visible-boundary-plan',
+        todoId: 'visible-boundary',
+        startTime: now.add(const Duration(minutes: 1)).millisecondsSinceEpoch,
+        endTime: now.add(const Duration(minutes: 46)).millisecondsSinceEpoch,
+        plannedMinutes: 45,
+      ),
+    );
+    await open(t, todo: null, clock: () => testNow);
+    expect(find.text('可见待办'), findsOneWidget);
+    final readsBeforeBoundary = repo.reads;
+    repo.failNextRead = true;
+
+    testNow = testNow.add(const Duration(minutes: 1));
+    await t.pump(const Duration(minutes: 1));
+    await t.pumpAndSettle();
+
+    expect(repo.reads, readsBeforeBoundary + 1);
+    expect(find.text('可见待办'), findsOneWidget);
+    expect(find.textContaining('已保留当前已加载内容'), findsOneWidget);
+
+    await t.pump(const Duration(minutes: 1));
+    await t.pumpAndSettle();
+    expect(repo.reads, readsBeforeBoundary + 1);
+    expect(t.takeException(), isNull);
+  });
   testWidgets('pagination account switch clears the previous account page', (
     t,
   ) async {
