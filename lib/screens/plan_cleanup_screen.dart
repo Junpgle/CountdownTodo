@@ -480,12 +480,12 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
     _boundary?.cancel();
     try {
       await snapshot.identity.check();
-      final request = _pending ?? snapshot.select(_selected, _now);
+      final preview = _pending ?? snapshot.select(_selected, _now);
       if (!mounted) return;
       var responseSubmitted = false;
-      final dates = request.rows.map((r) => r['start_time'] as int).toList()
+      final dates = preview.rows.map((r) => r['start_time'] as int).toList()
         ..sort();
-      final ends = request.rows.map((r) => r['end_time'] as int).toList()
+      final ends = preview.rows.map((r) => r['end_time'] as int).toList()
         ..sort();
       final confirmed = await showDialog<bool>(
         context: context,
@@ -497,16 +497,16 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
           }
 
           return AlertDialog(
-            title: Text('取消这${request.rows.length}段规划？'),
+            title: Text('取消这${preview.rows.length}段规划？'),
             content: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '${_date(dates.first)} 至 ${_date(ends.last)}\n共${request.unionMinutes}分钟规划时段；历史投入保留。',
+                    '${_date(dates.first)} 至 ${_date(ends.last)}\n共${preview.unionMinutes}分钟规划时段；历史投入保留。',
                   ),
-                  if (request.hasCalendarCopy)
+                  if (preview.hasCalendarCopy)
                     const Padding(
                       padding: EdgeInsets.only(top: 12),
                       child: Text('手机日历副本不会随本次操作删除，需到日历同步中核对。'),
@@ -530,6 +530,14 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
       );
       if (confirmed != true) return;
       if (mounted) setState(() => _confirming = false);
+      final request = _pending ??
+          PlanCleanupRequest(
+            identity: preview.identity,
+            todoId: preview.todoId,
+            fingerprint: preview.fingerprint,
+            rows: preview.rows,
+            cancelledAt: _now.millisecondsSinceEpoch,
+          );
       _pending = request;
       await _repository.cancel(request);
       if (!mounted) return;

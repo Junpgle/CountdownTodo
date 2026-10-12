@@ -17,8 +17,11 @@ import 'package:sqflite/sqflite.dart';
 import '../support/plan_availability_fixture.dart';
 
 class _CleanupRepo extends PlanCleanupRepository {
-  _CleanupRepo(Database db)
-    : super(databaseOverride: db, clock: () => PlanAvailabilityFixture.now);
+  _CleanupRepo(Database db, {DateTime Function()? clock})
+    : super(
+        databaseOverride: db,
+        clock: clock ?? () => PlanAvailabilityFixture.now,
+      );
   bool loseResponse = false;
   bool failNextRead = false;
   bool failNextDetail = false;
@@ -136,6 +139,7 @@ void main() {
     String? todo = 'todo-target',
     Size size = const Size(390, 844),
     double scale = 1,
+    DateTime Function()? clock,
   }) async {
     t.view.devicePixelRatio = 1;
     t.view.physicalSize = size;
@@ -158,7 +162,7 @@ void main() {
           username: user,
           todoId: todo,
           repository: repo,
-          clock: () => now,
+          clock: clock ?? () => now,
           updateReminders: () async {},
         ),
       ),
@@ -198,6 +202,33 @@ void main() {
       expect(t.takeException(), isNull);
     },
   );
+  testWidgets('first cancellation timestamp is captured after confirmation', (
+    t,
+  ) async {
+    await block('confirmed-time');
+    var current = now;
+    repo = _CleanupRepo(f.db, clock: () => current);
+    await f.db.update(
+      'todo_plan_blocks',
+      {'updated_at': current.millisecondsSinceEpoch - 1000},
+      where: 'uuid=?',
+      whereArgs: ['confirmed-time'],
+    );
+    await open(t, clock: () => current);
+    await tap(t, key('cleanup-cancel'));
+    current = current.add(const Duration(hours: 1));
+
+    await tap(t, key('cleanup-confirm'));
+
+    final row = (await f.db.query(
+      'todo_plan_blocks',
+      where: 'uuid=?',
+      whereArgs: ['confirmed-time'],
+    )).single;
+    expect(row['updated_at'], current.millisecondsSinceEpoch);
+    expect(find.text('已取消1段'), findsOneWidget);
+    expect(t.takeException(), isNull);
+  });
   testWidgets('selected summary counts overlapping time only once', (t) async {
     await block('overlap-a');
     await block('overlap-b', minute: 30);
