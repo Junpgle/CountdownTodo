@@ -894,6 +894,7 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
         ),
         onChanged: (_) {
           _sequence++;
+          _boundary?.cancel();
           _debounce?.cancel();
           setState(() {
             _loading = true;

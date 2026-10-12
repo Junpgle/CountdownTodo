@@ -755,6 +755,31 @@ void main() {
     expect(find.textContaining('已保留当前已加载内容'), findsOneWidget);
     expect(t.takeException(), isNull);
   });
+  testWidgets('overview search cancels the previous boundary timer', (t) async {
+    final testNow = now;
+    repo = _CleanupRepo(f.db, clock: () => testNow);
+    await f.todo('search-boundary', '搜索目标', done: true);
+    final start = now.add(const Duration(milliseconds: 250));
+    await f.block(
+      TodoPlanBlock(
+        id: 'search-boundary-plan',
+        todoId: 'search-boundary',
+        startTime: start.millisecondsSinceEpoch,
+        endTime: start.add(const Duration(minutes: 45)).millisecondsSinceEpoch,
+        plannedMinutes: 45,
+      ),
+    );
+    await open(t, todo: null, clock: () => testNow);
+    final readsBeforeSearch = repo.reads;
+
+    await t.enterText(key('cleanup-search'), '搜索目标');
+    await t.pump(const Duration(milliseconds: 250));
+    await t.pumpAndSettle();
+
+    expect(repo.reads, readsBeforeSearch + 1);
+    expect(find.textContaining('总计1个待办'), findsOneWidget);
+    expect(t.takeException(), isNull);
+  });
   testWidgets('pagination account switch clears the previous account page', (
     t,
   ) async {
