@@ -72,6 +72,16 @@ void main() {
     await PageTransitions.init();
   });
 
+  test('companion day count follows local calendar days across DST', () {
+    expect(
+      homeDrawerCompanionDaysForTesting(
+        DateTime(2026, 3, 8, 9),
+        DateTime(2026, 3, 9, 9),
+      ),
+      2,
+    );
+  });
+
   for (final configuration in ['phone', 'wide-dark', 'regrouped']) {
     testWidgets(
       '$configuration drawer entries expand and return to their row',
