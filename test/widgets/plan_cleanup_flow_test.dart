@@ -422,6 +422,29 @@ void main() {
     expect(find.text('已选1段 · 45分钟'), findsOneWidget);
     expect(t.takeException(), isNull);
   });
+  testWidgets('cancelled plan boundary preserves reviewed selection', (t) async {
+    await block('target-active');
+    await f.block(
+      TodoPlanBlock(
+        id: 'target-cancelled',
+        todoId: 'todo-target',
+        startTime: now.add(const Duration(minutes: 1)).millisecondsSinceEpoch,
+        endTime: now.add(const Duration(minutes: 46)).millisecondsSinceEpoch,
+        plannedMinutes: 45,
+        status: TodoPlanStatus.cancelled,
+      ),
+    );
+    await open(t);
+    expect(find.text('已选1段 · 45分钟'), findsOneWidget);
+    final readsBefore = repo.detailReads;
+
+    await t.pump(const Duration(minutes: 1));
+    await t.pumpAndSettle();
+
+    expect(repo.detailReads, readsBefore);
+    expect(find.text('已选1段 · 45分钟'), findsOneWidget);
+    expect(t.takeException(), isNull);
+  });
   testWidgets('refresh read failure preserves selection for retry', (t) async {
     await block('refresh-retry');
     await open(t);

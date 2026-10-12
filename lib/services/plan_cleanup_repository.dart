@@ -389,10 +389,14 @@ class PlanCleanupRepository {
   }) async {
     final ms = instant.millisecondsSinceEpoch;
     final todoFilter = todoId == null ? '' : ' AND todo_uuid=?';
+    const remaining = '''COALESCE(is_deleted,0)=0 AND status IN (0,2,4,5)
+      AND typeof(start_time)='integer' AND typeof(end_time)='integer'
+      AND start_time>0 AND end_time>start_time
+      AND end_time<=8640000000000000''';
     final rows = await tx.rawQuery(
       '''SELECT MIN(boundary) n FROM (
-      SELECT start_time boundary FROM todo_plan_blocks WHERE COALESCE(is_deleted,0)=0 AND start_time>?$todoFilter
-      UNION ALL SELECT end_time boundary FROM todo_plan_blocks WHERE COALESCE(is_deleted,0)=0 AND end_time>?$todoFilter)''',
+      SELECT start_time boundary FROM todo_plan_blocks WHERE $remaining AND start_time>?$todoFilter
+      UNION ALL SELECT end_time boundary FROM todo_plan_blocks WHERE $remaining AND end_time>?$todoFilter)''',
       [ms, ?todoId, ms, ?todoId],
     );
     final midnight = DateTime(instant.year, instant.month, instant.day + 1);
