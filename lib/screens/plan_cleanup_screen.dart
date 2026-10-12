@@ -521,7 +521,9 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
       if (mounted) setState(() => _error = _message(error));
     } finally {
       _opening = false;
-      if (mounted && _saved == null) await _load();
+      if (mounted && _saved == null) {
+        await _load(preserveOverviewOnFailure: true);
+      }
     }
   }
 
@@ -1126,7 +1128,9 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
             if (_saved == null)
               IconButton(
                 tooltip: '重新核对',
-                onPressed: _loading || _working ? null : () => _load(),
+                onPressed: _loading || _working
+                    ? null
+                    : () => _load(preserveOverviewOnFailure: true),
                 icon: const Icon(Icons.refresh),
               ),
           ],
@@ -1142,7 +1146,9 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
                 if (_error != null) ...[
                   _notice(_error!, error: true),
                   TextButton(
-                    onPressed: _working ? null : () => _load(),
+                    onPressed: _working
+                        ? null
+                        : () => _load(preserveOverviewOnFailure: true),
                     child: const Text('重新核对'),
                   ),
                 ],

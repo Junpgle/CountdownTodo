@@ -741,6 +741,20 @@ void main() {
     expect(repo.reads, readsBeforeBoundary + 1);
     expect(t.takeException(), isNull);
   });
+  testWidgets('manual overview refresh failure preserves loaded rows', (
+    t,
+  ) async {
+    await f.todo('manual-refresh', '当前待办', done: true);
+    await block('manual-refresh-plan', todo: 'manual-refresh', minute: 120);
+    await open(t, todo: null);
+    repo.failNextRead = true;
+
+    await tap(t, find.byTooltip('重新核对'));
+
+    expect(find.text('当前待办'), findsOneWidget);
+    expect(find.textContaining('已保留当前已加载内容'), findsOneWidget);
+    expect(t.takeException(), isNull);
+  });
   testWidgets('pagination account switch clears the previous account page', (
     t,
   ) async {
