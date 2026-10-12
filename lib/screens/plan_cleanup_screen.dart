@@ -195,9 +195,9 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
   List<PlanCleanupTodo> _todos = [];
   List<PlanCleanupItem> _items = [];
   PlanCleanupRequest? _pending, _saved;
-  String? _folder, _error, _reminderError;
+  String? _folder, _error, _reminderError, _selectionNotice;
   bool _loading = true, _working = false, _opening = false, _inspecting = false, _foreground = true, _confirming = false;
-  bool _pageLoadError = false;
+  bool _morePageError = false;
   int _sequence = 0;
   Timer? _boundary, _debounce;
   StreamSubscription<PomodoroRunState?>? _focus;
@@ -259,15 +259,14 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
   Future<void> _load({bool more = false, bool initial = false}) async {
     if (_working || _saved != null) return;
     final sequence = ++_sequence;
+    final hadPage = _detail ? _snapshot != null : _page != null;
+    final hadSelection = _selected.isNotEmpty, hadPending = _pending != null;
     _boundary?.cancel();
     setState(() {
       _loading = true;
       _error = null;
-      _pageLoadError = false;
-      if (!more) {
-        _selected.clear();
-        _pending = null;
-      }
+      _morePageError = false;
+      _selectionNotice = null;
     });
     try {
       await _identity?.check();
@@ -299,6 +298,11 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
             restarted: snapshot.restarted,
             next: snapshot.next,
           );
+          if (!append && (hadSelection || hadPending)) {
+            _selectionNotice = snapshot.restarted
+                ? '规划列表已变化，已清空原选择，请重新选择'
+                : '已重新核对，原有选择已清空，请重新选择';
+          }
           if (!append) _selected.clear();
           // Only the first explicitly opened page defaults to selection. New
           // pages and refreshes never silently enlarge the reviewed selection.
@@ -334,17 +338,19 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
       }
     } catch (error) {
       if (!mounted || sequence != _sequence) return;
+      final identityChanged =
+          error is PlanAvailabilityException && error.message.contains('身份已切换');
       final preservePage =
-          more &&
-          !(error is PlanAvailabilityException && error.message.contains('身份已切换'));
+          hadPage && !identityChanged && (more || _detail);
       setState(() {
-        _pageLoadError = preservePage;
+        _morePageError = preservePage && more;
         _error = preservePage
-            ? '${_message(error)}；已保留当前已加载内容和选择，可重试加载更多'
+            ? '${_message(error)}；已保留当前已加载内容和选择，可重试${more ? '加载更多' : '核对'}'
             : _message(error);
         _loading = false;
         if (!preservePage) {
           _selected.clear();
+          _pending = null;
           _snapshot = null;
           _page = null;
           _items = [];
@@ -603,6 +609,7 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
         item.eligible &&
         (_snapshot?.blockedReason.isEmpty ?? false) &&
         !_working &&
+        !_loading &&
         _pending == null;
     final checked = _selected.contains(item.id);
     final checkboxLabel = [
@@ -636,11 +643,12 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
                             );
                             return;
                           }
-                          setState(
-                            () => value == true
+                          setState(() {
+                            _selectionNotice = null;
+                            value == true
                                 ? _selected.add(item.id)
-                                : _selected.remove(item.id),
-                          );
+                                : _selected.remove(item.id);
+                          });
                         }
                       : null,
                 ),
@@ -779,8 +787,8 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
             ),
           ),
         ),
-      if (_page?.next != null)
-        if (_pageLoadError) _notice(_error ?? '分页读取失败，请重试', error: true),
+      if (_morePageError && _page != null)
+        _notice(_error ?? '列表读取失败，请重试', error: true),
       if (_page?.next != null)
         TextButton(
           onPressed: _loading ? null : () => _load(more: true),
@@ -820,11 +828,13 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
           TextButton(
             key: const ValueKey('cleanup-select-loaded'),
             onPressed:
-                _working ||
+                _loading ||
+                    _working ||
                     _pending != null ||
                     snapshot.blockedReason.isNotEmpty
                 ? null
                 : () => setState(() {
+                    _selectionNotice = null;
                     _selected.clear();
                     _selected.addAll(
                       _items.where((r) => r.eligible).take(50).map((r) => r.id),
@@ -851,10 +861,10 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
       }
       children.add(_item(item));
     }
+    if (_morePageError) {
+      children.add(_notice(_error ?? '列表读取失败，请重试', error: true));
+    }
     if (snapshot.next != null) {
-      if (_pageLoadError) {
-        children.add(_notice(_error ?? '分页读取失败，请重试', error: true));
-      }
       children.add(
         TextButton(
           onPressed: _loading || _working || _pending != null
@@ -972,6 +982,18 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text('已选${_selected.length}段 · $minutes分钟'),
+                      if (_selectionNotice != null) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          _selectionNotice!,
+                          textAlign: TextAlign.center,
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurfaceVariant,
+                              ),
+                        ),
+                      ],
                       const SizedBox(height: 8),
                       SizedBox(
                         width: double.infinity,

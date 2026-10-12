@@ -1,6 +1,8 @@
 @TestOn('vm')
 library;
 
+import 'dart:async';
+
 import 'package:countdown_todo/models.dart';
 import 'package:countdown_todo/models/plan_cleanup.dart';
 import 'package:countdown_todo/screens/plan_cleanup_screen.dart';
@@ -20,6 +22,7 @@ class _CleanupRepo extends PlanCleanupRepository {
   bool loseResponse = false;
   bool failNextRead = false;
   bool failNextDetail = false;
+  Completer<void>? detailReadGate;
   int calls = 0;
   @override
   Future<PlanCleanupPage> read(
@@ -41,6 +44,11 @@ class _CleanupRepo extends PlanCleanupRepository {
     String todoId, {
     PlanCleanupCursor? cursor,
   }) async {
+    final gate = detailReadGate;
+    if (gate != null) {
+      detailReadGate = null;
+      await gate.future;
+    }
     if (failNextDetail) {
       failNextDetail = false;
       throw StateError('模拟分页读取失败');
@@ -261,6 +269,42 @@ void main() {
     expect(t.widget<Checkbox>(key('cleanup-select-p-51')).value, isFalse);
     await tap(t, key('cleanup-select-p-51'));
     expect(find.text('一次最多选择50段'), findsOneWidget);
+  });
+  testWidgets('refresh locks selection and explains clearing it', (t) async {
+    await block('refresh-selection');
+    await open(t);
+    expect(find.text('已选1段 · 45分钟'), findsOneWidget);
+    final gate = Completer<void>();
+    repo.detailReadGate = gate;
+
+    await t.tap(find.byTooltip('重新核对'));
+    await t.pump();
+
+    expect(find.text('已选1段 · 45分钟'), findsOneWidget);
+    expect(
+      t.widget<Checkbox>(key('cleanup-select-refresh-selection')).onChanged,
+      isNull,
+    );
+
+    gate.complete();
+    await t.pumpAndSettle();
+    expect(find.text('已选0段 · 0分钟'), findsOneWidget);
+    expect(find.textContaining('原有选择已清空'), findsOneWidget);
+    expect(t.takeException(), isNull);
+  });
+  testWidgets('refresh read failure preserves selection for retry', (t) async {
+    await block('refresh-retry');
+    await open(t);
+    repo.failNextDetail = true;
+
+    await tap(t, find.byTooltip('重新核对'));
+
+    expect(find.text('已选1段 · 45分钟'), findsOneWidget);
+    expect(find.textContaining('已保留当前已加载内容和选择'), findsOneWidget);
+    await tap(t, find.widgetWithText(TextButton, '重新核对'));
+    expect(find.text('已选0段 · 0分钟'), findsOneWidget);
+    expect(find.textContaining('原有选择已清空'), findsOneWidget);
+    expect(t.takeException(), isNull);
   });
   testWidgets('detail paging failure preserves reviewed selection for retry', (
     t,
