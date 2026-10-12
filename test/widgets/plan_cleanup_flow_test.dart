@@ -22,6 +22,7 @@ class _CleanupRepo extends PlanCleanupRepository {
   bool loseResponse = false;
   bool failNextRead = false;
   bool failNextDetail = false;
+  bool malformedId = false;
   Completer<void>? detailReadGate;
   int calls = 0;
   @override
@@ -53,7 +54,27 @@ class _CleanupRepo extends PlanCleanupRepository {
       failNextDetail = false;
       throw StateError('模拟分页读取失败');
     }
-    return super.detail(username, todoId, cursor: cursor);
+    final snapshot = await super.detail(username, todoId, cursor: cursor);
+    if (!malformedId || snapshot.rows.isEmpty) return snapshot;
+    return PlanCleanupSnapshot(
+      identity: snapshot.identity,
+      todo: snapshot.todo,
+      rows: [
+        PlanCleanupItem({
+          ...snapshot.rows.first.row,
+          'uuid': null,
+          'reason': '规划时间或版本需核对',
+        }),
+        ...snapshot.rows.skip(1),
+      ],
+      total: snapshot.total,
+      eligible: 0,
+      fingerprint: snapshot.fingerprint,
+      blockedReason: snapshot.blockedReason,
+      nextBoundary: snapshot.nextBoundary,
+      restarted: snapshot.restarted,
+      next: snapshot.next,
+    );
   }
 
   @override
@@ -185,6 +206,14 @@ void main() {
     expect(find.text('已选2段 · 75分钟'), findsOneWidget);
     await tap(t, key('cleanup-cancel'));
     expect(find.textContaining('共75分钟规划时段'), findsOneWidget);
+    expect(t.takeException(), isNull);
+  });
+  testWidgets('malformed plan id is shown as blocked without crashing', (t) async {
+    await block('malformed-id');
+    repo.malformedId = true;
+    await open(t);
+
+    expect(find.text('规划时间或版本需核对'), findsOneWidget);
     expect(t.takeException(), isNull);
   });
   testWidgets('repeated confirmation cannot pop the cleanup page', (t) async {

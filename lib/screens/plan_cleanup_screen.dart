@@ -681,7 +681,7 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Checkbox(
-                  key: ValueKey('cleanup-select-${item.id}'),
+                  key: ValueKey('cleanup-select-${item.key}'),
                   semanticLabel: checkboxLabel,
                   value: checked,
                   onChanged: enabled

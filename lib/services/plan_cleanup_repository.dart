@@ -34,7 +34,8 @@ class PlanCleanupItem {
       row = Map.unmodifiable({...values}..remove('reason'));
   final Map<String, Object?> row;
   final String reason;
-  String get id => row['uuid'] as String;
+  String get id => row['uuid']?.toString() ?? '';
+  String get key => id.isNotEmpty ? id : 'legacy-row-${row['id'] ?? ''}';
   bool get eligible => reason.isEmpty;
   int get start => row['start_time'] as int? ?? 0;
   int get end => row['end_time'] as int? ?? 0;
