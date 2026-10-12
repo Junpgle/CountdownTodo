@@ -82,6 +82,14 @@ void main() {
       );
     });
 
+    test('infers custom intervals by calendar day across daylight saving', () {
+      final interval = FixedScheduleRecurrenceService.inferCustomIntervalDays(
+        [DateTime(2026, 3, 9), DateTime(2026, 3, 7)],
+      );
+
+      expect(interval, 2);
+    });
+
     test('workday recurrence stays a workday rule', () {
       final template = FixedScheduleItem(
         id: 'weekday-class',
