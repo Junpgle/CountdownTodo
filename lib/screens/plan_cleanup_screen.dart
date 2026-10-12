@@ -196,7 +196,7 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
   List<PlanCleanupItem> _items = [];
   PlanCleanupRequest? _pending, _saved;
   String? _folder, _error, _reminderError;
-  bool _loading = true, _working = false, _opening = false, _foreground = true, _confirming = false;
+  bool _loading = true, _working = false, _opening = false, _inspecting = false, _foreground = true, _confirming = false;
   bool _pageLoadError = false;
   int _sequence = 0;
   Timer? _boundary, _debounce;
@@ -555,27 +555,32 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
     _ => '状态待核对',
   };
   Future<void> _viewItem(PlanCleanupItem item) async {
-    if (_working) return;
-    await showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('规划核对'),
-        content: SingleChildScrollView(
-          child: Text(
-            '${_date(item.start)} ${_range(item)}\n${item.minutes}分钟 · ${item.reason.isEmpty ? '可处理' : item.reason}'
-            '\n提前${item.row['reminder_minutes']}分钟提醒'
-            '\n累计专注参考：${item.row['actual_focus_seconds']}秒'
-            '\n${item.row['remark'] ?? ''}\n以上为本页读取快照，提交前会再次核对。',
+    if (_working || _inspecting) return;
+    setState(() => _inspecting = true);
+    try {
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('规划核对'),
+          content: SingleChildScrollView(
+            child: Text(
+              '${_date(item.start)} ${_range(item)}\n${item.minutes}分钟 · ${item.reason.isEmpty ? '可处理' : item.reason}'
+              '\n提前${item.row['reminder_minutes']}分钟提醒'
+              '\n累计专注参考：${item.row['actual_focus_seconds']}秒'
+              '\n${item.row['remark'] ?? ''}\n以上为本页读取快照，提交前会再次核对。',
+            ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('返回'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('返回'),
-          ),
-        ],
-      ),
-    );
+      );
+    } finally {
+      if (mounted) setState(() => _inspecting = false);
+    }
   }
 
   Widget _notice(String text, {bool error = false}) {
@@ -674,7 +679,9 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
             Align(
               alignment: Alignment.centerRight,
               child: TextButton(
-                onPressed: _working ? null : () => _viewItem(item),
+                onPressed: _working || _inspecting
+                    ? null
+                    : () => _viewItem(item),
                 child: const Text('查看详情'),
               ),
             ),

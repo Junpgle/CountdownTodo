@@ -200,6 +200,20 @@ void main() {
     expect(await f.db.query('op_logs'), isEmpty);
     expect(t.takeException(), isNull);
   });
+  testWidgets('repeated plan detail action opens one dialog', (t) async {
+    await block('detail-repeat');
+    await open(t);
+    final inspect = t
+        .widget<TextButton>(find.widgetWithText(TextButton, '查看详情').first)
+        .onPressed!;
+    inspect();
+    inspect();
+    await t.pumpAndSettle();
+
+    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(find.text('规划核对'), findsOneWidget);
+    expect(t.takeException(), isNull);
+  });
   testWidgets(
     'new source while confirming rejects all and requires fresh selection',
     (t) async {
