@@ -4,6 +4,10 @@ abstract final class CalendarDateMath {
   static DateTime dateOnly(DateTime value) =>
       DateTime(value.year, value.month, value.day);
 
+  /// Converts an exclusive local date boundary to its inclusive final date.
+  static DateTime inclusiveEndDate(DateTime endExclusive) =>
+      addDays(dateOnly(endExclusive), -1);
+
   static ({DateTime start, DateTime endExclusive}) dayRange(DateTime value) {
     return inclusiveDateRange(value, value);
   }

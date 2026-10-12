@@ -164,8 +164,12 @@ class DeviceCalendarEventDetailScreen extends StatelessWidget {
     // Android and EventKit expose all-day end times as the following midnight.
     // Show the inclusive final day to people, without mutating the source data.
     final end = event.end;
-    if (end.hour == 0 && end.minute == 0 && end.second == 0) {
-      return end.subtract(const Duration(days: 1));
+    if (end.hour == 0 &&
+        end.minute == 0 &&
+        end.second == 0 &&
+        end.millisecond == 0 &&
+        end.microsecond == 0) {
+      return CalendarDateMath.inclusiveEndDate(end);
     }
     return end;
   }

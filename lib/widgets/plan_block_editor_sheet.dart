@@ -28,6 +28,7 @@ import '../services/time_estimation_repository.dart';
 import '../services/pomodoro_service.dart';
 import '../services/pomodoro_control_service.dart';
 import '../utils/app_dialogs.dart';
+import '../utils/calendar_date_math.dart';
 import '../utils/page_transitions.dart';
 import '../utils/todo_recurrence_picker.dart';
 import 'plan_availability_panel.dart';
@@ -1102,7 +1103,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
       context: context,
       initialDate: old.start,
       firstDate: selection.query.base.dayStart,
-      lastDate: selection.query.endDate.subtract(const Duration(days: 1)),
+      lastDate: CalendarDateMath.inclusiveEndDate(selection.query.endDate),
     );
     if (date == null || !mounted) return;
     final time = await showTimePicker(

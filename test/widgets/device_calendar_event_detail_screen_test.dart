@@ -47,4 +47,23 @@ void main() {
     expect(find.text('2026年9月2日 – 2026年9月3日'), findsOneWidget);
     expect(find.text('全天'), findsNWidgets(2));
   });
+
+  testWidgets('all-day detail keeps the spring DST date as the final day',
+      (tester) async {
+    final event = DeviceCalendarEvent(
+      id: 'event-dst',
+      calendarId: 'calendar-1',
+      title: '春季假期',
+      start: DateTime(2026, 3, 8),
+      end: DateTime(2026, 3, 9),
+      allDay: true,
+    );
+
+    await tester.pumpWidget(MaterialApp(
+      home: DeviceCalendarEventDetailScreen(event: event),
+    ));
+
+    expect(find.text('2026年3月8日'), findsOneWidget);
+    expect(find.text('2026年3月7日'), findsNothing);
+  });
 }

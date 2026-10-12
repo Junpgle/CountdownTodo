@@ -24,6 +24,20 @@ void main() {
     expect(fall.endExclusive, DateTime(2026, 11, 2));
   });
 
+  test(
+    'exclusive local midnights produce inclusive final dates across DST',
+    () {
+      expect(
+        CalendarDateMath.inclusiveEndDate(DateTime(2026, 3, 9)),
+        DateTime(2026, 3, 8),
+      );
+      expect(
+        CalendarDateMath.inclusiveEndDate(DateTime(2026, 11, 2)),
+        DateTime(2026, 11, 1),
+      );
+    },
+  );
+
   test('local week ranges use Monday and next Monday across DST', () {
     final spring = CalendarDateMath.weekRange(DateTime(2026, 3, 8));
     final fall = CalendarDateMath.weekRange(DateTime(2026, 11, 1));
