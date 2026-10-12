@@ -177,6 +177,16 @@ void main() {
       expect(t.takeException(), isNull);
     },
   );
+  testWidgets('selected summary counts overlapping time only once', (t) async {
+    await block('overlap-a');
+    await block('overlap-b', minute: 30);
+    await open(t);
+
+    expect(find.text('已选2段 · 75分钟'), findsOneWidget);
+    await tap(t, key('cleanup-cancel'));
+    expect(find.textContaining('共75分钟规划时段'), findsOneWidget);
+    expect(t.takeException(), isNull);
+  });
   testWidgets('repeated confirmation cannot pop the cleanup page', (t) async {
     await block('confirm-repeat');
     await open(t);
@@ -262,10 +272,10 @@ void main() {
       await block('p-$i', minute: i);
     }
     await open(t);
-    expect(find.text('已选50段 · 2250分钟'), findsOneWidget);
+    expect(find.text('已选50段 · 94分钟'), findsOneWidget);
     await tap(t, find.text('加载更多规划（不自动选中）'));
     expect(find.textContaining('已加载52／总计52'), findsOneWidget);
-    expect(find.text('已选50段 · 2250分钟'), findsOneWidget);
+    expect(find.text('已选50段 · 94分钟'), findsOneWidget);
     expect(t.widget<Checkbox>(key('cleanup-select-p-51')).value, isFalse);
     await tap(t, key('cleanup-select-p-51'));
     expect(find.text('一次最多选择50段'), findsOneWidget);
@@ -318,12 +328,12 @@ void main() {
     expect(repo.failNextDetail, isFalse);
 
     expect(find.textContaining('已加载50／总计52'), findsOneWidget);
-    expect(find.text('已选50段 · 2250分钟'), findsOneWidget);
+    expect(find.text('已选50段 · 94分钟'), findsOneWidget);
     expect(find.textContaining('已保留'), findsOneWidget);
 
     await tap(t, find.text('加载更多规划（不自动选中）'));
     expect(find.textContaining('已加载52／总计52'), findsOneWidget);
-    expect(find.text('已选50段 · 2250分钟'), findsOneWidget);
+    expect(find.text('已选50段 · 94分钟'), findsOneWidget);
     expect(t.takeException(), isNull);
   });
   testWidgets('overview paging failure keeps loaded rows and retries', (t) async {

@@ -34,7 +34,9 @@ class PlanCleanupRequest {
       a.length == b.length &&
       a.keys.every((key) => b.containsKey(key) && a[key] == b[key]);
 
-  int get unionMinutes {
+  int get unionMinutes => unionMinutesFor(rows);
+
+  static int unionMinutesFor(Iterable<Map<String, Object?>> rows) {
     final intervals =
         rows.map((r) => (r['start_time'] as int, r['end_time'] as int)).toList()
           ..sort((a, b) => a.$1.compareTo(b.$1));

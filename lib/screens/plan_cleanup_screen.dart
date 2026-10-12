@@ -975,10 +975,9 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
 
   @override
   Widget build(BuildContext context) {
-    var minutes = 0;
-    for (final item in _items.where((r) => _selected.contains(r.id))) {
-      minutes += item.minutes;
-    }
+    final minutes = PlanCleanupRequest.unionMinutesFor(
+      _items.where((r) => _selected.contains(r.id)).map((r) => r.row),
+    );
     return PopScope(
       canPop: !_working,
       child: Scaffold(
