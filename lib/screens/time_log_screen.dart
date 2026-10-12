@@ -15,6 +15,7 @@ import '../utils/calendar_date_math.dart';
 import '../utils/page_transitions.dart';
 import '../utils/todo_recurrence_picker.dart';
 import '../utils/theme_color_tokens.dart';
+import '../utils/time_log_range_math.dart';
 import '../widgets/app_detail_widgets.dart';
 import 'dart:ui' as ui;
 import 'pomodoro_screen.dart';
@@ -70,6 +71,8 @@ Color hexColor(String hex, {double opacity = 1.0}) {
 }
 
 DateTime _dayStart(DateTime d) => CalendarDateMath.dateOnly(d);
+int _dayEndMs(DateTime d) =>
+    CalendarDateMath.dayRange(d).endExclusive.millisecondsSinceEpoch;
 
 List<DateTime> _weekDays([DateTime? now]) {
   final n = now ?? DateTime.now();
@@ -981,7 +984,17 @@ class _WeekViewState extends State<_WeekView>
   int _rangeMin(int from, int to) {
     final lm = widget.logs
         .where((l) => l.endTime > from && l.startTime < to)
-        .fold(0, (s, l) => s + (l.endTime - l.startTime) ~/ 60000);
+        .fold(
+          0,
+          (s, l) =>
+              s +
+              TimeLogRangeMath.overlapMinutes(
+                intervalStartMs: l.startTime,
+                intervalEndMs: l.endTime,
+                rangeStartMs: from,
+                rangeEndMs: to,
+              ),
+        );
     final pm = widget.pomodoros
         .where((p) =>
             p.startTime < to &&
@@ -993,10 +1006,13 @@ class _WeekViewState extends State<_WeekView>
   @override
   Widget build(BuildContext context) {
     final days = _weekDays(widget.weekStart);
-    final todayMs = _dayStart(DateTime.now()).millisecondsSinceEpoch;
-    final todayMin = _rangeMin(todayMs, todayMs + 86400000);
+    final todayRange = CalendarDateMath.dayRange(DateTime.now());
+    final todayMin = _rangeMin(
+      todayRange.start.millisecondsSinceEpoch,
+      todayRange.endExclusive.millisecondsSinceEpoch,
+    );
     final wStart0 = days.first.millisecondsSinceEpoch;
-    final wEnd0 = days.last.millisecondsSinceEpoch + 86400000;
+    final wEnd0 = _dayEndMs(days.last);
 
     return LayoutBuilder(builder: (ctx, outer) {
       final isWide = outer.maxWidth >= 720;
@@ -1097,8 +1113,11 @@ class _WeekViewState extends State<_WeekView>
     final isDark = Theme.of(ctx).brightness == Brightness.dark;
 
     int dayMin(DateTime d) {
-      final ds = _dayStart(d).millisecondsSinceEpoch;
-      return _rangeMin(ds, ds + 86400000);
+      final range = CalendarDateMath.dayRange(d);
+      return _rangeMin(
+        range.start.millisecondsSinceEpoch,
+        range.endExclusive.millisecondsSinceEpoch,
+      );
     }
 
     return Column(children: [
@@ -1189,8 +1208,9 @@ class _WeekViewState extends State<_WeekView>
                                           major: h % 6 == 0),
                                       fontWeight: FontWeight.w700)))))),
               ...days.map((d) {
-                final ds = _dayStart(d).millisecondsSinceEpoch;
-                final de = ds + 86400000;
+                final range = CalendarDateMath.dayRange(d);
+                final ds = range.start.millisecondsSinceEpoch;
+                final de = range.endExclusive.millisecondsSinceEpoch;
                 final dLogs = widget.logs
                     .where((l) => l.endTime > ds && l.startTime < de)
                     .toList();
@@ -1284,8 +1304,17 @@ class _WeekViewState extends State<_WeekView>
                               l.tagUuids.contains(t.uuid) &&
                               l.endTime > ws &&
                               l.startTime < we)
-                          .fold(0,
-                              (s, l) => s + (l.endTime - l.startTime) ~/ 60000);
+                          .fold(
+                            0,
+                            (s, l) =>
+                                s +
+                                TimeLogRangeMath.overlapMinutes(
+                                  intervalStartMs: l.startTime,
+                                  intervalEndMs: l.endTime,
+                                  rangeStartMs: ws,
+                                  rangeEndMs: we,
+                                ),
+                          );
                       tw += widget.pomodoros
                           .where((p) =>
                               p.tagUuids.contains(t.uuid) &&
@@ -1347,7 +1376,17 @@ class _WeekViewState extends State<_WeekView>
                     l.tagUuids.contains(t.uuid) &&
                     l.endTime > ws &&
                     l.startTime < we)
-                .fold(0, (s, l) => s + (l.endTime - l.startTime) ~/ 60000);
+                .fold(
+                  0,
+                  (s, l) =>
+                      s +
+                      TimeLogRangeMath.overlapMinutes(
+                        intervalStartMs: l.startTime,
+                        intervalEndMs: l.endTime,
+                        rangeStartMs: ws,
+                        rangeEndMs: we,
+                      ),
+                );
             tw += widget.pomodoros
                 .where((p) =>
                     p.tagUuids.contains(t.uuid) &&
@@ -1416,7 +1455,7 @@ class _WeekColPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final de = dayStartMs + 86400000;
+    final de = _dayEndMs(DateTime.fromMillisecondsSinceEpoch(dayStartMs));
     for (int h = 0; h <= 24; h++) {
       final y = h * hourH;
       canvas.drawLine(
@@ -1587,8 +1626,9 @@ class _DayGridView extends StatefulWidget {
 class _DayGridViewState extends State<_DayGridView> {
   @override
   Widget build(BuildContext context) {
-    final ds = _dayStart(widget.date).millisecondsSinceEpoch;
-    final de = ds + 86400000;
+    final dayRange = CalendarDateMath.dayRange(widget.date);
+    final ds = dayRange.start.millisecondsSinceEpoch;
+    final de = dayRange.endExclusive.millisecondsSinceEpoch;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final colorScheme = Theme.of(context).colorScheme;
 
@@ -1599,8 +1639,17 @@ class _DayGridViewState extends State<_DayGridView> {
       return pe > ds && p.startTime < de;
     }).toList();
 
-    final logMin =
-        dLogs.fold(0, (s, l) => s + (l.endTime - l.startTime) ~/ 60000);
+    final logMin = dLogs.fold(
+      0,
+      (s, l) =>
+          s +
+          TimeLogRangeMath.overlapMinutes(
+            intervalStartMs: l.startTime,
+            intervalEndMs: l.endTime,
+            rangeStartMs: ds,
+            rangeEndMs: de,
+          ),
+    );
     final pomMin = dPoms.fold(0, (s, p) => s + p.effectiveDuration ~/ 60);
     final totalMin = logMin + pomMin;
 
@@ -1608,7 +1657,13 @@ class _DayGridViewState extends State<_DayGridView> {
     for (final l in dLogs) {
       for (final uid in l.tagUuids) {
         tagMinMap[uid] =
-            (tagMinMap[uid] ?? 0) + (l.endTime - l.startTime) ~/ 60000;
+            (tagMinMap[uid] ?? 0) +
+                TimeLogRangeMath.overlapMinutes(
+                  intervalStartMs: l.startTime,
+                  intervalEndMs: l.endTime,
+                  rangeStartMs: ds,
+                  rangeEndMs: de,
+                );
       }
     }
     for (final p in dPoms) {
@@ -1840,7 +1895,10 @@ class _GridCanvas extends StatelessWidget {
         final title = tag?.name ?? '专注';
         return _buildEventBlocks(
           startMs: max(pom.startTime, dayStartMs),
-          endMs: min(pe, dayStartMs + 86400000),
+          endMs: min(
+            pe,
+            _dayEndMs(DateTime.fromMillisecondsSinceEpoch(dayStartMs)),
+          ),
           dayStartMs: dayStartMs,
           colW: colW,
           rowW: rowW,
@@ -1864,7 +1922,10 @@ class _GridCanvas extends StatelessWidget {
         final title = log.title.isNotEmpty ? log.title : (tag?.name ?? '补录');
         return _buildEventBlocks(
           startMs: max(log.startTime, dayStartMs),
-          endMs: min(log.endTime, dayStartMs + 86400000),
+          endMs: min(
+            log.endTime,
+            _dayEndMs(DateTime.fromMillisecondsSinceEpoch(dayStartMs)),
+          ),
           dayStartMs: dayStartMs,
           colW: colW,
           rowW: rowW,

@@ -116,7 +116,7 @@ class _DayViewState extends State<_DayView> {
 
   void _showDayLogList() {
     final gsMs = _gridStart.millisecondsSinceEpoch;
-    final geMs = gsMs + 86400000;
+    final geMs = _dayEndMs(_gridStart);
     showAppModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -315,7 +315,7 @@ class _DayViewState extends State<_DayView> {
   @override
   Widget build(BuildContext context) {
     final gsMs = _gridStart.millisecondsSinceEpoch;
-    final geMs = gsMs + 86400000;
+    final geMs = _dayEndMs(_gridStart);
     final dLogN =
         widget.logs.where((l) => l.endTime > gsMs && l.startTime < geMs).length;
     final dPlanN = widget.planBlocks
@@ -518,7 +518,7 @@ class _DayViewState extends State<_DayView> {
 
   List<Widget> _pomodoroTapTargets(double width, double hourH) {
     final gsMs = _gridStart.millisecondsSinceEpoch;
-    final geMs = gsMs + 86400000;
+    final geMs = _dayEndMs(_gridStart);
     final List<Widget> targets = [];
     for (final pom in widget.pomodoros) {
       final pe = pom.endTime ?? (pom.startTime + pom.effectiveDuration * 1000);
@@ -732,7 +732,7 @@ class _DayGridPainter extends CustomPainter {
     final bpr = 60 ~/ minutesPerBlock;
     final bw = size.width / bpr;
     final gsMs = gridStart.millisecondsSinceEpoch;
-    final geMs = gsMs + 86400000;
+    final geMs = _dayEndMs(gridStart);
 
     final mj = Paint()
       ..color = gridMajorColor
