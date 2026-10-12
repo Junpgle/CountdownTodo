@@ -83,7 +83,7 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
         badgeColor = Colors.redAccent.shade200;
         badgeBg = Colors.redAccent.withValues(alpha: 0.12);
       } else if (isFuture) {
-        int days = d.difference(today).inDays;
+        int days = CalendarDateMath.daysBetween(today, d);
         badge = "$days天后";
         badgeColor = colorScheme.secondary;
         badgeBg = colorScheme.secondaryContainer.withValues(alpha: 0.5);

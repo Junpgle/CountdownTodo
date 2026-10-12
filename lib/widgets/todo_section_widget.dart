@@ -56,6 +56,7 @@ import '../features/habits/repositories/habit_repository.dart';
 import 'todo_overdue_triage_banner.dart';
 import 'todo_overdue_triage_sheet.dart';
 import '../services/todo_completion_celebration_service.dart';
+import '../utils/calendar_date_math.dart';
 import 'todo_completion_celebration.dart';
 
 part 'todo_section_widget_contract.dart';
