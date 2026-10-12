@@ -743,6 +743,25 @@ void main() {
     expect(find.text('分页待办50'), findsOneWidget);
     expect(t.takeException(), isNull);
   });
+  testWidgets('overview resume keeps already loaded pages', (t) async {
+    for (var i = 0; i < 51; i++) {
+      final id = 'resume-overview-$i';
+      await f.todo(id, '恢复待办$i', done: true);
+      await block('resume-overview-plan-$i', todo: id, minute: 120 + i);
+    }
+    await open(t, todo: null);
+    await tap(t, find.text('加载更多待办'));
+    expect(find.textContaining('已加载51／总计51'), findsOneWidget);
+
+    t.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    await t.pump();
+    t.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await t.pumpAndSettle();
+
+    expect(find.textContaining('已加载51／总计51'), findsOneWidget);
+    expect(find.text('恢复待办50'), findsOneWidget);
+    expect(t.takeException(), isNull);
+  });
   testWidgets('overview timer read failure preserves loaded rows', (t) async {
     var testNow = now;
     repo = _CleanupRepo(f.db, clock: () => testNow);

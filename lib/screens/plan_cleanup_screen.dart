@@ -263,7 +263,7 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     _foreground = state == AppLifecycleState.resumed;
     if (_foreground) {
-      _refresh();
+      _refresh(preserveLoadedOverviewPages: true);
     } else {
       _boundary?.cancel();
       _sequence++;
