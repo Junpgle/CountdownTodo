@@ -549,6 +549,7 @@ void main() {
 
     expect(repo.detailReads, 2);
     expect(find.text('待办已完成 · 可处理1段'), findsOneWidget);
+    expect(find.text('已选1段 · 45分钟'), findsOneWidget);
     expect(find.text('此待办正在专注或已暂停，请先查看当前专注'), findsNothing);
     expect(t.takeException(), isNull);
   });

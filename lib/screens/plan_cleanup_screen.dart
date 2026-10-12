@@ -280,8 +280,12 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
       }
       return;
     }
+    final initial = _detail && _snapshot == null && _loading;
     unawaited(
-      _load(preserveSelectionWhenUnchanged: preserveSelectionWhenUnchanged),
+      _load(
+        initial: initial,
+        preserveSelectionWhenUnchanged: preserveSelectionWhenUnchanged,
+      ),
     );
   }
 
