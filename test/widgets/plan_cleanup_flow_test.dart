@@ -1,0 +1,263 @@
+@TestOn('vm')
+library;
+
+import 'package:countdown_todo/models.dart';
+import 'package:countdown_todo/models/plan_cleanup.dart';
+import 'package:countdown_todo/screens/plan_cleanup_screen.dart';
+import 'package:countdown_todo/services/plan_cleanup_repository.dart';
+import 'package:countdown_todo/storage_service.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sqflite/sqflite.dart';
+
+import '../support/plan_availability_fixture.dart';
+
+class _CleanupRepo extends PlanCleanupRepository {
+  _CleanupRepo(Database db)
+    : super(databaseOverride: db, clock: () => PlanAvailabilityFixture.now);
+  bool loseResponse = false;
+  int calls = 0;
+  @override
+  Future<List<TodoPlanBlock>> cancel(
+    PlanCleanupRequest request, {
+    bool sync = true,
+  }) async {
+    calls++;
+    final result = await super.cancel(request, sync: false);
+    if (loseResponse) {
+      loseResponse = false;
+      throw StateError('模拟响应丢失');
+    }
+    return result;
+  }
+}
+
+void main() {
+  late PlanAvailabilityFixture f;
+  late _CleanupRepo repo;
+  const user = PlanAvailabilityFixture.username;
+  final day = PlanAvailabilityFixture.day, now = PlanAvailabilityFixture.now;
+  Finder key(String value) => find.byKey(ValueKey(value));
+  Future<void> block(
+    String id, {
+    String todo = 'todo-target',
+    int minute = 0,
+  }) => f.block(
+    TodoPlanBlock(
+      id: id,
+      todoId: todo,
+      startTime: day
+          .add(Duration(hours: 10, minutes: minute))
+          .millisecondsSinceEpoch,
+      endTime: day
+          .add(Duration(hours: 10, minutes: minute + 45))
+          .millisecondsSinceEpoch,
+      plannedMinutes: 45,
+    ),
+  );
+  Future<void> tap(WidgetTester t, Finder finder) async {
+    await t.ensureVisible(finder);
+    await t.pumpAndSettle();
+    await t.tap(finder);
+    await t.pumpAndSettle();
+  }
+
+  Future<void> open(
+    WidgetTester t, {
+    String? todo = 'todo-target',
+    Size size = const Size(390, 844),
+    double scale = 1,
+  }) async {
+    t.view.devicePixelRatio = 1;
+    t.view.physicalSize = size;
+    addTearDown(t.view.resetDevicePixelRatio);
+    addTearDown(t.view.resetPhysicalSize);
+    await t.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(
+          useMaterial3: true,
+          colorScheme: ColorScheme.fromSeed(
+            seedColor: Colors.teal,
+            brightness: scale > 1 ? Brightness.dark : Brightness.light,
+          ),
+        ),
+        builder: (c, child) => MediaQuery(
+          data: MediaQuery.of(c).copyWith(textScaler: TextScaler.linear(scale)),
+          child: child!,
+        ),
+        home: PlanCleanupScreen(
+          username: user,
+          todoId: todo,
+          repository: repo,
+          clock: () => now,
+          updateReminders: () async {},
+        ),
+      ),
+    );
+    await t.pumpAndSettle();
+  }
+
+  setUp(() async {
+    f = PlanAvailabilityFixture();
+    await f.initialize();
+    debugDefaultTargetPlatformOverride = null;
+    await f.db.update('todos', {'is_completed': 1});
+    repo = _CleanupRepo(f.db);
+  });
+  tearDown(() async => f.dispose());
+  testWidgets(
+    'confirmation cancel is read only; partial selection writes exactly one plan',
+    (t) async {
+      await block('a');
+      await block('b', minute: 60);
+      await open(t);
+      await tap(t, key('cleanup-select-b'));
+      await tap(t, key('cleanup-cancel'));
+      await tap(t, find.text('返回核对'));
+      expect(await f.db.query('op_logs'), isEmpty);
+      await tap(t, key('cleanup-cancel'));
+      await tap(t, key('cleanup-confirm'));
+      expect(find.text('已取消1段'), findsOneWidget);
+      expect(
+        (await f.db.query(
+          'todo_plan_blocks',
+          orderBy: 'uuid',
+        )).map((r) => r['status']),
+        [3, 0],
+      );
+      expect((await f.db.query('op_logs')).length, 1);
+      expect(t.takeException(), isNull);
+    },
+  );
+  testWidgets(
+    'new source while confirming rejects all and requires fresh selection',
+    (t) async {
+      await block('a');
+      await block('b', minute: 60);
+      await open(t);
+      await tap(t, key('cleanup-cancel'));
+      await block('late', minute: 120);
+      await tap(t, key('cleanup-confirm'));
+      expect(find.textContaining('已变化'), findsWidgets);
+      expect(await f.db.query('op_logs'), isEmpty);
+      await tap(t, find.text('重新核对').last);
+      expect(find.text('已选0段 · 0分钟'), findsOneWidget);
+      expect(find.textContaining('总计3段'), findsOneWidget);
+    },
+  );
+  testWidgets(
+    'lost response survives refresh and retries the same committed request',
+    (t) async {
+      await block('a');
+      await block('b', minute: 60);
+      repo.loseResponse = true;
+      await open(t);
+      await tap(t, key('cleanup-cancel'));
+      await tap(t, key('cleanup-confirm'));
+      await t.pump(const Duration(milliseconds: 300));
+      await t.pumpAndSettle();
+      expect(find.text('重试本次提交'), findsOneWidget);
+      await tap(t, key('cleanup-cancel'));
+      await tap(t, key('cleanup-confirm'));
+      expect(repo.calls, 2);
+      expect(find.text('已取消2段'), findsOneWidget);
+      expect((await f.db.query('op_logs')).length, 2);
+    },
+  );
+  testWidgets('paging never selects new pages or exceeds 50', (t) async {
+    for (var i = 0; i < 52; i++) {
+      await block('p-$i', minute: i);
+    }
+    await open(t);
+    expect(find.text('已选50段 · 2250分钟'), findsOneWidget);
+    await tap(t, find.text('加载更多规划（不自动选中）'));
+    expect(find.textContaining('已加载52／总计52'), findsOneWidget);
+    expect(find.text('已选50段 · 2250分钟'), findsOneWidget);
+    expect(t.widget<Checkbox>(key('cleanup-select-p-51')).value, isFalse);
+    await tap(t, key('cleanup-select-p-51'));
+    expect(find.text('一次最多选择50段'), findsOneWidget);
+  });
+  testWidgets('team plans are read-only with explicit reasons', (t) async {
+    await block('a');
+    await f.db.update('todos', {'team_uuid': 'team'});
+    await open(t);
+    expect(find.text('团队规划请逐条核对'), findsWidgets);
+    expect(t.widget<FilledButton>(key('cleanup-cancel')).onPressed, isNull);
+    expect(t.widget<Checkbox>(key('cleanup-select-a')).onChanged, isNull);
+  });
+  testWidgets('literal search opens the exact completed task', (t) async {
+    await block('a');
+    await f.todo('second', '100%_完成', done: true);
+    await block('b', todo: 'second');
+    await open(t, todo: null);
+    await t.enterText(key('cleanup-search'), '%_');
+    await t.pump(const Duration(milliseconds: 300));
+    await t.pumpAndSettle();
+    expect(find.text('复习高数'), findsNothing);
+    await tap(t, find.text('100%_完成'));
+    expect(key('cleanup-select-b'), findsOneWidget);
+    expect(key('cleanup-select-a'), findsNothing);
+  });
+  testWidgets('foreground identity change invalidates old selection', (
+    t,
+  ) async {
+    await block('a');
+    await open(t);
+    await (await SharedPreferences.getInstance()).setString(
+      'current_login_user',
+      'other',
+    );
+    t.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    t.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await t.pumpAndSettle();
+    expect(find.textContaining('身份已切换'), findsOneWidget);
+    expect(t.widget<FilledButton>(key('cleanup-cancel')).onPressed, isNull);
+  });
+  testWidgets(
+    'entry requires persisted completion and shows read errors separately',
+    (t) async {
+      await block('a');
+      Future<void> entry(bool saved) async {
+        await t.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: PlanCleanupEntry(
+                username: user,
+                todoId: 'todo-target',
+                completionSaved: saved,
+                repository: repo,
+              ),
+            ),
+          ),
+        );
+        await t.pumpAndSettle();
+      }
+
+      await entry(false);
+      expect(find.textContaining('请先保存'), findsOneWidget);
+      await entry(true);
+      expect(find.text('处理剩余规划 · 1段'), findsOneWidget);
+      await f.db.execute('DROP TABLE pomodoro_records');
+      StorageService.triggerRefresh(const {DataRefreshDomain.planBlocks});
+      await t.pump(const Duration(milliseconds: 300));
+      await t.pumpAndSettle();
+      expect(find.text('剩余规划读取失败，点击重试'), findsOneWidget);
+    },
+  );
+  for (final size in [const Size(320, 844), const Size(1280, 900)]) {
+    testWidgets('responsive ${size.width} with readable confirmation', (
+      t,
+    ) async {
+      await block('a');
+      await open(t, size: size, scale: size.width == 320 ? 1.8 : 1);
+      await tap(t, key('cleanup-cancel'));
+      expect(t.takeException(), isNull);
+      await tap(t, find.text('返回核对'));
+      expect(t.takeException(), isNull);
+      await t.pumpWidget(const SizedBox.shrink());
+      await t.pumpAndSettle();
+    });
+  }
+}

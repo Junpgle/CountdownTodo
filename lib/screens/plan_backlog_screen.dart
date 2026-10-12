@@ -13,6 +13,7 @@ import '../widgets/plan_block_editor_sheet.dart';
 import '../widgets/todo_section_widget.dart';
 import 'pomodoro_screen.dart';
 import 'plan_editor_drafts_screen.dart';
+import 'plan_cleanup_screen.dart';
 
 class PlanBacklogScreen extends StatefulWidget {
   const PlanBacklogScreen({
@@ -399,6 +400,30 @@ class _PlanBacklogScreenState extends State<PlanBacklogScreen>
       appBar: AppBar(
         title: const Text('待规划'),
         actions: [
+          PopupMenuButton<String>(
+            tooltip: '更多',
+            onSelected: (_) async {
+              if (_opening) return;
+              final navigator = Navigator.of(context);
+              final messenger = ScaffoldMessenger.of(context);
+              _opening = true;
+              _boundary?.cancel();
+              try {
+                await _identity?.check();
+                if (!mounted) return;
+                await navigator.push(MaterialPageRoute<void>(
+                  builder: (_) => PlanCleanupScreen(username: widget.username),
+                ));
+              } catch (error) {
+                if (mounted) messenger.showSnackBar(SnackBar(content: Text(_message(error))));
+              } finally {
+                _opening = false;
+                if (mounted) await _load();
+              }
+            },
+            itemBuilder: (_) => const [PopupMenuItem(value: 'cleanup',
+              child: Text('已完成待办的剩余规划'))],
+          ),
           IconButton(
             tooltip: '刷新清单',
             onPressed: _loading ? null : () => _load(),

@@ -1639,6 +1639,14 @@ class TodoEditScreenState extends State<TodoEditScreen> {
             ],
           ),
         ),
+        if (_isDone || _editingTodo.isDone)
+          PlanCleanupEntry(
+            key: ValueKey('cleanup-entry-${_editingTodo.id}'),
+            username: widget.username,
+            todoId: _editingTodo.id,
+            completionSaved: _isDone && _editingTodo.isDone,
+            onReturn: _loadRelatedPlans,
+          ),
         const SizedBox(height: 12),
         OptionalLiquidGlassCard(
           width: double.infinity,
