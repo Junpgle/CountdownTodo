@@ -105,8 +105,9 @@ class _PlanCleanupEntryState extends State<PlanCleanupEntry>
         _loading = false;
       });
       final now = widget.repository?.clock?.call() ?? DateTime.now();
-      final delay = value.nextBoundary.difference(now);
-      if (_foreground && !_opening) {
+      final boundary = value.nextBoundary;
+      if (_foreground && !_opening && boundary != null) {
+        final delay = boundary.difference(now);
         _boundary = Timer(
           delay.isNegative ? const Duration(milliseconds: 1) : delay,
           _refresh,
@@ -419,14 +420,20 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
     }
   }
 
-  void _arm(DateTime boundary) {
-    if (_foreground && !_opening && _saved == null && _pending == null) {
-      final delay = boundary.difference(_now);
-      _boundary = Timer(
-        delay.isNegative ? const Duration(milliseconds: 1) : delay,
-        _refresh,
-      );
+  void _arm(DateTime? boundary) {
+    _boundary?.cancel();
+    if (boundary == null ||
+        !_foreground ||
+        _opening ||
+        _saved != null ||
+        _pending != null) {
+      return;
     }
+    final delay = boundary.difference(_now);
+    _boundary = Timer(
+      delay.isNegative ? const Duration(milliseconds: 1) : delay,
+      _refresh,
+    );
   }
 
   Future<void> _route(Widget Function() builder) async {

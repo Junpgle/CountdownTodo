@@ -57,7 +57,7 @@ class PlanCleanupPage {
   final List<PlanCleanupTodo> rows;
   final int total;
   final List<TodoGroup> groups;
-  final DateTime nextBoundary;
+  final DateTime? nextBoundary;
   final bool restarted;
   final PlanCleanupCursor? next;
 }
@@ -80,7 +80,7 @@ class PlanCleanupSnapshot {
   final List<PlanCleanupItem> rows;
   final int total, eligible;
   final String fingerprint, blockedReason;
-  final DateTime nextBoundary;
+  final DateTime? nextBoundary;
   final bool restarted;
   final PlanCleanupCursor? next;
   PlanCleanupRequest select(Set<String> ids, DateTime now) {
@@ -217,7 +217,7 @@ class PlanCleanupRepository {
         await tx.rawQuery('SELECT total_changes() AS n'),
         await tx.rawQuery('PRAGMA data_version'),
         rules.run,
-        boundary.millisecondsSinceEpoch,
+        boundary?.millisecondsSinceEpoch,
         total,
       ]);
       final restarted = cursor != null && cursor.fingerprint != fingerprint;
@@ -382,7 +382,7 @@ class PlanCleanupRepository {
     );
   }
 
-  Future<DateTime> _boundary(
+  Future<DateTime?> _boundary(
     DatabaseExecutor tx,
     DateTime instant, {
     String? todoId,
@@ -399,11 +399,8 @@ class PlanCleanupRepository {
       UNION ALL SELECT end_time boundary FROM todo_plan_blocks WHERE $remaining AND end_time>?$todoFilter)''',
       [ms, ?todoId, ms, ?todoId],
     );
-    final midnight = DateTime(instant.year, instant.month, instant.day + 1);
     final value = rows.single['n'];
-    return value is int && value < midnight.millisecondsSinceEpoch
-        ? DateTime.fromMillisecondsSinceEpoch(value)
-        : midnight;
+    return value is int ? DateTime.fromMillisecondsSinceEpoch(value) : null;
   }
 
   Future<String> _fingerprint(

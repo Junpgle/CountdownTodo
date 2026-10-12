@@ -445,6 +445,21 @@ void main() {
     expect(find.text('已选1段 · 45分钟'), findsOneWidget);
     expect(t.takeException(), isNull);
   });
+  testWidgets('midnight without a plan boundary preserves reviewed selection', (
+    t,
+  ) async {
+    await block('midnight-boundary');
+    await open(t);
+    expect(find.text('已选1段 · 45分钟'), findsOneWidget);
+    final readsBefore = repo.detailReads;
+
+    await t.pump(const Duration(hours: 12));
+    await t.pumpAndSettle();
+
+    expect(repo.detailReads, readsBefore);
+    expect(find.text('已选1段 · 45分钟'), findsOneWidget);
+    expect(t.takeException(), isNull);
+  });
   testWidgets('refresh read failure preserves selection for retry', (t) async {
     await block('refresh-retry');
     await open(t);
