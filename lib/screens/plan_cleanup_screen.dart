@@ -299,6 +299,10 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
       _refresh();
       return;
     }
+    if (_snapshot == null) {
+      _refresh();
+      return;
+    }
     if (_snapshot?.blockedReason.contains('专注') == true) {
       _refresh();
       return;

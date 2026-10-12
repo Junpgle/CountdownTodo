@@ -28,6 +28,8 @@ class _CleanupRepo extends PlanCleanupRepository {
   bool failNextDetail = false;
   bool malformedId = false;
   Completer<void>? detailReadGate;
+  Completer<void>? detailResultGate;
+  Completer<void>? detailResultStarted;
   int calls = 0;
   int detailReads = 0;
   @override
@@ -61,6 +63,14 @@ class _CleanupRepo extends PlanCleanupRepository {
       throw StateError('模拟分页读取失败');
     }
     final snapshot = await super.detail(username, todoId, cursor: cursor);
+    final resultGate = detailResultGate;
+    if (resultGate != null) {
+      detailResultGate = null;
+      if (detailResultStarted?.isCompleted == false) {
+        detailResultStarted!.complete();
+      }
+      await resultGate.future;
+    }
     if (!malformedId || snapshot.rows.isEmpty) return snapshot;
     return PlanCleanupSnapshot(
       identity: snapshot.identity,
@@ -143,6 +153,7 @@ void main() {
     Size size = const Size(390, 844),
     double scale = 1,
     DateTime Function()? clock,
+    bool settle = true,
   }) async {
     t.view.devicePixelRatio = 1;
     t.view.physicalSize = size;
@@ -170,7 +181,7 @@ void main() {
         ),
       ),
     );
-    await t.pumpAndSettle();
+    if (settle) await t.pumpAndSettle();
   }
 
   setUp(() async {
@@ -506,6 +517,37 @@ void main() {
 
     expect(repo.detailReads, readsBefore + 3);
     expect(find.text('已选0段 · 0分钟'), findsOneWidget);
+    expect(t.takeException(), isNull);
+  });
+  testWidgets('focus clear during initial read does not leave stale blocking', (
+    t,
+  ) async {
+    await block('focus-load-race');
+    await PomodoroService.saveRunState(
+      PomodoroRunState(
+        phase: PomodoroPhase.focusing,
+        todoUuid: 'todo-target',
+      ),
+    );
+    final gate = Completer<void>();
+    final started = Completer<void>();
+    repo.detailResultGate = gate;
+    repo.detailResultStarted = started;
+    await open(t, settle: false);
+    await started.future;
+    expect(repo.detailReads, 1);
+
+    await PomodoroService.saveRunState(
+      PomodoroRunState(phase: PomodoroPhase.idle),
+    );
+    await t.pump();
+    expect(repo.detailReads, 2);
+    gate.complete();
+    await t.pumpAndSettle();
+
+    expect(repo.detailReads, 2);
+    expect(find.text('待办已完成 · 可处理1段'), findsOneWidget);
+    expect(find.text('此待办正在专注或已暂停，请先查看当前专注'), findsNothing);
     expect(t.takeException(), isNull);
   });
   testWidgets('unrelated task boundary preserves reviewed selection', (t) async {
