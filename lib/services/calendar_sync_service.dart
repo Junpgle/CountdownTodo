@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../models.dart';
 import '../storage_service.dart';
 import '../utils/app_platform.dart';
+import '../utils/calendar_date_math.dart';
 import 'course_service.dart';
 
 enum CalendarSyncEntryType { todo, fixedSchedule, course, countdown, planBlock }
@@ -258,6 +259,10 @@ class CalendarSyncService {
   ) =>
       _fixedScheduleToEntry(item);
 
+  @visibleForTesting
+  static CalendarSyncEntry countdownToEntryForTest(CountdownItem countdown) =>
+      _countdownToEntry(countdown);
+
   static CalendarSyncEntry? _todoToEntry(TodoItem todo) {
     if (todo.timeMode == TodoTimeMode.unscheduled) return null;
 
@@ -375,7 +380,7 @@ class CalendarSyncService {
       type: CalendarSyncEntryType.countdown,
       title: countdown.title,
       start: start,
-      end: start.add(const Duration(days: 1)),
+      end: CalendarDateMath.addDays(start, 1),
       allDay: true,
     );
   }
