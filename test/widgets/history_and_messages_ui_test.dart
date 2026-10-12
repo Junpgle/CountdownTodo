@@ -363,6 +363,33 @@ void main() {
     expect(find.text('全部 3'), findsOneWidget);
   });
 
+  testWidgets('单个团队请求异常时仍显示其他团队消息', (tester) async {
+    await pumpManagementPage(
+        tester,
+        TeamMessageCenterScreen(
+            managedTeams: [
+              ...messageTeams(),
+              Team(
+                  uuid: 'offline-team',
+                  name: '暂时离线团队',
+                  creatorId: 2,
+                  createdAt: 0,
+                  userRole: TeamRole.admin)
+            ],
+            fetchMessages: (teamUuid) async {
+              if (teamUuid == 'offline-team') {
+                throw StateError('network unavailable');
+              }
+              return {'success': true, 'messages': teamMessages()};
+            }));
+
+    expect(find.text('1 个团队的消息加载失败，请重试。'), findsOneWidget);
+    expect(find.text('全部 3'), findsOneWidget);
+    expect(find.text('小林申请加入团队，期待和大家一起完成接下来的计划。'),
+        findsOneWidget);
+    expect(find.text('暂无系统消息'), findsNothing);
+  });
+
   for (final brightness in Brightness.values) {
     testWidgets('三处页面长文字与小屏大字体无溢出 $brightness', (tester) async {
       await pumpManagementPage(tester, historyTodoPage(),

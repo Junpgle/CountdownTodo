@@ -59,9 +59,16 @@ class _TeamMessageCenterScreenState extends State<TeamMessageCenterScreen> {
     final Set<String> seenMessageKeys = <String>{};
     try {
       // 🚀 核心优化：并发加载所有管理团队的消息
-      final results = await Future.wait(widget.managedTeams.map((team) =>
-          (widget.fetchMessages ??
-              ApiService.fetchTeamSystemMessages)(team.uuid)));
+      final fetchMessages =
+          widget.fetchMessages ?? ApiService.fetchTeamSystemMessages;
+      final results = await Future.wait(widget.managedTeams.map((team) async {
+        try {
+          return await fetchMessages(team.uuid);
+        } catch (_) {
+          // One unavailable team must not hide messages from healthy teams.
+          return <String, dynamic>{'success': false};
+        }
+      }));
 
       for (int i = 0; i < widget.managedTeams.length; i++) {
         final team = widget.managedTeams[i];
