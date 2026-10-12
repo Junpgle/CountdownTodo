@@ -1,5 +1,6 @@
 import '../models.dart';
 import '../models/plan_availability.dart';
+import '../models/plan_weekly_availability.dart';
 
 /// Pure interval calculation. Neither recommendations nor adoption write data.
 abstract final class PlanAvailabilityService {
@@ -61,6 +62,17 @@ abstract final class PlanAvailabilityService {
     )) {
       return '请设置有效的避让时段，结束须晚于开始';
     }
+    if (query.weekly != null && !query.weekly!.ignored && query.weekly!.rules == null) {
+      return '每周可安排时间无法读取，请修复规则或明确选择本次不使用';
+    }
+    if (query.weekly?.active ?? false) {
+      try {
+        for(final w in query.weekly!.rules!.days[query.date.weekday-1]) {
+          PlanWeeklyRules.boundary(query.date,w.start);
+          PlanWeeklyRules.boundary(query.date,w.end);
+        }
+      } on FormatException catch (error) { return error.message; }
+    }
     final today = DateTime(now.year, now.month, now.day);
     if (query.dayStart.isBefore(today)) return '所选日期已过去，请选择今天或之后的日期';
     return null;
@@ -108,6 +120,14 @@ abstract final class PlanAvailabilityService {
     if (!end.isAfter(start)) {
       return const PlanAvailabilityResult([], message: '该时间范围已结束，请调整日期或时间范围');
     }
+    final weekly = query.weekly;
+    final allowed = weekly?.active == true
+      ? [for(final w in weekly!.rules!.days[query.date.weekday-1])
+          PlanTimeSlot(PlanWeeklyRules.boundary(query.date,w.start),PlanWeeklyRules.boundary(query.date,w.end))]
+      : [PlanTimeSlot(query.dayStart,query.dayEnd)];
+    if(allowed.isEmpty) {
+      return PlanAvailabilityResult(const [],message:'${PlanWeeklyRules.weekdays[query.date.weekday-1]}未设置可安排时间');
+    }
     final ranges =
         [
               ...snapshot.busy
@@ -137,9 +157,12 @@ abstract final class PlanAvailabilityService {
     final gaps = <PlanTimeSlot>[];
     var cursor = start;
     void addGap(DateTime gapEnd) {
-      final slotStart = minuteCeiling(cursor);
-      if (!slotStart.add(Duration(minutes: query.minutes)).isAfter(gapEnd)) {
-        gaps.add(PlanTimeSlot(slotStart, gapEnd));
+      for(final window in allowed) {
+        final slotStart = minuteCeiling(cursor.isBefore(window.start) ? window.start : cursor);
+        final slotEnd = gapEnd.isAfter(window.end) ? window.end : gapEnd;
+        if (!slotStart.add(Duration(minutes: query.minutes)).isAfter(slotEnd)) {
+          gaps.add(PlanTimeSlot(slotStart, slotEnd));
+        }
       }
     }
 
@@ -220,6 +243,10 @@ abstract final class PlanAvailabilityService {
           : due;
       if (deadline.isBefore(upper)) upper = deadline;
     }
+    final weekly = query.weekly;
+    if(weekly?.active == true && !weekly!.rules!.days[query.date.weekday-1].any((w) =>
+      !slot.start.isBefore(PlanWeeklyRules.boundary(query.date,w.start)) &&
+      !slot.end.isAfter(PlanWeeklyRules.boundary(query.date,w.end)))) { return false; }
     return !slot.start.isBefore(lower) &&
         !slot.end.isAfter(upper) &&
         !query.avoidWindows.any((item) {

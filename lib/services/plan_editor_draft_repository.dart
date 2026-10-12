@@ -4,6 +4,7 @@ import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
 
 import '../models.dart';
+import '../models/plan_weekly_availability.dart';
 import '../models/plan_split.dart';
 import 'database_helper.dart';
 import 'plan_todo_guard.dart';
@@ -22,7 +23,13 @@ class PlanDraftFields {
     required this.origin,
     required this.offsetMinutes,
     this.split,
+    this.scheduleOrigin = 'legacy',
+    this.weeklyKey,
+    this.weeklyIgnored = false,
   });
+  final String scheduleOrigin;
+  final String? weeklyKey;
+  final bool weeklyIgnored;
   final PlanSplitDraft? split;
   final String todoId, title, remark, origin;
   final int start, end, reminder, pomodoro, rounds, offsetMinutes;
@@ -39,6 +46,9 @@ class PlanDraftFields {
     'origin': origin,
     'offset': offsetMinutes,
     if (split != null) 'split': split!.toJson(),
+    if(scheduleOrigin != 'legacy') 'scheduleOrigin':scheduleOrigin,
+    'weeklyKey':?weeklyKey,
+    if(weeklyIgnored) 'weeklyIgnored':true,
   };
   String get fingerprint => jsonEncode(toJson());
 
@@ -60,7 +70,17 @@ class PlanDraftFields {
         ].every((k) => value[k] is int)) {
       throw const FormatException('草稿字段格式无效');
     }
+    if ((value.containsKey('scheduleOrigin') && !['manual','recommended','legacy'].contains(value['scheduleOrigin'])) ||
+        (value.containsKey('weeklyIgnored') && value['weeklyIgnored'] is! bool) ||
+        (value.containsKey('weeklyKey') && (value['weeklyKey'] is! String || (value['weeklyKey'] as String).length > 8192))) {
+      throw const FormatException('草稿推荐来源无效');
+    }
+    if(value['weeklyKey'] != null) {
+      PlanWeeklyRules.fromJson(jsonDecode(value['weeklyKey']));
+    }
     final f = PlanDraftFields(
+      scheduleOrigin:value['scheduleOrigin'] ?? 'legacy',
+      weeklyKey:value['weeklyKey'],weeklyIgnored:value['weeklyIgnored'] ?? false,
       todoId: value['todo'],
       title: value['title'],
       start: value['start'],

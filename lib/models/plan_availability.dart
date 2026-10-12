@@ -1,4 +1,5 @@
 import '../models.dart';
+import 'plan_weekly_availability.dart';
 
 enum PlanBusySource {
   course,
@@ -43,7 +44,9 @@ class PlanAvailabilityQuery {
     this.bufferDefaultsKey,
     this.avoidanceOverride = false,
     this.avoidanceDefaultsKey,
+    this.weekly,
   });
+  final PlanWeeklyContext? weekly;
   final String username;
   final String todoId;
   final DateTime date;
@@ -61,6 +64,13 @@ class PlanAvailabilityQuery {
   final String? bufferDefaultsKey;
   final bool avoidanceOverride;
   final String? avoidanceDefaultsKey;
+  PlanAvailabilityQuery withWeekly(PlanWeeklyContext? value) => PlanAvailabilityQuery(
+    username:username,todoId:todoId,date:date,minutes:minutes,
+    windowStart:windowStart,windowEnd:windowEnd,excludeBlockId:excludeBlockId,
+    appOnly:appOnly,resultLimit:resultLimit,avoidWindows:avoidWindows,
+    bufferBefore:bufferBefore,bufferAfter:bufferAfter,bufferOverride:bufferOverride,
+    bufferDefaultsKey:bufferDefaultsKey,avoidanceOverride:avoidanceOverride,
+    avoidanceDefaultsKey:avoidanceDefaultsKey,weekly:value);
   bool get hasBuffers => bufferBefore != 0 || bufferAfter != 0;
   String get bufferSummary => bufferOverride && !hasBuffers
       ? '本次未留缓冲'

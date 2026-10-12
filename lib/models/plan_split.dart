@@ -23,6 +23,7 @@ class PlanSplitQuery {
         bufferDefaultsKey: base.bufferDefaultsKey,
         avoidanceOverride: base.avoidanceOverride,
         avoidanceDefaultsKey: base.avoidanceDefaultsKey,
+        weekly: base.weekly,
       );
   PlanSplitQuery configure({
     PlanAvailabilityQuery? base,

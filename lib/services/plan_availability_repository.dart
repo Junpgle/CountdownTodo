@@ -1,3 +1,4 @@
+import 'plan_weekly_availability_preferences.dart';
 import 'dart:convert';
 
 import 'package:intl/intl.dart';
@@ -604,6 +605,7 @@ class PlanAvailabilityRepository {
           throw const PlanAvailabilityException('整组时段已变化；未新增分段，请重新选择');
         }
         if (beforeWrite != null) await beforeWrite(executor);
+        await PlanWeeklyAvailabilityPreferences.validateQuery(query.base);
         await identity.check();
       },
     );
@@ -737,6 +739,8 @@ class PlanAvailabilityRepository {
         }
         await _checkAccount(query.username);
         if (beforeWrite != null) await beforeWrite(executor);
+        await PlanWeeklyAvailabilityPreferences.validateQuery(query);
+        await identity.check();
       },
     );
   }

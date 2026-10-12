@@ -1,3 +1,5 @@
+import '../models/plan_weekly_availability.dart';
+import '../services/plan_weekly_availability_preferences.dart';
 import 'dart:async';
 import 'dart:math';
 
@@ -185,6 +187,9 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
   late String _targetPlanId, _baseline;
   bool _userTouched = false, _allowExit = false, _exitPrompt = false;
   bool _draftLoading = false, _restored = false, _offsetChanged = false;
+  String _restoredScheduleOrigin = 'legacy';
+  String? _restoredWeeklyKey;
+  bool _restoredWeeklyIgnored = false;
   bool _draftRestoreFailed = false;
   String? _draftLoadError;
   int _draftReadSequence = 0;
@@ -199,6 +204,10 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
     origin: _localDraft?.fields.origin ?? (_backlog != null ? 'backlog' : widget.draftOrigin),
     offsetMinutes: _start.timeZoneOffset.inMinutes,
     split: _split == null ? null : PlanSplitDraft(_split!.query, _split!.slots, _splitIds),
+    scheduleOrigin:_restored ? _restoredScheduleOrigin :
+      (_recommendation != null || (_split != null && !_splitAdjusted) ? 'recommended' : 'manual'),
+    weeklyKey:_restored ? _restoredWeeklyKey : (_split?.query.base.weekly ?? _recommendation?.query.weekly)?.fingerprint,
+    weeklyIgnored:_restored ? _restoredWeeklyIgnored : (_split?.query.base.weekly ?? _recommendation?.query.weekly)?.ignored ?? false,
   );
   bool get _dirty => _userTouched && _fields.fingerprint != _baseline;
   void _touch() => _userTouched = true;
@@ -248,8 +257,9 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
       PlanSplitSelection? restoredSplit;
       if (f.split != null) {
         final payload = PlanSplitDraft.fromJson(f.split!.toJson(), widget.username, f.todoId);
-        final q = await splitWithCurrentDefaults(payload.query);
-        restoredSplit = PlanSplitSelection(q, payload.slots, const PlanSplitSnapshot([]));
+        // Loading a draft must preserve times even when the current policy is
+        // damaged. Defaults and the saved policy are checked at save/re-search.
+        restoredSplit = PlanSplitSelection(payload.query, payload.slots, const PlanSplitSnapshot([]));
       }
       if (!mounted) return;
       setState(() {
@@ -273,6 +283,9 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
         _singleStart = null; _singleEnd = null; _singleQuery = null;
         _splitAdjusted = false;
         _restored = true;
+        _restoredScheduleOrigin=f.scheduleOrigin;
+        _restoredWeeklyKey=f.weeklyKey;
+        _restoredWeeklyIgnored=f.weeklyIgnored;
         _offsetChanged = f.offsetMinutes != _start.timeZoneOffset.inMinutes ||
             (f.split?.timeZoneChanged ?? false);
         _recommendation = null;
@@ -434,9 +447,23 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
       ],
     ]);
 
+  Future<PlanWeeklyContext?> _restoredWeeklyContext() async {
+    if(!_restored || _restoredScheduleOrigin == 'manual') return null;
+    if(_restoredWeeklyIgnored) {
+      throw const PlanAvailabilityException('草稿的本次不使用每周规则已失效，请重新查找并明确选择，或改为手动安排');
+    }
+    final saved=await PlanWeeklyAvailabilityPreferences.load(widget.username);
+    if(saved.error != null) throw PlanAvailabilityException(saved.error!);
+    if(_restoredWeeklyKey != null && _restoredWeeklyKey != saved.key) {
+      throw const PlanAvailabilityException('草稿的每周可安排时间已变化，请重新查找或改为手动安排');
+    }
+    return PlanWeeklyContext(saved.rules);
+  }
+
   Future<void> _verifyRestoredTime() async {
     if (!_restored) return;
     if (_offsetChanged) throw StateError('时区已变化，请先确认当前显示的日期与时间');
+    final weekly = await _restoredWeeklyContext();
     final preferences = await PlanAvailabilityPreferences.load(widget.username);
     if (preferences.bufferError != null &&
         !(_manualQuery?.bufferOverride ?? false)) {
@@ -445,6 +472,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
     var appOnly = _manualQuery?.appOnly ?? _recommendation?.query.appOnly ?? false;
     while (true) {
       final query = PlanAvailabilityQuery(username: widget.username,
+        weekly:weekly,
         todoId: _selectedTodoId!, date: _start,
         minutes: _end.difference(_start).inMinutes, windowStart: 0, windowEnd: 1440,
         appOnly: appOnly,
@@ -578,6 +606,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
     _recommendation = null;
     _recommendationStale = false;
     _operationError = null;
+    _restoredScheduleOrigin='manual'; _restoredWeeklyKey=null; _restoredWeeklyIgnored=false;
   }
 
   @override
@@ -1021,6 +1050,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
       _touch();
       _manualChange();
       _split = result;
+      _restored = false;
       _splitAdjusted = false;
       _splitStale = false;
       _splitIds = [
@@ -1099,14 +1129,15 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
         for (var i = 0; i < selection.slots.length; i++)
           i == index ? replacement : selection.slots[i],
       ]..sort((a, b) => a.start.compareTo(b.start));
+      final manualSplit=selection.query.configure(base:selection.query.base.withWeekly(null));
       final fresh = await PlanAvailabilityRepository(clock: widget.clock)
           .readSplit(
-            selection.query,
+            manualSplit,
             forceRefresh: true,
             requireCalendar: selection.snapshot.includesCalendar,
           );
       if (!PlanSplitService.accepts(
-        selection.query,
+        manualSplit,
         slots,
         fresh,
         now: widget.clock?.call() ?? DateTime.now(),
@@ -1119,7 +1150,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
           _manualChange();
           _splitAdjusted = true;
           _splitStale = false;
-          _split = PlanSplitSelection(selection.query, slots, fresh);
+          _split = PlanSplitSelection(manualSplit, slots, fresh);
           _start = slots.first.start;
           _end = slots.first.end;
         });
@@ -1221,6 +1252,11 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
     }
     final TodoPlanBlock saved;
     if (_split != null) {
+      if(_restored) {
+        final weekly=await _restoredWeeklyContext();
+        final updated=await splitWithCurrentDefaults(_split!.query,useWeekly:_restoredScheduleOrigin != 'manual');
+        _split=PlanSplitSelection(updated.configure(base:updated.base.withWeekly(weekly)),_split!.slots,_split!.snapshot);
+      }
       if (_offsetChanged) throw StateError('时区已变化，请先确认当前显示的日期与时间');
       await _confirmNewArrangements(_selectedTodoId!);
       final blocks = [
@@ -1913,6 +1949,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
                 _estimateSequence++;
                 _draftRevision++;
                 _recommendation = selection;
+                _restored = false;
                 _recommendationStale = false;
                 _start = selection.slot.start;
                 _end = selection.slot.end;
@@ -1924,6 +1961,14 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
             Align(alignment: Alignment.centerLeft, child: TextButton.icon(
               key: const ValueKey('plan-open-split'), onPressed: _busy || _initialEstimatePending ? null : _chooseSplit,
               icon: const Icon(Icons.splitscreen_outlined), label: const Text('分段安排'))),
+          if(_restored && _restoredScheduleOrigin != 'manual')
+            TextButton(key:const ValueKey('plan-draft-use-manual'),onPressed:_busy?null:() => setState(() {
+              _touch(); _manualChange();
+              if(_split != null) {
+                _split=PlanSplitSelection(_split!.query.configure(base:_split!.query.base.withWeekly(null)),_split!.slots,_split!.snapshot);
+                _splitAdjusted=true;
+              }
+            }),child:const Text('保留此时间，改为手动安排')),
           if (_recommendation != null)
             Padding(
               padding: const EdgeInsets.only(top: 10),

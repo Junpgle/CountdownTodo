@@ -1,3 +1,4 @@
+import 'plan_weekly_availability_screen.dart';
 import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
@@ -569,6 +570,9 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
                 _nextDay();
               } else if (value == 'refresh') {
                 _loadData();
+              } else if (value == 'weekly') {
+                Navigator.of(context).push(MaterialPageRoute(builder: (_) =>
+                  PlanWeeklyAvailabilityScreen(username: widget.username)));
               } else if (value == 'drafts') {
                 openPlanEditorDrafts(context, widget.username,
                   onSaved: () => unawaited(_loadData()));
@@ -588,6 +592,7 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
                 const PopupMenuItem(value: 'next', child: Text('后一天')),
               const PopupMenuItem(value: 'stats', child: Text('规划统计')),
               const PopupMenuItem(value: 'drafts', child: Text('规划草稿')),
+              const PopupMenuItem(value: 'weekly', child: Text('每周可安排时间')),
               const PopupMenuItem(value: 'refresh', child: Text('刷新')),
             ],
           ),

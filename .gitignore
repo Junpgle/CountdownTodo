@@ -316,3 +316,7 @@ todo.md
 !/test/services/plan_cleanup_repository_test.dart
 !/test/widgets/plan_cleanup_screen_test.dart
 !/test/widgets/plan_cleanup_flow_test.dart
+
+!/test/services/plan_weekly_availability_test.dart
+!/test/services/plan_weekly_availability_repository_test.dart
+!/test/widgets/plan_weekly_availability_test.dart

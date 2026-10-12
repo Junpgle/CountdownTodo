@@ -1,3 +1,4 @@
+import 'plan_weekly_availability_preferences.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -167,6 +168,7 @@ class PlanAvailabilityPreferences {
   }
 
   static Future<void> validateQueryDefaults(PlanAvailabilityQuery query) async {
+    await PlanWeeklyAvailabilityPreferences.validateQuery(query);
     final validateBuffers =
         query.bufferDefaultsKey != null && !query.bufferOverride;
     final validateAvoidance =

@@ -1,3 +1,6 @@
+import '../models/plan_weekly_availability.dart';
+import '../services/plan_weekly_availability_preferences.dart';
+import '../screens/plan_weekly_availability_screen.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -92,6 +95,45 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
   bool _avoidPreferencesLoaded = false;
   bool _autoLookupStarted = false;
   DateTime get _now => widget.clock?.call() ?? DateTime.now();
+  PlanWeeklyRules? _weeklyRules;
+  String? _weeklyError;
+  bool _weeklyIgnored = false;
+  int _weeklySequence = 0;
+  Future<void> _loadWeekly({bool invalidate = true}) async {
+    final previousKey=_weeklyRules?.fingerprint, previousError=_weeklyError;
+    final sequence = ++_weeklySequence, username = widget.username;
+    try {
+      final saved = await PlanWeeklyAvailabilityPreferences.load(username);
+      if(!mounted || sequence != _weeklySequence || username != widget.username) return;
+      setState(() { _weeklyRules = saved.rules; _weeklyError = saved.error; });
+    } catch(_) {
+      if(!mounted || sequence != _weeklySequence || username != widget.username) return;
+      setState(() { _weeklyRules = null; _weeklyError = '每周可安排时间读取失败，请重试或明确选择本次不使用'; });
+    }
+    if(invalidate && (previousKey != _weeklyRules?.fingerprint || previousError != _weeklyError)) _invalidate();
+  }
+  void _weeklyChanged() { unawaited(_loadWeekly()); }
+  Future<void> _weeklySettings() async {
+    await Navigator.of(context).push(MaterialPageRoute(builder: (_) =>
+      PlanWeeklyAvailabilityScreen(username: widget.username)));
+    if(mounted) await _loadWeekly();
+  }
+  Widget _weeklyControls({bool compact = false}) => Material(color:Colors.transparent,child:Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      if(!compact || _weeklyRules?.enabled == true || _weeklyError != null || _weeklyIgnored)
+        TextButton.icon(key: const ValueKey('plan-weekly-settings'), onPressed: _loading ? null : _weeklySettings,
+          icon: const Icon(Icons.date_range_outlined,size:18),
+          label: Text(compact && _weeklyRules?.enabled == true
+            ? '${PlanWeeklyRules.weekdays[_date.weekday-1]} · ${_weeklyIgnored ? '本次不使用每周规则' : '按每周时间推荐'}'
+            : '每周可安排时间${_weeklyRules?.enabled == true ? ' · 已开启' : ''}')),
+      if(_weeklyError != null && !_weeklyIgnored)
+        Text(_weeklyError!,style:TextStyle(color:Theme.of(context).colorScheme.error)),
+      if(!compact || _weeklyError != null || (_result?.slots.isEmpty == true && _weeklyRules?.enabled == true))
+        CheckboxListTile(key:const ValueKey('plan-weekly-ignore'), contentPadding:EdgeInsets.zero,
+          title: const Text('本次不使用每周规则'),
+          value:_weeklyIgnored, onChanged:_loading?null:(v) { _weeklyIgnored=v!; _invalidate(); }),
+    ]));
+
   PlanAvailabilityQuery get _query => PlanAvailabilityQuery(
     username: widget.username,
     todoId: widget.todo?.id ?? '',
@@ -109,6 +151,7 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
     bufferDefaultsKey: _bufferDefaultsKey,
     avoidanceOverride: _avoidanceOverride,
     avoidanceDefaultsKey: _avoidanceDefaultsKey,
+    weekly: PlanWeeklyContext(_weeklyRules,ignored:_weeklyIgnored),
   );
 
   @override
@@ -133,6 +176,8 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
       _avoidanceDefaultsKey = initialQuery.avoidanceDefaultsKey;
     }
     _duration = TextEditingController(text: '$_minutes');
+    _weeklyIgnored = widget.initialQuery?.weekly?.ignored ?? false;
+    PlanWeeklyAvailabilityPreferences.revision.addListener(_weeklyChanged);
     unawaited(_loadAvoidPreferences());
     WidgetsBinding.instance.addObserver(this);
     StorageService.scopedDataRefreshNotifier.addListener(_onRefresh);
@@ -198,6 +243,7 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
         const {}, bufferError: '查找设置读取失败，请重试',
       );
     }
+    await _loadWeekly(invalidate:false);
     if (!mounted ||
         sequence != _avoidPreferencesSequence ||
         username != widget.username) {
@@ -313,6 +359,7 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
     if (old.username != widget.username) {
       _bufferOverride = false;
       _avoidanceOverride = false;
+      _weeklyIgnored = false;
       _preferenceWriteSequence++;
       unawaited(_loadAvoidPreferences());
     }
@@ -358,6 +405,8 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
     WidgetsBinding.instance.removeObserver(this);
     StorageService.scopedDataRefreshNotifier.removeListener(_onRefresh);
     DeviceCalendarReadService.revision.removeListener(_invalidate);
+    PlanWeeklyAvailabilityPreferences.revision.removeListener(_weeklyChanged);
+    ++_weeklySequence;
     _duration.dispose();
     super.dispose();
   }
@@ -624,8 +673,13 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
   );
 
   Future<void> _lookup({bool selectFirst = false}) async {
-    if (_bufferError != null) {
-      setState(() => _error = PlanAvailabilityException(_bufferError!));
+    final preparation=++_sequence;
+    setState(() { _loading=true; _selectedStart=null; _snapshot=null; _result=null; _error=null; });
+    widget.onInvalidated();
+    await _loadWeekly(invalidate:false);
+    if(!mounted || preparation != _sequence) return;
+    if (_bufferError != null || (_weeklyError != null && !_weeklyIgnored)) {
+      setState(() { _loading=false; _error = PlanAvailabilityException(_bufferError ?? _weeklyError!); });
       widget.onAutoLookupPendingChanged?.call(false);
       return;
     }
@@ -637,7 +691,7 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
       _now,
     );
     if (invalid != null) {
-      setState(() => _error = PlanAvailabilityException(invalid));
+      setState(() { _loading=false; _error = PlanAvailabilityException(invalid); });
       if (selectFirst) widget.onAutoLookupPendingChanged?.call(false);
       return;
     }
@@ -802,7 +856,7 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
   }
 
   Future<void> _customSearch() async {
-    final sequence = _sequence;
+    final parentDate=_date, parentMinutes=_minutes;
     final revision = widget.autoSelectionRevision;
     ModalRoute<dynamic>? dialogRoute;
     final selection = await showAppDialog<PlanAvailabilitySelection>(
@@ -883,7 +937,11 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
       await _reloadPreferencesIfChanged();
       return;
     }
-    if (sequence != _sequence ||
+    try { await PlanWeeklyAvailabilityPreferences.validateQuery(selection.query); }
+    catch(e) { if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('$e'))); return; }
+    if(!mounted) return;
+    if (_date != parentDate || _minutes != parentMinutes ||
+        selection.query.username != widget.username || selection.query.todoId != widget.todo?.id ||
         revision != widget.autoSelectionRevision ||
         !PlanAvailabilityService.accepts(
           selection,
@@ -910,6 +968,8 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
       _bufferDefaultsKey = query.bufferDefaultsKey;
       _avoidanceOverride = query.avoidanceOverride;
       _avoidanceDefaultsKey = query.avoidanceDefaultsKey;
+      _weeklyRules = query.weekly?.rules;
+      _weeklyIgnored = query.weekly?.ignored ?? false;
       _enabledAvoid
         ..clear()
         ..addAll(query.avoidWindows);
@@ -988,6 +1048,7 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
               child: Text(_result!.message!),
             ),
           _bufferStatus(),
+          _weeklyControls(compact:true),
           for (final slot in visible) _slotButton(slot),
           if (_snapshot != null)
             Padding(
@@ -1230,6 +1291,7 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
                         ),
                     ],
                   ),
+                  _weeklyControls(),
                   _avoidControls(),
                   const SizedBox(height: 12),
                   _bufferControls(),

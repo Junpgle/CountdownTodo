@@ -1,3 +1,5 @@
+import '../models/plan_weekly_availability.dart';
+import '../services/plan_weekly_availability_preferences.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -16,14 +18,20 @@ import '../widgets/plan_availability_panel.dart';
 Future<PlanSplitQuery> splitWithCurrentDefaults(
   PlanSplitQuery query, {
   bool refreshDefaults = false,
+  bool useWeekly = true,
 }) async {
   final b = query.base;
   final prefs = await PlanAvailabilityPreferences.load(b.username);
   if (prefs.bufferError != null) {
     throw PlanAvailabilityException(prefs.bufferError!);
   }
+  final weekly = useWeekly ? await PlanWeeklyAvailabilityPreferences.load(b.username) : null;
+  if(weekly?.error != null && !(b.weekly?.ignored ?? false)) {
+    throw PlanAvailabilityException(weekly!.error!);
+  }
   return query.configure(
     base: PlanAvailabilityQuery(
+      weekly: useWeekly ? PlanWeeklyContext(weekly?.rules,ignored:b.weekly?.ignored ?? false) : null,
       username: b.username,
       todoId: b.todoId,
       date: b.date,
@@ -104,6 +112,7 @@ class _PlanSplitScreenState extends State<PlanSplitScreen>
     WidgetsBinding.instance.addObserver(this);
     StorageService.scopedDataRefreshNotifier.addListener(_invalidate);
     DeviceCalendarReadService.revision.addListener(_invalidate);
+    PlanWeeklyAvailabilityPreferences.revision.addListener(_invalidate);
     _identity = PlanTodoIdentity.capture(widget.initialQuery.base.username);
     _identity.then<void>(
       (_) {},
@@ -125,6 +134,7 @@ class _PlanSplitScreenState extends State<PlanSplitScreen>
     WidgetsBinding.instance.removeObserver(this);
     StorageService.scopedDataRefreshNotifier.removeListener(_invalidate);
     DeviceCalendarReadService.revision.removeListener(_invalidate);
+    PlanWeeklyAvailabilityPreferences.revision.removeListener(_invalidate);
     super.dispose();
   }
 
@@ -311,6 +321,7 @@ class _PlanSplitScreenState extends State<PlanSplitScreen>
         bufferOverride: true,
         avoidanceOverride: b.avoidanceOverride,
         avoidanceDefaultsKey: b.avoidanceDefaultsKey,
+        weekly: b.weekly,
       ),
     );
     _search();
@@ -334,6 +345,7 @@ class _PlanSplitScreenState extends State<PlanSplitScreen>
         bufferDefaultsKey: b.bufferDefaultsKey,
         avoidanceOverride: b.avoidanceOverride,
         avoidanceDefaultsKey: b.avoidanceDefaultsKey,
+        weekly: b.weekly,
       ),
     );
     _search();
@@ -368,6 +380,8 @@ class _PlanSplitScreenState extends State<PlanSplitScreen>
                       Text(
                         '${q.base.bufferSummary}；避让${q.base.avoidWindows.map((w) => w.label).join('、').isEmpty ? '无' : q.base.avoidWindows.map((w) => w.label).join('、')}',
                       ),
+                      if(q.base.weekly?.active == true) const Text('按每周可安排时间推荐'),
+                      if(q.base.weekly?.ignored == true) const Text('本次不使用每周规则'),
                       TextButton.icon(
                         key: const ValueKey('split-criteria'),
                         onPressed: _loading ? null : _criteria,
