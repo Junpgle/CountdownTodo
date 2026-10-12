@@ -270,7 +270,10 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
     }
   }
 
-  void _refresh({bool preserveSelectionWhenUnchanged = false}) {
+  void _refresh({
+    bool preserveSelectionWhenUnchanged = false,
+    bool preserveLoadedOverviewPages = false,
+  }) {
     if (!mounted || !_foreground || _working || _opening || _saved != null) {
       return;
     }
@@ -285,6 +288,9 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
     unawaited(
       _load(
         initial: initial,
+        overviewLimit: preserveLoadedOverviewPages && !_detail
+            ? _todos.length
+            : null,
         preserveOverviewOnFailure: true,
         preserveSelectionWhenUnchanged: preserveSelectionWhenUnchanged,
       ),
@@ -356,6 +362,7 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
   Future<void> _load({
     bool more = false,
     bool initial = false,
+    int? overviewLimit,
     bool preserveOverviewOnFailure = false,
     bool preserveSelectionWhenUnchanged = false,
   }) async {
@@ -433,16 +440,52 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
         _initialDetailSelectionPending = false;
         _arm(snapshot.nextBoundary);
       } else {
-        final page = await _repository.read(
-          widget.username,
-          search: _search.text,
-          folder: _folder,
-          cursor: more ? _page?.next : null,
+        final rows = <PlanCleanupTodo>[];
+        var nextBoundary = more ? _overviewBoundary : null;
+        PlanCleanupPage? lastPage;
+        PlanCleanupCursor? cursor = more ? _page?.next : null;
+        var restarted = false;
+        final maxReads = overviewLimit == null
+            ? 1
+            : (overviewLimit + 49) ~/ 50 + 2;
+        for (var pageIndex = 0; pageIndex < maxReads; pageIndex++) {
+          final currentPage = await _repository.read(
+            widget.username,
+            search: _search.text,
+            folder: _folder,
+            cursor: cursor,
+          );
+          if (!mounted || sequence != _sequence) return;
+          _identity ??= currentPage.identity;
+          await _identity!.check();
+          if (!mounted || sequence != _sequence) return;
+          if (currentPage.restarted) {
+            rows.clear();
+            nextBoundary = null;
+            restarted = true;
+          }
+          rows.addAll(currentPage.rows);
+          nextBoundary = _earlierBoundary(
+            nextBoundary,
+            currentPage.nextBoundary,
+          );
+          lastPage = currentPage;
+          cursor = currentPage.next;
+          if (overviewLimit == null ||
+              rows.length >= overviewLimit ||
+              cursor == null) {
+            break;
+          }
+        }
+        final page = PlanCleanupPage(
+          identity: lastPage!.identity,
+          rows: List.unmodifiable(rows),
+          total: lastPage.total,
+          groups: lastPage.groups,
+          nextBoundary: nextBoundary,
+          restarted: restarted || lastPage.restarted,
+          next: lastPage.next,
         );
-        if (!mounted || sequence != _sequence) return;
-        _identity ??= page.identity;
-        await _identity!.check();
-        if (!mounted || sequence != _sequence) return;
         setState(() {
           _todos = more && !page.restarted
               ? [..._todos, ...page.rows]
@@ -504,7 +547,7 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
     final delay = boundary.difference(_now);
     _boundary = Timer(
       delay.isNegative ? const Duration(milliseconds: 1) : delay,
-      _refresh,
+      () => _refresh(preserveLoadedOverviewPages: true),
     );
   }
 

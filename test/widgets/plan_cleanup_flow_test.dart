@@ -710,6 +710,39 @@ void main() {
     expect(find.text('待办50'), findsOneWidget);
     expect(t.takeException(), isNull);
   });
+  testWidgets('overview boundary refresh keeps already loaded pages', (t) async {
+    var testNow = now;
+    repo = _CleanupRepo(f.db, clock: () => testNow);
+    for (var i = 0; i < 51; i++) {
+      final id = 'loaded-boundary-$i';
+      await f.todo(id, '分页待办$i', done: true);
+      if (i == 0) {
+        final start = now.add(const Duration(minutes: 1));
+        await f.block(
+          TodoPlanBlock(
+            id: 'loaded-boundary-plan-$i',
+            todoId: id,
+            startTime: start.millisecondsSinceEpoch,
+            endTime: start.add(const Duration(minutes: 45)).millisecondsSinceEpoch,
+            plannedMinutes: 45,
+          ),
+        );
+      } else {
+        await block('loaded-boundary-plan-$i', todo: id, minute: 120 + i);
+      }
+    }
+    await open(t, todo: null, clock: () => testNow);
+    await tap(t, find.text('加载更多待办'));
+    expect(find.textContaining('已加载51／总计51'), findsOneWidget);
+
+    testNow = testNow.add(const Duration(minutes: 1));
+    await t.pump(const Duration(minutes: 1));
+    await t.pumpAndSettle();
+
+    expect(find.textContaining('已加载51／总计51'), findsOneWidget);
+    expect(find.text('分页待办50'), findsOneWidget);
+    expect(t.takeException(), isNull);
+  });
   testWidgets('overview timer read failure preserves loaded rows', (t) async {
     var testNow = now;
     repo = _CleanupRepo(f.db, clock: () => testNow);
