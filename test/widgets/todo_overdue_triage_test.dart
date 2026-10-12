@@ -163,6 +163,37 @@ void main() {
       expect(refreshRequested, isTrue);
     });
 
+    testWidgets('overdue label uses calendar days after spring-forward', (
+      tester,
+    ) async {
+      final overdueTodo = TodoItem(
+        id: 'spring-forward-overdue',
+        title: '昨天到期的日期待办',
+        dueDate: DateTime(2026, 3, 8, 23, 59),
+        isAllDay: true,
+      );
+      final service = _FakeOverdueTriageService(
+        clock: () => DateTime(2026, 3, 9, 0, 30),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: TodoOverdueTriageSheet(
+              username: 'test_user',
+              initialOverdueTodos: [overdueTodo],
+              allTodos: [overdueTodo],
+              onTodosChanged: (_) {},
+              onRefreshRequested: () {},
+              service: service,
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('昨天 23:59 逾期'), findsOneWidget);
+    });
+
     testWidgets('supports smart slot finding and inline scheduling', (
       tester,
     ) async {

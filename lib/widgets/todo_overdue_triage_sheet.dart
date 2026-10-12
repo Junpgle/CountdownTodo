@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../models.dart';
 import '../models/plan_availability.dart';
 import '../services/todo_overdue_triage_service.dart';
+import '../utils/calendar_date_math.dart';
 import '../utils/app_dialogs.dart';
 import 'optional_liquid_glass_surface.dart';
 
@@ -184,7 +185,7 @@ class _TodoOverdueTriageSheetState extends State<TodoOverdueTriageSheet> {
     final now = widget.service.clock();
     final today = DateTime(now.year, now.month, now.day);
     final dueDate = DateTime(due.year, due.month, due.day);
-    final daysDiff = today.difference(dueDate).inDays;
+    final daysDiff = CalendarDateMath.daysBetween(dueDate, today);
 
     final timeStr = DateFormat('HH:mm').format(due);
     if (daysDiff == 0) {
