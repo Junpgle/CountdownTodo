@@ -442,42 +442,51 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
       await snapshot.identity.check();
       final request = _pending ?? snapshot.select(_selected, _now);
       if (!mounted) return;
+      var responseSubmitted = false;
       final dates = request.rows.map((r) => r['start_time'] as int).toList()
         ..sort();
       final ends = request.rows.map((r) => r['end_time'] as int).toList()
         ..sort();
       final confirmed = await showDialog<bool>(
         context: context,
-        builder: (context) => AlertDialog(
-          title: Text('取消这${request.rows.length}段规划？'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '${_date(dates.first)} 至 ${_date(ends.last)}\n共${request.unionMinutes}分钟规划时段；历史投入保留。',
-                ),
-                if (request.hasCalendarCopy)
-                  const Padding(
-                    padding: EdgeInsets.only(top: 12),
-                    child: Text('手机日历副本不会随本次操作删除，需到日历同步中核对。'),
+        builder: (context) {
+          void submit(bool value) {
+            if (responseSubmitted) return;
+            responseSubmitted = true;
+            Navigator.pop(context, value);
+          }
+
+          return AlertDialog(
+            title: Text('取消这${request.rows.length}段规划？'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${_date(dates.first)} 至 ${_date(ends.last)}\n共${request.unionMinutes}分钟规划时段；历史投入保留。',
                   ),
-              ],
+                  if (request.hasCalendarCopy)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 12),
+                      child: Text('手机日历副本不会随本次操作删除，需到日历同步中核对。'),
+                    ),
+                ],
+              ),
             ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('返回核对'),
-            ),
-            FilledButton(
-              key: const ValueKey('cleanup-confirm'),
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('确认取消'),
-            ),
-          ],
-        ),
+            actions: [
+              TextButton(
+                onPressed: () => submit(false),
+                child: const Text('返回核对'),
+              ),
+              FilledButton(
+                key: const ValueKey('cleanup-confirm'),
+                onPressed: () => submit(true),
+                child: const Text('确认取消'),
+              ),
+            ],
+          );
+        },
       );
       if (confirmed != true) return;
       if (mounted) setState(() => _confirming = false);

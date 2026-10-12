@@ -169,6 +169,37 @@ void main() {
       expect(t.takeException(), isNull);
     },
   );
+  testWidgets('repeated confirmation cannot pop the cleanup page', (t) async {
+    await block('confirm-repeat');
+    await open(t);
+    await tap(t, key('cleanup-cancel'));
+    final confirm = t.widget<FilledButton>(key('cleanup-confirm')).onPressed!;
+    confirm();
+    confirm();
+    await t.pumpAndSettle();
+
+    expect(find.text('已取消1段'), findsOneWidget);
+    expect(find.text('剩余规划收尾'), findsOneWidget);
+    expect((await f.db.query('op_logs')).length, 1);
+    expect(t.takeException(), isNull);
+  });
+  testWidgets('repeated dialog return keeps the cleanup page open', (t) async {
+    await block('return-repeat');
+    await open(t);
+    await tap(t, key('cleanup-cancel'));
+    final back = t.widget<TextButton>(
+      find.widgetWithText(TextButton, '返回核对'),
+    ).onPressed!;
+    back();
+    back();
+    await t.pumpAndSettle();
+
+    expect(find.text('剩余规划收尾'), findsOneWidget);
+    expect(find.text('已选1段 · 45分钟'), findsOneWidget);
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(await f.db.query('op_logs'), isEmpty);
+    expect(t.takeException(), isNull);
+  });
   testWidgets(
     'new source while confirming rejects all and requires fresh selection',
     (t) async {
