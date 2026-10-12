@@ -89,4 +89,21 @@ void main() {
       ScheduledReminderSources.habit,
     );
   });
+
+  test('drops out-of-range timestamps without blocking other reminders', () {
+    final now = DateTime(2026, 9, 7, 12);
+    final retained = ScheduledReminderRegistry.retainActive(
+      [
+        {'notifId': 1, 'triggerAtMs': 9223372036854775807},
+        {
+          'notifId': 2,
+          'triggerAtMs': now.add(const Duration(minutes: 10)).millisecondsSinceEpoch,
+        },
+        {'notifId': 3},
+      ],
+      now: now,
+    );
+
+    expect(retained.map((reminder) => reminder['notifId']), [2, 3]);
+  });
 }

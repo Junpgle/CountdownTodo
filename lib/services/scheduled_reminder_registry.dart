@@ -10,6 +10,8 @@ abstract final class ScheduledReminderSources {
 }
 
 abstract final class ScheduledReminderRegistry {
+  static const _maxDateTimeMilliseconds = 8640000000000000;
+
   static List<Map<String, dynamic>> withoutPlanBlocks(
     Iterable<Map<String, dynamic>> reminders, Set<String> planIds,
   ) => reminders.where((r) => !(sourceOf(r) == ScheduledReminderSources.reminderSchedule &&
@@ -62,10 +64,14 @@ abstract final class ScheduledReminderRegistry {
     final current = now ?? DateTime.now();
     return reminders
         .where((reminder) {
-          final triggerAt = _dateTimeOf(reminder['triggerAtMs']);
-          final startAt = _dateTimeOf(
-            reminder['startAtMs'] ?? reminder['courseStartMs'],
-          );
+          final triggerValue = reminder['triggerAtMs'];
+          final startValue = reminder['startAtMs'] ?? reminder['courseStartMs'];
+          if (_isOutOfRangeTimestamp(triggerValue) ||
+              _isOutOfRangeTimestamp(startValue)) {
+            return false;
+          }
+          final triggerAt = _dateTimeOf(triggerValue);
+          final startAt = _dateTimeOf(startValue);
           if (triggerAt == null) return true;
           return triggerAt.isAfter(current) ||
               (startAt != null && startAt.isAfter(current));
@@ -119,6 +125,7 @@ abstract final class ScheduledReminderRegistry {
   }
 
   static DateTime? _dateTimeOf(dynamic value) {
+    if (_isOutOfRangeTimestamp(value)) return null;
     int? milliseconds;
     if (value is int) {
       milliseconds = value;
@@ -130,5 +137,20 @@ abstract final class ScheduledReminderRegistry {
     return milliseconds == null
         ? null
         : DateTime.fromMillisecondsSinceEpoch(milliseconds);
+  }
+
+  static bool _isOutOfRangeTimestamp(dynamic value) {
+    if (value is num) {
+      return !value.isFinite ||
+          value < -_maxDateTimeMilliseconds ||
+          value > _maxDateTimeMilliseconds;
+    }
+    if (value is String) {
+      final milliseconds = int.tryParse(value);
+      return milliseconds != null &&
+          (milliseconds < -_maxDateTimeMilliseconds ||
+              milliseconds > _maxDateTimeMilliseconds);
+    }
+    return false;
   }
 }
