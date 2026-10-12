@@ -3,6 +3,7 @@ import 'dart:async';
 import '../models.dart';
 import '../models/plan_availability.dart';
 import '../storage_service.dart';
+import '../utils/calendar_date_math.dart';
 import 'plan_availability_repository.dart';
 import 'plan_availability_service.dart';
 
@@ -44,7 +45,7 @@ class TodoOverdueTriageService {
       if (excludedRecurrenceSeriesIds.contains(item.recurrenceSeriesId)) {
         return false;
       }
-      return item.dueDate!.isBefore(now);
+      return item.effectiveDueAt?.isBefore(now) ?? false;
     }).toList();
   }
 
@@ -84,7 +85,7 @@ class TodoOverdueTriageService {
         return (dueDate: candidate, isDateOnly: false);
 
       case OverdueRescheduleTarget.tomorrow:
-        final tomorrow = now.add(const Duration(days: 1));
+        final tomorrow = CalendarDateMath.addDays(now, 1);
         if (todo.isDateOnly) {
           return (
             dueDate: DateTime(

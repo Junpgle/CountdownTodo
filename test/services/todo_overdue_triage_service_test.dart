@@ -62,6 +62,62 @@ void main() {
       expect(overdue.first.title, '逾期任务1');
     });
 
+    test('date-only tasks are not overdue before their day has ended', () {
+      final lateEveningService = TodoOverdueTriageService(
+        clock: () => DateTime(2026, 10, 9, 23, 59, 30),
+      );
+      final overdue = lateEveningService.filterOverdueTodos(
+        todos: [
+          TodoItem(
+            id: 'today',
+            title: '今天内完成',
+            dueDate: DateTime(2026, 10, 9, 23, 59),
+            isAllDay: true,
+          ),
+          TodoItem(
+            id: 'yesterday',
+            title: '昨天内完成',
+            dueDate: DateTime(2026, 10, 8, 23, 59),
+            isAllDay: true,
+          ),
+        ],
+      );
+
+      expect(overdue.map((todo) => todo.id), ['yesterday']);
+    });
+
+    test('tomorrow rescheduling follows calendar days across DST', () {
+      final beforeSpringForward = TodoOverdueTriageService(
+        clock: () => DateTime(2026, 3, 7, 23, 30),
+      );
+      final dateOnly = TodoItem(
+        id: 'date-only',
+        title: '日期待办',
+        dueDate: DateTime(2026, 3, 6, 23, 59),
+        isAllDay: true,
+      );
+      final timed = TodoItem(
+        id: 'timed',
+        title: '限时待办',
+        dueDate: DateTime(2026, 3, 6, 18),
+      );
+
+      expect(
+        beforeSpringForward.computeRescheduledDueDate(
+          dateOnly,
+          target: OverdueRescheduleTarget.tomorrow,
+        ).dueDate,
+        DateTime(2026, 3, 8, 23, 59),
+      );
+      expect(
+        beforeSpringForward.computeRescheduledDueDate(
+          timed,
+          target: OverdueRescheduleTarget.tomorrow,
+        ).dueDate,
+        DateTime(2026, 3, 8, 18),
+      );
+    });
+
     test('computeRescheduledDueDate handles today with past hour fallback', () {
       // 原时间是上午 9:00，当前是下午 14:30，今天 9:00 已过，应回退至 23:59
       final pastHourTodo = TodoItem(
