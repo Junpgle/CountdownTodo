@@ -284,9 +284,9 @@ class PomodoroStatsState extends State<PomodoroStats> {
   void _prev() {
     setState(() {
       if (_dimension == 0) {
-        _selected = _selected.subtract(const Duration(days: 1));
+        _selected = CalendarDateMath.addDays(_selected, -1);
       } else if (_dimension == 1) {
-        _selected = _selected.subtract(const Duration(days: 7));
+        _selected = CalendarDateMath.addDays(_selected, -7);
       } else if (_dimension == 2) {
         _selected = DateTime(_selected.year, _selected.month - 1, 1);
       } else {
@@ -299,9 +299,9 @@ class PomodoroStatsState extends State<PomodoroStats> {
   void _next() {
     setState(() {
       if (_dimension == 0) {
-        _selected = _selected.add(const Duration(days: 1));
+        _selected = CalendarDateMath.addDays(_selected, 1);
       } else if (_dimension == 1) {
-        _selected = _selected.add(const Duration(days: 7));
+        _selected = CalendarDateMath.addDays(_selected, 7);
       } else if (_dimension == 2) {
         _selected = DateTime(_selected.year, _selected.month + 1, 1);
       } else {
