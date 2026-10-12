@@ -460,6 +460,62 @@ void main() {
     expect(offsets, [1, 2]);
   });
 
+  test('daily recurrence backfills the next date across spring DST', () {
+    final todo = TodoItem(
+      title: '每日循环',
+      recurrence: RecurrenceType.daily,
+    );
+
+    final offsets = StorageService.recurrenceRollOffsetsForTest(
+      todo,
+      DateTime(2026, 3, 8),
+      DateTime(2026, 3, 9),
+    );
+
+    expect(offsets, [1]);
+  });
+
+  test('monthly recurrence offsets remain calendar days across spring DST', () {
+    final todo = TodoItem(
+      title: '每月循环',
+      recurrence: RecurrenceType.monthly,
+    );
+
+    final offsets = StorageService.recurrenceRollOffsetsForTest(
+      todo,
+      DateTime(2026, 2, 8),
+      DateTime(2026, 4, 8),
+    );
+
+    expect(offsets, [28, 59]);
+  });
+
+  test('open ended recurrence generates local dates across spring DST', () {
+    final source = TodoItem(
+      title: '每日循环',
+      recurrence: RecurrenceType.daily,
+      recurrenceSeriesId: 'spring-dst-series',
+      createdDate: DateTime(2026, 3, 8, 9).millisecondsSinceEpoch,
+      dueDate: DateTime(2026, 3, 8, 10),
+    );
+
+    final generated = StorageService.futureRecurrenceOccurrencesForTest(
+      source,
+      [source],
+    );
+    final starts = generated
+        .map(
+          (todo) => DateTime.fromMillisecondsSinceEpoch(
+            todo.createdDate!,
+            isUtc: true,
+          ).toLocal(),
+        )
+        .toList();
+
+    expect(starts.map((date) => date.day), [9, 10]);
+    expect(starts.map((date) => date.hour), [9, 9]);
+  });
+
   test('weekday recurrence skips weekend while backfilling', () {
     final todo = TodoItem(
       title: '工作日循环',

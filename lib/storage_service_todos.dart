@@ -1849,7 +1849,7 @@ mixin _StorageTodos on _StorageServiceBase {
     if (!targetDay.isAfter(baseDay)) return const [];
 
     final offsets = <int>[];
-    final diffDays = targetDay.difference(baseDay).inDays;
+    final diffDays = CalendarDateMath.daysBetween(baseDay, targetDay);
     switch (todo.recurrence) {
       case RecurrenceType.daily:
         for (var day = 1; day <= diffDays; day++) {
@@ -1889,7 +1889,7 @@ mixin _StorageTodos on _StorageServiceBase {
             baseDay.day.clamp(1, lastDay),
           );
           if (candidate.isAfter(targetDay)) break;
-          offsets.add(candidate.difference(baseDay).inDays);
+          offsets.add(CalendarDateMath.daysBetween(baseDay, candidate));
         }
       case RecurrenceType.yearly:
         for (var year = 1;; year++) {
@@ -1901,7 +1901,7 @@ mixin _StorageTodos on _StorageServiceBase {
             baseDay.day.clamp(1, lastDay),
           );
           if (candidate.isAfter(targetDay)) break;
-          offsets.add(candidate.difference(baseDay).inDays);
+          offsets.add(CalendarDateMath.daysBetween(baseDay, candidate));
         }
       case RecurrenceType.none:
         break;
@@ -2131,8 +2131,7 @@ mixin _StorageTodos on _StorageServiceBase {
     for (var i = 0; i < 2; i++) {
       final next = _nextRecurrenceDate(cursor, todo);
       if (next == null || !next.isAfter(cursor)) break;
-      offsets.add(
-          DateTime(next.year, next.month, next.day).difference(baseDay).inDays);
+      offsets.add(CalendarDateMath.daysBetween(baseDay, next));
       cursor = next;
     }
     return offsets;
@@ -2256,17 +2255,10 @@ mixin _StorageTodos on _StorageServiceBase {
         );
         if (!candidateDay.isBefore(nextKnownDay)) continue;
 
-        final rollByDays = DateTime.utc(
-          candidateDay.year,
-          candidateDay.month,
-          candidateDay.day,
-        )
-            .difference(DateTime.utc(
-              copyBaseDay.year,
-              copyBaseDay.month,
-              copyBaseDay.day,
-            ))
-            .inDays;
+        final rollByDays = CalendarDateMath.daysBetween(
+          copyBaseDay,
+          candidateDay,
+        );
         final result = _getOrCreateRecurrenceOccurrence(
           source: copySource,
           rollByDays: rollByDays,
