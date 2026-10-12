@@ -250,6 +250,26 @@ void main() {
     expect(find.text('规划时间或版本需核对'), findsOneWidget);
     expect(t.takeException(), isNull);
   });
+  testWidgets(
+    'malformed reminder metadata is shown as needing review',
+    (t) async {
+      await block('malformed-reminder-metadata');
+      await f.db.update(
+        'todo_plan_blocks',
+        {'reminder_minutes': 'bad', 'actual_focus_seconds': 'bad'},
+        where: 'uuid=?',
+        whereArgs: ['malformed-reminder-metadata'],
+      );
+      await open(t);
+
+      expect(find.textContaining('设置需核对'), findsWidgets);
+      await tap(t, find.widgetWithText(TextButton, '查看详情'));
+      expect(find.textContaining('提醒：设置需核对'), findsOneWidget);
+      expect(find.textContaining('累计专注参考：需核对'), findsOneWidget);
+      expect(find.textContaining('null'), findsNothing);
+      expect(t.takeException(), isNull);
+    },
+  );
   testWidgets('repeated confirmation cannot pop the cleanup page', (t) async {
     await block('confirm-repeat');
     await open(t);

@@ -684,9 +684,17 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
     return '${DateFormat('HH:mm').format(start)}–${DateFormat(DateUtils.isSameDay(start, end) ? 'HH:mm' : 'M/d HH:mm').format(end)}$offset';
   }
 
-  String _reminder(PlanCleanupItem item) => item.row['reminder_minutes'] == 0
-      ? '不提醒'
-      : '提前${item.row['reminder_minutes']}分钟提醒';
+  String _reminder(PlanCleanupItem item) {
+    final minutes = item.row['reminder_minutes'];
+    if (minutes is! int || minutes < 0) return '设置需核对';
+    return minutes == 0 ? '不提醒' : '提前$minutes分钟提醒';
+  }
+
+  String _focusSeconds(PlanCleanupItem item) {
+    final seconds = item.row['actual_focus_seconds'];
+    return seconds is int && seconds >= 0 ? '$seconds秒' : '需核对';
+  }
+
   String _status(PlanCleanupItem item) => switch (item.row['status']) {
     0 => '待执行',
     2 => '已延后',
@@ -705,8 +713,8 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
           content: SingleChildScrollView(
             child: Text(
               '${_date(item.start)} ${_range(item)}\n${item.minutes}分钟 · ${item.reason.isEmpty ? '可处理' : item.reason}'
-              '\n提前${item.row['reminder_minutes']}分钟提醒'
-              '\n累计专注参考：${item.row['actual_focus_seconds']}秒'
+              '\n提醒：${_reminder(item)}'
+              '\n累计专注参考：${_focusSeconds(item)}'
               '\n${item.row['remark'] ?? ''}\n以上为本页读取快照，提交前会再次核对。',
             ),
           ),
