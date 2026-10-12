@@ -375,6 +375,17 @@ void main() {
     await drain(tester);
     expect(find.text('原规划日期已过去，目标日期已切换到今天'), findsOneWidget);
     expect(find.text('目标：10月7日'), findsOneWidget);
+
+    await tester.tap(find.text('目标：10月7日'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('8'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(DatePickerDialog), findsNothing);
+    expect(find.text('目标：10月8日'), findsOneWidget);
+    expect(find.text('原规划日期已过去，目标日期已切换到今天'), findsNothing);
   });
   testWidgets(
     'old requests cannot overwrite search or retry and read failure is explicit',

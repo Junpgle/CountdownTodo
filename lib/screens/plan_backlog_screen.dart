@@ -162,7 +162,10 @@ class _PlanBacklogScreenState extends State<PlanBacklogScreen>
       lastDate: DateTime(today.year + 10),
     );
     if (chosen != null && mounted) {
-      setState(() => _date = chosen);
+      setState(() {
+        _date = chosen;
+        _normalized = false;
+      });
       await _load();
     }
   }
