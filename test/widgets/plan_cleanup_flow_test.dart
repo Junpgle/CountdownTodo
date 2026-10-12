@@ -270,6 +270,25 @@ void main() {
       expect(t.takeException(), isNull);
     },
   );
+  testWidgets('invalid plan duration is not rendered as a real duration', (
+    t,
+  ) async {
+    await block('invalid-duration');
+    await f.db.update(
+      'todo_plan_blocks',
+      {'planned_minutes': -1},
+      where: 'uuid=?',
+      whereArgs: ['invalid-duration'],
+    );
+    await open(t);
+
+    expect(find.textContaining('时长需核对'), findsWidgets);
+    expect(find.textContaining('-1分钟'), findsNothing);
+    await tap(t, find.widgetWithText(TextButton, '查看详情'));
+    expect(find.textContaining('时长需核对'), findsWidgets);
+    expect(find.textContaining('-1分钟'), findsNothing);
+    expect(t.takeException(), isNull);
+  });
   testWidgets('repeated confirmation cannot pop the cleanup page', (t) async {
     await block('confirm-repeat');
     await open(t);

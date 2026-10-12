@@ -690,6 +690,11 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
     return minutes == 0 ? '不提醒' : '提前$minutes分钟提醒';
   }
 
+  String _duration(PlanCleanupItem item) {
+    final minutes = item.row['planned_minutes'];
+    return minutes is int && minutes > 0 ? '$minutes分钟' : '时长需核对';
+  }
+
   String _focusSeconds(PlanCleanupItem item) {
     final seconds = item.row['actual_focus_seconds'];
     return seconds is int && seconds >= 0 ? '$seconds秒' : '需核对';
@@ -712,7 +717,7 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
           title: const Text('规划核对'),
           content: SingleChildScrollView(
             child: Text(
-              '${_date(item.start)} ${_range(item)}\n${item.minutes}分钟 · ${item.reason.isEmpty ? '可处理' : item.reason}'
+              '${_date(item.start)} ${_range(item)}\n${_duration(item)} · ${item.reason.isEmpty ? '可处理' : item.reason}'
               '\n提醒：${_reminder(item)}'
               '\n累计专注参考：${_focusSeconds(item)}'
               '\n${item.row['remark'] ?? ''}\n以上为本页读取快照，提交前会再次核对。',
@@ -757,7 +762,7 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
     final checkboxLabel = [
       _date(item.start),
       _range(item),
-      '${item.minutes}分钟',
+      _duration(item),
       item.reason.isEmpty ? '可处理' : item.reason,
     ].join('，');
     return Card(
@@ -804,7 +809,7 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '${item.minutes}分钟 · ${_status(item)} · ${_reminder(item)}',
+                        '${_duration(item)} · ${_status(item)} · ${_reminder(item)}',
                       ),
                       if (item.reason.isNotEmpty)
                         Padding(
