@@ -138,7 +138,8 @@ class _PlanCleanupEntryState extends State<PlanCleanupEntry>
         onPressed: _opening
             ? null
             : () async {
-                _opening = true;
+                if (_opening) return;
+                setState(() => _opening = true);
                 _boundary?.cancel();
                 try {
                   await value.identity.check();

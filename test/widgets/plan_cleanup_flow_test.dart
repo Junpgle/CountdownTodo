@@ -34,6 +34,15 @@ class _CleanupRepo extends PlanCleanupRepository {
   }
 }
 
+class _PushCounter extends NavigatorObserver {
+  int pushes = 0;
+
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    pushes++;
+  }
+}
+
 void main() {
   late PlanAvailabilityFixture f;
   late _CleanupRepo repo;
@@ -288,6 +297,33 @@ void main() {
       expect(find.text('剩余规划读取失败，点击重试'), findsOneWidget);
     },
   );
+  testWidgets('entry coalesces rapid repeated opens into one route', (t) async {
+    await block('entry-open');
+    final pushes = _PushCounter();
+    await t.pumpWidget(
+      MaterialApp(
+        navigatorObservers: [pushes],
+        home: Scaffold(
+          body: PlanCleanupEntry(
+            username: user,
+            todoId: 'todo-target',
+            completionSaved: true,
+            repository: repo,
+          ),
+        ),
+      ),
+    );
+    await t.pumpAndSettle();
+    final before = pushes.pushes;
+    final open = t.widget<TextButton>(key('todo-cleanup-plans')).onPressed!;
+    open();
+    open();
+    await t.pumpAndSettle();
+
+    expect(pushes.pushes - before, 1);
+    expect(find.text('剩余规划收尾'), findsOneWidget);
+    expect(t.takeException(), isNull);
+  });
   for (final size in [const Size(320, 844), const Size(1280, 900)]) {
     testWidgets('responsive ${size.width} with readable confirmation', (
       t,
