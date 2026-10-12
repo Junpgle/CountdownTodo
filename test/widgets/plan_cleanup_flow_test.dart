@@ -762,6 +762,46 @@ void main() {
     expect(find.text('恢复待办50'), findsOneWidget);
     expect(t.takeException(), isNull);
   });
+  testWidgets('detail resume keeps loaded pages and requires reselection', (
+    t,
+  ) async {
+    for (var i = 0; i < 52; i++) {
+      await block('resume-detail-$i', minute: i);
+    }
+    await open(t);
+    await tap(t, find.text('加载更多规划（不自动选中）'));
+    expect(find.textContaining('已加载52／总计52'), findsOneWidget);
+    expect(find.text('已选50段 · 94分钟'), findsOneWidget);
+
+    t.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    await t.pump();
+    t.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await t.pumpAndSettle();
+
+    expect(find.textContaining('已加载52／总计52'), findsOneWidget);
+    expect(find.text('已选0段 · 0分钟'), findsOneWidget);
+    expect(find.textContaining('原有选择已清空'), findsOneWidget);
+    expect(t.takeException(), isNull);
+  });
+  testWidgets('overview navigation keeps already loaded pages', (t) async {
+    for (var i = 0; i < 51; i++) {
+      final id = 'navigate-overview-$i';
+      await f.todo(id, '导航待办$i', done: true);
+      await block('navigate-overview-plan-$i', todo: id, minute: i);
+    }
+    await open(t, todo: null);
+    await tap(t, find.text('加载更多待办'));
+    expect(find.textContaining('已加载51／总计51'), findsOneWidget);
+
+    await tap(t, key('cleanup-todo-navigate-overview-50'));
+    expect(find.text('导航待办50'), findsOneWidget);
+    await t.pageBack();
+    await t.pumpAndSettle();
+
+    expect(find.textContaining('已加载51／总计51'), findsOneWidget);
+    expect(find.text('导航待办50'), findsOneWidget);
+    expect(t.takeException(), isNull);
+  });
   testWidgets('overview timer read failure preserves loaded rows', (t) async {
     var testNow = now;
     repo = _CleanupRepo(f.db, clock: () => testNow);

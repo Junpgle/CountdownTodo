@@ -263,7 +263,7 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     _foreground = state == AppLifecycleState.resumed;
     if (_foreground) {
-      _refresh(preserveLoadedOverviewPages: true);
+      _refresh();
     } else {
       _boundary?.cancel();
       _sequence++;
@@ -272,7 +272,6 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
 
   void _refresh({
     bool preserveSelectionWhenUnchanged = false,
-    bool preserveLoadedOverviewPages = false,
   }) {
     if (!mounted || !_foreground || _working || _opening || _saved != null) {
       return;
@@ -288,9 +287,8 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
     unawaited(
       _load(
         initial: initial,
-        overviewLimit: preserveLoadedOverviewPages && !_detail
-            ? _todos.length
-            : null,
+        overviewLimit: !_detail && _page != null ? _todos.length : null,
+        detailLimit: _detail && _snapshot != null ? _items.length : null,
         preserveOverviewOnFailure: true,
         preserveSelectionWhenUnchanged: preserveSelectionWhenUnchanged,
       ),
@@ -363,6 +361,7 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
     bool more = false,
     bool initial = false,
     int? overviewLimit,
+    int? detailLimit,
     bool preserveOverviewOnFailure = false,
     bool preserveSelectionWhenUnchanged = false,
   }) async {
@@ -381,15 +380,49 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
     try {
       await _identity?.check();
       if (_detail) {
-        final snapshot = await _repository.detail(
-          widget.username,
-          widget.todoId!,
-          cursor: more ? _snapshot?.next : null,
+        final rows = <PlanCleanupItem>[];
+        var cursor = more ? _snapshot?.next : null;
+        PlanCleanupSnapshot? lastSnapshot;
+        var restarted = false;
+        final maxReads = detailLimit == null
+            ? 1
+            : (detailLimit + 49) ~/ 50 + 2;
+        for (var pageIndex = 0; pageIndex < maxReads; pageIndex++) {
+          final currentSnapshot = await _repository.detail(
+            widget.username,
+            widget.todoId!,
+            cursor: cursor,
+          );
+          if (!mounted || sequence != _sequence) return;
+          _identity ??= currentSnapshot.identity;
+          await _identity!.check();
+          if (!mounted || sequence != _sequence) return;
+          if (currentSnapshot.restarted) {
+            rows.clear();
+            restarted = true;
+          }
+          rows.addAll(currentSnapshot.rows);
+          lastSnapshot = currentSnapshot;
+          cursor = currentSnapshot.next;
+          if (detailLimit == null ||
+              rows.length >= detailLimit ||
+              cursor == null) {
+            break;
+          }
+        }
+        final last = lastSnapshot!;
+        final snapshot = PlanCleanupSnapshot(
+          identity: last.identity,
+          todo: last.todo,
+          rows: List.unmodifiable(rows),
+          total: last.total,
+          eligible: last.eligible,
+          fingerprint: last.fingerprint,
+          blockedReason: last.blockedReason,
+          nextBoundary: last.nextBoundary,
+          restarted: restarted || last.restarted,
+          next: last.next,
         );
-        if (!mounted || sequence != _sequence) return;
-        _identity ??= snapshot.identity;
-        await _identity!.check();
-        if (!mounted || sequence != _sequence) return;
         final previousSnapshot = _snapshot;
         final unchanged =
             preserveSelectionWhenUnchanged &&
@@ -548,7 +581,7 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
     final delay = boundary.difference(_now);
     _boundary = Timer(
       delay.isNegative ? const Duration(milliseconds: 1) : delay,
-      () => _refresh(preserveLoadedOverviewPages: true),
+      _refresh,
     );
   }
 
@@ -566,7 +599,11 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
     } finally {
       _opening = false;
       if (mounted && _saved == null) {
-        await _load(preserveOverviewOnFailure: true);
+        await _load(
+          overviewLimit: !_detail && _page != null ? _todos.length : null,
+          detailLimit: _detail && _snapshot != null ? _items.length : null,
+          preserveOverviewOnFailure: true,
+        );
       }
     }
   }
@@ -616,7 +653,13 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
       if (mounted) setState(() => _error = _message(error));
     } finally {
       _opening = false;
-      if (mounted) await _load();
+      if (mounted) {
+        await _load(
+          overviewLimit: !_detail && _page != null ? _todos.length : null,
+          detailLimit: _detail && _snapshot != null ? _items.length : null,
+          preserveOverviewOnFailure: true,
+        );
+      }
     }
   }
 
