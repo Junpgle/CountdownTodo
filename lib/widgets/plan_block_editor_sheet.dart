@@ -2020,7 +2020,8 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
           const SizedBox(height: 12),
           LayoutBuilder(
             builder: (context, constraints) {
-              final columns = constraints.maxWidth >= 460 && scale < 1.6
+              final columns = ((constraints.maxWidth >= 300 && scale <= 1.15) ||
+                      (constraints.maxWidth >= 460 && scale < 1.6))
                   ? 3
                   : (constraints.maxWidth >= 240 && scale < 1.6 ? 2 : 1);
               final fieldWidth =
@@ -2037,7 +2038,10 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
                   key: ValueKey('plan-option-$label'),
                   initialValue: value,
                   isExpanded: true,
-                  decoration: _fieldDecoration(label),
+                  decoration: _fieldDecoration(label).copyWith(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 14)),
+                  style: theme.textTheme.bodySmall,
+                  iconSize: 20,
                   items: values
                       .map(
                         (item) => DropdownMenuItem(

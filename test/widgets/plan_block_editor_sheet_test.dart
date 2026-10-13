@@ -1033,7 +1033,7 @@ void main() {
     });
   }
 
-  for (final width in [320.0, 680.0]) {
+  for (final width in [320.0, 390.0, 680.0]) {
     testWidgets('其他设置并排且移除 AI 按钮 width=$width', (tester) async {
       tester.view.physicalSize = Size(width, 1000);
       tester.view.devicePixelRatio = 1;
@@ -1053,7 +1053,7 @@ void main() {
         tester.getRect(single).right,
         lessThan(tester.getRect(rounds).left),
       );
-      if (width >= 680) {
+      if (width >= 390) {
         expect(
           tester.getRect(reminder).top,
           closeTo(tester.getRect(single).top, 1),
