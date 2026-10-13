@@ -65,6 +65,38 @@ void main() {
       expect(await db.query('finance_transactions'), isEmpty);
     });
 
+    test('默认余额快照时间必须落在所选月份', () async {
+      const paymentMethodUuid = 'default-snapshot-month-card';
+      await db.insert(
+        'finance_payment_methods',
+        FinancePaymentMethod(
+          uuid: paymentMethodUuid,
+          name: '默认快照月份测试账户',
+        ).toMap(),
+      );
+
+      final now = DateTime.now();
+      final invalidMonths = [
+        DateTime(now.year, now.month + 2),
+        DateTime(now.year, now.month - 2),
+      ];
+      for (var index = 0; index < invalidMonths.length; index++) {
+        final month = invalidMonths[index];
+        final budget = FinanceBudget(
+          uuid: 'default-snapshot-month-$index',
+          monthKey: financeMonthKey(month),
+          paymentMethodUuid: paymentMethodUuid,
+          amountMinor: 1000,
+        );
+
+        await expectLater(
+          FinanceStorage.saveBudget(budget),
+          throwsArgumentError,
+        );
+        expect(await FinanceStorage.getBudget(budget.uuid), isNull);
+      }
+    });
+
     test('余额流水查询只读取有快照账户，支持大量账户并跳过已删除流水', () async {
       final snapshotAt = DateTime(2026, 9, 1).millisecondsSinceEpoch;
       for (final transaction in [
@@ -2504,15 +2536,17 @@ void main() {
       FinancePaymentMethod(uuid: 'card', name: '测试银行卡').toMap(),
     );
 
+    final now = DateTime.now();
+    final monthStartAt = DateTime(now.year, now.month).millisecondsSinceEpoch;
     final balance = FinanceBudget(
-      monthKey: '2026-09',
+      monthKey: financeMonthKey(now),
       paymentMethodUuid: 'card',
       amountMinor: 10000,
     );
     await FinanceStorage.saveBudget(balance);
     await db.update(
       'finance_budgets',
-      {'balance_snapshot_at': 200},
+      {'balance_snapshot_at': monthStartAt},
       where: 'uuid = ?',
       whereArgs: [balance.uuid],
     );
@@ -2520,7 +2554,10 @@ void main() {
       ..note = '只修改备注';
     edited.markAsChanged();
     await FinanceStorage.saveBudget(edited);
-    expect((await FinanceStorage.getBudget(balance.uuid))!.balanceSnapshotAt, 200);
+    expect(
+      (await FinanceStorage.getBudget(balance.uuid))!.balanceSnapshotAt,
+      monthStartAt,
+    );
 
     final recalibrated = (await FinanceStorage.getBudget(balance.uuid))!;
     recalibrated.markAsChanged();
@@ -2530,20 +2567,23 @@ void main() {
     );
     expect(
       (await FinanceStorage.getBudget(balance.uuid))!.balanceSnapshotAt,
-      greaterThan(200),
+      greaterThan(monthStartAt),
       reason: '余额数值未变时，也需要能主动重新记录当前余额',
     );
 
     await db.update(
       'finance_budgets',
-      {'balance_snapshot_at': 200},
+      {'balance_snapshot_at': monthStartAt},
       where: 'uuid = ?',
       whereArgs: [balance.uuid],
     );
 
     await FinanceStorage.deleteBudget(balance.uuid);
     await FinanceStorage.restoreBudget(balance.uuid);
-    expect((await FinanceStorage.getBudget(balance.uuid))!.balanceSnapshotAt, 200);
+    expect(
+      (await FinanceStorage.getBudget(balance.uuid))!.balanceSnapshotAt,
+      monthStartAt,
+    );
 
     final zero = (await FinanceStorage.getBudget(balance.uuid))!
       ..amountMinor = 0;
@@ -2551,7 +2591,7 @@ void main() {
     await FinanceStorage.saveBudget(zero);
     final stored = (await FinanceStorage.getBudget(balance.uuid))!;
     expect(stored.amountMinor, 0);
-    expect(stored.balanceSnapshotAt, greaterThan(200));
+    expect(stored.balanceSnapshotAt, greaterThan(monthStartAt));
   });
 
   test('付款方式余额备份恢复保留快照时间和关联账单', () async {
@@ -3309,18 +3349,21 @@ void main() {
       );
     }
 
+    final snapshotAt = DateTime(2026, 9, 15).millisecondsSinceEpoch;
     final card = FinanceBudget(
       monthKey: '2026-09',
       paymentMethodUuid: 'payment-card',
       amountMinor: 50000,
+      balanceSnapshotAt: snapshotAt,
     );
     final wallet = FinanceBudget(
       monthKey: '2026-09',
       paymentMethodUuid: 'payment-wallet',
       amountMinor: 20000,
+      balanceSnapshotAt: snapshotAt,
     );
-    await FinanceStorage.saveBudget(card);
-    await FinanceStorage.saveBudget(wallet);
+    await FinanceStorage.saveBudget(card, balanceSnapshotAt: snapshotAt);
+    await FinanceStorage.saveBudget(wallet, balanceSnapshotAt: snapshotAt);
 
     expect(
       card.uuid,

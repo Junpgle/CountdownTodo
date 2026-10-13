@@ -1861,9 +1861,7 @@ abstract final class FinanceStorage {
     }
     if (balanceSnapshotAt != null) {
       if (!budget.isPaymentMethod ||
-          balanceSnapshotAt <= 0 ||
-          balanceSnapshotAt > DateTime.now().millisecondsSinceEpoch ||
-          !_isBalanceSnapshotForMonth(budget.monthKey, balanceSnapshotAt)) {
+          !_isValidBalanceSnapshotAt(budget.monthKey, balanceSnapshotAt)) {
         throw ArgumentError.value(
           balanceSnapshotAt,
           'balanceSnapshotAt',
@@ -1940,11 +1938,22 @@ abstract final class FinanceStorage {
             current.monthKey == budget.monthKey &&
             current.paymentMethodUuid == budget.paymentMethodUuid &&
             current.amountMinor == budget.amountMinor;
-        budget.balanceSnapshotAt =
+        final keepsExistingSnapshot =
+            sameBalance && !resetBalanceSnapshot && balanceSnapshotAt == null;
+        final nextSnapshotAt =
             balanceSnapshotAt ??
-            (sameBalance && !resetBalanceSnapshot
+            (keepsExistingSnapshot
                 ? current.effectiveBalanceSnapshotAt
                 : DateTime.now().millisecondsSinceEpoch);
+        if (!keepsExistingSnapshot &&
+            !_isValidBalanceSnapshotAt(budget.monthKey, nextSnapshotAt)) {
+          throw ArgumentError.value(
+            nextSnapshotAt,
+            'balanceSnapshotAt',
+            '余额对应时间必须在所选月份内且不晚于现在',
+          );
+        }
+        budget.balanceSnapshotAt = nextSnapshotAt;
       } else {
         budget.balanceSnapshotAt = null;
       }
@@ -5222,6 +5231,12 @@ abstract final class FinanceStorage {
     const timezoneDrift = Duration(hours: 28);
     return !snapshot.isBefore(monthStart.subtract(timezoneDrift)) &&
         snapshot.isBefore(nextMonth.add(timezoneDrift));
+  }
+
+  static bool _isValidBalanceSnapshotAt(String monthKey, int snapshotAt) {
+    return snapshotAt > 0 &&
+        snapshotAt <= DateTime.now().millisecondsSinceEpoch &&
+        _isBalanceSnapshotForMonth(monthKey, snapshotAt);
   }
 
   static bool _hasValidRawBalanceSnapshot(Map<String, dynamic> map) {
