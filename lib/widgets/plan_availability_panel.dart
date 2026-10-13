@@ -866,9 +866,43 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
     );
   }
 
+  // Source refreshes may advance request sequences without changing the draft.
+  // Bind adoption to actual inputs; a freshly rechecked choice can then return.
+  String get _selectionContextKey => jsonEncode([
+        widget.username,
+        widget.todo?.id,
+        widget.todo?.version,
+        widget.todo?.updatedAt,
+        widget.todo?.isDone,
+        widget.todo?.isDeleted,
+        widget.todo?.hasConflict,
+        widget.editingBlock?.id,
+        widget.editingBlock?.version,
+        widget.editingBlock?.updatedAt,
+        widget.editingBlock?.status.name,
+        _date.millisecondsSinceEpoch,
+        _minutes,
+        _resultLimit,
+        _start,
+        _end,
+        _appOnly,
+        _bufferBefore,
+        _bufferAfter,
+        _bufferOverride,
+        _bufferDefaultsKey,
+        _avoidanceOverride,
+        _avoidanceDefaultsKey,
+        PlanAvoidancePreferences.keyForWindows(_enabledAvoid),
+        _weeklyRules?.fingerprint,
+        _weeklyIgnored,
+        _weeklyError,
+        _bufferError,
+      ]);
+
   Future<void> _customSearch() async {
-    final parentDate=_date, parentMinutes=_minutes;
-    final revision = widget.autoSelectionRevision, sequence = _sequence;
+    final parentDate = _date, parentMinutes = _minutes;
+    final revision = widget.autoSelectionRevision,
+        contextKey = _selectionContextKey;
     ModalRoute<dynamic>? dialogRoute;
     final response = await showAppDialog<Object>(
       context: context,
@@ -952,22 +986,45 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
       return;
     }
     if (response is _PlanSplitRequest) {
-      if (sequence == _sequence && revision == widget.autoSelectionRevision) {
+      if (contextKey == _selectionContextKey &&
+          revision == widget.autoSelectionRevision) {
         widget.onSplitRequested?.call(response.query);
       }
       return;
     }
     if (response is! PlanAvailabilitySelection) return;
-    await _adoptExternal(response, parentDate, parentMinutes, revision, sequence);
+    await _adoptExternal(
+      response,
+      parentDate,
+      parentMinutes,
+      revision,
+      contextKey,
+    );
   }
 
-  Future<void> _adoptExternal(PlanAvailabilitySelection selection,
-      DateTime parentDate, int parentMinutes, int revision, int sequence) async {
-    try { await PlanAvailabilityPreferences.validateQueryDefaults(selection.query); }
-    catch(e) { if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('$e'))); return; }
-    if(!mounted) return;
-    if (_sequence != sequence || _date != parentDate || _minutes != parentMinutes ||
-        selection.query.username != widget.username || selection.query.todoId != widget.todo?.id ||
+  Future<void> _adoptExternal(
+    PlanAvailabilitySelection selection,
+    DateTime parentDate,
+    int parentMinutes,
+    int revision,
+    String contextKey,
+  ) async {
+    try {
+      await PlanAvailabilityPreferences.validateQueryDefaults(selection.query);
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$error')),
+        );
+      }
+      return;
+    }
+    if (!mounted) return;
+    if (_selectionContextKey != contextKey ||
+        _date != parentDate ||
+        _minutes != parentMinutes ||
+        selection.query.username != widget.username ||
+        selection.query.todoId != widget.todo?.id ||
         revision != widget.autoSelectionRevision ||
         !PlanAvailabilityService.accepts(
           selection,
@@ -1017,17 +1074,28 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
     final snapshot = _snapshot;
     if (_loading || snapshot == null) return;
     final q = _query, date = _date, minutes = _minutes;
-    final sequence = _sequence, revision = widget.autoSelectionRevision;
-    final route = MaterialPageRoute<PlanExplanationResult>(builder: (_) => PlanAvailabilityExplanationScreen(
-        query: q, snapshot: snapshot, loader: widget.loader,
-        rangeLoader: widget.rangeLoader, clock: widget.clock,
-        canSplit: widget.onSplitRequested != null));
+    final contextKey = _selectionContextKey,
+        revision = widget.autoSelectionRevision;
+    final route = MaterialPageRoute<PlanExplanationResult>(
+      builder: (_) => PlanAvailabilityExplanationScreen(
+        query: q,
+        snapshot: snapshot,
+        loader: widget.loader,
+        rangeLoader: widget.rangeLoader,
+        clock: widget.clock,
+        canSplit: widget.onSplitRequested != null,
+      ),
+    );
     final result = await Navigator.of(context).push(route);
     await route.completed;
-    if (!mounted || result == null || sequence != _sequence ||
-        revision != widget.autoSelectionRevision) { return; }
+    if (!mounted ||
+        result == null ||
+        contextKey != _selectionContextKey ||
+        revision != widget.autoSelectionRevision) {
+      return;
+    }
     if (result.selection != null) {
-      await _adoptExternal(result.selection!, date, minutes, revision, sequence);
+      await _adoptExternal(result.selection!, date, minutes, revision, contextKey);
     } else if (result.action == PlanExplanationAction.split) {
       widget.onSplitRequested?.call(q);
     } else if (result.action == PlanExplanationAction.modify) {

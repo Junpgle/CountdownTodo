@@ -4,6 +4,7 @@ library;
 import 'dart:async';
 
 import 'package:countdown_todo/models.dart';
+import 'package:countdown_todo/storage_service.dart';
 import 'package:countdown_todo/models/plan_availability.dart';
 import 'package:countdown_todo/models/plan_weekly_availability.dart';
 import 'package:countdown_todo/screens/plan_availability_explanation_screen.dart';
@@ -430,6 +431,92 @@ void main() {
     expect(selected!.query.minutes, 75);
     expect(find.textContaining('已选用'), findsOneWidget);
   });
+  testWidgets(
+    'freshly searched choice after data refresh is accepted by unchanged parent',
+    (t) async {
+      PlanAvailabilitySelection? selected;
+      await t.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: PlanAvailabilityPanel(
+                username: 'diagnostic',
+                todo: todo,
+                resultsOnly: true,
+                initialDate: day,
+                initialMinutes: 75,
+                initialQuery: query(),
+                clock: () => now,
+                loader: (q, {bool forceRefresh = false}) async =>
+                    snap(q, busy: q.date == day),
+                rangeLoader: (q, {bool forceRefresh = false}) async =>
+                    result(q),
+                onSelected: (s) => selected = s,
+                onInvalidated: () {},
+              ),
+            ),
+          ),
+        ),
+      );
+      await t.pumpAndSettle();
+      await tap(t, k('plan-explain-availability'));
+      StorageService.scopedDataRefreshNotifier.value = DataRefreshSignal(
+        revision: StorageService.scopedDataRefreshNotifier.value.revision + 1,
+        domains: const {DataRefreshDomain.planBlocks},
+      );
+      await t.pumpAndSettle();
+      await tap(t, k('plan-following-days'));
+      await tap(t, find.text('采用').first);
+      expect(selected?.query.date, DateTime(2026, 10, 14));
+    },
+  );
+
+  testWidgets(
+    'changed parent draft revision still rejects a returning choice',
+    (t) async {
+      PlanAvailabilitySelection? selected;
+      late StateSetter update;
+      var revision = 0;
+      await t.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StatefulBuilder(
+              builder: (c, set) {
+                update = set;
+                return SingleChildScrollView(
+                  child: PlanAvailabilityPanel(
+                    username: 'diagnostic',
+                    todo: todo,
+                    resultsOnly: true,
+                    initialDate: day,
+                    initialMinutes: 75,
+                    initialQuery: query(),
+                    clock: () => now,
+                    autoSelectionRevision: revision,
+                    loader: (q, {bool forceRefresh = false}) async =>
+                        snap(q, busy: q.date == day),
+                    rangeLoader: (q, {bool forceRefresh = false}) async =>
+                        result(q),
+                    onSelected: (s) => selected = s,
+                    onInvalidated: () {},
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+      );
+      await t.pumpAndSettle();
+      await tap(t, k('plan-explain-availability'));
+      update(() => revision++);
+      await t.pumpAndSettle();
+      await tap(t, k('plan-following-days'));
+      await tap(t, find.text('采用').first);
+      expect(selected, isNull);
+      expect(find.text('当前条件下最长45分钟，共90分钟碎片'), findsOneWidget);
+    },
+  );
+
   testWidgets('nested custom search can return a later-date selection', (
     t,
   ) async {
@@ -710,6 +797,9 @@ void main() {
           DateTime(d.year, d.month, d.day + 1, 9).millisecondsSinceEpoch,
         );
         expect(rows.single['planned_minutes'], 75);
+        expect(rows.single['remark'], '跨日仍保留备注');
+        expect(rows.single['pomodoro_minutes'], 25);
+        expect(rows.single['reminder_minutes'], 5);
         expect(await f.db.query('op_logs'), hasLength(1));
       },
     );
