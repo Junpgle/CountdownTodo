@@ -1064,6 +1064,7 @@ void main() {
           greaterThan(tester.getRect(single).top),
         );
       }
+      if (width == 390) expect(find.text('按时长'), findsOneWidget);
       expect(find.text('AI 帮我安排更多'), findsNothing);
       expect(tester.takeException(), isNull);
     });

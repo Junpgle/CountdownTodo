@@ -2047,7 +2047,8 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
                         (item) => DropdownMenuItem(
                           value: item,
                           child: Text(
-                            title(item),
+                            title(item) == '按规划时长' && fieldWidth < 120
+                                ? '按时长' : title(item),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
