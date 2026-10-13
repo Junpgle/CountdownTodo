@@ -36,6 +36,19 @@
 
 过程中的失败没有算作通过证据：初次Widget测试修正了懒加载结果断言、滚动后的点击时机和测试SQLite初始化位置；随后专项通过。第一批大回归747项通过、1项失败，原因是新增纽约冬令时测试在本地时区硬编码169小时；现按实际时区偏移计算期望，并在纽约时区实跑，最终整批通过。此前一次命令因自动审批服务额度不足未执行，恢复后通过正常审批继续，没有绕过检查。
 
+主要执行命令如下，Flutter命令在上述隔离副本执行，日志重定向省略。相关静态分析在工作区执行，完整7个实现文件及3个专项文件清单见`analyzer-final.log`首行；保存字段增补断言后单独分析新测试文件也无问题。
+
+```bash
+/Users/junpgle/develop/flutter/bin/flutter test --no-pub $(cat /Users/junpgle/StudioProjects/CountdownTodo/.dart_tool/plan_diagnostics_acceptance/regression-files.txt) --reporter expanded
+/Users/junpgle/develop/flutter/bin/flutter test --no-pub test/widgets/plan_availability_explanation_test.dart test/widgets/plan_availability_panel_test.dart test/widgets/plan_availability_buffers_test.dart test/widgets/plan_editor_drafts_test.dart test/widgets/plan_split_flow_test.dart test/widgets/plan_weekly_availability_test.dart --reporter expanded
+/Users/junpgle/develop/flutter/bin/flutter test --no-pub test/widgets/plan_availability_explanation_test.dart --plain-name 'real editor fills next day, retains remark and saves exactly once' --reporter expanded
+TZ=America/New_York /Users/junpgle/develop/flutter/bin/flutter test --no-pub test/services/plan_availability_diagnostics_test.dart test/services/plan_continuous_range_repository_test.dart test/services/plan_availability_repository_test.dart --reporter expanded
+TZ=Australia/Lord_Howe /Users/junpgle/develop/flutter/bin/flutter test --no-pub test/services/plan_availability_diagnostics_test.dart test/services/plan_continuous_range_repository_test.dart --reporter expanded
+/Users/junpgle/develop/flutter/bin/flutter build web --release --no-pub --no-wasm-dry-run --no-web-resources-cdn --output /tmp/countdown-plan-diagnostics-formal-web
+/Users/junpgle/develop/flutter/bin/flutter build web --release --no-pub --no-wasm-dry-run --no-web-resources-cdn -t .dart_tool/plan_diagnostics_preview.dart --output /tmp/countdown-plan-diagnostics-preview-web
+git -c core.fsmonitor=false diff --check
+```
+
 ## 验收范围对应
 
 1. 短片段参考与精确时长：纯计算测试、说明页与正式编辑器测试。
