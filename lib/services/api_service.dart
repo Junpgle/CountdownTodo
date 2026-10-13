@@ -642,7 +642,7 @@ class ApiService {
   // 6. 分类映射 (Category Mappings)
   // ==========================================
 
-  static Future<List<dynamic>> fetchAppMappings() async {
+  static Future<List<dynamic>?> fetchAppMappings() async {
     try {
       final response = await _request(
         'GET',
@@ -650,12 +650,13 @@ class ApiService {
         includeAuth: false,
       );
       if (response.statusCode == 200) {
-        return jsonDecode(response.body);
+        final decoded = jsonDecode(response.body);
+        if (decoded is List) return decoded;
       }
     } catch (e) {
       // ignore
     }
-    return [];
+    return null;
   }
 
   // ==========================================

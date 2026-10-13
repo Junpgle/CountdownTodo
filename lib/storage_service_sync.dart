@@ -372,23 +372,35 @@ mixin _StorageSync on _StorageServiceBase {
     int? lastSync = prefs.getInt(keyLastMappingsSync);
     DateTime now = DateTime.now();
     if (lastSync != null) {
-      DateTime lastDate =
-          DateTime.fromMillisecondsSinceEpoch(lastSync, isUtc: true).toLocal();
-      if (now.difference(lastDate).inDays < 7) return;
-    }
-    List<dynamic> mappings = await ApiService.fetchAppMappings();
-    if (mappings.isNotEmpty) {
-      Map<String, String> lookupMap = {};
-      for (var item in mappings) {
-        String pkg = item['package_name'] ?? '';
-        String mapped = item['mapped_name'] ?? '';
-        String cat = item['category'] ?? '未分类';
-        if (pkg.isNotEmpty) lookupMap[pkg] = cat;
-        if (mapped.isNotEmpty) lookupMap[mapped] = cat;
+      try {
+        final lastDate =
+            DateTime.fromMillisecondsSinceEpoch(lastSync, isUtc: true).toLocal();
+        final elapsed = now.difference(lastDate);
+        if (!elapsed.isNegative && elapsed < const Duration(days: 7)) return;
+      } on RangeError {
+        // Repair an out-of-range persisted timestamp with the next response.
       }
-      await prefs.setString(keyAppMappings, jsonEncode(lookupMap));
-      await prefs.setInt(keyLastMappingsSync, now.millisecondsSinceEpoch);
     }
+    final mappings = await ApiService.fetchAppMappings();
+    if (mappings == null) return;
+    final lookupMap = <String, String>{};
+    for (final item in mappings) {
+      if (item is! Map) continue;
+      final packageName = item['package_name'];
+      final mappedName = item['mapped_name'];
+      final category = item['category'];
+      final cat = category is String && category.isNotEmpty
+          ? category
+          : '未分类';
+      if (packageName is String && packageName.isNotEmpty) {
+        lookupMap[packageName] = cat;
+      }
+      if (mappedName is String && mappedName.isNotEmpty) {
+        lookupMap[mappedName] = cat;
+      }
+    }
+    await prefs.setString(keyAppMappings, jsonEncode(lookupMap));
+    await prefs.setInt(keyLastMappingsSync, now.millisecondsSinceEpoch);
   }
 
   Future<Map<String, String>> getAppMappings() async {
