@@ -1879,29 +1879,11 @@ mixin _StorageTodos on _StorageServiceBase {
           offsets.add(day);
         }
       case RecurrenceType.monthly:
-        for (var month = 1;; month++) {
-          final monthStart = DateTime(baseDay.year, baseDay.month + month);
-          final lastDay =
-              DateTime(monthStart.year, monthStart.month + 1, 0).day;
-          final candidate = DateTime(
-            monthStart.year,
-            monthStart.month,
-            baseDay.day.clamp(1, lastDay),
-          );
-          if (candidate.isAfter(targetDay)) break;
-          offsets.add(CalendarDateMath.daysBetween(baseDay, candidate));
-        }
       case RecurrenceType.yearly:
-        for (var year = 1;; year++) {
-          final targetYear = baseDay.year + year;
-          final lastDay = DateTime(targetYear, baseDay.month + 1, 0).day;
-          final candidate = DateTime(
-            targetYear,
-            baseDay.month,
-            baseDay.day.clamp(1, lastDay),
-          );
-          if (candidate.isAfter(targetDay)) break;
+        var candidate = _nextRecurrenceDate(baseDay, todo);
+        while (candidate != null && !candidate.isAfter(targetDay)) {
           offsets.add(CalendarDateMath.daysBetween(baseDay, candidate));
+          candidate = _nextRecurrenceDate(candidate, todo);
         }
       case RecurrenceType.none:
         break;

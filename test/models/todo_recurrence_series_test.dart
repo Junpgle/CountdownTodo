@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:countdown_todo/models.dart';
+import 'package:countdown_todo/services/todo_recurrence_date_service.dart';
 import 'package:countdown_todo/storage_service.dart';
 
 void main() {
@@ -488,6 +489,55 @@ void main() {
     );
 
     expect(offsets, [28, 59]);
+  });
+
+  test('monthly month-end backfill matches successive recurrence dates', () {
+    final todo = TodoItem(
+      title: '每月循环',
+      recurrence: RecurrenceType.monthly,
+    );
+    final base = DateTime(2026, 1, 31);
+    final offsets = StorageService.recurrenceRollOffsetsForTest(
+      todo,
+      base,
+      DateTime(2026, 3, 31),
+    );
+
+    final backfilledDates = offsets
+        .map((offset) => DateTime(base.year, base.month, base.day + offset))
+        .toList();
+    final firstOccurrence = TodoRecurrenceDateService.nextDate(base, todo)!;
+    final secondOccurrence =
+        TodoRecurrenceDateService.nextDate(firstOccurrence, todo)!;
+
+    expect(backfilledDates, [firstOccurrence, secondOccurrence]);
+  });
+
+  test('yearly leap-day backfill matches successive recurrence dates', () {
+    final todo = TodoItem(
+      title: '每年循环',
+      recurrence: RecurrenceType.yearly,
+    );
+    final base = DateTime(2024, 2, 29);
+    final offsets = StorageService.recurrenceRollOffsetsForTest(
+      todo,
+      base,
+      DateTime(2028, 2, 29),
+    );
+
+    final backfilledDates = offsets
+        .map((offset) => DateTime(base.year, base.month, base.day + offset))
+        .toList();
+    final successiveDates = <DateTime>[];
+    var current = base;
+    while (true) {
+      final next = TodoRecurrenceDateService.nextDate(current, todo)!;
+      if (next.isAfter(DateTime(2028, 2, 29))) break;
+      successiveDates.add(next);
+      current = next;
+    }
+
+    expect(backfilledDates, successiveDates);
   });
 
   test('open ended recurrence generates local dates across spring DST', () {
