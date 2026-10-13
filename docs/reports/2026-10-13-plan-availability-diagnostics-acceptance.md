@@ -1,6 +1,6 @@
 # 第十四轮验收：无可用时段诊断与跨日查找
 
-日期：2026-10-13。用户已批准完整方案。功能逻辑验收已完成。根据用户追加意见，正在优化新建规划、查找说明和跨日结果三处 UI；以本报告后续补充的新版截图与复验结果作为最终交付。
+日期：2026-10-13。用户已批准完整方案。功能及用户追加的三处 UI 优化均已完成，技术验收通过，待用户确认。最终界面以本报告末尾新版截图为准。
 
 ## 交付内容
 
@@ -21,7 +21,7 @@
 
 | 检查 | 当前结果 |
 | --- | --- |
-| 46个规划、估时及相关测试文件 | 762项不同测试分批通过：先760项整批通过，顶部对齐修正38项通过，刷新采用修正117项通过（含2项新增）；重复项不累加 |
+| 46个规划、估时及相关测试文件 | UI最终布局763项整批通过（含新增390宽三列设置测试）；窄列短文案修正后75项编辑器和说明页复验通过，重复项不累加 |
 | 旧推荐算法等价性 | 固定种子300组日程比较候选起止和顺序，包含重叠、避让、周规则和非对称缓冲 |
 | 诊断与跨日专项 | 片段45＋45／需75、精确长度、秒级边界、截止、周规则状态、合并统计、跨月跨年、最多五个及日期分散 |
 | SQLite与日历模拟 | 一次范围读取、边界缓冲、跨天手机日历排除、显式应用内模式、截止变化、完成状态、新占用、账号、规则变化及一次正式保存 |
@@ -30,8 +30,8 @@
 | Lord Howe时区实跑 | `TZ=Australia/Lord_Howe` 23项通过，验证半小时夏令时与真实持续分钟；重复实跑不累加总测试数 |
 | 相关静态分析 | 7个实现文件与3个专项测试文件无问题；验收预览单独分析无问题 |
 | 空白检查 | `git diff --check`通过，仅作为空白证据 |
-| 正式Web release构建 | 最终成功，38.7秒，日志`formal-web-build-final.log` |
-| 隔离验收预览Web release构建 | 最终成功，26.6秒，日志`preview-web-build-final.log` |
+| 正式Web release构建 | 最终UI版本成功，42.1秒，日志`ui-redesign-formal-final.log` |
+| 隔离验收预览Web release构建 | 最终UI版本成功，28.6秒，日志`ui-redesign-preview-final.log` |
 | 保存字段复核 | 正式编辑器SQLite测试再次通过，保存行保留备注、番茄时长和提前提醒；不重复累加总数 |
 
 过程中的失败没有算作通过证据：初次Widget测试修正了懒加载结果断言、滚动后的点击时机和测试SQLite初始化位置；随后专项通过。第一批大回归747项通过、1项失败，原因是新增纽约冬令时测试在本地时区硬编码169小时；现按实际时区偏移计算期望，并在纽约时区实跑，最终整批通过。此前一次命令因自动审批服务额度不足未执行，恢复后通过正常审批继续，没有绕过检查。
@@ -72,22 +72,47 @@ git -c core.fsmonitor=false diff --check
 
 截图检查发现短说明内容垂直居中、顶部留白过多，已改为顶部对齐，并补充手机／横屏／桌面内容起点断言。38项相关界面回归通过。后续还复现了数据刷新使父页过度拒绝新候选的问题，已用真实输入签名替代父页返回处的请求序号比较，并新增「刷新后新候选可采用」和「草稿变化仍拒绝」两项回归，117项相关界面检查通过。
 
-最终构建在新的本地来源18976复验，排除旧Service Worker缓存。说明页已顶部对齐；跨日采用后，备注「跨日采用仍保留备注」、45分钟单轮番茄和提前10分钟提醒保留。显式保存后仍为正式规划1份、oplog1条、10/14 09:00。随后在深色大字体界面重新查询，14日候选变为10:15–11:30，正确避开刚保存的09:00–10:15。大字体操作按钮换行、计算明细可读，桌面Tab能移动焦点；最终控制台无错误或警告。浏览器临时尺寸已恢复。
+上一版功能构建在新的本地来源18976复验，排除旧Service Worker缓存。说明页已顶部对齐；跨日采用后，备注「跨日采用仍保留备注」、45分钟单轮番茄和提前10分钟提醒保留。显式保存后仍为正式规划1份、oplog1条、10/14 09:00。随后在深色大字体界面重新查询，14日候选变为10:15–11:30，正确避开刚保存的09:00–10:15。大字体操作按钮换行、计算明细可读，桌面Tab能移动焦点；最终控制台无错误或警告。浏览器临时尺寸已恢复。
 
 ## 证据及限制
 
-日志、测试清单、源文件指纹和15张浏览器截图位于项目忽略目录 `.dart_tool/plan_diagnostics_acceptance/`；验收预览代码也位于忽略目录。最终相关文件与验证副本一致。正式构建位于`/tmp/countdown-plan-diagnostics-formal-web`，合成预览位于`/tmp/countdown-plan-diagnostics-preview-web`。
+日志、测试清单、源文件指纹和29张过程及最终浏览器截图位于项目忽略目录 `.dart_tool/plan_diagnostics_acceptance/`；验收预览代码也位于忽略目录。最终相关文件与验证副本一致。正式构建位于`/tmp/countdown-plan-diagnostics-formal-web`，合成预览位于`/tmp/countdown-plan-diagnostics-preview-web`。
 
-未进行原生Android／iOS／macOS真机、真实手机日历授权、多设备同步及Wasm验证；模拟日历与Web流程不能替代这些证据。未推送或发布。
+未进行原生Android／iOS／macOS真机、真实手机日历授权、多设备同步及Wasm验证；模拟日历与Web流程不能替代这些证据。本次未推送或发布。
+
+## 追加 UI 优化与最终复验
+
+用户要求新建规划、查找说明和跨日结果三处共同优化，已在本轮范围内完成：
+
+- 新建页使用「规划内容／安排时间／推荐时段／其他设置」层级，时间区域用主题色强调；统一卡片边框、圆角、留白和固定保存区。
+- 普通390宽手机下，单轮番茄、轮数、提前提醒同排三列；320宽或大字体自动改为两列／一列。窄列「按规划时长」使用短文案「按时长」，避免省略号；含义和实际轮数计算不变。
+- 说明页将状态与统计集中展示，空闲片段独立卡片化；条件和计算明细默认收起，来源覆盖仍直接展示。「查找后续7天」是主按钮，修改条件和分段作为次级操作。
+- 跨日候选突出日期、时间、连续分钟及采用按钮；大字体自动上下排布。短片段仍不可采用，推荐和保存的计算逻辑没有改变。
+
+最终UI布局46文件763项整批通过（`ui-redesign-regression-final.log`，62秒）；实际截图发现窄列长文案截断，修正短文案后75项相关编辑器／说明页测试再次通过（`ui-redesign-label-final.log`，11秒）。此前4文件119项界面回归也通过，不重复累加。最终三个界面及编辑器测试静态分析无问题，`git diff --check`通过。正式与合成预览release构建分别42.1秒、28.6秒成功。
+
+浏览器在390×844普通字体、320×700且1.8倍字体深色玻璃、1280×900桌面实际检查。采用14日09:00–10:15返回原编辑器，合成备注保留；采用后仍0正式规划／0操作记录，点击保存后为1正式规划／1操作记录。三列选项文案完整，大字体改为纵排；说明和跨日卡片无横向溢出，展开明细仍有完整条件与计算阶段。最终控制台错误和警告为零（`browser-console-ui-redesign.json`）。临时浏览器尺寸已恢复，最终预览来源为本机18980；此前18979保留实际保存一次的合成数据库证据。
+
+最终13个相关源文件和测试文件已核对验证副本，指纹更新于`source-sha256.json`。没有修改真实用户数据、数据库结构、网络服务或系统权限；真机和真实手机日历验收仍在上述限制之外。
+
+最终UI复验命令（在验证副本执行Flutter命令）：
+
+```bash
+/Users/junpgle/develop/flutter/bin/flutter test --no-pub $(cat /Users/junpgle/StudioProjects/CountdownTodo/.dart_tool/plan_diagnostics_acceptance/regression-files.txt) --reporter expanded
+/Users/junpgle/develop/flutter/bin/flutter test --no-pub test/widgets/plan_block_editor_sheet_test.dart test/widgets/plan_availability_explanation_test.dart --reporter expanded
+/Users/junpgle/develop/flutter/bin/cache/dart-sdk/bin/dart analyze lib/screens/plan_availability_explanation_screen.dart lib/widgets/plan_availability_panel.dart lib/widgets/plan_block_editor_sheet.dart test/widgets/plan_block_editor_sheet_test.dart
+```
 
 ## 最终界面证据
 
-![手机说明页](/Users/junpgle/StudioProjects/CountdownTodo/.dart_tool/plan_diagnostics_acceptance/06-final-mobile-explanation.png)
+![新建规划的推荐与并排设置](/Users/junpgle/StudioProjects/CountdownTodo/.dart_tool/plan_diagnostics_acceptance/24-final-compact-settings.png)
 
-![后续七天五个完整候选](/Users/junpgle/StudioProjects/CountdownTodo/.dart_tool/plan_diagnostics_acceptance/07-final-five-candidates.png)
+![新版查找说明](/Users/junpgle/StudioProjects/CountdownTodo/.dart_tool/plan_diagnostics_acceptance/20-final-redesign-explanation.png)
 
-![跨日后保留备注和设置](/Users/junpgle/StudioProjects/CountdownTodo/.dart_tool/plan_diagnostics_acceptance/08-final-retained-fields.png)
+![五个完整跨日方案](/Users/junpgle/StudioProjects/CountdownTodo/.dart_tool/plan_diagnostics_acceptance/21-final-redesign-candidates.png)
 
-![深色大字体操作](/Users/junpgle/StudioProjects/CountdownTodo/.dart_tool/plan_diagnostics_acceptance/11-dark-large-font-actions.png)
+![深色大字体设置](/Users/junpgle/StudioProjects/CountdownTodo/.dart_tool/plan_diagnostics_acceptance/25-redesign-dark-settings.png)
 
-![桌面说明页](/Users/junpgle/StudioProjects/CountdownTodo/.dart_tool/plan_diagnostics_acceptance/14-desktop-explanation.png)
+![深色大字体方案](/Users/junpgle/StudioProjects/CountdownTodo/.dart_tool/plan_diagnostics_acceptance/27-redesign-dark-candidates.png)
+
+![桌面查找说明](/Users/junpgle/StudioProjects/CountdownTodo/.dart_tool/plan_diagnostics_acceptance/29-redesign-desktop-explanation.png)
