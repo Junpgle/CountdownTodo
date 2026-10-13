@@ -1108,14 +1108,23 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
     final d = _result?.diagnostics;
     if (_loading || _snapshot == null || _result?.slots.isEmpty != true ||
         d == null || !d.valid) { return const SizedBox.shrink(); }
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      if (d.reason == PlanAvailabilityReason.fragmented ||
-          d.reason == PlanAvailabilityReason.noTime)
-        Text(d.summary, key: const ValueKey('plan-empty-summary')),
-      TextButton.icon(key: const ValueKey('plan-explain-availability'),
-        onPressed: _explain, icon: const Icon(Icons.info_outline, size: 18),
-        label: const Text('查看原因与其他日期')),
-    ]);
+    final theme = Theme.of(context);
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(color: theme.colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(14)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        if (d.reason == PlanAvailabilityReason.fragmented ||
+            d.reason == PlanAvailabilityReason.noTime)
+          Text(d.summary, key: const ValueKey('plan-empty-summary'),
+            style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+        const SizedBox(height: 4),
+        TextButton.icon(key: const ValueKey('plan-explain-availability'),
+          style: TextButton.styleFrom(alignment: Alignment.centerLeft, padding: EdgeInsets.zero),
+          onPressed: _explain, icon: const Icon(Icons.arrow_forward, size: 18),
+          label: const Text('查看原因与其他日期')),
+      ]));
   }
 
   Widget _compactResults() {
@@ -1133,7 +1142,8 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
       key: const ValueKey('plan-recommended-times'),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: colors.surfaceContainerLow,
+        color: colors.surface,
+        border: Border.all(color: colors.outlineVariant.withValues(alpha: 0.6)),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Column(
@@ -1147,7 +1157,7 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
                 color: colors.primary,
               ),
               const SizedBox(width: 8),
-              Expanded(child: Text('推荐时段', style: theme.textTheme.titleSmall)),
+              Expanded(child: Text('推荐时段', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700))),
               IconButton(
                 key: const ValueKey('plan-refresh-slots'),
                 tooltip: '刷新推荐',

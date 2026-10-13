@@ -1592,14 +1592,14 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
     return InputDecoration(
       labelText: label,
       filled: true,
-      fillColor: colors.surfaceContainerLow,
+      fillColor: colors.surface,
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide.none,
+        borderSide: BorderSide(color: colors.outlineVariant.withValues(alpha: 0.7)),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide.none,
+        borderSide: BorderSide(color: colors.outlineVariant.withValues(alpha: 0.7)),
       ),
       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
     );
@@ -1737,6 +1737,12 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
     );
   }
 
+  Widget _formSection(IconData icon, String title) {
+    final theme = Theme.of(context);
+    return Row(children: [Icon(icon, size: 18, color: theme.colorScheme.primary),
+      const SizedBox(width: 8), Text(title, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700))]);
+  }
+
   Widget _form(double width, double scale, EdgeInsets padding) {
     if (_draftRestoreFailed) return Padding(padding: padding, child: _draftNotice());
     final theme = Theme.of(context);
@@ -1760,6 +1766,8 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
               ),
             const SizedBox(height: 12),
           ],
+          _formSection(Icons.checklist_outlined, '规划内容'),
+          const SizedBox(height: 12),
           DropdownButtonFormField<String>(
             key: ValueKey('plan-todo-picker-$_selectedTodoId'),
             initialValue: _selectedTodoId,
@@ -1838,6 +1846,8 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
             ),
           const SizedBox(height: 20),
           if (_split != null) _splitPreview() else ...[
+          _formSection(Icons.schedule_outlined, '安排时间'),
+          const SizedBox(height: 12),
           Wrap(
             spacing: 12,
             runSpacing: 4,
@@ -1861,8 +1871,9 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
           const SizedBox(height: 10),
           Container(
             decoration: BoxDecoration(
-              color: colors.surfaceContainerLow,
-              borderRadius: BorderRadius.circular(16),
+              color: colors.primaryContainer.withValues(alpha: 0.35),
+              border: Border.all(color: colors.primary.withValues(alpha: 0.15)),
+              borderRadius: BorderRadius.circular(18),
             ),
             child: horizontalTimes
                 ? Row(
@@ -1986,13 +1997,14 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
                 ),
               ),
             ),
-          const SizedBox(height: 24),
-          Text(
-            '其他设置',
-            style: theme.textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
-          ),
+          const SizedBox(height: 20),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(color: colors.surface,
+              border: Border.all(color: colors.outlineVariant.withValues(alpha: 0.6)),
+              borderRadius: BorderRadius.circular(20)),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          _formSection(Icons.tune, '其他设置'),
           const SizedBox(height: 12),
           TextField(
             key: const ValueKey('plan-remark'),
@@ -2082,6 +2094,8 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
               );
             },
           ),
+            ]),
+          ),
         ],
       ),
     );
@@ -2136,6 +2150,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
     );
     return Container(
       decoration: BoxDecoration(
+        color: colors.surface,
         border: Border(
           top: BorderSide(color: colors.outlineVariant.withValues(alpha: 0.6)),
         ),
@@ -2222,7 +2237,10 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
     },
     child: Scaffold(
       key: const ValueKey('plan-block-editor-page'),
+      backgroundColor: Theme.of(context).colorScheme.surfaceContainerLowest,
       appBar: AppBar(
+        centerTitle: false,
+        backgroundColor: Theme.of(context).colorScheme.surfaceContainerLowest,
         leading: BackButton(onPressed: () => unawaited(_leave())),
         actions: [if (_supportsDraft) PopupMenuButton<String>(
           tooltip: '更多操作',

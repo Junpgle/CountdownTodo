@@ -292,9 +292,13 @@ class _PlanAvailabilityExplanationScreenState
       });
     final colors = Theme.of(context).colorScheme;
     final range = _range;
+    final theme = Theme.of(context);
     return Scaffold(
+      backgroundColor: colors.surfaceContainerLowest,
       appBar: AppBar(
         title: const Text('查找说明'),
+        centerTitle: false,
+        backgroundColor: colors.surfaceContainerLowest,
         actions: [
           IconButton(
             key: const ValueKey('plan-explanation-refresh'),
@@ -307,190 +311,157 @@ class _PlanAvailabilityExplanationScreenState
       body: Align(
         alignment: Alignment.topCenter,
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 720),
+          constraints: const BoxConstraints(maxWidth: 760),
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(
-                  '${_date(_query.date)} · 需要连续${_query.minutes}分钟',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  '${_minute(_query.windowStart)}–${_minute(_query.windowEnd)} · ${_query.bufferSummary}',
-                ),
-                Text(
-                  _query.weekly?.ignored == true
-                      ? '本次不使用每周规则'
-                      : _query.weekly?.active == true
-                      ? '沿用每周可安排时间'
-                      : '每周规则未开启',
-                ),
-                Text(
-                  _query.avoidWindows.isEmpty
-                      ? '未选择避让时段'
-                      : '避让：${_query.avoidWindows.map((w) => w.label).join('、')}',
-                ),
-                const SizedBox(height: 8),
-                Text(_snapshot.coverage),
-                if (_snapshot.unknownTimes.isNotEmpty)
-                  Text(
-                    '另有${_snapshot.unknownTimes.length}项安排时间未确定；不编造占用区间',
-                    style: TextStyle(color: colors.error),
-                  ),
+                Text('${_date(_query.date)} · 需要连续${_query.minutes}分钟',
+                  style: theme.textTheme.labelLarge?.copyWith(color: colors.onSurfaceVariant)),
+                const SizedBox(height: 12),
                 if (_busy) const LinearProgressIndicator(),
                 if (_error != null)
-                  Padding(
+                  Container(
                     key: _errorKey,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    child: Text(
-                      _error!,
-                      key: const ValueKey('plan-explanation-error'),
-                      style: TextStyle(color: colors.error),
-                    ),
+                    margin: const EdgeInsets.only(bottom: 16),
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(color: colors.errorContainer,
+                      borderRadius: BorderRadius.circular(16)),
+                    child: Text(_error!, key: const ValueKey('plan-explanation-error'),
+                      style: TextStyle(color: colors.onErrorContainer)),
                   ),
                 if (!_stale) ...[
-                  const SizedBox(height: 16),
-                  Text(diagnostic.message ?? '当前条件已找到完整连续时段'),
-                  if (diagnostic.valid)
-                    Text(
-                      diagnostic.summary,
-                      key: const ValueKey('plan-fragment-summary'),
-                    ),
-                  for (final s in fragments.take(3))
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: const Icon(Icons.timelapse),
-                      title: Text(
-                        '${_time(s.start)}–${_time(s.end)} · ${s.minutes}分钟',
-                      ),
-                      subtitle: Text(
-                        s.minutes < _query.minutes
-                            ? '不足${_query.minutes}分钟，仅供参考'
-                            : '片段参考，请通过查找结果采用',
-                      ),
-                    ),
-                  ExpansionTile(
-                    title: const Text('查看计算明细'),
-                    tilePadding: EdgeInsets.zero,
-                    children: [
+                  _surface(
+                    tint: true,
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Icon(diagnostic.reason == PlanAvailabilityReason.available
+                        ? Icons.event_available_outlined : Icons.calendar_month_outlined,
+                        color: colors.primary, size: 28),
+                      const SizedBox(height: 12),
+                      Text(diagnostic.message ?? '当前条件已找到完整连续时段',
+                        style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
+                      if (diagnostic.valid) ...[
+                        const SizedBox(height: 8),
+                        Text(diagnostic.summary, key: const ValueKey('plan-fragment-summary'),
+                          style: theme.textTheme.bodyMedium?.copyWith(color: colors.onSurfaceVariant)),
+                      ],
+                    ]),
+                  ),
+                  if (fragments.isNotEmpty) ...[
+                    const SizedBox(height: 24),
+                    _sectionTitle('当天空闲片段', '仅供参考，不会缩短规划时长'),
+                    const SizedBox(height: 12),
+                    for (final s in fragments.take(3))
+                      Padding(padding: const EdgeInsets.only(bottom: 8),
+                        child: _surface(padding: 14, child: Row(children: [
+                          Container(width: 3, height: 42,
+                            decoration: BoxDecoration(color: colors.outlineVariant,
+                              borderRadius: BorderRadius.circular(2))),
+                          const SizedBox(width: 14),
+                          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Text('${_time(s.start)}–${_time(s.end)} · ${s.minutes}分钟',
+                              style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
+                            const SizedBox(height: 4),
+                            Text(s.minutes < _query.minutes ? '不足${_query.minutes}分钟，仅供参考'
+                              : '片段参考，请通过查找结果采用',
+                              style: theme.textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant)),
+                          ])),
+                        ]))),
+                  ],
+                ],
+                const SizedBox(height: 16),
+                _surface(padding: 0, child: ExpansionTile(
+                  title: const Text('查找条件与计算明细'),
+                  subtitle: Text('${_minute(_query.windowStart)}–${_minute(_query.windowEnd)} · ${_query.minutes}分钟'),
+                  leading: Icon(Icons.tune, color: colors.primary),
+                  shape: const Border(), collapsedShape: const Border(),
+                  childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                  expandedCrossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Wrap(spacing: 6, runSpacing: 6, children: [
+                      _tag(_query.bufferSummary),
+                      _tag(_query.weekly?.ignored == true ? '本次不使用每周规则'
+                        : _query.weekly?.active == true ? '沿用每周可安排时间' : '每周规则未开启'),
+                      _tag(_query.avoidWindows.isEmpty ? '未选择避让时段'
+                        : '避让：${_query.avoidWindows.map((w) => w.label).join('、')}'),
+                    ]),
+                    const SizedBox(height: 12),
+                    Text(_snapshot.coverage, style: theme.textTheme.bodySmall),
+                    if (_snapshot.unknownTimes.isNotEmpty)
+                      Text('另有${_snapshot.unknownTimes.length}项安排时间未确定；不编造占用区间',
+                        style: TextStyle(color: colors.error)),
+                    if (!_stale) ...[
+                      const Divider(height: 24),
                       const Text('按以下顺序计算剩余时间；重叠只扣一次，不代表各项是唯一原因。'),
                       for (final stage in diagnostic.stages)
-                        ListTile(
-                          title: Text(stage.label),
-                          trailing: Text('${stage.minutes}分钟'),
-                        ),
+                        Padding(padding: const EdgeInsets.symmetric(vertical: 8),
+                          child: Row(children: [Expanded(child: Text(stage.label)),
+                            const SizedBox(width: 12), Text('${stage.minutes}分钟',
+                              style: theme.textTheme.labelLarge)])),
+                      const Divider(),
                       Text('已计入${_snapshot.busy.length}项占用（含重叠项，不按项数累加分钟）'),
                       for (final b in _snapshot.busy.take(50))
-                        Text(
+                        Padding(padding: const EdgeInsets.only(top: 6), child: Text(
                           '${_date(b.start)} ${_time(b.start)}–${_time(b.end)} · ${switch (b.source) {
                             PlanBusySource.course => '课程',
                             PlanBusySource.fixedSchedule => '固定日程',
                             PlanBusySource.planBlock => '规划',
                             PlanBusySource.legacyTodo => '旧执行区间',
                             PlanBusySource.deviceCalendar => '手机日历',
-                          }}',
-                        ),
+                          }}', style: theme.textTheme.bodySmall)),
                       if (_snapshot.busy.length > 50) const Text('其余占用均已计入计算'),
-                      for (final unknown in _snapshot.unknownTimes)
-                        Text(unknown),
+                      for (final unknown in _snapshot.unknownTimes) Text(unknown),
                     ],
-                  ),
-                ],
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    OutlinedButton(
-                      key: const ValueKey('plan-explanation-modify'),
-                      onPressed: _busy
-                          ? null
-                          : () => Navigator.pop(
-                              context,
-                              const PlanExplanationResult.action(
-                                PlanExplanationAction.modify,
-                              ),
-                            ),
-                      child: const Text('修改查找条件'),
-                    ),
-                    if (canFollow)
-                      FilledButton(
-                        key: const ValueKey('plan-following-days'),
-                        onPressed: _busy
-                            ? null
-                            : () => _search(following: true),
-                        child: const Text('查找后续7天'),
-                      )
-                    else
-                      const Text('截止前已无后续日期，或需先修正查找条件'),
-                    if (widget.canSplit &&
-                        diagnostic.valid &&
-                        diagnostic.reason != PlanAvailabilityReason.deadline &&
-                        _query.minutes >= 30 &&
-                        _query.minutes <= 720)
-                      TextButton(
-                        key: const ValueKey('plan-explanation-split'),
-                        onPressed: _busy || _stale
-                            ? null
-                            : () => Navigator.pop(
-                                context,
-                                const PlanExplanationResult.action(
-                                  PlanExplanationAction.split,
-                                ),
-                              ),
-                        child: const Text('分段安排'),
-                      ),
                   ],
-                ),
+                )),
+                const SizedBox(height: 20),
+                if (canFollow)
+                  FilledButton.icon(
+                    key: const ValueKey('plan-following-days'),
+                    style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20)),
+                    onPressed: _busy ? null : () => _search(following: true),
+                    icon: const Icon(Icons.travel_explore_outlined, size: 20),
+                    label: const Text('查找后续7天'),
+                  )
+                else const Text('截止前已无后续日期，或需先修正查找条件'),
+                const SizedBox(height: 8),
+                Wrap(alignment: WrapAlignment.center, spacing: 12, runSpacing: 4, children: [
+                  TextButton(
+                    key: const ValueKey('plan-explanation-modify'),
+                    onPressed: _busy ? null : () => Navigator.pop(context,
+                      const PlanExplanationResult.action(PlanExplanationAction.modify)),
+                    child: const Text('修改查找条件')),
+                  if (widget.canSplit && diagnostic.valid &&
+                      diagnostic.reason != PlanAvailabilityReason.deadline &&
+                      _query.minutes >= 30 && _query.minutes <= 720)
+                    TextButton(
+                      key: const ValueKey('plan-explanation-split'),
+                      onPressed: _busy || _stale ? null : () => Navigator.pop(context,
+                        const PlanExplanationResult.action(PlanExplanationAction.split)),
+                      child: const Text('分段安排')),
+                ]),
                 if (range != null) ...[
-                  const SizedBox(height: 20),
-                  Text(
-                    range.end.isAfter(range.start)
-                        ? '后续日期 · ${_date(range.start)}—${_date(DateTime(range.end.year, range.end.month, range.end.day - 1))}'
-                        : '截止前已无后续日期',
-                    key: _rangeKey,
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  Text(
-                    '找到${range.selections.length}个候选 · 每次${_query.minutes}分钟 · 择一采用',
-                  ),
-                  Text(range.coverage),
+                  const SizedBox(height: 24),
+                  Text(range.end.isAfter(range.start)
+                    ? '后续日期 · ${_date(range.start)}—${_date(DateTime(range.end.year, range.end.month, range.end.day - 1))}'
+                    : '截止前已无后续日期', key: _rangeKey,
+                    style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 6),
+                  Text('找到${range.selections.length}个候选 · 每次${_query.minutes}分钟 · 择一采用',
+                    style: theme.textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant)),
+                  const SizedBox(height: 16),
+                  for (final selected in range.selections) _candidate(selected),
+                  if (range.selections.isEmpty && range.end.isAfter(range.start))
+                    _surface(child: const Text('上述完整范围内未找到符合当前条件的连续时段')),
+                  const SizedBox(height: 8),
+                  Text(range.coverage, style: theme.textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant)),
                   for (final unknown in range.unknownTimes) Text(unknown),
-                  if (range.selections.isEmpty &&
-                      range.end.isAfter(range.start))
-                    const Text('上述完整范围内未找到符合当前条件的连续时段'),
-                  for (final selected in range.selections)
-                    Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Text(
-                              '${_date(selected.slot.start)} ${PlanWeeklyRules.weekdays[selected.slot.start.weekday - 1]}',
-                            ),
-                            Text(
-                              '${_time(selected.slot.start)}–${_time(selected.slot.end)} · ${selected.slot.minutes}分钟',
-                            ),
-                            Align(
-                              alignment: Alignment.centerRight,
-                              child: TextButton(
-                                key: ValueKey(
-                                  'plan-following-adopt-${selected.slot.start.millisecondsSinceEpoch}',
-                                ),
-                                onPressed: _busy || _stale
-                                    ? null
-                                    : () => _adopt(selected),
-                                child: const Text('采用'),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
+                ],
+                if (_snapshot.unknownTimes.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Text('另有${_snapshot.unknownTimes.length}项安排时间未确定，请在采用前核对',
+                    style: TextStyle(color: colors.error)),
                 ],
               ],
             ),
@@ -498,5 +469,54 @@ class _PlanAvailabilityExplanationScreenState
         ),
       ),
     );
+  }
+
+  Widget _surface({required Widget child, double padding = 20, bool tint = false}) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      padding: EdgeInsets.all(padding),
+      decoration: BoxDecoration(
+        color: tint ? colors.primaryContainer.withValues(alpha: 0.45) : colors.surface,
+        border: Border.all(color: tint ? colors.primary.withValues(alpha: 0.15) : colors.outlineVariant.withValues(alpha: 0.6)),
+        borderRadius: BorderRadius.circular(20)),
+      child: child);
+  }
+
+  Widget _tag(String label) {
+    final theme = Theme.of(context);
+    return Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(color: theme.colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(8)),
+      child: Text(label, style: theme.textTheme.bodySmall));
+  }
+
+  Widget _sectionTitle(String title, String subtitle) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [Text(title, style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+      const SizedBox(height: 4), Text(subtitle, style: Theme.of(context).textTheme.bodySmall?.copyWith(
+        color: Theme.of(context).colorScheme.onSurfaceVariant))]);
+
+  Widget _candidate(PlanAvailabilitySelection selected) {
+    final theme = Theme.of(context), slot = selected.slot;
+    final colors = theme.colorScheme;
+    final button = FilledButton.tonal(
+      key: ValueKey('plan-following-adopt-${slot.start.millisecondsSinceEpoch}'),
+      onPressed: _busy || _stale ? null : () => _adopt(selected), child: const Text('采用'));
+    final time = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text('${_date(slot.start)} ${PlanWeeklyRules.weekdays[slot.start.weekday - 1]}',
+        style: theme.textTheme.labelMedium?.copyWith(color: colors.primary)),
+      const SizedBox(height: 6),
+      Text('${_time(slot.start)}–${_time(slot.end)}',
+        style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
+      const SizedBox(height: 4),
+      Text('连续${slot.minutes}分钟', style: theme.textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant)),
+    ]);
+    return Padding(padding: const EdgeInsets.only(bottom: 10),
+      child: _surface(padding: 16, child: LayoutBuilder(builder: (context, constraints) {
+        final stack = constraints.maxWidth < 250 || MediaQuery.textScalerOf(context).scale(14) > 20;
+        return stack ? Column(crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [time, const SizedBox(height: 12), Align(alignment: Alignment.centerRight, child: button)])
+          : Row(children: [Expanded(child: time), const SizedBox(width: 12), button]);
+      })));
   }
 }
