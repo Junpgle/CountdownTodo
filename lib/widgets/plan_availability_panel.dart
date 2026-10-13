@@ -1,3 +1,5 @@
+import '../screens/plan_availability_explanation_screen.dart';
+import '../services/plan_continuous_range_service.dart';
 import '../models/plan_weekly_availability.dart';
 import '../services/plan_weekly_availability_preferences.dart';
 import '../screens/plan_weekly_availability_screen.dart';
@@ -18,6 +20,11 @@ import '../services/plan_availability_service.dart';
 import '../storage_service.dart';
 import '../utils/app_dialogs.dart';
 
+class _PlanSplitRequest {
+  const _PlanSplitRequest(this.query);
+  final PlanAvailabilityQuery query;
+}
+
 class PlanAvailabilityPanel extends StatefulWidget {
   const PlanAvailabilityPanel({
     super.key,
@@ -29,6 +36,8 @@ class PlanAvailabilityPanel extends StatefulWidget {
     required this.onInvalidated,
     this.editingBlock,
     this.loader,
+    this.rangeLoader,
+    this.onSplitRequested,
     this.clock,
     this.estimatedMinutes,
     this.initialExpanded = false,
@@ -55,6 +64,8 @@ class PlanAvailabilityPanel extends StatefulWidget {
   final TodoPlanBlock? editingBlock;
   final int? estimatedMinutes;
   final PlanAvailabilityLoader? loader;
+  final PlanContinuousRangeLoader? rangeLoader;
+  final ValueChanged<PlanAvailabilityQuery>? onSplitRequested;
   final DateTime Function()? clock;
   final ValueChanged<PlanAvailabilitySelection> onSelected;
   final VoidCallback onInvalidated;
@@ -857,9 +868,9 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
 
   Future<void> _customSearch() async {
     final parentDate=_date, parentMinutes=_minutes;
-    final revision = widget.autoSelectionRevision;
+    final revision = widget.autoSelectionRevision, sequence = _sequence;
     ModalRoute<dynamic>? dialogRoute;
-    final selection = await showAppDialog<PlanAvailabilitySelection>(
+    final response = await showAppDialog<Object>(
       context: context,
       builder: (dialogContext) {
         dialogRoute = ModalRoute.of(dialogContext);
@@ -914,6 +925,9 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
                       editingBlock: widget.editingBlock,
                       estimatedMinutes: widget.estimatedMinutes,
                       loader: widget.loader,
+                      rangeLoader: widget.rangeLoader,
+                      onSplitRequested: widget.onSplitRequested == null ? null
+                          : (q) => Navigator.pop(dialogContext, _PlanSplitRequest(q)),
                       clock: widget.clock,
                       initialExpanded: true,
                       dateShortcuts: true,
@@ -933,14 +947,26 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
     );
     await dialogRoute?.completed;
     if (!mounted) return;
-    if (selection == null) {
+    if (response == null) {
       await _reloadPreferencesIfChanged();
       return;
     }
-    try { await PlanWeeklyAvailabilityPreferences.validateQuery(selection.query); }
+    if (response is _PlanSplitRequest) {
+      if (sequence == _sequence && revision == widget.autoSelectionRevision) {
+        widget.onSplitRequested?.call(response.query);
+      }
+      return;
+    }
+    if (response is! PlanAvailabilitySelection) return;
+    await _adoptExternal(response, parentDate, parentMinutes, revision, sequence);
+  }
+
+  Future<void> _adoptExternal(PlanAvailabilitySelection selection,
+      DateTime parentDate, int parentMinutes, int revision, int sequence) async {
+    try { await PlanAvailabilityPreferences.validateQueryDefaults(selection.query); }
     catch(e) { if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('$e'))); return; }
     if(!mounted) return;
-    if (_date != parentDate || _minutes != parentMinutes ||
+    if (_sequence != sequence || _date != parentDate || _minutes != parentMinutes ||
         selection.query.username != widget.username || selection.query.todoId != widget.todo?.id ||
         revision != widget.autoSelectionRevision ||
         !PlanAvailabilityService.accepts(
@@ -985,6 +1011,43 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
     });
     widget.onQueryChanged?.call(_query);
     widget.onSelected(selection);
+  }
+
+  Future<void> _explain() async {
+    final snapshot = _snapshot;
+    if (_loading || snapshot == null) return;
+    final q = _query, date = _date, minutes = _minutes;
+    final sequence = _sequence, revision = widget.autoSelectionRevision;
+    final route = MaterialPageRoute<PlanExplanationResult>(builder: (_) => PlanAvailabilityExplanationScreen(
+        query: q, snapshot: snapshot, loader: widget.loader,
+        rangeLoader: widget.rangeLoader, clock: widget.clock,
+        canSplit: widget.onSplitRequested != null));
+    final result = await Navigator.of(context).push(route);
+    await route.completed;
+    if (!mounted || result == null || sequence != _sequence ||
+        revision != widget.autoSelectionRevision) { return; }
+    if (result.selection != null) {
+      await _adoptExternal(result.selection!, date, minutes, revision, sequence);
+    } else if (result.action == PlanExplanationAction.split) {
+      widget.onSplitRequested?.call(q);
+    } else if (result.action == PlanExplanationAction.modify) {
+      if (widget.resultsOnly) { await _customSearch(); }
+      else { setState(() => _expanded = true); }
+    }
+  }
+
+  Widget _emptyExplanation() {
+    final d = _result?.diagnostics;
+    if (_loading || _snapshot == null || _result?.slots.isEmpty != true ||
+        d == null || !d.valid) { return const SizedBox.shrink(); }
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      if (d.reason == PlanAvailabilityReason.fragmented ||
+          d.reason == PlanAvailabilityReason.noTime)
+        Text(d.summary, key: const ValueKey('plan-empty-summary')),
+      TextButton.icon(key: const ValueKey('plan-explain-availability'),
+        onPressed: _explain, icon: const Icon(Icons.info_outline, size: 18),
+        label: const Text('查看原因与其他日期')),
+    ]);
   }
 
   Widget _compactResults() {
@@ -1047,6 +1110,7 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: Text(_result!.message!),
             ),
+          _emptyExplanation(),
           _bufferStatus(),
           _weeklyControls(compact:true),
           for (final slot in visible) _slotButton(slot),
@@ -1343,6 +1407,7 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       child: Text(_result!.message!),
                     ),
+                  _emptyExplanation(),
                   _bufferStatus(),
                   if (_result != null &&
                       _snapshot != null &&

@@ -180,6 +180,22 @@ void main() {
       at(8, 45),
     );
   });
+  test('诊断保留短碎片并统计总量与最长连续时间', () {
+    final q = query(minutes: 75, start: 480, end: 720);
+    final result = PlanAvailabilityService.find(
+      q,
+      snapshot([busy(9, 10), busy(11, 12)]),
+      now: now,
+    );
+
+    expect(result.slots, isEmpty);
+    expect(result.diagnostics, isNotNull);
+    expect(result.diagnostics!.reason, PlanAvailabilityReason.fragmented);
+    expect(result.diagnostics!.fragments.map((slot) => slot.minutes), [60, 60]);
+    expect(result.diagnostics!.longestMinutes, 60);
+    expect(result.diagnostics!.totalMinutes, 120);
+    expect(result.message, contains('没有连续 75 分钟'));
+  });
   test('满日占用及无效占用', () {
     expect(
       PlanAvailabilityService.find(

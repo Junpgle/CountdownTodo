@@ -1,4 +1,5 @@
 import 'plan_weekly_availability_preferences.dart';
+import 'plan_continuous_range_service.dart';
 import 'dart:convert';
 
 import 'package:intl/intl.dart';
@@ -503,6 +504,88 @@ class PlanAvailabilityRepository {
           ),
       ]),
     );
+  }
+
+  /// Explicit next-seven-local-days search, using one shared source read.
+  Future<PlanContinuousRangeResult> readFollowingDays(
+    PlanAvailabilityQuery base, {bool forceRefresh = true}) async {
+    final identity = await PlanTodoIdentity.capture(base.username);
+    await PlanAvailabilityPreferences.validateQueryDefaults(base);
+    final db = databaseOverride ??
+        await DatabaseHelper.instance.databaseForUser(base.username);
+    await PlanTodoGuard.validate(db, identity, base.todoId);
+    final todo = await PlanTodoGuard.read(db, identity, base.todoId);
+    final invalid = PlanAvailabilityService.invalidReason(base, todo, now);
+    if (invalid != null) throw PlanAvailabilityException(invalid);
+    final start = DateTime(base.date.year, base.date.month, base.date.day + 1);
+    var end = DateTime(start.year, start.month, start.day + 7);
+    final due = PlanAvailabilityService.deadline(todo);
+    if (due != null && !due.isAfter(start)) {
+      await PlanAvailabilityPreferences.validateQueryDefaults(base);
+      await identity.check();
+      await PlanTodoGuard.validate(db, identity, base.todoId);
+      final latestTodo = await PlanTodoGuard.read(db, identity, base.todoId);
+      if (PlanAvailabilityService.deadline(latestTodo) != due) {
+        throw const PlanAvailabilityException('待办截止已变化，请重新查找');
+      }
+      return PlanContinuousRangeResult(start, start,
+          '截止前已无后续日期', const [], const []);
+    }
+    if (due != null && due.isBefore(end)) {
+      final midnight = DateTime(due.year, due.month, due.day);
+      end = due == midnight ? midnight
+          : DateTime(due.year, due.month, due.day + 1);
+    }
+    final queries = <PlanAvailabilityQuery>[];
+    for (var day = start; day.isBefore(end);
+        day = DateTime(day.year, day.month, day.day + 1)) {
+      queries.add(base.onDate(day, limit: 5));
+    }
+    final sources = await _readSources(base.username,
+        base.sourceStart,
+        end.add(Duration(minutes: base.bufferAfter)),
+        appOnly: base.appOnly, forceRefresh: forceRefresh);
+    final snapshots = [for (final q in queries) _snapshot(q, sources.local,
+      external: sources.external, included: sources.included,
+      coverage: sources.coverage, settingsFingerprint: sources.settings,
+      calendarRevision: sources.calendarRevision)];
+    await PlanAvailabilityPreferences.validateQueryDefaults(base);
+    await identity.check();
+    await PlanTodoGuard.validate(db, identity, base.todoId);
+    final latestTodo = await PlanTodoGuard.read(db, identity, base.todoId);
+    if (PlanAvailabilityService.deadline(latestTodo) != due) {
+      throw const PlanAvailabilityException('待办截止已变化，请重新查找');
+    }
+    final currentSnapshot = _snapshot(base, sources.local,
+        external: sources.external, included: sources.included,
+        coverage: sources.coverage, settingsFingerprint: sources.settings,
+        calendarRevision: sources.calendarRevision);
+    return PlanContinuousRangeService.find(queries, snapshots, now: now,
+        start: start, end: end, coverage: sources.coverage,
+        currentSnapshot: currentSnapshot);
+  }
+
+  Future<PlanAvailabilitySelection> revalidateContinuous(
+      PlanAvailabilitySelection selected) async {
+    final q = selected.query;
+    final identity = await PlanTodoIdentity.capture(q.username);
+    await PlanAvailabilityPreferences.validateQueryDefaults(q);
+    final fresh = await read(q, forceRefresh: true,
+        requireCalendar: selected.snapshot.deviceCalendarIncluded);
+    if (!PlanAvailabilityService.accepts(selected, fresh, now: now)) {
+      throw const PlanAvailabilityException('该时段已变化，请重新查找后采用');
+    }
+    final db = databaseOverride ??
+        await DatabaseHelper.instance.databaseForUser(q.username);
+    await PlanTodoGuard.validate(db, identity, q.todoId);
+    final latestTodo = await PlanTodoGuard.read(db, identity, q.todoId);
+    final due = PlanAvailabilityService.deadline(latestTodo);
+    if (due != null && selected.slot.end.isAfter(due)) {
+      throw const PlanAvailabilityException('待办截止已变化，请重新查找后采用');
+    }
+    await PlanAvailabilityPreferences.validateQueryDefaults(q);
+    await identity.check();
+    return PlanAvailabilitySelection(q, selected.slot, fresh);
   }
 
   Future<List<TodoPlanBlock>> saveSplit(

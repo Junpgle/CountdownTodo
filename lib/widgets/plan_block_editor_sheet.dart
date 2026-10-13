@@ -1,3 +1,4 @@
+import '../services/plan_continuous_range_service.dart';
 import '../models/plan_weekly_availability.dart';
 import '../services/plan_weekly_availability_preferences.dart';
 import 'dart:async';
@@ -89,6 +90,7 @@ class PlanBlockEditorSheet extends StatefulWidget {
   final bool autoFillEstimateOnTodoChange;
   final VoidCallback onSaved;
   final PlanAvailabilityLoader? availabilityLoader;
+  final PlanContinuousRangeLoader? continuousRangeLoader;
   final PlanEditorSaver? saver;
   final Future<void> Function(TodoPlanBlock block, TodoItem todo)? startFocus;
   final Future<TimeEstimationResult> Function(TodoItem todo)? estimate;
@@ -121,6 +123,7 @@ class PlanBlockEditorSheet extends StatefulWidget {
     this.autoFillEstimateOnTodoChange = true,
     required this.onSaved,
     this.availabilityLoader,
+    this.continuousRangeLoader,
     this.saver,
     this.startFocus,
     this.estimate,
@@ -1005,12 +1008,12 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
     );
   }
 
-  Future<void> _chooseSplit() async {
+  Future<void> _chooseSplit({PlanAvailabilityQuery? query}) async {
     if (_busy || !_canSplit || _splitPersisted) return;
     final initial =
         _split?.query ??
         PlanSplitQuery(
-          PlanAvailabilityQuery(
+          query ?? PlanAvailabilityQuery(
             username: widget.username,
             todoId: _selectedTodoId!,
             date: _manualQuery?.date ?? _start,
@@ -1025,6 +1028,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
             bufferDefaultsKey: _manualQuery?.bufferDefaultsKey,
             avoidanceOverride: _manualQuery?.avoidanceOverride ?? false,
             avoidanceDefaultsKey: _manualQuery?.avoidanceDefaultsKey,
+            weekly: _manualQuery?.weekly,
           ),
         );
     final result = await Navigator.of(context).push<PlanSplitSelection>(
@@ -1912,6 +1916,8 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
               editingBlock: _persistedBlock,
               estimatedMinutes: _estimatedMinutes,
               loader: widget.availabilityLoader,
+              rangeLoader: widget.continuousRangeLoader,
+              onSplitRequested: _canSplit ? (q) => _chooseSplit(query: q) : null,
               clock: widget.clock,
               initialExpanded:
                   widget.recovery != null || widget.autoRecommendTime,

@@ -320,3 +320,7 @@ todo.md
 !/test/services/plan_weekly_availability_test.dart
 !/test/services/plan_weekly_availability_repository_test.dart
 !/test/widgets/plan_weekly_availability_test.dart
+
+!/test/services/plan_availability_diagnostics_test.dart
+!/test/services/plan_continuous_range_repository_test.dart
+!/test/widgets/plan_availability_explanation_test.dart
