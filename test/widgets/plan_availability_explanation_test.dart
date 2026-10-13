@@ -390,6 +390,7 @@ void main() {
       t,
     ) async {
       await page(t, size: spec.$1, scale: spec.$2, brightness: spec.$3);
+      expect(t.getTopLeft(find.text('10月13日 · 需要连续75分钟')).dy, lessThan(140));
       await tap(t, k('plan-following-days'));
       expect(find.textContaining('找到5个候选'), findsOneWidget);
       expect(t.takeException(), isNull);
