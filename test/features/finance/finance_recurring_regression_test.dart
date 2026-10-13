@@ -1033,10 +1033,51 @@ void main() {
 
     final savedBudget = (await FinanceStorage.getBudgets(monthKey: monthKey))
         .single;
-    final alertKey =
-        'finance-budget-v1-$accountKey-${savedBudget.uuid}-'
-        '${savedBudget.monthKey}-${savedBudget.version}-80';
+    final alertKey = _budgetAlertKey(accountKey, savedBudget, 80);
     expect(prefs.getBool(alertKey), isNull);
+  });
+
+  test('相同预算配置会沿用旧版本的阈值提醒标记', () async {
+    final db = await openDatabase();
+    const accountKey = 'finance-budget-alert-legacy-key-test-user';
+    addTearDown(() async {
+      await FocusDoNotDisturbService.setActive(false, force: true);
+      FinanceStorage.databaseOverride = null;
+      await db.close();
+    });
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(StorageService.keyCurrentUser, accountKey);
+    await AppSettingsStorage.setFinanceBudgetAlertEnabled(true);
+    await AppSettingsStorage.setNormalNotificationEnabled(true);
+    await FocusDoNotDisturbService.setActive(false, force: true);
+    final now = DateTime.now();
+    final monthKey = financeMonthKey(now);
+    await FinanceStorage.saveBudget(
+      FinanceBudget(
+        uuid: 'legacy-budget-alert',
+        monthKey: monthKey,
+        amountMinor: 10000,
+      ),
+    );
+    await FinanceStorage.saveTransaction(
+      FinanceTransaction(
+        uuid: 'legacy-budget-alert-expense',
+        amountMinor: 8000,
+        transactionDate: dateKey(now),
+        occurredAt: now.millisecondsSinceEpoch,
+      ),
+    );
+    final budget = (await FinanceStorage.getBudgets(monthKey: monthKey)).single;
+    await prefs.setBool(
+      'finance-budget-v1-$accountKey-${budget.uuid}-'
+          '${budget.monthKey}-${budget.version}-80',
+      true,
+    );
+
+    await FinanceAutomationService.checkBudgetAlerts(now: now);
+
+    expect(prefs.getBool(_budgetAlertKey(accountKey, budget, 80)), isTrue);
   });
 
   test('保存预算时立即检查已有支出并发送阈值提醒', () async {
@@ -1112,21 +1153,41 @@ void main() {
 
     final savedBudget = (await FinanceStorage.getBudgets(monthKey: monthKey))
         .single;
-    final alertKey =
-        'finance-budget-v1-$accountKey-${savedBudget.uuid}-'
-        '${savedBudget.monthKey}-${savedBudget.version}-80';
+    final alertKey = _budgetAlertKey(accountKey, savedBudget, 80);
     expect(shownNotifications, 1);
     expect(prefs.getBool(alertKey), isTrue);
+
+    final noteOnlyUpdate = FinanceBudget.fromMap(savedBudget.toMap())
+      ..note = '仅修改备注'
+      ..markAsChanged();
+    await FinanceRepository.saveBudget(
+      noteOnlyUpdate,
+      original: savedBudget,
+    );
+    expect(shownNotifications, 1);
+
+    final noteUpdatedBudget = (await FinanceStorage.getBudgets(
+      monthKey: monthKey,
+    )).single;
+    final amountUpdatedBudget =
+        FinanceBudget.fromMap(noteUpdatedBudget.toMap())
+          ..amountMinor = 9000
+          ..markAsChanged();
+    await FinanceRepository.saveBudget(
+      amountUpdatedBudget,
+      original: noteUpdatedBudget,
+    );
+    expect(shownNotifications, 2);
 
     await FinanceStorage.deleteTransaction('expense-before-budget-save');
     await _clearBudgetAlertMarkers(prefs, accountKey);
     await FinanceRepository.restoreTransaction('expense-before-budget-save');
-    expect(shownNotifications, 2);
+    expect(shownNotifications, 3);
 
     await FinanceStorage.deleteBudget(savedBudget.uuid);
     await _clearBudgetAlertMarkers(prefs, accountKey);
     await FinanceRepository.restoreBudget(savedBudget.uuid);
-    expect(shownNotifications, 3);
+    expect(shownNotifications, 4);
   });
 
   test('删除退款使净支出重新达到预算阈值时立即提醒', () async {
@@ -1541,9 +1602,7 @@ void main() {
 
     expect(shownNotifications, 1);
     final budget = (await FinanceStorage.getBudgets(monthKey: monthKey)).single;
-    final alertKey =
-        'finance-budget-v1-$accountKey-${budget.uuid}-'
-        '${budget.monthKey}-${budget.version}-80';
+    final alertKey = _budgetAlertKey(accountKey, budget, 80);
     expect(prefs.getBool(alertKey), isTrue);
   });
 
@@ -1614,8 +1673,18 @@ Future<void> _clearBudgetAlertMarkers(
   SharedPreferences prefs,
   String accountKey,
 ) async {
-  final prefix = 'finance-budget-v1-$accountKey-';
-  for (final key in prefs.getKeys().where((key) => key.startsWith(prefix))) {
-    await prefs.remove(key);
+  for (final prefix in [
+    'finance-budget-v1-$accountKey-',
+    'finance-budget-v2-$accountKey-',
+  ]) {
+    for (final key in prefs.getKeys().where((key) => key.startsWith(prefix))) {
+      await prefs.remove(key);
+    }
   }
+}
+
+String _budgetAlertKey(String accountKey, FinanceBudget budget, int threshold) {
+  final scopeKey = budget.categoryUuid ?? 'overall';
+  return 'finance-budget-v2-$accountKey-${budget.uuid}-'
+      '${budget.monthKey}-$scopeKey-${budget.amountMinor}-$threshold';
 }
