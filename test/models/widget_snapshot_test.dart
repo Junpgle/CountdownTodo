@@ -134,6 +134,7 @@ void main() {
     ).single;
 
     expect(series.isActive, isFalse);
+    expect(series.recurrenceText, '循环间隔无效');
     expect(series.occurrences, hasLength(1));
     expect(series.occurrences.single.isProjected, isFalse);
   });
