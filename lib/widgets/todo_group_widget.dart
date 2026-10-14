@@ -75,13 +75,12 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
     double maxProgress = 0.0;
 
     for (final t in todos) {
-      if (t.isDone) continue;
+      if (t.isDone || t.effectiveDueAt == null) continue;
       final cDate = DateTime.fromMillisecondsSinceEpoch(
         t.createdDate ?? t.createdAt,
         isUtc: true,
       ).toLocal();
-      final end = t.effectiveDueAt ??
-          DateTime(cDate.year, cDate.month, cDate.day, 23, 59, 59);
+      final end = t.effectiveDueAt!;
       final dueDay = DateTime(end.year, end.month, end.day);
       if (dueDay.isBefore(today)) {
         hasOverdue = true;
@@ -108,13 +107,12 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
     final now = DateTime.now();
     double maxProgress = 0.0;
     for (final t in todos) {
-      if (t.isDone) continue;
+      if (t.isDone || t.effectiveDueAt == null) continue;
       final cDate = DateTime.fromMillisecondsSinceEpoch(
         t.createdDate ?? t.createdAt,
         isUtc: true,
       ).toLocal();
-      final end = t.effectiveDueAt ??
-          DateTime(cDate.year, cDate.month, cDate.day, 23, 59, 59);
+      final end = t.effectiveDueAt!;
       final totalMin = end.difference(cDate).inMinutes;
       if (totalMin > 0 && now.isAfter(cDate)) {
         final p = (now.difference(cDate).inMinutes / totalMin).clamp(0.0, 1.0);
@@ -644,11 +642,15 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
             todo.createdDate ?? todo.createdAt,
             isUtc: true)
         .toLocal();
-    final end = todo.effectiveDueAt ??
-        DateTime(cDate.year, cDate.month, cDate.day, 23, 59, 59);
-    final totalMin = end.difference(cDate).inMinutes;
-    if (totalMin > 0 && now.isAfter(cDate)) {
-      progress = (now.difference(cDate).inMinutes / totalMin).clamp(0.0, 1.0);
+    final end = todo.effectiveDueAt;
+    if (end != null) {
+      final totalMin = end.difference(cDate).inMinutes;
+      if (totalMin > 0 && now.isAfter(cDate)) {
+        progress = (now.difference(cDate).inMinutes / totalMin).clamp(
+          0.0,
+          1.0,
+        );
+      }
     }
     final fillBrush =
         isPast ? Colors.redAccent : Theme.of(context).colorScheme.primary;

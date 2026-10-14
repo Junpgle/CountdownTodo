@@ -42,21 +42,19 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
     ).toLocal();
     final DateTime now = DateTime.now();
     double progress = 0.0;
-    {
-      DateTime start = cDate;
-      DateTime end = todo.dueDate != null
-          ? todo.isDateOnly
-              ? todo.effectiveDueAt!
-              : DateTime(
-                  todo.dueDate!.year,
-                  todo.dueDate!.month,
-                  todo.dueDate!.day,
-                  todo.dueDate!.hour,
-                  todo.dueDate!.minute,
-                  59,
-                )
-          : DateTime(cDate.year, cDate.month, cDate.day, 23, 59, 59);
-      int totalMinutes = end.difference(start).inMinutes;
+    if (todo.dueDate != null) {
+      final start = cDate;
+      final end = todo.isDateOnly
+          ? todo.effectiveDueAt!
+          : DateTime(
+              todo.dueDate!.year,
+              todo.dueDate!.month,
+              todo.dueDate!.day,
+              todo.dueDate!.hour,
+              todo.dueDate!.minute,
+              59,
+            );
+      var totalMinutes = end.difference(start).inMinutes;
       if (totalMinutes <= 0) totalMinutes = 1;
       if (now.isAfter(start)) {
         progress = (now.difference(start).inMinutes / totalMinutes).clamp(
@@ -1652,14 +1650,12 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
       // Calculate folder progress
       double groupProgress = 0.0;
       for (var t in gTodos) {
-        if (t.isDone) continue;
+        if (t.isDone || t.effectiveDueAt == null) continue;
         final cDate = DateTime.fromMillisecondsSinceEpoch(
           t.createdDate ?? t.createdAt,
           isUtc: true,
         ).toLocal();
-        final end =
-            t.dueDate ??
-            DateTime(cDate.year, cDate.month, cDate.day, 23, 59, 59);
+        final end = t.effectiveDueAt!;
         final totalMin = end.difference(cDate).inMinutes;
         if (totalMin > 0 && now.isAfter(cDate)) {
           final p = (now.difference(cDate).inMinutes / totalMin).clamp(
@@ -1698,14 +1694,12 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
     // 2. Process Standalone/Orphaned Todos
     for (final t in orphanedTodos) {
       double todoProgress = 0.0;
-      {
+      if (t.dueDate != null) {
         final cDate = DateTime.fromMillisecondsSinceEpoch(
           t.createdDate ?? t.createdAt,
           isUtc: true,
         ).toLocal();
-        final end =
-            t.dueDate ??
-            DateTime(cDate.year, cDate.month, cDate.day, 23, 59, 59);
+        final end = t.effectiveDueAt!;
         final totalMin = end.difference(cDate).inMinutes;
         if (totalMin > 0 && now.isAfter(cDate)) {
           todoProgress = (now.difference(cDate).inMinutes / totalMin).clamp(

@@ -607,12 +607,12 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
   }
 
   double _todoProgress(TodoItem todo, DateTime now) {
+    final end = todo.effectiveDueAt;
+    if (end == null) return 0;
     final createdAt = DateTime.fromMillisecondsSinceEpoch(
       todo.createdDate ?? todo.createdAt,
       isUtc: true,
     ).toLocal();
-    final end = todo.dueDate ??
-        DateTime(createdAt.year, createdAt.month, createdAt.day, 23, 59, 59);
     final totalMinutes = end.difference(createdAt).inMinutes;
     if (totalMinutes <= 0 || !now.isAfter(createdAt)) return 0;
     return (now.difference(createdAt).inMinutes / totalMinutes)
@@ -797,13 +797,7 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
       todo.createdDate ?? todo.createdAt,
       isUtc: true,
     ).toLocal();
-    final end = todo.dueDate ??
-        DateTime(cDate.year, cDate.month, cDate.day, 23, 59, 59);
-    final totalMin = end.difference(cDate).inMinutes;
-    double progress = 0.0;
-    if (totalMin > 0 && now.isAfter(cDate)) {
-      progress = (now.difference(cDate).inMinutes / totalMin).clamp(0.0, 1.0);
-    }
+    final progress = _todoProgress(todo, now);
 
     // 颜色
     final Color cardBg = todo.isDone
