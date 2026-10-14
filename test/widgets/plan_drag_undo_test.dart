@@ -272,7 +272,7 @@ void main() {
         await tester.pump(const Duration(milliseconds: 16));
       }
       expect((await persisted(tester)).toJson(), original.toJson());
-      expect(find.text('60m'), findsOneWidget);
+      expect((await persisted(tester)).plannedMinutes, 60);
       await gesture.up();
       await settle(tester);
       final saved = await persisted(tester);

@@ -616,4 +616,154 @@ void main() {
       ['legacy'],
     );
   });
+  test('light overview corrects cache, competing attribution, 80 percent and cancelled budgets', () async {
+    repo = PlanReviewRepository(clock: () => DateTime(2026, 10, 8, 12));
+    await plan('a', cache: 99999);
+    await plan('b', hour: 10, minute: 30);
+    await plan(
+      'cancelled',
+      hour: 7,
+      minutes: 120,
+      status: TodoPlanStatus.cancelled,
+    );
+    await plan('skipped', hour: 6, status: TodoPlanStatus.skipped);
+    await plan(
+      'future-finished',
+      hour: 20,
+      minutes: 30,
+      status: TodoPlanStatus.finished,
+    );
+    await focus('competing', seconds: 2880, finish: at(10, 48));
+    await focus('free-a', hour: 7, todo: null, seconds: 40);
+    await focus('free-b', hour: 8, todo: null, seconds: 40);
+    final overview = await repo.readOverview(
+      PlanAvailabilityFixture.username,
+      day,
+      end,
+    );
+    final full = await read();
+    expect(overview.plans, full.plans);
+    expect(overview.focus, full.focus);
+    expect(overview.logs, full.logs);
+    expect(overview.issues, full.issues);
+    expect(overview.nextBoundary, full.nextBoundary);
+    expect(overview.plan('seconds'), 150 * 60);
+    expect(overview.plan('ended'), 2);
+    expect(overview.plan('done'), 0);
+    expect(overview.actual('seconds'), 2960);
+    expect(overview.actual('attribution'), 2880);
+    expect(overview.actual('unlinked'), 80);
+    expect(
+      overview.issues,
+      3,
+    ); // Two ended pending states plus competing ownership.
+  });
+
+  test(
+    'light overview runs bounded aggregation without lists and writes nothing',
+    () async {
+      await plan('a');
+      await focus('r', planId: 'a');
+      final queries = <String>[];
+      repo = PlanReviewRepository(
+        clock: () => now,
+        onQuery: (sql, _) => queries.add(sql),
+      );
+      final changes = (await f.db.rawQuery('SELECT total_changes() n'))
+          .single['n'];
+      final overview = await repo.readOverview(
+        PlanAvailabilityFixture.username,
+        day,
+        end,
+      );
+      expect(
+        queries.length,
+        7,
+      ); // Three schema probes and four shared aggregates.
+      expect(queries.any((sql) => sql.contains('LIMIT 10')), false);
+      expect(queries.any((sql) => sql.contains('SELECT ownerId id')), false);
+      expect(
+        (await f.db.rawQuery('SELECT total_changes() n')).single['n'],
+        changes,
+      );
+      queries.clear();
+      final full = await read();
+      expect(queries.length, 10);
+      expect(overview.plans, full.plans);
+      expect(overview.focus, full.focus);
+      expect(overview.logs, full.logs);
+      expect(overview.issues, full.issues);
+    },
+  );
+
+  test('light overview uses start day for midnight focus and clips logs separately', () async {
+    final start = DateTime(2026, 10, 7, 23, 40).millisecondsSinceEpoch;
+    await focus('overnight', start: start, finish: at(0, 20), seconds: 1800);
+    await f.db.insert('time_logs', {
+      'uuid': 'log-midnight',
+      'title': '跨日记录',
+      'device_id': 'test',
+      'team_uuid': '',
+      'start_time': start,
+      'end_time': at(0, 20),
+      'created_at': 1,
+      'updated_at': 1,
+    });
+    final previous = await repo.readOverview(
+      PlanAvailabilityFixture.username,
+      DateTime(2026, 10, 7),
+      day,
+    );
+    final current = await repo.readOverview(
+      PlanAvailabilityFixture.username,
+      day,
+      end,
+    );
+    expect(previous.actual('seconds'), 1800);
+    expect(current.actual('seconds'), 0);
+    expect(previous.log('seconds'), 1200);
+    expect(current.log('seconds'), 1200);
+    final full = await read();
+    expect(current.logs, full.logs);
+  });
+
+  test(
+    'light overview keeps zero actual and flags nullable historical duration',
+    () async {
+      await legacyNullableFocusTable();
+      await focus('zero', seconds: 0);
+      await focus('missing', seconds: null);
+      final overview = await repo.readOverview(
+        PlanAvailabilityFixture.username,
+        day,
+        end,
+      );
+      expect(overview.actual('seconds'), 0);
+      expect(overview.actual('n'), 1);
+      expect(overview.issues, 1);
+    },
+  );
+
+  test('light overview preserves the next plan or log end boundary', () async {
+    repo = PlanReviewRepository(clock: () => DateTime(2026, 10, 8, 9));
+    await plan('next', hour: 10);
+    await f.db.insert('time_logs', {
+      'uuid': 'future-log',
+      'title': '进行中的日志',
+      'device_id': 'test',
+      'team_uuid': '',
+      'start_time': at(8),
+      'end_time': at(9, 30),
+      'created_at': 1,
+      'updated_at': 1,
+    });
+    final overview = await repo.readOverview(
+      PlanAvailabilityFixture.username,
+      day,
+      end,
+    );
+    expect(overview.nextBoundary, DateTime(2026, 10, 8, 9, 30));
+    expect(overview.log('seconds'), 0);
+    expect(overview.issues, 1);
+  });
 }

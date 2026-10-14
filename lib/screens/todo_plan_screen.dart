@@ -1,5 +1,8 @@
 import 'plan_weekly_availability_screen.dart';
 import 'dart:async';
+
+import '../services/plan_review_repository.dart';
+import '../widgets/plan_day_overview.dart';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
@@ -34,6 +37,7 @@ class TodoPlanScreen extends StatefulWidget {
   final DateTime? initialDate;
   final String? initialTodoId;
   final PlanDragService? dragService;
+  final PlanReviewRepository? overviewRepository;
 
   const TodoPlanScreen({
     super.key,
@@ -41,6 +45,7 @@ class TodoPlanScreen extends StatefulWidget {
     this.initialDate,
     this.initialTodoId,
     this.dragService,
+    this.overviewRepository,
   });
 
   @override
@@ -60,7 +65,8 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
   List<TimeLogItem> _timeLogs = [];
   String? _loadError;
   final Set<String> _mappedBlockIds = <String>{};
-  int _loadGeneration = 0;
+  int _loadGeneration = 0, _overviewRevision = 0;
+  bool _overviewReady = false;
   late PlanDragService _dragService;
   PlanDragChange? _lastDrag;
   bool _dragBusy = false;
@@ -288,6 +294,7 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
     final loadGeneration = ++_loadGeneration;
     final focusedDate = _focusedDate;
     setState(() {
+      _overviewReady = false;
       _isLoading = _loadedDate != focusedDate;
       _loadError = null;
     });
@@ -369,6 +376,8 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
         ..addAll(_buildMappedBlocks(todos, courses, blocks)
             .map((block) => block.id));
       _isLoading = false;
+      _overviewReady = true;
+      _overviewRevision++;
     });
     unawaited(_checkUndo());
   }
@@ -579,8 +588,10 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
               } else {
                 Navigator.of(context).push(
                   PageTransitions.material(
-                    builder: (_) =>
-                        PlanBlockStatsScreen(username: widget.username),
+                    builder: (_) => PlanBlockStatsScreen(
+                      username: widget.username,
+                      initialDate: _focusedDate,
+                    ),
                   ),
                 );
               }
@@ -619,9 +630,14 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
                 )
               : Column(
                   children: [
-                    _PlanDaySummary(
-                      blocks: _planBlocks,
-                      pomodoroRecords: _pomodoroRecords,
+                    PlanDayOverview(
+                      username: widget.username,
+                      date: _focusedDate,
+                      repository: widget.overviewRepository,
+                      clock: () => _dragService.now,
+                      revision: _overviewRevision,
+                      enabled: _overviewReady && _dragForeground &&
+                          (ModalRoute.of(context)?.isCurrent ?? true),
                     ),
                     PlanExecutionSummary(
                       date: _focusedDate,
@@ -659,13 +675,6 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
   }
 }
 
-int _actualMinutesForPlanBlock(
-  TodoPlanBlock block,
-  List<PomodoroRecord> records,
-) {
-  return _actualSecondsForPlanBlock(block, records) ~/ 60;
-}
-
 int _actualSecondsForPlanBlock(
   TodoPlanBlock block,
   List<PomodoroRecord> records,
@@ -693,92 +702,6 @@ bool _pomodoroRecordBelongsToPlanBlock(
   final recordEnd =
       record.endTime ?? record.startTime + record.effectiveDuration * 1000;
   return record.startTime < block.endTime && recordEnd > block.startTime;
-}
-
-class _PlanDaySummary extends StatelessWidget {
-  final List<TodoPlanBlock> blocks;
-  final List<PomodoroRecord> pomodoroRecords;
-
-  const _PlanDaySummary({
-    required this.blocks,
-    required this.pomodoroRecords,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final now = DateTime.now().millisecondsSinceEpoch;
-    final planned = blocks.fold<int>(0, (sum, b) => sum + b.plannedMinutes);
-    final actual = blocks.fold<int>(
-        0, (sum, b) => sum + _actualMinutesForPlanBlock(b, pomodoroRecords));
-    final done = blocks
-        .where((b) =>
-            b.status == TodoPlanStatus.finished ||
-            (b.plannedMinutes > 0 &&
-                _actualSecondsForPlanBlock(b, pomodoroRecords) >=
-                    b.plannedMinutes * 60 * 0.8))
-        .length;
-    final missed = blocks
-        .where((b) =>
-            (b.status == TodoPlanStatus.planned ||
-                b.status == TodoPlanStatus.reminded) &&
-            _actualSecondsForPlanBlock(b, pomodoroRecords) <= 0 &&
-            b.endTime < now)
-        .length;
-    final rate = planned <= 0 ? 0 : ((actual / planned) * 100).clamp(0, 999);
-    final theme = Theme.of(context);
-
-    Widget chip(String label, String value, Color color, IconData icon) {
-      return Expanded(
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.10),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: color.withValues(alpha: 0.24)),
-          ),
-          child: Row(children: [
-            Icon(icon, size: 16, color: color),
-            const SizedBox(width: 6),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(value,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                          color: color,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 13)),
-                  Text(label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                          color: theme.colorScheme.onSurface
-                              .withValues(alpha: 0.55),
-                          fontSize: 10)),
-                ],
-              ),
-            ),
-          ]),
-        ),
-      );
-    }
-
-    return Container(
-      color: theme.colorScheme.surface,
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
-      child: Row(children: [
-        chip('计划', '${planned}m', Colors.deepPurple, Icons.event_note),
-        const SizedBox(width: 8),
-        chip('实际', '${actual}m', Colors.green, Icons.timer),
-        const SizedBox(width: 8),
-        chip('达成', '${rate.round()}%', Colors.blue, Icons.bar_chart),
-        const SizedBox(width: 8),
-        chip('完成/漏做', '$done/$missed', Colors.orange, Icons.task_alt),
-      ]),
-    );
-  }
 }
 
 class _PlanGridView extends StatefulWidget {
@@ -1241,8 +1164,6 @@ class _PlanGridViewState extends State<_PlanGridView> with WidgetsBindingObserve
     final icon = isMappedCourse
         ? Icons.school_rounded
         : (isMappedBlock ? Icons.task_alt_rounded : Icons.event_note);
-    final actualMinutes =
-        _actualMinutesForPlanBlock(block, widget.pomodoroRecords);
     final segmentHeight = max(1.0, hourH / laneCount - 2);
     final contentFontSize = min(10.0, max(6.0, segmentHeight * 0.72));
     final widgets = <Widget>[];
@@ -1338,17 +1259,6 @@ class _PlanGridViewState extends State<_PlanGridView> with WidgetsBindingObserve
                             color: color.withValues(alpha: 0.72)),
                         maxLines: 1,
                       ),
-                    if (segmentW > 230 * MediaQuery.textScalerOf(context).scale(1) && actualMinutes > 0) ...[
-                      const SizedBox(width: 4),
-                      Text(
-                        '$actualMinutes/${block.plannedMinutes}m',
-                        style: TextStyle(
-                            fontSize: min(8.0, contentFontSize),
-                            fontWeight: FontWeight.w700,
-                            color: Colors.green.shade700),
-                        maxLines: 1,
-                      ),
-                    ],
                   ],
                 ),
               ),

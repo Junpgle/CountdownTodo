@@ -325,3 +325,5 @@ todo.md
 !/test/services/plan_continuous_range_repository_test.dart
 !/test/widgets/plan_availability_explanation_test.dart
 !/test/services/app_mapping_sync_test.dart
+
+!/test/widgets/plan_day_overview_test.dart

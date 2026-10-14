@@ -63,8 +63,8 @@ class PlanReviewPage {
   final DateTime nextBoundary;
 }
 
-class PlanReviewSummary {
-  const PlanReviewSummary({
+class PlanReviewOverview {
+  const PlanReviewOverview({
     required this.identity,
     required this.start,
     required this.end,
@@ -72,20 +72,33 @@ class PlanReviewSummary {
     required this.focus,
     required this.logs,
     required this.issues,
-    required this.days,
-    required this.ranking,
-    required this.missed,
     required this.nextBoundary,
   });
   final PlanTodoIdentity identity;
   final DateTime start, end, nextBoundary;
   final Map<String, Object?> plans, focus, logs;
   final int issues;
-  final List<Map<String, Object?>> days, ranking;
-  final List<PlanReviewEntry> missed;
   int plan(String key) => (plans[key] as num?)?.toInt() ?? 0;
   int actual(String key) => (focus[key] as num?)?.toInt() ?? 0;
   int log(String key) => (logs[key] as num?)?.toInt() ?? 0;
+}
+
+class PlanReviewSummary extends PlanReviewOverview {
+  const PlanReviewSummary({
+    required super.identity,
+    required super.start,
+    required super.end,
+    required super.plans,
+    required super.focus,
+    required super.logs,
+    required super.issues,
+    required this.days,
+    required this.ranking,
+    required this.missed,
+    required super.nextBoundary,
+  });
+  final List<Map<String, Object?>> days, ranking;
+  final List<PlanReviewEntry> missed;
 }
 
 /// All aggregation is read-only. No facade migrations or state maintenance run
@@ -167,6 +180,66 @@ class PlanReviewRepository {
     return _ReviewSql(start, end, instant, flags, planId);
   }
 
+  Future<PlanReviewOverview> _overview(
+    DatabaseExecutor tx,
+    _ReviewSql sql,
+    PlanTodoIdentity identity,
+    DateTime instant,
+  ) async {
+    final plans = (await _query(
+      tx,
+      '${sql.cte} ${sql.planAggregate}',
+      sql.args,
+    )).single;
+    final focus = (await _query(
+      tx,
+      '${sql.cte} ${sql.focusAggregate}',
+      sql.args,
+    )).single;
+    final logs = (await _query(
+      tx,
+      '${sql.cte} ${sql.logAggregate}',
+      sql.args,
+    )).single;
+    final issues = (await _query(
+      tx,
+      '${sql.cte} SELECT COUNT(*) n FROM (${sql.entries(PlanReviewFilter.issues)})',
+      sql.args,
+    )).single;
+    final boundary = plans['boundary'] as int?;
+    final midnight = DateTime(instant.year, instant.month, instant.day + 1);
+    return PlanReviewOverview(
+      identity: identity,
+      start: sql.start,
+      end: sql.end,
+      plans: Map.unmodifiable(plans),
+      focus: Map.unmodifiable(focus),
+      logs: Map.unmodifiable(logs),
+      issues: (issues['n'] as num).toInt(),
+      nextBoundary:
+          boundary != null && boundary < midnight.millisecondsSinceEpoch
+          ? DateTime.fromMillisecondsSinceEpoch(boundary)
+          : midnight,
+    );
+  }
+
+  /// The same aggregates as [read], without trends, rankings or record lists.
+  Future<PlanReviewOverview> readOverview(
+    String username,
+    DateTime start,
+    DateTime end,
+  ) async {
+    final identity = await PlanTodoIdentity.capture(username);
+    final db = await _database(username);
+    final instant = now;
+    final result = await db.transaction((tx) async {
+      final sql = await _sql(tx, start, end, instant);
+      return _overview(tx, sql, identity, instant);
+    });
+    await identity.check();
+    return result;
+  }
+
   Future<PlanReviewSummary> read(
     String username,
     DateTime start,
@@ -177,26 +250,7 @@ class PlanReviewRepository {
     final instant = now;
     final result = await db.transaction((tx) async {
       final sql = await _sql(tx, start, end, instant);
-      final plans = (await _query(
-        tx,
-        '${sql.cte} ${sql.planAggregate}',
-        sql.args,
-      )).single;
-      final focus = (await _query(
-        tx,
-        '${sql.cte} ${sql.focusAggregate}',
-        sql.args,
-      )).single;
-      final logs = (await _query(
-        tx,
-        '${sql.cte} ${sql.logAggregate}',
-        sql.args,
-      )).single;
-      final issues = (await _query(
-        tx,
-        '${sql.cte} SELECT COUNT(*) n FROM (${sql.entries(PlanReviewFilter.issues)})',
-        sql.args,
-      )).single;
+      final overview = await _overview(tx, sql, identity, instant);
       final days = await _query(tx, '${sql.cte} ${sql.dayAggregate}', sql.args);
       final ranking = await _query(
         tx,
@@ -209,23 +263,18 @@ class PlanReviewRepository {
       final missed = await _query(tx, '''${sql.cte}
         SELECT * FROM (${sql.entries(PlanReviewFilter.missed)})
         ORDER BY start DESC, kind, id LIMIT 10''', sql.args);
-      final boundary = plans['boundary'] as int?;
-      final midnight = DateTime(instant.year, instant.month, instant.day + 1);
       return PlanReviewSummary(
         identity: identity,
         start: start,
         end: end,
-        plans: Map.unmodifiable(plans),
-        focus: Map.unmodifiable(focus),
-        logs: Map.unmodifiable(logs),
-        issues: (issues['n'] as num).toInt(),
+        plans: overview.plans,
+        focus: overview.focus,
+        logs: overview.logs,
+        issues: overview.issues,
         days: List.unmodifiable(days),
         ranking: List.unmodifiable(ranking),
         missed: List.unmodifiable(missed.map(PlanReviewEntry.new)),
-        nextBoundary:
-            boundary != null && boundary < midnight.millisecondsSinceEpoch
-            ? DateTime.fromMillisecondsSinceEpoch(boundary)
-            : midnight,
+        nextBoundary: overview.nextBoundary,
       );
     });
     await identity.check();

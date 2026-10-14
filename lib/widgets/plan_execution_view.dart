@@ -195,21 +195,15 @@ class PlanExecutionSummary extends StatelessWidget {
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
           legend('规划', colors.primary),
-          legend(
-            '专注 ${entries.where((e) => e.isFocus).length} 条',
-            colors.tertiary,
-          ),
-          legend(
-            '时间日志 ${entries.where((e) => !e.isFocus).length} 条',
-            colors.secondary,
-          ),
+          legend('专注', colors.tertiary),
+          legend('日志', colors.secondary),
           TextButton.icon(
             key: const ValueKey('plan-execution-list'),
             onPressed: entries.isEmpty
                 ? null
                 : () => _showRecords(context, entries),
             icon: const Icon(Icons.view_list_outlined, size: 16),
-            label: const Text('查看记录'),
+            label: const Text('时间轴记录'),
           ),
         ],
       ),
