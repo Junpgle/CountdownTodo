@@ -64,7 +64,7 @@ void main() {
 
     test('date-only tasks are not overdue before their day has ended', () {
       final lateEveningService = TodoOverdueTriageService(
-        clock: () => DateTime(2026, 10, 9, 23, 59, 30),
+        clock: () => DateTime(2026, 10, 9, 23, 59, 59, 500),
       );
       final overdue = lateEveningService.filterOverdueTodos(
         todos: [

@@ -271,14 +271,8 @@ class TodoItem {
     final due = dueDate;
     if (due == null || !isDateOnly) return due;
     final localDue = due.toLocal();
-    return DateTime(
-      localDue.year,
-      localDue.month,
-      localDue.day,
-      23,
-      59,
-      59,
-    );
+    final nextDay = DateTime(localDue.year, localDue.month, localDue.day + 1);
+    return nextDay.subtract(const Duration(milliseconds: 1));
   }
 
   /// 旧版客户端曾允许待办直接保存“开始—结束”执行时间段。

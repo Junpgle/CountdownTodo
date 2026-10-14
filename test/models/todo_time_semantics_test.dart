@@ -33,6 +33,19 @@ void main() {
       expect(todo.isAllDayTask, isTrue);
     });
 
+    test('a date-only due date remains valid through its final millisecond', () {
+      final todo = todoWithRange(
+        start: DateTime(2026, 7, 20),
+        due: DateTime(2026, 7, 20, 23, 59),
+        isAllDay: true,
+      );
+
+      expect(
+        todo.effectiveDueAt,
+        DateTime(2026, 7, 21).subtract(const Duration(milliseconds: 1)),
+      );
+    });
+
     test('legacy midnight-to-end-of-day data is repaired on read', () {
       final todo = todoWithRange(
         start: DateTime(2026, 7, 20),
