@@ -40,6 +40,18 @@ void main() {
       legacyStart: dayStart.add(const Duration(hours: 22)),
       due: dayStart.add(const Duration(days: 1, hours: 1)),
     );
+    await fixture.db.insert('time_logs', {
+      'uuid': 'ended-at-midnight',
+      'title': '前一日午夜结束日志',
+      'start_time': dayStart
+          .subtract(const Duration(minutes: 30))
+          .millisecondsSinceEpoch,
+      'end_time': dayStart.millisecondsSinceEpoch,
+      'device_id': 'fixture',
+      'team_uuid': '',
+      'created_at': 1,
+      'updated_at': 1,
+    });
 
     await tester.pumpWidget(
       MaterialApp(
@@ -74,6 +86,10 @@ void main() {
     );
     expect(
       find.descendant(of: detailSheet, matching: find.text('跨天待办')),
+      findsNothing,
+    );
+    expect(
+      find.descendant(of: detailSheet, matching: find.text('前一日午夜结束日志')),
       findsNothing,
     );
     expect(tester.takeException(), isNull);
