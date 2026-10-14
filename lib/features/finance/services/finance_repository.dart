@@ -139,19 +139,25 @@ abstract final class FinanceRepository {
       final paymentMethodUuid = budget.paymentMethodUuid;
       final snapshotAt = budget.effectiveBalanceSnapshotAt;
       final monthOrder = budget.monthKey.compareTo(asOfMonthKey);
-      // A month-key snapshot may land in the next local month after sync from
-      // another timezone. Apply that allowance only near this month's end;
-      // later snapshots within the same month are never historical baselines.
-      final crossedMonthWithinTimezoneDrift =
+      // A synced snapshot's month key and epoch can land on opposite sides of
+      // the local month boundary. Accept either adjacent-month representation
+      // only within the timezone drift window.
+      final currentKeyTimestampInNextMonth =
+          monthOrder == 0 &&
           snapshotAt >= nextMonthStartAt &&
           asOfAt >= nextMonthStartAt - snapshotTimezoneDriftMs &&
           snapshotAt <= asOfAt + snapshotTimezoneDriftMs;
+      final nextKeyTimestampInCurrentMonth =
+          monthOrder == 1 &&
+          snapshotAt < nextMonthStartAt &&
+          snapshotAt >= nextMonthStartAt - snapshotTimezoneDriftMs &&
+          snapshotAt <= asOfAt;
       if (paymentMethodUuid == null ||
           paymentMethodUuid.isEmpty ||
-          monthOrder > 0 ||
+          (monthOrder > 0 && !nextKeyTimestampInCurrentMonth) ||
           (monthOrder == 0 &&
               snapshotAt > asOfAt &&
-              !crossedMonthWithinTimezoneDrift) ||
+              !currentKeyTimestampInNextMonth) ||
           (monthOrder < 0 && snapshotAt > asOfAt) ||
           snapshotAt > nowAt) {
         continue;
@@ -161,13 +167,15 @@ abstract final class FinanceRepository {
         latestByMethod[paymentMethodUuid] = budget;
         continue;
       }
-      final currentMonthOrder = budget.monthKey.compareTo(current.monthKey);
-      final isLaterSnapshotInSameMonth =
-          currentMonthOrder == 0 &&
-          (snapshotAt > current.effectiveBalanceSnapshotAt ||
-              (snapshotAt == current.effectiveBalanceSnapshotAt &&
-                  budget.updatedAt > current.updatedAt));
-      if (currentMonthOrder > 0 || isLaterSnapshotInSameMonth) {
+      final currentSnapshotAt = current.effectiveBalanceSnapshotAt;
+      final snapshotMonthOrder = budget.monthKey.compareTo(current.monthKey);
+      final isLaterSnapshot =
+          snapshotAt > currentSnapshotAt ||
+          (snapshotAt == currentSnapshotAt &&
+              (snapshotMonthOrder > 0 ||
+                  (snapshotMonthOrder == 0 &&
+                      budget.updatedAt > current.updatedAt)));
+      if (isLaterSnapshot) {
         latestByMethod[paymentMethodUuid] = budget;
       }
     }
