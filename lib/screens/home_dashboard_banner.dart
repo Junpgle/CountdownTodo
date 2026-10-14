@@ -803,15 +803,8 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
     final dueDate = todo.dueDate?.toLocal();
     if (dueDate == null) return '今日';
 
-    final startMs = todo.createdDate ?? todo.createdAt;
-    final startTime = DateTime.fromMillisecondsSinceEpoch(startMs).toLocal();
-    final isAllDay = startTime.hour == 0 &&
-        startTime.minute == 0 &&
-        dueDate.hour == 23 &&
-        dueDate.minute == 59;
-
-    if (dueDate.isBefore(now)) return '待处理';
-    if (isAllDay) return '今日';
+    if (todo.isOverdueAt(now)) return '待处理';
+    if (todo.isDateOnly) return '今日';
     return DateFormat('HH:mm').format(dueDate);
   }
 

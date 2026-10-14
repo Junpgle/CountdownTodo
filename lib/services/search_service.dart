@@ -64,8 +64,7 @@ class SearchService {
         .where((item) =>
             !item.isDeleted &&
             !item.isDone &&
-            item.dueDate != null &&
-            item.dueDate!.isBefore(before) &&
+            item.isOverdueAt(before) &&
             !excludedRecurrenceSeriesIds.contains(item.recurrenceSeriesId))
         .toList();
   }

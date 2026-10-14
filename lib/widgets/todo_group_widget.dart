@@ -591,7 +591,7 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
     }
 
     final now = DateTime.now();
-    final isPast = todo.effectiveDueAt?.isBefore(now) ?? false;
+    final isPast = todo.isOverdueAt(now);
 
     // ── 徽章计算 (与主列表同步) ──
     String badge = "";

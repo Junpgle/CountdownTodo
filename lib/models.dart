@@ -275,6 +275,11 @@ class TodoItem {
     return nextDay.subtract(const Duration(milliseconds: 1));
   }
 
+  bool isOverdueAt(DateTime instant) {
+    final deadline = effectiveDueAt;
+    return deadline != null && deadline.isBefore(instant);
+  }
+
   /// 旧版客户端曾允许待办直接保存“开始—结束”执行时间段。
   ///
   /// 新版不再为新待办创建这种时间段，但编辑历史记录时必须识别并原样保留，

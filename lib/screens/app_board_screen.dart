@@ -495,6 +495,7 @@ class _AppBoardScreenState extends State<AppBoardScreen>
                 child: MissionControl(
                   todos: _todos,
                   activeTab: _missionTab,
+                  clock: () => _now,
                   onTabChanged: (tab) => setState(() => _missionTab = tab),
                   onTaskClick: (task) => setState(() => _detailTask = task),
                 ),
@@ -536,6 +537,7 @@ class _AppBoardScreenState extends State<AppBoardScreen>
               child: MissionControl(
                 todos: _todos,
                 activeTab: _missionTab,
+                clock: () => _now,
                 onTabChanged: (tab) => setState(() => _missionTab = tab),
                 onTaskClick: (task) => setState(() => _detailTask = task),
               ),
@@ -1387,6 +1389,7 @@ class MissionControl extends StatelessWidget {
   final String activeTab;
   final Function(String) onTabChanged;
   final Function(TodoItem) onTaskClick;
+  final DateTime Function() clock;
 
   const MissionControl({
     super.key,
@@ -1394,6 +1397,7 @@ class MissionControl extends StatelessWidget {
     required this.activeTab,
     required this.onTabChanged,
     required this.onTaskClick,
+    this.clock = DateTime.now,
   });
 
   @override
@@ -1401,6 +1405,7 @@ class MissionControl extends StatelessWidget {
     final activeTasks = todos.where((t) => !t.isDone).toList();
     final completedTasks = todos.where((t) => t.isDone).toList();
     final displayTasks = activeTab == 'active' ? activeTasks : completedTasks;
+    final now = clock();
 
     return Column(
       children: [
@@ -1429,9 +1434,7 @@ class MissionControl extends StatelessWidget {
             separatorBuilder: (_, _) => const SizedBox(height: 12),
             itemBuilder: (context, index) {
               final task = displayTasks[index];
-              final isOverdue = task.dueDate != null &&
-                  task.dueDate!.isBefore(DateTime.now()) &&
-                  !task.isDone;
+              final isOverdue = task.isOverdueAt(now) && !task.isDone;
 
               return InkWell(
                 onTap: () => onTaskClick(task),

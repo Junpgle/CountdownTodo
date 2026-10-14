@@ -46,6 +46,22 @@ void main() {
       );
     });
 
+    test('overdue checks respect date-only and unscheduled semantics', () {
+      final dateOnly = todoWithRange(
+        start: DateTime(2026, 7, 20),
+        due: DateTime(2026, 7, 20, 23, 59),
+        isAllDay: true,
+      );
+      final unscheduled = todoWithRange(start: DateTime(2026, 7, 20, 9));
+
+      expect(
+        dateOnly.isOverdueAt(DateTime(2026, 7, 20, 23, 59, 59, 500)),
+        isFalse,
+      );
+      expect(dateOnly.isOverdueAt(DateTime(2026, 7, 21)), isTrue);
+      expect(unscheduled.isOverdueAt(DateTime(2026, 7, 21)), isFalse);
+    });
+
     test('legacy midnight-to-end-of-day data is repaired on read', () {
       final todo = todoWithRange(
         start: DateTime(2026, 7, 20),

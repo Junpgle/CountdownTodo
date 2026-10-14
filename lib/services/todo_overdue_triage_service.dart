@@ -45,7 +45,7 @@ class TodoOverdueTriageService {
       if (excludedRecurrenceSeriesIds.contains(item.recurrenceSeriesId)) {
         return false;
       }
-      return item.effectiveDueAt?.isBefore(now) ?? false;
+      return item.isOverdueAt(now);
     }).toList();
   }
 
