@@ -36,10 +36,13 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
             }
 
             DateTime todayStart = DateTime(now.year, now.month, now.day);
-            DateTime todayEnd = todayStart
-                .add(const Duration(hours: 23, minutes: 59, seconds: 59));
+            DateTime todayEndExclusive = CalendarDateMath.addDays(
+              todayStart,
+              1,
+            );
 
-            return start.isBefore(todayEnd) && end.isAfter(todayStart);
+            return start.isBefore(todayEndExclusive) &&
+                end.isAfter(todayStart);
           }).toList();
 
     // 排序：未完成优先

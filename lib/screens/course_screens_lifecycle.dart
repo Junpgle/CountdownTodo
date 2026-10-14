@@ -897,10 +897,9 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
         for (int i = 1; i <= 7; i++) {
           DateTime dayStart =
               CalendarDateMath.addDays(currentWeekMondayStart, i - 1);
-          DateTime dayEnd =
-              dayStart.add(const Duration(hours: 23, minutes: 59, seconds: 59));
+          DateTime dayEndExclusive = CalendarDateMath.addDays(dayStart, 1);
 
-          if (start.isBefore(dayEnd) && end.isAfter(dayStart)) {
+          if (start.isBefore(dayEndExclusive) && end.isAfter(dayStart)) {
             if (treatAsAllDay) {
               _allDayTodosPerDay[i]!.add(effectiveTodo);
             } else {
