@@ -766,4 +766,67 @@ void main() {
     expect(overview.log('seconds'), 0);
     expect(overview.issues, 1);
   });
+  test('light overview clips full local days across hour and half-hour DST transitions', () async {
+    for (final date in [
+      DateTime(2026, 3, 8),
+      DateTime(2026, 10, 4),
+      DateTime(2026, 11, 1),
+    ]) {
+      final next = DateTime(date.year, date.month, date.day + 1);
+      final id = '${date.month}-${date.day}';
+      await f.db.insert('time_logs', {
+        'uuid': 'dst-$id',
+        'title': '整日实测日志',
+        'start_time': date.millisecondsSinceEpoch,
+        'end_time': next.millisecondsSinceEpoch,
+        'device_id': 'fixture',
+        'team_uuid': '',
+        'created_at': 1,
+        'updated_at': 1,
+      });
+      final late = DateTime(
+        date.year,
+        date.month,
+        date.day,
+        23,
+        59,
+      ).millisecondsSinceEpoch;
+      await focus(
+        'dst-focus-$id',
+        start: late,
+        finish: next.millisecondsSinceEpoch,
+        seconds: 50,
+        todo: null,
+      );
+      await focus(
+        'next-day-$id',
+        start: next.millisecondsSinceEpoch,
+        finish: next.millisecondsSinceEpoch + 60000,
+        seconds: 60,
+        todo: null,
+      );
+      final dstRepo = PlanReviewRepository(
+        clock: () => DateTime(next.year, next.month, next.day, 12),
+      );
+      final overview = await dstRepo.readOverview(
+        PlanAvailabilityFixture.username,
+        date,
+        next,
+      );
+      final expected =
+          (const Duration(hours: 24) +
+                  date.timeZoneOffset -
+                  next.timeZoneOffset)
+              .inSeconds;
+      expect(overview.log('seconds'), expected);
+      expect(overview.actual('seconds'), 50);
+      final full = await dstRepo.read(
+        PlanAvailabilityFixture.username,
+        date,
+        next,
+      );
+      expect(overview.logs, full.logs);
+      expect(overview.focus, full.focus);
+    }
+  });
 }
