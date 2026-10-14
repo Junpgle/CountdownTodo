@@ -1,0 +1,81 @@
+import 'package:countdown_todo/screens/course_screens.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../support/plan_availability_fixture.dart';
+
+void main() {
+  late PlanAvailabilityFixture fixture;
+
+  setUp(() async {
+    fixture = PlanAvailabilityFixture();
+    await fixture.initialize();
+    debugDefaultTargetPlatformOverride = null;
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setBool('tip_shown_course_screen_guide', true);
+  });
+
+  tearDown(() => fixture.dispose());
+
+  testWidgets('隐藏跨天待办时月详情仍展示单日全天待办', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(390, 844);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final today = DateTime.now();
+    final dayStart = DateTime(today.year, today.month, today.day);
+    await fixture.todo(
+      'single-day-all-day',
+      '单日全天待办',
+      legacyStart: dayStart,
+      due: dayStart.add(const Duration(hours: 23, minutes: 59)),
+      allDay: true,
+    );
+    await fixture.todo(
+      'cross-day',
+      '跨天待办',
+      legacyStart: dayStart.add(const Duration(hours: 22)),
+      due: dayStart.add(const Duration(days: 1, hours: 1)),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: WeeklyCourseScreen(username: PlanAvailabilityFixture.username),
+      ),
+    );
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 500)),
+    );
+    await tester.pump();
+    await tester.tap(find.byTooltip('切换视图模式'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('切换视图模式'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('筛选显示内容'));
+    await tester.pumpAndSettle();
+    final hideCrossDay = find.widgetWithText(MenuItemButton, '隐藏跨天待办');
+    expect(hideCrossDay, findsOneWidget);
+    await tester.tap(hideCrossDay);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('筛选显示内容'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('${today.day}'), warnIfMissed: false);
+    await tester.pumpAndSettle();
+
+    final detailSheet = find.byType(BottomSheet);
+    expect(detailSheet, findsOneWidget);
+    expect(
+      find.descendant(of: detailSheet, matching: find.text('单日全天待办')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: detailSheet, matching: find.text('跨天待办')),
+      findsNothing,
+    );
+    expect(tester.takeException(), isNull);
+  });
+}

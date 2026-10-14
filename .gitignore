@@ -327,3 +327,4 @@ todo.md
 !/test/services/app_mapping_sync_test.dart
 
 !/test/widgets/plan_day_overview_test.dart
+!/test/widgets/course_day_detail_test.dart

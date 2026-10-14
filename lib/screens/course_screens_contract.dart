@@ -225,7 +225,12 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
   String _getBiWeekLabel();
   void _showWeekJumpDialog();
   void _jumpToCurrentWeek();
-  Widget _buildMonthDaySidebar(DateTime day);
+  List<dynamic> _dayDetailItems(DateTime day);
+  Widget _buildMonthDaySidebar(
+    DateTime day, {
+    List<dynamic>? dayItems,
+    VoidCallback? onClose,
+  });
   Widget _buildDetailSidebarItem(BuildContext context, dynamic item,
       [String? sourceDate]);
   void _handleFilterSelection(String value);

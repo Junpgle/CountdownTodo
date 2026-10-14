@@ -211,79 +211,115 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
     _jumpToWeek(week);
   }
 
-  Widget _buildMonthDaySidebar(DateTime day) {
-    final bool isDark = Theme.of(context).brightness == Brightness.dark;
-    final String dateStr = DateFormat('yyyy年M月d日').format(day);
-    final String weekdayStr =
-        ['周一', '周二', '周三', '周四', '周五', '周六', '周日'][day.weekday - 1];
-
-    final dStr = DateFormat('yyyy-MM-dd').format(day);
+  List<dynamic> _dayDetailItems(DateTime day) {
+    final String dStr = DateFormat('yyyy-MM-dd').format(day);
     final List<dynamic> items = [];
+    final weekMonday = _getMondayOfCurrentWeek();
+    final weekStart = weekMonday == null
+        ? null
+        : DateTime(weekMonday.year, weekMonday.month, weekMonday.day);
+    final normalizedDay = DateTime(day.year, day.month, day.day);
+    final useWeekData =
+        _viewMode == 0 &&
+        weekStart != null &&
+        !normalizedDay.isBefore(weekStart) &&
+        normalizedDay.isBefore(CalendarDateMath.addDays(weekStart, 7));
 
-    // 根据筛选条件收集数据
-    if (_activeDataViews.contains('courses')) {
-      items.addAll(_monthCourseMap[dStr] ?? []);
-    }
-
-    if (_activeDataViews.contains('fixedSchedules')) {
-      final fixedSchedules = _monthFixedScheduleMap[dStr] ??
-          _allFixedSchedules
-              .where((item) =>
-                  _fixedScheduleDate(item) ==
-                  DateTime(day.year, day.month, day.day))
-              .toList();
-      items.addAll(fixedSchedules);
-    }
-
-    if (_activeDataViews.contains('todos')) {
-      items.addAll(_monthTodoMap[dStr] ?? []);
-      if (!_activeDataViews.contains('hideCrossDay')) {
-        items.addAll(_monthCrossDayTodoMap[dStr] ?? []);
+    if (useWeekData) {
+      final weekday = day.weekday;
+      if (_activeDataViews.contains('courses')) {
+        items.addAll(_weekCourses.where((course) => course.weekday == weekday));
       }
-    }
+      if (_activeDataViews.contains('fixedSchedules')) {
+        items.addAll(_fixedSchedulesPerDay[weekday] ?? const []);
+      }
+      if (_activeDataViews.contains('todos')) {
+        items.addAll(_allDayTodosPerDay[weekday] ?? const []);
+        items.addAll(_intraDayTodosPerDay[weekday] ?? const []);
+      }
+      if (_activeDataViews.contains('timeLogs')) {
+        items.addAll(_timeLogsPerDay[weekday] ?? const []);
+      }
+      if (_activeDataViews.contains('plans')) {
+        items.addAll(_planBlocksPerDay[weekday] ?? const []);
+      }
+      if (_activeDataViews.contains('pomodoros')) {
+        items.addAll(_pomodorosPerDay[weekday] ?? const []);
+      }
+      if (_activeDataViews.contains('deviceCalendar')) {
+        items.addAll(_allDayDeviceCalendarEventsPerDay[weekday] ?? const []);
+        items.addAll(_timedDeviceCalendarEventsPerDay[weekday] ?? const []);
+      }
+    } else {
+      if (_activeDataViews.contains('courses')) {
+        items.addAll(_monthCourseMap[dStr] ?? const []);
+      }
 
-    if (_activeDataViews.contains('timeLogs')) {
-      items.addAll(_monthLogMap[dStr] ?? []);
-    }
+      if (_activeDataViews.contains('fixedSchedules')) {
+        final fixedSchedules =
+            _monthFixedScheduleMap[dStr] ??
+            _allFixedSchedules
+                .where(
+                  (item) =>
+                      _fixedScheduleDate(item) ==
+                      DateTime(day.year, day.month, day.day),
+                )
+                .toList();
+        items.addAll(fixedSchedules);
+      }
 
-    if (_activeDataViews.contains('plans')) {
-      items.addAll(_monthPlanMap[dStr] ?? []);
-    }
+      if (_activeDataViews.contains('todos')) {
+        items.addAll(_monthTodoMap[dStr] ?? const []);
+        final allDayAndCrossDayItems =
+            _monthCrossDayTodoMap[dStr] ?? const <TodoItem>[];
+        items.addAll(
+          _activeDataViews.contains('hideCrossDay')
+              ? allDayAndCrossDayItems.where((todo) => !_isCrossDayTodo(todo))
+              : allDayAndCrossDayItems,
+        );
+      }
 
-    if (_activeDataViews.contains('pomodoros')) {
-      items.addAll(_monthPomMap[dStr] ?? []);
-    }
+      if (_activeDataViews.contains('timeLogs')) {
+        items.addAll(_monthLogMap[dStr] ?? const []);
+      }
 
-    if (_activeDataViews.contains('deviceCalendar')) {
-      items.addAll(_monthDeviceCalendarMap[dStr] ?? []);
+      if (_activeDataViews.contains('plans')) {
+        items.addAll(_monthPlanMap[dStr] ?? const []);
+      }
+
+      if (_activeDataViews.contains('pomodoros')) {
+        items.addAll(_monthPomMap[dStr] ?? const []);
+      }
+
+      if (_activeDataViews.contains('deviceCalendar')) {
+        items.addAll(_monthDeviceCalendarMap[dStr] ?? const []);
+      }
     }
 
     items.sort((a, b) {
       int getStartTime(dynamic item) {
-        if (item is CourseItem) {
-          // 课程：转换为当天的分钟数进行比较
-          return item.startTime;
-        }
+        if (item is CourseItem) return item.startTime;
         if (item is TodoItem) {
-          // 待办：如果是全天/跨天，取创建时间或 0 点；如果是日内，取 dueDate 的时间
           if (item.dueDate == null) return 0;
           return item.dueDate!.hour * 100 + item.dueDate!.minute;
         }
         if (item is TimeLogItem) {
-          final dt =
-              DateTime.fromMillisecondsSinceEpoch(item.startTime, isUtc: true)
-                  .toLocal();
+          final dt = DateTime.fromMillisecondsSinceEpoch(
+            item.startTime,
+            isUtc: true,
+          ).toLocal();
           return dt.hour * 100 + dt.minute;
         }
         if (item is TodoPlanBlock) {
-          final dt =
-              DateTime.fromMillisecondsSinceEpoch(item.startTime).toLocal();
+          final dt = DateTime.fromMillisecondsSinceEpoch(item.startTime)
+              .toLocal();
           return dt.hour * 100 + dt.minute;
         }
         if (item is PomodoroRecord) {
-          final dt =
-              DateTime.fromMillisecondsSinceEpoch(item.startTime, isUtc: true)
-                  .toLocal();
+          final dt = DateTime.fromMillisecondsSinceEpoch(
+            item.startTime,
+            isUtc: true,
+          ).toLocal();
           return dt.hour * 100 + dt.minute;
         }
         if (item is DeviceCalendarEvent) {
@@ -299,23 +335,52 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
 
       final int timeA = getStartTime(a);
       final int timeB = getStartTime(b);
-
       if (timeA != timeB) return timeA.compareTo(timeB);
 
-      // 如果时间相同，再按类型排优先级
       int getPriority(dynamic item) {
         if (item is CourseItem) return 0;
-        if (item is TodoItem) return 1;
+        if (item is TodoItem || item is FixedScheduleItem) return 1;
         if (item is TimeLogItem) return 2;
         if (item is TodoPlanBlock) return 3;
         if (item is PomodoroRecord) return 4;
-        if (item is DeviceCalendarEvent) return 5;
-        if (item is FixedScheduleItem) return 1;
         return 5;
       }
 
       return getPriority(a).compareTo(getPriority(b));
     });
+    return items;
+  }
+
+  bool _isCrossDayTodo(TodoItem todo) {
+    final start = DateTime.fromMillisecondsSinceEpoch(
+      todo.createdDate ?? todo.createdAt,
+      isUtc: true,
+    ).toLocal();
+    final end = todo.dueDate ?? start.add(const Duration(hours: 1));
+    return start.year != end.year ||
+        start.month != end.month ||
+        start.day != end.day;
+  }
+
+  Widget _buildMonthDaySidebar(
+    DateTime day, {
+    List<dynamic>? dayItems,
+    VoidCallback? onClose,
+  }) {
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    final String dateStr = DateFormat('yyyy年M月d日').format(day);
+    final String weekdayStr = [
+      '周一',
+      '周二',
+      '周三',
+      '周四',
+      '周五',
+      '周六',
+      '周日',
+    ][day.weekday - 1];
+    final sourceDate = DateFormat('yyyy-MM-dd').format(day);
+
+    final items = dayItems ?? _dayDetailItems(day);
 
     return Container(
       width: double.infinity,
@@ -352,7 +417,8 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
                 ),
                 IconButton(
                   icon: const Icon(Icons.close),
-                  onPressed: () => setState(() => _selectedMonthDay = null),
+                  onPressed:
+                      onClose ?? () => setState(() => _selectedMonthDay = null),
                   tooltip: '关闭详情',
                 ),
               ],
@@ -368,23 +434,35 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.event_available,
-                            size: 64,
-                            color: isDark ? Colors.white10 : Colors.black12),
+                        Icon(
+                          Icons.event_available,
+                          size: 64,
+                          color: isDark ? Colors.white10 : Colors.black12,
+                        ),
                         const SizedBox(height: 16),
-                        Text('该日无安排',
-                            style: TextStyle(
-                                color:
-                                    isDark ? Colors.white24 : Colors.black26)),
+                        Text(
+                          '该日无安排',
+                          style: TextStyle(
+                            color: isDark ? Colors.white24 : Colors.black26,
+                          ),
+                        ),
                       ],
                     ),
                   )
                 : ListView.builder(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 12,
+                    ),
                     itemCount: items.length,
-                    itemBuilder: (context, index) =>
-                        _buildDetailSidebarItem(context, items[index], dStr),
+                    itemBuilder: (context, index) => Material(
+                      color: Colors.transparent,
+                      child: _buildDetailSidebarItem(
+                        context,
+                        items[index],
+                        sourceDate,
+                      ),
+                    ),
                   ),
           ),
         ],
