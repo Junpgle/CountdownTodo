@@ -42,6 +42,20 @@ scheduled execution window. Multiple blocks may point to one todo.
 Plan blocks do not turn a todo's date-only/deadline field into an execution
 interval. See `todo-semantics.md` for the product distinction.
 
+## Day overview
+
+The planning day header now shares the review aggregates: real plan budget,
+verified ended focus, finished/ended plan counts, and clipped time logs. Each
+metric opens its matching details for the selected day. Narrow layouts and
+large text use one overview entry instead of truncating values or adding a
+scrolling dashboard. Loading and retry remain local to the header.
+
+The timeline record list still shows intervals overlapping the day, while focus
+statistics belong to each record's start day. Cached/overlap-based progress
+ratios are no longer rendered inside blocks. The existing missed-state
+maintenance and focus completion transitions retain their original behavior.
+See [planning review](plan-review.md) for attribution and refresh rules.
+
 ## Create a plan from todo editing
 
 From the homepage's todo editor, **计划安排 → 新建规划块** opens the shared
