@@ -591,6 +591,8 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
                     builder: (_) => PlanBlockStatsScreen(
                       username: widget.username,
                       initialDate: _focusedDate,
+                      repository: widget.overviewRepository,
+                      clock: () => _dragService.now,
                     ),
                   ),
                 );

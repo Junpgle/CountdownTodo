@@ -385,12 +385,12 @@ void main() {
     await t.pumpAndSettle();
     await t.tap(find.text('规划统计'));
     await drain(t);
-    expect(
-      t
-          .widget<PlanBlockStatsScreen>(find.byType(PlanBlockStatsScreen))
-          .initialDate,
-      day,
+    final stats = t.widget<PlanBlockStatsScreen>(
+      find.byType(PlanBlockStatsScreen),
     );
+    expect(stats.initialDate, day);
+    expect(stats.repository, same(repo));
+    expect(stats.clock!(), now);
   });
   testWidgets(
     'member switched before navigation clears numbers and blocks old details',
