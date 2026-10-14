@@ -165,6 +165,36 @@ void main() {
         (widget.key! as ValueKey<String>).value.startsWith('plan-slot-'),
   );
 
+  testWidgets('legacy start-only todos are unscheduled in the planner picker', (
+    tester,
+  ) async {
+    final legacyUnscheduled = TodoItem(
+      id: 'legacy-start-only',
+      title: '旧版仅开始时间待办',
+      createdDate: DateTime(2026, 10, 6, 9).millisecondsSinceEpoch,
+    );
+    await showEditor(
+      tester,
+      saver: identitySaver,
+      todos: [legacyUnscheduled, target],
+      initialTodoId: target.id,
+    );
+
+    final picker = todoDropdown(tester);
+    expect(
+      picker.items!
+          .where((item) => item.enabled)
+          .map((item) => item.value)
+          .toList(),
+      [target.id, legacyUnscheduled.id],
+    );
+    await tester.tap(find.byType(DropdownButtonFormField<String>));
+    await tester.pumpAndSettle();
+
+    expect(find.text('无时间'), findsOneWidget);
+    expect(find.text('10-06 09:00'), findsNothing);
+  });
+
   testWidgets('独立规划页先预测75分钟，再自动显示两个建议并采用第一个', (tester) async {
     final prediction = Completer<TimeEstimationResult>();
     final queries = <PlanAvailabilityQuery>[];

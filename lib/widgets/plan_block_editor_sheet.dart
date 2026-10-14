@@ -833,11 +833,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
   ) {
     final groupNameById = {for (final group in groups) group.id: group.name};
     int urgencyMs(TodoItem todo) {
-      if (todo.dueDate != null) return todo.dueDate!.millisecondsSinceEpoch;
-      if (todo.createdDate != null && todo.createdDate! > 0) {
-        return todo.createdDate!;
-      }
-      return 1 << 62;
+      return todo.effectiveDueAt?.millisecondsSinceEpoch ?? (1 << 62);
     }
 
     String groupName(TodoItem todo) {
@@ -890,11 +886,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
   }
 
   String _todoUrgencyLabel(TodoItem todo) {
-    final target =
-        todo.dueDate ??
-        (todo.createdDate != null && todo.createdDate! > 0
-            ? DateTime.fromMillisecondsSinceEpoch(todo.createdDate!)
-            : null);
+    final target = todo.dueDate;
     if (target == null) return '无时间';
     return DateFormat('MM-dd HH:mm').format(target);
   }
