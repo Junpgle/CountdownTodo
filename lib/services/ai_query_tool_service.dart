@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import '../features/finance/models/finance_models.dart';
 import '../features/finance/services/finance_repository.dart';
+import '../utils/calendar_date_math.dart';
 import 'ai_chat_service.dart';
 import 'pomodoro_service.dart';
 
@@ -314,7 +315,7 @@ query_*自动执行只读查询；propose_*只生成待确认操作草案，不�
     }
     final start = parseDate(from);
     final end = parseDate(to);
-    if (!end.isAfter(start) || end.difference(start).inDays > 2400) {
+    if (!end.isAfter(start) || CalendarDateMath.daysBetween(start, end) > 2400) {
       throw const FormatException('截止日期必须晚于开始日期，范围最多2400天');
     }
     return (start, end);

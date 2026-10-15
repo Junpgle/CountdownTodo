@@ -6,6 +6,7 @@ import '../models.dart';
 import '../models/plan_availability.dart';
 import '../storage_service.dart';
 import 'database_helper.dart';
+import 'plan_todo_guard.dart';
 import 'plan_availability_repository.dart';
 import 'plan_availability_service.dart';
 import 'pomodoro_service.dart';
@@ -18,10 +19,12 @@ class MissedPlanRecoveryContext {
     required this.todo,
     required this.followups,
     required this.hasCurrentFocus,
+    this.identity,
   }) : source = TodoPlanBlock.fromJson(source.toJson()),
        sourceFingerprint = jsonEncode(source.toJson());
 
   final String username;
+  final PlanTodoIdentity? identity;
   final TodoPlanBlock source;
   final String sourceFingerprint;
   final TodoItem todo;
@@ -126,16 +129,19 @@ class MissedPlanRecoveryService {
     if (source.isDeleted || source.status != TodoPlanStatus.missed) {
       throw const MissedPlanRecoveryException('原规划已修改、删除或不再漏做，请读取最新记录');
     }
-    final todos = await db.query(
-      'todos',
-      where: 'uuid = ?',
-      whereArgs: [source.todoId],
-      limit: 1,
+    final identity = await PlanTodoIdentity.capture(username);
+    final todos = await PlanTodoGuard.projectedRows(
+      db,
+      identity,
+      source.todoId,
     );
     if (todos.isEmpty) {
       throw const MissedPlanRecoveryException('关联待办不存在，请读取最新记录');
     }
-    final todo = TodoItem.fromSql(todos.single)..id = source.todoId;
+    final todo = TodoItem.fromSql({
+      ...todos.single,
+      'is_completed': todos.single['member_completed'],
+    })..id = source.todoId;
     if (todo.isDeleted || todo.isDone || todo.hasConflict) {
       throw MissedPlanRecoveryException('待办已完成、删除或存在冲突，不能重新安排', todo: todo);
     }
@@ -180,6 +186,7 @@ class MissedPlanRecoveryService {
       todo: todo,
       followups: followups,
       hasCurrentFocus: focusing,
+      identity: identity,
     );
   }
 
@@ -188,6 +195,7 @@ class MissedPlanRecoveryService {
     DatabaseExecutor? executor,
     String? ignoreBlockId,
   }) async {
+    await context.identity?.check();
     final latest = await read(
       context.username,
       context.source.id,
@@ -205,6 +213,7 @@ class MissedPlanRecoveryService {
     )) {
       throw const MissedPlanRecoveryException('出现新的或已变化的后续规划，请先查看最新安排');
     }
+    await context.identity?.check();
     return latest;
   }
 
@@ -279,6 +288,12 @@ class MissedPlanRecoveryService {
         windowEnd: 1440,
         excludeBlockId: expectedVersion == null ? null : draft.id,
         appOnly: template?.appOnly ?? false,
+        bufferBefore: template?.bufferBefore ?? 0,
+        bufferAfter: template?.bufferAfter ?? 0,
+        bufferOverride: template?.bufferOverride ?? false,
+        bufferDefaultsKey: template?.bufferDefaultsKey,
+        avoidanceOverride: template?.avoidanceOverride ?? false,
+        avoidanceDefaultsKey: template?.avoidanceDefaultsKey,
         avoidWindows: template?.avoidWindows ?? const [],
       );
       selection = PlanAvailabilitySelection(

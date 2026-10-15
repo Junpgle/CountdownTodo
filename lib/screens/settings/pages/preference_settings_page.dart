@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
@@ -64,6 +66,7 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
 
   String _cacheSizeStr = "计算中...";
   late StorageManagementHandler _storageManagementHandler;
+  Timer? _highlightTimer;
 
   GlobalKey _navigationKey(String id) => _itemKeys.putIfAbsent(
         id,
@@ -136,6 +139,11 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
         }
         _isLoading = false;
       });
+      if (widget.initialTarget != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _scrollToTarget(widget.initialTarget!);
+        });
+      }
     }
   }
 
@@ -149,10 +157,18 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
         curve: Curves.easeInOut,
         alignment: 0.15,
       );
-      Future.delayed(const Duration(milliseconds: 3000), () {
+      _highlightTimer?.cancel();
+      _highlightTimer = Timer(const Duration(milliseconds: 3000), () {
+        _highlightTimer = null;
         if (mounted) setState(() => _highlightTarget = null);
       });
     }
+  }
+
+  @override
+  void dispose() {
+    _highlightTimer?.cancel();
+    super.dispose();
   }
 
   void _showLoadingDialog(BuildContext context, String message) {

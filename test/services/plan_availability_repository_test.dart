@@ -20,10 +20,11 @@ PlanAvailabilityQuery query({
   String todo = 'todo-target',
   String? editing,
   bool appOnly = false,
+  DateTime? date,
 }) => PlanAvailabilityQuery(
   username: PlanAvailabilityFixture.username,
   todoId: todo,
-  date: PlanAvailabilityFixture.day,
+  date: date ?? PlanAvailabilityFixture.day,
   minutes: 45,
   excludeBlockId: editing,
   appOnly: appOnly,
@@ -87,6 +88,32 @@ void main() {
       [at(8), at(10), at(12), at(12, 45), at(15)],
     );
     expect(await fixture.db.query('op_logs'), isEmpty);
+  });
+  test('后续七天以本地自然日计算，真实时长包含时区偏移变化', () async {
+    final result = await repository.readFollowingDays(
+      query(date: DateTime(2026, 10, 31)),
+    );
+
+    expect(result.start, DateTime(2026, 11, 1));
+    expect(result.end, DateTime(2026, 11, 8));
+    expect(result.end.difference(result.start).inHours,
+        168 + (result.start.timeZoneOffset - result.end.timeZoneOffset).inHours);
+    expect(result.selections, hasLength(5));
+    expect(result.selections.map((selection) => selection.query.date.day), [
+      1,
+      2,
+      3,
+      4,
+      5,
+    ]);
+    expect(
+      result.selections.every(
+        (selection) =>
+            selection.slot.start.day == selection.query.date.day &&
+            selection.slot.minutes == 45,
+      ),
+      isTrue,
+    );
   });
   test('跨日固定日程及规划不漏，当前UUID排除，其他同待办规划保留', () async {
     await fixture.fixed('overnight-fixed', DateTime(2026, 10, 7, 23), at(9));

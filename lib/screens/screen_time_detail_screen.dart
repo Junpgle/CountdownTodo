@@ -1,8 +1,12 @@
-import 'package:flutter/material.dart';
-import 'package:intl/intl.dart' hide TextDirection;
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
+
+import 'package:flutter/material.dart';
+import 'package:intl/intl.dart' hide TextDirection;
+
 import '../storage_service.dart';
+import '../utils/calendar_date_math.dart';
 import '../utils/page_transitions.dart';
 import '../widgets/floating_bottom_bar.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
@@ -133,6 +137,7 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
   Map<String, List<dynamic>> _historyStats = {};
   Map<String, String> _cloudMappings = {};
   bool _isLoading = true;
+  Timer? _historyLoadTimer;
 
   late DateTime _selectedDate;
   late DateTime _todayNormalized;
@@ -144,10 +149,17 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
     _todayNormalized = DateTime(now.year, now.month, now.day);
     _selectedDate = _todayNormalized;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      Future.delayed(const Duration(milliseconds: 300), () {
+      _historyLoadTimer = Timer(const Duration(milliseconds: 300), () {
+        _historyLoadTimer = null;
         if (mounted) _loadHistory();
       });
     });
+  }
+
+  @override
+  void dispose() {
+    _historyLoadTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadHistory() async {
@@ -341,11 +353,10 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
   }
 
   static DateTime _dateOnly(DateTime date) =>
-      DateTime(date.year, date.month, date.day);
+      CalendarDateMath.dateOnly(date);
 
   static DateTime _startOfWeek(DateTime date) {
-    final normalized = _dateOnly(date);
-    return normalized.subtract(Duration(days: normalized.weekday - 1));
+    return CalendarDateMath.weekRange(date).start;
   }
 
   static DateTime _periodStart(DateTime date, ScreenTimeRange range) {
@@ -365,7 +376,7 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
       case ScreenTimeRange.day:
         return periodStart;
       case ScreenTimeRange.week:
-        return periodStart.add(const Duration(days: 6));
+        return CalendarDateMath.addDays(periodStart, 6);
       case ScreenTimeRange.month:
         return DateTime(periodStart.year, periodStart.month + 1, 0);
     }
@@ -375,9 +386,9 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
       DateTime periodStart, ScreenTimeRange range) {
     switch (range) {
       case ScreenTimeRange.day:
-        return periodStart.subtract(const Duration(days: 1));
+        return CalendarDateMath.addDays(periodStart, -1);
       case ScreenTimeRange.week:
-        return periodStart.subtract(const Duration(days: 7));
+        return CalendarDateMath.addDays(periodStart, -7);
       case ScreenTimeRange.month:
         return DateTime(periodStart.year, periodStart.month - 1);
     }
@@ -387,9 +398,9 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
       DateTime periodStart, ScreenTimeRange range, int offset) {
     switch (range) {
       case ScreenTimeRange.day:
-        return periodStart.add(Duration(days: offset));
+        return CalendarDateMath.addDays(periodStart, offset);
       case ScreenTimeRange.week:
-        return periodStart.add(Duration(days: offset * 7));
+        return CalendarDateMath.addDays(periodStart, offset * 7);
       case ScreenTimeRange.month:
         return DateTime(periodStart.year, periodStart.month + offset);
     }
@@ -402,11 +413,7 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
       DateTime periodStart, ScreenTimeRange range, DateTime today) sync* {
     final end = _periodEnd(periodStart, range);
     final cappedEnd = end.isAfter(today) ? today : end;
-    for (DateTime d = periodStart;
-        !d.isAfter(cappedEnd);
-        d = d.add(const Duration(days: 1))) {
-      yield d;
-    }
+    yield* CalendarDateMath.datesBetweenInclusive(periodStart, cappedEnd);
   }
 
   static String _periodLabel(

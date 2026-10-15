@@ -68,6 +68,72 @@ void main() {
     expect(loaded.selectedIndices, {2});
   });
 
+  test('仅改缓冲时保留另一个窗口新改的避让时段', () async {
+    final windows = PlanAvailabilityPreferences.defaultWindows;
+    await PlanAvailabilityPreferences.save(
+      'a',
+      windows,
+      {},
+      bufferBefore: 0,
+      bufferAfter: 0,
+    );
+    final stalePanel = await PlanAvailabilityPreferences.load('a');
+    await PlanAvailabilityPreferences.save(
+      'a',
+      windows,
+      {windows.first},
+      bufferBefore: 0,
+      bufferAfter: 0,
+    );
+
+    await PlanAvailabilityPreferences.save(
+      'a',
+      stalePanel.options,
+      {for (final index in stalePanel.selectedIndices) stalePanel.options[index]},
+      bufferBefore: 15,
+      bufferAfter: 5,
+      updateAvoidance: false,
+      updateBuffers: true,
+    );
+
+    final saved = await PlanAvailabilityPreferences.load('a');
+    expect(saved.selectedIndices, {0});
+    expect(saved.bufferKey, '15:5');
+  });
+
+  test('仅改避让时段时保留另一个窗口新改的缓冲', () async {
+    final windows = PlanAvailabilityPreferences.defaultWindows;
+    await PlanAvailabilityPreferences.save(
+      'a',
+      windows,
+      {},
+      bufferBefore: 0,
+      bufferAfter: 0,
+    );
+    final stalePanel = await PlanAvailabilityPreferences.load('a');
+    await PlanAvailabilityPreferences.save(
+      'a',
+      windows,
+      {},
+      bufferBefore: 15,
+      bufferAfter: 5,
+    );
+
+    await PlanAvailabilityPreferences.save(
+      'a',
+      stalePanel.options,
+      {stalePanel.options.first},
+      bufferBefore: 0,
+      bufferAfter: 0,
+      updateAvoidance: true,
+      updateBuffers: false,
+    );
+
+    final saved = await PlanAvailabilityPreferences.load('a');
+    expect(saved.selectedIndices, {0});
+    expect(saved.bufferKey, '15:5');
+  });
+
   test('损坏、类型错误或不支持版本的偏好退回默认值', () async {
     for (final raw in [
       '{',

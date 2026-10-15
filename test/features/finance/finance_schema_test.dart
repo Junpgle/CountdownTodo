@@ -65,6 +65,38 @@ void main() {
       expect(await db.query('finance_transactions'), isEmpty);
     });
 
+    test('默认余额快照时间必须落在所选月份', () async {
+      const paymentMethodUuid = 'default-snapshot-month-card';
+      await db.insert(
+        'finance_payment_methods',
+        FinancePaymentMethod(
+          uuid: paymentMethodUuid,
+          name: '默认快照月份测试账户',
+        ).toMap(),
+      );
+
+      final now = DateTime.now();
+      final invalidMonths = [
+        DateTime(now.year, now.month + 2),
+        DateTime(now.year, now.month - 2),
+      ];
+      for (var index = 0; index < invalidMonths.length; index++) {
+        final month = invalidMonths[index];
+        final budget = FinanceBudget(
+          uuid: 'default-snapshot-month-$index',
+          monthKey: financeMonthKey(month),
+          paymentMethodUuid: paymentMethodUuid,
+          amountMinor: 1000,
+        );
+
+        await expectLater(
+          FinanceStorage.saveBudget(budget),
+          throwsArgumentError,
+        );
+        expect(await FinanceStorage.getBudget(budget.uuid), isNull);
+      }
+    });
+
     test('余额流水查询只读取有快照账户，支持大量账户并跳过已删除流水', () async {
       final snapshotAt = DateTime(2026, 9, 1).millisecondsSinceEpoch;
       for (final transaction in [
@@ -1852,6 +1884,64 @@ void main() {
       }
     });
 
+    test('旧服务器返回的账户预算不覆盖本地余额快照', () async {
+      final now = DateTime.now();
+      final snapshotAt = now.subtract(const Duration(days: 10)).millisecondsSinceEpoch;
+      final monthKey = financeMonthKey(
+        DateTime.fromMillisecondsSinceEpoch(snapshotAt),
+      );
+      final local = FinanceBudget(
+        uuid: 'local-only-balance',
+        monthKey: monthKey,
+        paymentMethodUuid: account,
+        amountMinor: 30000,
+        balanceSnapshotAt: snapshotAt,
+        version: 2,
+        createdAt: snapshotAt,
+        updatedAt: now.millisecondsSinceEpoch - 1000,
+        pendingSync: false,
+      );
+      await db.insert('finance_budgets', local.toMap());
+
+      final initial = await FinanceSyncService.prepare(
+        username: user,
+        forceFullSync: false,
+      );
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(initial.bootstrapKey, true);
+      await prefs.setBool(initial.balanceCapabilityKey, true);
+      await prefs.setBool(initial.balanceBootstrapKey, true);
+      final request = await FinanceSyncService.prepare(
+        username: user,
+        forceFullSync: false,
+      );
+      expect(request.fullSync, false);
+
+      final legacyRemote = FinanceBudget(
+        uuid: local.uuid,
+        monthKey: monthKey,
+        paymentMethodUuid: account,
+        amountMinor: 10000,
+        version: 3,
+        createdAt: local.createdAt,
+        updatedAt: now.millisecondsSinceEpoch - 500,
+        pendingSync: false,
+      ).toMap()..remove('balance_snapshot_at');
+      final response = _balanceSyncResponse()
+        ..['server_finance_budgets'] = [legacyRemote];
+
+      await FinanceSyncService.finish(
+        request: request,
+        response: response,
+        supported: true,
+      );
+
+      final preserved = (await FinanceStorage.getBudget(local.uuid))!;
+      expect(await FinanceSyncService.balanceSyncSupport(), false);
+      expect(preserved.amountMinor, local.amountMinor);
+      expect(preserved.effectiveBalanceSnapshotAt, snapshotAt);
+    });
+
     test('无息还款记录账户，删除保留已发生扣款、撤销才移除', () async {
       final loan = FinanceLoan(
         uuid: 'zero-interest-loan',
@@ -2446,15 +2536,17 @@ void main() {
       FinancePaymentMethod(uuid: 'card', name: '测试银行卡').toMap(),
     );
 
+    final now = DateTime.now();
+    final monthStartAt = DateTime(now.year, now.month).millisecondsSinceEpoch;
     final balance = FinanceBudget(
-      monthKey: '2026-09',
+      monthKey: financeMonthKey(now),
       paymentMethodUuid: 'card',
       amountMinor: 10000,
     );
     await FinanceStorage.saveBudget(balance);
     await db.update(
       'finance_budgets',
-      {'balance_snapshot_at': 200},
+      {'balance_snapshot_at': monthStartAt},
       where: 'uuid = ?',
       whereArgs: [balance.uuid],
     );
@@ -2462,7 +2554,10 @@ void main() {
       ..note = '只修改备注';
     edited.markAsChanged();
     await FinanceStorage.saveBudget(edited);
-    expect((await FinanceStorage.getBudget(balance.uuid))!.balanceSnapshotAt, 200);
+    expect(
+      (await FinanceStorage.getBudget(balance.uuid))!.balanceSnapshotAt,
+      monthStartAt,
+    );
 
     final recalibrated = (await FinanceStorage.getBudget(balance.uuid))!;
     recalibrated.markAsChanged();
@@ -2472,20 +2567,23 @@ void main() {
     );
     expect(
       (await FinanceStorage.getBudget(balance.uuid))!.balanceSnapshotAt,
-      greaterThan(200),
+      greaterThan(monthStartAt),
       reason: '余额数值未变时，也需要能主动重新记录当前余额',
     );
 
     await db.update(
       'finance_budgets',
-      {'balance_snapshot_at': 200},
+      {'balance_snapshot_at': monthStartAt},
       where: 'uuid = ?',
       whereArgs: [balance.uuid],
     );
 
     await FinanceStorage.deleteBudget(balance.uuid);
     await FinanceStorage.restoreBudget(balance.uuid);
-    expect((await FinanceStorage.getBudget(balance.uuid))!.balanceSnapshotAt, 200);
+    expect(
+      (await FinanceStorage.getBudget(balance.uuid))!.balanceSnapshotAt,
+      monthStartAt,
+    );
 
     final zero = (await FinanceStorage.getBudget(balance.uuid))!
       ..amountMinor = 0;
@@ -2493,7 +2591,7 @@ void main() {
     await FinanceStorage.saveBudget(zero);
     final stored = (await FinanceStorage.getBudget(balance.uuid))!;
     expect(stored.amountMinor, 0);
-    expect(stored.balanceSnapshotAt, greaterThan(200));
+    expect(stored.balanceSnapshotAt, greaterThan(monthStartAt));
   });
 
   test('付款方式余额备份恢复保留快照时间和关联账单', () async {
@@ -3039,6 +3137,102 @@ void main() {
     expect(importedRow['name_customized'], 1);
   });
 
+  test('系统分类自定义图标等待服务端能力并避免旧回包覆盖', () async {
+    SharedPreferences.setMockInitialValues({
+      'current_login_user': 'finance-system-icon-sync-test',
+    });
+    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    addTearDown(() async {
+      FinanceStorage.databaseOverride = null;
+      await db.close();
+    });
+    await DatabaseHelper.ensureFinanceSchema(db);
+    FinanceStorage.databaseOverride = db;
+    await FinanceStorage.ensureReady();
+
+    final food = FinanceCategory.fromMap(
+      (await db.query(
+        'finance_categories',
+        where: 'uuid = ?',
+        whereArgs: ['finance-system-category-food'],
+      )).single,
+    )
+      ..icon = '🥗'
+      ..iconCustomized = true
+      ..markAsChanged();
+    await FinanceStorage.saveCategory(food);
+    await FinanceStorage.ensureReady();
+
+    final firstRequest = await FinanceSyncService.prepare(
+      username: 'finance-system-icon-sync-test',
+      forceFullSync: false,
+    );
+    expect(firstRequest.supportsCategoryIcons, isFalse);
+    expect(firstRequest.payload['finance_categories_changes'], isEmpty);
+
+    final oldServerResponse = _balanceSyncResponse()
+      ..['server_finance_categories'] = [
+        FinanceCategory(
+          uuid: 'finance-system-category-food',
+          name: '餐饮',
+          icon: '🍜',
+          isSystem: true,
+          version: 100,
+          createdAt: 1,
+          updatedAt: 1000000000000,
+        ).toMap(),
+      ];
+    await FinanceSyncService.finish(
+      request: firstRequest,
+      supported: true,
+      response: oldServerResponse,
+    );
+
+    var row = (await db.query(
+      'finance_categories',
+      where: 'uuid = ?',
+      whereArgs: ['finance-system-category-food'],
+    )).single;
+    expect(row['icon'], '🥗');
+    expect(row['icon_customized'], 1);
+    expect(row['pending_sync'], 1);
+
+    final secondRequest = await FinanceSyncService.prepare(
+      username: 'finance-system-icon-sync-test',
+      forceFullSync: false,
+    );
+    expect(secondRequest.supportsCategoryIcons, isFalse);
+    expect(secondRequest.payload['finance_categories_changes'], isEmpty);
+    await FinanceSyncService.finish(
+      request: secondRequest,
+      supported: true,
+      response: _balanceSyncResponse()
+        ..['sync_capabilities'] = {
+          'finance_v1': 1,
+          'finance_category_icons_v1': 1,
+        },
+    );
+
+    final thirdRequest = await FinanceSyncService.prepare(
+      username: 'finance-system-icon-sync-test',
+      forceFullSync: false,
+    );
+    expect(thirdRequest.supportsCategoryIcons, isTrue);
+    expect(
+      thirdRequest.payload['finance_categories_changes'].map(
+        (item) => item['icon'],
+      ),
+      contains('🥗'),
+    );
+
+    row = (await db.query(
+      'finance_categories',
+      where: 'uuid = ?',
+      whereArgs: ['finance-system-category-food'],
+    )).single;
+    expect(row['pending_sync'], 1);
+  });
+
   test('云端系统分类名称和图标覆盖不会被新设备默认值覆盖', () async {
     SharedPreferences.setMockInitialValues({
       'current_login_user': 'finance-remote-icon-test',
@@ -3155,18 +3349,21 @@ void main() {
       );
     }
 
+    final snapshotAt = DateTime(2026, 9, 15).millisecondsSinceEpoch;
     final card = FinanceBudget(
       monthKey: '2026-09',
       paymentMethodUuid: 'payment-card',
       amountMinor: 50000,
+      balanceSnapshotAt: snapshotAt,
     );
     final wallet = FinanceBudget(
       monthKey: '2026-09',
       paymentMethodUuid: 'payment-wallet',
       amountMinor: 20000,
+      balanceSnapshotAt: snapshotAt,
     );
-    await FinanceStorage.saveBudget(card);
-    await FinanceStorage.saveBudget(wallet);
+    await FinanceStorage.saveBudget(card, balanceSnapshotAt: snapshotAt);
+    await FinanceStorage.saveBudget(wallet, balanceSnapshotAt: snapshotAt);
 
     expect(
       card.uuid,

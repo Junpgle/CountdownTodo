@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:countdown_todo/models/chat_message.dart';
+import 'package:countdown_todo/services/ai_action_parser.dart';
 import 'package:countdown_todo/services/ai_tool_result_context.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -21,6 +22,51 @@ Map<String, dynamic> _largePage({int offset = 0}) => {
 };
 
 void main() {
+  test('历史工具记录不进入正文，完整和未闭合的流式记录都隐藏', () {
+    const history =
+        '[READ_ONLY_TOOL_HISTORY]\n'
+        '{"queries":[{"result":{"items":[{"id":"todo-1"}]}}]}\n'
+        '[/READ_ONLY_TOOL_HISTORY]';
+    expect(AiActionParser.cleanActionContent('请核对草案。\n$history'), '请核对草案。');
+    expect(
+      AiActionParser.cleanActionContent(
+        '请核对草案。\n'
+        '[READ_ONLY_TOOL_HISTORY]\n{"queries":[',
+      ),
+      '请核对草案。',
+    );
+    expect(AiActionParser.cleanActionContent('$history\n后续说明'), '后续说明');
+    expect(AiActionParser.cleanActionContent('查询匹配0条待办。'), '查询匹配0条待办。');
+  });
+
+  test('复述的历史操作JSON不能再次变成确认草案', () {
+    const action =
+        '[ACTION_START]{"action":"create_todo",'
+        '"todos":[{"title":"旧任务"}]}[ACTION_END]';
+    expect(
+      AiActionParser.extractTodoActions(
+        '[READ_ONLY_TOOL_HISTORY]$action[/READ_ONLY_TOOL_HISTORY]',
+        originalText: '可以',
+      ),
+      isEmpty,
+    );
+    expect(
+      AiActionParser.extractTodoActions(
+        '[READ_ONLY_TOOL_HISTORY]历史[/READ_ONLY_TOOL_HISTORY]\n$action',
+        originalText: '新建旧任务待办',
+      ),
+      hasLength(1),
+    );
+  });
+
+  test('已存储的错误回复不会再次把内部记录作为普通正文发给模型', () {
+    final message = ChatMessage(
+      role: ChatRole.assistant,
+      content: '已查询。\n[READ_ONLY_TOOL_HISTORY]{"queries":[]}[/READ_ONLY_TOOL_HISTORY]',
+    );
+    expect(message.toLLMMessage(), '已查询。');
+  });
+
   test('长页保留完整汇总，分页接续实际传给模型的记录，原始数据不改变', () {
     final source = _largePage(offset: 20);
     final original = jsonEncode(source);

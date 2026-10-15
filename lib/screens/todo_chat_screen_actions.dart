@@ -747,6 +747,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
       (t) => t.isFixedScheduleAction,
     );
     final hasHabitActions = activeActions.any((t) => t.isHabitAction);
+    final hasPlanActions = activeActions.any((t) => t.isPlanBlockAction);
 
     final colorScheme = Theme.of(context).colorScheme;
     return Padding(
@@ -782,7 +783,9 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
                     ),
                     const SizedBox(width: 6),
                     Text(
-                      hasHabitActions
+                      hasPlanActions
+                          ? '待确认规划操作'
+                          : hasHabitActions
                           ? '建议创建习惯'
                           : hasPomodoroActions
                           ? '建议操作番茄钟'
@@ -1823,7 +1826,9 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
       case AiTodoActionType.planTodos:
         return '生成计划待办';
       case AiTodoActionType.createPlanBlock:
-        return '安排到具体时间块';
+        return action.newTodoTitle != null
+            ? '新建待办“${action.newTodoTitle}”并安排时间块'
+            : '安排到具体时间块';
       case AiTodoActionType.updatePlanBlock:
         return '修改规划块';
       case AiTodoActionType.deletePlanBlock:
@@ -2152,7 +2157,25 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
   }
 
   Future<void> _addTodosForMessage(ChatMessage msg) async {
+    if (!_executingMessageIds.add(msg.id)) return;
+    try {
+      await _executeMessageActions(msg);
+    } finally {
+      _executingMessageIds.remove(msg.id);
+    }
+  }
+
+  final Set<String> _executingMessageIds = {};
+
+  Future<void> _executeMessageActions(ChatMessage msg) async {
     if (msg.todoActions == null) return;
+    final pendingActions = msg.todoActions!.where((action) =>
+        action.isSelected && !action.isAdded && !action.isIgnored).toList();
+    final hasPlanningActions = msg.todoActions!.any((action) => action.isPlanBlockAction);
+    final existingTodos = hasPlanningActions
+        ? [for (final todo in await StorageService.getTodos(widget.username))
+            {...todo.toJson(), 'title': todo.title}]
+        : widget.todos;
 
     final existingCountdowns = widget.countdowns.isNotEmpty
         ? widget.countdowns
@@ -2163,7 +2186,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
 
     final result = AiTodoActionExecutor.execute(
       actions: msg.todoActions!,
-      existingTodos: widget.todos,
+      existingTodos: existingTodos,
       existingTimeLogs: widget.timeLogs,
       existingCountdowns: existingCountdowns,
       existingTodoGroups: widget.todoGroups,
@@ -2174,6 +2197,29 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
     );
 
     if (result.hasChanges) {
+      final plannedNewTodos = result.newTodos.where((todo) =>
+          result.newPlanBlocks.any((block) => block.todoId == todo.id)).toList();
+      if (plannedNewTodos.isNotEmpty) {
+        try {
+          await AiPlanDraftRepository.save(
+            username: widget.username,
+            newTodos: plannedNewTodos,
+            blocks: result.newPlanBlocks,
+          );
+        } catch (error) {
+          for (final action in pendingActions) {
+            if (action.isAdded) {
+              action.isAdded = false;
+              if (action.newTodoTitle != null) action.todoId = null;
+            }
+          }
+          if (mounted) {
+            setState(() {});
+            AppSnackBars.error(context, '规划保存失败，待办与规划均未写入：$error');
+          }
+          return;
+        }
+      }
       final createdHabits = await AiTodoActionExecutor.saveHabitActions(
         username: widget.username,
         actions: result.newHabitActions,
@@ -2256,7 +2302,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
       if (result.newPlanBlocks.isNotEmpty ||
           result.updatedPlanBlocks.isNotEmpty) {
         await StorageService.savePlanBlocks(widget.username, [
-          ...result.newPlanBlocks,
+          if (plannedNewTodos.isEmpty) ...result.newPlanBlocks,
           ...result.updatedPlanBlocks,
         ], sync: true);
         _planBlocks = [

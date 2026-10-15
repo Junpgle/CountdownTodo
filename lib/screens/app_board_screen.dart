@@ -6,7 +6,9 @@ import '../models.dart';
 import '../storage_service.dart';
 import '../services/course_service.dart';
 import '../services/power_save_mode_service.dart';
+import '../course_import/course_schedule_semantics.dart';
 import '../utils/android_energy_policy.dart';
+import '../utils/calendar_date_math.dart';
 import '../widgets/floating_glass_control.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
 
@@ -153,14 +155,11 @@ class _AppBoardScreenState extends State<AppBoardScreen>
 
   int _calculateCurrentWeek() {
     if (_semesterStart == null) return 1;
-    final start = DateTime(
-        _semesterStart!.year, _semesterStart!.month, _semesterStart!.day);
-    // Adjust to previous Monday
-    final startMonday = start.subtract(Duration(days: start.weekday - 1));
-    final today = DateTime(_now.year, _now.month, _now.day);
-    final diffDays = today.difference(startMonday).inDays;
-    if (diffDays < 0) return 1;
-    return (diffDays ~/ 7) + 1;
+    final week = CourseScheduleSemantics.weekIndexForDate(
+      _semesterStart!,
+      _now,
+    );
+    return week < 1 ? 1 : week;
   }
 
   Future<void> _loadData() async {
@@ -340,7 +339,8 @@ class _AppBoardScreenState extends State<AppBoardScreen>
                     separatorBuilder: (_, _) => const SizedBox(width: 16),
                     itemBuilder: (context, index) {
                       final cd = _countdowns[index];
-                      final diff = cd.targetDate.difference(_now).inDays;
+                      final diff =
+                          CalendarDateMath.daysBetween(_now, cd.targetDate);
                       final isUrgent = diff < 3;
                       return Container(
                         width: 140,
@@ -495,6 +495,7 @@ class _AppBoardScreenState extends State<AppBoardScreen>
                 child: MissionControl(
                   todos: _todos,
                   activeTab: _missionTab,
+                  clock: () => _now,
                   onTabChanged: (tab) => setState(() => _missionTab = tab),
                   onTaskClick: (task) => setState(() => _detailTask = task),
                 ),
@@ -536,6 +537,7 @@ class _AppBoardScreenState extends State<AppBoardScreen>
               child: MissionControl(
                 todos: _todos,
                 activeTab: _missionTab,
+                clock: () => _now,
                 onTabChanged: (tab) => setState(() => _missionTab = tab),
                 onTaskClick: (task) => setState(() => _detailTask = task),
               ),
@@ -799,7 +801,6 @@ class TodayHourlyTimeline extends StatelessWidget {
   Widget build(BuildContext context) {
     final now = DateTime.now();
     final todayStart = DateTime(now.year, now.month, now.day);
-    final todayEnd = todayStart.add(const Duration(days: 1));
 
     // Filter today's items
     final todayCourses = courses.where((c) {
@@ -810,7 +811,7 @@ class TodayHourlyTimeline extends StatelessWidget {
 
     final todayTasks = todos.where((t) {
       if (t.dueDate == null) return false;
-      return t.dueDate!.isAfter(todayStart) && t.dueDate!.isBefore(todayEnd);
+      return DateUtils.isSameDay(t.dueDate, todayStart);
     }).toList();
 
     return ListView.builder(
@@ -1001,7 +1002,7 @@ class _GanttChartState extends State<GanttChart> {
 
       final now = DateTime.now();
       final today = DateTime(now.year, now.month, now.day);
-      final todayOffset = today.difference(minDate).inDays * dayWidth;
+      final todayOffset = CalendarDateMath.dayOffset(minDate, today) * dayWidth;
       final viewportWidth = _scrollController.position.viewportDimension;
       final targetOffset = todayOffset - (viewportWidth / 2) + (dayWidth / 2);
       final clampedOffset = targetOffset
@@ -1079,11 +1080,11 @@ class _GanttChartState extends State<GanttChart> {
           final end = task.dueDate!;
           final left = math.max(
             0.0,
-            start.difference(minDate).inHours / 24 * effectiveDayWidth,
+            CalendarDateMath.dayOffset(minDate, start) * effectiveDayWidth,
           );
           final width = math.max(
             effectiveDayWidth * 0.5,
-            end.difference(start).inHours / 24 * effectiveDayWidth,
+            CalendarDateMath.dayOffset(start, end) * effectiveDayWidth,
           );
 
           return Positioned(
@@ -1164,8 +1165,9 @@ class _GanttChartState extends State<GanttChart> {
     final now = DateTime.now();
 
     // Calculate dynamic range based on tasks
-    DateTime minDate = now.subtract(const Duration(days: 7));
-    DateTime maxDate = now.add(const Duration(days: 30));
+    final today = CalendarDateMath.dateOnly(now);
+    DateTime minDate = CalendarDateMath.addDays(today, -7);
+    DateTime maxDate = CalendarDateMath.addDays(today, 30);
 
     for (var t in datedTodos) {
       final start = _taskStartDate(t);
@@ -1175,12 +1177,10 @@ class _GanttChartState extends State<GanttChart> {
     }
 
     // Add buffers
-    minDate = DateTime(minDate.year, minDate.month, minDate.day)
-        .subtract(const Duration(days: 7));
-    maxDate = DateTime(maxDate.year, maxDate.month, maxDate.day)
-        .add(const Duration(days: 7));
+    minDate = CalendarDateMath.addDays(CalendarDateMath.dateOnly(minDate), -7);
+    maxDate = CalendarDateMath.addDays(CalendarDateMath.dateOnly(maxDate), 7);
 
-    final totalDays = maxDate.difference(minDate).inDays;
+    final totalDays = CalendarDateMath.daysBetween(minDate, maxDate);
     final activeRows = _packTasks(activeTodos, minDate, maxDate);
     final completedRows = _packTasks(completedTodos, minDate, maxDate);
 
@@ -1238,7 +1238,7 @@ class _GanttChartState extends State<GanttChart> {
                 children: [
                   Row(
                     children: List.generate(totalDays, (index) {
-                      final date = minDate.add(Duration(days: index));
+                      final date = CalendarDateMath.addDays(minDate, index);
                       final isToday = date.day == now.day &&
                           date.month == now.month &&
                           date.year == now.year;
@@ -1296,7 +1296,8 @@ class _GanttChartState extends State<GanttChart> {
               ),
               // Today Line
               Positioned(
-                left: now.difference(minDate).inHours / 24 * effectiveDayWidth,
+                left: CalendarDateMath.dayOffset(minDate, now) *
+                    effectiveDayWidth,
                 top: 0,
                 bottom: 0,
                 child: Container(
@@ -1388,6 +1389,7 @@ class MissionControl extends StatelessWidget {
   final String activeTab;
   final Function(String) onTabChanged;
   final Function(TodoItem) onTaskClick;
+  final DateTime Function() clock;
 
   const MissionControl({
     super.key,
@@ -1395,6 +1397,7 @@ class MissionControl extends StatelessWidget {
     required this.activeTab,
     required this.onTabChanged,
     required this.onTaskClick,
+    this.clock = DateTime.now,
   });
 
   @override
@@ -1402,6 +1405,7 @@ class MissionControl extends StatelessWidget {
     final activeTasks = todos.where((t) => !t.isDone).toList();
     final completedTasks = todos.where((t) => t.isDone).toList();
     final displayTasks = activeTab == 'active' ? activeTasks : completedTasks;
+    final now = clock();
 
     return Column(
       children: [
@@ -1430,9 +1434,7 @@ class MissionControl extends StatelessWidget {
             separatorBuilder: (_, _) => const SizedBox(height: 12),
             itemBuilder: (context, index) {
               final task = displayTasks[index];
-              final isOverdue = task.dueDate != null &&
-                  task.dueDate!.isBefore(DateTime.now()) &&
-                  !task.isDone;
+              final isOverdue = task.isOverdueAt(now) && !task.isDone;
 
               return InkWell(
                 onTap: () => onTaskClick(task),

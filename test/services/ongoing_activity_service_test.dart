@@ -4,6 +4,7 @@ import 'package:countdown_todo/services/ongoing_activity_service.dart';
 import 'package:countdown_todo/services/pomodoro_service.dart';
 import 'package:countdown_todo/services/pomodoro_sync_service.dart';
 import 'package:countdown_todo/services/reminder_schedule_service.dart';
+import 'package:countdown_todo/utils/calendar_date_math.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -611,6 +612,30 @@ void main() {
       expect(payload['countdownId'], 'countdown-nearest');
       expect(payload['countdownTitle'], '项目发布');
       expect(payload['countdownDays'], 2);
+    });
+
+    test('灵动岛倒数日按日历日计算夏令时切换后的剩余天数', () {
+      final payload = MacPomodoroStatusBarService.buildIslandOverviewPayload(
+        countdowns: [
+          CountdownItem(
+            id: 'countdown-tomorrow',
+            title: '明日发布',
+            targetDate: DateTime.utc(2026, 3, 9, 4),
+          ),
+        ],
+        todayRecords: const [],
+        now: DateTime.utc(2026, 3, 8, 5, 30),
+      );
+
+      expect(payload['countdownDays'], 1);
+    });
+
+    test('日历日差不受 23 小时夏令日影响', () {
+      final start = DateTime.utc(2026, 3, 8, 5);
+      final end = DateTime.utc(2026, 3, 9, 4);
+
+      expect(end.difference(start), const Duration(hours: 23));
+      expect(CalendarDateMath.daysBetween(start, end), 1);
     });
   });
 

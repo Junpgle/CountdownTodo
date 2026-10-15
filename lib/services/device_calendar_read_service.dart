@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../utils/app_platform.dart';
+import '../utils/time_utils.dart';
 
 /// A system-calendar event used only for presentation.
 ///
@@ -149,14 +150,17 @@ class DeviceCalendarReadService {
   /// provider is queried once for the foreground calendar window.
   static DateTime monthGridStart(DateTime value) {
     final firstDay = DateTime(value.year, value.month, 1);
-    return firstDay.subtract(Duration(days: firstDay.weekday - 1));
+    return AppTimeFormats.localDayStartOffset(
+      firstDay,
+      -(firstDay.weekday - 1),
+    );
   }
 
   /// Returns the exclusive end of the complete month grid containing [value].
   static DateTime monthGridEnd(DateTime value) {
     final nextMonth = DateTime(value.year, value.month + 1, 1);
     final trailingDays = (8 - nextMonth.weekday) % 7;
-    return nextMonth.add(Duration(days: trailingDays));
+    return AppTimeFormats.localDayStartOffset(nextMonth, trailingDays);
   }
 
   static Future<bool> isEnabled() async {

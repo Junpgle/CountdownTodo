@@ -1,4 +1,5 @@
 import '../models.dart';
+import 'plan_weekly_availability.dart';
 
 enum PlanBusySource {
   course,
@@ -37,7 +38,15 @@ class PlanAvailabilityQuery {
     this.appOnly = false,
     this.resultLimit = 5,
     this.avoidWindows = const [],
+    this.bufferBefore = 0,
+    this.bufferAfter = 0,
+    this.bufferOverride = false,
+    this.bufferDefaultsKey,
+    this.avoidanceOverride = false,
+    this.avoidanceDefaultsKey,
+    this.weekly,
   });
+  final PlanWeeklyContext? weekly;
   final String username;
   final String todoId;
   final DateTime date;
@@ -48,6 +57,42 @@ class PlanAvailabilityQuery {
   final bool appOnly;
   final int resultLimit;
   final List<PlanDailyTimeWindow> avoidWindows;
+  final int bufferBefore, bufferAfter;
+
+  /// Explicit one-query choice (including a failed preference write).
+  final bool bufferOverride;
+  final String? bufferDefaultsKey;
+  final bool avoidanceOverride;
+  final String? avoidanceDefaultsKey;
+  PlanAvailabilityQuery withWeekly(PlanWeeklyContext? value) => PlanAvailabilityQuery(
+    username:username,todoId:todoId,date:date,minutes:minutes,
+    windowStart:windowStart,windowEnd:windowEnd,excludeBlockId:excludeBlockId,
+    appOnly:appOnly,resultLimit:resultLimit,avoidWindows:avoidWindows,
+    bufferBefore:bufferBefore,bufferAfter:bufferAfter,bufferOverride:bufferOverride,
+    bufferDefaultsKey:bufferDefaultsKey,avoidanceOverride:avoidanceOverride,
+    avoidanceDefaultsKey:avoidanceDefaultsKey,weekly:value);
+  PlanAvailabilityQuery onDate(DateTime value, {int? limit, bool? onlyApp}) =>
+      PlanAvailabilityQuery(
+        username: username, todoId: todoId, date: value, minutes: minutes,
+        windowStart: windowStart, windowEnd: windowEnd,
+        excludeBlockId: excludeBlockId, appOnly: onlyApp ?? appOnly,
+        resultLimit: limit ?? resultLimit, avoidWindows: avoidWindows,
+        bufferBefore: bufferBefore, bufferAfter: bufferAfter,
+        bufferOverride: bufferOverride, bufferDefaultsKey: bufferDefaultsKey,
+        avoidanceOverride: avoidanceOverride,
+        avoidanceDefaultsKey: avoidanceDefaultsKey, weekly: weekly,
+      );
+  bool get hasBuffers => bufferBefore != 0 || bufferAfter != 0;
+  String get bufferSummary => bufferOverride && !hasBuffers
+      ? '本次未留缓冲'
+      : '已按开始前$bufferBefore分钟、结束后$bufferAfter分钟查找';
+  DateTime get sourceStart =>
+      dayStart.subtract(Duration(minutes: bufferBefore));
+  DateTime get sourceEnd => dayEnd.add(Duration(minutes: bufferAfter));
+  PlanTimeSlot buffered(PlanBusyInterval busy) => PlanTimeSlot(
+    busy.start.subtract(Duration(minutes: bufferAfter)),
+    busy.end.add(Duration(minutes: bufferBefore)),
+  );
   DateTime get dayStart => DateTime(date.year, date.month, date.day);
   DateTime get dayEnd => DateTime(date.year, date.month, date.day + 1);
 }
@@ -106,9 +151,10 @@ class PlanAvailabilitySnapshot {
 }
 
 class PlanAvailabilityResult {
-  const PlanAvailabilityResult(this.slots, {this.message});
+  const PlanAvailabilityResult(this.slots, {this.message, this.diagnostics});
   final List<PlanTimeSlot> slots;
   final String? message;
+  final PlanAvailabilityDiagnostics? diagnostics;
 }
 
 class PlanAvailabilitySelection {
@@ -157,4 +203,48 @@ class PlanAvailabilityRangeSnapshot {
   final List<PlanAvailabilityDaySources> days;
   final String coverage;
   final bool deviceCalendarIncluded;
+}
+
+
+/// Reasons describe a successful calculation, never a failed source read.
+enum PlanAvailabilityReason {
+  available, invalid, rangeEnded, deadline, weeklyNone, weeklyOutside,
+  noTime, fragmented,
+}
+
+class PlanAvailabilityStage {
+  const PlanAvailabilityStage(this.label, this.minutes);
+  final String label;
+  final int minutes;
+}
+
+class PlanAvailabilityDiagnostics {
+  PlanAvailabilityDiagnostics(this.reason, this.message,
+      {Iterable<PlanTimeSlot> fragments = const [],
+       Iterable<PlanAvailabilityStage> stages = const []})
+      : fragments = List.unmodifiable(fragments),
+        stages = List.unmodifiable(stages);
+  final PlanAvailabilityReason reason;
+  final String? message;
+  final List<PlanTimeSlot> fragments;
+  final List<PlanAvailabilityStage> stages;
+  bool get valid => reason != PlanAvailabilityReason.invalid;
+  int get totalMinutes => fragments.fold(0, (n, s) => n + s.minutes);
+  int get longestMinutes => fragments.fold(0, (n, s) => s.minutes > n ? s.minutes : n);
+  String get summary => '当前条件下最长$longestMinutes分钟，共$totalMinutes分钟碎片';
+}
+
+class PlanContinuousRangeResult {
+  PlanContinuousRangeResult(this.start, this.end, this.coverage,
+      Iterable<PlanAvailabilitySelection> selections,
+      Iterable<String> unknownTimes,
+      {this.currentSnapshot})
+      : selections = List.unmodifiable(selections),
+        unknownTimes = List.unmodifiable(unknownTimes.toSet());
+  /// Inclusive start and exclusive end, both local calendar midnights.
+  final DateTime start, end;
+  final String coverage;
+  final List<PlanAvailabilitySelection> selections;
+  final List<String> unknownTimes;
+  final PlanAvailabilitySnapshot? currentSnapshot;
 }

@@ -185,6 +185,11 @@ class AiTodoAction {
   bool hasTagUuids;
   Map<String, dynamic> metadata;
 
+  String? get newTodoTitle {
+    final value = metadata['newTodoTitle'];
+    return value is String && value.trim().isNotEmpty ? value.trim() : null;
+  }
+
   bool get appliesToFutureOccurrences => recurrenceScope == 'future';
 
   bool get createsTodo =>

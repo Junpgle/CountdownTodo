@@ -1,6 +1,7 @@
 import 'package:countdown_todo/features/finance/models/finance_models.dart';
 import 'package:countdown_todo/features/finance/services/finance_automation_service.dart';
 import 'package:countdown_todo/features/finance/widgets/finance_automation_editor.dart';
+import 'package:countdown_todo/services/notification_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -43,6 +44,22 @@ void main() {
     expect(
       FinanceAutomationService.dueDateFor(rule, 2026, 6),
       DateTime(2026, 6, 30, 9),
+    );
+  });
+
+  test('预算提醒和周期账单提醒使用互不重叠的系统通知编号', () {
+    const recurringStart = FinanceAutomationService.recurringNotificationBaseId;
+    const recurringEndExclusive =
+        recurringStart + FinanceAutomationService.recurringNotificationRange;
+    const budgetStart =
+        NotificationService.financeBudgetAlertNotificationBaseId;
+    const budgetEndExclusive =
+        budgetStart + NotificationService.financeBudgetAlertNotificationRange;
+
+    expect(
+      recurringEndExclusive <= budgetStart ||
+          budgetEndExclusive <= recurringStart,
+      isTrue,
     );
   });
 

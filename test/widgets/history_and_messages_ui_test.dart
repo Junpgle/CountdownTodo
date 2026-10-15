@@ -4,6 +4,9 @@ import 'package:countdown_todo/models.dart';
 import 'package:countdown_todo/screens/historical_countdowns_screen.dart';
 import 'package:countdown_todo/screens/historical_todos_screen.dart';
 import 'package:countdown_todo/screens/team_message_center_screen.dart';
+import 'package:countdown_todo/utils/time_utils.dart';
+import 'package:countdown_todo/widgets/countdown_section_widget.dart';
+import 'package:countdown_todo/widgets/share_readonly_widgets.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -121,6 +124,44 @@ void main() {
     await tapVisible(tester, find.text('取消'));
   });
 
+  testWidgets('恢复回收站待办使用最新记录，避免覆盖并发修改', (tester) async {
+    final stale = TodoItem(
+        id: 'restore', title: '旧标题', remark: '旧备注', isDeleted: true);
+    final current = TodoItem(
+        id: 'restore',
+        title: '最新标题',
+        remark: '最新备注',
+        groupId: 'active-group',
+        isDeleted: true);
+    final loadedTodos = <TodoItem>[stale];
+    TodoItem? savedTodo;
+    await pumpManagementPage(
+        tester,
+        HistoricalTodosScreen(
+            username: 'ui-test',
+            loadTodos: () async => loadedTodos,
+            loadGroups: () async => [
+                  TodoGroup(id: 'active-group', name: '当前文件夹')
+                ],
+            loadTodoById: (_, _) async => current,
+            saveTodo: (_, todo) async {
+              savedTodo = todo;
+              loadedTodos[0] = todo;
+            }));
+
+    await tapVisible(tester, find.text('回收站 1'));
+    await tapVisible(tester, find.text('恢复待办'));
+    await tester.pumpAndSettle();
+
+    expect(savedTodo?.title, '最新标题');
+    expect(savedTodo?.remark, '最新备注');
+    expect(savedTodo?.groupId, 'active-group');
+    expect(savedTodo?.isDeleted, isFalse);
+    expect(stale.title, '旧标题');
+    expect(stale.isDeleted, isTrue);
+    expect(find.text('回收站 0'), findsOneWidget);
+  });
+
   testWidgets('待修复页展示可读原因与恢复入口', (tester) async {
     await pumpManagementPage(tester, historyTodoPage());
     await tapVisible(tester, find.text('待修复 1'));
@@ -161,6 +202,89 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('找到 1 段记录'), findsOneWidget);
     expect(find.text('第一次独立完成项目'), findsNothing);
+  });
+
+  testWidgets('倒计时历史按日历日判断夏令时切换边界', (tester) async {
+    await pumpManagementPage(
+        tester,
+        HistoricalCountdownsScreen(
+            username: 'ui-test',
+            now: () => DateTime.utc(2026, 3, 9, 4, 30),
+            loadCountdowns: () async => [
+                  CountdownItem(
+                      id: 'dst-boundary',
+                      title: '夏令时切换前到期',
+                      targetDate: DateTime.utc(2026, 3, 8, 5))
+                ]));
+
+    expect(find.text('共 1 段记录'), findsOneWidget);
+    expect(find.text('夏令时切换前到期'), findsOneWidget);
+    expect(find.text('1 天前结束'), findsOneWidget);
+  });
+
+  test('服务端相对时间按本地日历日计算夏令时切换后的明天', () {
+    final now = DateTime(2026, 3, 8, 12);
+    final tomorrow = DateTime(2026, 3, 9, 9).toUtc().millisecondsSinceEpoch;
+
+    expect(
+      AppTimeFormats.relativeFromServerTimestamp(tomorrow, now: now),
+      '明天 09:00',
+    );
+  });
+
+  testWidgets('分享待办的明天标签在夏令时切换后保持正确', (tester) async {
+    final now = DateTime(2026, 3, 8, 12);
+    final todo = TodoItem(
+      id: 'share-tomorrow',
+      title: '明日任务',
+      createdDate: now.toUtc().millisecondsSinceEpoch,
+      dueDate: DateTime(2026, 3, 9, 9),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ShareTodoSection(
+            todos: [todo],
+            todoGroups: const [],
+            isLight: true,
+            clock: () => now,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('1天后'), findsOneWidget);
+    expect(find.text('0天后'), findsNothing);
+  });
+
+  testWidgets('主页重要日按日期隐藏昨天到期记录', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: CountdownSectionWidget(
+              username: 'calendar-test',
+              isLight: false,
+              onDataChanged: () {},
+              now: () => DateTime(2026, 3, 9, 0, 30),
+              countdowns: [
+                CountdownItem(
+                  id: 'expired',
+                  title: '昨天到期',
+                  targetDate: DateTime(2026, 3, 8, 20),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('暂无有效倒计时'), findsOneWidget);
+    expect(find.text('昨天到期'), findsNothing);
   });
 
   testWidgets('倒计时删除取消与确认只调用一次', (tester) async {
@@ -305,6 +429,33 @@ void main() {
     expect(find.text('暂无系统消息'), findsNothing);
     await tapVisible(tester, find.text('重新加载'));
     expect(find.text('全部 3'), findsOneWidget);
+  });
+
+  testWidgets('单个团队请求异常时仍显示其他团队消息', (tester) async {
+    await pumpManagementPage(
+        tester,
+        TeamMessageCenterScreen(
+            managedTeams: [
+              ...messageTeams(),
+              Team(
+                  uuid: 'offline-team',
+                  name: '暂时离线团队',
+                  creatorId: 2,
+                  createdAt: 0,
+                  userRole: TeamRole.admin)
+            ],
+            fetchMessages: (teamUuid) async {
+              if (teamUuid == 'offline-team') {
+                throw StateError('network unavailable');
+              }
+              return {'success': true, 'messages': teamMessages()};
+            }));
+
+    expect(find.text('1 个团队的消息加载失败，请重试。'), findsOneWidget);
+    expect(find.text('全部 3'), findsOneWidget);
+    expect(find.text('小林申请加入团队，期待和大家一起完成接下来的计划。'),
+        findsOneWidget);
+    expect(find.text('暂无系统消息'), findsNothing);
   });
 
   for (final brightness in Brightness.values) {

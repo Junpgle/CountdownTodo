@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:countdown_todo/services/liquid_glass_effect_service.dart';
 import 'package:countdown_todo/utils/app_dialogs.dart';
 import 'package:flutter/material.dart';
@@ -168,5 +170,163 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+      'AppDialogs.confirm renders styled dialog and returns true on confirm', (
+    tester,
+  ) async {
+    await LiquidGlassEffectService.setEnabled(false);
+    late BuildContext pageContext;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) {
+              pageContext = context;
+              return const SizedBox();
+            },
+          ),
+        ),
+      ),
+    );
+
+    bool? result;
+    unawaited(AppDialogs.confirm(
+      pageContext,
+      title: '确认云端回滚',
+      message: '确定要恢复至此历史版本吗？',
+      icon: const Icon(Icons.settings_backup_restore_rounded),
+      confirmIcon: const Icon(Icons.restore_rounded),
+      confirmLabel: '确认回滚',
+    ).then((val) => result = val));
+
+    await tester.pumpAndSettle();
+
+    expect(find.text('确认云端回滚'), findsOneWidget);
+    expect(find.text('确定要恢复至此历史版本吗？'), findsOneWidget);
+    expect(find.text('确认回滚'), findsOneWidget);
+    expect(find.byIcon(Icons.settings_backup_restore_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.restore_rounded), findsOneWidget);
+
+    await tester.tap(find.text('确认回滚'));
+    await tester.pumpAndSettle();
+
+    expect(result, isTrue);
+  });
+
+  testWidgets('AppDialogs.confirm returns false when cancel is tapped', (
+    tester,
+  ) async {
+    await LiquidGlassEffectService.setEnabled(false);
+    late BuildContext pageContext;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) {
+              pageContext = context;
+              return const SizedBox();
+            },
+          ),
+        ),
+      ),
+    );
+
+    bool? result;
+    unawaited(AppDialogs.confirm(
+      pageContext,
+      title: '确认本地回滚',
+      message: '确定要恢复至本地暂存的此版本吗？',
+      cancelLabel: '取消',
+      confirmLabel: '确认回滚',
+    ).then((val) => result = val));
+
+    await tester.pumpAndSettle();
+
+    expect(find.text('确认本地回滚'), findsOneWidget);
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+
+    expect(result, isFalse);
+  });
+
+  testWidgets(
+      'AppDialogs.confirmSheet renders bottom sheet and returns true on confirm',
+      (tester) async {
+    await LiquidGlassEffectService.setEnabled(false);
+    late BuildContext pageContext;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) {
+              pageContext = context;
+              return const SizedBox();
+            },
+          ),
+        ),
+      ),
+    );
+
+    bool? result;
+    unawaited(AppDialogs.confirmSheet(
+      pageContext,
+      title: '确认云端回滚',
+      subtitle: '项目需求清单',
+      message: '确定要将该项恢复至此云端历史版本吗？',
+      icon: Icons.settings_backup_restore_rounded,
+      confirmIcon: Icons.restore_rounded,
+      confirmLabel: '确认回滚',
+    ).then((val) => result = val));
+
+    await tester.pumpAndSettle();
+
+    expect(find.text('确认云端回滚'), findsOneWidget);
+    expect(find.text('项目需求清单'), findsOneWidget);
+    expect(find.text('确定要将该项恢复至此云端历史版本吗？'), findsOneWidget);
+    expect(find.text('确认回滚'), findsOneWidget);
+    expect(find.byIcon(Icons.settings_backup_restore_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.restore_rounded), findsOneWidget);
+
+    await tester.tap(find.text('确认回滚'));
+    await tester.pumpAndSettle();
+
+    expect(result, isTrue);
+  });
+
+  testWidgets('AppDialogs.confirmSheet returns false when cancel is tapped',
+      (tester) async {
+    await LiquidGlassEffectService.setEnabled(false);
+    late BuildContext pageContext;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) {
+              pageContext = context;
+              return const SizedBox();
+            },
+          ),
+        ),
+      ),
+    );
+
+    bool? result;
+    unawaited(AppDialogs.confirmSheet(
+      pageContext,
+      title: '确认本地回滚',
+      message: '确定要恢复至本地暂存的此历史记录吗？',
+      cancelLabel: '取消',
+      confirmLabel: '确认回滚',
+    ).then((val) => result = val));
+
+    await tester.pumpAndSettle();
+
+    expect(find.text('确认本地回滚'), findsOneWidget);
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+
+    expect(result, isFalse);
   });
 }

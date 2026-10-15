@@ -11,9 +11,11 @@ import '../services/ai_todo_chat_launcher.dart';
 import '../services/ai_todo_action_executor.dart';
 import '../utils/app_color_utils.dart';
 import '../utils/app_dialogs.dart';
+import '../utils/calendar_date_math.dart';
 import '../utils/page_transitions.dart';
 import '../utils/todo_recurrence_picker.dart';
 import '../utils/theme_color_tokens.dart';
+import '../utils/time_log_range_math.dart';
 import '../widgets/app_detail_widgets.dart';
 import 'dart:ui' as ui;
 import 'pomodoro_screen.dart';
@@ -68,12 +70,14 @@ Color hexColor(String hex, {double opacity = 1.0}) {
   );
 }
 
-DateTime _dayStart(DateTime d) => DateTime(d.year, d.month, d.day);
+DateTime _dayStart(DateTime d) => CalendarDateMath.dateOnly(d);
+int _dayEndMs(DateTime d) =>
+    CalendarDateMath.dayRange(d).endExclusive.millisecondsSinceEpoch;
 
 List<DateTime> _weekDays([DateTime? now]) {
   final n = now ?? DateTime.now();
-  final mon = _dayStart(n.subtract(Duration(days: n.weekday - 1)));
-  return List.generate(7, (i) => mon.add(Duration(days: i)));
+  final monday = CalendarDateMath.weekRange(n).start;
+  return List.generate(7, (i) => CalendarDateMath.addDays(monday, i));
 }
 
 // ══════════════════════════════════════════════════════════
@@ -222,8 +226,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
   @override
   void initState() {
     super.initState();
-    _weekStart = _dayStart(DateTime.now())
-        .subtract(Duration(days: DateTime.now().weekday - 1));
+    _weekStart = CalendarDateMath.weekRange(DateTime.now()).start;
     StorageService.scopedDataRefreshNotifier.addListener(_onScopedDataRefresh);
     _loadData();
 
@@ -373,16 +376,16 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
 
   Widget _buildTitle() {
     if (_view == _ViewMode.week) {
-      final we = _weekStart.add(const Duration(days: 6));
+      final we = CalendarDateMath.addDays(_weekStart, 6);
       return Row(mainAxisSize: MainAxisSize.min, children: [
         _buildTitleChevron(
             Icons.chevron_left,
-            () => setState(() =>
-                _weekStart = _weekStart.subtract(const Duration(days: 7)))),
+            () => setState(
+                () => _weekStart = CalendarDateMath.addDays(_weekStart, -7))),
         const SizedBox(width: 4),
         GestureDetector(
-          onTap: () => setState(() => _weekStart = _dayStart(DateTime.now())
-              .subtract(Duration(days: DateTime.now().weekday - 1))),
+          onTap: () => setState(() =>
+              _weekStart = CalendarDateMath.weekRange(DateTime.now()).start),
           child: Text(
               '${AppTimeFormats.monthDaySlash(_weekStart)} - ${AppTimeFormats.monthDaySlash(we)}',
               style:
@@ -392,30 +395,41 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
         _buildTitleChevron(
             Icons.chevron_right,
             () => setState(
-                () => _weekStart = _weekStart.add(const Duration(days: 7)))),
+                () =>
+                    _weekStart = CalendarDateMath.addDays(_weekStart, 7))),
       ]);
     }
     return Row(mainAxisSize: MainAxisSize.min, children: [
       _buildTitleChevron(
           Icons.chevron_left,
-          () => setState(() =>
-              _focusedDate = _focusedDate.subtract(const Duration(days: 1)))),
+          () => setState(() => _focusedDate = CalendarDateMath.addDays(
+                CalendarDateMath.dateOnly(_focusedDate),
+                -1,
+              ))),
       GestureDetector(
         onTap: () async {
           final p = await showAppDatePicker(
               context: context,
               initialDate: _focusedDate,
               firstDate: DateTime(2020),
-              lastDate: DateTime.now().add(const Duration(days: 1)));
+              lastDate: CalendarDateMath.addDays(
+                CalendarDateMath.dateOnly(DateTime.now()),
+                1,
+              ));
           if (p != null) setState(() => _focusedDate = p);
         },
         child: Text(AppTimeFormats.monthDayCn(_focusedDate),
             style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
       ),
       _buildTitleChevron(
-          Icons.chevron_right,
-          () => setState(
-              () => _focusedDate = _focusedDate.add(const Duration(days: 1)))),
+        Icons.chevron_right,
+        () => setState(
+          () => _focusedDate = CalendarDateMath.addDays(
+            CalendarDateMath.dateOnly(_focusedDate),
+            1,
+          ),
+        ),
+      ),
     ]);
   }
 
@@ -970,7 +984,17 @@ class _WeekViewState extends State<_WeekView>
   int _rangeMin(int from, int to) {
     final lm = widget.logs
         .where((l) => l.endTime > from && l.startTime < to)
-        .fold(0, (s, l) => s + (l.endTime - l.startTime) ~/ 60000);
+        .fold(
+          0,
+          (s, l) =>
+              s +
+              TimeLogRangeMath.overlapMinutes(
+                intervalStartMs: l.startTime,
+                intervalEndMs: l.endTime,
+                rangeStartMs: from,
+                rangeEndMs: to,
+              ),
+        );
     final pm = widget.pomodoros
         .where((p) =>
             p.startTime < to &&
@@ -982,10 +1006,13 @@ class _WeekViewState extends State<_WeekView>
   @override
   Widget build(BuildContext context) {
     final days = _weekDays(widget.weekStart);
-    final todayMs = _dayStart(DateTime.now()).millisecondsSinceEpoch;
-    final todayMin = _rangeMin(todayMs, todayMs + 86400000);
+    final todayRange = CalendarDateMath.dayRange(DateTime.now());
+    final todayMin = _rangeMin(
+      todayRange.start.millisecondsSinceEpoch,
+      todayRange.endExclusive.millisecondsSinceEpoch,
+    );
     final wStart0 = days.first.millisecondsSinceEpoch;
-    final wEnd0 = days.last.millisecondsSinceEpoch + 86400000;
+    final wEnd0 = _dayEndMs(days.last);
 
     return LayoutBuilder(builder: (ctx, outer) {
       final isWide = outer.maxWidth >= 720;
@@ -1066,11 +1093,22 @@ class _WeekViewState extends State<_WeekView>
                     },
                   )),
         ]));
+    if (useFloating) {
+      // The weekly calendar header sits directly below this action row. Keep
+      // both on the same page surface so a floating glass capsule does not
+      // read as a detached card pasted onto the grid.
+      return Container(
+        height: 52,
+        margin: const EdgeInsets.only(top: 8),
+        alignment: Alignment.center,
+        color: _TC.topBar(ctx),
+        child: child,
+      );
+    }
+
     return FloatingGlassControl(
-      height: useFloating ? 60 : 52,
-      margin:
-          useFloating ? const EdgeInsets.fromLTRB(8, 8, 8, 4) : EdgeInsets.zero,
-      borderRadius: useFloating ? _timeLogActionBarRadius : 0,
+      height: 52,
+      borderRadius: 0,
       mobilePortraitOnly: true,
       child: child,
     );
@@ -1086,8 +1124,11 @@ class _WeekViewState extends State<_WeekView>
     final isDark = Theme.of(ctx).brightness == Brightness.dark;
 
     int dayMin(DateTime d) {
-      final ds = _dayStart(d).millisecondsSinceEpoch;
-      return _rangeMin(ds, ds + 86400000);
+      final range = CalendarDateMath.dayRange(d);
+      return _rangeMin(
+        range.start.millisecondsSinceEpoch,
+        range.endExclusive.millisecondsSinceEpoch,
+      );
     }
 
     return Column(children: [
@@ -1178,8 +1219,9 @@ class _WeekViewState extends State<_WeekView>
                                           major: h % 6 == 0),
                                       fontWeight: FontWeight.w700)))))),
               ...days.map((d) {
-                final ds = _dayStart(d).millisecondsSinceEpoch;
-                final de = ds + 86400000;
+                final range = CalendarDateMath.dayRange(d);
+                final ds = range.start.millisecondsSinceEpoch;
+                final de = range.endExclusive.millisecondsSinceEpoch;
                 final dLogs = widget.logs
                     .where((l) => l.endTime > ds && l.startTime < de)
                     .toList();
@@ -1273,8 +1315,17 @@ class _WeekViewState extends State<_WeekView>
                               l.tagUuids.contains(t.uuid) &&
                               l.endTime > ws &&
                               l.startTime < we)
-                          .fold(0,
-                              (s, l) => s + (l.endTime - l.startTime) ~/ 60000);
+                          .fold(
+                            0,
+                            (s, l) =>
+                                s +
+                                TimeLogRangeMath.overlapMinutes(
+                                  intervalStartMs: l.startTime,
+                                  intervalEndMs: l.endTime,
+                                  rangeStartMs: ws,
+                                  rangeEndMs: we,
+                                ),
+                          );
                       tw += widget.pomodoros
                           .where((p) =>
                               p.tagUuids.contains(t.uuid) &&
@@ -1336,7 +1387,17 @@ class _WeekViewState extends State<_WeekView>
                     l.tagUuids.contains(t.uuid) &&
                     l.endTime > ws &&
                     l.startTime < we)
-                .fold(0, (s, l) => s + (l.endTime - l.startTime) ~/ 60000);
+                .fold(
+                  0,
+                  (s, l) =>
+                      s +
+                      TimeLogRangeMath.overlapMinutes(
+                        intervalStartMs: l.startTime,
+                        intervalEndMs: l.endTime,
+                        rangeStartMs: ws,
+                        rangeEndMs: we,
+                      ),
+                );
             tw += widget.pomodoros
                 .where((p) =>
                     p.tagUuids.contains(t.uuid) &&
@@ -1405,7 +1466,7 @@ class _WeekColPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final de = dayStartMs + 86400000;
+    final de = _dayEndMs(DateTime.fromMillisecondsSinceEpoch(dayStartMs));
     for (int h = 0; h <= 24; h++) {
       final y = h * hourH;
       canvas.drawLine(
@@ -1576,8 +1637,9 @@ class _DayGridView extends StatefulWidget {
 class _DayGridViewState extends State<_DayGridView> {
   @override
   Widget build(BuildContext context) {
-    final ds = _dayStart(widget.date).millisecondsSinceEpoch;
-    final de = ds + 86400000;
+    final dayRange = CalendarDateMath.dayRange(widget.date);
+    final ds = dayRange.start.millisecondsSinceEpoch;
+    final de = dayRange.endExclusive.millisecondsSinceEpoch;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final colorScheme = Theme.of(context).colorScheme;
 
@@ -1588,8 +1650,17 @@ class _DayGridViewState extends State<_DayGridView> {
       return pe > ds && p.startTime < de;
     }).toList();
 
-    final logMin =
-        dLogs.fold(0, (s, l) => s + (l.endTime - l.startTime) ~/ 60000);
+    final logMin = dLogs.fold(
+      0,
+      (s, l) =>
+          s +
+          TimeLogRangeMath.overlapMinutes(
+            intervalStartMs: l.startTime,
+            intervalEndMs: l.endTime,
+            rangeStartMs: ds,
+            rangeEndMs: de,
+          ),
+    );
     final pomMin = dPoms.fold(0, (s, p) => s + p.effectiveDuration ~/ 60);
     final totalMin = logMin + pomMin;
 
@@ -1597,7 +1668,13 @@ class _DayGridViewState extends State<_DayGridView> {
     for (final l in dLogs) {
       for (final uid in l.tagUuids) {
         tagMinMap[uid] =
-            (tagMinMap[uid] ?? 0) + (l.endTime - l.startTime) ~/ 60000;
+            (tagMinMap[uid] ?? 0) +
+                TimeLogRangeMath.overlapMinutes(
+                  intervalStartMs: l.startTime,
+                  intervalEndMs: l.endTime,
+                  rangeStartMs: ds,
+                  rangeEndMs: de,
+                );
       }
     }
     for (final p in dPoms) {
@@ -1829,7 +1906,10 @@ class _GridCanvas extends StatelessWidget {
         final title = tag?.name ?? '专注';
         return _buildEventBlocks(
           startMs: max(pom.startTime, dayStartMs),
-          endMs: min(pe, dayStartMs + 86400000),
+          endMs: min(
+            pe,
+            _dayEndMs(DateTime.fromMillisecondsSinceEpoch(dayStartMs)),
+          ),
           dayStartMs: dayStartMs,
           colW: colW,
           rowW: rowW,
@@ -1853,7 +1933,10 @@ class _GridCanvas extends StatelessWidget {
         final title = log.title.isNotEmpty ? log.title : (tag?.name ?? '补录');
         return _buildEventBlocks(
           startMs: max(log.startTime, dayStartMs),
-          endMs: min(log.endTime, dayStartMs + 86400000),
+          endMs: min(
+            log.endTime,
+            _dayEndMs(DateTime.fromMillisecondsSinceEpoch(dayStartMs)),
+          ),
           dayStartMs: dayStartMs,
           colW: colW,
           rowW: rowW,

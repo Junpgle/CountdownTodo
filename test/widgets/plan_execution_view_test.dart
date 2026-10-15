@@ -56,8 +56,8 @@ void main() {
 
   testWidgets('当天未关联规划的专注和跨天日志可见，列表进入原生详情', (tester) async {
     await tester.pumpWidget(MaterialApp(home: Scaffold(body: summary())));
-    expect(find.text('专注 1 条'), findsOneWidget);
-    expect(find.text('时间日志 1 条'), findsOneWidget);
+    expect(find.text('专注'), findsOneWidget);
+    expect(find.text('日志'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('plan-execution-list')));
     await tester.pumpAndSettle();
     expect(find.text('专注 · 阅读专注'), findsOneWidget);
@@ -157,8 +157,8 @@ void main() {
         () async => Future<void>.delayed(const Duration(milliseconds: 250)),
       );
       await tester.pumpAndSettle();
-      expect(find.text('专注 1 条'), findsOneWidget);
-      expect(find.text('时间日志 1 条'), findsOneWidget);
+      expect(find.text('专注'), findsOneWidget);
+      expect(find.text('日志'), findsOneWidget);
       final timeline = find.byType(PlanExecutionTimelineLayer);
       expect(
         find.ancestor(of: timeline, matching: find.byType(Scrollable)),
@@ -226,7 +226,7 @@ void main() {
         () async => Future<void>.delayed(const Duration(milliseconds: 250)),
       );
       await tester.pumpAndSettle();
-      expect(find.text('时间日志 2 条'), findsOneWidget);
+      expect(find.text('日志'), findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.runAsync(() async {
         expect(await fixture.db.query('todo_plan_blocks'), isEmpty);

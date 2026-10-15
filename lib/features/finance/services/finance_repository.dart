@@ -121,6 +121,76 @@ abstract final class FinanceRepository {
     return FinanceSummary.fromTransactions(transactions);
   }
 
+  /// Loads the compact event history needed to calculate a carried-forward
+  /// balance without retaining every transaction in the overview widget.
+  static Future<List<FinanceCumulativeBalanceEvent>>
+  getCumulativeBalanceEvents({required int throughAt}) async {
+    final date = DateTime.fromMillisecondsSinceEpoch(throughAt);
+    final transactions = await getTransactions(
+      to: DateTime(date.year, date.month, date.day + 2),
+    );
+    final events =
+        transactions
+            .map((transaction) {
+              final changeMinor = switch (transaction.type) {
+                FinanceTransactionType.income ||
+                FinanceTransactionType.refund => transaction.amountMinor,
+                FinanceTransactionType.expense => -transaction.amountMinor,
+              };
+              return FinanceCumulativeBalanceEvent(
+                transactionDate: transaction.transactionDate,
+                eventAt: transaction.balanceEventAt(),
+                changeMinor: changeMinor,
+              );
+            })
+            .toList(growable: false)
+          ..sort((left, right) => left.eventAt.compareTo(right.eventAt));
+    return events;
+  }
+
+  /// Returns the opening balance plus ledger movements through [asOfAt].
+  /// A configured opening date is inclusive: movements recorded on that date
+  /// are applied on top of the opening amount.
+  static int? cumulativeBalanceAt({
+    required Iterable<FinanceCumulativeBalanceEvent> events,
+    required int asOfAt,
+    required int openingBalanceMinor,
+    String? openingBalanceStartDate,
+  }) {
+    final startDate = openingBalanceStartDate;
+    if (startDate != null && !isFinanceDateKey(startDate)) return null;
+    final asOfDate = dateKey(DateTime.fromMillisecondsSinceEpoch(asOfAt));
+    if (startDate != null && asOfDate.compareTo(startDate) < 0) return null;
+
+    var balanceMinor = openingBalanceMinor;
+    for (final event in events) {
+      if (event.eventAt > asOfAt) break;
+      if (startDate != null && event.transactionDate.compareTo(startDate) < 0) {
+        continue;
+      }
+      balanceMinor += event.changeMinor;
+    }
+    return balanceMinor;
+  }
+
+  /// Picks the earliest recorded ledger date that has already occurred.
+  /// Future scheduled bills must not become an opening date users can save.
+  static String defaultCumulativeBalanceStartDate({
+    required Iterable<FinanceCumulativeBalanceEvent> events,
+    required int nowAt,
+  }) {
+    String? earliestDate;
+    for (final event in events) {
+      if (event.eventAt > nowAt || !isFinanceDateKey(event.transactionDate)) {
+        continue;
+      }
+      if (earliestDate == null || event.transactionDate.compareTo(earliestDate) < 0) {
+        earliestDate = event.transactionDate;
+      }
+    }
+    return earliestDate ?? dateKey(DateTime.fromMillisecondsSinceEpoch(nowAt));
+  }
+
   /// Selects the latest usable account snapshot at [asOfAt] for every payment
   /// method. Snapshot month keys are kept because their epoch can cross a
   /// local month boundary after sync to a device in another timezone.
@@ -129,19 +199,35 @@ abstract final class FinanceRepository {
     required int asOfAt,
     required int nowAt,
   }) {
-    final asOfMonthKey = financeMonthKey(
-      DateTime.fromMillisecondsSinceEpoch(asOfAt),
-    );
+    final asOfDate = DateTime.fromMillisecondsSinceEpoch(asOfAt);
+    final asOfMonthKey = financeMonthKey(asOfDate);
     const snapshotTimezoneDriftMs = 28 * 60 * 60 * 1000;
+    final nextMonthStartAt =
+        DateTime(asOfDate.year, asOfDate.month + 1).millisecondsSinceEpoch;
     final latestByMethod = <String, FinanceBudget>{};
     for (final budget in budgets) {
       final paymentMethodUuid = budget.paymentMethodUuid;
       final snapshotAt = budget.effectiveBalanceSnapshotAt;
       final monthOrder = budget.monthKey.compareTo(asOfMonthKey);
+      // A synced snapshot's month key and epoch can land on opposite sides of
+      // the local month boundary. Accept either adjacent-month representation
+      // only within the timezone drift window.
+      final currentKeyTimestampInNextMonth =
+          monthOrder == 0 &&
+          snapshotAt >= nextMonthStartAt &&
+          asOfAt >= nextMonthStartAt - snapshotTimezoneDriftMs &&
+          snapshotAt <= asOfAt + snapshotTimezoneDriftMs;
+      final nextKeyTimestampInCurrentMonth =
+          monthOrder == 1 &&
+          snapshotAt < nextMonthStartAt &&
+          snapshotAt >= nextMonthStartAt - snapshotTimezoneDriftMs &&
+          snapshotAt <= asOfAt;
       if (paymentMethodUuid == null ||
           paymentMethodUuid.isEmpty ||
-          monthOrder > 0 ||
-          (monthOrder == 0 && snapshotAt > asOfAt + snapshotTimezoneDriftMs) ||
+          (monthOrder > 0 && !nextKeyTimestampInCurrentMonth) ||
+          (monthOrder == 0 &&
+              snapshotAt > asOfAt &&
+              !currentKeyTimestampInNextMonth) ||
           (monthOrder < 0 && snapshotAt > asOfAt) ||
           snapshotAt > nowAt) {
         continue;
@@ -151,13 +237,15 @@ abstract final class FinanceRepository {
         latestByMethod[paymentMethodUuid] = budget;
         continue;
       }
-      final currentMonthOrder = budget.monthKey.compareTo(current.monthKey);
-      final isLaterSnapshotInSameMonth =
-          currentMonthOrder == 0 &&
-          (snapshotAt > current.effectiveBalanceSnapshotAt ||
-              (snapshotAt == current.effectiveBalanceSnapshotAt &&
-                  budget.updatedAt > current.updatedAt));
-      if (currentMonthOrder > 0 || isLaterSnapshotInSameMonth) {
+      final currentSnapshotAt = current.effectiveBalanceSnapshotAt;
+      final snapshotMonthOrder = budget.monthKey.compareTo(current.monthKey);
+      final isLaterSnapshot =
+          snapshotAt > currentSnapshotAt ||
+          (snapshotAt == currentSnapshotAt &&
+              (snapshotMonthOrder > 0 ||
+                  (snapshotMonthOrder == 0 &&
+                      budget.updatedAt > current.updatedAt)));
+      if (isLaterSnapshot) {
         latestByMethod[paymentMethodUuid] = budget;
       }
     }

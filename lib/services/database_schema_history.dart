@@ -11,10 +11,18 @@ class DatabaseSchemaChange {
 }
 
 abstract final class DatabaseSchemaHistory {
-  static const int currentVersion = 57;
+  static const int currentVersion = 58;
 
   /// SQLite 架构版本记录，按新到旧排列。
   static const List<DatabaseSchemaChange> changes = [
+    DatabaseSchemaChange(
+      version: 58,
+      title: '本机规划草稿',
+      changes: [
+        '增加按账号及成员隔离的本机规划草稿，不参与同步或时间占用。',
+        '草稿修订号保护并发暂存，固定目标标识避免重复新建规划。',
+      ],
+    ),
     DatabaseSchemaChange(
       version: 57,
       title: '还款账户与余额同步',

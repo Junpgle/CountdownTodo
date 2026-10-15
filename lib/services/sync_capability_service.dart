@@ -23,6 +23,8 @@ class SyncCapabilityService {
   /// after the server advertises this capability.
   static const String financeCategoryNames = 'finance_category_names_v1';
   static const int financeCategoryNamesVersion = 1;
+  static const String financeCategoryIcons = 'finance_category_icons_v1';
+  static const int financeCategoryIconsVersion = 1;
   static const String financeAccountBalances = 'finance_account_balances_v1';
 
   static bool supportsFixedSchedules(dynamic rawCapabilities) =>
@@ -54,6 +56,10 @@ class SyncCapabilityService {
   static bool supportsFinanceCategoryNames(dynamic rawCapabilities) =>
       capabilityVersion(rawCapabilities, financeCategoryNames) >=
       financeCategoryNamesVersion;
+
+  static bool supportsFinanceCategoryIcons(dynamic rawCapabilities) =>
+      capabilityVersion(rawCapabilities, financeCategoryIcons) >=
+      financeCategoryIconsVersion;
 
   static bool supportsFinanceAccountBalances(dynamic rawCapabilities) =>
       capabilityVersion(rawCapabilities, financeAccountBalances) >= 1;

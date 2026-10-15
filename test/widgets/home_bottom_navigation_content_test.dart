@@ -94,7 +94,12 @@ void main() {
     // colors only inside the moving lens. The selected copy is excluded from
     // semantics and pointer handling.
     expect(find.text('首页'), findsNWidgets(2));
-    expect(find.byIcon(Icons.calendar_today_rounded), findsNWidgets(2));
+    expect(find.byIcon(Icons.calendar_today_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.calendar_today_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.dashboard_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.dashboard_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.center_focus_weak_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.center_focus_strong_rounded), findsOneWidget);
     expect(find.text('专注'), findsNWidgets(2));
     expect(find.bySemanticsLabel('首页'), findsOneWidget);
     expect(find.bySemanticsLabel('专注'), findsOneWidget);
@@ -220,13 +225,15 @@ void main() {
                   child: FloatingBottomNavigationContent(
                     items: [
                       const FloatingBottomNavigationItem(
-                        icon: Icons.dashboard_rounded,
+                        icon: Icons.dashboard_outlined,
+                        selectedIcon: Icons.dashboard_rounded,
                         label: '首页',
                       ),
                       FloatingBottomNavigationItem(
                         key: weeklyKey,
                         label: '周视图',
-                        icon: Icons.calendar_today_rounded,
+                        icon: Icons.calendar_today_outlined,
+                        selectedIcon: Icons.calendar_today_rounded,
                         selectable: false,
                         onPressed: () => weeklyPressed = true,
                         semanticsLabel: '周视图',
@@ -243,20 +250,26 @@ void main() {
                             interactive: interactive,
                             onPressed: () => addPressed = true,
                             semanticsLabel: '新增',
-                            child: const Icon(Icons.add_rounded),
+                            child: Icon(
+                              selectedLayer
+                                  ? Icons.add_circle_rounded
+                                  : Icons.add_rounded,
+                            ),
                           ),
                         ),
                       ),
                       FloatingBottomNavigationItem(
                         key: pomodoroKey,
                         label: '番茄钟',
-                        iconWidget: const Text('🍅'),
+                        icon: Icons.timer_outlined,
+                        selectedIcon: Icons.timer_rounded,
                         selectable: false,
                         onPressed: () => pomodoroPressed = true,
                         semanticsLabel: '番茄钟',
                       ),
                       const FloatingBottomNavigationItem(
-                        icon: Icons.adjust_rounded,
+                        icon: Icons.center_focus_weak_rounded,
+                        selectedIcon: Icons.center_focus_strong_rounded,
                         label: '专注',
                       ),
                     ],
@@ -280,6 +293,23 @@ void main() {
     expect(find.byKey(weeklyKey), findsOneWidget);
     expect(find.byKey(addKey), findsOneWidget);
     expect(find.byKey(pomodoroKey), findsOneWidget);
+    expect(find.byIcon(Icons.dashboard_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.dashboard_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.calendar_today_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.calendar_today_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.add_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.add_circle_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.timer_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.timer_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.center_focus_weak_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.center_focus_strong_rounded), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(pomodoroKey),
+        matching: find.byIcon(Icons.timer_outlined),
+      ),
+      findsOneWidget,
+    );
     expect(find.bySemanticsLabel('周视图'), findsOneWidget);
     expect(find.bySemanticsLabel('新增'), findsOneWidget);
     expect(find.bySemanticsLabel('番茄钟'), findsOneWidget);
@@ -320,6 +350,7 @@ void main() {
 
   testWidgets('supports a wide action-only bar without home or focus tabs',
       (tester) async {
+    final pomodoroKey = GlobalKey();
     var weeklyPressed = false;
     var addPressed = false;
     var pomodoroPressed = false;
@@ -334,19 +365,23 @@ void main() {
               child: FloatingBottomNavigationContent(
                 items: [
                   FloatingBottomNavigationItem(
-                    icon: Icons.calendar_today_rounded,
+                    icon: Icons.calendar_today_outlined,
+                    selectedIcon: Icons.calendar_today_rounded,
                     label: '周视图',
                     selectable: false,
                     onPressed: () => weeklyPressed = true,
                   ),
                   FloatingBottomNavigationItem(
                     icon: Icons.add_rounded,
+                    selectedIcon: Icons.add_circle_rounded,
                     label: '新增',
                     selectable: false,
                     onPressed: () => addPressed = true,
                   ),
                   FloatingBottomNavigationItem(
-                    iconWidget: const Text('🍅'),
+                    key: pomodoroKey,
+                    icon: Icons.timer_outlined,
+                    selectedIcon: Icons.timer_rounded,
                     label: '番茄钟',
                     selectable: false,
                     onPressed: () => pomodoroPressed = true,
@@ -377,6 +412,19 @@ void main() {
     expect(find.bySemanticsLabel('周视图'), findsOneWidget);
     expect(find.bySemanticsLabel('新增'), findsOneWidget);
     expect(find.bySemanticsLabel('番茄钟'), findsOneWidget);
+    expect(find.byIcon(Icons.calendar_today_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.calendar_today_rounded), findsNothing);
+    expect(find.byIcon(Icons.add_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.add_circle_rounded), findsNothing);
+    expect(find.byIcon(Icons.timer_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.timer_rounded), findsNothing);
+    expect(
+      find.descendant(
+        of: find.byKey(pomodoroKey),
+        matching: find.byIcon(Icons.timer_outlined),
+      ),
+      findsOneWidget,
+    );
 
     await tester.tap(find.text('周视图'));
     await tester.tap(find.text('新增'));

@@ -1,6 +1,8 @@
 import 'package:intl/intl.dart';
 import 'package:timezone/data/latest.dart' as tz_data;
 
+import 'calendar_date_math.dart';
+
 // ── 时间格式化工具函数 ──────────────────────────────────────
 
 /// 中文时长格式（输入秒）：1小时30分 / 5分20秒 / 30秒
@@ -90,6 +92,11 @@ class AppTimeFormats {
     return DateTime(time.year, time.month, time.day);
   }
 
+  /// Returns a local midnight offset by calendar days, including DST changes.
+  static DateTime localDayStartOffset(DateTime time, int days) {
+    return DateTime(time.year, time.month, time.day + days);
+  }
+
   static bool isSameDay(DateTime left, DateTime right) {
     return left.year == right.year &&
         left.month == right.month &&
@@ -142,10 +149,13 @@ class AppTimeFormats {
     return format(localFromServerTimestamp(timestamp), pattern);
   }
 
-  static String relativeFromServerTimestamp(int timestamp) {
-    final now = DateTime.now();
+  static String relativeFromServerTimestamp(
+    int timestamp, {
+    DateTime? now,
+  }) {
+    final instant = now ?? DateTime.now();
     final date = localFromServerTimestamp(timestamp);
-    final days = dayStart(date).difference(dayStart(now)).inDays;
+    final days = CalendarDateMath.daysBetween(instant, date);
 
     if (days == 0) return '今天 ${clock(date)}';
     if (days == 1) return '明天 ${clock(date)}';

@@ -18,6 +18,7 @@ import '../../../models.dart';
 import '../../../utils/app_platform.dart';
 import '../../../utils/settings_navigation.dart';
 import '../../../widgets/floating_glass_control.dart';
+import '../../../widgets/settings_focus_page.dart';
 import '../../../utils/app_dialogs.dart';
 
 class CourseSettingsPage extends StatefulWidget {
@@ -47,7 +48,9 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
   };
 
   bool _isLoading = true;
+  bool _initialEditorOpened = false;
   String? _highlightTarget;
+  Timer? _highlightTimer;
 
   String _username = '';
   int? _userId;
@@ -102,6 +105,7 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
 
   @override
   void dispose() {
+    _highlightTimer?.cancel();
     final route = _loadingDialogRoute;
     final navigator = _loadingDialogNavigator;
     if (route != null &&
@@ -128,7 +132,9 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
         curve: Curves.easeInOut,
         alignment: 0.15,
       );
-      Future.delayed(const Duration(milliseconds: 3000), () {
+      _highlightTimer?.cancel();
+      _highlightTimer = Timer(const Duration(milliseconds: 3000), () {
+        _highlightTimer = null;
         if (mounted) setState(() => _highlightTarget = null);
       });
     }
@@ -173,6 +179,47 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
         _noCourseBehavior = noCourseBehaviorPref!;
         _isLoading = false;
       });
+      unawaited(_openInitialEditor());
+    }
+  }
+
+  Future<void> _openInitialEditor() async {
+    if (_initialEditorOpened ||
+        !{
+          'semester_start',
+          'semester_end',
+          'semester_name',
+        }.contains(widget.initialTarget)) {
+      return;
+    }
+    _initialEditorOpened = true;
+    for (var attempt = 0; attempt < 90 && mounted; attempt++) {
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted) return;
+      final route = ModalRoute.of(context);
+      if (route == null ||
+          (route.isCurrent &&
+              !route.offstage &&
+              (route.animation == null ||
+                  route.animation!.status == AnimationStatus.completed))) {
+        break;
+      }
+    }
+    if (!mounted || ModalRoute.of(context)?.isCurrent == false) return;
+    final focusLabel = switch (widget.initialTarget) {
+      'semester_end' => '放假日期:',
+      'semester_name' => '学期名称',
+      _ => '开学日期:',
+    };
+    if (_semesters.isEmpty) {
+      await _showAddSemesterDialog(focusLabel: focusLabel);
+    } else {
+      final current =
+          _semesters
+              .where((item) => item.id == _activeSemesterId)
+              .firstOrNull ??
+          _semesters.first;
+      await _editSemester(current, focusLabel: focusLabel);
     }
   }
 
@@ -1248,10 +1295,11 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
                     Icon(Icons.calendar_today_outlined,
                         size: 14, color: Colors.grey.shade500),
                     const SizedBox(width: 6),
-                    Text(
-                      '开学: ${DateFormat('yyyy/MM/dd').format(semester.startDate)}',
-                      style:
-                          TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                    Expanded(
+                      child: Text(
+                        '开学: ${DateFormat('yyyy/MM/dd').format(semester.startDate)}',
+                        style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                      ),
                     ),
                   ],
                 ),
@@ -1262,10 +1310,11 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
                       Icon(Icons.flight_takeoff_outlined,
                           size: 14, color: Colors.grey.shade500),
                       const SizedBox(width: 6),
-                      Text(
-                        '放假: ${DateFormat('yyyy/MM/dd').format(semester.endDate!)}',
-                        style: TextStyle(
-                            fontSize: 13, color: Colors.grey.shade600),
+                      Expanded(
+                        child: Text(
+                          '放假: ${DateFormat('yyyy/MM/dd').format(semester.endDate!)}',
+                          style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                        ),
                       ),
                     ],
                   ),
@@ -1409,7 +1458,10 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
     }
   }
 
-  Future<void> _editSemester(SemesterInfo semester) async {
+  Future<void> _editSemester(
+    SemesterInfo semester, {
+    String? focusLabel,
+  }) async {
     final nameController = TextEditingController(text: semester.name);
     DateTime? startDate = semester.startDate;
     DateTime? endDate = semester.endDate;
@@ -1417,104 +1469,119 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
     final result = await showAppDialog<SemesterInfo>(
       context: context,
       builder: (ctx) {
-        return StatefulBuilder(
-          builder: (context, setState) {
-            return AlertDialog(
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16)),
-              title: const Text('编辑学期'),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    TextField(
-                      controller: nameController,
-                      decoration: const InputDecoration(
-                        labelText: '学期名称',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        icon: const Icon(Icons.calendar_month),
-                        label: Text(
-                            '开学日期: ${DateFormat('yyyy/MM/dd').format(startDate!)}'),
-                        onPressed: () async {
-                          final picked = await showAppDatePicker(
-                            context: context,
-                            initialDate: startDate!,
-                            firstDate: DateTime(2020),
-                            lastDate: DateTime(2100),
-                          );
-                          if (picked != null && context.mounted) {
-                            setState(() => startDate =
-                                CourseScheduleSemantics.mondayOf(picked));
-                          }
-                        },
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        icon: const Icon(Icons.calendar_month_outlined),
-                        label: Text(
-                          endDate != null
-                              ? '放假日期: ${DateFormat('yyyy/MM/dd').format(endDate!)}'
-                              : '选择放假日期 (可选)',
+        return SettingsFocusPage(
+          labels: focusLabel == null
+              ? const []
+              : [
+                  focusLabel,
+                  if (focusLabel == '开学日期:') '选择开学日期',
+                  if (focusLabel == '放假日期:') '选择放假日期 (可选)',
+                ],
+          child: StatefulBuilder(
+            builder: (context, setState) {
+              return AlertDialog(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                title: const Text('编辑学期'),
+                content: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      TextField(
+                        controller: nameController,
+                        decoration: const InputDecoration(
+                          labelText: '学期名称',
+                          border: OutlineInputBorder(),
                         ),
-                        onPressed: () async {
-                          final picked = await showAppDatePicker(
-                            context: context,
-                            initialDate: endDate ??
-                                startDate!.add(const Duration(days: 120)),
-                            firstDate: DateTime(2020),
-                            lastDate: DateTime(2100),
-                          );
-                          if (picked != null && context.mounted) {
-                            setState(() => endDate = picked);
-                          }
-                        },
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 16),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          icon: const Icon(Icons.calendar_month),
+                          label: Text(
+                            '开学日期: ${DateFormat('yyyy/MM/dd').format(startDate!)}',
+                          ),
+                          onPressed: () async {
+                            final picked = await showAppDatePicker(
+                              context: context,
+                              initialDate: startDate!,
+                              firstDate: DateTime(2020),
+                              lastDate: DateTime(2100),
+                            );
+                            if (picked != null && context.mounted) {
+                              setState(
+                                () => startDate =
+                                    CourseScheduleSemantics.mondayOf(picked),
+                              );
+                            }
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          icon: const Icon(Icons.calendar_month_outlined),
+                          label: Text(
+                            endDate != null
+                                ? '放假日期: ${DateFormat('yyyy/MM/dd').format(endDate!)}'
+                                : '选择放假日期 (可选)',
+                          ),
+                          onPressed: () async {
+                            final picked = await showAppDatePicker(
+                              context: context,
+                              initialDate:
+                                  endDate ??
+                                  startDate!.add(const Duration(days: 120)),
+                              firstDate: DateTime(2020),
+                              lastDate: DateTime(2100),
+                            );
+                            if (picked != null && context.mounted) {
+                              setState(() => endDate = picked);
+                            }
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  child: const Text('取消'),
-                ),
-                FilledButton(
-                  onPressed: () {
-                    if (nameController.text.isEmpty || startDate == null) {
-                      AppSnackBars.showSnackBar(
-                        context,
-                        const SnackBar(content: Text('请填写学期名称和开学日期')),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text('取消'),
+                  ),
+                  FilledButton(
+                    onPressed: () {
+                      if (nameController.text.isEmpty || startDate == null) {
+                        AppSnackBars.showSnackBar(
+                          context,
+                          const SnackBar(content: Text('请填写学期名称和开学日期')),
+                        );
+                        return;
+                      }
+                      final normalizedStart = CourseScheduleSemantics.mondayOf(
+                        startDate!,
                       );
-                      return;
-                    }
-                    final normalizedStart =
-                        CourseScheduleSemantics.mondayOf(startDate!);
-                    Navigator.pop(
-                      ctx,
-                      SemesterInfo(
-                        id: semester.id,
-                        name: nameController.text,
-                        startDate: normalizedStart,
-                        endDate: endDate,
-                        isCurrent: semester.isCurrent,
-                      ),
-                    );
-                  },
-                  child: const Text('保存'),
-                ),
-              ],
-            );
-          },
+                      Navigator.pop(
+                        ctx,
+                        SemesterInfo(
+                          id: semester.id,
+                          name: nameController.text,
+                          startDate: normalizedStart,
+                          endDate: endDate,
+                          isCurrent: semester.isCurrent,
+                        ),
+                      );
+                    },
+                    child: const Text('保存'),
+                  ),
+                ],
+              );
+            },
+          ),
         );
       },
     );
@@ -1634,7 +1701,7 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
     }
   }
 
-  Future<void> _showAddSemesterDialog() async {
+  Future<void> _showAddSemesterDialog({String? focusLabel}) async {
     final nameController = TextEditingController();
     DateTime? startDate;
     DateTime? endDate;
@@ -1642,118 +1709,130 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
     final result = await showAppDialog<SemesterInfo>(
       context: context,
       builder: (ctx) {
-        return StatefulBuilder(
-          builder: (context, setState) {
-            return AlertDialog(
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16)),
-              title: const Text('添加新学期'),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        icon: const Icon(Icons.calendar_month),
-                        label: Text(
-                          startDate != null
-                              ? '开学日期: ${DateFormat('yyyy/MM/dd').format(startDate!)}'
-                              : '选择开学日期',
-                        ),
-                        onPressed: () async {
-                          final picked = await showAppDatePicker(
-                            context: context,
-                            initialDate: DateTime.now(),
-                            firstDate: DateTime(2020),
-                            lastDate: DateTime(2100),
-                            helpText: '选择开学日期',
-                          );
-                          if (picked != null && context.mounted) {
-                            final normalizedStart =
-                                CourseScheduleSemantics.mondayOf(picked);
-                            setState(() {
-                              startDate = normalizedStart;
-                              // 自动生成学期名称
-                              nameController.text =
-                                  _generateSemesterName(normalizedStart);
-                            });
-                          }
-                        },
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        icon: const Icon(Icons.calendar_month_outlined),
-                        label: Text(
-                          endDate != null
-                              ? '放假日期: ${DateFormat('yyyy/MM/dd').format(endDate!)}'
-                              : '选择放假日期 (可选)',
-                        ),
-                        onPressed: () async {
-                          final picked = await showAppDatePicker(
-                            context: context,
-                            initialDate:
-                                startDate?.add(const Duration(days: 120)) ??
-                                    DateTime.now(),
-                            firstDate: DateTime(2020),
-                            lastDate: DateTime(2100),
-                            helpText: '选择放假日期',
-                          );
-                          if (picked != null && context.mounted) {
-                            setState(() => endDate = picked);
-                          }
-                        },
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: nameController,
-                      decoration: const InputDecoration(
-                        labelText: '学期名称',
-                        hintText: '自动生成，可手动修改',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                  ],
+        return SettingsFocusPage(
+          labels: focusLabel == null
+              ? const []
+              : [
+                  focusLabel,
+                  if (focusLabel == '开学日期:') '选择开学日期',
+                  if (focusLabel == '放假日期:') '选择放假日期 (可选)',
+                ],
+          child: StatefulBuilder(
+            builder: (context, setState) {
+              return AlertDialog(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
                 ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  child: const Text('取消'),
+                title: const Text('添加新学期'),
+                content: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          icon: const Icon(Icons.calendar_month),
+                          label: Text(
+                            startDate != null
+                                ? '开学日期: ${DateFormat('yyyy/MM/dd').format(startDate!)}'
+                                : '选择开学日期',
+                          ),
+                          onPressed: () async {
+                            final picked = await showAppDatePicker(
+                              context: context,
+                              initialDate: DateTime.now(),
+                              firstDate: DateTime(2020),
+                              lastDate: DateTime(2100),
+                              helpText: '选择开学日期',
+                            );
+                            if (picked != null && context.mounted) {
+                              final normalizedStart =
+                                  CourseScheduleSemantics.mondayOf(picked);
+                              setState(() {
+                                startDate = normalizedStart;
+                                // 自动生成学期名称
+                                nameController.text = _generateSemesterName(
+                                  normalizedStart,
+                                );
+                              });
+                            }
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          icon: const Icon(Icons.calendar_month_outlined),
+                          label: Text(
+                            endDate != null
+                                ? '放假日期: ${DateFormat('yyyy/MM/dd').format(endDate!)}'
+                                : '选择放假日期 (可选)',
+                          ),
+                          onPressed: () async {
+                            final picked = await showAppDatePicker(
+                              context: context,
+                              initialDate:
+                                  startDate?.add(const Duration(days: 120)) ??
+                                  DateTime.now(),
+                              firstDate: DateTime(2020),
+                              lastDate: DateTime(2100),
+                              helpText: '选择放假日期',
+                            );
+                            if (picked != null && context.mounted) {
+                              setState(() => endDate = picked);
+                            }
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      TextField(
+                        controller: nameController,
+                        decoration: const InputDecoration(
+                          labelText: '学期名称',
+                          hintText: '自动生成，可手动修改',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-                FilledButton(
-                  onPressed: () {
-                    if (nameController.text.isEmpty || startDate == null) {
-                      AppSnackBars.showSnackBar(
-                        context,
-                        const SnackBar(content: Text('请选择开学日期')),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text('取消'),
+                  ),
+                  FilledButton(
+                    onPressed: () {
+                      if (nameController.text.isEmpty || startDate == null) {
+                        AppSnackBars.showSnackBar(
+                          context,
+                          const SnackBar(content: Text('请选择开学日期')),
+                        );
+                        return;
+                      }
+                      final normalizedStart = CourseScheduleSemantics.mondayOf(
+                        startDate!,
                       );
-                      return;
-                    }
-                    final normalizedStart =
-                        CourseScheduleSemantics.mondayOf(startDate!);
-                    final id =
-                        'semester_${normalizedStart.millisecondsSinceEpoch}';
-                    Navigator.pop(
-                      ctx,
-                      SemesterInfo(
-                        id: id,
-                        name: nameController.text,
-                        startDate: normalizedStart,
-                        endDate: endDate,
-                      ),
-                    );
-                  },
-                  child: const Text('添加'),
-                ),
-              ],
-            );
-          },
+                      final id =
+                          'semester_${normalizedStart.millisecondsSinceEpoch}';
+                      Navigator.pop(
+                        ctx,
+                        SemesterInfo(
+                          id: id,
+                          name: nameController.text,
+                          startDate: normalizedStart,
+                          endDate: endDate,
+                        ),
+                      );
+                    },
+                    child: const Text('添加'),
+                  ),
+                ],
+              );
+            },
+          ),
         );
       },
     );

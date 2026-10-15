@@ -628,6 +628,53 @@ void main() {
     expect(find.text('工作'), findsOneWidget);
   });
 
+  testWidgets('date-only folder todo stays due today with partial-day progress',
+      (tester) async {
+    VisibilityDetectorController.instance.updateInterval = Duration.zero;
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final todo = TodoItem(
+      id: 'date-only-today',
+      title: '当天完成',
+      createdDate:
+          today.subtract(const Duration(days: 1)).millisecondsSinceEpoch,
+      dueDate: today,
+      isAllDay: true,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: TodoGroupWidget(
+              group: TodoGroup(
+                  id: 'date-only-folder', name: '今日', isExpanded: true),
+              groupTodos: [todo],
+              isLight: false,
+              teamRoles: const {},
+              onToggle: () {},
+              onTodoToggle: (_) {},
+              onTodoDropped: (_) {},
+              onDelete: () {},
+              onTodoTap: (_) {},
+              onTodoDelete: (_) {},
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1300));
+
+    expect(find.text('今天截止'), findsOneWidget);
+    expect(find.text('已逾期'), findsNothing);
+    final progressWidths = tester
+        .widgetList<FractionallySizedBox>(find.byType(FractionallySizedBox))
+        .map((bar) => bar.widthFactor)
+        .whereType<double>();
+    expect(progressWidths.any((width) => width > 0 && width < 1), isTrue);
+  });
+
   testWidgets('wallpaper cards keep fallback foregrounds when glass is off',
       (tester) async {
     await LiquidGlassEffectService.setEnabled(false);

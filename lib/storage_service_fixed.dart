@@ -221,6 +221,12 @@ mixin _StorageFixed on _StorageServiceBase {
       bool hasChanged = true;
       final itemData = item.toDbJson();
       final oldData = existingItemsMap[item.id];
+      // Automatic reminder maintenance may carry a snapshot read before a
+      // reviewed cancellation. It must never revive that cancelled block.
+      if (!isSyncSource && oldData?['status'] == TodoPlanStatus.cancelled.index &&
+          item.status == TodoPlanStatus.reminded) {
+        continue;
+      }
       if (oldData != null) {
         hasChanged = _hasSubstantialChange(oldData, itemData, [
           'todo_uuid',
@@ -243,6 +249,25 @@ mixin _StorageFixed on _StorageServiceBase {
         ]);
       }
 
+      if (!isSyncSource && item.status == TodoPlanStatus.reminded) {
+        // These predicates run inside batch.commit's write transaction, so a
+        // cancellation committed after the audit read is protected as well.
+        const guard = 'NOT EXISTS (SELECT 1 FROM todo_plan_blocks WHERE uuid=? AND status=3)';
+        if (hasChanged) {
+          batch.rawInsert('''INSERT INTO op_logs
+            (op_type,target_table,target_uuid,data_json,timestamp,is_synced,sync_error)
+            SELECT 'UPSERT','todo_plan_blocks',?,?,?,0,'' WHERE $guard''',
+            [item.id, jsonEncode(itemData), DateTime.now().millisecondsSinceEpoch, item.id]);
+        }
+        if (hasChanged || oldData == null) {
+          final keys = itemData.keys.toList();
+          batch.rawInsert('INSERT INTO todo_plan_blocks (${keys.join(',')}) '
+            'SELECT ${List.filled(keys.length, '?').join(',')} WHERE $guard '
+            'ON CONFLICT(uuid) DO UPDATE SET ${keys.where((k) => k != 'uuid').map((k) => '$k=excluded.$k').join(',')}',
+            [...keys.map((k) => itemData[k]), item.id]);
+        }
+        continue;
+      }
       if (!isSyncSource && hasChanged) {
         batch.insert('op_logs', {
           'op_type': 'UPSERT',
@@ -271,6 +296,150 @@ mixin _StorageFixed on _StorageServiceBase {
     }
   }
 
+  Future<List<TodoPlanBlock>> cancelPlanBlocksReviewed(
+    String username, PlanCleanupRequest request, {
+    required Future<void> Function(DatabaseExecutor executor, bool retry) validate,
+    bool sync = true,
+  }) async {
+    if (username != request.identity.username || request.rows.isEmpty ||
+        request.rows.length > 50 || request.ids.toSet().length != request.rows.length ||
+        request.rows.any((row) => row['uuid'] is! String || (row['uuid'] as String).trim().isEmpty ||
+          row['todo_uuid'] != request.todoId || ![0, 2, 4].contains(row['status']) ||
+          row['version'] is! int || (row['version'] as int) < 1 ||
+          row['updated_at'] is! int)) {
+      throw StateError('收尾请求无效，请重新核对');
+    }
+    await request.identity.check();
+    final db = await DatabaseHelper.instance.databaseForUser(username);
+    var changed = false;
+    final saved = await db.transaction((tx) async {
+      final current = await tx.query('todo_plan_blocks',
+        where: 'uuid IN (${List.filled(request.ids.length, '?').join(',')})',
+        whereArgs: request.ids);
+      final byId = {for (final row in current) row['uuid']: row};
+      final original = current.length == request.rows.length && request.rows.every((row) =>
+        PlanCleanupRequest.sameRow(byId[row['uuid']]!, row));
+      final retry = current.length == request.rows.length && request.rows.every((row) =>
+        PlanCleanupRequest.sameRow(byId[row['uuid']]!, request.cancelledRow(row)));
+      if (!original && !retry) throw StateError('规划已变化，请核对后再试；尚未取消任何规划');
+      await validate(tx, retry);
+      await request.identity.check();
+      final result = <TodoPlanBlock>[];
+      for (final row in request.rows) {
+        final next = request.cancelledRow(row);
+        if (!retry) {
+          await tx.update('todo_plan_blocks', {
+            'status': next['status'], 'version': next['version'], 'updated_at': next['updated_at'],
+          }, where: 'uuid=?', whereArgs: [row['uuid']]);
+          final payload = {...next}..remove('id');
+          await tx.insert('op_logs', {
+            'op_type': 'UPSERT', 'target_table': 'todo_plan_blocks',
+            'target_uuid': row['uuid'], 'data_json': jsonEncode(payload),
+            'timestamp': request.cancelledAt, 'is_synced': 0, 'sync_error': '',
+          });
+        }
+        result.add(TodoPlanBlock.fromJson(next)..isChangedLocally = true);
+      }
+      await request.identity.check();
+      changed = !retry;
+      return result;
+    });
+    if (changed) {
+      if (sync) requestSync(username);
+      triggerRefresh(const {DataRefreshDomain.planBlocks});
+    }
+    return saved;
+  }
+
+  Future<List<TodoPlanBlock>> savePlanBlocksCreated(
+    String username,
+    List<TodoPlanBlock> drafts, {
+    required Future<void> Function(DatabaseExecutor executor) beforeWrite,
+    bool sync = true,
+  }) async {
+    if (drafts.length < 2 ||
+        drafts.length > 6 ||
+        drafts.map((b) => b.id).toSet().length != drafts.length ||
+        drafts.any(
+          (b) =>
+              b.id.isEmpty ||
+              b.todoId != drafts.first.todoId ||
+              b.status != TodoPlanStatus.planned ||
+              b.isDeleted ||
+              b.startTime <= 0 ||
+              b.endTime <= b.startTime ||
+              b.endTime - b.startTime != b.plannedMinutes * 60000 ||
+              b.plannedMinutes < 15 ||
+              b.plannedMinutes > 120 ||
+              b.actualFocusSeconds != 0 ||
+              b.pomodoroRecordIds.isNotEmpty ||
+              b.calendarEventId != null,
+        )) {
+      throw StateError('分段新建内容无效');
+    }
+    final db = await DatabaseHelper.instance.databaseForUser(username);
+    var created = false;
+    final saved = await db.transaction((txn) async {
+      final existing = <TodoPlanBlock>[];
+      for (final draft in drafts) {
+        final rows = await txn.query(
+          'todo_plan_blocks',
+          where: 'uuid=?',
+          whereArgs: [draft.id],
+        );
+        if (rows.isNotEmpty) {
+          final block = TodoPlanBlock.fromJson(rows.single);
+          if (rows.single['has_conflict'] == 1 ||
+              block.isDeleted ||
+              block.status != TodoPlanStatus.planned ||
+              block.actualFocusSeconds != 0 ||
+              block.pomodoroRecordIds.isNotEmpty ||
+              block.version != draft.version ||
+              (block.titleSnapshot ?? '') != (draft.titleSnapshot ?? '') ||
+              block.todoId != draft.todoId ||
+              block.startTime != draft.startTime ||
+              block.endTime != draft.endTime ||
+              block.plannedMinutes != draft.plannedMinutes ||
+              (block.remark ?? '') != (draft.remark ?? '') ||
+              block.reminderMinutes != draft.reminderMinutes ||
+              block.pomodoroMinutes != draft.pomodoroMinutes ||
+              block.pomodoroRounds != draft.pomodoroRounds) {
+            throw StateError('分段目标已存在或变化，请核对已有规划');
+          }
+          existing.add(block);
+        }
+      }
+      if (existing.isNotEmpty && existing.length != drafts.length) {
+        throw StateError('部分分段已存在，请核对已有规划；尚未新增任何分段');
+      }
+      await beforeWrite(txn);
+      if (existing.isNotEmpty) return existing;
+      final result = [
+        for (final b in drafts) TodoPlanBlock.fromJson(b.toJson()),
+      ];
+      for (final block in result) {
+        block.titleSnapshot ??= '';
+        final data = block.toDbJson();
+        await txn.insert('todo_plan_blocks', data);
+        await txn.insert('op_logs', {
+          'op_type': 'UPSERT',
+          'target_table': 'todo_plan_blocks',
+          'target_uuid': block.id,
+          'data_json': jsonEncode(data),
+          'timestamp': DateTime.now().millisecondsSinceEpoch,
+          'is_synced': 0,
+          'sync_error': '',
+        });
+      }
+      created = true;
+      return result;
+    });
+    if (created) {
+      if (sync) requestSync(username);
+      triggerRefresh(const {DataRefreshDomain.planBlocks});
+    }
+    return saved;
+  }
   Future<TodoPlanBlock> savePlanBlockEdited(
     String username,
     TodoPlanBlock draft, {

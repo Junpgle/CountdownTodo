@@ -5,9 +5,11 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models.dart';
 import '../storage_service.dart';
+import '../utils/calendar_date_math.dart';
 import 'ongoing_activity_service.dart';
 import 'pomodoro_service.dart';
 import 'pomodoro_sync_service.dart';
+import 'scheduled_reminder_registry.dart';
 
 /// macOS 状态栏番茄钟操作事件
 enum MacPomodoroAction { togglePause, stopFocus }
@@ -325,7 +327,9 @@ class MacPomodoroStatusBarService {
       'countdownId': nearest?.id ?? '',
       'countdownTitle': nearest?.title ?? '',
       'countdownTargetMs': nearest?.targetDate.millisecondsSinceEpoch ?? 0,
-      'countdownDays': nearestDay?.difference(today).inDays ?? -1,
+      'countdownDays': nearestDay == null
+          ? -1
+          : CalendarDateMath.daysBetween(today, nearestDay),
     };
   }
 
@@ -361,8 +365,10 @@ class MacPomodoroStatusBarService {
     final now = DateTime.now();
     for (final source in reminders) {
       final reminder = Map<String, dynamic>.from(source);
-      final notifId = (reminder['notifId'] as num?)?.toInt();
-      final triggerAtMs = (reminder['triggerAtMs'] as num?)?.toInt();
+      final notifId = ScheduledReminderRegistry.notifIdOf(reminder);
+      final triggerAtMs = ScheduledReminderRegistry.timestampMilliseconds(
+        reminder['triggerAtMs'],
+      );
       if (notifId == null || triggerAtMs == null) continue;
 
       _reminderTimers.remove(notifId)?.cancel();

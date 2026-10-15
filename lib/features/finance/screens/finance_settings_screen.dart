@@ -21,7 +21,14 @@ enum _FinanceSettingsSection { catalog, preferences }
 class FinanceSettingsScreen extends StatefulWidget {
   final String username;
 
-  const FinanceSettingsScreen({super.key, required this.username});
+  final bool initialPreferences;
+  final String initialCatalogSection;
+  const FinanceSettingsScreen({
+    super.key,
+    required this.username,
+    this.initialPreferences = false,
+    this.initialCatalogSection = 'expense',
+  });
 
   @override
   State<FinanceSettingsScreen> createState() => _FinanceSettingsScreenState();
@@ -43,6 +50,7 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
   @override
   void initState() {
     super.initState();
+    if (widget.initialPreferences) _section = _FinanceSettingsSection.preferences;
     FinanceStorage.revision.addListener(_onFinanceChanged);
     _load();
   }
@@ -344,6 +352,7 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
                             const SizedBox(height: 20),
                             if (_section == _FinanceSettingsSection.catalog)
                               FinanceCatalogManager(
+                                initialSection: widget.initialCatalogSection,
                                 categories: _categories,
                                 paymentMethods: _paymentMethods,
                                 onAddCategory: (type) =>

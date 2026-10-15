@@ -642,7 +642,7 @@ class ApiService {
   // 6. 分类映射 (Category Mappings)
   // ==========================================
 
-  static Future<List<dynamic>> fetchAppMappings() async {
+  static Future<List<dynamic>?> fetchAppMappings() async {
     try {
       final response = await _request(
         'GET',
@@ -650,12 +650,13 @@ class ApiService {
         includeAuth: false,
       );
       if (response.statusCode == 200) {
-        return jsonDecode(response.body);
+        final decoded = jsonDecode(response.body);
+        if (decoded is List) return decoded;
       }
     } catch (e) {
       // ignore
     }
-    return [];
+    return null;
   }
 
   // ==========================================
@@ -986,12 +987,15 @@ class ApiService {
 
   /// 批量上传专注记录
   static Future<bool> uploadPomodoroRecords(
-      List<Map<String, dynamic>> records) async {
+    List<Map<String, dynamic>> records, {
+    http.Client? client,
+  }) async {
     try {
       final response = await _request(
         'POST',
         '/api/pomodoro/records',
         body: {'records': records},
+        client: client,
       );
       if (response.statusCode != 200) return false;
       final data = jsonDecode(response.body);
@@ -1008,7 +1012,8 @@ class ApiService {
       int? fromMs,
       int? toMs,
       bool includeDeleted = false,
-      bool useUpdatedAt = false]) async {
+      bool useUpdatedAt = false,
+      http.Client? client]) async {
     try {
       final params = <String, String>{};
       if (userId != null) params['user_id'] = userId.toString();
@@ -1020,7 +1025,7 @@ class ApiService {
       }
       final uri = Uri.parse('$_effectiveBaseUrl/api/pomodoro/records')
           .replace(queryParameters: params.isEmpty ? null : params);
-      final response = await _request('GET', uri.toString());
+      final response = await _request('GET', uri.toString(), client: client);
       if (response.statusCode == 200) return jsonDecode(response.body);
       return [];
     } catch (e) {
@@ -1121,13 +1126,15 @@ class ApiService {
           {int? fromMs,
           int? toMs,
           bool includeDeleted = false,
-          bool useUpdatedAt = false}) =>
+          bool useUpdatedAt = false,
+          http.Client? client}) =>
       fetchPomodoroRecords(
         null,
         fromMs,
         toMs,
         includeDeleted,
         useUpdatedAt,
+        client,
       );
 
   // ==========================================

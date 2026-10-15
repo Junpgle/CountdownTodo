@@ -471,7 +471,8 @@ mixin _StorageTodos on _StorageServiceBase {
       final day = DateTime.tryParse(dayKey);
       if (day == null) continue;
       final startMs = day.millisecondsSinceEpoch;
-      final endMs = day.add(const Duration(days: 1)).millisecondsSinceEpoch;
+      final endMs = time_utils.AppTimeFormats.localDayStartOffset(day, 1)
+          .millisecondsSinceEpoch;
       final rows = await DatabaseHelper.instance.getTodoMaps(
         includeDeleted: true,
         includeConflictData: true,
@@ -1848,7 +1849,7 @@ mixin _StorageTodos on _StorageServiceBase {
     if (!targetDay.isAfter(baseDay)) return const [];
 
     final offsets = <int>[];
-    final diffDays = targetDay.difference(baseDay).inDays;
+    final diffDays = CalendarDateMath.daysBetween(baseDay, targetDay);
     switch (todo.recurrence) {
       case RecurrenceType.daily:
         for (var day = 1; day <= diffDays; day++) {
@@ -1878,29 +1879,11 @@ mixin _StorageTodos on _StorageServiceBase {
           offsets.add(day);
         }
       case RecurrenceType.monthly:
-        for (var month = 1;; month++) {
-          final monthStart = DateTime(baseDay.year, baseDay.month + month);
-          final lastDay =
-              DateTime(monthStart.year, monthStart.month + 1, 0).day;
-          final candidate = DateTime(
-            monthStart.year,
-            monthStart.month,
-            baseDay.day.clamp(1, lastDay),
-          );
-          if (candidate.isAfter(targetDay)) break;
-          offsets.add(candidate.difference(baseDay).inDays);
-        }
       case RecurrenceType.yearly:
-        for (var year = 1;; year++) {
-          final targetYear = baseDay.year + year;
-          final lastDay = DateTime(targetYear, baseDay.month + 1, 0).day;
-          final candidate = DateTime(
-            targetYear,
-            baseDay.month,
-            baseDay.day.clamp(1, lastDay),
-          );
-          if (candidate.isAfter(targetDay)) break;
-          offsets.add(candidate.difference(baseDay).inDays);
+        var candidate = _nextRecurrenceDate(baseDay, todo);
+        while (candidate != null && !candidate.isAfter(targetDay)) {
+          offsets.add(CalendarDateMath.daysBetween(baseDay, candidate));
+          candidate = _nextRecurrenceDate(candidate, todo);
         }
       case RecurrenceType.none:
         break;
@@ -2130,8 +2113,7 @@ mixin _StorageTodos on _StorageServiceBase {
     for (var i = 0; i < 2; i++) {
       final next = _nextRecurrenceDate(cursor, todo);
       if (next == null || !next.isAfter(cursor)) break;
-      offsets.add(
-          DateTime(next.year, next.month, next.day).difference(baseDay).inDays);
+      offsets.add(CalendarDateMath.daysBetween(baseDay, next));
       cursor = next;
     }
     return offsets;
@@ -2255,17 +2237,10 @@ mixin _StorageTodos on _StorageServiceBase {
         );
         if (!candidateDay.isBefore(nextKnownDay)) continue;
 
-        final rollByDays = DateTime.utc(
-          candidateDay.year,
-          candidateDay.month,
-          candidateDay.day,
-        )
-            .difference(DateTime.utc(
-              copyBaseDay.year,
-              copyBaseDay.month,
-              copyBaseDay.day,
-            ))
-            .inDays;
+        final rollByDays = CalendarDateMath.daysBetween(
+          copyBaseDay,
+          candidateDay,
+        );
         final result = _getOrCreateRecurrenceOccurrence(
           source: copySource,
           rollByDays: rollByDays,

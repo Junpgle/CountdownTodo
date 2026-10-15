@@ -25,6 +25,41 @@ void main() {
       expect(entry.end, DateTime(2026, 7, 22));
     });
 
+    test('all-day todo ends at the next calendar midnight across fall DST', () {
+      final start = DateTime(2026, 11, 1);
+      final end = DateTime(2026, 11, 1, 23, 59);
+      final entry = CalendarSyncService.todoToEntryForTest(
+        TodoItem(
+          title: '全天待办',
+          createdDate: start.millisecondsSinceEpoch,
+          dueDate: end,
+          isAllDay: true,
+        ),
+      )!;
+
+      expect(entry.end, DateTime(2026, 11, 2));
+      expect(
+        entry.toPlatformJson()['endMs'],
+        DateTime.utc(2026, 11, 2).millisecondsSinceEpoch,
+      );
+    });
+
+    test('exports countdowns with calendar-day boundaries across DST', () {
+      for (final start in [DateTime(2026, 3, 8), DateTime(2026, 11, 1)]) {
+        final end = DateTime(start.year, start.month, start.day + 1);
+        final entry = CalendarSyncService.countdownToEntryForTest(
+          CountdownItem(title: '倒数日', targetDate: start),
+        );
+
+        expect(entry.start, start);
+        expect(entry.end, end);
+        expect(
+          entry.toPlatformJson()['endMs'],
+          DateTime.utc(end.year, end.month, end.day).millisecondsSinceEpoch,
+        );
+      }
+    });
+
     test('exports a new deadline as a one-minute deadline marker', () {
       final due = DateTime(2026, 7, 21, 18);
       final todo = TodoItem(

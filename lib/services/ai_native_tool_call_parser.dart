@@ -1,6 +1,8 @@
 import 'dart:convert';
 
 import 'ai_chat_service.dart';
+import 'ai_settings_navigation_service.dart';
+import 'ai_tool_result_context.dart';
 
 /// Converts native function calls into the internal action containers consumed
 /// by the existing parsers and confirmation cards. The model never emits these
@@ -33,6 +35,8 @@ abstract final class AiNativeToolCallParser {
     required Set<String> allowedCdtActionNames,
     required Set<String> allowedFinanceActionNames,
   }) {
+    assistantText = AiToolResultContext.withoutHistory(assistantText);
+    final settingsTargets = <String>[];
     final cdtActions = <Map<String, dynamic>>[];
     final financeDrafts = <Map<String, dynamic>>[];
     final financeActions = <Map<String, dynamic>>[];
@@ -42,7 +46,11 @@ abstract final class AiNativeToolCallParser {
       final arguments = _decodeArguments(call.arguments);
       if (arguments == null) continue;
 
-      if (call.name == 'propose_cdt_actions') {
+      if (call.name == AiSettingsNavigationService.toolName) {
+        settingsTargets.addAll(
+          AiSettingsNavigationService.validateTargets(arguments['targets']),
+        );
+      } else if (call.name == 'propose_cdt_actions') {
         final rawActions = arguments['actions'];
         if (rawActions is List) {
           cdtActions.addAll(_filterActions(rawActions, allowedCdtActionNames));
@@ -67,6 +75,11 @@ abstract final class AiNativeToolCallParser {
     }
 
     final blocks = <String>[];
+    if (settingsTargets.isNotEmpty) {
+      blocks.add(
+        '[SETTINGS_START]${jsonEncode({'targets': AiSettingsNavigationService.validateTargets(settingsTargets)})}[SETTINGS_END]',
+      );
+    }
     if (cdtActions.isNotEmpty) {
       blocks.add(
         '[ACTION_START]\n'

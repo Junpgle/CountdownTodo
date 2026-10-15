@@ -54,7 +54,14 @@ enum _ModelSelectionTarget { text, vision }
 
 class LLMConfigPage extends StatefulWidget {
   final bool isEmbedded;
-  const LLMConfigPage({super.key, this.isEmbedded = false});
+  final int? initialStep;
+  final String? initialTarget;
+  const LLMConfigPage({
+    super.key,
+    this.isEmbedded = false,
+    this.initialStep,
+    this.initialTarget,
+  });
 
   @override
   State<LLMConfigPage> createState() => _LLMConfigPageState();
@@ -424,6 +431,29 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
       return;
     }
     await _loadConfig();
+    if (!{
+      'llm_custom_text',
+      'llm_custom_vision',
+    }.contains(widget.initialTarget)) {
+      return;
+    }
+    for (var frame = 0; frame < 90 && mounted; frame++) {
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted) return;
+      final route = ModalRoute.of(context);
+      if (route == null ||
+          (route.isCurrent &&
+              !route.offstage &&
+              (route.animation == null ||
+                  route.animation!.status == AnimationStatus.completed))) {
+        if (widget.initialTarget == 'llm_custom_text') {
+          _showAddCustomTextModelDialog();
+        } else {
+          _showAddCustomVisionModelDialog();
+        }
+        return;
+      }
+    }
   }
 
   Future<void> _loadConfig() async {
@@ -522,7 +552,7 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
       _nvidiaNimApiKey,
       config?.apiKey ?? '',
     ].any((key) => key.trim().isNotEmpty);
-    _currentStep = hasAnyApiKey ? 2 : 0;
+    _currentStep = widget.initialStep?.clamp(0, 2) ?? (hasAnyApiKey ? 2 : 0);
 
     // 根据已选模型确定各自的服务商。优先使用已保存的服务商，避免
     // Token Plan 与普通 MiMo 的同名模型被前缀匹配到错误端点。
@@ -1656,6 +1686,12 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
     );
 
     return ExpansionTile(
+      initiallyExpanded: {
+        'llm_recognition',
+        'llm_text_prompt',
+        'llm_vision_prompt',
+        'llm_prompt_reset',
+      }.contains(widget.initialTarget),
       title: Text(
         '识别服务高级配置（不影响对话助手）',
         style: TextStyle(fontSize: 13, color: Colors.grey[700]),

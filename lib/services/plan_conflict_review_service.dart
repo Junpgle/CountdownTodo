@@ -6,6 +6,7 @@ import '../models.dart';
 import '../models/plan_availability.dart';
 import '../storage_service.dart';
 import 'database_helper.dart';
+import 'plan_todo_guard.dart';
 import 'plan_availability_preferences.dart';
 import 'plan_availability_repository.dart';
 import 'plan_availability_service.dart';
@@ -52,9 +53,14 @@ class PlanConflictReviewResult {
 /// A captured existing identity. The editor must submit its last persisted
 /// version as well, so a focus retry validates its own save rather than history.
 class PlanConflictEditContext {
-  PlanConflictEditContext(this.username, TodoPlanBlock block, this.todo)
-    : block = TodoPlanBlock.fromJson(block.toJson());
+  PlanConflictEditContext(
+    this.username,
+    TodoPlanBlock block,
+    this.todo, {
+    this.identity,
+  }) : block = TodoPlanBlock.fromJson(block.toJson());
   final String username;
+  final PlanTodoIdentity? identity;
   final TodoPlanBlock block;
   final TodoItem todo;
 }
@@ -212,14 +218,17 @@ class PlanConflictReviewService {
             block.endTime <= block.startTime)) {
       throw const PlanAvailabilityException('规划已结束或时间无效，请查看最新记录');
     }
-    final todoRows = await db.query(
-      'todos',
-      where: 'uuid = ?',
-      whereArgs: [block.todoId],
-      limit: 1,
+    final identity = await PlanTodoIdentity.capture(username);
+    final todoRows = await PlanTodoGuard.projectedRows(
+      db,
+      identity,
+      block.todoId,
     );
     if (todoRows.isEmpty) throw const PlanAvailabilityException('关联待办已失效');
-    final todo = TodoItem.fromSql(todoRows.single)..id = block.todoId;
+    final todo = TodoItem.fromSql({
+      ...todoRows.single,
+      'is_completed': todoRows.single['member_completed'],
+    })..id = block.todoId;
     if (todo.isDone || todo.isDeleted || todo.hasConflict) {
       throw const PlanAvailabilityException('关联待办已完成、删除或存在冲突，不能改期');
     }
@@ -239,7 +248,8 @@ class PlanConflictReviewService {
       throw const PlanAvailabilityException('这条规划正在专注，请查看当前专注');
     }
     await _account(username);
-    return PlanConflictEditContext(username, block, todo);
+    await identity.check();
+    return PlanConflictEditContext(username, block, todo, identity: identity);
   }
 
   Future<TodoPlanBlock> save(
@@ -251,6 +261,7 @@ class PlanConflictReviewService {
     TodoPlanStatus? newStatus,
     bool sync = true,
   }) async {
+    await context.identity?.check();
     if (input.id != context.block.id ||
         input.todoId != context.block.todoId ||
         expectedBlock.id != context.block.id ||
@@ -278,6 +289,7 @@ class PlanConflictReviewService {
 
     final preferencesKey = avoidanceKey(avoidance);
     Future<void> guard(DatabaseExecutor db) async {
+      await context.identity?.check();
       final currentPreferences = await PlanAvailabilityPreferences.load(
         context.username,
       );
@@ -337,6 +349,13 @@ class PlanConflictReviewService {
         windowStart: 0,
         windowEnd: 1440,
         appOnly: manualQuery?.appOnly ?? false,
+        bufferBefore: manualQuery?.bufferBefore ?? 0,
+        bufferAfter: manualQuery?.bufferAfter ?? 0,
+        bufferOverride: manualQuery?.bufferOverride ?? false,
+        bufferDefaultsKey: manualQuery?.bufferDefaultsKey,
+        avoidanceOverride: manualQuery?.avoidanceOverride ?? false,
+        avoidanceDefaultsKey:
+            manualQuery?.avoidanceDefaultsKey ?? preferences.avoidanceKey,
         avoidWindows: avoidance,
       );
       selection = PlanAvailabilitySelection(

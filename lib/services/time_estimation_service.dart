@@ -1,41 +1,58 @@
 import 'dart:math';
-import 'package:flutter/foundation.dart';
-import 'database_helper.dart';
 
-/// Result of a time estimation prediction
+import 'time_estimation_repository.dart';
+
+enum TimeEstimationSource { history, heuristic, readFailure, empty }
+
+enum TimeEstimationReference { sufficient, moderate, limited }
+
+/// Confidence is an internal evidence score, never a calibrated probability.
 class TimeEstimationResult {
   final int estimatedMinutes;
-  final double confidence; // [0, 1]
+  final double confidence;
   final String reason;
   final List<String> similarTitles;
+  final List<TimeEstimationSample> samples;
+  final TimeEstimationSource source;
+  final String? username;
+  final int incompleteCount, noActualCount;
 
   const TimeEstimationResult({
     required this.estimatedMinutes,
     required this.confidence,
     required this.reason,
     this.similarTitles = const [],
+    this.samples = const [],
+    this.source = TimeEstimationSource.heuristic,
+    this.username,
+    this.incompleteCount = 0,
+    this.noActualCount = 0,
   });
+
+  TimeEstimationReference get reference =>
+      source != TimeEstimationSource.history
+      ? TimeEstimationReference.limited
+      : samples.length >= 5 && confidence >= .6
+      ? TimeEstimationReference.sufficient
+      : samples.length >= 3 && confidence >= .35
+      ? TimeEstimationReference.moderate
+      : TimeEstimationReference.limited;
+
+  String get referenceLabel => switch (reference) {
+    TimeEstimationReference.sufficient => '历史参考较充分',
+    TimeEstimationReference.moderate => '历史参考一般',
+    TimeEstimationReference.limited => '参考较少，可调整',
+  };
 }
 
-/// A historical data point for estimation
-class _HistoricalRecord {
-  final String title;
-  final int actualMinutes;
-  final int createdAt;
-  final String? tagUuids;
-  final String? todoUuid;
-
-  const _HistoricalRecord({
-    required this.title,
-    required this.actualMinutes,
-    required this.createdAt,
-    this.tagUuids,
-    this.todoUuid,
-  });
+class _WeightedSample {
+  const _WeightedSample(this.sample, this.similarity, this.recency);
+  final TimeEstimationSample sample;
+  final double similarity, recency;
+  double get weight => similarity * recency;
 }
 
-/// Predicts todo duration based on historical data, keyword similarity,
-/// and complexity analysis.
+/// Local, read-only estimates from complete tasks with measured focus time.
 class TimeEstimationService {
   // CJK Unified Ideographs range
   static final _cjkRange = RegExp('[\\u4e00-\\u9fff]+');
@@ -121,365 +138,261 @@ class TimeEstimationService {
     '发消息',
   ];
 
-  // Decay factor for recency weighting (30-day half-life)
-  static const _halfLifeDays = 30.0;
-  static const _ln2 = 0.6931471805599453;
+  static const halfLifeDays = 30.0;
+  static const minimumSimilarity = .35;
+  static const maxSimilarSamples = 12;
+  static const maxCategorySamples = 20;
 
-  /// Main entry point: estimate how long a todo will take.
   static Future<TimeEstimationResult> estimate(
     String title, {
     String? groupId,
     String? categoryTagId,
+    String? username,
+    TimeEstimationRepository repository = const TimeEstimationRepository(),
+    DateTime Function()? clock,
   }) async {
+    final account = username ?? await TimeEstimationRepository.activeUsername();
+    await TimeEstimationRepository.checkAccount(account);
+    final now = clock?.call() ?? DateTime.now();
     if (title.trim().isEmpty) {
-      return const TimeEstimationResult(
-        estimatedMinutes: 30,
-        confidence: 0.1,
-        reason: '请输入标题以获取预估',
+      return _fallback(
+        title,
+        account,
+        TimeEstimationSource.empty,
+        '请输入标题以获取预估',
       );
     }
-
     try {
-      // Load historical data
-      final records = await _loadHistoricalRecords();
-
-      debugPrint('TimeEstimation: loaded ${records.length} historical records');
-
-      // Cold start: not enough data — use keyword-only heuristic
-      if (records.length < 3) {
-        debugPrint('TimeEstimation: cold start (< 3 records)');
-        return _coldStartEstimate(title);
-      }
-
-      // Layer 1: Keyword similarity
-      final similarityResult = _similarityEstimate(title, records);
-
-      // Layer 2: Complexity keyword scoring
-      final complexityResult = _complexityEstimate(title, records);
-
-      // Layer 3: Category/tag average
-      final categoryResult = await _categoryEstimate(
-        records,
+      final history = await repository.read(account, now);
+      await TimeEstimationRepository.checkAccount(account);
+      return estimateFromHistory(
+        title,
+        history,
+        now: now,
+        username: account,
         groupId: groupId,
         categoryTagId: categoryTagId,
       );
-
-      // Determine weights based on data volume
-      final w = _getWeights(records.length);
-
-      final combined = (w[0] * similarityResult.$1 +
-              w[1] * complexityResult.$1 +
-              w[2] * categoryResult.$1)
-          .round();
-
-      final combinedConfidence = w[0] * similarityResult.$2 +
-          w[1] * complexityResult.$2 +
-          w[2] * categoryResult.$2;
-
-      final reason = _buildReason(
-        similarityResult,
-        complexityResult,
-        categoryResult,
-        w,
+    } on TimeEstimationAccountChanged {
+      rethrow;
+    } catch (_) {
+      await TimeEstimationRepository.checkAccount(account);
+      return _fallback(
+        title,
+        account,
+        TimeEstimationSource.readFailure,
+        '历史记录读取失败，暂按关键词粗略估算，可手动调整',
       );
-
-      debugPrint(
-          'TimeEstimation: result=$combined min, confidence=${combinedConfidence.toStringAsFixed(2)}, '
-          'sim=${similarityResult.$1.toStringAsFixed(0)}, cxp=${complexityResult.$1.toStringAsFixed(0)}, '
-          'cat=${categoryResult.$1.toStringAsFixed(0)}');
-
-      return TimeEstimationResult(
-        estimatedMinutes: max(5, combined),
-        confidence: combinedConfidence.clamp(0.0, 1.0),
-        reason: reason,
-        similarTitles: similarityResult.$3,
-      );
-    } catch (e) {
-      debugPrint('TimeEstimationService error: $e');
-      return _coldStartEstimate(title);
     }
   }
 
-  // === Data Loading ===
-
-  static Future<List<_HistoricalRecord>> _loadHistoricalRecords() async {
-    final db = await DatabaseHelper.instance.database;
-    final records = <_HistoricalRecord>[];
-
-    // Primary: todo_plan_blocks — prefer actual focus time, fall back to planned
-    try {
-      final planBlocks = await db.rawQuery('''
-        SELECT title_snapshot, planned_minutes, actual_focus_seconds, created_at, todo_uuid
-        FROM todo_plan_blocks
-        WHERE is_deleted = 0
-          AND title_snapshot IS NOT NULL
-          AND title_snapshot != ''
-          AND (actual_focus_seconds > 0 OR planned_minutes > 0)
-        ORDER BY created_at DESC
-        LIMIT 500
-      ''');
-
-      for (final row in planBlocks) {
-        final title = row['title_snapshot'] as String?;
-        final actualSecs = row['actual_focus_seconds'] as int? ?? 0;
-        final plannedMins = row['planned_minutes'] as int? ?? 0;
-        // Prefer actual, fall back to planned
-        final minutes =
-            actualSecs > 0 ? (actualSecs / 60).round() : plannedMins;
-        if (title != null && title.isNotEmpty && minutes > 0) {
-          records.add(_HistoricalRecord(
-            title: title,
-            actualMinutes: minutes,
-            createdAt: row['created_at'] as int? ?? 0,
-            todoUuid: row['todo_uuid'] as String?,
-          ));
-        }
-      }
-    } catch (e) {
-      debugPrint('TimeEstimation: plan_blocks query error: $e');
-    }
-
-    // Secondary: pomodoro_records with todo_title
-    try {
-      final pomodoros = await db.rawQuery('''
-        SELECT todo_title, actual_duration, planned_duration, tag_uuids, created_at
-        FROM pomodoro_records
-        WHERE is_deleted = 0
-          AND todo_title IS NOT NULL
-          AND todo_title != ''
-          AND (actual_duration > 0 OR planned_duration > 0)
-        ORDER BY created_at DESC
-        LIMIT 300
-      ''');
-
-      for (final row in pomodoros) {
-        final title = row['todo_title'] as String?;
-        final actualSecs = row['actual_duration'] as int? ?? 0;
-        final plannedSecs = row['planned_duration'] as int? ?? 0;
-        final seconds = actualSecs > 0 ? actualSecs : plannedSecs;
-        if (title != null && title.isNotEmpty && seconds > 0) {
-          records.add(_HistoricalRecord(
-            title: title,
-            actualMinutes: (seconds / 60).round(),
-            createdAt: row['created_at'] as int? ?? 0,
-            tagUuids: row['tag_uuids'] as String?,
-          ));
-        }
-      }
-    } catch (e) {
-      debugPrint('TimeEstimation: pomodoro_records query error: $e');
-    }
-
-    // Deduplicate by title, keep most recent
-    final deduped = <String, _HistoricalRecord>{};
-    for (final r in records) {
-      final key = r.title.trim().toLowerCase();
-      if (!deduped.containsKey(key) || r.createdAt > deduped[key]!.createdAt) {
-        deduped[key] = r;
-      }
-    }
-
-    return deduped.values.toList();
-  }
-
-  // === Layer 1: Keyword Similarity ===
-
-  static (double, double, List<String>) _similarityEstimate(
+  static TimeEstimationResult _fallback(
     String title,
-    List<_HistoricalRecord> records,
-  ) {
-    final queryTokens = _tokenize(title);
-    if (queryTokens.isEmpty) return (0.0, 0.0, []);
-
-    final now = DateTime.now().millisecondsSinceEpoch;
-    final scored =
-        <(double, double, String)>[]; // (similarity, recencyWeight, title)
-
-    for (final r in records) {
-      final rTokens = _tokenize(r.title);
-      if (rTokens.isEmpty) continue;
-
-      // Jaccard similarity
-      final intersection = queryTokens.intersection(rTokens).length;
-      final union = queryTokens.union(rTokens).length;
-      final similarity = union > 0 ? intersection / union : 0.0;
-
-      if (similarity < 0.05) continue;
-
-      // Recency weight (exponential decay)
-      final daysSinceCreation =
-          (now - r.createdAt) / (24 * 3600 * 1000).toDouble();
-      final recencyWeight = exp(-_ln2 * daysSinceCreation / _halfLifeDays);
-
-      scored.add((similarity, recencyWeight, r.title));
-    }
-
-    if (scored.isEmpty) return (0.0, 0.0, []);
-
-    // Sort by similarity * recency
-    scored.sort((a, b) => (b.$1 * b.$2).compareTo(a.$1 * a.$2));
-
-    // Weighted average of top-K durations
-    final topK = scored.take(5).toList();
-    double totalWeight = 0;
-    double weightedDuration = 0;
-    final similarTitles = <String>[];
-
-    for (final (sim, recency, tTitle) in topK) {
-      final w = sim * recency;
-      totalWeight += w;
-      final record = records.firstWhere(
-        (r) => r.title == tTitle,
-        orElse: () => records.first,
-      );
-      weightedDuration += w * record.actualMinutes;
-      similarTitles.add(tTitle);
-    }
-
-    if (totalWeight <= 0) return (0.0, 0.0, []);
-
-    final estimate = weightedDuration / totalWeight;
-    final bestSimilarity = topK.first.$1;
-    final bestRecency = topK.first.$2;
-    final confidence = (bestSimilarity * bestRecency).clamp(0.0, 1.0);
-
-    return (estimate, confidence, similarTitles.take(3).toList());
+    String? username,
+    TimeEstimationSource source,
+    String reason, {
+    TimeEstimationHistory? history,
+  }) {
+    final rough = _coldStartEstimate(title);
+    return TimeEstimationResult(
+      estimatedMinutes: rough.estimatedMinutes,
+      confidence: .2,
+      reason: reason,
+      source: source,
+      username: username,
+      incompleteCount: history?.incompleteCount ?? 0,
+      noActualCount: history?.noActualCount ?? 0,
+    );
   }
 
-  // === Layer 2: Complexity Keyword Scoring ===
-
-  static (double, double) _complexityEstimate(
+  /// Pure calculation also makes the evidence snapshot reproducible in tests.
+  static TimeEstimationResult estimateFromHistory(
     String title,
-    List<_HistoricalRecord> records,
-  ) {
-    final globalAvg =
-        records.map((r) => r.actualMinutes).reduce((a, b) => a + b) /
-            records.length;
-
-    double factor = 1.0;
-    final lowerTitle = title.toLowerCase();
-
-    for (final kw in _highComplexityKeywords) {
-      if (lowerTitle.contains(kw)) {
-        factor = max(factor, 1.5);
-        break;
-      }
-    }
-    for (final kw in _mediumComplexityKeywords) {
-      if (lowerTitle.contains(kw)) {
-        factor = max(factor, 1.0);
-        break;
-      }
-    }
-    for (final kw in _lowComplexityKeywords) {
-      if (lowerTitle.contains(kw)) {
-        factor = min(factor, 0.5);
-        break;
-      }
-    }
-
-    return (globalAvg * factor, 0.4);
-  }
-
-  // === Layer 3: Category/Tag Average ===
-
-  static Future<(double, double)> _categoryEstimate(
-    List<_HistoricalRecord> records, {
+    TimeEstimationHistory history, {
+    required DateTime now,
+    String? username,
     String? groupId,
     String? categoryTagId,
-  }) async {
-    // Try tag-based grouping first
-    if (categoryTagId != null && categoryTagId.isNotEmpty) {
-      final tagRecords = records.where((r) {
-        if (r.tagUuids == null) return false;
-        return r.tagUuids!.contains(categoryTagId);
-      }).toList();
-
-      if (tagRecords.length >= 3) {
-        final avg =
-            tagRecords.map((r) => r.actualMinutes).reduce((a, b) => a + b) /
-                tagRecords.length;
-        return (avg, 0.5);
+  }) {
+    if (title.trim().isEmpty) {
+      return _fallback(
+        title,
+        username,
+        TimeEstimationSource.empty,
+        '请输入标题以获取预估',
+      );
+    }
+    final tokens = _tokenize(title);
+    double recency(TimeEstimationSample sample) => max(
+      1e-8,
+      pow(
+        .5,
+        max(0, now.millisecondsSinceEpoch - sample.endedAt) /
+            Duration.millisecondsPerDay /
+            halfLifeDays,
+      ).toDouble(),
+    );
+    final valid = history.samples
+        .where(
+          (s) =>
+              s.actualSeconds > 0 &&
+              s.endedAt > 0 &&
+              s.endedAt <= now.millisecondsSinceEpoch &&
+              s.title.trim().isNotEmpty,
+        )
+        .toList();
+    final scored = <_WeightedSample>[];
+    for (final sample in valid) {
+      final candidate = _tokenize(sample.title);
+      final union = tokens.union(candidate).length;
+      final similarity = _normalize(title) == _normalize(sample.title)
+          ? 1.0
+          : union == 0
+          ? 0.0
+          : tokens.intersection(candidate).length / union;
+      if (similarity >= minimumSimilarity) {
+        scored.add(_WeightedSample(sample, similarity, recency(sample)));
       }
     }
-
-    // Try group-based grouping
-    if (groupId != null && groupId.isNotEmpty) {
-      try {
-        final db = await DatabaseHelper.instance.database;
-        final groupTodos = await db.query(
-          'todos',
-          columns: ['uuid'],
-          where: 'group_id = ? AND is_deleted = 0',
-          whereArgs: [groupId],
-        );
-        final groupUuids = groupTodos.map((r) => r['uuid'] as String).toSet();
-
-        if (groupUuids.isNotEmpty) {
-          final groupRecords = records
-              .where(
-                  (r) => r.todoUuid != null && groupUuids.contains(r.todoUuid))
-              .toList();
-
-          if (groupRecords.length >= 3) {
-            final avg = groupRecords
-                    .map((r) => r.actualMinutes)
-                    .reduce((a, b) => a + b) /
-                groupRecords.length;
-            return (avg, 0.4);
-          }
-        }
-      } catch (_) {
-        // Ignore DB errors
+    scored.sort((a, b) {
+      final cmp = b.weight.compareTo(a.weight);
+      return cmp != 0 ? cmp : a.sample.todoId.compareTo(b.sample.todoId);
+    });
+    final similar = scored.take(maxSimilarSamples).toList();
+    var category = <TimeEstimationSample>[];
+    String? categoryReason;
+    if (categoryTagId?.isNotEmpty == true) {
+      category = valid.where((s) => s.tagIds.contains(categoryTagId)).toList();
+      if (category.length >= 3) {
+        categoryReason = '同标签';
+      } else {
+        category.clear();
       }
     }
+    if (category.isEmpty && groupId?.isNotEmpty == true) {
+      category = valid.where((s) => s.groupId == groupId).toList();
+      if (category.length >= 3) {
+        categoryReason = '同分组';
+      } else {
+        category.clear();
+      }
+    }
+    category.sort((a, b) {
+      final cmp = b.endedAt.compareTo(a.endedAt);
+      return cmp != 0 ? cmp : a.todoId.compareTo(b.todoId);
+    });
+    category = category.take(maxCategorySamples).toList();
+    final used = <String, TimeEstimationSample>{
+      for (final item in similar) item.sample.todoId: item.sample,
+      for (final item in category) item.todoId: item,
+    }.values.toList();
+    if (used.isEmpty) {
+      return _fallback(
+        title,
+        username,
+        TimeEstimationSource.heuristic,
+        history.incompleteCount > 0
+            ? '没有可靠的同类完成样本，部分历史记录不完整，按关键词粗略估算'
+            : '没有可靠的同类完成样本，按关键词粗略估算',
+        history: history,
+      );
+    }
 
-    // Fallback: global average
-    final globalAvg =
-        records.map((r) => r.actualMinutes).reduce((a, b) => a + b) /
-            records.length;
-    return (globalAvg, 0.2);
+    // Missing layers carry no weight; renormalize only available layers.
+    double weighted = 0, weights = 0;
+    if (similar.isNotEmpty) {
+      weighted += .75 * _median(similar);
+      weights += .75;
+    }
+    if (category.isNotEmpty) {
+      weighted +=
+          .25 *
+          _median(
+            category.map((s) => _WeightedSample(s, 1, recency(s))).toList(),
+          );
+      weights += .25;
+    }
+    var minutes = weighted / weights;
+    final durations = used.map((s) => s.minutes).toList()..sort();
+    final center = durations[durations.length ~/ 2];
+    final spread = (durations.last - durations.first) / max(1, center);
+    // Sparse or inconsistent history is a weaker signal, without allowing an
+    // extreme duration to dominate the robust center.
+    final historicalWeight =
+        min(1.0, used.length / 3) * (spread > .6 ? .65 : 1.0);
+    minutes =
+        minutes * historicalWeight +
+        _coldStartEstimate(title).estimatedMinutes * (1 - historicalWeight);
+    final recent = used.map(recency).reduce((a, b) => a + b) / used.length;
+    final strongSimilar = similar
+        .where((s) => s.similarity >= .6 && s.recency >= .5)
+        .length;
+    final score = spread > .6 || used.length < 3
+        ? .2
+        : strongSimilar >= 5 && recent >= .5 && spread <= .35
+        ? .75
+        : recent >= .25
+        ? .45
+        : .2;
+    final reasons = <String>[
+      if (similar.isNotEmpty) '${similar.length}个相似',
+      if (category.isNotEmpty) '${category.length}个$categoryReason',
+    ];
+    return TimeEstimationResult(
+      estimatedMinutes: max(5, minutes.round()),
+      confidence: score,
+      source: TimeEstimationSource.history,
+      username: username,
+      samples: List.unmodifiable(used),
+      similarTitles: List.unmodifiable(
+        similar.map((s) => s.sample.title).toSet().take(3),
+      ),
+      incompleteCount: history.incompleteCount,
+      noActualCount: history.noActualCount,
+      reason:
+          '参考${reasons.join('、')}已完成待办的累计专注${spread > .6
+              ? '；耗时差异较大，已降低历史影响'
+              : used.length < 3
+              ? '；样本较少，结合关键词估算'
+              : recent < .25
+              ? '；历史较久，参考有限'
+              : ''}',
+    );
   }
 
-  // === Weight Selection ===
-
-  static List<double> _getWeights(int recordCount) {
-    if (recordCount < 3) return [0.0, 1.0, 0.0]; // complexity only
-    if (recordCount < 10) return [0.35, 0.40, 0.25];
-    if (recordCount < 30) return [0.45, 0.30, 0.25];
-    return [0.50, 0.30, 0.20];
+  static double _median(List<_WeightedSample> samples) {
+    final sorted = [...samples]
+      ..sort((a, b) => a.sample.minutes.compareTo(b.sample.minutes));
+    final halfway = sorted.fold<double>(0, (v, s) => v + s.weight) / 2;
+    double total = 0;
+    for (final value in sorted) {
+      total += value.weight;
+      if (total >= halfway) return value.sample.minutes;
+    }
+    return sorted.last.sample.minutes;
   }
 
-  // === Tokenization ===
+  static String _normalize(String text) => text
+      .toLowerCase()
+      .replaceAll(_cjkOrAlnum, ' ')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
 
   static Set<String> _tokenize(String text) {
+    final cleaned = _normalize(text);
     final tokens = <String>{};
-    // Normalize: lowercase, strip punctuation, keep CJK + alphanumeric
-    final cleaned = text.toLowerCase().replaceAll(_cjkOrAlnum, ' ').trim();
-
-    if (cleaned.isEmpty) return tokens;
-
-    // English words (min length 2)
     for (final m in _englishWord.allMatches(cleaned)) {
-      final w = m.group(0)!;
-      if (w.length >= 2) tokens.add(w);
+      if (m.group(0)!.length >= 2) tokens.add(m.group(0)!);
     }
-
-    // Chinese: unigrams + bigrams
     for (final m in _cjkRange.allMatches(cleaned)) {
       final seg = m.group(0)!;
-      for (int i = 0; i < seg.length; i++) {
+      for (var i = 0; i < seg.length; i++) {
         tokens.add(seg[i]);
-      }
-      for (int i = 0; i < seg.length - 1; i++) {
-        tokens.add(seg.substring(i, i + 2));
+        if (i + 1 < seg.length) tokens.add(seg.substring(i, i + 2));
       }
     }
-
     return tokens;
   }
-
-  // === Cold Start ===
 
   static TimeEstimationResult _coldStartEstimate(String title) {
     final len = title.length;
@@ -516,34 +429,5 @@ class TimeEstimationService {
       confidence: 0.2,
       reason: reason,
     );
-  }
-
-  // === Reason Builder ===
-
-  static String _buildReason(
-    (double, double, List<String>) similarity,
-    (double, double) complexity,
-    (double, double) category,
-    List<double> weights,
-  ) {
-    final parts = <String>[];
-
-    if (weights[0] > 0 && similarity.$2 > 0.2 && similarity.$3.isNotEmpty) {
-      parts.add('与"${similarity.$3.first}"相似');
-    }
-
-    if (weights[1] > 0) {
-      parts.add('基于任务复杂度分析');
-    }
-
-    if (weights[2] > 0 && category.$2 > 0.25) {
-      parts.add('参考同类任务平均耗时');
-    }
-
-    if (parts.isEmpty) {
-      parts.add('综合分析');
-    }
-
-    return parts.join('，');
   }
 }

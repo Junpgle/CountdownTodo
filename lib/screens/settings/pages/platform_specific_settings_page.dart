@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -55,6 +57,8 @@ class _PlatformSpecificSettingsPageState
   };
 
   String? _highlightTarget;
+  Timer? _highlightTimer;
+  Timer? _priorityRefreshTimer;
 
   // Windows Specific
   int _floatWindowStyle = 0;
@@ -95,6 +99,8 @@ class _PlatformSpecificSettingsPageState
 
   @override
   void dispose() {
+    _highlightTimer?.cancel();
+    _priorityRefreshTimer?.cancel();
     _permissionCoordinator.dispose();
     super.dispose();
   }
@@ -109,7 +115,9 @@ class _PlatformSpecificSettingsPageState
         curve: Curves.easeInOut,
         alignment: 0.15,
       );
-      Future.delayed(const Duration(milliseconds: 3000), () {
+      _highlightTimer?.cancel();
+      _highlightTimer = Timer(const Duration(milliseconds: 3000), () {
+        _highlightTimer = null;
         if (mounted) setState(() => _highlightTarget = null);
       });
     }
@@ -316,14 +324,19 @@ class _PlatformSpecificSettingsPageState
         AppSnackBars.success(context, '✅ 灵动岛优先级已更新');
       }
       FloatWindowService.invalidateCache();
-      Future.delayed(const Duration(milliseconds: 300), () async {
-        if (!mounted) return;
-        try {
-          await FloatWindowService.update();
-        } catch (e) {
-          debugPrint('[Settings] Island priority refresh failed: $e');
-        }
-      });
+      _priorityRefreshTimer?.cancel();
+      _priorityRefreshTimer = Timer(
+        const Duration(milliseconds: 300),
+        () async {
+          _priorityRefreshTimer = null;
+          if (!mounted) return;
+          try {
+            await FloatWindowService.update();
+          } catch (e) {
+            debugPrint('[Settings] Island priority refresh failed: $e');
+          }
+        },
+      );
     }
   }
 

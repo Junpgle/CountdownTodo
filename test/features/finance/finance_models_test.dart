@@ -231,6 +231,77 @@ void main() {
     expect(summary.transactionCount, 1);
   });
 
+  test('历史余额只容忍跨到下月的时区快照偏移', () {
+    final card = FinanceBudget(
+      uuid: 'historical-balance-card',
+      monthKey: '2026-09',
+      paymentMethodUuid: 'historical-balance-method',
+      amountMinor: 10000,
+      balanceSnapshotAt: DateTime(2026, 9, 21, 9).millisecondsSinceEpoch,
+    );
+    final midMonthSnapshots = FinanceRepository.latestPaymentBalanceSnapshots(
+      [card],
+      asOfAt: DateTime(2026, 9, 20, 12).millisecondsSinceEpoch,
+      nowAt: DateTime(2026, 10, 7).millisecondsSinceEpoch,
+    );
+    expect(midMonthSnapshots, isEmpty);
+
+    final monthEndCard = FinanceBudget(
+      uuid: 'cross-month-timezone-card',
+      monthKey: '2026-09',
+      paymentMethodUuid: 'cross-month-timezone-method',
+      amountMinor: 10000,
+      balanceSnapshotAt: DateTime(2026, 10, 1, 20).millisecondsSinceEpoch,
+    );
+    final monthEndSnapshots = FinanceRepository.latestPaymentBalanceSnapshots(
+      [monthEndCard],
+      asOfAt: DateTime(2026, 9, 30, 23, 59, 59, 999).millisecondsSinceEpoch,
+      nowAt: DateTime(2026, 10, 7).millisecondsSinceEpoch,
+    );
+    expect(monthEndSnapshots.single.uuid, monthEndCard.uuid);
+  });
+
+  test('月末跨时区快照按实际时间纳入并选择最新余额', () {
+    final asOf = DateTime(2026, 9, 30, 23, 59, 59, 999);
+    final nowAt = DateTime(2026, 10, 7).millisecondsSinceEpoch;
+    final nextMonthKeySnapshot = FinanceBudget(
+      uuid: 'timezone-ahead-month-key',
+      monthKey: '2026-10',
+      paymentMethodUuid: 'timezone-ahead-method',
+      amountMinor: 12000,
+      balanceSnapshotAt:
+          DateTime(2026, 9, 30, 23, 30).millisecondsSinceEpoch,
+      updatedAt: DateTime(2026, 9, 30, 23, 30).millisecondsSinceEpoch,
+    );
+
+    expect(
+      FinanceRepository.latestPaymentBalanceSnapshots(
+        [nextMonthKeySnapshot],
+        asOfAt: asOf.millisecondsSinceEpoch,
+        nowAt: nowAt,
+      ).single.uuid,
+      nextMonthKeySnapshot.uuid,
+    );
+
+    final newerPreviousKeySnapshot = FinanceBudget(
+      uuid: 'newer-previous-month-key',
+      monthKey: '2026-09',
+      paymentMethodUuid: 'timezone-ahead-method',
+      amountMinor: 10000,
+      balanceSnapshotAt:
+          DateTime(2026, 9, 30, 23, 40).millisecondsSinceEpoch,
+      updatedAt: DateTime(2026, 9, 30, 23, 40).millisecondsSinceEpoch,
+    );
+    expect(
+      FinanceRepository.latestPaymentBalanceSnapshots(
+        [nextMonthKeySnapshot, newerPreviousKeySnapshot],
+        asOfAt: asOf.millisecondsSinceEpoch,
+        nowAt: nowAt,
+      ).single.uuid,
+      newerPreviousKeySnapshot.uuid,
+    );
+  });
+
   test('未来发生时刻不因记录日期与保存时区不一致而提前计入余额', () {
     final createdAt = DateTime.utc(2026, 10, 1, 16, 30);
     final occurredAt = createdAt.add(const Duration(minutes: 1));

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../utils/app_platform.dart';
@@ -45,6 +47,7 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
   };
 
   String? _highlightTarget;
+  Timer? _highlightTimer;
   bool _bandServiceBusy = false;
 
   GlobalKey _navigationKey(String id) => _itemKeys.putIfAbsent(
@@ -78,6 +81,12 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
         _scrollToTarget(widget.initialTarget!);
       });
     }
+  }
+
+  @override
+  void dispose() {
+    _highlightTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _setBandServiceEnabled(bool enabled) async {
@@ -139,7 +148,9 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
         curve: Curves.easeInOut,
         alignment: 0.15,
       );
-      Future.delayed(const Duration(milliseconds: 3000), () {
+      _highlightTimer?.cancel();
+      _highlightTimer = Timer(const Duration(milliseconds: 3000), () {
+        _highlightTimer = null;
         if (mounted) setState(() => _highlightTarget = null);
       });
     }

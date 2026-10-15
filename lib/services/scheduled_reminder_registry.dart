@@ -10,6 +10,14 @@ abstract final class ScheduledReminderSources {
 }
 
 abstract final class ScheduledReminderRegistry {
+  static const _maxDateTimeMilliseconds = 8640000000000000;
+
+  static List<Map<String, dynamic>> withoutPlanBlocks(
+    Iterable<Map<String, dynamic>> reminders, Set<String> planIds,
+  ) => reminders.where((r) => !(sourceOf(r) == ScheduledReminderSources.reminderSchedule &&
+      r['type'] == 'plan_block' && planIds.contains(r['planBlockId']?.toString())))
+    .map(Map<String, dynamic>.from).toList(growable: false);
+
   static Map<String, dynamic> withSource(
     Map<String, dynamic> reminder,
     String source,
@@ -56,10 +64,14 @@ abstract final class ScheduledReminderRegistry {
     final current = now ?? DateTime.now();
     return reminders
         .where((reminder) {
-          final triggerAt = _dateTimeOf(reminder['triggerAtMs']);
-          final startAt = _dateTimeOf(
-            reminder['startAtMs'] ?? reminder['courseStartMs'],
-          );
+          final triggerValue = reminder['triggerAtMs'];
+          final startValue = reminder['startAtMs'] ?? reminder['courseStartMs'];
+          if (_isInvalidTimestamp(triggerValue) ||
+              _isInvalidTimestamp(startValue)) {
+            return false;
+          }
+          final triggerAt = _dateTimeOf(triggerValue);
+          final startAt = _dateTimeOf(startValue);
           if (triggerAt == null) return true;
           return triggerAt.isAfter(current) ||
               (startAt != null && startAt.isAfter(current));
@@ -113,16 +125,36 @@ abstract final class ScheduledReminderRegistry {
   }
 
   static DateTime? _dateTimeOf(dynamic value) {
+    final milliseconds = timestampMilliseconds(value);
+    return milliseconds == null
+        ? null
+        : DateTime.fromMillisecondsSinceEpoch(milliseconds);
+  }
+
+  static int? timestampMilliseconds(dynamic value) {
+    if (value == null) return null;
     int? milliseconds;
     if (value is int) {
       milliseconds = value;
     } else if (value is num) {
+      if (!value.isFinite ||
+          value < -_maxDateTimeMilliseconds ||
+          value > _maxDateTimeMilliseconds) {
+        return null;
+      }
       milliseconds = value.toInt();
     } else if (value is String) {
       milliseconds = int.tryParse(value);
     }
-    return milliseconds == null
-        ? null
-        : DateTime.fromMillisecondsSinceEpoch(milliseconds);
+    if (milliseconds == null ||
+        milliseconds < -_maxDateTimeMilliseconds ||
+        milliseconds > _maxDateTimeMilliseconds) {
+      return null;
+    }
+    return milliseconds;
+  }
+
+  static bool _isInvalidTimestamp(dynamic value) {
+    return value != null && timestampMilliseconds(value) == null;
   }
 }
