@@ -366,6 +366,7 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
     DateTime day, {
     List<dynamic>? dayItems,
     VoidCallback? onClose,
+    String keyScope = 'sidebar',
   }) {
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
     final String dateStr = DateFormat('yyyy年M月d日').format(day);
@@ -461,6 +462,7 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
                         context,
                         items[index],
                         sourceDate,
+                        keyScope,
                       ),
                     ),
                   ),
@@ -471,10 +473,17 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
   }
 
   Widget _buildDetailSidebarItem(BuildContext context, dynamic item,
-      [String? sourceDate]) {
+      [String? sourceDate, String keyScope = 'sidebar']) {
     if (item is CourseItem) {
       final color = _getCourseColor(item.courseName);
+      final sourceKey = _getDetailSidebarCardKey(
+        'course',
+        item.uuid,
+        sourceDate,
+        surface: keyScope,
+      );
       return ListTile(
+        key: sourceKey,
         leading: Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
@@ -486,17 +495,28 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
         subtitle: Text(
             '${item.formattedStartTime}-${item.formattedEndTime} @ ${item.roomName}',
             style: const TextStyle(fontSize: 12)),
-        onTap: () => Navigator.push(
-            context,
-            PageTransitions.material(
-                builder: (_) => CourseDetailScreen(
-                    course: item, courseSchedule: _allCourses))),
+        onTap: () => _openSidebarDetailFromRect(
+          context,
+          sourceKey: sourceKey,
+          page: CourseDetailScreen(
+            course: item,
+            courseSchedule: _allCourses,
+          ),
+          placeholderIcon: Icons.class_,
+        ),
       );
     } else if (item is TodoItem) {
       final colorScheme = Theme.of(context).colorScheme;
       final statusColor =
           item.isDone ? colorScheme.cdtSuccess : colorScheme.cdtWarning;
+      final sourceKey = _getDetailSidebarCardKey(
+        'todo',
+        item.id,
+        sourceDate,
+        surface: keyScope,
+      );
       return ListTile(
+        key: sourceKey,
         leading: Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
@@ -548,14 +568,23 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
             style: const TextStyle(fontSize: 12),
             maxLines: 2,
             overflow: TextOverflow.ellipsis),
-        onTap: () => Navigator.push(
-            context,
-            PageTransitions.material(
-                builder: (_) => TodoDetailScreen(todo: item))),
+        onTap: () => _openSidebarDetailFromRect(
+          context,
+          sourceKey: sourceKey,
+          page: TodoDetailScreen(todo: item),
+          placeholderIcon: Icons.task_alt_rounded,
+        ),
       );
     } else if (item is TimeLogItem) {
       final color = Theme.of(context).colorScheme.primary;
+      final sourceKey = _getDetailSidebarCardKey(
+        'time_log',
+        item.id,
+        sourceDate,
+        surface: keyScope,
+      );
       return ListTile(
+        key: sourceKey,
         leading: Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
@@ -567,13 +596,26 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
         subtitle: Text(
             '${DateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(item.startTime, isUtc: true).toLocal())} - ${DateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(item.endTime, isUtc: true).toLocal())}',
             style: const TextStyle(fontSize: 12)),
+        onTap: () => _openSidebarDetailFromRect(
+          context,
+          sourceKey: sourceKey,
+          page: TimeLogDetailScreen(log: item, tags: _pomodoroTags),
+          placeholderIcon: Icons.edit_calendar,
+        ),
       );
     } else if (item is TodoPlanBlock) {
       final color = Theme.of(context).colorScheme.secondary;
       final start =
           DateTime.fromMillisecondsSinceEpoch(item.startTime).toLocal();
       final end = DateTime.fromMillisecondsSinceEpoch(item.endTime).toLocal();
+      final sourceKey = _getDetailSidebarCardKey(
+        'plan_block',
+        item.uuid,
+        sourceDate,
+        surface: keyScope,
+      );
       return ListTile(
+        key: sourceKey,
         leading: Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
@@ -590,10 +632,23 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
         subtitle: Text(
             '${DateFormat('HH:mm').format(start)} - ${DateFormat('HH:mm').format(end)} · 计划 ${item.plannedMinutes} 分钟',
             style: const TextStyle(fontSize: 12)),
+        onTap: () => _openSidebarDetailFromRect(
+          context,
+          sourceKey: sourceKey,
+          page: PlanBlockDetailScreen(block: item),
+          placeholderIcon: Icons.event_note,
+        ),
       );
     } else if (item is PomodoroRecord) {
       final color = Theme.of(context).colorScheme.cdtFocus;
+      final sourceKey = _getDetailSidebarCardKey(
+        'pomodoro',
+        item.uuid,
+        sourceDate,
+        surface: keyScope,
+      );
       return ListTile(
+        key: sourceKey,
         leading: Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
@@ -603,11 +658,21 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
         title: const Text('番茄专注', style: TextStyle(fontSize: 15)),
         subtitle: Text('时长: ${item.effectiveDuration ~/ 60} 分钟',
             style: const TextStyle(fontSize: 12)),
+        onTap: () => _openSidebarDetailFromRect(
+          context,
+          sourceKey: sourceKey,
+          page: PomodoroDetailScreen(record: item, tags: _pomodoroTags),
+          placeholderIcon: Icons.timer,
+        ),
       );
     } else if (item is FixedScheduleItem) {
       final colorScheme = Theme.of(context).colorScheme;
       final color = colorScheme.primary;
-      final sourceKey = _getFixedScheduleSidebarKey(item.id, sourceDate);
+      final sourceKey = _getFixedScheduleSidebarKey(
+        item.id,
+        sourceDate,
+        surface: keyScope,
+      );
       return ListTile(
         key: sourceKey,
         leading: Container(
@@ -641,7 +706,7 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
       final sourceKey = _getDeviceCalendarCardKey(
         item.id,
         dateKey,
-        surface: 'sidebar',
+        surface: '${keyScope}_device_sidebar',
       );
       return ListTile(
         key: sourceKey,
@@ -668,6 +733,22 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
       );
     }
     return const SizedBox.shrink();
+  }
+
+  void _openSidebarDetailFromRect(
+    BuildContext context, {
+    required GlobalKey sourceKey,
+    required Widget page,
+    required IconData placeholderIcon,
+  }) {
+    PageTransitions.pushFromRect(
+      context: context,
+      page: page,
+      sourceKey: sourceKey,
+      sourceColor: Theme.of(context).colorScheme.surfaceContainer,
+      sourceBorderRadius: const BorderRadius.all(Radius.circular(12)),
+      placeholderIcon: placeholderIcon,
+    );
   }
 
   void _handleFilterSelection(String value) {

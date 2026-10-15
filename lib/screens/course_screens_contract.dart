@@ -68,6 +68,7 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
   final Map<String, GlobalKey> _pomodoroCardKeys = {};
   final Map<String, GlobalKey> _deviceCalendarCardKeys = {};
   final Map<String, GlobalKey> _fixedScheduleCardKeys = {};
+  final Map<String, GlobalKey> _detailSidebarCardKeys = {};
 
   final GlobalKey _filterKey = GlobalKey();
   final GlobalKey _viewModeKey = GlobalKey();
@@ -121,10 +122,21 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
 
   GlobalKey _getFixedScheduleSidebarKey(
     String scheduleId,
-    String? sourceDate,
-  ) {
-    final keyStr = 'sidebar_${scheduleId}_${sourceDate ?? 'schedule'}';
+    String? sourceDate, {
+    String surface = 'sidebar',
+  }) {
+    final keyStr = '${surface}_${scheduleId}_${sourceDate ?? 'schedule'}';
     return _fixedScheduleCardKeys.putIfAbsent(keyStr, () => GlobalKey());
+  }
+
+  GlobalKey _getDetailSidebarCardKey(
+    String type,
+    String itemId,
+    String? sourceDate, {
+    String surface = 'sidebar',
+  }) {
+    final keyStr = '${surface}_${type}_${sourceDate ?? 'selected'}_$itemId';
+    return _detailSidebarCardKeys.putIfAbsent(keyStr, () => GlobalKey());
   }
 
   // 时间轴参数配置
@@ -230,9 +242,10 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
     DateTime day, {
     List<dynamic>? dayItems,
     VoidCallback? onClose,
+    String keyScope = 'sidebar',
   });
   Widget _buildDetailSidebarItem(BuildContext context, dynamic item,
-      [String? sourceDate]);
+      [String? sourceDate, String surface = 'sidebar']);
   void _handleFilterSelection(String value);
   double _filterMenuWidth(BuildContext context);
   int get _selectedFilterCount;

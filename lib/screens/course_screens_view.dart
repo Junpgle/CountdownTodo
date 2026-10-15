@@ -828,6 +828,7 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
           child: _buildMonthDaySidebar(
             day,
             dayItems: dayItems,
+            keyScope: 'modal',
             onClose: () {
               Navigator.of(sheetContext).pop();
               if (mounted) setState(() => _selectedMonthDay = null);

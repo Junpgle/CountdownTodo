@@ -259,6 +259,72 @@ class DeviceCalendarEventDetailScreen extends StatelessWidget {
   }
 }
 
+class PlanBlockDetailScreen extends StatelessWidget {
+  const PlanBlockDetailScreen({super.key, required this.block});
+
+  final TodoPlanBlock block;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final start =
+        DateTime.fromMillisecondsSinceEpoch(block.startTime).toLocal();
+    final end = DateTime.fromMillisecondsSinceEpoch(block.endTime).toLocal();
+    final status = switch (block.status) {
+      TodoPlanStatus.planned => '待执行',
+      TodoPlanStatus.reminded => '已提醒',
+      TodoPlanStatus.delayed => '已延后',
+      TodoPlanStatus.focusing => '专注中',
+      TodoPlanStatus.finished => '已完成',
+      TodoPlanStatus.missed => '已漏做',
+      TodoPlanStatus.skipped => '已跳过',
+      TodoPlanStatus.cancelled => '已取消',
+    };
+
+    return AppDetailScreen(
+      appBarTitle: '规划详情',
+      icon: Icons.event_note_rounded,
+      title: block.titleSnapshot ?? '规划任务',
+      color: colors.secondary,
+      sections: [
+        AppDetailSection(
+          title: '规划信息',
+          children: [
+            AppDetailWideCard(
+              icon: Icons.calendar_today_rounded,
+              title: '时间',
+              value:
+                  '${DateFormat('yyyy年M月d日 HH:mm').format(start)} – ${DateFormat('HH:mm').format(end)}',
+            ),
+            AppDetailWideCard(
+              icon: Icons.event_available_rounded,
+              title: '状态',
+              value: status,
+            ),
+            AppDetailWideCard(
+              icon: Icons.timer_outlined,
+              title: '计划时长',
+              value: '${block.plannedMinutes} 分钟',
+            ),
+            AppDetailWideCard(
+              icon: Icons.local_fire_department_rounded,
+              title: '实际专注',
+              value: '${block.actualFocusSeconds ~/ 60} 分钟',
+            ),
+            if (block.remark?.isNotEmpty == true)
+              AppDetailWideCard(
+                icon: Icons.note_rounded,
+                title: '备注',
+                value: block.remark!,
+                maxLines: 10,
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
 class TodoDetailScreen extends StatefulWidget {
   final TodoItem todo;
   const TodoDetailScreen({super.key, required this.todo});
