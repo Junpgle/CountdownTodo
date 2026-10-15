@@ -329,8 +329,13 @@ void main() {
       ),
     );
 
-    await tester.ensureVisible(
-      find.byKey(const ValueKey('finance-overview-category-food')),
+    final foodCategory = find.byKey(
+      const ValueKey('finance-overview-category-food'),
+    );
+    await tester.scrollUntilVisible(
+      foodCategory,
+      200,
+      scrollable: find.byType(Scrollable).first,
     );
     await tester.pumpAndSettle();
     expect(find.text('餐饮 - 奶茶'), findsNothing);

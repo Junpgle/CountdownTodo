@@ -28,6 +28,7 @@ class AppSettingsStorage {
   static const String _financeCloudSyncEnabled = "finance_cloud_sync_enabled";
   static const String _financeCategoryTapOpensLedger =
       "finance_category_tap_opens_ledger";
+  static const String _financeOpeningBalance = "finance_opening_balance";
   static const String _courseReminderMinutes = "course_reminder_minutes";
 
   static const String _privacyAgreed = "privacy_policy_agreed";
@@ -203,6 +204,103 @@ class AppSettingsStorage {
   static Future<void> setFinanceCategoryTapOpensLedger(bool enabled) async {
     final prefs = await _prefs;
     await prefs.setBool(_financeCategoryTapOpensLedger, enabled);
+  }
+
+  static String _financeOpeningBalanceScope(String username) =>
+      username.trim().isEmpty ? 'local' : username.trim();
+
+  static String _financeOpeningBalanceAmountKey(String username) =>
+      '${_financeOpeningBalance}_amount_${_financeOpeningBalanceScope(username)}';
+
+  static String _financeOpeningBalanceDateKey(String username) =>
+      '${_financeOpeningBalance}_date_${_financeOpeningBalanceScope(username)}';
+
+  static String _financeOpeningBalanceKey(String username) =>
+      '${_financeOpeningBalance}_${_financeOpeningBalanceScope(username)}';
+
+  static Future<({int amountMinor, String? startDate})>
+  getFinanceOpeningBalance(String username, {DateTime? now}) async {
+    final prefs = await _prefs;
+    final today = _financeDateKeyFor(now ?? DateTime.now());
+    final raw = prefs.getString(_financeOpeningBalanceKey(username));
+    if (raw != null) {
+      try {
+        final value = jsonDecode(raw);
+        if (value is Map<String, dynamic>) {
+          final amountMinor = value['amountMinor'];
+          final startDate = value['startDate'];
+          if (amountMinor is int &&
+              amountMinor >= 0 &&
+              _isFinanceDateKey(startDate) &&
+              (startDate as String).compareTo(today) <= 0) {
+            return (amountMinor: amountMinor, startDate: startDate);
+          }
+        }
+      } catch (_) {
+        // A damaged local preference must not break the finance overview.
+      }
+      return (amountMinor: 0, startDate: null);
+    }
+
+    // Read the earlier two-key draft format so a local build can be upgraded
+    // without discarding a balance entered before this atomic representation.
+    final amountMinor = prefs.getInt(_financeOpeningBalanceAmountKey(username)) ?? 0;
+    final legacyDate = prefs.getString(_financeOpeningBalanceDateKey(username));
+    final hasValidDate =
+        _isFinanceDateKey(legacyDate) && legacyDate!.compareTo(today) <= 0;
+    if (!hasValidDate) {
+      // Without the date, applying an old opening amount to all historical
+      // movements would count some of those movements twice.
+      return (amountMinor: 0, startDate: null);
+    }
+    return (
+      amountMinor: amountMinor >= 0 ? amountMinor : 0,
+      startDate: legacyDate,
+    );
+  }
+
+  static Future<void> setFinanceOpeningBalance(
+    String username, {
+    required int amountMinor,
+    required String startDate,
+    DateTime? now,
+  }) async {
+    final today = _financeDateKeyFor(now ?? DateTime.now());
+    if (amountMinor < 0 ||
+        !_isFinanceDateKey(startDate) ||
+        startDate.compareTo(today) > 0) {
+      throw ArgumentError('期初结余金额或起算日期无效');
+    }
+    final prefs = await _prefs;
+    await prefs.setString(
+      _financeOpeningBalanceKey(username),
+      jsonEncode({'amountMinor': amountMinor, 'startDate': startDate}),
+    );
+    await prefs.remove(_financeOpeningBalanceAmountKey(username));
+    await prefs.remove(_financeOpeningBalanceDateKey(username));
+  }
+
+  static Future<void> clearFinanceOpeningBalance(String username) async {
+    final prefs = await _prefs;
+    await prefs.remove(_financeOpeningBalanceKey(username));
+    await prefs.remove(_financeOpeningBalanceAmountKey(username));
+    await prefs.remove(_financeOpeningBalanceDateKey(username));
+  }
+
+  static String _financeDateKeyFor(DateTime value) =>
+      '${value.year.toString().padLeft(4, '0')}-'
+      '${value.month.toString().padLeft(2, '0')}-'
+      '${value.day.toString().padLeft(2, '0')}';
+
+  static bool _isFinanceDateKey(String? value) {
+    if (value == null) return false;
+    final parsed = DateTime.tryParse(value);
+    if (parsed == null) return false;
+    final normalized =
+        '${parsed.year.toString().padLeft(4, '0')}-'
+        '${parsed.month.toString().padLeft(2, '0')}-'
+        '${parsed.day.toString().padLeft(2, '0')}';
+    return value == normalized;
   }
 
   static String _financeCloudSyncKey(String username) =>

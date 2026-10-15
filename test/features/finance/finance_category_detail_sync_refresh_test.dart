@@ -146,9 +146,15 @@ void main() {
         ),
       ),
     );
-    await tester.tap(
-      find.byKey(ValueKey('finance-overview-category-${root.uuid}')),
+    final rootCategory = find.byKey(
+      ValueKey('finance-overview-category-${root.uuid}'),
     );
+    await tester.scrollUntilVisible(
+      rootCategory,
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(rootCategory);
     await tester.pumpAndSettle();
     expect(find.text('日常支出 - 食品'), findsOneWidget);
     expect(find.text('¥10.00'), findsNWidgets(2));
