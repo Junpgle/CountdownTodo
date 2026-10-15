@@ -1093,11 +1093,22 @@ class _WeekViewState extends State<_WeekView>
                     },
                   )),
         ]));
+    if (useFloating) {
+      // The weekly calendar header sits directly below this action row. Keep
+      // both on the same page surface so a floating glass capsule does not
+      // read as a detached card pasted onto the grid.
+      return Container(
+        height: 52,
+        margin: const EdgeInsets.only(top: 8),
+        alignment: Alignment.center,
+        color: _TC.topBar(ctx),
+        child: child,
+      );
+    }
+
     return FloatingGlassControl(
-      height: useFloating ? 60 : 52,
-      margin:
-          useFloating ? const EdgeInsets.fromLTRB(8, 8, 8, 4) : EdgeInsets.zero,
-      borderRadius: useFloating ? _timeLogActionBarRadius : 0,
+      height: 52,
+      borderRadius: 0,
       mobilePortraitOnly: true,
       child: child,
     );
