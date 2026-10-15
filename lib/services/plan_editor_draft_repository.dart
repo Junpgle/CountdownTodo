@@ -103,7 +103,7 @@ class PlanDraftFields {
         f.rounds < 0 ||
         f.rounds > 6 ||
         f.offsetMinutes.abs() > 1440 ||
-        !['timeline', 'todo', 'backlog'].contains(f.origin)) {
+        !['timeline', 'todo', 'backlog', 'reuse'].contains(f.origin)) {
       throw const FormatException('草稿内容无效');
     }
     if (f.split != null && (f.split!.slots.first.start.millisecondsSinceEpoch != f.start ||

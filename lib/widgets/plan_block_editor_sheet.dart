@@ -12,6 +12,7 @@ import 'package:uuid/uuid.dart';
 import '../models.dart';
 import '../services/database_helper.dart';
 import '../services/plan_todo_guard.dart';
+import '../services/plan_reuse_repository.dart';
 import '../services/plan_editor_draft_repository.dart';
 import '../services/plan_availability_preferences.dart';
 import '../models/plan_availability.dart';
@@ -110,6 +111,8 @@ class PlanBlockEditorSheet extends StatefulWidget {
   final PlanEditorDraftRepository? draftRepository;
   final String draftOrigin;
   final VoidCallback? onManageDrafts;
+  final PlanReuseSeed? reuse;
+  final PlanReuseRepository? reuseRepository;
 
   const PlanBlockEditorSheet({
     super.key,
@@ -143,6 +146,8 @@ class PlanBlockEditorSheet extends StatefulWidget {
     this.draftRepository,
     this.draftOrigin = 'timeline',
     this.onManageDrafts,
+    this.reuse,
+    this.reuseRepository,
   });
 
   @override
@@ -190,6 +195,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
   TodoItem? _restoredTodo;
   late String _targetPlanId, _baseline;
   bool _userTouched = false, _allowExit = false, _exitPrompt = false;
+  bool _reuseNeedsRetention = false, _openingReuse = false;
   bool _draftLoading = false, _restored = false, _offsetChanged = false;
   String _restoredScheduleOrigin = 'legacy';
   String? _restoredWeeklyKey;
@@ -198,6 +204,13 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
   String? _draftLoadError;
   int _draftReadSequence = 0;
   PlanBacklogSaveContext? get _backlog => _restoredBacklog ?? widget.backlogContext;
+  bool get _canReuse => widget.block != null &&
+      !widget.block!.id.startsWith('mapped_') &&
+      widget.block!.source != TodoPlanSource.calendar;
+  bool get _isReuse => (_localDraft?.fields.origin ?? widget.restoredDraft?.fields.origin ??
+      (widget.reuse == null ? null : 'reuse')) == 'reuse';
+  PlanReuseRepository get _reuseRepository => widget.reuseRepository ??
+      PlanReuseRepository(clock: widget.clock);
   bool get _supportsDraft => widget.block == null &&
       widget.recovery == null && widget.conflictEdit == null;
   PlanDraftFields get _fields => PlanDraftFields(
@@ -205,7 +218,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
     start: _start.millisecondsSinceEpoch, end: _end.millisecondsSinceEpoch,
     remark: _remarkCtrl.text, reminder: _reminderMinutes,
     pomodoro: _pomodoroMinutes, rounds: _pomodoroRounds,
-    origin: _localDraft?.fields.origin ?? (_backlog != null ? 'backlog' : widget.draftOrigin),
+    origin: _localDraft?.fields.origin ?? (_isReuse ? 'reuse' : _backlog != null ? 'backlog' : widget.draftOrigin),
     offsetMinutes: _start.timeZoneOffset.inMinutes,
     split: _split == null ? null : PlanSplitDraft(_split!.query, _split!.slots, _splitIds),
     scheduleOrigin:_restored ? _restoredScheduleOrigin :
@@ -213,7 +226,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
     weeklyKey:_restored ? _restoredWeeklyKey : (_split?.query.base.weekly ?? _recommendation?.query.weekly)?.fingerprint,
     weeklyIgnored:_restored ? _restoredWeeklyIgnored : (_split?.query.base.weekly ?? _recommendation?.query.weekly)?.ignored ?? false,
   );
-  bool get _dirty => _userTouched && _fields.fingerprint != _baseline;
+  bool get _dirty => _reuseNeedsRetention || (_userTouched && _fields.fingerprint != _baseline);
   void _touch() => _userTouched = true;
   void _automaticBaseline() {
     if (!_userTouched) _baseline = _fields.fingerprint;
@@ -304,6 +317,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
         _draftLoadError = null;
         _operationError = null;
         _userTouched = false;
+        _reuseNeedsRetention = false;
         _rebuildTodoEntries();
         _baseline = _fields.fingerprint;
       });
@@ -334,6 +348,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
         _localDraft = saved;
         _baseline = _fields.fingerprint;
         _userTouched = false;
+        _reuseNeedsRetention = false;
         _operationError = null;
       });
       ScaffoldMessenger.of(context).showSnackBar(
@@ -348,7 +363,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
   }
 
   Future<void> _leave() async {
-    if (_busy || _draftLoading || _exitPrompt) return;
+    if (_busy || _openingReuse || _draftLoading || _exitPrompt) return;
     if (!_dirty) { await _popEditor(); return; }
     _exitPrompt = true;
     final action = await showDialog<String>(context: context, builder: (c) => AlertDialog(
@@ -517,7 +532,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
   Future<void> _captureSaveIdentity() async {
     try {
       _saveIdentity =
-          _backlog?.identity ??
+          widget.reuse?.identity ?? _backlog?.identity ??
           await PlanTodoIdentity.capture(widget.username);
       await _saveIdentity!.check();
     } catch (error) {
@@ -549,7 +564,15 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
         widget.clock?.call() ?? DateTime.now(),
       );
     }
-    if (_split != null && _backlog == null) {
+    if (_isReuse && _backlog == null) {
+      await PlanTodoGuard.validateBacklog(executor,
+        PlanBacklogSaveContext(identity, draft.todoId, _approvedArrangements ?? '[]'),
+        _approvedArrangements ?? '[]',
+        DateTime.fromMillisecondsSinceEpoch(draft.startTime),
+        DateTime.fromMillisecondsSinceEpoch(draft.endTime),
+        widget.clock?.call() ?? DateTime.now());
+    }
+    if (_split != null && _backlog == null && !_isReuse) {
       final latest = await PlanTodoGuard.arrangements(executor, draft.todoId,
         widget.clock?.call() ?? DateTime.now());
       if (latest != (_approvedArrangements ?? '[]')) {
@@ -560,7 +583,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
   }
 
   Future<void> _confirmNewArrangements(String todoId) async {
-    if ((_backlog == null && _split == null) || widget.saver != null) return;
+    if ((_backlog == null && _split == null && !_isReuse) || widget.saver != null) return;
     await _identityReady;
     if (_identityError != null) throw _identityError!;
     final db = await DatabaseHelper.instance.databaseForUser(widget.username);
@@ -582,8 +605,8 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
     final append = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('此待办已有新的安排'),
-        content: const Text('编辑期间安排已变化。查看已有安排，或确认仍追加这次规划。'),
+        title: Text(_isReuse ? '此待办已有安排' : '此待办已有新的安排'),
+        content: Text(_isReuse ? '本次会新增独立规划，原安排保留。可先查看已有安排，再决定是否追加。' : '编辑期间安排已变化。查看已有安排，或确认仍追加这次规划。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -598,6 +621,20 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
     );
     if (append != true) {
       if (append == false) await widget.onViewExisting?.call();
+      if (append == false && _isReuse && widget.onViewExisting == null && mounted) {
+        final rows = await db.query('todo_plan_blocks',
+          columns: ['start_time','end_time','status'],
+          where: 'todo_uuid=? AND COALESCE(is_deleted,0)=0 AND status IN (0,2,4,5) AND end_time>?',
+          whereArgs: [todoId, (widget.clock?.call() ?? DateTime.now()).millisecondsSinceEpoch],
+          orderBy: 'start_time', limit: 20);
+        await _saveIdentity!.check();
+        if (mounted) {
+          await showDialog<void>(context: context, builder: (c) => AlertDialog(
+          title: const Text('已有安排'), content: SingleChildScrollView(child: Text(
+            rows.map((r) => '${DateFormat('MM-dd HH:mm').format(DateTime.fromMillisecondsSinceEpoch(r['start_time'] as int))}–${DateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(r['end_time'] as int))}').join('\n'))),
+          actions: [TextButton(onPressed: () => Navigator.pop(c), child: const Text('返回编辑'))]));
+        }
+      }
       throw const PlanAvailabilityException('尚未追加，草稿已保留');
     }
     _approvedArrangements = latest;
@@ -629,17 +666,20 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
         ? null
         : TodoPlanBlock.fromJson(widget.block!.toJson());
     _autoRecommendationPending =
-        widget.autoRecommendTime && widget.block == null;
-    _initialEstimatePending = _autoRecommendationPending;
+        (widget.autoRecommendTime || widget.reuse != null) && widget.block == null;
+    _initialEstimatePending = _autoRecommendationPending && widget.reuse == null;
     _allowAutoRecommendation = _autoRecommendationPending;
-    _selectedTodoId = widget.block?.todoId ?? widget.initialTodoId;
+    _selectedTodoId = widget.block?.todoId ?? widget.reuse?.todo?.id ?? widget.initialTodoId;
+    _restoredTodo = widget.reuse?.todo;
     final defaults = widget.recovery?.draft(_start) ?? widget.block;
-    _remarkCtrl = TextEditingController(text: defaults?.remark);
-    _reminderMinutes = defaults?.reminderMinutes ?? 5;
-    _pomodoroMinutes = defaults?.pomodoroMinutes ?? 25;
-    _pomodoroRounds = defaults?.pomodoroRounds ?? 0;
+    _remarkCtrl = TextEditingController(text: widget.reuse?.settings.remark ?? defaults?.remark);
+    _reminderMinutes = widget.reuse?.settings.reminder ?? defaults?.reminderMinutes ?? 5;
+    _pomodoroMinutes = widget.reuse?.settings.pomodoro ?? defaults?.pomodoroMinutes ?? 25;
+    _pomodoroRounds = widget.reuse?.settings.rounds ?? defaults?.pomodoroRounds ?? 0;
     _rebuildTodoEntries(chooseDefault: true);
     _baseline = _fields.fingerprint;
+    _reuseNeedsRetention = widget.reuse != null;
+    if (_selectedTodoId == null && _isReuse) _autoRecommendationPending = false;
     _draftLoading = widget.restoredDraft != null;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -697,7 +737,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
     if (chooseDefault &&
         _selectedTodoId == null &&
         widget.block == null &&
-        widget.recovery == null) {
+        widget.recovery == null && !_isReuse) {
       for (final entry in _todoEntries) {
         final todo = entry.todo;
         if (todo != null && !todo.isDone) {
@@ -811,7 +851,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
       _estimateResult = result;
       // Auto-fill end time
       if (newEnd.isAfter(_start)) {
-        if (!_restored) _end = newEnd;
+        if (!_restored && !_isReuse) _end = newEnd;
       }
       _automaticBaseline();
       // Estimated focus time does not change the user's Pomodoro configuration.
@@ -935,6 +975,9 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
     TodoPlanStatus? newStatus,
   }) async {
     final existing = _persistedBlock;
+    if (_isReuse && existing == null && selection == null && widget.saver == null) {
+      selection = await _checkReuseTime();
+    }
     if (widget.conflictEdit != null && widget.saver == null) {
       return (widget.conflictService ??
               PlanConflictReviewService(clock: widget.clock))
@@ -998,6 +1041,44 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
         }
       },
     );
+  }
+
+  Future<PlanAvailabilitySelection> _checkReuseTime() async {
+    final preferences = await PlanAvailabilityPreferences.load(widget.username);
+    var appOnly = _manualQuery?.appOnly ?? false;
+    while (true) {
+      final query = PlanAvailabilityQuery(
+        username: widget.username, todoId: _selectedTodoId!, date: _start,
+        minutes: _end.difference(_start).inMinutes, windowStart: 0, windowEnd: 1440,
+        appOnly: appOnly,
+        bufferBefore: _manualQuery?.bufferBefore ?? preferences.bufferBefore,
+        bufferAfter: _manualQuery?.bufferAfter ?? preferences.bufferAfter,
+        bufferOverride: _manualQuery?.bufferOverride ?? false,
+        bufferDefaultsKey: _manualQuery?.bufferDefaultsKey ?? preferences.bufferKey,
+        avoidanceOverride: _manualQuery?.avoidanceOverride ?? false,
+        avoidanceDefaultsKey: _manualQuery?.avoidanceDefaultsKey ?? preferences.avoidanceKey,
+        avoidWindows: _manualQuery?.avoidWindows ?? [
+          for (final i in preferences.selectedIndices) preferences.options[i]],
+      );
+      try {
+        final repository = PlanAvailabilityRepository(clock: widget.clock);
+        final fresh = await repository.read(query, forceRefresh: true);
+        final candidate = PlanAvailabilitySelection(query, PlanTimeSlot(_start, _end), fresh);
+        if (!PlanAvailabilityService.accepts(candidate, fresh,
+            now: widget.clock?.call() ?? DateTime.now())) {
+          throw const PlanAvailabilityException('时段已过去、被占用或不符合避让，请重新选择');
+        }
+        return candidate;
+      } on PlanAvailabilityException catch (error) {
+        if (!error.canUseAppOnly || appOnly || !mounted) rethrow;
+        final fallback = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
+          title: const Text('手机日历读取失败'), content: Text(error.message), actions: [
+            TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('取消')),
+            FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('仅检查应用内日程'))]));
+        if (fallback != true) rethrow;
+        appOnly = true;
+      }
+    }
   }
 
   Future<void> _chooseSplit({PlanAvailabilityQuery? query}) async {
@@ -1303,13 +1384,22 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
         ..reminderMinutes = _reminderMinutes
         ..pomodoroMinutes = _pomodoroMinutes
         ..pomodoroRounds = _pomodoroRounds;
-      await _confirmNewArrangements(draft.todoId);
-      saved = await _persist(draft, _recommendation);
+      await _identityReady;
+      if (_identityError != null && widget.saver == null) throw _identityError!;
+      final committed = _isReuse && _persistedBlock == null && widget.saver == null
+          ? await _reuseRepository.savedTarget(_saveIdentity!, draft) : null;
+      if (committed != null) {
+        saved = committed;
+      } else {
+        await _confirmNewArrangements(draft.todoId);
+        saved = await _persist(draft, _recommendation);
+      }
     }
     _persistedBlock = saved;
     _savedDraftRevision = _draftRevision;
     _baseline = _fields.fingerprint;
     _userTouched = false;
+    _reuseNeedsRetention = false;
     if (_localDraft != null) {
       try {
         await _drafts.delete(
@@ -1352,7 +1442,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
   }
 
   Future<void> _save() async {
-    if (_busy) return;
+    if (_busy || _openingReuse) return;
     setState(() {
       _busy = true;
       _operationError = null;
@@ -1368,7 +1458,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
   }
 
   Future<void> _saveAndStartFocus() async {
-    if (_busy) return;
+    if (_busy || _openingReuse) return;
     setState(() {
       _busy = true;
       _operationError = null;
@@ -1560,7 +1650,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
   }
 
   Future<void> _delete() async {
-    if (widget.block == null) return;
+    if (widget.block == null || _busy || _openingReuse) return;
     await StorageService.deletePlanBlockGlobally(
       widget.username,
       widget.block!.id,
@@ -1569,8 +1659,49 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
     if (mounted) Navigator.pop(context);
   }
 
+  Future<void> _reusePlan() async {
+    if (_busy || _openingReuse || _draftLoading || !_canReuse) return;
+    if (_dirty) {
+      _reportError(StateError('请先保存修改，或放弃修改后重新打开'));
+      return;
+    }
+    setState(() => _openingReuse = true);
+    try {
+      await _identityReady;
+      if (_identityError != null) throw _identityError!;
+      await _saveIdentity!.check();
+      final seed = await _reuseRepository.read(widget.username, widget.block!.id);
+      if (!mounted) return;
+      await seed.identity.check();
+      await _saveIdentity!.check();
+      if (!mounted) return;
+      if (_dirty) throw StateError('请先保存修改，或放弃修改后重新打开');
+      final todos = [
+        for (final t in widget.todos) if (t.id != widget.block!.todoId) t,
+        if (seed.todo != null) seed.todo!,
+      ];
+      await showPlanBlockEditorPage<void>(context: context, builder: (_) => PlanBlockEditorSheet(
+        fullPage: true, username: widget.username, reuse: seed,
+        reuseRepository: widget.reuseRepository,
+        startTime: seed.start, endTime: seed.end,
+        todos: todos, todoGroups: widget.todoGroups,
+        autoFillEstimateOnTodoChange: true,
+        availabilityLoader: widget.availabilityLoader,
+        continuousRangeLoader: widget.continuousRangeLoader,
+        saver: widget.saver, startFocus: widget.startFocus,
+        estimate: widget.estimate, clock: widget.clock,
+        navigateOnFocus: widget.navigateOnFocus,
+        draftRepository: widget.draftRepository,
+        onManageDrafts: widget.onManageDrafts, onSaved: widget.onSaved));
+    } catch (error) {
+      if (mounted) _reportError(error);
+    } finally {
+      if (mounted) setState(() => _openingReuse = false);
+    }
+  }
+
   Future<void> _skip() async {
-    if (widget.block == null) return;
+    if (widget.block == null || _busy || _openingReuse) return;
     final block = widget.block!;
     block.status = TodoPlanStatus.skipped;
     block.markAsChanged();
@@ -1705,10 +1836,14 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
             PopupMenuButton<String>(
               tooltip: '更多操作',
               onSelected: (value) {
+                if (value == 'reuse') unawaited(_reusePlan());
                 if (value == 'skip') _skip();
                 if (value == 'delete') _delete();
               },
               itemBuilder: (_) => [
+                if (_canReuse)
+                  PopupMenuItem(value: 'reuse', enabled: !_busy && !_openingReuse && !_draftLoading,
+                    child: Text(_openingReuse ? '正在读取设置…' : '照此新建')),
                 const PopupMenuItem(value: 'skip', child: Text('跳过规划')),
                 PopupMenuItem(
                   value: 'delete',
@@ -1746,6 +1881,12 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _draftNotice(),
+          if (_isReuse) Padding(padding: const EdgeInsets.only(bottom: 12),
+            child: Text(_recommendation == null && _split == null && _persistedBlock == null
+                ? '沿用已有规划设置 · ${_end.difference(_start).inMinutes}分钟\n时段尚未核实，请选择推荐或调整'
+                : '沿用已有规划设置 · ${_split?.query.total ?? _end.difference(_start).inMinutes}分钟',
+              key: const ValueKey('plan-reuse-notice'),
+              style: theme.textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant))),
           if (widget.recovery != null) ...[
             Text(
               '原安排：${DateFormat('MM-dd HH:mm').format(DateTime.fromMillisecondsSinceEpoch(widget.recovery!.source.startTime))}–${DateFormat('MM-dd HH:mm').format(DateTime.fromMillisecondsSinceEpoch(widget.recovery!.source.endTime))} · 漏做',
@@ -1808,6 +1949,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
                     setState(() {
                       _touch();
                       _selectedTodoId = value;
+                      _approvedArrangements = null;
                       _selectedTodoMetadata = _currentTodoMetadata;
                       _estimatedMinutes = null;
                       _estimateResult = null;
@@ -1912,7 +2054,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
               username: widget.username,
               resultsOnly: widget.fullPage,
               autoLookupResults:
-                  !widget.autoRecommendTime || _estimatedMinutes != null,
+                  _isReuse || !widget.autoRecommendTime || _estimatedMinutes != null,
               todo: _selectedTodo,
               initialDate: _start,
               initialMinutes: _end.difference(_start).inMinutes,

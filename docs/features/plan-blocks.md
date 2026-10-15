@@ -42,6 +42,31 @@ scheduled execution window. Multiple blocks may point to one todo.
 Plan blocks do not turn a todo's date-only/deadline field into an execution
 interval. See `todo-semantics.md` for the product distinction.
 
+## Reuse saved plan settings
+
+Verified on 2026-10-14: [round 16 acceptance](../reports/2026-10-14-plan-reuse-settings-acceptance.md).
+
+Real manual/AI plans offer **更多操作 → 照此新建** in their editor. The action
+reads the latest saved settings and opens the full-page new-plan editor. Its
+duration comes from the actual interval (1–1440 whole minutes), with the remark,
+Pomodoro duration/rounds and reminder retained. History defaults to today; future
+plans keep their local date. The exact source todo is rechecked for the current
+member. An ineligible/missing todo leaves selection empty, requiring a user choice.
+
+The first of two fresh recommendations fills the draft. Switching todos preserves
+the retained duration/configuration; estimates are references until explicitly
+adopted in custom search. No source plan is excluded from occupancy. A new UUID,
+planned/manual status, zero actual focus and empty calendar/Pomodoro bindings
+keep the new execution independent. Opening and discarding do not write business
+records. Saving checks current occupancy, deadline, identity and any acknowledged
+existing arrangements again; uncertain commits use the same target UUID.
+
+Even an untouched imported draft gets exit protection. **reuse** local drafts
+preserve user fields and target UUID without requiring the source to remain,
+while restored recommendations and append approvals are invalidated. Existing
+draft origins retain their behavior. Calendar/mapped records and invalid raw
+settings cannot be used as a source. This copies one block's settings only.
+
 ## Day overview
 
 The planning day header now shares the review aggregates: real plan budget,

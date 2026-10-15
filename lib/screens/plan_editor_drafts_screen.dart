@@ -112,6 +112,7 @@ class _PlanEditorDraftsScreenState extends State<PlanEditorDraftsScreen>
             [
               ?reason,
               if (f != null) ...[
+                if (f.origin == 'reuse') '沿用规划设置',
                 if (f.split == null) '${_time(f.start)} — ${_time(f.end)}'
                 else ...[
                   '${f.split!.slots.length}段 · 共${f.split!.query.total}分钟',
