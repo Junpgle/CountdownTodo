@@ -250,7 +250,7 @@ void main() {
                       FloatingBottomNavigationItem(
                         key: pomodoroKey,
                         label: '番茄钟',
-                        iconWidget: const Text('🍅'),
+                        icon: Icons.timer_rounded,
                         selectable: false,
                         onPressed: () => pomodoroPressed = true,
                         semanticsLabel: '番茄钟',
@@ -280,6 +280,13 @@ void main() {
     expect(find.byKey(weeklyKey), findsOneWidget);
     expect(find.byKey(addKey), findsOneWidget);
     expect(find.byKey(pomodoroKey), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(pomodoroKey),
+        matching: find.byIcon(Icons.timer_rounded),
+      ),
+      findsOneWidget,
+    );
     expect(find.bySemanticsLabel('周视图'), findsOneWidget);
     expect(find.bySemanticsLabel('新增'), findsOneWidget);
     expect(find.bySemanticsLabel('番茄钟'), findsOneWidget);
@@ -320,6 +327,7 @@ void main() {
 
   testWidgets('supports a wide action-only bar without home or focus tabs',
       (tester) async {
+    final pomodoroKey = GlobalKey();
     var weeklyPressed = false;
     var addPressed = false;
     var pomodoroPressed = false;
@@ -346,7 +354,8 @@ void main() {
                     onPressed: () => addPressed = true,
                   ),
                   FloatingBottomNavigationItem(
-                    iconWidget: const Text('🍅'),
+                    key: pomodoroKey,
+                    icon: Icons.timer_rounded,
                     label: '番茄钟',
                     selectable: false,
                     onPressed: () => pomodoroPressed = true,
@@ -377,6 +386,13 @@ void main() {
     expect(find.bySemanticsLabel('周视图'), findsOneWidget);
     expect(find.bySemanticsLabel('新增'), findsOneWidget);
     expect(find.bySemanticsLabel('番茄钟'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(pomodoroKey),
+        matching: find.byIcon(Icons.timer_rounded),
+      ),
+      findsOneWidget,
+    );
 
     await tester.tap(find.text('周视图'));
     await tester.tap(find.text('新增'));

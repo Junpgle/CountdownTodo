@@ -1794,7 +1794,7 @@ class _HomeDashboardBottomBar extends StatelessWidget {
       return FloatingBottomNavigationItem(
         key: pomodoroButtonKey,
         label: '番茄钟',
-        iconWidget: const Text('🍅', style: TextStyle(fontSize: 20)),
+        icon: Icons.timer_rounded,
         selectable: false,
         onPressed: onPomodoroPressed,
         semanticsLabel: '番茄钟',
