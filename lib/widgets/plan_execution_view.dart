@@ -68,13 +68,27 @@ class PlanExecutionEntry {
     return '${DateFormat(format).format(startDate)}–${DateFormat(format).format(endDate)}';
   }
 
-  void openDetail(BuildContext context, List<PomodoroTag> tags) {
-    Navigator.of(context).push(
-      PageTransitions.material(
-        builder: (_) => isFocus
-            ? PomodoroDetailScreen(record: record!, tags: tags)
-            : TimeLogDetailScreen(log: log!, tags: tags),
-      ),
+  void openDetail(
+    BuildContext context,
+    List<PomodoroTag> tags, {
+    GlobalKey? sourceKey,
+  }) {
+    final detail = isFocus
+        ? PomodoroDetailScreen(record: record!, tags: tags)
+        : TimeLogDetailScreen(log: log!, tags: tags);
+    if (sourceKey == null) {
+      Navigator.of(context)
+          .push(PageTransitions.material(builder: (_) => detail));
+      return;
+    }
+
+    PageTransitions.pushFromRect(
+      context: context,
+      page: detail,
+      sourceKey: sourceKey,
+      sourceColor: color(context).withValues(alpha: 0.24),
+      placeholderIcon: icon,
+      sourceBorderRadius: BorderRadius.zero,
     );
   }
 }
@@ -213,7 +227,7 @@ class PlanExecutionSummary extends StatelessWidget {
 
 /// Plans and present execution kinds share the hour across separate lanes.
 /// The full list remains available for short or overlapping records.
-class PlanExecutionTimelineLayer extends StatelessWidget {
+class PlanExecutionTimelineLayer extends StatefulWidget {
   const PlanExecutionTimelineLayer({
     super.key,
     required this.date,
@@ -229,23 +243,63 @@ class PlanExecutionTimelineLayer extends StatelessWidget {
   final VoidCallback? onRecordInteraction;
 
   @override
+  State<PlanExecutionTimelineLayer> createState() =>
+      _PlanExecutionTimelineLayerState();
+}
+
+class _PlanExecutionTimelineLayerState
+    extends State<PlanExecutionTimelineLayer> {
+  final Map<String, GlobalKey> _segmentSourceKeys = {};
+
+  GlobalKey _sourceKeyFor(PlanExecutionEntry entry, int hour) {
+    final identity = '${entry.kind}:${entry.id}:$hour';
+    return _segmentSourceKeys.putIfAbsent(identity, () => GlobalKey());
+  }
+
+  @override
+  void didUpdateWidget(covariant PlanExecutionTimelineLayer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!DateUtils.isSameDay(oldWidget.date, widget.date)) {
+      _segmentSourceKeys.clear();
+    }
+  }
+
+  @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
-      final day = DateTime(date.year, date.month, date.day);
-      final nextDay = DateTime(date.year, date.month, date.day + 1);
-      final hasFocus = entries.any((entry) => entry.isFocus);
-      final laneCount = PlanExecutionEntry.timelineLaneCount(entries);
-      final laneHeight = hourHeight / laneCount;
+      final day = DateTime(
+        widget.date.year,
+        widget.date.month,
+        widget.date.day,
+      );
+      final nextDay = DateTime(
+        widget.date.year,
+        widget.date.month,
+        widget.date.day + 1,
+      );
+      final hasFocus = widget.entries.any((entry) => entry.isFocus);
+      final laneCount = PlanExecutionEntry.timelineLaneCount(widget.entries);
+      final laneHeight = widget.hourHeight / laneCount;
       final segments = <Widget>[];
-      for (final entry in entries) {
+      for (final entry in widget.entries) {
         final start = DateTime.fromMillisecondsSinceEpoch(entry.start);
         final end = DateTime.fromMillisecondsSinceEpoch(entry.end);
         final clippedStart = start.isBefore(day) ? day : start;
         final clippedEnd = end.isAfter(nextDay) ? nextDay : end;
         final lastHour = clippedEnd == nextDay ? 23 : clippedEnd.hour;
         for (var hour = clippedStart.hour; hour <= lastHour; hour++) {
-          final rowStart = DateTime(date.year, date.month, date.day, hour);
-          final rowEnd = DateTime(date.year, date.month, date.day, hour + 1);
+          final rowStart = DateTime(
+            widget.date.year,
+            widget.date.month,
+            widget.date.day,
+            hour,
+          );
+          final rowEnd = DateTime(
+            widget.date.year,
+            widget.date.month,
+            widget.date.day,
+            hour + 1,
+          );
           final from = clippedStart.isAfter(rowStart) ? clippedStart : rowStart;
           final to = clippedEnd.isBefore(rowEnd) ? clippedEnd : rowEnd;
           if (!to.isAfter(from)) continue;
@@ -259,9 +313,10 @@ class PlanExecutionTimelineLayer extends StatelessWidget {
               3600000;
           final laneIndex = entry.isFocus || !hasFocus ? 1 : 2;
           final color = entry.color(context);
+          final sourceKey = _sourceKeyFor(entry, hour);
           segments.add(
             Positioned(
-              top: hour * hourHeight + laneIndex * laneHeight + 0.5,
+              top: hour * widget.hourHeight + laneIndex * laneHeight + 0.5,
               left: left + 1,
               width: max(1, width - 2),
               height: max(1, laneHeight - 1),
@@ -273,13 +328,18 @@ class PlanExecutionTimelineLayer extends StatelessWidget {
                   ),
                   behavior: HitTestBehavior.opaque,
                   onTap: () {
-                    onRecordInteraction?.call();
-                    entry.openDetail(context, tags);
+                    widget.onRecordInteraction?.call();
+                    entry.openDetail(
+                      context,
+                      widget.tags,
+                      sourceKey: sourceKey,
+                    );
                   },
-                  onPanStart: (_) => onRecordInteraction?.call(),
+                  onPanStart: (_) => widget.onRecordInteraction?.call(),
                   onPanUpdate: (_) {},
-                  onPanEnd: (_) => onRecordInteraction?.call(),
+                  onPanEnd: (_) => widget.onRecordInteraction?.call(),
                   child: Container(
+                    key: sourceKey,
                     decoration: BoxDecoration(
                       color: color.withValues(alpha: 0.24),
                       border: Border(left: BorderSide(color: color, width: 2)),
