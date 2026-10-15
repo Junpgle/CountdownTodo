@@ -1755,7 +1755,8 @@ class _HomeDashboardBottomBar extends StatelessWidget {
       return FloatingBottomNavigationItem(
         key: weeklyButtonKey,
         label: '周视图',
-        icon: Icons.calendar_today_rounded,
+        icon: Icons.calendar_today_outlined,
+        selectedIcon: Icons.calendar_today_rounded,
         selectable: false,
         onPressed: onWeeklyPressed,
         semanticsLabel: '周视图',
@@ -1781,7 +1782,7 @@ class _HomeDashboardBottomBar extends StatelessWidget {
             onLongPress: onAddLongPress,
             semanticsLabel: '新增',
             child: Icon(
-              Icons.add_rounded,
+              selectedLayer ? Icons.add_circle_rounded : Icons.add_rounded,
               color: Theme.of(context).colorScheme.onPrimary,
               size: 28,
             ),
@@ -1794,7 +1795,8 @@ class _HomeDashboardBottomBar extends StatelessWidget {
       return FloatingBottomNavigationItem(
         key: pomodoroButtonKey,
         label: '番茄钟',
-        icon: Icons.timer_rounded,
+        icon: Icons.timer_outlined,
+        selectedIcon: Icons.timer_rounded,
         selectable: false,
         onPressed: onPomodoroPressed,
         semanticsLabel: '番茄钟',
@@ -1809,14 +1811,16 @@ class _HomeDashboardBottomBar extends StatelessWidget {
           ]
         : <FloatingBottomNavigationItem>[
             const FloatingBottomNavigationItem(
-              icon: Icons.dashboard_rounded,
+              icon: Icons.dashboard_outlined,
+              selectedIcon: Icons.dashboard_rounded,
               label: '首页',
             ),
             buildWeeklyItem(),
             buildAddItem(),
             buildPomodoroItem(),
             const FloatingBottomNavigationItem(
-              icon: Icons.adjust_rounded,
+              icon: Icons.center_focus_weak_rounded,
+              selectedIcon: Icons.center_focus_strong_rounded,
               label: '专注',
             ),
           ];

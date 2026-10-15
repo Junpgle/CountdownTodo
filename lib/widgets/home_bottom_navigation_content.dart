@@ -58,6 +58,7 @@ class FloatingBottomNavigationItem {
   const FloatingBottomNavigationItem({
     required this.label,
     this.icon,
+    this.selectedIcon,
     this.iconWidget,
     this.builder,
     this.selectable = true,
@@ -78,12 +79,17 @@ class FloatingBottomNavigationItem {
           'Provide either icon or iconWidget, not both.',
         ),
         assert(
+          selectedIcon == null || icon != null,
+          'A selected icon requires an icon.',
+        ),
+        assert(
           selectable || onPressed != null || builder != null,
           'A non-selectable item needs an action or a custom builder.',
         );
 
   final String label;
   final IconData? icon;
+  final IconData? selectedIcon;
   final Widget? iconWidget;
   final Widget Function(
       BuildContext context, bool selectedLayer, bool interactive)? builder;
@@ -519,6 +525,7 @@ class _FloatingBottomNavigationContentState
             _FloatingBottomTabItem(
               index: index,
               icon: item.icon,
+              selectedIcon: item.selectedIcon,
               iconWidget: item.iconWidget,
               label: item.label,
               selected: selectedLayer,
@@ -881,11 +888,14 @@ class HomeBottomNavigationContent extends StatelessWidget {
     return FloatingBottomNavigationContent(
       items: [
         FloatingBottomNavigationItem(
-          icon: Icons.dashboard_rounded,
+          icon: Icons.dashboard_outlined,
+          selectedIcon: Icons.dashboard_rounded,
           label: '首页',
         ),
         FloatingBottomNavigationItem(
           label: '日历',
+          icon: Icons.calendar_today_outlined,
+          selectedIcon: Icons.calendar_today_rounded,
           selectable: false,
           onPressed: onCalendarPressed,
           builder: (context, selectedLayer, interactive) => Center(
@@ -893,12 +903,14 @@ class HomeBottomNavigationContent extends StatelessWidget {
               buttonKey: selectedLayer ? null : calendarButtonKey,
               primaryColor: primaryColor,
               interactive: interactive,
+              selectedLayer: selectedLayer,
               onPressed: onCalendarPressed,
             ),
           ),
         ),
         FloatingBottomNavigationItem(
-          icon: Icons.adjust_rounded,
+          icon: Icons.center_focus_weak_rounded,
+          selectedIcon: Icons.center_focus_strong_rounded,
           label: '专注',
         ),
       ],
@@ -1003,12 +1015,14 @@ class HomeBottomCalendarButton extends StatelessWidget {
     required this.buttonKey,
     required this.primaryColor,
     required this.interactive,
+    required this.selectedLayer,
     required this.onPressed,
   });
 
   final Key? buttonKey;
   final Color primaryColor;
   final bool interactive;
+  final bool selectedLayer;
   final VoidCallback onPressed;
 
   @override
@@ -1027,7 +1041,9 @@ class HomeBottomCalendarButton extends StatelessWidget {
         ],
       ),
       child: Icon(
-        Icons.calendar_today_rounded,
+        selectedLayer
+            ? Icons.calendar_today_rounded
+            : Icons.calendar_today_outlined,
         color: Theme.of(context).colorScheme.onPrimary,
         size: 22,
       ),
@@ -1050,10 +1066,8 @@ class HomeBottomCalendarButton extends StatelessWidget {
 
 /// A compact, filled action used by the home bar's non-tab destinations.
 ///
-/// The action is rendered in the same slot as the selectable tabs, but it does
-/// not participate in the moving selection lens. This keeps the weekly view,
-/// add menu, and pomodoro entry points visually stable while the home/focus
-/// tabs retain the existing spring interaction.
+/// The action does not move the selection lens. Its custom content can still
+/// show a selected variant inside the lens as it passes over the action slot.
 class HomeBottomNavigationActionButton extends StatelessWidget {
   const HomeBottomNavigationActionButton({
     super.key,
@@ -1117,6 +1131,7 @@ class _FloatingBottomTabItem extends StatelessWidget {
   const _FloatingBottomTabItem({
     required this.index,
     required this.icon,
+    this.selectedIcon,
     required this.iconWidget,
     required this.label,
     required this.selected,
@@ -1131,6 +1146,7 @@ class _FloatingBottomTabItem extends StatelessWidget {
 
   final int index;
   final IconData? icon;
+  final IconData? selectedIcon;
   final Widget? iconWidget;
   final String label;
   final bool selected;
@@ -1145,6 +1161,7 @@ class _FloatingBottomTabItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final foregroundColor = selected ? primaryColor : inactiveColor;
+    final displayedIcon = selected ? selectedIcon ?? icon : icon;
     const duration = Duration(milliseconds: 220);
     final visual = AnimatedScale(
       key: ValueKey<String>('$keyPrefix-tab-surface-$index'),
@@ -1162,7 +1179,7 @@ class _FloatingBottomTabItem extends StatelessWidget {
                   tween: ColorTween(end: foregroundColor),
                   duration: duration,
                   builder: (context, color, _) =>
-                      Icon(icon!, color: color, size: 24),
+                      Icon(displayedIcon!, color: color, size: 24),
                 ),
             const SizedBox(height: 2),
             AnimatedDefaultTextStyle(
