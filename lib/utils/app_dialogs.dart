@@ -494,9 +494,6 @@ Future<T?> showAppModalBottomSheet<T>({
       settings: _glassAnimatedOverlaySettings(context, glassConfiguration),
       builder: (sheetContext) {
         final media = MediaQuery.of(sheetContext);
-        final bottomInset = media.padding.bottom;
-        final transparentSheetProtection =
-            backgroundColor != null && backgroundColor.a == 0;
         final sheetBrightness =
             navigationBarBackgroundBrightness ??
             (backgroundColor != null && backgroundColor.a > 0
@@ -519,16 +516,6 @@ Future<T?> showAppModalBottomSheet<T>({
             child: Stack(
               fit: StackFit.passthrough,
               children: [
-                if (transparentSheetProtection && bottomInset > 0)
-                  Positioned(
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    height: bottomInset,
-                    child: ColoredBox(
-                      color: Theme.of(sheetContext).colorScheme.surface,
-                    ),
-                  ),
                 SafeArea(
                   top: useSafeArea,
                   left: useSafeArea,
@@ -581,9 +568,6 @@ Future<T?> showAppModalBottomSheet<T>({
     sheetAnimationStyle: sheetAnimationStyle,
     requestFocus: requestFocus,
     builder: (sheetContext) {
-      final bottomInset = MediaQuery.paddingOf(sheetContext).bottom;
-      final needsTransparentSheetProtection =
-          backgroundColor != null && backgroundColor.a == 0;
       final sheetBrightness =
           navigationBarBackgroundBrightness ??
           (backgroundColor != null && backgroundColor.a > 0
@@ -599,16 +583,6 @@ Future<T?> showAppModalBottomSheet<T>({
           child: Stack(
             fit: StackFit.passthrough,
             children: [
-              if (needsTransparentSheetProtection && bottomInset > 0)
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  height: bottomInset,
-                  child: ColoredBox(
-                    color: Theme.of(sheetContext).colorScheme.surface,
-                  ),
-                ),
               SafeArea(
                 top: false,
                 left: false,
