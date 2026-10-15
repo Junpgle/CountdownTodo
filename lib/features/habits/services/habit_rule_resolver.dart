@@ -73,15 +73,32 @@ abstract final class HabitRuleResolver {
           rule.effectiveToDate!.compareTo(dateKey) < 0) {
         continue;
       }
-      if (best == null ||
-          (rule.effectiveFromDate ?? '').compareTo(
-                best.effectiveFromDate ?? '',
-              ) >
-              0) {
+      if (best == null) {
+        best = rule;
+        continue;
+      }
+      // Offline devices can create distinct revisions for one effective day.
+      // Break those ties deterministically so merge order cannot change the goal.
+      final startOrder = (rule.effectiveFromDate ?? '').compareTo(
+        best.effectiveFromDate ?? '',
+      );
+      if (startOrder > 0 ||
+          (startOrder == 0 && _compareRevisionTieBreak(rule, best) > 0)) {
         best = rule;
       }
     }
     return best;
+  }
+
+  static int _compareRevisionTieBreak(
+    HabitGoalRuleRevision left,
+    HabitGoalRuleRevision right,
+  ) {
+    final updatedAtOrder = left.updatedAt.compareTo(right.updatedAt);
+    if (updatedAtOrder != 0) return updatedAtOrder;
+    final versionOrder = left.version.compareTo(right.version);
+    if (versionOrder != 0) return versionOrder;
+    return left.uuid.compareTo(right.uuid);
   }
 
   /// 当前生效规则（今天），供今日卡片使用。

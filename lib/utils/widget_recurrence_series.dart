@@ -195,10 +195,14 @@ List<WidgetRecurrenceOccurrenceItem> _buildOccurrenceWindow(
 DateTime _startOf(TodoItem todo) => todo.effectiveStartTime;
 
 String _recurrenceText(TodoItem todo) {
+  if (todo.recurrence == RecurrenceType.customDays) {
+    final interval = todo.customIntervalDays ?? 0;
+    return interval > 0 ? '每 $interval 天' : '循环间隔无效';
+  }
   return switch (todo.recurrence) {
     RecurrenceType.none => '循环已结束',
     RecurrenceType.daily => '每天',
-    RecurrenceType.customDays => '每 ${todo.customIntervalDays ?? 1} 天',
+    RecurrenceType.customDays => '循环间隔无效',
     RecurrenceType.weekly => '每周',
     RecurrenceType.monthly => '每月',
     RecurrenceType.yearly => '每年',

@@ -628,7 +628,14 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
       apiMessages.add({
         'role': 'system',
         'content': AiTodoContextBuilder.buildActionProtocolPrompt(
-          protocolSourceText,
+          AiNativeToolDefinitionBuilder.resolvePlanningRequest(
+            protocolSourceText,
+            previousUserMessage: previousUserMessage,
+            previousAssistantMessage: _messages.reversed
+                .where((message) => message.role == ChatRole.assistant)
+                .firstOrNull
+                ?.content ?? '',
+          ),
           previousUserMessage: previousUserMessage,
         ),
       });

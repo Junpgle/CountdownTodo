@@ -4,10 +4,12 @@ import 'dart:math' show max;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import 'package:sqflite/sqflite.dart';
+import 'package:http/http.dart' as http;
 import 'package:countdown_todo/services/database_helper.dart';
 import '../models.dart';
 import '../storage_service.dart';
 import '../utils/time_utils.dart';
+import '../utils/calendar_date_math.dart';
 export '../utils/time_utils.dart';
 import 'api_service.dart';
 import 'storage/storage_key_scope.dart';
@@ -494,8 +496,8 @@ class PomodoroSettings {
 
     int toMinutes(dynamic v, int def) {
       final n = JsonValueParser.toInt(v, fallback: def);
-      // 若 > 60 认为是秒，转换为分钟
-      return n > 60 ? n ~/ 60 : n;
+      // 若 >= 60 认为是秒，转换为分钟；恰好 60 秒也应是 1 分钟。
+      return n >= 60 ? n ~/ 60 : n;
     }
 
     return PomodoroSettings(
@@ -701,11 +703,25 @@ class PomodoroService {
   static const _keyRunState = 'pomodoro_run_state';
   static const _keyTags = 'pomodoro_tags_v2';
   static const _keyRecords = 'pomodoro_records'; // 本地缓存记录列表
+  static Future<void> _recordMutationQueue = Future<void>.value();
 
   // ── 流控（用于 UI 实时响应状态变更，替代轮询） ──────────
   static final _runStateCtrl = StreamController<PomodoroRunState?>.broadcast();
   static Stream<PomodoroRunState?> get onRunStateChanged =>
       _runStateCtrl.stream;
+
+  static Future<T> _withRecordMutationQueue<T>(
+      Future<T> Function() operation) async {
+    final previousMutation = _recordMutationQueue;
+    final releaseMutation = Completer<void>();
+    _recordMutationQueue = releaseMutation.future;
+    await previousMutation;
+    try {
+      return await operation();
+    } finally {
+      releaseMutation.complete();
+    }
+  }
 
   static void dispose() {
     if (!_runStateCtrl.isClosed) _runStateCtrl.close();
@@ -1088,8 +1104,26 @@ class PomodoroService {
   /// 添加一条专注记录，本地保存后立即尝试上传云端
   static Future<void> addRecord(PomodoroRecord record,
       {bool isSyncSource = false}) async {
+    // Serialize record writes with each other and with cloud merges so the
+    // plan-block delta always compares against the latest stored record.
+    await _withRecordMutationQueue<void>(
+      () => _addRecord(record, isSyncSource: isSyncSource),
+    );
+  }
+
+  static Future<void> _addRecord(PomodoroRecord record,
+      {required bool isSyncSource}) async {
     // 1. 写入 SQLite & OpLog
     final db = await DatabaseHelper.instance.database;
+    final previousRows = await db.query(
+      'pomodoro_records',
+      where: 'uuid = ?',
+      whereArgs: [record.uuid],
+      limit: 1,
+    );
+    final previousRecord = previousRows.isEmpty
+        ? null
+        : PomodoroRecord.fromJson(previousRows.first);
     final batch = db.batch();
 
     if (!isSyncSource) {
@@ -1140,42 +1174,11 @@ class PomodoroService {
     await prefs.remove(scopedKey);
     await prefs.remove(_keyRecords);
 
-    // 🚀 核心联动：如果关联了规划块，自动回写规划块的达成情况
-    if (record.planBlockId != null && record.planBlockId!.isNotEmpty) {
-      final prefs = await SharedPreferences.getInstance();
-      final username =
-          prefs.getString(StorageService.keyCurrentUser) ?? 'default';
-      try {
-        final blocks =
-            await StorageService.getPlanBlocks(username, includeDeleted: true);
-        final idx = blocks.indexWhere((b) => b.uuid == record.planBlockId);
-        if (idx != -1) {
-          final pb = blocks[idx];
-          // 1. 累计专注时长
-          pb.actualFocusSeconds +=
-              (record.actualDuration ?? record.plannedDuration);
-          // 2. 记录 ID 关联
-          if (!pb.pomodoroRecordIds.contains(record.uuid)) {
-            pb.pomodoroRecordIds.add(record.uuid);
-          }
-          // 3. 状态自动机：如果时长达标（超过计划时长的 80%），标记为已完成
-          if (pb.status == TodoPlanStatus.planned ||
-              pb.status == TodoPlanStatus.focusing) {
-            if (pb.actualFocusSeconds >= pb.plannedMinutes * 60 * 0.8) {
-              pb.status = TodoPlanStatus.finished;
-            } else {
-              pb.status = TodoPlanStatus.planned;
-            }
-          }
-          pb.markAsChanged();
-          // 4. 保存
-          await StorageService.savePlanBlocks(username, [pb]);
-          // debugPrint('[PomodoroService] 规划块联动更新成功: ${pb.uuid}');
-        }
-      } catch (e) {
-        // debugPrint('[PomodoroService] 规划块联动失败: $e');
-      }
-    }
+    await _updateLinkedPlanBlocks(
+      previousRecord,
+      record,
+      isSyncSource: isSyncSource,
+    );
 
     // debugPrint(
     //     '[PomodoroService] addRecord OK (SQL+Cache), uuid=${record.uuid}');
@@ -1188,6 +1191,145 @@ class PomodoroService {
       if (username.isNotEmpty) {
         StorageService.requestSync(username);
       }
+    }
+  }
+
+  static Future<void> _updateLinkedPlanBlocks(
+    PomodoroRecord? previousRecord,
+    PomodoroRecord record, {
+    required bool isSyncSource,
+  }) async {
+    final affectedBlockIds = <String>{
+      if (previousRecord?.planBlockId?.isNotEmpty == true)
+        previousRecord!.planBlockId!,
+      if (record.planBlockId?.isNotEmpty == true) record.planBlockId!,
+    };
+    if (affectedBlockIds.isEmpty) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    final username =
+        prefs.getString(StorageService.keyCurrentUser) ?? 'default';
+    try {
+      final blocks =
+          await StorageService.getPlanBlocks(username, includeDeleted: true);
+      for (final block in blocks) {
+        final containsLegacyLink =
+            block.pomodoroRecordIds.contains(record.uuid);
+        if (!affectedBlockIds.contains(block.uuid) && !containsLegacyLink) {
+          continue;
+        }
+
+        final previouslyLinked = previousRecord != null &&
+            !previousRecord.isDeleted &&
+            (previousRecord.planBlockId == block.uuid ||
+                ((previousRecord.planBlockId?.isEmpty ?? true) &&
+                    containsLegacyLink));
+        final currentlyLinked =
+            !record.isDeleted && record.planBlockId == block.uuid;
+        final previousSeconds =
+            previouslyLinked ? previousRecord.effectiveDuration : 0;
+        final currentSeconds =
+            currentlyLinked ? record.effectiveDuration : 0;
+        final secondsDelta = currentSeconds - previousSeconds;
+
+        final oldLinkCount = block.pomodoroRecordIds
+            .where((uuid) => uuid == record.uuid)
+            .length;
+        block.pomodoroRecordIds.removeWhere((uuid) => uuid == record.uuid);
+        if (currentlyLinked) block.pomodoroRecordIds.add(record.uuid);
+        final linkChanged = currentlyLinked
+            ? oldLinkCount != 1
+            : oldLinkCount != 0;
+
+        if (secondsDelta == 0 && !linkChanged) continue;
+
+        block.actualFocusSeconds =
+            max(0, block.actualFocusSeconds + secondsDelta);
+        if (secondsDelta != 0 &&
+            (block.status == TodoPlanStatus.planned ||
+                block.status == TodoPlanStatus.focusing)) {
+          if (block.actualFocusSeconds >= block.plannedMinutes * 60 * 0.8) {
+            block.status = TodoPlanStatus.finished;
+          } else {
+            block.status = TodoPlanStatus.planned;
+          }
+        }
+        block.markAsChanged();
+        await StorageService.savePlanBlocks(
+          username,
+          [block],
+          sync: !isSyncSource,
+          isSyncSource: isSyncSource,
+        );
+      }
+    } catch (_) {
+      // Keep the Pomodoro record write available if its plan block is missing
+      // or its independent storage update fails.
+    }
+  }
+
+  /// Rebuilds derived plan progress after the outer data sync saves its
+  /// snapshot of plan blocks, which may predate the Pomodoro record merge.
+  static Future<void> reconcilePlanBlockProgress(String username) async {
+    try {
+      final blocks =
+          await StorageService.getPlanBlocks(username, includeDeleted: true);
+      if (blocks.isEmpty) return;
+
+      final db = await DatabaseHelper.instance.databaseForUser(username);
+      final recordRows = await db.query(
+        'pomodoro_records',
+        where: 'is_deleted = 0',
+      );
+      final records = recordRows.map(PomodoroRecord.fromJson).toList();
+
+      for (final block in blocks) {
+        if (block.isDeleted) continue;
+        final linkedRecords = records.where((record) {
+          if (record.planBlockId == block.uuid) return true;
+          return (record.planBlockId?.isEmpty ?? true) &&
+              block.pomodoroRecordIds.contains(record.uuid);
+        }).toList();
+        final actualFocusSeconds = linkedRecords.fold<int>(
+          0,
+          (total, record) => total + record.effectiveDuration,
+        );
+        final linkedRecordIds = linkedRecords.map((record) => record.uuid).toSet();
+        final currentRecordIds = block.pomodoroRecordIds.toSet();
+        final linksChanged =
+            linkedRecordIds.length != block.pomodoroRecordIds.length ||
+                !linkedRecordIds.containsAll(currentRecordIds) ||
+                !currentRecordIds.containsAll(linkedRecordIds);
+        var statusChanged = false;
+        if (linkedRecords.isNotEmpty &&
+            (block.status == TodoPlanStatus.planned ||
+                block.status == TodoPlanStatus.focusing)) {
+          final nextStatus = actualFocusSeconds >= block.plannedMinutes * 60 * 0.8
+              ? TodoPlanStatus.finished
+              : block.status == TodoPlanStatus.focusing
+                  ? TodoPlanStatus.planned
+                  : block.status;
+          statusChanged = block.status != nextStatus;
+          block.status = nextStatus;
+        }
+
+        if (block.actualFocusSeconds == actualFocusSeconds &&
+            !linksChanged &&
+            !statusChanged) {
+          continue;
+        }
+        block.actualFocusSeconds = actualFocusSeconds;
+        if (linksChanged) block.pomodoroRecordIds = linkedRecordIds.toList();
+        block.markAsChanged();
+        await StorageService.savePlanBlocks(
+          username,
+          [block],
+          sync: false,
+          isSyncSource: true,
+        );
+      }
+    } catch (_) {
+      // Plan progress is derived data; it must not fail the account sync.
     }
   }
 
@@ -1307,10 +1449,10 @@ class PomodoroService {
   static Future<bool> syncRecordsFromCloud({
     int? fromMs,
     bool forceFullSync = false,
+    http.Client? client,
   }) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final db = await DatabaseHelper.instance.database;
       // 获取上次拉取的时间戳，默认从 0 开始
       final lastDownloadKey = await _getScopedKey(_keyLastRecordDownload);
 
@@ -1334,124 +1476,140 @@ class PomodoroService {
         fromMs: effectiveFromMs,
         includeDeleted: true,
         useUpdatedAt: true,
+        client: client,
       );
 
       final remoteRecords = recordsRaw
           .map((e) => PomodoroRecord.fromJson(e as Map<String, dynamic>))
           .toList();
 
-      // 读取本地全量（SQL + 旧 prefs 兜底），避免只写入 prefs 导致 UI 读不到
-      final sqlRows =
-          await db.query('pomodoro_records', orderBy: 'start_time DESC');
-      final sqlRecords =
-          sqlRows.map((m) => PomodoroRecord.fromJson(m)).toList();
+      return await _withRecordMutationQueue(() async {
+        final db = await DatabaseHelper.instance.database;
+        // 读取本地全量（SQL + 旧 prefs 兜底），避免只写入 prefs 导致 UI 读不到
+        final sqlRows =
+            await db.query('pomodoro_records', orderBy: 'start_time DESC');
+        final sqlRecords =
+            sqlRows.map((m) => PomodoroRecord.fromJson(m)).toList();
 
-      final scopedKey = await _getScopedKey(_keyRecords);
-      String? legacyRaw;
-      if (sqlRows.isEmpty) {
-        legacyRaw = prefs.getString(scopedKey) ?? prefs.getString(_keyRecords);
-      } else {
-        await prefs.remove(scopedKey);
-        await prefs.remove(_keyRecords);
-      }
-      final legacyRecords = legacyRaw == null
-          ? <PomodoroRecord>[]
-          : (jsonDecode(legacyRaw) as List)
-              .map((e) => PomodoroRecord.fromJson(e))
-              .toList();
-
-      final Map<String, PomodoroRecord> merged = {
-        for (var r in sqlRecords) r.uuid: r
-      };
-      for (final lr in legacyRecords) {
-        final ex = merged[lr.uuid];
-        if (ex == null || lr.updatedAt > ex.updatedAt) {
-          merged[lr.uuid] = lr;
-        }
-      }
-      bool hasChange = false;
-
-      for (final rr in remoteRecords) {
-        final ex = merged[rr.uuid];
-        if (ex == null) {
-          // 本地没有 → 直接用云端
-          merged[rr.uuid] = rr;
-          hasChange = true;
+        final scopedKey = await _getScopedKey(_keyRecords);
+        String? legacyRaw;
+        if (sqlRows.isEmpty) {
+          legacyRaw = prefs.getString(scopedKey) ?? prefs.getString(_keyRecords);
         } else {
-          // 合并策略：
-          // 1. 云端更新时间更新 → 采用云端数据为主
-          // 2. 任何情况下：若云端有 tagUuids/todoTitle 而本地没有 → 补全（修复旧记录标签丢失）
-          final cloudNewer = rr.updatedAt > ex.updatedAt ||
-              (rr.updatedAt == ex.updatedAt && rr.version > ex.version);
-          final needPatch = (rr.tagUuids.isNotEmpty && ex.tagUuids.isEmpty) ||
-              (rr.todoTitle?.isNotEmpty == true && ex.todoTitle == null) ||
-              (rr.planBlockId?.isNotEmpty == true && ex.planBlockId == null) ||
-              (rr.note?.isNotEmpty == true && ex.note == null);
-          if (cloudNewer || needPatch) {
-            merged[rr.uuid] = PomodoroRecord(
-              uuid: rr.uuid,
-              todoUuid: rr.todoUuid ?? ex.todoUuid,
-              todoTitle: (rr.todoTitle?.isNotEmpty == true)
-                  ? rr.todoTitle
-                  : ex.todoTitle,
-              tagUuids: rr.tagUuids.isNotEmpty ? rr.tagUuids : ex.tagUuids,
-              startTime: cloudNewer ? rr.startTime : ex.startTime,
-              endTime: cloudNewer ? rr.endTime : ex.endTime,
-              plannedDuration:
-                  cloudNewer ? rr.plannedDuration : ex.plannedDuration,
-              actualDuration:
-                  cloudNewer ? rr.actualDuration : ex.actualDuration,
-              status: cloudNewer ? rr.status : ex.status,
-              deviceId: rr.deviceId ?? ex.deviceId,
-              planBlockId: cloudNewer
-                  ? (rr.planBlockId ?? ex.planBlockId)
-                  : (ex.planBlockId ?? rr.planBlockId),
-              note: cloudNewer ? (rr.note ?? ex.note) : (ex.note ?? rr.note),
-              totalPauseSeconds: cloudNewer
-                  ? (rr.totalPauseSeconds ?? ex.totalPauseSeconds)
-                  : (ex.totalPauseSeconds ?? rr.totalPauseSeconds),
-              pauseIntervals: cloudNewer
-                  ? (rr.pauseIntervals ?? ex.pauseIntervals)
-                  : (ex.pauseIntervals ?? rr.pauseIntervals),
-              isDeleted: cloudNewer ? rr.isDeleted : ex.isDeleted,
-              version: cloudNewer ? rr.version : ex.version,
-              createdAt: ex.createdAt,
-              updatedAt: cloudNewer ? rr.updatedAt : ex.updatedAt,
-              hasConflict: cloudNewer ? rr.hasConflict : ex.hasConflict,
-              conflictData: cloudNewer ? rr.conflictData : ex.conflictData,
-            );
-            hasChange = true;
+          await prefs.remove(scopedKey);
+          await prefs.remove(_keyRecords);
+        }
+        final legacyRecords = legacyRaw == null
+            ? <PomodoroRecord>[]
+            : (jsonDecode(legacyRaw) as List)
+                .map((e) => PomodoroRecord.fromJson(e))
+                .toList();
+
+        final Map<String, PomodoroRecord> merged = {
+          for (var r in sqlRecords) r.uuid: r
+        };
+        for (final lr in legacyRecords) {
+          final ex = merged[lr.uuid];
+          if (ex == null || lr.updatedAt > ex.updatedAt) {
+            merged[lr.uuid] = lr;
           }
         }
-      }
+        bool hasChange = false;
+        final planProgressChanges =
+            <({PomodoroRecord? previous, PomodoroRecord current})>[];
 
-      final mergedRecords = merged.values.toList()
-        ..sort((a, b) => b.startTime.compareTo(a.startTime));
-
-      // 只要本次读到了旧 prefs 数据，或云端有变化，就同步回 SQL + prefs，确保统计页和历史页可见
-      if (hasChange || legacyRecords.isNotEmpty || sqlRows.isEmpty) {
-        await _saveRecords(mergedRecords);
-      }
-
-      // 更新最后拉取时间戳为当前服务器时间（或是本地当前时间，取决于业务场景）
-      // 这里用本次拉取到的最新记录的 updatedAt 作为下次请求的起点
-      int latestTs = 0;
-      for (final r in remoteRecords) {
-        if (r.updatedAt > latestTs) latestTs = r.updatedAt;
-      }
-      if (latestTs > 0) {
-        final lastDownloadKey = await _getScopedKey(_keyLastRecordDownload);
-        await prefs.setInt(lastDownloadKey, latestTs);
-        // 🚀 同步更新 lastUpload，防止 syncRecordsToCloud 的时间窗口
-        // 再次命中刚从云端拉下来的记录，导致上传→广播→下载→上传死循环
-        final lastUploadKey = await _getScopedKey(_keyLastRecordUpload);
-        final currentUpload = prefs.getInt(lastUploadKey) ?? 0;
-        if (latestTs > currentUpload) {
-          await prefs.setInt(lastUploadKey, latestTs);
+        for (final rr in remoteRecords) {
+          final ex = merged[rr.uuid];
+          if (ex == null) {
+            // 本地没有 → 直接用云端
+            merged[rr.uuid] = rr;
+            planProgressChanges.add((previous: null, current: rr));
+            hasChange = true;
+          } else {
+            // 合并策略：
+            // 1. 云端更新时间更新 → 采用云端数据为主
+            // 2. 任何情况下：若云端有 tagUuids/todoTitle 而本地没有 → 补全（修复旧记录标签丢失）
+            final cloudNewer = rr.updatedAt > ex.updatedAt ||
+                (rr.updatedAt == ex.updatedAt && rr.version > ex.version);
+            final needPatch = (rr.tagUuids.isNotEmpty && ex.tagUuids.isEmpty) ||
+                (rr.todoTitle?.isNotEmpty == true && ex.todoTitle == null) ||
+                (rr.planBlockId?.isNotEmpty == true && ex.planBlockId == null) ||
+                (rr.note?.isNotEmpty == true && ex.note == null);
+            if (cloudNewer || needPatch) {
+              final updated = PomodoroRecord(
+                uuid: rr.uuid,
+                todoUuid: rr.todoUuid ?? ex.todoUuid,
+                todoTitle: (rr.todoTitle?.isNotEmpty == true)
+                    ? rr.todoTitle
+                    : ex.todoTitle,
+                tagUuids: rr.tagUuids.isNotEmpty ? rr.tagUuids : ex.tagUuids,
+                startTime: cloudNewer ? rr.startTime : ex.startTime,
+                endTime: cloudNewer ? rr.endTime : ex.endTime,
+                plannedDuration:
+                    cloudNewer ? rr.plannedDuration : ex.plannedDuration,
+                actualDuration:
+                    cloudNewer ? rr.actualDuration : ex.actualDuration,
+                status: cloudNewer ? rr.status : ex.status,
+                deviceId: rr.deviceId ?? ex.deviceId,
+                planBlockId: cloudNewer
+                    ? (rr.planBlockId ?? ex.planBlockId)
+                    : (ex.planBlockId ?? rr.planBlockId),
+                note: cloudNewer ? (rr.note ?? ex.note) : (ex.note ?? rr.note),
+                totalPauseSeconds: cloudNewer
+                    ? (rr.totalPauseSeconds ?? ex.totalPauseSeconds)
+                    : (ex.totalPauseSeconds ?? rr.totalPauseSeconds),
+                pauseIntervals: cloudNewer
+                    ? (rr.pauseIntervals ?? ex.pauseIntervals)
+                    : (ex.pauseIntervals ?? rr.pauseIntervals),
+                isDeleted: cloudNewer ? rr.isDeleted : ex.isDeleted,
+                version: cloudNewer ? rr.version : ex.version,
+                createdAt: ex.createdAt,
+                updatedAt: cloudNewer ? rr.updatedAt : ex.updatedAt,
+                hasConflict: cloudNewer ? rr.hasConflict : ex.hasConflict,
+                conflictData: cloudNewer ? rr.conflictData : ex.conflictData,
+              );
+              merged[rr.uuid] = updated;
+              planProgressChanges.add((previous: ex, current: updated));
+              hasChange = true;
+            }
+          }
         }
-      }
 
-      return hasChange;
+        final mergedRecords = merged.values.toList()
+          ..sort((a, b) => b.startTime.compareTo(a.startTime));
+
+        // 只要本次读到了旧 prefs 数据，或云端有变化，就同步回 SQL + prefs，确保统计页和历史页可见
+        if (hasChange || legacyRecords.isNotEmpty || sqlRows.isEmpty) {
+          await _saveRecords(mergedRecords);
+        }
+        for (final change in planProgressChanges) {
+          await _updateLinkedPlanBlocks(
+            change.previous,
+            change.current,
+            isSyncSource: true,
+          );
+        }
+
+        // 更新最后拉取时间戳为当前服务器时间（或是本地当前时间，取决于业务场景）
+        // 这里用本次拉取到的最新记录的 updatedAt 作为下次请求的起点
+        int latestTs = 0;
+        for (final r in remoteRecords) {
+          if (r.updatedAt > latestTs) latestTs = r.updatedAt;
+        }
+        if (latestTs > 0) {
+          final lastDownloadKey = await _getScopedKey(_keyLastRecordDownload);
+          await prefs.setInt(lastDownloadKey, latestTs);
+          // 🚀 同步更新 lastUpload，防止 syncRecordsToCloud 的时间窗口
+          // 再次命中刚从云端拉下来的记录，导致上传→广播→下载→上传死循环
+          final lastUploadKey = await _getScopedKey(_keyLastRecordUpload);
+          final currentUpload = prefs.getInt(lastUploadKey) ?? 0;
+          if (latestTs > currentUpload) {
+            await prefs.setInt(lastUploadKey, latestTs);
+          }
+        }
+
+        return hasChange;
+      });
     } catch (e) {
       // debugPrint('[PomodoroService] syncRecordsFromCloud error: $e');
       return false;
@@ -1464,16 +1622,25 @@ class PomodoroService {
       'pomodoro_last_record_recovery_upload';
 
   static Future<bool> mergeRecordsLww(
+          List<PomodoroRecord> remoteRecords) =>
+      _withRecordMutationQueue(
+        () => _mergeRecordsLww(remoteRecords),
+      );
+
+  static Future<bool> _mergeRecordsLww(
       List<PomodoroRecord> remoteRecords) async {
     if (remoteRecords.isEmpty) return false;
     final localRecords = await _getAllRecordsRaw();
     final merged = {for (final r in localRecords) r.uuid: r};
     var hasChange = false;
+    final planProgressChanges =
+        <({PomodoroRecord? previous, PomodoroRecord current})>[];
 
     for (final remote in remoteRecords) {
       final existing = merged[remote.uuid];
       if (existing == null) {
         merged[remote.uuid] = remote;
+        planProgressChanges.add((previous: null, current: remote));
         hasChange = true;
         continue;
       }
@@ -1491,9 +1658,10 @@ class PomodoroService {
 
       if (remoteWins) {
         merged[remote.uuid] = remote;
+        planProgressChanges.add((previous: existing, current: remote));
         hasChange = true;
       } else if (needsPatch) {
-        merged[remote.uuid] = PomodoroRecord(
+        final updated = PomodoroRecord(
           uuid: existing.uuid,
           todoUuid: existing.todoUuid ?? remote.todoUuid,
           todoTitle: existing.todoTitle ?? remote.todoTitle,
@@ -1518,6 +1686,8 @@ class PomodoroService {
           hasConflict: existing.hasConflict,
           conflictData: existing.conflictData,
         );
+        merged[remote.uuid] = updated;
+        planProgressChanges.add((previous: existing, current: updated));
         hasChange = true;
       }
     }
@@ -1527,11 +1697,19 @@ class PomodoroService {
         ..sort((a, b) => b.startTime.compareTo(a.startTime));
       await _saveRecords(records);
     }
+    for (final change in planProgressChanges) {
+      await _updateLinkedPlanBlocks(
+        change.previous,
+        change.current,
+        isSyncSource: true,
+      );
+    }
     return hasChange;
   }
 
   static Future<void> syncRecordsToCloud({
     bool forceFullSync = false,
+    http.Client? client,
   }) async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -1543,27 +1721,36 @@ class PomodoroService {
       final lastRecoveryUpload = prefs.getInt(recoveryUploadKey) ?? 0;
       final all = await _getAllRecordsRaw();
       if (all.isEmpty) return;
+      final pendingOps = await db.query(
+        'op_logs',
+        where: 'is_synced = 0 AND target_table = ?',
+        whereArgs: ['pomodoro_records'],
+        orderBy: 'timestamp ASC',
+      );
 
       final Map<String, PomodoroRecord> dedup = {};
+      final operationIdsByRecord = <String, List<Object>>{};
 
       if (!forceFullSync) {
-        final pendingOps = await db.query(
-          'op_logs',
-          where: 'is_synced = 0 AND target_table = ?',
-          whereArgs: ['pomodoro_records'],
-          orderBy: 'timestamp ASC',
-        );
         for (final op in pendingOps) {
           final raw = op['data_json']?.toString();
           if (raw == null || raw.isEmpty) continue;
           try {
             final j = jsonDecode(raw);
+            late final PomodoroRecord record;
             if (j is Map<String, dynamic>) {
-              final r = PomodoroRecord.fromJson(j);
-              dedup[r.uuid] = r;
+              record = PomodoroRecord.fromJson(j);
             } else if (j is Map) {
-              final r = PomodoroRecord.fromJson(j.cast<String, dynamic>());
-              dedup[r.uuid] = r;
+              record = PomodoroRecord.fromJson(j.cast<String, dynamic>());
+            } else {
+              continue;
+            }
+            dedup[record.uuid] = record;
+            final operationId = op['id'];
+            if (operationId != null) {
+              operationIdsByRecord
+                  .putIfAbsent(record.uuid, () => <Object>[])
+                  .add(operationId);
             }
           } catch (_) {}
         }
@@ -1588,24 +1775,50 @@ class PomodoroService {
       }
 
       final dirty = dedup.values.toList();
+      final uploadedRecordIds = dedup.keys.toSet();
+      final operationIdsToAcknowledge = <Object>{};
+      if (forceFullSync) {
+        final localRecordIds = all.map((record) => record.uuid).toSet();
+        for (final op in pendingOps) {
+          final operationId = op['id'];
+          final recordId = op['target_uuid']?.toString();
+          if (operationId != null && localRecordIds.contains(recordId)) {
+            operationIdsToAcknowledge.add(operationId);
+          }
+        }
+      } else {
+        for (final entry in operationIdsByRecord.entries) {
+          if (uploadedRecordIds.contains(entry.key)) {
+            operationIdsToAcknowledge.addAll(entry.value);
+          }
+        }
+      }
 
       // debugPrint(
       //   '[PomodoroService] syncRecordsToCloud forceFullSync=$forceFullSync, upload=${dirty.length}/${all.length}',
       // );
       if (dirty.isEmpty) return;
       final ok = await ApiService.uploadPomodoroRecords(
-          dirty.map((r) => r.toJson()).toList());
+        dirty.map((r) => r.toJson()).toList(),
+        client: client,
+      );
       if (ok) {
         var latestUploadedAt = lastRecoveryUpload;
         for (final r in dirty) {
           if (r.updatedAt > latestUploadedAt) latestUploadedAt = r.updatedAt;
         }
-        await db.update(
-          'op_logs',
-          {'is_synced': 1, 'sync_error': ''},
-          where: 'is_synced = 0 AND target_table = ?',
-          whereArgs: ['pomodoro_records'],
-        );
+        if (operationIdsToAcknowledge.isNotEmpty) {
+          final batch = db.batch();
+          for (final operationId in operationIdsToAcknowledge) {
+            batch.update(
+              'op_logs',
+              {'is_synced': 1, 'sync_error': ''},
+              where: 'id = ? AND is_synced = 0 AND target_table = ?',
+              whereArgs: [operationId, 'pomodoro_records'],
+            );
+          }
+          await batch.commit(noResult: true);
+        }
         await prefs.setInt(
             lastUploadKey, DateTime.now().millisecondsSinceEpoch);
         if (latestUploadedAt > lastRecoveryUpload) {
@@ -1674,18 +1887,19 @@ class PomodoroService {
   /// 今日专注记录（本地，不含已删除）
   static Future<List<PomodoroRecord>> getTodayRecords() async {
     final now = DateTime.now();
-    final start = DateTime(now.year, now.month, now.day);
-    final end = start.add(const Duration(days: 1));
-    return getRecordsInRange(start, end);
+    final range = CalendarDateMath.dayRange(now);
+    return getRecordsInRange(range.start, range.endExclusive);
   }
 
   /// 昨日专注记录（本地，不含已删除）
   static Future<List<PomodoroRecord>> getYesterdayRecords() async {
     final now = DateTime.now();
-    final start = DateTime(now.year, now.month, now.day)
-        .subtract(const Duration(days: 1));
-    final end = start.add(const Duration(days: 1));
-    return getRecordsInRange(start, end);
+    final yesterday = CalendarDateMath.addDays(
+      CalendarDateMath.dateOnly(now),
+      -1,
+    );
+    final range = CalendarDateMath.dayRange(yesterday);
+    return getRecordsInRange(range.start, range.endExclusive);
   }
 
   /// 最近专注：今日有则返回今日，否则返回昨日；同时返回是哪天

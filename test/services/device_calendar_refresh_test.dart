@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:countdown_todo/services/device_calendar_read_service.dart';
+import 'package:countdown_todo/utils/time_utils.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -35,6 +36,20 @@ void main() {
     DeviceCalendarReadService.clearSessionReadCacheForTesting();
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, null);
+  });
+  test('month grid boundaries stay at local midnight across DST', () {
+    expect(
+      AppTimeFormats.localDayStartOffset(DateTime(2026, 3, 7, 23), 1),
+      DateTime(2026, 3, 8),
+    );
+    expect(
+      AppTimeFormats.localDayStartOffset(DateTime(2026, 10, 31, 23), 1),
+      DateTime(2026, 11, 1),
+    );
+    expect(
+      DeviceCalendarReadService.monthGridEnd(DateTime(2026, 10, 15)),
+      DateTime(2026, 11, 2),
+    );
   });
   test('默认复用缓存，保存复查强制读取新占用', () async {
     var reads = 0;

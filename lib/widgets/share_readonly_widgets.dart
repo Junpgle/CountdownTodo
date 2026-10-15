@@ -1,18 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models.dart';
+import '../utils/calendar_date_math.dart';
 
 /// 分享页只读待办组件（支持折叠，与手机端布局一致）
 class ShareTodoSection extends StatefulWidget {
   final List<TodoItem> todos;
   final List<TodoGroup> todoGroups;
   final bool isLight;
+  final DateTime Function()? clock;
 
   const ShareTodoSection({
     super.key,
     required this.todos,
     required this.todoGroups,
     required this.isLight,
+    this.clock,
   });
 
   @override
@@ -51,7 +54,7 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
     final bool useDarkUI = isDarkTheme;
     final colorScheme = Theme.of(context).colorScheme;
 
-    final DateTime now = DateTime.now();
+    final DateTime now = widget.clock?.call() ?? DateTime.now();
     final DateTime today = DateTime(now.year, now.month, now.day);
 
     final displayItems = _buildSortedDisplayItems(now, today);
@@ -604,12 +607,12 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
   }
 
   double _todoProgress(TodoItem todo, DateTime now) {
+    final end = todo.effectiveDueAt;
+    if (end == null) return 0;
     final createdAt = DateTime.fromMillisecondsSinceEpoch(
       todo.createdDate ?? todo.createdAt,
       isUtc: true,
     ).toLocal();
-    final end = todo.dueDate ??
-        DateTime(createdAt.year, createdAt.month, createdAt.day, 23, 59, 59);
     final totalMinutes = end.difference(createdAt).inMinutes;
     if (totalMinutes <= 0 || !now.isAfter(createdAt)) return 0;
     return (now.difference(createdAt).inMinutes / totalMinutes)
@@ -786,7 +789,7 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
   Widget _buildTodoCard(BuildContext context, TodoItem todo,
       {bool isOverdue = false, bool isFuture = false}) {
     final colorScheme = Theme.of(context).colorScheme;
-    final now = DateTime.now();
+    final now = widget.clock?.call() ?? DateTime.now();
     final DateTime today = DateTime(now.year, now.month, now.day);
 
     // 进度
@@ -794,13 +797,7 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
       todo.createdDate ?? todo.createdAt,
       isUtc: true,
     ).toLocal();
-    final end = todo.dueDate ??
-        DateTime(cDate.year, cDate.month, cDate.day, 23, 59, 59);
-    final totalMin = end.difference(cDate).inMinutes;
-    double progress = 0.0;
-    if (totalMin > 0 && now.isAfter(cDate)) {
-      progress = (now.difference(cDate).inMinutes / totalMin).clamp(0.0, 1.0);
-    }
+    final progress = _todoProgress(todo, now);
 
     // 颜色
     final Color cardBg = todo.isDone
@@ -834,7 +831,7 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
         badgeColor = Colors.redAccent.shade200;
         badgeBg = Colors.redAccent.withValues(alpha: 0.12);
       } else if (isFuture) {
-        final days = d.difference(todayDate).inDays;
+        final days = CalendarDateMath.daysBetween(todayDate, d);
         badge = "$days天后";
         badgeColor = colorScheme.secondary;
         badgeBg = colorScheme.secondaryContainer.withValues(alpha: 0.5);
@@ -1333,7 +1330,8 @@ class ShareCountdownSection extends StatelessWidget {
 
     // 过滤：只显示未完成且未过期的倒计时
     final activeCountdowns = countdowns.where((item) {
-      return !item.isCompleted && item.targetDate.difference(today).inDays >= 0;
+      return !item.isCompleted &&
+          CalendarDateMath.daysBetween(today, item.targetDate) >= 0;
     }).toList()
       ..sort((a, b) => a.targetDate.compareTo(b.targetDate));
 
@@ -1362,7 +1360,7 @@ class ShareCountdownSection extends StatelessWidget {
             itemCount: activeCountdowns.length,
             itemBuilder: (context, index) {
               final item = activeCountdowns[index];
-              final diff = item.targetDate.difference(today).inDays;
+              final diff = CalendarDateMath.daysBetween(today, item.targetDate);
               final bool isUrgent = diff <= 3;
               final bool isHoliday = _isHolidayKeyword(item.title);
 

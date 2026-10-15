@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
 import '../services/sidebar_menu_service.dart';
 import '../update_service.dart';
+import '../utils/calendar_date_math.dart';
 import 'optional_liquid_glass_surface.dart';
 import 'platform_backdrop_filter.dart';
 
@@ -66,12 +67,18 @@ Future<int?> _loadCompanionDays() async {
     status?['created_at'] ?? status?['createdAt'],
   );
   if (registeredAt == null) return null;
+  return homeDrawerCompanionDaysForTesting(registeredAt, DateTime.now());
+}
 
-  final registeredDay =
-      DateTime(registeredAt.year, registeredAt.month, registeredAt.day);
-  final today = DateTime.now();
-  final todayDay = DateTime(today.year, today.month, today.day);
-  final days = todayDay.difference(registeredDay).inDays + 1;
+@visibleForTesting
+int homeDrawerCompanionDaysForTesting(DateTime registeredAt, DateTime now) {
+  final registeredDay = DateTime(
+    registeredAt.year,
+    registeredAt.month,
+    registeredAt.day,
+  );
+  final todayDay = DateTime(now.year, now.month, now.day);
+  final days = CalendarDateMath.daysBetween(registeredDay, todayDay) + 1;
   return days > 0 ? days : 1;
 }
 

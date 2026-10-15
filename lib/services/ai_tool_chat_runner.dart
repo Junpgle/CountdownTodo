@@ -3,7 +3,9 @@ import 'dart:convert';
 
 import 'ai_chat_service.dart';
 import 'ai_query_tool_service.dart';
+import 'ai_planning_draft_validator.dart';
 import 'ai_tool_result_context.dart';
+import 'ai_settings_navigation_service.dart';
 
 typedef AiToolRoundStream = Stream<AiChatStreamChunk> Function(
   List<Map<String, dynamic>> messages,
@@ -20,55 +22,78 @@ abstract final class AiToolChatRunner {
     required List<Map<String, dynamic>> messages,
     required List<Map<String, dynamic>> tools,
     required AiToolRoundStream streamRound,
+    AiToolRoundStream? streamProposalRound,
     required AiReadToolExecutor executeRead,
     Completer<void>? cancelToken,
     bool includeReasoningContent = false,
+    bool requirePlanningProposal = false,
+    String planningRequestText = '',
+    DateTime? planningNow,
     int maxQueryRounds = 4,
     int maxCalls = 8,
   }) async* {
-    final history = [
-      for (final message in messages) Map<String, dynamic>.from(message),
-    ];
+    final history = _initialHistory(
+      messages,
+      compactForPlanning:
+          requirePlanningProposal &&
+          _isSelfContainedPlanningRequest(planningRequestText),
+    );
     final allowed = {
       for (final tool in tools) (tool['function'] as Map)['name'] as String,
     };
     var callCount = 0;
     var indexOffset = 0;
     var proposalsProduced = false;
+    var planningRepairAttempted = false;
+    var planningScheduleRepairAttempted = false;
+    final planningRequestTime = planningNow ?? DateTime.now();
+    final hasPlanningTool = tools.any((tool) {
+      final function = tool['function'] as Map;
+      return function['name'] == 'propose_cdt_actions' &&
+          jsonEncode(function['parameters']).contains('create_plan_block');
+    });
     final usedIds = <String>{};
     final completedQueries = <String, (String, Map<String, dynamic>)>{};
     var resultChars = 0;
     bool cancelled() => cancelToken?.isCompleted == true;
 
-    for (var round = 0; round <= maxQueryRounds; round++) {
+    for (var round = 0; round <= maxQueryRounds + 1; round++) {
       if (cancelled()) return;
       final finalRound =
-          round == maxQueryRounds ||
+          round >= maxQueryRounds ||
           callCount >= maxCalls ||
           resultChars > AiToolResultContext.maxTurnChars - 400;
-      final roundTools = finalRound
-          ? <Map<String, dynamic>>[]
-          : tools
-                .where(
-                  (tool) =>
-                      !proposalsProduced ||
-                      AiQueryToolService.toolNames.contains(
-                        (tool['function'] as Map)['name'],
-                      ),
-                )
-                .toList();
-      if (finalRound) {
+      final roundTools = tools.where((tool) {
+        final isQuery = AiQueryToolService.toolNames.contains(
+          (tool['function'] as Map)['name'],
+        );
+        return (!finalRound || !isQuery) &&
+            (!proposalsProduced || isQuery) &&
+            (!planningRepairAttempted ||
+                (tool['function'] as Map)['name'] == 'propose_cdt_actions') &&
+            (!planningScheduleRepairAttempted ||
+                (tool['function'] as Map)['name'] == 'propose_cdt_actions');
+      }).toList();
+      if (finalRound &&
+          !planningRepairAttempted &&
+          !planningScheduleRepairAttempted) {
         history.add({
           'role': 'system',
           'content':
-              '本轮查询次数或数据预算已达上限。请依据已有工具结果回答；说明未查询到或尚未展开的数据，不要继续调用工具或编造数据。',
+              '本轮查询次数或数据预算已达上限。不要继续查询或编造数据。'
+              '依据已有结果回答；若用户要求生成操作且信息齐全，仍可调用本轮保留的propose_*工具生成待确认草案。'
+              '信息不足时说明缺少什么；未调用提案工具时不要声称已生成草案。',
         });
       }
       var content = '';
       var reasoning = '';
       final calls = <AiChatFunctionCall>[];
       var maxIndex = -1;
-      await for (final chunk in streamRound(history, roundTools)) {
+      final runRound =
+          planningRepairAttempted || planningScheduleRepairAttempted
+          ? streamProposalRound ?? streamRound
+          : streamRound;
+      await for (final chunk in runRound(history, roundTools)) {
         if (cancelled()) return;
         content += chunk.content;
         reasoning += chunk.reasoningContent;
@@ -77,26 +102,121 @@ abstract final class AiToolChatRunner {
           if (delta.index > maxIndex) maxIndex = delta.index;
         }
         yield AiChatStreamChunk(
-          content: chunk.content,
+          // Planning prose is buffered until we know whether actual draft
+          // calls arrived. Never flash a false "created/saved" claim.
+          content: hasPlanningTool ? '' : chunk.content,
           reasoningContent: chunk.reasoningContent,
-          toolCallDeltas: [
-            for (final delta in chunk.toolCallDeltas)
-              AiChatFunctionCallDelta(
-                index: delta.index + indexOffset,
-                id: delta.id,
-                name: delta.name,
-                arguments: delta.arguments,
-              ),
-          ],
-          toolCalls: chunk.toolCalls,
+          // Planning calls are held until their times pass app-side checks;
+          // otherwise an invalid draft could leak into the confirmation card.
+          toolCallDeltas: hasPlanningTool
+              ? const []
+              : [
+                  for (final delta in chunk.toolCallDeltas)
+                    AiChatFunctionCallDelta(
+                      index: delta.index + indexOffset,
+                      id: delta.id,
+                      name: delta.name,
+                      arguments: delta.arguments,
+                    ),
+                ],
+          toolCalls: hasPlanningTool ? const [] : chunk.toolCalls,
           finishReason: chunk.finishReason,
           usage: chunk.usage,
           usageSummary: chunk.usageSummary,
         );
       }
       indexOffset += maxIndex + 1;
-      if (cancelled() || calls.isEmpty) return;
-      if (finalRound) throw StateError('模型在查询次数达到上限后仍返回工具调用');
+      if (cancelled()) return;
+      final cdtProposalOnly =
+          calls.isNotEmpty &&
+          calls.every((call) => call.name == 'propose_cdt_actions');
+      if (hasPlanningTool && cdtProposalOnly) {
+        final validationIssue = AiPlanningDraftValidator.validateFromNow(
+          requestText: planningRequestText,
+          actions: _decodeCdtProposalActions(calls),
+          now: planningRequestTime,
+        );
+        if (validationIssue != null) {
+          if (planningScheduleRepairAttempted) {
+            yield AiChatStreamChunk(
+              content: '这次规划草案未通过时间校验，没有生成确认卡。$validationIssue',
+            );
+            return;
+          }
+          planningScheduleRepairAttempted = true;
+          history.add({
+            'role': 'assistant',
+            'content': content,
+            if (includeReasoningContent) 'reasoning_content': reasoning,
+            'tool_calls': [
+              for (final call in calls)
+                {
+                  'id': call.id,
+                  'type': 'function',
+                  'function': {'name': call.name, 'arguments': call.arguments},
+                },
+            ],
+          });
+          for (final call in calls) {
+            history.add({
+              'role': 'tool',
+              'tool_call_id': call.id,
+              'content': jsonEncode({
+                'ok': false,
+                'status': 'invalid_planning_draft',
+                'message': validationIssue,
+              }),
+            });
+          }
+          history.add({
+            'role': 'system',
+            'content':
+                '刚才的规划草案未交给App，也没有生成确认卡。$validationIssue'
+                '本轮请求时的本地时间是${_formatPlanningTime(planningRequestTime)}。'
+                '请重新安排所有可在用户要求时段内完成的任务：从该当前时间开始，'
+                '每个规划块必须在截止时间前结束，时间不能互相重叠；确实排不下的任务不要塞入过去或重叠时段，'
+                '改为只安排能完成的部分，并在说明中列出未安排的任务。现在直接调用propose_cdt_actions生成新的待确认草案。',
+          });
+          continue;
+        }
+      }
+      if (hasPlanningTool && calls.isNotEmpty) {
+        yield AiChatStreamChunk(toolCalls: calls);
+      }
+      if (calls.isEmpty && hasPlanningTool && !proposalsProduced) {
+        final claimsDraft = RegExp(
+          r'草案.{0,12}已生成|已(?:生成|创建|新建|保存)|我已为|回复.{0,12}确认.{0,20}保存',
+        ).hasMatch(content);
+        if ((requirePlanningProposal || claimsDraft) &&
+            !planningRepairAttempted &&
+            !planningScheduleRepairAttempted) {
+          planningRepairAttempted = true;
+          history.add({
+            'role': 'assistant',
+            'content': content,
+            if (includeReasoningContent) 'reasoning_content': reasoning,
+          });
+          history.add({
+            'role': 'system',
+            'content':
+                '上一条只有文字，没有返回规划工具调用，App没有创建任何待办或规划卡。'
+                '用户已要求生成方案，请现在调用propose_cdt_actions提交create_plan_block。'
+                '已有待办用真实todoId；不存在的事项用newTodoTitle，不编造ID。'
+                '只生成待确认卡，不保存，不再要求回复确认。确实缺少日期或时段时明确说明缺少什么。',
+          });
+          continue;
+        }
+        yield AiChatStreamChunk(
+          content: claimsDraft
+              ? '模型没有返回可执行的规划草案，本次未创建或保存待办、规划块。请重试生成。'
+              : content,
+        );
+        return;
+      }
+      if (hasPlanningTool && content.isNotEmpty) {
+        yield AiChatStreamChunk(content: content);
+      }
+      if (calls.isEmpty) return;
       // A proposals-only response can be presented immediately as confirmation
       // cards. Mixed read/proposal responses still complete the read cycle.
       if (calls.every(
@@ -105,6 +225,7 @@ abstract final class AiToolChatRunner {
       )) {
         return;
       }
+      if (finalRound) throw StateError('模型在查询次数达到上限后仍返回查询调用');
       history.add({
         'role': 'assistant',
         'content': content,
@@ -146,6 +267,22 @@ abstract final class AiToolChatRunner {
               result = {'ok': false, 'error': '本地查询失败或超时，请稍后重试'};
             }
           }
+        } else if (call.name == AiSettingsNavigationService.toolName) {
+          proposalsProduced = true;
+          final targets = AiSettingsNavigationService.targetsFromArguments(
+            call.arguments,
+          );
+          result = {
+            'ok': targets.isNotEmpty,
+            'status': targets.isNotEmpty
+                ? 'awaiting_navigation'
+                : 'invalid_target',
+            'targets': targets,
+            'settings_changed': false,
+            'message': targets.isNotEmpty
+                ? '已生成设置入口卡片，用户点击后进入设置自行调整。'
+                : '未找到有效设置入口，不要编造路径。',
+          };
         } else {
           proposalsProduced = true;
           result = {
@@ -177,5 +314,75 @@ abstract final class AiToolChatRunner {
         yield AiChatStreamChunk(toolResults: {call.id: result});
       }
     }
+  }
+
+  static List<Map<String, dynamic>> _initialHistory(
+    List<Map<String, dynamic>> messages, {
+    required bool compactForPlanning,
+  }) {
+    final copied = [
+      for (final message in messages) Map<String, dynamic>.from(message),
+    ];
+    if (!compactForPlanning) return copied;
+
+    final currentUserIndex = copied.lastIndexWhere(
+      (message) => message['role'] == 'user',
+    );
+    if (currentUserIndex < 0) return copied;
+
+    // A complete, explicit schedule is a new planning request even when it is
+    // sent in a long-running chat that contains an older pending proposal.
+    // Keep the current system instructions and request, while excluding stale
+    // proposal summaries and read-only results from the prior turn.
+    return [
+      for (final message in copied)
+        if (message['role'] == 'system') message,
+      {
+        'role': 'system',
+        'content':
+            '当前用户消息已明确给出本轮任务和时间要求。请只根据当前请求与本轮查询结果重新生成规划草案；'
+            '历史对话中的旧草案和旧答复不属于本轮计划。',
+      },
+      copied[currentUserIndex],
+    ];
+  }
+
+  static List<Map<String, dynamic>> _decodeCdtProposalActions(
+    List<AiChatFunctionCall> calls,
+  ) {
+    final actions = <Map<String, dynamic>>[];
+    for (final call in calls) {
+      if (call.name != 'propose_cdt_actions') continue;
+      try {
+        final decoded = jsonDecode(call.arguments);
+        if (decoded is! Map || decoded['actions'] is! List) continue;
+        actions.addAll(
+          (decoded['actions'] as List).whereType<Map>().map(
+            (item) => Map<String, dynamic>.from(item),
+          ),
+        );
+      } catch (_) {
+        // The regular action parser reports malformed arguments as no draft.
+      }
+    }
+    return actions;
+  }
+
+  static String _formatPlanningTime(DateTime value) =>
+      '${value.year.toString().padLeft(4, '0')}-'
+      '${value.month.toString().padLeft(2, '0')}-'
+      '${value.day.toString().padLeft(2, '0')} '
+      '${value.hour.toString().padLeft(2, '0')}:'
+      '${value.minute.toString().padLeft(2, '0')}';
+
+  static bool _isSelfContainedPlanningRequest(String text) {
+    final request = text.trim();
+    if (request.isEmpty || request.length < 18) return false;
+    final hasPlanningIntent = RegExp(r'安排|规划|排程|联排').hasMatch(request);
+    final hasTimeBoundary = RegExp(
+      r'(?:\d{1,2}\s*(?::|：|点)|(?:截止|截至|到|之前).{0,10}(?:晚上|今晚|下午|夜里|早上|上午|中午|\d)|从现在|剩下的时间|今天|明天)',
+    ).hasMatch(request);
+    final listSeparators = RegExp(r'[、，,；;]|以及|还有|然后|再').allMatches(request);
+    return hasPlanningIntent && hasTimeBoundary && listSeparators.length >= 2;
   }
 }

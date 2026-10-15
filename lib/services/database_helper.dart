@@ -530,6 +530,24 @@ class DatabaseHelper {
   }
 
   /// 本地私密日记表结构。日记不写入 op_logs，也不参与云端同步。
+  static Future<void> ensurePlanEditorDraftSchema(Database db) async {
+    await db.execute('''CREATE TABLE IF NOT EXISTS local_plan_editor_drafts (
+      uuid TEXT PRIMARY KEY,
+      member_id INTEGER NOT NULL,
+      target_uuid TEXT NOT NULL,
+      revision INTEGER NOT NULL,
+      format_version INTEGER NOT NULL,
+      todo_uuid TEXT NOT NULL,
+      title TEXT NOT NULL,
+      start_time INTEGER NOT NULL,
+      end_time INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      form_json TEXT NOT NULL
+    )''');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_local_plan_drafts_member '
+        'ON local_plan_editor_drafts(member_id, updated_at DESC, uuid)');
+  }
+
   static Future<void> ensureJournalSchema(Database db) async {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS journal_entries (
@@ -1016,6 +1034,9 @@ class DatabaseHelper {
           },
           onCreate: _createDB,
           onUpgrade: (db, oldVersion, newVersion) async {
+            if (oldVersion < 58) {
+              await ensurePlanEditorDraftSchema(db);
+            }
             if (oldVersion < 52) {
               await ensureAiUsageSchema(db);
             }
@@ -1567,6 +1588,7 @@ class DatabaseHelper {
             }
           },
           onOpen: (db) async {
+            await ensurePlanEditorDraftSchema(db);
             await ensureCourseTableSchema(db);
             await ensureTodoClientLocalSchema(db);
             await ensureTodoPlanBlockSchema(db);
@@ -2124,6 +2146,7 @@ class DatabaseHelper {
     await ensureAiUsageSchema(db);
 
     // 21. 创建性能索引
+    await ensurePlanEditorDraftSchema(db);
     await ensureMissingIndexes(db);
   }
 

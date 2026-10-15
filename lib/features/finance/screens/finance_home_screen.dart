@@ -34,6 +34,7 @@ typedef _FinanceHomeData = ({
   List<FinanceCategory> categories,
   List<FinancePaymentMethod> paymentMethods,
   List<FinanceTransaction> overviewTransactions,
+  List<FinanceCumulativeBalanceEvent> cumulativeBalanceEvents,
   List<FinanceRecurringRule> recurringRules,
 });
 
@@ -75,7 +76,10 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
   List<FinanceCategory> _categories = const [];
   List<FinancePaymentMethod> _paymentMethods = const [];
   List<FinanceRecurringRule> _recurringRules = const [];
+  List<FinanceCumulativeBalanceEvent> _cumulativeBalanceEvents = const [];
   FinanceSummary _summary = const FinanceSummary();
+  int _openingBalanceMinor = 0;
+  String? _openingBalanceStartDate;
   String _keyword = '';
   FinanceTransactionType? _filterType;
   String? _categoryFilterUuid;
@@ -170,6 +174,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
       _categories = initialData.categories;
       _paymentMethods = initialData.paymentMethods;
       _overviewTransactions = initialData.overviewTransactions;
+      _cumulativeBalanceEvents = initialData.cumulativeBalanceEvents;
       _recurringRules = initialData.recurringRules;
       _lastRecurringRuleSignature = _recurringRuleSignature(
         initialData.recurringRules,
@@ -211,7 +216,10 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
     });
   }
 
-  Future<void> _load({bool showLoading = true}) async {
+  Future<void> _load({
+    bool showLoading = true,
+    bool refreshCumulativeBalanceEvents = true,
+  }) async {
     _upcomingTransactionTimer?.cancel();
     _upcomingTransactionTimer = null;
     _autoGenerationTimer?.cancel();
@@ -225,11 +233,19 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
     }
     try {
       final values = await Future.wait<Object>([
-        _loadOverviewData(),
+        _loadOverviewData(
+          refreshCumulativeBalanceEvents: refreshCumulativeBalanceEvents,
+        ),
         AppSettingsStorage.isFinanceCategoryTapOpensLedger(),
+        AppSettingsStorage.getFinanceOpeningBalance(
+          widget.username,
+          now: widget.clock(),
+        ),
       ]);
       final data = values[0] as _FinanceHomeData;
       final categoryTapOpensLedger = values[1] as bool;
+      final openingBalance =
+          values[2] as ({int amountMinor, String? startDate});
       if (!mounted || generation != _loadGeneration) return;
       final recurringRuleSignature = _recurringRuleSignature(
         data.recurringRules,
@@ -244,8 +260,11 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
         _categories = data.categories;
         _paymentMethods = data.paymentMethods;
         _overviewTransactions = data.overviewTransactions;
+        _cumulativeBalanceEvents = data.cumulativeBalanceEvents;
         _recurringRules = data.recurringRules;
         _categoryTapOpensLedger = categoryTapOpensLedger;
+        _openingBalanceMinor = openingBalance.amountMinor;
+        _openingBalanceStartDate = openingBalance.startDate;
         _isLoading = false;
       });
       _scheduleUpcomingTransactionRefresh();
@@ -354,15 +373,23 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
     return jsonEncode(values);
   }
 
-  Future<_FinanceHomeData> _loadOverviewData() async {
+  Future<_FinanceHomeData> _loadOverviewData({
+    bool refreshCumulativeBalanceEvents = true,
+  }) async {
     final from = DateTime(_month.year, _month.month);
     final to = DateTime(_month.year, _month.month + 1);
     // 周视图需要覆盖月初前和月末后的完整自然周，避免边界日期被截断。
     final overviewFrom = financeCalendarDayOffset(from, -7);
     final overviewTo = financeCalendarDayOffset(to, 7);
+    final now = widget.clock();
     final values = await Future.wait<dynamic>([
       // 这个范围已经包含本月，后续在内存中切出本月账单，避免重复查询。
       FinanceRepository.getTransactions(from: overviewFrom, to: overviewTo),
+      refreshCumulativeBalanceEvents
+          ? FinanceRepository.getCumulativeBalanceEvents(
+              throughAt: now.millisecondsSinceEpoch,
+            )
+          : Future.value(_cumulativeBalanceEvents),
       FinanceRepository.getCategories(
         includeArchived: true,
         includeDeleted: true,
@@ -371,6 +398,8 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
       FinanceRepository.getRecurringRules(enabledOnly: true),
     ]);
     final overviewTransactions = values[0] as List<FinanceTransaction>;
+    final cumulativeBalanceEvents =
+        values[1] as List<FinanceCumulativeBalanceEvent>;
     final fromKey = dateKey(from);
     final toKey = dateKey(to);
     final transactions = overviewTransactions
@@ -380,7 +409,6 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
               transaction.transactionDate.compareTo(toKey) < 0,
         )
         .toList(growable: false);
-    final now = widget.clock();
     final isCurrentMonth = from.year == now.year && from.month == now.month;
     return (
       transactions: transactions,
@@ -388,10 +416,11 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
         transactions,
         asOfAt: isCurrentMonth ? now.millisecondsSinceEpoch : null,
       ),
-      categories: values[1] as List<FinanceCategory>,
-      paymentMethods: values[2] as List<FinancePaymentMethod>,
+      categories: values[2] as List<FinanceCategory>,
+      paymentMethods: values[3] as List<FinancePaymentMethod>,
       overviewTransactions: overviewTransactions,
-      recurringRules: values[3] as List<FinanceRecurringRule>,
+      cumulativeBalanceEvents: cumulativeBalanceEvents,
+      recurringRules: values[4] as List<FinanceRecurringRule>,
     );
   }
 
@@ -409,6 +438,14 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
     var nextEventAt = monthStart.isAfter(currentMonth)
         ? monthStart.millisecondsSinceEpoch
         : DateTime(_month.year, _month.month + 1).millisecondsSinceEpoch;
+    if (_month.year == currentDate.year && _month.month == currentDate.month) {
+      final nextDayStartAt = DateTime(
+        currentDate.year,
+        currentDate.month,
+        currentDate.day + 1,
+      ).millisecondsSinceEpoch;
+      if (nextDayStartAt < nextEventAt) nextEventAt = nextDayStartAt;
+    }
     for (final transaction in _overviewTransactions) {
       final eventAt = transaction.balanceEventAt();
       if (eventAt > now && eventAt < nextEventAt) {
@@ -499,6 +536,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
         _categories = data.categories;
         _paymentMethods = data.paymentMethods;
         _overviewTransactions = data.overviewTransactions;
+        _cumulativeBalanceEvents = data.cumulativeBalanceEvents;
       });
     } catch (_) {
       // 后台补偿失败不覆盖已经可见的首屏数据。
@@ -846,7 +884,60 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
     setState(() {
       _month = DateTime(value.year, value.month);
     });
-    _load();
+    _load(refreshCumulativeBalanceEvents: false);
+  }
+
+  Future<void> _editOpeningBalance() async {
+    final now = widget.clock();
+    final today = dateKey(now);
+    final storedStartDate = _openingBalanceStartDate;
+    final initialStartDate = storedStartDate != null &&
+            storedStartDate.compareTo(today) <= 0
+        ? storedStartDate
+        : FinanceRepository.defaultCumulativeBalanceStartDate(
+            events: _cumulativeBalanceEvents,
+            nowAt: now.millisecondsSinceEpoch,
+          );
+    final result = await showAppDialog<_FinanceOpeningBalanceDraft>(
+      context: context,
+      builder: (_) => _FinanceOpeningBalanceDialog(
+        initialAmountMinor: _openingBalanceMinor,
+        initialStartDate: initialStartDate,
+        clock: widget.clock,
+      ),
+    );
+    if (result == null || !mounted) return;
+
+    try {
+      if (result.amountMinor == null) {
+        await AppSettingsStorage.clearFinanceOpeningBalance(widget.username);
+        if (!mounted) return;
+        setState(() {
+          _openingBalanceMinor = 0;
+          _openingBalanceStartDate = null;
+        });
+      } else {
+        final startDate = result.startDate;
+        if (startDate == null) return;
+        await AppSettingsStorage.setFinanceOpeningBalance(
+          widget.username,
+          amountMinor: result.amountMinor!,
+          startDate: startDate,
+          now: now,
+        );
+        if (!mounted) return;
+        setState(() {
+          _openingBalanceMinor = result.amountMinor!;
+          _openingBalanceStartDate = startDate;
+        });
+      }
+    } catch (_) {
+      if (!mounted) return;
+      AppSnackBars.showSnackBar(
+        context,
+        const SnackBar(content: Text('期初结余保存失败，请稍后重试')),
+      );
+    }
   }
 
   Future<void> _pushCategoryLedger(
@@ -868,6 +959,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
           categories: _categories,
           paymentMethods: _paymentMethods,
           overviewTransactions: _overviewTransactions,
+          cumulativeBalanceEvents: _cumulativeBalanceEvents,
           recurringRules: _recurringRules,
         ),
         clock: widget.clock,
@@ -1025,6 +1117,10 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
                           clock: widget.clock,
                           summary: _summary,
                           transactions: _overviewTransactions,
+                          cumulativeBalanceEvents: _cumulativeBalanceEvents,
+                          openingBalanceMinor: _openingBalanceMinor,
+                          openingBalanceStartDate: _openingBalanceStartDate,
+                          onEditOpeningBalance: _editOpeningBalance,
                           categories: _categoryMap,
                           categoryTapOpensLedger: _categoryTapOpensLedger,
                           onAdd: () =>
@@ -1173,4 +1269,177 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
 
 class _FinanceQuickEntryIntent extends Intent {
   const _FinanceQuickEntryIntent();
+}
+
+class _FinanceOpeningBalanceDraft {
+  final int? amountMinor;
+  final String? startDate;
+
+  const _FinanceOpeningBalanceDraft({
+    required this.amountMinor,
+    required this.startDate,
+  });
+
+  const _FinanceOpeningBalanceDraft.clear()
+    : amountMinor = null,
+      startDate = null;
+}
+
+class _FinanceOpeningBalanceDialog extends StatefulWidget {
+  final int initialAmountMinor;
+  final String initialStartDate;
+  final DateTime Function() clock;
+
+  const _FinanceOpeningBalanceDialog({
+    required this.initialAmountMinor,
+    required this.initialStartDate,
+    required this.clock,
+  });
+
+  @override
+  State<_FinanceOpeningBalanceDialog> createState() =>
+      _FinanceOpeningBalanceDialogState();
+}
+
+class _FinanceOpeningBalanceDialogState
+    extends State<_FinanceOpeningBalanceDialog> {
+  late final TextEditingController _amountController;
+  late DateTime _startDate;
+  String? _amountError;
+  String? _dateError;
+
+  @override
+  void initState() {
+    super.initState();
+    _amountController = TextEditingController(
+      text: formatFinanceAmountInput(widget.initialAmountMinor),
+    );
+    _startDate = dateFromKey(widget.initialStartDate);
+  }
+
+  @override
+  void dispose() {
+    _amountController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickStartDate() async {
+    final now = widget.clock();
+    final today = DateTime(now.year, now.month, now.day);
+    final initialDate = _startDate.isAfter(today) ? today : _startDate;
+    final picked = await showAppDatePicker(
+      context: context,
+      initialDate: initialDate.isBefore(DateTime(2000))
+          ? DateTime(2000)
+          : initialDate,
+      firstDate: DateTime(2000),
+      lastDate: today,
+      currentDate: today,
+      helpText: '选择期初结余起算日期',
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      _startDate = DateTime(picked.year, picked.month, picked.day);
+      _dateError = null;
+    });
+  }
+
+  void _save() {
+    final amountMinor = parseFinanceAmount(
+      _amountController.text,
+      allowZero: true,
+    );
+    if (amountMinor == null) {
+      setState(() => _amountError = '请输入不小于 0、最多两位小数的金额');
+      return;
+    }
+    if (dateKey(_startDate).compareTo(dateKey(widget.clock())) > 0) {
+      setState(() => _dateError = '起算日期不能晚于今天');
+      return;
+    }
+    Navigator.of(context).pop(
+      _FinanceOpeningBalanceDraft(
+        amountMinor: amountMinor,
+        startDate: dateKey(_startDate),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return AlertDialog(
+      title: const Text('设置期初结余'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '填写起算日开始时已有的结余；起算日当天及之后的已记录收支会继续累加。',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _amountController,
+              autofocus: true,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
+              ],
+              decoration: InputDecoration(
+                labelText: '期初结余',
+                prefixText: '¥ ',
+                errorText: _amountError,
+                border: const OutlineInputBorder(),
+              ),
+              onChanged: (_) {
+                if (_amountError != null) {
+                  setState(() => _amountError = null);
+                }
+              },
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: _pickStartDate,
+              icon: const Icon(Icons.calendar_today_outlined),
+              label: Text('起算日期：${dateKey(_startDate)}'),
+            ),
+            if (_dateError != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  _dateError!,
+                  style: TextStyle(color: colors.error),
+                ),
+              ),
+            const SizedBox(height: 8),
+            Text(
+              '只保存在当前设备；账单云同步不会同步这项设置。',
+              style: Theme.of(context).textTheme.bodySmall
+                  ?.copyWith(color: colors.onSurfaceVariant),
+            ),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                onPressed: () =>
+                    Navigator.of(context)
+                        .pop(const _FinanceOpeningBalanceDraft.clear()),
+                child: const Text('恢复为全部历史流水累计'),
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('取消'),
+        ),
+        FilledButton(onPressed: _save, child: const Text('保存')),
+      ],
+    );
+  }
 }

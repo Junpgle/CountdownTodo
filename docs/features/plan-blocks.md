@@ -1,6 +1,6 @@
 # Todo plan blocks
 
-Last verified: 2026-10-08 (availability recommendations; existing platform integrations retain their own verification boundaries).
+Last verified: 2026-10-11 (availability buffers and related focused regressions; existing native platform integrations retain their own verification boundaries).
 
 A todo describes an outcome and due semantics; a `TodoPlanBlock` describes a
 scheduled execution window. Multiple blocks may point to one todo.
@@ -32,12 +32,54 @@ scheduled execution window. Multiple blocks may point to one todo.
   current completion rule can mark a block finished at 80% of planned duration.
 - Calendar sync creates/updates events and persists the external event ID so
   later updates or deletion target the same event.
-- Statistics include planned versus actual time, completion/missed metrics,
-  per-todo summaries and recommendation text.
+- Statistics separate real plan budgets, ended-plan status completion, verified
+  focus and time logs, with deduplicated attribution and paginated evidence.
+  See [planning review](plan-review.md) for range and legacy-data rules.
+- Ordinary new plans support explicit local drafts and unsaved-exit protection.
+  See [planning drafts](plan-editor-drafts.md) for restoration and local-only limits.
 - AI actions can create, update, delete, reschedule, skip and start plan blocks.
 
 Plan blocks do not turn a todo's date-only/deadline field into an execution
 interval. See `todo-semantics.md` for the product distinction.
+
+## Reuse saved plan settings
+
+Verified on 2026-10-14: [round 16 acceptance](../reports/2026-10-14-plan-reuse-settings-acceptance.md).
+
+Real manual/AI plans offer **更多操作 → 照此新建** in their editor. The action
+reads the latest saved settings and opens the full-page new-plan editor. Its
+duration comes from the actual interval (1–1440 whole minutes), with the remark,
+Pomodoro duration/rounds and reminder retained. History defaults to today; future
+plans keep their local date. The exact source todo is rechecked for the current
+member. An ineligible/missing todo leaves selection empty, requiring a user choice.
+
+The first of two fresh recommendations fills the draft. Switching todos preserves
+the retained duration/configuration; estimates are references until explicitly
+adopted in custom search. No source plan is excluded from occupancy. A new UUID,
+planned/manual status, zero actual focus and empty calendar/Pomodoro bindings
+keep the new execution independent. Opening and discarding do not write business
+records. Saving checks current occupancy, deadline, identity and any acknowledged
+existing arrangements again; uncertain commits use the same target UUID.
+
+Even an untouched imported draft gets exit protection. **reuse** local drafts
+preserve user fields and target UUID without requiring the source to remain,
+while restored recommendations and append approvals are invalidated. Existing
+draft origins retain their behavior. Calendar/mapped records and invalid raw
+settings cannot be used as a source. This copies one block's settings only.
+
+## Day overview
+
+The planning day header now shares the review aggregates: real plan budget,
+verified ended focus, finished/ended plan counts, and clipped time logs. Each
+metric opens its matching details for the selected day. Narrow layouts and
+large text use one overview entry instead of truncating values or adding a
+scrolling dashboard. Loading and retry remain local to the header.
+
+The timeline record list still shows intervals overlapping the day, while focus
+statistics belong to each record's start day. Cached/overlap-based progress
+ratios are no longer rendered inside blocks. The existing missed-state
+maintenance and focus completion transitions retain their original behavior.
+See [planning review](plan-review.md) for attribution and refresh rules.
 
 ## Create a plan from todo editing
 
@@ -51,7 +93,32 @@ two recommendations are visible immediately. **自定义寻找时段** opens a b
 dialog with date, duration, window, avoidance and 3/5/8 candidate controls (five
 by default). Select a result to return to the page; a custom selection remains
 visible even when it was outside the original first two. The predicted duration
-is shown as **预计用时** and can be adjusted.
+is shown as **预计专注用时** and can be adjusted.
+
+Both todo creation and plan editing use a compact estimate/reference row and an
+**估时依据** information button. Its read-only sheet shows the actual sample count,
+at most three title groups, cumulative focus durations and insufficient-data or
+read-failure explanations. Reference labels describe evidence strength rather
+than a probability; the estimate is not remaining task time.
+
+Calibration uses current-account completed, undeleted, nonconflicted concrete
+todo UUIDs, summing explicit actual seconds across valid ended/abandoned focus
+records. Identical titles and recurring instances remain separate samples.
+Missing/invalid actual records make that task incomplete; zero never falls back
+to planned duration. Valid plan linkage is only a fallback owner when a direct
+todo UUID is absent. Contradictory ownership excludes both tasks, and title text
+never establishes ownership. Plan caches and unexecuted plans are not added.
+
+SQL aggregates before limiting to 500 recent tasks, batches exact JSON tag
+associations and reads a consistent account-checked snapshot. Weighted medians
+use only available similarity/category layers; sparse or diffuse history blends
+with keyword estimates. “历史参考较充分” requires at least five recent strong
+similar samples with stable durations. Opening evidence neither reads more
+history nor changes the draft. Estimates do not alter Pomodoro rounds; stale
+title/group/account/lifecycle requests and user draft edits invalidate late
+results. Title/group snapshots also invalidate evidence when the same mutable
+todo object is updated in place by a parent refresh, preserving the draft time.
+No schema, backend, sync-write or native-calendar changes are involved.
 
 Prediction/search only fill the draft; saving remains explicit and uses the
 existing fresh occupancy checks. User edits or closing the page invalidate late
@@ -86,8 +153,9 @@ Today starts at the next valid minute; timed
 and date-only todo deadlines limit candidate endings.
 
 The snapshot checks adjusted course occurrences, fixed schedules, active plan
-blocks and compatible same-day legacy execution intervals. Cross-day fixed
-schedules/plans are clipped to the query date. Plan states planned/reminded/
+blocks and compatible same-day legacy execution intervals. Availability retains
+raw source bounds, including adjacent-day sources needed by buffers; calendar
+display retains its own date clipping. Plan states planned/reminded/
 delayed/focusing occupy time. Only planned/reminded/delayed plans can use
 recommendations when editing, and only that plan UUID is excluded.
 
@@ -122,10 +190,18 @@ status write retries only the status. Native startup failures after a run marker
 is persisted are recognized before retrying.
 
 This is a local recommendation, not an atomic cross-device/system-calendar
-reservation. Manual dragging/resizing, AI batch planning and global sync keep
-their existing paths. No database schema, backend protocol or native permission
-was added.
+reservation. Manual dragging/resizing keeps soft conflict semantics and uses
+the guarded save/undo flow described below. AI batch planning and global sync
+keep their existing paths. No database schema, backend protocol or native
+permission was added.
 
+
+Optional task-before/task-after buffers are independent, default to zero and
+are remembered locally per account alongside avoidance. The custom search
+dialog holds the controls; recommendations and guarded saves share the same
+buffer calculation. An explicit one-query zero-buffer retry preserves defaults.
+See [availability buffers](plan-availability-buffers.md) for boundaries and failure
+behavior.
 
 ## Flexible planning settings and actual execution
 
@@ -168,3 +244,36 @@ records never creates or edits a planning block.
 已有后续安排先展示，可查看已有规划或明确再新建；正在专注时仅查看当前专注。保存前新增或变动的后续安排要求重新核对，保留输入。原来源变更、待办完成／删除／冲突、账号切换、占用或截止失效都阻止保存。新规划和oplog同一事务，再次校验后写入；连击与专注重试复用新规划身份。
 
 验收证据见[第三轮验收报告](../reports/2026-10-09-missed-plan-recovery-acceptance.md)。
+
+## 规划冲突检查与快捷改期（2026-10-09）
+
+首页今日规划及规划日视图增加紧凑的时间重叠入口，按真实规划UUID计数。进入、相关数据更新、前台恢复及跨午夜刷新；只在前台设置下一次日期／规划结束唤醒，没有后台轮询。列表可检查所选日、今天或未来七个本地日期，展开显示来源与实际重叠区间。
+
+复用空闲查询的课程调休、固定日程、有效规划、兼容旧执行区间和同日定时手机日历规则，一次读取范围内来源。相邻时间不算冲突，自身UUID排除；手机日历全天及跨日期事项仍不占用，专注与时间日志不作为新预约。过去日期及已结束／完成／漏做／跳过／取消规划不产生待改期提醒。读取失败或来源时间待定明确显示未完成，手机日历失败仅在用户明确选择应用内检查时降级。
+
+来源可以只读查看，另一规划使用独立只读详情，避免打开日视图时触发自动状态维护。专注中的规划仅可查看当前专注。可调整的规划在整页共享编辑器中带入原待办、时长和配置，锁定待办关联，先展示两个推荐；自定义查找弹窗保留五个候选、3／5／8选择及账户避让偏好。不会自动采用推荐。
+
+保存更新原UUID，保留实际专注、番茄关联、设备与日历身份；其他规划、来源和待办不变。推荐和手动区间都重新读取来源，检查占用、截止、当前时间及最新避让；写事务中再检查原记录内容、状态、账户、关联待办和占用。取消及查看零写入，失败保留输入，规划和oplog原子写入；专注重试沿用已保存身份。全天24小时一屏及拖动新建／移动／缩放保持原行为。
+
+验收证据见[第四轮验收报告](../reports/2026-10-09-plan-conflict-review-acceptance.md)。
+
+## 规划拖动撤销与可靠保存（2026-10-09）
+
+全天24小时一屏保持不滚动。长按移动始终保留时长，接近午夜限制开始位置；左右边缘缩放累计从按下起的位移后吸附，最小时长沿用所选粒度。拖动预览与原记录分离，多小时分段共用同一手势；取消、移回原位和无变化零写入。
+
+松手只提交一次受校验更新，保存期间禁止重复操作。失败结束预览并刷新真实记录；成功显示约6秒的前后时段及撤销提示。提示消失后，工具区仍保留“撤销上次调整”图标；仅记录最近一次成功移动或缩放，失败及取消不替换。切日、切账号、离页清除记录，后台取消未提交预览，前台恢复复核资格。
+
+只允许未结束的 planned／reminded／delayed 真实规划调整。专注中、关联当前专注运行标记、历史状态、无效待办、映射来源及实际记录不参与拖动保存。写事务校验账号、原版本、更新时间、完整内容、待办和专注状态。撤销同样校验本次保存结果及原时段有效性，保留UUID、配置、实际投入、记录、设备和日历身份；它产生新版本和oplog，不倒写旧版本。规划与oplog失败一起回滚，暂时读取或保存失败保留重试机会。
+
+直接拖动和撤销保持手动安排的软冲突规则，不额外弹出占用确认；第四轮入口随真实数据刷新。午休／用餐等避让仍仅约束主动查找和编辑器保存。没有依赖、数据库迁移、后端接口或系统权限变更。
+
+验收证据见[第五轮验收报告](../reports/2026-10-09-plan-drag-undo-acceptance.md)。
+
+
+## 无可用时段说明与后续日期
+
+新建／改期规划查找成功但没有足够长的连续候选时，可点「查看原因与其他日期」。主页面仅补充最长连续片段和碎片总分钟；说明页显示最多三个片段参考及按需展开的计算明细。短片段不可采用，碎片总量也不代表能组成完整分段方案。
+
+说明页可修改原查找条件、主动查找后续7天，或进入已有分段安排。后续范围从原所选日期的下一天起计算，受待办截止限制；沿用当前时长、每日窗口、周规则、避让、缓冲和日历来源模式。最多给五个完整连续候选，优先覆盖不同日期；点「采用」只回填原编辑器，保留备注、提醒和番茄，之后仍须显式保存。
+
+查找说明与跨日候选共用区间计算，重叠占用只扣一次。来源读取失败、规则损坏、身份或日历覆盖变化明确提示；不会自动放宽条件。原日期诊断与后续候选共用一次范围来源读取，采用及保存重新检查有效性。范围结果不存入草稿，最终采用的单段沿用原草稿和保存复核。

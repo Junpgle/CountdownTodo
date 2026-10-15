@@ -7,6 +7,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../../../models.dart';
 import '../../../storage_service.dart';
 import '../../../utils/app_dialogs.dart';
+import '../../../widgets/settings_focus_page.dart';
 import '../../../services/pomodoro_service.dart';
 import '../../../services/pomodoro_control_service.dart';
 import '../../../services/notification_service.dart';
@@ -2406,59 +2407,74 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     _abandonFocus();
   }
 
-  void _showSettingsDialog() {
-    final focusCtrl =
-        TextEditingController(text: _settings.focusMinutes.toString());
-    final breakCtrl =
-        TextEditingController(text: _settings.breakMinutes.toString());
+  /// Opens the existing editor after an AI settings card is clicked.
+  void showSettingsEntry({String? focusLabel}) =>
+      _showSettingsDialog(focusLabel: focusLabel);
+
+  void _showSettingsDialog({String? focusLabel}) {
+    final focusCtrl = TextEditingController(
+      text: _settings.focusMinutes.toString(),
+    );
+    final breakCtrl = TextEditingController(
+      text: _settings.breakMinutes.toString(),
+    );
     final cyclesCtrl = TextEditingController(text: _settings.cycles.toString());
     showAppDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('⚙️ 番茄钟设置'),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _settingField('专注时长 (分钟)', focusCtrl),
-            const SizedBox(height: 16),
-            _settingField('休息时长 (分钟)', breakCtrl),
-            const SizedBox(height: 16),
-            _settingField('循环次数', cyclesCtrl),
-          ],
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
-          FilledButton(
-            onPressed: () async {
-              final f = int.tryParse(focusCtrl.text) ?? 25;
-              final b = int.tryParse(breakCtrl.text) ?? 5;
-              final c = int.tryParse(cyclesCtrl.text) ?? 4;
-              final ns = PomodoroSettings(
+      builder: (ctx) => SettingsFocusPage(
+        labels: [?focusLabel],
+        child: AlertDialog(
+          title: const Text('⚙️ 番茄钟设置'),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _settingField('专注时长 (分钟)', focusCtrl),
+              const SizedBox(height: 16),
+              _settingField('休息时长 (分钟)', breakCtrl),
+              const SizedBox(height: 16),
+              _settingField('循环次数', cyclesCtrl),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                final f = int.tryParse(focusCtrl.text) ?? 25;
+                final b = int.tryParse(breakCtrl.text) ?? 5;
+                final c = int.tryParse(cyclesCtrl.text) ?? 4;
+                final ns = PomodoroSettings(
                   focusMinutes: f.clamp(1, 120),
                   breakMinutes: b.clamp(1, 60),
                   cycles: c.clamp(1, 20),
                   mode: _settings.mode,
                   strictFreeFocus: _settings.strictFreeFocus,
-                  doNotDisturbDuringFocus: _settings.doNotDisturbDuringFocus);
-              await PomodoroService.saveSettings(ns);
-              if (!mounted) {
-                if (ctx.mounted) Navigator.pop(ctx);
-                return;
-              }
-              setState(() {
-                _settings = ns;
-                if (_phase == PomodoroPhase.idle) {
-                  _remainingSeconds =
-                      ns.mode == TimerMode.countUp ? 0 : ns.focusMinutes * 60;
+                  doNotDisturbDuringFocus: _settings.doNotDisturbDuringFocus,
+                );
+                await PomodoroService.saveSettings(ns);
+                if (!mounted) {
+                  if (ctx.mounted) Navigator.pop(ctx);
+                  return;
                 }
-              });
-              if (ctx.mounted) Navigator.pop(ctx);
-            },
-            child: const Text('保存'),
-          ),
-        ],
+                setState(() {
+                  _settings = ns;
+                  if (_phase == PomodoroPhase.idle) {
+                    _remainingSeconds = ns.mode == TimerMode.countUp
+                        ? 0
+                        : ns.focusMinutes * 60;
+                  }
+                });
+                if (ctx.mounted) Navigator.pop(ctx);
+              },
+              child: const Text('保存'),
+            ),
+          ],
+        ),
       ),
     );
   }

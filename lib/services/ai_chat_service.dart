@@ -360,6 +360,7 @@ class AiChatService {
     double temperature = 0.7,
     int maxTokens = 2000,
     List<Map<String, dynamic>>? tools,
+    String? toolChoiceName,
   }) {
     final effective = effectiveProvider(provider, apiUrl);
     final bool isNvidiaNim = effective == 'nvidia_nim';
@@ -373,6 +374,17 @@ class AiChatService {
     if (tools != null && tools.isNotEmpty) {
       body['tools'] = tools;
       body['tool_choice'] = 'auto';
+      if (toolChoiceName != null) {
+        if (!tools.any(
+          (tool) => (tool['function'] as Map)['name'] == toolChoiceName,
+        )) {
+          throw ArgumentError('指定的工具未在本轮开放');
+        }
+        body['tool_choice'] = {
+          'type': 'function',
+          'function': {'name': toolChoiceName},
+        };
+      }
       if (effective == 'zhipu') {
         body['tool_stream'] = true;
       }
@@ -411,6 +423,7 @@ class AiChatService {
     String usageOperation = 'chat',
     int imageCount = 0,
     List<Map<String, dynamic>>? tools,
+    String? toolChoiceName,
     http.Client Function()? clientFactory,
   }) async* {
     await _ensureAiInteractionAllowed();
@@ -450,6 +463,7 @@ class AiChatService {
         temperature: temperature,
         maxTokens: maxTokens,
         tools: tools,
+        toolChoiceName: toolChoiceName,
       );
 
       request.body = jsonEncode(body);

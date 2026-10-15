@@ -7,6 +7,7 @@ import '../../services/permission_request_coordinator.dart';
 import '../../storage_service.dart';
 import '../../utils/app_platform.dart';
 import '../../utils/app_dialogs.dart';
+import '../../utils/calendar_date_math.dart';
 import '../../widgets/floating_bottom_bar.dart';
 
 class CalendarSyncPage extends StatefulWidget {
@@ -638,7 +639,7 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
     final dateTimeFormat = DateFormat('yyyy-MM-dd HH:mm');
 
     if (entry.allDay) {
-      final inclusiveEnd = entry.end.subtract(const Duration(days: 1));
+      final inclusiveEnd = CalendarDateMath.inclusiveEndDate(entry.end);
       final startDate = dateFormat.format(entry.start);
       if (_isSameDate(entry.start, inclusiveEnd)) return '$startDate 全天';
       return '$startDate 至 ${dateFormat.format(inclusiveEnd)} 全天';

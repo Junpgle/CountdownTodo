@@ -1,5 +1,6 @@
 import 'dart:math';
 import '../models/medal_ml_models.dart';
+import '../utils/calendar_date_math.dart';
 import 'medal_recommendation_service.dart';
 import 'timeline_service.dart';
 
@@ -201,7 +202,8 @@ class MedalFeatureExtractor {
 
   static double _dailyActivityRatio(TimelineSummary s) {
     if (s.actualStartTime == null || s.actualEndTime == null) return 0.0;
-    final days = s.actualEndTime!.difference(s.actualStartTime!).inDays;
+    final days =
+        CalendarDateMath.daysBetween(s.actualStartTime!, s.actualEndTime!);
     if (days <= 0) return 1.0;
     return (s.consecutiveActiveDays / days).clamp(0.0, 1.0);
   }
@@ -260,7 +262,8 @@ class MedalFeatureExtractor {
 
   static double _computeRecencyFactor(TimelineSummary s) {
     if (s.actualStartTime == null || s.actualEndTime == null) return 0.5;
-    final spanDays = s.actualEndTime!.difference(s.actualStartTime!).inDays;
+    final spanDays =
+        CalendarDateMath.daysBetween(s.actualStartTime!, s.actualEndTime!);
     // Shorter range = more recent/active → higher factor
     if (spanDays <= 1) return 1.0;
     if (spanDays <= 7) return 0.9;

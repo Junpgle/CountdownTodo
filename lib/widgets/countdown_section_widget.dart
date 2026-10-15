@@ -12,6 +12,7 @@ import '../services/power_save_mode_service.dart';
 import '../widgets/home_sections.dart';
 import '../widgets/floating_glass_control.dart';
 import '../utils/android_energy_policy.dart';
+import '../utils/calendar_date_math.dart';
 import '../utils/page_transitions.dart';
 import 'platform_backdrop_filter.dart';
 import 'optional_liquid_glass_surface.dart';
@@ -188,6 +189,7 @@ class CountdownSectionWidget extends StatefulWidget {
   final VoidCallback onDataChanged;
   final Key? addKey; // 🚀 新增 addKey 用于高亮引导
   final GlobalKey? historyKey; // 用于历史页共享容器转场
+  final DateTime Function()? now;
 
   const CountdownSectionWidget({
     super.key,
@@ -197,6 +199,7 @@ class CountdownSectionWidget extends StatefulWidget {
     required this.onDataChanged,
     this.addKey,
     this.historyKey,
+    this.now,
   });
 
   @override
@@ -436,14 +439,13 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
   }
 
   Widget _buildList() {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
+    final today = CalendarDateMath.dateOnly(widget.now?.call() ?? DateTime.now());
     final List<CountdownItem> activeCountdowns =
         widget.countdowns.where((item) {
       if (_selectedTeamUuid != null && item.teamUuid != _selectedTeamUuid) {
         return false;
       }
-      return item.targetDate.difference(today).inDays >= 0;
+      return CalendarDateMath.daysBetween(today, item.targetDate) >= 0;
     }).toList()
           ..sort((a, b) => a.targetDate.compareTo(b.targetDate));
 
@@ -474,7 +476,7 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
             itemCount: activeCountdowns.length,
             itemBuilder: (context, index) {
               final item = activeCountdowns[index];
-              final diff = item.targetDate.difference(today).inDays;
+              final diff = CalendarDateMath.daysBetween(today, item.targetDate);
 
               final bool isUrgent = diff <= 3;
               final bool isHoliday = _isHolidayKeyword(item.title);

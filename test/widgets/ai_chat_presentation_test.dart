@@ -3,13 +3,24 @@ import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:countdown_todo/models/chat_message.dart';
+import 'package:countdown_todo/models/ai_context_mode.dart';
+import 'package:countdown_todo/screens/todo_chat_screen.dart';
+import 'package:countdown_todo/services/ai_chat_service.dart';
+import 'package:countdown_todo/services/chat_storage_service.dart';
+import 'package:countdown_todo/services/llm_service.dart';
 import 'package:countdown_todo/widgets/ai_chat_markdown.dart';
 import 'package:countdown_todo/widgets/ai_chat_thinking_panel.dart';
 import 'package:countdown_todo/widgets/ai_tool_call_tile.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+
+import '../support/plan_availability_fixture.dart';
 
 const _reasoning = '先读取课程和待办，再安排不冲突的执行时段。';
 const _tablePreviewPath = String.fromEnvironment('CDT_MARKDOWN_TABLE_PREVIEW');
@@ -107,6 +118,191 @@ Widget _page({
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  testWidgets('规划文字假成功补发工具请求，显示4张真实操作并只在点击后保存', (tester) async {
+    final fixture = PlanAvailabilityFixture();
+    await tester.runAsync(fixture.initialize);
+    addTearDown(() async => await tester.runAsync(fixture.dispose));
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(430, 932);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    FlutterSecureStorage.setMockInitialValues({});
+    await ChatStorageService.setContextMode(AiContextMode.functionCalling);
+    await ChatStorageService.setSmartContextEnabled(true);
+    await LLMService.saveConfig(
+      LLMConfig(
+        provider: 'mimo',
+        model: 'mimo-v2.6-flash',
+        apiKey: 'synthetic-key',
+        apiUrl: '${AiChatService.mimoApiBaseUrl}/chat/completions',
+      ),
+    );
+    var requests = 0;
+    http.Client makeClient() => MockClient((request) async {
+      final body = jsonDecode(request.body) as Map<String, dynamic>;
+      if (body['stream'] != true) {
+        return http.Response(
+          jsonEncode({
+            'choices': [
+              {
+                'message': {'content': '公考规划'},
+              },
+            ],
+          }),
+          200,
+        );
+      }
+      requests++;
+      Map<String, dynamic> delta;
+      if (requests == 1) {
+        delta = {'content': '规划块草案已生成，我已创建待办，请回复确认以保存。'};
+      } else {
+        expect(body['tool_choice'], {
+          'type': 'function',
+          'function': {'name': 'propose_cdt_actions'},
+        });
+        delta = {
+          'content': '已生成，回复确认保存。',
+          'tool_calls': [
+            {
+              'index': 0,
+              'id': 'plans-1',
+              'type': 'function',
+              'function': {
+                'name': 'propose_cdt_actions',
+                'arguments': jsonEncode({
+                  'actions': [
+                    {
+                      'action': 'create_plan_block',
+                      'blocks': [
+                        for (final title in ['行测', '申论', '习概小论文'])
+                          {
+                            'newTodoTitle': title,
+                            'isAdded': true,
+                            'isIgnored': true,
+                            'isSelected': false,
+                            'startTime': '2026-10-10 16:20',
+                            'dueDate': '2026-10-10 17:45',
+                          },
+                        {
+                          'todoId': 'todo-target',
+                          'title': '复习高数',
+                          'isAdded': true,
+                          'startTime': '2026-10-10 20:30',
+                          'dueDate': '2026-10-10 21:30',
+                        },
+                      ],
+                    },
+                  ],
+                }),
+              },
+            },
+          ],
+        };
+      }
+      return http.Response(
+        'data: ${jsonEncode({
+          'choices': [
+            {'delta': delta, 'finish_reason': requests == 1 ? 'stop' : 'tool_calls'},
+          ],
+        })}\n\ndata: [DONE]\n\n',
+        200,
+        headers: {'content-type': 'text/event-stream; charset=utf-8'},
+      );
+    });
+    Future<void> settle() async {
+      for (var i = 0; i < 30; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 20)),
+        );
+      }
+    }
+
+    await http.runWithClient(() async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: TodoChatScreen(
+            username: PlanAvailabilityFixture.username,
+            todos: const [
+              {'id': 'todo-target', 'title': '复习高数'},
+            ],
+            initialMessage: '请把行测、申论、习概小论文和复习高数规划到晚上九点半，生成规划块',
+            onTodosBatchAction: (_, _) {},
+          ),
+        ),
+      );
+      await settle();
+      expect(requests, 2);
+      final active = await ChatStorageService.getActiveSessionId();
+      final history = await ChatStorageService.loadHistory(active);
+      expect(history.last.todoActions, hasLength(4));
+      expect(history.last.content, contains('点击“执行所选操作”后才会保存'));
+      expect(history.last.content, isNot(contains('回复确认保存')));
+      expect(find.text('待确认规划操作'), findsOneWidget);
+      expect(find.text('执行所选操作 (4)'), findsOneWidget);
+      expect(
+        await tester.runAsync(() => fixture.db.query('todos')),
+        hasLength(1),
+      );
+      expect(
+        await tester.runAsync(() => fixture.db.query('todo_plan_blocks')),
+        isEmpty,
+      );
+      for (var i = 0; i < 2; i++) {
+          await tester.enterText(
+            find.byKey(const ValueKey('ai-chat-input')),
+            '确认',
+          );
+          await tester.pump();
+          final send = tester.widget<IconButton>(
+            find.byKey(const ValueKey('ai-chat-send')),
+          );
+          expect(send.onPressed, isNotNull);
+        await tester.runAsync(() async {
+          send.onPressed!();
+        });
+          await settle();
+          expect(tester.takeException(), isNull);
+      }
+      expect(requests, 2);
+      expect(
+        await tester.runAsync(() => fixture.db.query('todo_plan_blocks')),
+        isEmpty,
+      );
+      for (final complaint in ['你没给我操作块', '我没看到卡片']) {
+        await tester.enterText(find.byKey(const ValueKey('ai-chat-input')), complaint);
+        await tester.pump();
+        final send = tester.widget<IconButton>(find.byKey(const ValueKey('ai-chat-send')));
+        await tester.runAsync(() async { send.onPressed!(); });
+        await settle();
+        expect(requests, 2);
+        final recovered = await ChatStorageService.loadHistory(active);
+        expect(recovered.last.todoActions, hasLength(4));
+        expect(recovered.expand((message) => message.todoActions ?? [])
+            .where((action) => !action.isAdded && !action.isIgnored), hasLength(4));
+        expect(recovered.last.settingsTargets, isEmpty);
+        expect(find.text('执行所选操作 (4)'), findsOneWidget);
+        expect(await tester.runAsync(() => fixture.db.query('todo_plan_blocks')), isEmpty);
+      }
+      final button = find.text('执行所选操作 (4)');
+      await tester.ensureVisible(button);
+      await tester.pump();
+      await tester.tap(button);
+      await settle();
+      expect(
+        await tester.runAsync(() => fixture.db.query('todos')),
+        hasLength(4),
+      );
+      expect(
+        await tester.runAsync(() => fixture.db.query('todo_plan_blocks')),
+        hasLength(4),
+      );
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    }, makeClient);
+    debugDefaultTargetPlatformOverride = fixture.previousPlatform;
+  });
   const previewPath = String.fromEnvironment('CDT_CHAT_PREVIEW');
   if (previewPath.isNotEmpty || _tablePreviewPath.isNotEmpty) {
     setUpAll(() async {

@@ -178,12 +178,40 @@ class AiTodoActionExecutor {
       }
 
       if (action.isPlanBlockAction) {
+        // New planning subjects stay drafts until this selected card executes.
+        // Resolve titles again at confirmation to avoid duplicating a todo
+        // created since generation, or referenced by another block in this batch.
+        final planningTodos = [
+          ...existingTodos,
+          for (final todo in newTodos) {'id': todo.id, 'title': todo.title},
+        ];
+        TodoItem? pendingTodo;
+        var planAction = action;
+        final newTitle = action.newTodoTitle;
+        if (action.type == AiTodoActionType.createPlanBlock &&
+            newTitle != null && action.todoId?.isNotEmpty != true) {
+          final matches = planningTodos.where((todo) =>
+              todo['title']?.toString().trim() == newTitle &&
+              todo['is_deleted'] != true && todo['isDeleted'] != true).toList();
+          if (matches.length > 1) continue;
+          if (matches.isEmpty) {
+            pendingTodo = TodoItem(
+              title: newTitle,
+              createdAt: createdAtFallback.millisecondsSinceEpoch,
+            );
+            planningTodos.add({'id': pendingTodo.id, 'title': pendingTodo.title});
+          }
+          planAction = AiTodoAction.fromJson(action.toJson());
+          planAction.todoId = pendingTodo?.id ?? matches.single['id']?.toString();
+        }
         final block = _buildPlanBlock(
-          action,
-          existingTodos,
+          planAction,
+          planningTodos,
           existingPlanBlocks,
         );
         if (block != null) {
+          if (pendingTodo != null) newTodos.add(pendingTodo);
+          action.todoId = planAction.todoId;
           if (action.type == AiTodoActionType.createPlanBlock) {
             newPlanBlocks.add(block);
           } else {

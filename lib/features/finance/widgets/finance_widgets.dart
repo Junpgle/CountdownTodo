@@ -30,8 +30,12 @@ class FinanceOverviewPanel extends StatefulWidget {
   final DateTime month;
   final FinanceSummary summary;
   final List<FinanceTransaction> transactions;
+  final List<FinanceCumulativeBalanceEvent> cumulativeBalanceEvents;
+  final int openingBalanceMinor;
+  final String? openingBalanceStartDate;
   final Map<String, FinanceCategory> categories;
   final VoidCallback onAdd;
+  final VoidCallback? onEditOpeningBalance;
   final GlobalKey addActionKey;
   final bool categoryTapOpensLedger;
   final Future<void> Function() onRefresh;
@@ -45,8 +49,12 @@ class FinanceOverviewPanel extends StatefulWidget {
     required this.month,
     required this.summary,
     required this.transactions,
+    this.cumulativeBalanceEvents = const [],
+    this.openingBalanceMinor = 0,
+    this.openingBalanceStartDate,
     required this.categories,
     required this.onAdd,
+    this.onEditOpeningBalance,
     required this.addActionKey,
     this.categoryTapOpensLedger = true,
     required this.onRefresh,
@@ -61,6 +69,7 @@ class FinanceOverviewPanel extends StatefulWidget {
 class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
   _FinanceOverviewView _view = _FinanceOverviewView.month;
   late DateTime _focusedDate;
+  int? _cumulativeBalanceMinor;
   final Map<String, GlobalKey> _categorySourceKeys = {};
 
   DateTime get month => widget.month;
@@ -79,14 +88,32 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
   void initState() {
     super.initState();
     _focusedDate = _initialFocusDate(month);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _refreshCumulativeBalance();
+    });
   }
 
   @override
   void didUpdateWidget(covariant FinanceOverviewPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
+    var refreshBalance = false;
     if (oldWidget.month.year != month.year ||
         oldWidget.month.month != month.month) {
       _focusedDate = _initialFocusDate(month);
+      refreshBalance = true;
+    }
+    if (!identical(
+          oldWidget.cumulativeBalanceEvents,
+          widget.cumulativeBalanceEvents,
+        ) ||
+        oldWidget.openingBalanceMinor != widget.openingBalanceMinor ||
+        oldWidget.openingBalanceStartDate != widget.openingBalanceStartDate) {
+      refreshBalance = true;
+    }
+    if (refreshBalance) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _refreshCumulativeBalance();
+      });
     }
   }
 
@@ -190,6 +217,8 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
             categoryExpenseShares,
             period,
           ),
+          const SizedBox(height: 24),
+          _buildCumulativeBalanceCard(context, colorScheme),
         ],
       ),
     );
@@ -338,6 +367,7 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
             selected: {_view},
             onSelectionChanged: (selection) {
               setState(() => _view = selection.first);
+              _refreshCumulativeBalance();
             },
           ),
         ),
@@ -470,6 +500,7 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
       setState(
         () => _focusedDate = DateTime(picked.year, picked.month, picked.day),
       );
+      _refreshCumulativeBalance();
     }
   }
 
@@ -478,6 +509,7 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
         ? financeCalendarDayOffset(_focusedDate, delta * 7)
         : financeCalendarDayOffset(_focusedDate, delta);
     setState(() => _focusedDate = _clampToSelectedMonth(next));
+    _refreshCumulativeBalance();
   }
 
   DateTime _clampToSelectedMonth(DateTime value) {
@@ -510,6 +542,114 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
       return dateKey(_startOfWeek(next)) != dateKey(_startOfWeek(_focusedDate));
     }
     return dateKey(next) != dateKey(_focusedDate);
+  }
+
+  DateTime get _cumulativeBalanceAsOf {
+    final now = clock();
+    final range = _periodRange;
+    if (range.from.isAfter(now)) return now;
+    if (!range.to.isAfter(now)) {
+      return range.to.subtract(const Duration(milliseconds: 1));
+    }
+    return now;
+  }
+
+  void _refreshCumulativeBalance() {
+    final asOf = _cumulativeBalanceAsOf;
+    final balance = FinanceRepository.cumulativeBalanceAt(
+      events: widget.cumulativeBalanceEvents,
+      asOfAt: asOf.millisecondsSinceEpoch,
+      openingBalanceMinor: widget.openingBalanceMinor,
+      openingBalanceStartDate: widget.openingBalanceStartDate,
+    );
+    if (!mounted) return;
+    setState(() => _cumulativeBalanceMinor = balance);
+  }
+
+  Widget _buildCumulativeBalanceCard(
+    BuildContext context,
+    ColorScheme colorScheme,
+  ) {
+    final asOfDate = _cumulativeBalanceAsOf;
+    final asOfDateKey = dateKey(asOfDate);
+    final isToday = asOfDateKey == dateKey(clock());
+    final openingStartDate = widget.openingBalanceStartDate;
+    final isBeforeOpeningDate =
+        openingStartDate != null && asOfDateKey.compareTo(openingStartDate) < 0;
+    final sourceLabel = openingStartDate == null
+        ? '按全部历史账单累计'
+        : '从 $openingStartDate 起算，期初 '
+              '${formatFinanceAmount(widget.openingBalanceMinor)}';
+
+    return Card(
+      color: colorScheme.secondaryContainer,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(18, 14, 10, 14),
+        child: Row(
+          children: [
+            Icon(
+              Icons.savings_outlined,
+              color: colorScheme.onSecondaryContainer,
+              size: 28,
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '累计结余',
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      color: colorScheme.onSecondaryContainer,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    isToday ? '截至今天' : '截至 $asOfDateKey',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: colorScheme.onSecondaryContainer.withValues(
+                        alpha: 0.75,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    isBeforeOpeningDate
+                        ? '—'
+                        : _cumulativeBalanceMinor == null
+                        ? '计算中…'
+                        : formatFinanceAmount(_cumulativeBalanceMinor!),
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      color: colorScheme.onSecondaryContainer,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    isBeforeOpeningDate ? '尚未到期初起算日' : sourceLabel,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: colorScheme.onSecondaryContainer.withValues(
+                        alpha: 0.75,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (widget.onEditOpeningBalance != null)
+              IconButton(
+                tooltip: '设置期初结余',
+                onPressed: widget.onEditOpeningBalance,
+                icon: const Icon(Icons.tune_rounded),
+                color: colorScheme.onSecondaryContainer,
+              ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildSummaryCard(

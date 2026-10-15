@@ -131,6 +131,7 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
   String? _lastRecordedQuery;
   bool _searchFailed = false;
   Timer? _debounce;
+  Timer? _focusTimer;
 
   // 记录每个类型是否已展开（默认只显示前 3 条）
   final Map<SearchResultType, bool> _expanded = {};
@@ -177,7 +178,8 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
     );
     _animController.forward();
 
-    Future.delayed(const Duration(milliseconds: 50), () {
+    _focusTimer = Timer(const Duration(milliseconds: 50), () {
+      _focusTimer = null;
       if (!mounted) return;
       _inputFocusNode.requestFocus();
       _onQueryChanged(_controller.text); // 保留初始化期间已经输入的内容
@@ -203,6 +205,7 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
     _inputFocusNode.dispose();
     _keyboardFocusNode.dispose();
     _debounce?.cancel();
+    _focusTimer?.cancel();
     _animController.dispose();
     super.dispose();
   }
@@ -609,7 +612,7 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
             alpha: isDark ? 0.14 : 0.11,
           ),
           thickness: enhanced ? 22 : 18,
-          blur: enhanced ? 14 : 10,
+          blur: enhanced ? 10 : 8,
           chromaticAberration: enhanced ? 0.004 : 0.002,
           lightIntensity: isDark ? 0.56 : 0.62,
           ambientStrength: isDark ? 0.12 : 0.14,
@@ -621,7 +624,9 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
           ),
         ),
         useOwnLayer: true,
-        quality: enhanced ? GlassQuality.premium : GlassQuality.standard,
+        // This search surface enters with a route animation, so avoid the
+        // premium texture-capture path reserved for static glass surfaces.
+        quality: GlassQuality.standard,
       );
     }
 
@@ -1061,47 +1066,42 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // 标题
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _highlightText(
-                            item.title,
-                            _currentQuery,
-                            TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w600,
-                              color: isCompleted
-                                  ? colorScheme.cdtDisabled
-                                  : colorScheme.onSurface,
-                              decoration: isCompleted
-                                  ? TextDecoration.lineThrough
-                                  : null,
-                            ),
-                            colorScheme.primary,
+                    // Keep the full settings path below the title so long
+                    // paths cannot squeeze the title out on narrow screens.
+                    _highlightText(
+                      item.title,
+                      _currentQuery,
+                      TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: isCompleted
+                            ? colorScheme.cdtDisabled
+                            : colorScheme.onSurface,
+                        decoration: isCompleted
+                            ? TextDecoration.lineThrough
+                            : null,
+                      ),
+                      colorScheme.primary,
+                    ),
+                    if (item.breadcrumb != null)
+                      Container(
+                        margin: const EdgeInsets.only(top: 4),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 7, vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: typeColor.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          item.breadcrumb!,
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: typeColor,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
-                        // 面包屑（设置项）
-                        if (item.breadcrumb != null)
-                          Container(
-                            margin: const EdgeInsets.only(left: 6),
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 7, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: typeColor.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Text(
-                              item.breadcrumb!,
-                              style: TextStyle(
-                                fontSize: 10,
-                                color: typeColor,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
+                      ),
                     // 副标题
                     if (item.subtitle != null && item.subtitle!.isNotEmpty)
                       Padding(

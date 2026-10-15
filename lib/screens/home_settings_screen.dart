@@ -198,6 +198,8 @@ class _SettingsPageState extends State<SettingsPage> {
     Widget Function() paneBuilder;
 
     final accountTargets = [
+      'account',
+      'change_password',
       'sync_interval',
       'conflict_detection',
       'server_choice',
@@ -406,6 +408,9 @@ class _SettingsPageState extends State<SettingsPage> {
       if (!mounted) return;
       setState(() => _isInitialLoading = false);
       if (!mounted) return;
+      if (widget.initialTarget == 'change_password') {
+        unawaited(_openInitialPasswordEditor());
+      }
       await _fetchAccountStatus();
     });
     _loadSettingsAnnouncements();
@@ -794,6 +799,22 @@ class _SettingsPageState extends State<SettingsPage> {
             context,
             PageTransitions.material(builder: (_) => const LoginScreen()),
             (route) => false);
+      }
+    }
+  }
+
+  Future<void> _openInitialPasswordEditor() async {
+    for (var frame = 0; frame < 90 && mounted; frame++) {
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted) return;
+      final route = ModalRoute.of(context);
+      if (route == null ||
+          (route.isCurrent &&
+              !route.offstage &&
+              (route.animation == null ||
+                  route.animation!.status == AnimationStatus.completed))) {
+        await _openChangePasswordDialog();
+        return;
       }
     }
   }

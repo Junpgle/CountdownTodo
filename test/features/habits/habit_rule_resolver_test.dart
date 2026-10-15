@@ -62,6 +62,69 @@ void main() {
       );
     });
 
+    test('同一天的冲突规则按最后更新时间稳定选择', () {
+      final earlier = HabitGoalRuleRevision(
+        uuid: 'rule-earlier-device',
+        habitUuid: 'h1',
+        effectiveFromDate: '2026-08-01',
+        targetValue: 3,
+        createdAt: 100,
+        updatedAt: 100,
+      );
+      final later = HabitGoalRuleRevision(
+        uuid: 'rule-later-device',
+        habitUuid: 'h1',
+        effectiveFromDate: '2026-08-01',
+        targetValue: 5,
+        createdAt: 200,
+        updatedAt: 200,
+      );
+
+      expect(
+        HabitRuleResolver.effectiveRule(
+          [earlier, later],
+          DateTime(2026, 8, 2),
+        )!.uuid,
+        later.uuid,
+      );
+      expect(
+        HabitRuleResolver.effectiveRule(
+          [later, earlier],
+          DateTime(2026, 8, 2),
+        )!.uuid,
+        later.uuid,
+      );
+
+      final sameInstantLowUuid = HabitGoalRuleRevision(
+        uuid: 'rule-a',
+        habitUuid: 'h1',
+        effectiveFromDate: '2026-08-01',
+        createdAt: 200,
+        updatedAt: 300,
+      );
+      final sameInstantHighUuid = HabitGoalRuleRevision(
+        uuid: 'rule-z',
+        habitUuid: 'h1',
+        effectiveFromDate: '2026-08-01',
+        createdAt: 200,
+        updatedAt: 300,
+      );
+      expect(
+        HabitRuleResolver.effectiveRule(
+          [sameInstantLowUuid, sameInstantHighUuid],
+          DateTime(2026, 8, 2),
+        )!.uuid,
+        sameInstantHighUuid.uuid,
+      );
+      expect(
+        HabitRuleResolver.effectiveRule(
+          [sameInstantHighUuid, sameInstantLowUuid],
+          DateTime(2026, 8, 2),
+        )!.uuid,
+        sameInstantHighUuid.uuid,
+      );
+    });
+
     test('已删除规则不参与选择', () {
       final rules = [
         rule('a', '2026-07-01')..isDeleted = true,

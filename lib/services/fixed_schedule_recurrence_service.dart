@@ -44,6 +44,17 @@ class FixedScheduleRecurrenceService {
     };
   }
 
+  /// 从已物化的日期推断自定义重复间隔。
+  ///
+  /// 使用日历日而不是经过的 24 小时数，避免跨夏令时切换时缩短间隔。
+  static int? inferCustomIntervalDays(Iterable<DateTime> occurrenceDates) {
+    final dates = occurrenceDates.toList()..sort();
+    if (dates.length < 2) return null;
+    return CalendarDateMath.daysBetween(dates[0], dates[1])
+        .clamp(1, 3650)
+        .toInt();
+  }
+
   static List<DateTime> occurrenceDates({
     required DateTime startDate,
     required DateTime endDate,

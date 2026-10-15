@@ -10,6 +10,7 @@ import 'package:intl/intl.dart';
 import '../models.dart';
 import '../models/widget_snapshot.dart';
 import '../storage_service.dart';
+import '../utils/calendar_date_math.dart';
 import '../utils/todo_widget_visibility.dart';
 import '../utils/widget_recurrence_series.dart';
 import '../utils/android_energy_policy.dart';
@@ -217,12 +218,12 @@ class WidgetService {
     _startPeriodicRefresh();
   }
 
-  static String _getDueDateLabel(DateTime? dueDate) {
+  static String _getDueDateLabel(DateTime? dueDate, {DateTime? now}) {
     if (dueDate == null) return '';
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
+    final instant = now ?? DateTime.now();
+    final today = DateTime(instant.year, instant.month, instant.day);
     final dueDay = DateTime(dueDate.year, dueDate.month, dueDate.day);
-    final diffDays = dueDay.difference(today).inDays;
+    final diffDays = CalendarDateMath.daysBetween(today, dueDay);
     if (diffDays < 0) {
       return '已逾期';
     } else if (diffDays == 0) {
@@ -342,7 +343,8 @@ class WidgetService {
     // 3. 倒数日：只保留未删除且未过期的
     final List<Map<String, dynamic>> slimCountdowns = countdownsRaw
         .where(
-            (c) => !c.isDeleted && c.targetDate.difference(today).inDays >= 0)
+        (c) => !c.isDeleted &&
+            CalendarDateMath.daysBetween(today, c.targetDate) >= 0)
         .map((c) => {
               'title': c.title,
               'targetDateMs': c.targetDate.millisecondsSinceEpoch,
@@ -585,10 +587,7 @@ class WidgetService {
     final countdownItems = countdownsRaw
         .where((c) => !c.isDeleted && !c.isCompleted)
         .map((c) {
-          final diffDays =
-              DateTime(c.targetDate.year, c.targetDate.month, c.targetDate.day)
-                  .difference(today)
-                  .inDays;
+          final diffDays = CalendarDateMath.daysBetween(today, c.targetDate);
           return WidgetCountdownItem(
             title: c.title,
             daysLeft: diffDays,
@@ -606,10 +605,7 @@ class WidgetService {
       String? timeText;
       int priority = 0;
       if (t.dueDate != null) {
-        final diffDays =
-            DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day)
-                .difference(today)
-                .inDays;
+        final diffDays = CalendarDateMath.daysBetween(today, t.dueDate!);
         if (diffDays < 0) {
           timeText = '已逾期';
           priority = 3;
@@ -815,6 +811,12 @@ class WidgetService {
 
   /// Isolate 内部逻辑：处理所有 Widget 展现逻辑
   /// 注意：入参均为轻量 Map（primitive），不含 Dart 模型类对象
+  @visibleForTesting
+  static Map<String, dynamic> prepareWidgetDataForTesting(
+    Map<String, dynamic> input,
+  ) =>
+      _prepareWidgetDataIsolate(input);
+
   static Map<String, dynamic> _prepareWidgetDataIsolate(
       Map<String, dynamic> input) {
     final now = DateTime.fromMillisecondsSinceEpoch(input['now'] as int);
@@ -894,7 +896,10 @@ class WidgetService {
       resultData['todo_${i + 1}'] = title;
       resultData['todo_${i + 1}_done'] = todo['isDone'] as bool? ?? false;
       resultData['todo_${i + 1}_id'] = todo['id'] as String? ?? '';
-      resultData['todo_${i + 1}_due'] = _getDueDateLabelFromMs(dueDateMs);
+      resultData['todo_${i + 1}_due'] = _getDueDateLabelFromMs(
+        dueDateMs,
+        now: now,
+      );
       resultData['todo_${i + 1}_visible_until'] =
           todo['visibleUntil'] as int? ?? 0;
     }
@@ -944,10 +949,7 @@ class WidgetService {
         final courseDate =
             rawDate == null ? null : DateTime.tryParse(rawDate)?.toLocal();
         if (courseDate == null) continue;
-        final diffDays =
-            DateTime(courseDate.year, courseDate.month, courseDate.day)
-                .difference(today)
-                .inDays;
+        final diffDays = CalendarDateMath.daysBetween(today, courseDate);
         final String dayLabel = diffDays == 0
             ? '今天'
             : (diffDays == 1 ? '明天' : (diffDays == 2 ? '后天' : '$diffDays天后'));
@@ -997,9 +999,7 @@ class WidgetService {
       final cd = sortedCountdowns[i];
       final targetDate =
           DateTime.fromMillisecondsSinceEpoch(cd['targetDateMs'] as int);
-      final diff = DateTime(targetDate.year, targetDate.month, targetDate.day)
-          .difference(today)
-          .inDays;
+      final diff = CalendarDateMath.daysBetween(today, targetDate);
       final title = cd['title'] as String? ?? '';
       resultData['cd_title_${i + 1}'] = diff == 0 ? '<b>$title</b>' : title;
       resultData['cd_days_${i + 1}'] = diff == 0 ? '就在今天' : '还有 $diff 天';
@@ -1124,9 +1124,12 @@ class WidgetService {
   }
 
   /// 根据 dueDate 毫秒时间戳生成显示标签
-  static String _getDueDateLabelFromMs(int? dueDateMs) {
+  static String _getDueDateLabelFromMs(int? dueDateMs, {DateTime? now}) {
     if (dueDateMs == null) return '';
-    return _getDueDateLabel(DateTime.fromMillisecondsSinceEpoch(dueDateMs));
+    return _getDueDateLabel(
+      DateTime.fromMillisecondsSinceEpoch(dueDateMs),
+      now: now,
+    );
   }
 
   static Future<void> updateTodoWidget(List<TodoItem> todos) async {

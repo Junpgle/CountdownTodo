@@ -2516,6 +2516,18 @@ String financeEntryTemplateDisplayName(
 String _normalizeFinanceDisplayName(String value) =>
     value.replaceAll(RegExp(r'\s+'), '').trim().toLowerCase();
 
+class FinanceCumulativeBalanceEvent {
+  final String transactionDate;
+  final int eventAt;
+  final int changeMinor;
+
+  const FinanceCumulativeBalanceEvent({
+    required this.transactionDate,
+    required this.eventAt,
+    required this.changeMinor,
+  });
+}
+
 class FinanceSummary {
   final int incomeMinor;
   final int expenseMinor;

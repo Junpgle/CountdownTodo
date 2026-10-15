@@ -695,8 +695,14 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
     required void Function(DateTime day) onDay,
   }) {
     final dayStart = DateTime(start.year, start.month, start.day);
-    final dayEnd = DateTime(end.year, end.month, end.day);
-    final spanDays = CalendarDateMath.daysBetween(dayStart, dayEnd);
+    final endDay = DateTime(end.year, end.month, end.day);
+    // These records use half-open [start, end) intervals. An end exactly at
+    // midnight belongs to the previous day; keep zero-length point records on
+    // their start day for date-only todo compatibility.
+    final lastDay = end.isAfter(start) && end.isAtSameMomentAs(endDay)
+        ? CalendarDateMath.addDays(endDay, -1)
+        : endDay;
+    final spanDays = CalendarDateMath.daysBetween(dayStart, lastDay);
 
     if (spanDays < 0) {
       // debugPrint(
@@ -710,7 +716,7 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
     }
 
     var cursor = dayStart;
-    while (!cursor.isAfter(dayEnd)) {
+    while (!cursor.isAfter(lastDay)) {
       onDay(cursor);
       cursor = CalendarDateMath.addDays(cursor, 1);
     }
@@ -891,10 +897,9 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
         for (int i = 1; i <= 7; i++) {
           DateTime dayStart =
               CalendarDateMath.addDays(currentWeekMondayStart, i - 1);
-          DateTime dayEnd =
-              dayStart.add(const Duration(hours: 23, minutes: 59, seconds: 59));
+          DateTime dayEndExclusive = CalendarDateMath.addDays(dayStart, 1);
 
-          if (start.isBefore(dayEnd) && end.isAfter(dayStart)) {
+          if (start.isBefore(dayEndExclusive) && end.isAfter(dayStart)) {
             if (treatAsAllDay) {
               _allDayTodosPerDay[i]!.add(effectiveTodo);
             } else {

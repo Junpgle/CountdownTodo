@@ -12,6 +12,7 @@ enum _CatalogFilter { active, custom, archived }
 /// Presents the personal catalog without changing its persistence rules.
 class FinanceCatalogManager extends StatefulWidget {
   final List<FinanceCategory> categories;
+  final String initialSection;
   final List<FinancePaymentMethod> paymentMethods;
   final Future<FinanceCategory?> Function(FinanceCategoryType type)
       onAddCategory;
@@ -28,6 +29,7 @@ class FinanceCatalogManager extends StatefulWidget {
 
   const FinanceCatalogManager({
     super.key,
+    this.initialSection = 'expense',
     required this.categories,
     required this.paymentMethods,
     required this.onAddCategory,
@@ -54,6 +56,16 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
   bool _isAdding = false;
 
   bool get _isPayment => _section == _CatalogSection.payment;
+  @override
+  void initState() {
+    super.initState();
+    _section = switch (widget.initialSection) {
+      'income' => _CatalogSection.income,
+      'payment' => _CatalogSection.payment,
+      _ => _CatalogSection.expense,
+    };
+  }
+
   String get _itemLabel => _isPayment ? '付款方式' : '一级分类';
   String get _lockedItemLabel => _isPayment ? '付款方式' : '分类';
   String get _sectionLabel => switch (_section) {

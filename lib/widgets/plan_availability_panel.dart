@@ -1,4 +1,12 @@
+import '../screens/plan_availability_explanation_screen.dart';
+import '../services/plan_continuous_range_service.dart';
+import '../models/plan_weekly_availability.dart';
+import '../services/plan_weekly_availability_preferences.dart';
+import '../screens/plan_weekly_availability_screen.dart';
 import 'dart:async';
+import 'dart:convert';
+
+import 'plan_buffer_controls.dart';
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -12,6 +20,11 @@ import '../services/plan_availability_service.dart';
 import '../storage_service.dart';
 import '../utils/app_dialogs.dart';
 
+class _PlanSplitRequest {
+  const _PlanSplitRequest(this.query);
+  final PlanAvailabilityQuery query;
+}
+
 class PlanAvailabilityPanel extends StatefulWidget {
   const PlanAvailabilityPanel({
     super.key,
@@ -23,6 +36,8 @@ class PlanAvailabilityPanel extends StatefulWidget {
     required this.onInvalidated,
     this.editingBlock,
     this.loader,
+    this.rangeLoader,
+    this.onSplitRequested,
     this.clock,
     this.estimatedMinutes,
     this.initialExpanded = false,
@@ -36,7 +51,9 @@ class PlanAvailabilityPanel extends StatefulWidget {
     this.resultsOnly = false,
     this.autoLookupResults = true,
     this.initialQuery,
+    this.configurationOnly = false,
   });
+  final bool configurationOnly;
   final bool resultsOnly;
   final bool autoLookupResults;
   final PlanAvailabilityQuery? initialQuery;
@@ -47,6 +64,8 @@ class PlanAvailabilityPanel extends StatefulWidget {
   final TodoPlanBlock? editingBlock;
   final int? estimatedMinutes;
   final PlanAvailabilityLoader? loader;
+  final PlanContinuousRangeLoader? rangeLoader;
+  final ValueChanged<PlanAvailabilityQuery>? onSplitRequested;
   final DateTime Function()? clock;
   final ValueChanged<PlanAvailabilitySelection> onSelected;
   final VoidCallback onInvalidated;
@@ -75,6 +94,9 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
   PlanAvailabilityException? _error;
   DateTime? _selectedStart;
   int _resultLimit = 5;
+  int _bufferBefore = 0, _bufferAfter = 0, _preferenceWriteSequence = 0;
+  bool _bufferOverride = false, _avoidanceOverride = false;
+  String? _bufferDefaultsKey, _bufferError, _avoidanceDefaultsKey;
   final List<PlanDailyTimeWindow> _avoidOptions = List.of(
     PlanAvailabilityPreferences.defaultWindows,
   );
@@ -84,6 +106,45 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
   bool _avoidPreferencesLoaded = false;
   bool _autoLookupStarted = false;
   DateTime get _now => widget.clock?.call() ?? DateTime.now();
+  PlanWeeklyRules? _weeklyRules;
+  String? _weeklyError;
+  bool _weeklyIgnored = false;
+  int _weeklySequence = 0;
+  Future<void> _loadWeekly({bool invalidate = true}) async {
+    final previousKey=_weeklyRules?.fingerprint, previousError=_weeklyError;
+    final sequence = ++_weeklySequence, username = widget.username;
+    try {
+      final saved = await PlanWeeklyAvailabilityPreferences.load(username);
+      if(!mounted || sequence != _weeklySequence || username != widget.username) return;
+      setState(() { _weeklyRules = saved.rules; _weeklyError = saved.error; });
+    } catch(_) {
+      if(!mounted || sequence != _weeklySequence || username != widget.username) return;
+      setState(() { _weeklyRules = null; _weeklyError = '每周可安排时间读取失败，请重试或明确选择本次不使用'; });
+    }
+    if(invalidate && (previousKey != _weeklyRules?.fingerprint || previousError != _weeklyError)) _invalidate();
+  }
+  void _weeklyChanged() { unawaited(_loadWeekly()); }
+  Future<void> _weeklySettings() async {
+    await Navigator.of(context).push(MaterialPageRoute(builder: (_) =>
+      PlanWeeklyAvailabilityScreen(username: widget.username)));
+    if(mounted) await _loadWeekly();
+  }
+  Widget _weeklyControls({bool compact = false}) => Material(color:Colors.transparent,child:Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      if(!compact || _weeklyRules?.enabled == true || _weeklyError != null || _weeklyIgnored)
+        TextButton.icon(key: const ValueKey('plan-weekly-settings'), onPressed: _loading ? null : _weeklySettings,
+          icon: const Icon(Icons.date_range_outlined,size:18),
+          label: Text(compact && _weeklyRules?.enabled == true
+            ? '${PlanWeeklyRules.weekdays[_date.weekday-1]} · ${_weeklyIgnored ? '本次不使用每周规则' : '按每周时间推荐'}'
+            : '每周可安排时间${_weeklyRules?.enabled == true ? ' · 已开启' : ''}')),
+      if(_weeklyError != null && !_weeklyIgnored)
+        Text(_weeklyError!,style:TextStyle(color:Theme.of(context).colorScheme.error)),
+      if(!compact || _weeklyError != null || (_result?.slots.isEmpty == true && _weeklyRules?.enabled == true))
+        CheckboxListTile(key:const ValueKey('plan-weekly-ignore'), contentPadding:EdgeInsets.zero,
+          title: const Text('本次不使用每周规则'),
+          value:_weeklyIgnored, onChanged:_loading?null:(v) { _weeklyIgnored=v!; _invalidate(); }),
+    ]));
+
   PlanAvailabilityQuery get _query => PlanAvailabilityQuery(
     username: widget.username,
     todoId: widget.todo?.id ?? '',
@@ -95,6 +156,13 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
     appOnly: _appOnly,
     resultLimit: _resultLimit,
     avoidWindows: List.unmodifiable(_enabledAvoid),
+    bufferBefore: _bufferBefore,
+    bufferAfter: _bufferAfter,
+    bufferOverride: _bufferOverride,
+    bufferDefaultsKey: _bufferDefaultsKey,
+    avoidanceOverride: _avoidanceOverride,
+    avoidanceDefaultsKey: _avoidanceDefaultsKey,
+    weekly: PlanWeeklyContext(_weeklyRules,ignored:_weeklyIgnored),
   );
 
   @override
@@ -111,8 +179,16 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
       _end = initialQuery.windowEnd;
       _resultLimit = initialQuery.resultLimit;
       _appOnly = initialQuery.appOnly;
+      _bufferBefore = initialQuery.bufferBefore;
+      _bufferAfter = initialQuery.bufferAfter;
+      _bufferOverride = initialQuery.bufferOverride;
+      _bufferDefaultsKey = initialQuery.bufferDefaultsKey;
+      _avoidanceOverride = initialQuery.avoidanceOverride;
+      _avoidanceDefaultsKey = initialQuery.avoidanceDefaultsKey;
     }
     _duration = TextEditingController(text: '$_minutes');
+    _weeklyIgnored = widget.initialQuery?.weekly?.ignored ?? false;
+    PlanWeeklyAvailabilityPreferences.revision.addListener(_weeklyChanged);
     unawaited(_loadAvoidPreferences());
     WidgetsBinding.instance.addObserver(this);
     StorageService.scopedDataRefreshNotifier.addListener(_onRefresh);
@@ -124,9 +200,43 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
 
   DateTime _day(DateTime value) => DateTime(value.year, value.month, value.day);
 
+  String _preferenceKey(List<PlanDailyTimeWindow> options, Set<int> selected,
+      int before, int after, String? error) => jsonEncode([
+    for (var i = 0; i < options.length; i++)
+      [options[i].label, options[i].startMinutes, options[i].endMinutes,
+        selected.contains(i)],
+    if (!_bufferOverride) [before, after, error],
+  ]);
+
+  Future<void> _reloadPreferencesIfChanged() async {
+    final sequence = _avoidPreferencesSequence, username = widget.username;
+    try {
+      final saved = await (widget.avoidancePreferencesLoader?.call(username) ??
+          PlanAvailabilityPreferences.load(username));
+      if (!mounted || sequence != _avoidPreferencesSequence ||
+          username != widget.username) {
+        return;
+      }
+      final currentIndices = <int>{for (var i = 0; i < _avoidOptions.length; i++)
+        if (_enabledAvoid.contains(_avoidOptions[i])) i};
+      if (_preferenceKey(_avoidOptions, currentIndices, _bufferBefore,
+              _bufferAfter, _bufferError) !=
+          _preferenceKey(saved.options, saved.selectedIndices,
+              saved.bufferBefore, saved.bufferAfter, saved.bufferError)) {
+        await _loadAvoidPreferences();
+      }
+    } catch (_) {
+      if (mounted) await _loadAvoidPreferences();
+    }
+  }
+
   Future<void> _loadAvoidPreferences() async {
     final sequence = ++_avoidPreferencesSequence;
     final username = widget.username;
+    final initialQuery = widget.initialQuery;
+    final preserveAvoidance = initialQuery != null || _avoidanceOverride;
+    final preservedAvoidance = initialQuery?.avoidWindows ??
+        (_avoidanceOverride ? List<PlanDailyTimeWindow>.of(_enabledAvoid) : null);
     _avoidPreferencesLoaded = false;
     _avoidOptions
       ..clear()
@@ -141,9 +251,10 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
       debugPrint('Unable to load availability preferences: $error');
       saved = PlanAvoidancePreferences(
         PlanAvailabilityPreferences.defaultWindows,
-        const {},
+        const {}, bufferError: '查找设置读取失败，请重试',
       );
     }
+    await _loadWeekly(invalidate:false);
     if (!mounted ||
         sequence != _avoidPreferencesSequence ||
         username != widget.username) {
@@ -152,7 +263,37 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
     _avoidOptions
       ..clear()
       ..addAll(saved.options);
-    _enabledAvoid.addAll(saved.selectedIndices.map((i) => _avoidOptions[i]));
+    if (preserveAvoidance && preservedAvoidance != null) {
+      for (final window in preservedAvoidance) {
+        final index = _avoidOptions.indexWhere((option) =>
+            option.label == window.label &&
+            option.startMinutes == window.startMinutes &&
+            option.endMinutes == window.endMinutes);
+        if (index == -1) {
+          _avoidOptions.add(window);
+          _enabledAvoid.add(window);
+        } else {
+          _enabledAvoid.add(_avoidOptions[index]);
+        }
+      }
+    } else {
+      _enabledAvoid.addAll(saved.selectedIndices.map((i) => _avoidOptions[i]));
+    }
+    if (initialQuery != null) {
+      _avoidanceOverride = initialQuery.avoidanceOverride;
+      _avoidanceDefaultsKey =
+          initialQuery.avoidanceDefaultsKey ?? saved.avoidanceKey;
+    } else if (!_avoidanceOverride) {
+      _avoidanceDefaultsKey = saved.avoidanceKey;
+    }
+    if (!_bufferOverride) {
+      _bufferBefore = saved.bufferBefore;
+      _bufferAfter = saved.bufferAfter;
+      _bufferDefaultsKey = saved.bufferKey;
+      _bufferError = saved.bufferError;
+    } else {
+      _bufferError = null;
+    }
     _avoidPreferencesLoaded = true;
     _invalidate();
     if ((widget.autoLookupAndSelect ||
@@ -173,19 +314,52 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
     }
   }
 
-  void _avoidChanged() {
+  Set<int> get _selectedAvoidanceIndices => {
+    for (var i = 0; i < _avoidOptions.length; i++)
+      if (_enabledAvoid.contains(_avoidOptions[i])) i,
+  };
+
+  String get _currentAvoidanceKey => PlanAvoidancePreferences.keyFor(
+    _avoidOptions,
+    _selectedAvoidanceIndices,
+  );
+
+  void _avoidChanged({
+    bool avoidanceChanged = false,
+    bool repairPreferences = false,
+  }) {
+    if (avoidanceChanged || repairPreferences) {
+      _avoidanceOverride = false;
+      _avoidanceDefaultsKey = _currentAvoidanceKey;
+    }
     _invalidate();
     final username = widget.username;
+    final writeSequence = ++_preferenceWriteSequence;
     unawaited(
       PlanAvailabilityPreferences.save(
         username,
         _avoidOptions,
         _enabledAvoid,
+        bufferBefore: _bufferOverride ? null : _bufferBefore,
+        bufferAfter: _bufferOverride ? null : _bufferAfter,
+        updateAvoidance: avoidanceChanged || repairPreferences,
+        updateBuffers: !avoidanceChanged || repairPreferences,
       ).catchError((Object error) {
         debugPrint('Unable to save availability preferences: $error');
-        if (!mounted || username != widget.username) return;
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('避让设置未能保存，请重试')));
+        if (!mounted || username != widget.username ||
+            writeSequence != _preferenceWriteSequence) {
+          return;
+        }
+        setState(() {
+          if (avoidanceChanged) {
+            _avoidanceOverride = true;
+          } else {
+            _bufferOverride = true;
+          }
+        });
+        widget.onQueryChanged?.call(_query);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('本次查找已使用，默认设置未能记住，请重试')));
       }),
     );
   }
@@ -194,6 +368,10 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
   void didUpdateWidget(covariant PlanAvailabilityPanel old) {
     super.didUpdateWidget(old);
     if (old.username != widget.username) {
+      _bufferOverride = false;
+      _avoidanceOverride = false;
+      _weeklyIgnored = false;
+      _preferenceWriteSequence++;
       unawaited(_loadAvoidPreferences());
     }
     final changed =
@@ -238,6 +416,8 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
     WidgetsBinding.instance.removeObserver(this);
     StorageService.scopedDataRefreshNotifier.removeListener(_onRefresh);
     DeviceCalendarReadService.revision.removeListener(_invalidate);
+    PlanWeeklyAvailabilityPreferences.revision.removeListener(_weeklyChanged);
+    ++_weeklySequence;
     _duration.dispose();
     super.dispose();
   }
@@ -256,7 +436,7 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) _invalidate();
+    if (state == AppLifecycleState.resumed) unawaited(_loadAvoidPreferences());
   }
 
   void _invalidate() {
@@ -381,7 +561,7 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
       _avoidOptions.add(chosen);
     }
     _enabledAvoid.add(chosen);
-    _avoidChanged();
+    _avoidChanged(avoidanceChanged: true);
   }
 
   Widget _avoidControls() => ExpansionTile(
@@ -412,7 +592,7 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
                       } else {
                         _enabledAvoid.remove(_avoidOptions[index]);
                       }
-                      _avoidChanged();
+                      _avoidChanged(avoidanceChanged: true);
                     },
             ),
             TextButton(
@@ -434,7 +614,7 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
                     : () {
                         _enabledAvoid.remove(_avoidOptions[index]);
                         _avoidOptions.removeAt(index);
-                        _avoidChanged();
+                        _avoidChanged(avoidanceChanged: true);
                       },
               ),
           ],
@@ -451,7 +631,69 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
     ],
   );
 
+  Widget _bufferControls() => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      PlanBufferControls(
+        before: _bufferBefore,
+        after: _bufferAfter,
+        enabled: _avoidPreferencesLoaded && !_loading,
+        onChanged: (before, after) {
+          _bufferBefore = before;
+          _bufferAfter = after;
+          _bufferOverride = false;
+          _bufferError = null;
+          _bufferDefaultsKey = '$before:$after';
+          _avoidChanged();
+        },
+      ),
+      if (_bufferOverride)
+        TextButton(onPressed: () {
+          _bufferOverride = false;
+          unawaited(_loadAvoidPreferences());
+        }, child: const Text('恢复记住的缓冲')),
+    ],
+  );
+
+  Widget _bufferStatus() => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      if (_query.hasBuffers || _bufferOverride)
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Text(_query.bufferSummary,
+            key: const ValueKey('plan-buffer-summary'),
+            style: Theme.of(context).textTheme.bodySmall),
+        ),
+      if (_bufferError != null) ...[
+        Text(_bufferError!,
+          style: TextStyle(color: Theme.of(context).colorScheme.error)),
+        TextButton(key: const ValueKey('plan-reset-buffers'), onPressed: () {
+          _bufferBefore = 0; _bufferAfter = 0; _bufferOverride = false;
+          _bufferError = null; _bufferDefaultsKey = '0:0';
+          _avoidChanged(repairPreferences: true);
+        }, child: const Text('重置前后缓冲')),
+      ],
+      if (_result != null && _result!.slots.isEmpty && _query.hasBuffers)
+        TextButton(key: const ValueKey('plan-search-without-buffers'),
+          onPressed: _loading ? null : () {
+            _bufferBefore = 0; _bufferAfter = 0; _bufferOverride = true;
+            _invalidate(); unawaited(_lookup());
+          }, child: const Text('本次不留缓冲再查找')),
+    ],
+  );
+
   Future<void> _lookup({bool selectFirst = false}) async {
+    final preparation=++_sequence;
+    setState(() { _loading=true; _selectedStart=null; _snapshot=null; _result=null; _error=null; });
+    widget.onInvalidated();
+    await _loadWeekly(invalidate:false);
+    if(!mounted || preparation != _sequence) return;
+    if (_bufferError != null || (_weeklyError != null && !_weeklyIgnored)) {
+      setState(() { _loading=false; _error = PlanAvailabilityException(_bufferError ?? _weeklyError!); });
+      widget.onAutoLookupPendingChanged?.call(false);
+      return;
+    }
     final query = _query;
     final selectionRevision = widget.autoSelectionRevision;
     final invalid = PlanAvailabilityService.invalidReason(
@@ -460,7 +702,7 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
       _now,
     );
     if (invalid != null) {
-      setState(() => _error = PlanAvailabilityException(invalid));
+      setState(() { _loading=false; _error = PlanAvailabilityException(invalid); });
       if (selectFirst) widget.onAutoLookupPendingChanged?.call(false);
       return;
     }
@@ -624,11 +866,45 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
     );
   }
 
+  // Source refreshes may advance request sequences without changing the draft.
+  // Bind adoption to actual inputs; a freshly rechecked choice can then return.
+  String get _selectionContextKey => jsonEncode([
+        widget.username,
+        widget.todo?.id,
+        widget.todo?.version,
+        widget.todo?.updatedAt,
+        widget.todo?.isDone,
+        widget.todo?.isDeleted,
+        widget.todo?.hasConflict,
+        widget.editingBlock?.id,
+        widget.editingBlock?.version,
+        widget.editingBlock?.updatedAt,
+        widget.editingBlock?.status.name,
+        _date.millisecondsSinceEpoch,
+        _minutes,
+        _resultLimit,
+        _start,
+        _end,
+        _appOnly,
+        _bufferBefore,
+        _bufferAfter,
+        _bufferOverride,
+        _bufferDefaultsKey,
+        _avoidanceOverride,
+        _avoidanceDefaultsKey,
+        PlanAvoidancePreferences.keyForWindows(_enabledAvoid),
+        _weeklyRules?.fingerprint,
+        _weeklyIgnored,
+        _weeklyError,
+        _bufferError,
+      ]);
+
   Future<void> _customSearch() async {
-    final sequence = _sequence;
-    final revision = widget.autoSelectionRevision;
+    final parentDate = _date, parentMinutes = _minutes;
+    final revision = widget.autoSelectionRevision,
+        contextKey = _selectionContextKey;
     ModalRoute<dynamic>? dialogRoute;
-    final selection = await showAppDialog<PlanAvailabilitySelection>(
+    final response = await showAppDialog<Object>(
       context: context,
       builder: (dialogContext) {
         dialogRoute = ModalRoute.of(dialogContext);
@@ -683,6 +959,9 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
                       editingBlock: widget.editingBlock,
                       estimatedMinutes: widget.estimatedMinutes,
                       loader: widget.loader,
+                      rangeLoader: widget.rangeLoader,
+                      onSplitRequested: widget.onSplitRequested == null ? null
+                          : (q) => Navigator.pop(dialogContext, _PlanSplitRequest(q)),
                       clock: widget.clock,
                       initialExpanded: true,
                       dateShortcuts: true,
@@ -701,8 +980,51 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
       },
     );
     await dialogRoute?.completed;
-    if (!mounted || selection == null) return;
-    if (sequence != _sequence ||
+    if (!mounted) return;
+    if (response == null) {
+      await _reloadPreferencesIfChanged();
+      return;
+    }
+    if (response is _PlanSplitRequest) {
+      if (contextKey == _selectionContextKey &&
+          revision == widget.autoSelectionRevision) {
+        widget.onSplitRequested?.call(response.query);
+      }
+      return;
+    }
+    if (response is! PlanAvailabilitySelection) return;
+    await _adoptExternal(
+      response,
+      parentDate,
+      parentMinutes,
+      revision,
+      contextKey,
+    );
+  }
+
+  Future<void> _adoptExternal(
+    PlanAvailabilitySelection selection,
+    DateTime parentDate,
+    int parentMinutes,
+    int revision,
+    String contextKey,
+  ) async {
+    try {
+      await PlanAvailabilityPreferences.validateQueryDefaults(selection.query);
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$error')),
+        );
+      }
+      return;
+    }
+    if (!mounted) return;
+    if (_selectionContextKey != contextKey ||
+        _date != parentDate ||
+        _minutes != parentMinutes ||
+        selection.query.username != widget.username ||
+        selection.query.todoId != widget.todo?.id ||
         revision != widget.autoSelectionRevision ||
         !PlanAvailabilityService.accepts(
           selection,
@@ -723,6 +1045,14 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
       _end = query.windowEnd;
       _resultLimit = query.resultLimit;
       _appOnly = query.appOnly;
+      _bufferBefore = query.bufferBefore;
+      _bufferAfter = query.bufferAfter;
+      _bufferOverride = query.bufferOverride;
+      _bufferDefaultsKey = query.bufferDefaultsKey;
+      _avoidanceOverride = query.avoidanceOverride;
+      _avoidanceDefaultsKey = query.avoidanceDefaultsKey;
+      _weeklyRules = query.weekly?.rules;
+      _weeklyIgnored = query.weekly?.ignored ?? false;
       _enabledAvoid
         ..clear()
         ..addAll(query.avoidWindows);
@@ -740,6 +1070,63 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
     widget.onSelected(selection);
   }
 
+  Future<void> _explain() async {
+    final snapshot = _snapshot;
+    if (_loading || snapshot == null) return;
+    final q = _query, date = _date, minutes = _minutes;
+    final contextKey = _selectionContextKey,
+        revision = widget.autoSelectionRevision;
+    final route = MaterialPageRoute<PlanExplanationResult>(
+      builder: (_) => PlanAvailabilityExplanationScreen(
+        query: q,
+        snapshot: snapshot,
+        loader: widget.loader,
+        rangeLoader: widget.rangeLoader,
+        clock: widget.clock,
+        canSplit: widget.onSplitRequested != null,
+      ),
+    );
+    final result = await Navigator.of(context).push(route);
+    await route.completed;
+    if (!mounted ||
+        result == null ||
+        contextKey != _selectionContextKey ||
+        revision != widget.autoSelectionRevision) {
+      return;
+    }
+    if (result.selection != null) {
+      await _adoptExternal(result.selection!, date, minutes, revision, contextKey);
+    } else if (result.action == PlanExplanationAction.split) {
+      widget.onSplitRequested?.call(q);
+    } else if (result.action == PlanExplanationAction.modify) {
+      if (widget.resultsOnly) { await _customSearch(); }
+      else { setState(() => _expanded = true); }
+    }
+  }
+
+  Widget _emptyExplanation() {
+    final d = _result?.diagnostics;
+    if (_loading || _snapshot == null || _result?.slots.isEmpty != true ||
+        d == null || !d.valid) { return const SizedBox.shrink(); }
+    final theme = Theme.of(context);
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(color: theme.colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(14)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        if (d.reason == PlanAvailabilityReason.fragmented ||
+            d.reason == PlanAvailabilityReason.noTime)
+          Text(d.summary, key: const ValueKey('plan-empty-summary'),
+            style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+        const SizedBox(height: 4),
+        TextButton.icon(key: const ValueKey('plan-explain-availability'),
+          style: TextButton.styleFrom(alignment: Alignment.centerLeft, padding: EdgeInsets.zero),
+          onPressed: _explain, icon: const Icon(Icons.arrow_forward, size: 18),
+          label: const Text('查看原因与其他日期')),
+      ]));
+  }
+
   Widget _compactResults() {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
@@ -755,7 +1142,8 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
       key: const ValueKey('plan-recommended-times'),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: colors.surfaceContainerLow,
+        color: colors.surface,
+        border: Border.all(color: colors.outlineVariant.withValues(alpha: 0.6)),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Column(
@@ -769,7 +1157,7 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
                 color: colors.primary,
               ),
               const SizedBox(width: 8),
-              Expanded(child: Text('推荐时段', style: theme.textTheme.titleSmall)),
+              Expanded(child: Text('推荐时段', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700))),
               IconButton(
                 key: const ValueKey('plan-refresh-slots'),
                 tooltip: '刷新推荐',
@@ -800,6 +1188,9 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: Text(_result!.message!),
             ),
+          _emptyExplanation(),
+          _bufferStatus(),
+          _weeklyControls(compact:true),
           for (final slot in visible) _slotButton(slot),
           if (_snapshot != null)
             Padding(
@@ -855,7 +1246,7 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
     final editable =
         widget.editingBlock == null ||
         PlanAvailabilityService.canReschedule(widget.editingBlock!);
-    final open = _expanded && editable;
+    final open = (widget.configurationOnly || _expanded) && editable;
     final transitionDuration = MediaQuery.disableAnimationsOf(context)
         ? Duration.zero
         : const Duration(milliseconds: 260);
@@ -871,7 +1262,7 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            OutlinedButton.icon(
+            if (!widget.configurationOnly) OutlinedButton.icon(
               key: const ValueKey('plan-find-time'),
               style: OutlinedButton.styleFrom(
                 side: BorderSide.none,
@@ -970,14 +1361,14 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
                     ],
                   ),
                   const SizedBox(height: 12),
-                  Text('需要多长时间？', style: theme.textTheme.labelLarge),
+                  Text(widget.configurationOnly ? '本次总时长（30–720分钟）' : '需要多长时间？', style: theme.textTheme.labelLarge),
                   const SizedBox(height: 8),
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
                     crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
-                      for (final value in [15, 30, 45, 60])
+                      for (final value in (widget.configurationOnly ? [30, 60, 90, 120] : [15, 30, 45, 60]))
                         ChoiceChip(
                           key: ValueKey('plan-duration-$value'),
                           label: Text('$value 分钟'),
@@ -1023,7 +1414,7 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
                       ),
                     ),
                   const SizedBox(height: 16),
-                  Wrap(
+                  if (!widget.configurationOnly) Wrap(
                     spacing: 8,
                     runSpacing: 4,
                     crossAxisAlignment: WrapCrossAlignment.center,
@@ -1042,9 +1433,12 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
                         ),
                     ],
                   ),
+                  _weeklyControls(),
                   _avoidControls(),
+                  const SizedBox(height: 12),
+                  _bufferControls(),
                   const SizedBox(height: 8),
-                  FilledButton.icon(
+                  if (!widget.configurationOnly) FilledButton.icon(
                     key: const ValueKey('plan-lookup-slots'),
                     style: FilledButton.styleFrom(
                       padding: const EdgeInsets.symmetric(
@@ -1091,6 +1485,8 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       child: Text(_result!.message!),
                     ),
+                  _emptyExplanation(),
+                  _bufferStatus(),
                   if (_result != null &&
                       _snapshot != null &&
                       _result!.slots.isNotEmpty) ...[

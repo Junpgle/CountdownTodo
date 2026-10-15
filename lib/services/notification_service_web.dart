@@ -8,9 +8,13 @@ import '../models.dart';
 import 'storage/app_settings_storage.dart';
 import 'item_semantics_service.dart';
 import 'scheduled_reminder_registry.dart';
+import 'plan_reminder_guard.dart';
 import 'focus_do_not_disturb_service.dart';
 
 class NotificationService {
+  static const int financeBudgetAlertNotificationBaseId = 61000;
+  static const int financeBudgetAlertNotificationRange = 9000;
+
   static final StreamController<MethodCall> _eventCtrl =
       StreamController<MethodCall>.broadcast();
   static final Map<int, Timer> _reminderTimers = {};
@@ -231,6 +235,23 @@ class NotificationService {
     await cancelReminder(notifId);
   }
 
+  static Future<void> removePlanReminders(Set<String> ids, {
+    required Future<void> Function() ensureCurrent,
+  }) {
+    final operation = _scheduleQueue.then<void>((_) async {
+      await ensureCurrent();
+      final existing = await getScheduledReminders();
+      final remaining = ScheduledReminderRegistry.withoutPlanBlocks(existing, ids)
+          .where((r) => ScheduledReminderRegistry.sourceOf(r) == ScheduledReminderSources.reminderSchedule).toList();
+      await ensureCurrent();
+      await _scheduleReminders(remaining, clearFirst: false, forceReschedule: true,
+        replaceSource: ScheduledReminderSources.reminderSchedule, ensureCurrent: ensureCurrent);
+      await ensureCurrent();
+    });
+    _scheduleQueue = operation.then<void>((_) {}, onError: (_, _) {});
+    return operation;
+  }
+
   static Future<void> scheduleReminders(List<Map<String, dynamic>> reminders,
       {bool clearFirst = true,
       bool forceReschedule = false,
@@ -252,6 +273,7 @@ class NotificationService {
     required bool clearFirst,
     required bool forceReschedule,
     required String? replaceSource,
+    Future<void> Function()? ensureCurrent,
   }) async {
     if (reminders.isEmpty && !clearFirst && replaceSource == null) return;
 
@@ -270,13 +292,14 @@ class NotificationService {
       replaceAll: clearFirst && replaceSource == null,
     );
 
+    await ensureCurrent?.call();
     _clearScheduledReminders();
     for (final reminder in merged) {
       _scheduleReminder(reminder);
     }
   }
 
-  static Future<List<Map<String, dynamic>>> getScheduledReminders() async {
+  static Future<List<Map<String, dynamic>>> getScheduledReminders({bool strict = false}) async {
     final reminders = _scheduledReminders.values
         .map((reminder) => Map<String, dynamic>.from(reminder))
         .toList();
@@ -423,7 +446,7 @@ class NotificationService {
     final pomodoroEndEnabled =
         await AppSettingsStorage.isPomodoroEndNotificationEnabled();
 
-    return reminders
+    return PlanReminderGuard.filterSchedulablePlanReminders(reminders
         .where((reminder) {
           final source = ScheduledReminderRegistry.sourceOf(reminder);
           final type = reminder['type']?.toString();
@@ -453,7 +476,7 @@ class NotificationService {
           }
         })
         .map(Map<String, dynamic>.from)
-        .toList(growable: false);
+        .toList(growable: false));
   }
 
   static int? _readInt(dynamic value) {

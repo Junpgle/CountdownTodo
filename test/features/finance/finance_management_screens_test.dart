@@ -3210,16 +3210,23 @@ void main() {
       ),
     );
 
+    await tester.scrollUntilVisible(
+      find.text('每日净支出'),
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.text('每日净支出'), findsOneWidget);
     expect(find.text('本月还没有净支出记录'), findsNothing);
-    expect(
-      find.byWidgetPredicate(
-        (widget) =>
-            widget is Tooltip &&
-            widget.message?.contains('净支出 -¥50.00') == true,
-      ),
-      findsOneWidget,
+    final refundTooltip = find.byWidgetPredicate(
+      (widget) =>
+          widget is Tooltip && widget.message?.contains('净支出 -¥50.00') == true,
     );
+    await tester.scrollUntilVisible(
+      refundTooltip,
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(refundTooltip, findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -3309,6 +3316,11 @@ void main() {
       ),
     );
 
+    await tester.scrollUntilVisible(
+      find.text('支出与退款相抵，净支出为 ¥0.00'),
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.text('支出与退款相抵，净支出为 ¥0.00'), findsOneWidget);
     expect(find.textContaining('还没有净支出记录'), findsNothing);
     expect(tester.takeException(), isNull);

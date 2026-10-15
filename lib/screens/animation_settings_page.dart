@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../services/animation_config_service.dart';
 import '../services/liquid_glass_effect_service.dart';
@@ -10,6 +12,7 @@ import '../utils/app_dialogs.dart';
 
 class AnimationSettingsPage extends StatefulWidget {
   final bool isEmbedded;
+  final String? initialTarget;
 
   /// Allows widget tests to exercise Android's transient system override on
   /// non-Android hosts. Production callers should leave this unset.
@@ -19,6 +22,7 @@ class AnimationSettingsPage extends StatefulWidget {
   const AnimationSettingsPage({
     super.key,
     this.isEmbedded = false,
+    this.initialTarget,
     this.powerSaveModeOverride,
   });
 
@@ -27,6 +31,50 @@ class AnimationSettingsPage extends StatefulWidget {
 }
 
 class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
+  final _scrollController = ScrollController();
+  final _glassKey = GlobalKey();
+  final _transparencyKey = GlobalKey();
+  String? _highlightTarget;
+  Timer? _highlightTimer;
+  bool _initialTargetRevealed = false;
+
+  Future<void> _revealInitialTarget() async {
+    final target = widget.initialTarget;
+    final key = switch (target) {
+      'liquid_glass' => _glassKey,
+      'liquid_glass_transparency' => _transparencyKey,
+      _ => null,
+    };
+    if (key == null || _initialTargetRevealed) return;
+    _initialTargetRevealed = true;
+    // ListView creates off-screen children lazily. Advance until the target
+    // exists, then align the exact control after async settings have loaded.
+    for (var attempt = 0; attempt < 24 && mounted; attempt++) {
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted || !_scrollController.hasClients) return;
+      final targetContext = key.currentContext;
+      if (targetContext != null && targetContext.mounted) {
+        setState(() => _highlightTarget = target);
+        await Scrollable.ensureVisible(
+          targetContext,
+          alignment: 0.2,
+          duration: const Duration(milliseconds: 350),
+        );
+        if (!mounted) return;
+        _highlightTimer?.cancel();
+        _highlightTimer = Timer(const Duration(seconds: 3), () {
+          if (mounted) setState(() => _highlightTarget = null);
+        });
+        return;
+      }
+      final position = _scrollController.position;
+      _scrollController.jumpTo(
+        (position.pixels + position.viewportDimension * 0.8)
+            .clamp(0.0, position.maxScrollExtent),
+      );
+    }
+  }
+
   bool _animationsEnabled = true;
   bool _motionBlurEnabled = false;
   bool _layerBlurEnabled = false;
@@ -76,6 +124,8 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
 
   @override
   void dispose() {
+    _highlightTimer?.cancel();
+    _scrollController.dispose();
     if (widget.powerSaveModeOverride == null) {
       PowerSaveModeService.enabledListenable.removeListener(
         _handlePowerSaveModeChanged,
@@ -121,6 +171,7 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
       _liquidGlassMode = liquidGlass.mode;
       _liquidGlassTransparency = liquidGlass.transparencyPercent;
     });
+    unawaited(_revealInitialTarget());
   }
 
   Future<void> _setLiquidGlassEnabled(bool enabled) async {
@@ -285,6 +336,7 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
             final isWide = constraints.maxWidth > 600;
             final isCompact = constraints.maxWidth <= 600;
             final content = ListView(
+              controller: _scrollController,
               padding: EdgeInsets.fromLTRB(
                 isDesktop ? 24 : 16,
                 widget.isEmbedded
@@ -498,6 +550,7 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                     _buildToggleCard(
                       isDesktop: isDesktop,
                       title: 'Liquid Glass',
+                      cardKey: _glassKey,
                       subtitle: _effectSubtitle(
                         normal: '全应用玻璃材质、折射与半透明层次 (可选)',
                         preferredEnabled: _liquidGlassEnabled,
@@ -519,6 +572,9 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                   duration: const Duration(milliseconds: 180),
                   opacity: effectiveLiquidGlassEnabled ? 1 : 0.58,
                   child: Card(
+                    color: _highlightTarget != null
+                        ? colorScheme.primaryContainer
+                        : null,
                     elevation: 1,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
@@ -581,6 +637,7 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                           ),
                           const SizedBox(height: 18),
                           Row(
+                            key: _transparencyKey,
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               const Text(
@@ -1069,8 +1126,10 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
     required bool value,
     required ValueChanged<bool>? onChanged,
     Key? switchKey,
+    Key? cardKey,
   }) {
     return SettingsToggleCard(
+      key: cardKey,
       isDesktop: isDesktop,
       title: title,
       subtitle: subtitle,

@@ -2168,6 +2168,46 @@ void main() {
         expect(preview, contains('专注记录$dateKey'), reason: prompt);
       }
     });
+
+    test('夏令时回拨日的明日效率范围不会混入今日深夜记录', () {
+      final now = DateTime(2026, 11, 1, 12);
+      final logs = [
+        TimeLogItem(
+          id: 'today-late',
+          title: 'today-late',
+          startTime: DateTime(2026, 11, 1, 23, 30).millisecondsSinceEpoch,
+          endTime: DateTime(2026, 11, 1, 23, 45).millisecondsSinceEpoch,
+        ),
+        TimeLogItem(
+          id: 'tomorrow-early',
+          title: 'tomorrow-early',
+          startTime: DateTime(2026, 11, 2, 0, 30).millisecondsSinceEpoch,
+          endTime: DateTime(2026, 11, 2, 0, 45).millisecondsSinceEpoch,
+        ),
+      ];
+
+      final context = AiTodoContextBuilder.buildContextInjection(
+        userMessage: '分析明天的效率',
+        courses: const [],
+        timeLogs: logs,
+        conflicts: const [],
+        teams: const [],
+        now: now,
+      )!;
+      final summary = AiTodoContextBuilder.buildContextInjectionSummary(
+        userMessage: '分析明天的效率',
+        courses: const [],
+        timeLogs: logs,
+        conflicts: const [],
+        teams: const [],
+        now: now,
+      )!;
+
+      expect(context, contains('tomorrow-early'));
+      expect(context, isNot(contains('today-late')));
+      expect(summary, contains('专注记录20261102'));
+    });
+
     test('上上周和上上个月效率范围不会匹配上一期', () {
       final now = DateTime(2026, 10, 2, 12);
       final timeLogs = [

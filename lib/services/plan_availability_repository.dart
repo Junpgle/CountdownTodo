@@ -1,3 +1,5 @@
+import 'plan_weekly_availability_preferences.dart';
+import 'plan_continuous_range_service.dart';
 import 'dart:convert';
 
 import 'package:intl/intl.dart';
@@ -7,11 +9,15 @@ import 'package:sqflite/sqflite.dart';
 import '../course_import/course_schedule_semantics.dart';
 import '../models.dart';
 import '../models/plan_availability.dart';
+import '../models/plan_split.dart';
+import 'plan_split_service.dart';
 import '../storage_service.dart';
 import 'course_calendar_adjustment_service.dart';
 import 'database_helper.dart';
+import 'plan_todo_guard.dart';
 import 'device_calendar_read_service.dart';
 import 'plan_availability_service.dart';
+import 'plan_availability_preferences.dart';
 
 typedef PlanAvailabilityLoader = Future<PlanAvailabilitySnapshot> Function(
   PlanAvailabilityQuery query, {
@@ -128,7 +134,17 @@ class PlanAvailabilityRepository {
     } catch (_) {
       throw const PlanAvailabilityException('课程日期规则读取失败，请重试');
     }
-    final todoRows = await _rows(db, 'todos');
+    final identity = await PlanTodoIdentity.capture(
+      await StorageService.getLoginSession() ?? 'default',
+    );
+    final todoRows = await db.rawQuery(
+      '''SELECT t.*,
+      ${PlanTodoGuard.completionSql('t', 'c')} AS member_completed
+      FROM todos t LEFT JOIN todo_completions c ON c.todo_uuid=t.uuid AND c.user_id=?
+      ORDER BY t.uuid''',
+      [identity.userId],
+    );
+    await identity.check();
     final fixedRows = await _rows(db, 'fixed_schedules');
     final planRows = await _rows(db, 'todo_plan_blocks');
     try {
@@ -136,7 +152,10 @@ class PlanAvailabilityRepository {
         courses: courses,
         courseFingerprint: fingerprint,
         todos: todoRows.map((row) {
-          final todo = TodoItem.fromSql(row);
+          final todo = TodoItem.fromSql({
+            ...row,
+            'is_completed': row['member_completed'],
+          });
           // Preserve the storage key for legacy IDs; this read does not migrate.
           todo.id = row['uuid'].toString();
           return todo;
@@ -194,8 +213,8 @@ class PlanAvailabilityRepository {
       Object record,
     ) {
       if (end.isAfter(start) &&
-          end.isAfter(query.dayStart) &&
-          start.isBefore(query.dayEnd)) {
+          end.isAfter(query.sourceStart) &&
+          start.isBefore(query.sourceEnd)) {
         busy.add(
           PlanBusyInterval(
             start,
@@ -219,7 +238,14 @@ class PlanAvailabilityRepository {
         unknown.add('课程“${course.courseName}”：日期待定');
         continue;
       }
-      if (DateFormat('yyyy-MM-dd').format(date) != day) continue;
+      final sourceStartDay = DateTime(
+        query.sourceStart.year,
+        query.sourceStart.month,
+        query.sourceStart.day,
+      );
+      if (date.isBefore(sourceStartDay) || !date.isBefore(query.sourceEnd)) {
+        continue;
+      }
       if (!CourseScheduleSemantics.hasUsableTime(course)) {
         unknown.add('课程“${course.courseName}”：时间待定');
         continue;
@@ -268,8 +294,8 @@ class PlanAvailabilityRepository {
         .where(
           (item) =>
               !item.isDeleted &&
-              item.endTime > query.dayStart.millisecondsSinceEpoch &&
-              item.startTime < query.dayEnd.millisecondsSinceEpoch,
+              item.endTime > query.sourceStart.millisecondsSinceEpoch &&
+              item.startTime < query.sourceEnd.millisecondsSinceEpoch,
         )
         .map((item) => item.todoId)
         .toSet();
@@ -331,8 +357,8 @@ class PlanAvailabilityRepository {
       busy: List.unmodifiable(
         busy.where(
           (item) =>
-              item.end.isAfter(query.dayStart) &&
-              item.start.isBefore(query.dayEnd),
+              item.end.isAfter(query.sourceStart) &&
+              item.start.isBefore(query.sourceEnd),
         ),
       ),
       unknownTimes: List.unmodifiable(unknown),
@@ -424,10 +450,14 @@ class PlanAvailabilityRepository {
     bool forceRefresh = false,
     bool requireCalendar = false,
   }) async {
+    if (query.bufferBefore < 0 || query.bufferBefore > 120 ||
+        query.bufferAfter < 0 || query.bufferAfter > 120) {
+      throw const PlanAvailabilityException('前后缓冲须为0–120分钟的整数');
+    }
     final sources = await _readSources(
       query.username,
-      query.dayStart,
-      query.dayEnd,
+      query.sourceStart,
+      query.sourceEnd,
       appOnly: query.appOnly,
       forceRefresh: forceRefresh,
       requireCalendar: requireCalendar,
@@ -443,6 +473,226 @@ class PlanAvailabilityRepository {
     );
   }
 
+  Future<PlanSplitSnapshot> readSplit(
+    PlanSplitQuery query, {
+    bool forceRefresh = false,
+    bool requireCalendar = false,
+  }) async {
+    if (query.invalidReason != null) {
+      throw PlanAvailabilityException(query.invalidReason!);
+    }
+    await PlanAvailabilityPreferences.validateQueryDefaults(query.base);
+    final source = await _readSources(
+      query.base.username,
+      query.day(0).sourceStart,
+      query.endDate.add(Duration(minutes: query.base.bufferAfter)),
+      appOnly: query.base.appOnly,
+      forceRefresh: forceRefresh,
+      requireCalendar: requireCalendar,
+    );
+    return PlanSplitSnapshot(
+      List.unmodifiable([
+        for (var i = 0; i < query.days; i++)
+          _snapshot(
+            query.day(i),
+            source.local,
+            external: source.external,
+            included: source.included,
+            coverage: source.coverage,
+            settingsFingerprint: source.settings,
+            calendarRevision: source.calendarRevision,
+          ),
+      ]),
+    );
+  }
+
+  /// Explicit next-seven-local-days search, using one shared source read.
+  Future<PlanContinuousRangeResult> readFollowingDays(
+    PlanAvailabilityQuery base, {bool forceRefresh = true}) async {
+    final identity = await PlanTodoIdentity.capture(base.username);
+    await PlanAvailabilityPreferences.validateQueryDefaults(base);
+    final db = databaseOverride ??
+        await DatabaseHelper.instance.databaseForUser(base.username);
+    await PlanTodoGuard.validate(db, identity, base.todoId);
+    final todo = await PlanTodoGuard.read(db, identity, base.todoId);
+    final invalid = PlanAvailabilityService.invalidReason(base, todo, now);
+    if (invalid != null) throw PlanAvailabilityException(invalid);
+    final start = DateTime(base.date.year, base.date.month, base.date.day + 1);
+    var end = DateTime(start.year, start.month, start.day + 7);
+    final due = PlanAvailabilityService.deadline(todo);
+    if (due != null && !due.isAfter(start)) {
+      await PlanAvailabilityPreferences.validateQueryDefaults(base);
+      await identity.check();
+      await PlanTodoGuard.validate(db, identity, base.todoId);
+      final latestTodo = await PlanTodoGuard.read(db, identity, base.todoId);
+      if (PlanAvailabilityService.deadline(latestTodo) != due) {
+        throw const PlanAvailabilityException('待办截止已变化，请重新查找');
+      }
+      return PlanContinuousRangeResult(start, start,
+          '截止前已无后续日期', const [], const []);
+    }
+    if (due != null && due.isBefore(end)) {
+      final midnight = DateTime(due.year, due.month, due.day);
+      end = due == midnight ? midnight
+          : DateTime(due.year, due.month, due.day + 1);
+    }
+    final queries = <PlanAvailabilityQuery>[];
+    for (var day = start; day.isBefore(end);
+        day = DateTime(day.year, day.month, day.day + 1)) {
+      queries.add(base.onDate(day, limit: 5));
+    }
+    final sources = await _readSources(base.username,
+        base.sourceStart,
+        end.add(Duration(minutes: base.bufferAfter)),
+        appOnly: base.appOnly, forceRefresh: forceRefresh);
+    final snapshots = [for (final q in queries) _snapshot(q, sources.local,
+      external: sources.external, included: sources.included,
+      coverage: sources.coverage, settingsFingerprint: sources.settings,
+      calendarRevision: sources.calendarRevision)];
+    await PlanAvailabilityPreferences.validateQueryDefaults(base);
+    await identity.check();
+    await PlanTodoGuard.validate(db, identity, base.todoId);
+    final latestTodo = await PlanTodoGuard.read(db, identity, base.todoId);
+    if (PlanAvailabilityService.deadline(latestTodo) != due) {
+      throw const PlanAvailabilityException('待办截止已变化，请重新查找');
+    }
+    final currentSnapshot = _snapshot(base, sources.local,
+        external: sources.external, included: sources.included,
+        coverage: sources.coverage, settingsFingerprint: sources.settings,
+        calendarRevision: sources.calendarRevision);
+    return PlanContinuousRangeService.find(queries, snapshots, now: now,
+        start: start, end: end, coverage: sources.coverage,
+        currentSnapshot: currentSnapshot);
+  }
+
+  Future<PlanAvailabilitySelection> revalidateContinuous(
+      PlanAvailabilitySelection selected) async {
+    final q = selected.query;
+    final identity = await PlanTodoIdentity.capture(q.username);
+    await PlanAvailabilityPreferences.validateQueryDefaults(q);
+    final fresh = await read(q, forceRefresh: true,
+        requireCalendar: selected.snapshot.deviceCalendarIncluded);
+    if (!PlanAvailabilityService.accepts(selected, fresh, now: now)) {
+      throw const PlanAvailabilityException('该时段已变化，请重新查找后采用');
+    }
+    final db = databaseOverride ??
+        await DatabaseHelper.instance.databaseForUser(q.username);
+    await PlanTodoGuard.validate(db, identity, q.todoId);
+    final latestTodo = await PlanTodoGuard.read(db, identity, q.todoId);
+    final due = PlanAvailabilityService.deadline(latestTodo);
+    if (due != null && selected.slot.end.isAfter(due)) {
+      throw const PlanAvailabilityException('待办截止已变化，请重新查找后采用');
+    }
+    await PlanAvailabilityPreferences.validateQueryDefaults(q);
+    await identity.check();
+    return PlanAvailabilitySelection(q, selected.slot, fresh);
+  }
+
+  Future<List<TodoPlanBlock>> saveSplit(
+    PlanSplitSelection selection,
+    List<TodoPlanBlock> drafts, {
+    bool sync = true,
+    Future<void> Function(DatabaseExecutor executor)? beforeWrite,
+  }) async {
+    final query = selection.query;
+    if (drafts.length != selection.slots.length ||
+        drafts.asMap().entries.any(
+          (e) =>
+              e.value.todoId != query.base.todoId ||
+              e.value.startTime !=
+                  selection.slots[e.key].start.millisecondsSinceEpoch ||
+              e.value.endTime !=
+                  selection.slots[e.key].end.millisecondsSinceEpoch ||
+              e.value.plannedMinutes != selection.slots[e.key].minutes,
+        )) {
+      throw const PlanAvailabilityException('分段内容与选定方案不一致');
+    }
+    final identity = await PlanTodoIdentity.capture(query.base.username);
+    final fresh = await readSplit(
+      query,
+      forceRefresh: true,
+      requireCalendar: selection.snapshot.includesCalendar,
+    );
+    final ids = drafts.map((b) => b.id).toSet();
+    // Existing target UUIDs are checked by the create-only writer before its guard.
+    PlanSplitSnapshot withoutTargets(PlanSplitSnapshot snapshot) =>
+        PlanSplitSnapshot([
+          for (final day in snapshot.days)
+            PlanAvailabilitySnapshot(
+              todo: day.todo,
+              busy: day.busy
+                  .where(
+                    (b) =>
+                        b.source != PlanBusySource.planBlock ||
+                        !ids.contains(b.id),
+                  )
+                  .toList(),
+              coverage: day.coverage,
+              unknownTimes: day.unknownTimes,
+              deviceCalendarIncluded: day.deviceCalendarIncluded,
+              courseFingerprint: day.courseFingerprint,
+              settingsFingerprint: day.settingsFingerprint,
+              calendarRevision: day.calendarRevision,
+            ),
+        ]);
+    if (!PlanSplitService.accepts(
+      query,
+      selection.slots,
+      withoutTargets(fresh),
+      now: now,
+    )) {
+      throw const PlanAvailabilityException('整组时段已失效或被占用；未新增分段，请重新选择');
+    }
+    final db =
+        databaseOverride ??
+        await DatabaseHelper.instance.databaseForUser(query.base.username);
+    final local = await _readLocal(db);
+    if (local.courseFingerprint != fresh.days.first.courseFingerprint) {
+      throw const PlanAvailabilityException('课程已变化，请重新查找');
+    }
+    return StorageService.savePlanBlocksCreated(
+      query.base.username,
+      drafts,
+      sync: sync,
+      beforeWrite: (executor) async {
+        await identity.check();
+        await PlanAvailabilityPreferences.validateQueryDefaults(query.base);
+        await PlanTodoGuard.validate(executor, identity, query.base.todoId);
+        if (fresh.days.first.settingsFingerprint !=
+                await _settingsFingerprint(query.base.username) ||
+            fresh.days.first.calendarRevision !=
+                DeviceCalendarReadService.revision.value) {
+          throw const PlanAvailabilityException('日程设置已变化，请重新查找');
+        }
+        final current = await _readLocal(
+          executor,
+          preparedCourses: local.courses,
+          expectedCourseFingerprint: local.courseFingerprint,
+        );
+        final latest = PlanSplitSnapshot([
+          for (var i = 0; i < query.days; i++)
+            _snapshot(
+              query.day(i),
+              current,
+              external: fresh.days[i].busy
+                  .where((b) => b.source == PlanBusySource.deviceCalendar)
+                  .toList(),
+            ),
+        ]);
+        if (!PlanSplitService.accepts(
+          query,
+          selection.slots,
+          withoutTargets(latest),
+          now: now,
+        )) {
+          throw const PlanAvailabilityException('整组时段已变化；未新增分段，请重新选择');
+        }
+        if (beforeWrite != null) await beforeWrite(executor);
+        await PlanWeeklyAvailabilityPreferences.validateQuery(query.base);
+        await identity.check();
+      },
+    );
+  }
   Future<PlanAvailabilityRangeSnapshot> readRange(
     String username,
     DateTime date, {
@@ -495,6 +745,8 @@ class PlanAvailabilityRepository {
     Future<void> Function(DatabaseExecutor executor)? beforeWrite,
   }) async {
     final query = selection.query;
+    await PlanAvailabilityPreferences.validateQueryDefaults(query);
+    final identity = await PlanTodoIdentity.capture(query.username);
     if (draft.todoId != query.todoId ||
         draft.id != (query.excludeBlockId ?? draft.id) ||
         draft.startTime != selection.slot.start.millisecondsSinceEpoch ||
@@ -525,7 +777,19 @@ class PlanAvailabilityRepository {
       expectedUpdatedAt: expectedUpdatedAt,
       sync: sync,
       beforeWrite: (executor) async {
-        await _checkAccount(query.username);
+        await identity.check();
+        await PlanAvailabilityPreferences.validateQueryDefaults(query);
+        final original = query.excludeBlockId == null
+            ? <Map<String, Object?>>[]
+            : await executor.query(
+                'todo_plan_blocks',
+                columns: ['todo_uuid'],
+                where: 'uuid=?',
+                whereArgs: [query.excludeBlockId],
+              );
+        if (original.isEmpty || original.single['todo_uuid'] != draft.todoId) {
+          await PlanTodoGuard.validate(executor, identity, draft.todoId);
+        }
         if (fresh.settingsFingerprint !=
                 await _settingsFingerprint(query.username) ||
             fresh.calendarRevision !=
@@ -558,6 +822,8 @@ class PlanAvailabilityRepository {
         }
         await _checkAccount(query.username);
         if (beforeWrite != null) await beforeWrite(executor);
+        await PlanWeeklyAvailabilityPreferences.validateQuery(query);
+        await identity.check();
       },
     );
   }

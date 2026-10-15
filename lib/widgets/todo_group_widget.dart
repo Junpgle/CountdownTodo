@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 import '../models.dart';
 import '../utils/app_dialogs.dart';
+import '../utils/calendar_date_math.dart';
 import 'ai_water_border.dart';
 import 'optional_liquid_glass_surface.dart';
 
@@ -74,13 +75,12 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
     double maxProgress = 0.0;
 
     for (final t in todos) {
-      if (t.isDone) continue;
+      if (t.isDone || t.effectiveDueAt == null) continue;
       final cDate = DateTime.fromMillisecondsSinceEpoch(
         t.createdDate ?? t.createdAt,
         isUtc: true,
       ).toLocal();
-      final end =
-          t.dueDate ?? DateTime(cDate.year, cDate.month, cDate.day, 23, 59, 59);
+      final end = t.effectiveDueAt!;
       final dueDay = DateTime(end.year, end.month, end.day);
       if (dueDay.isBefore(today)) {
         hasOverdue = true;
@@ -107,13 +107,12 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
     final now = DateTime.now();
     double maxProgress = 0.0;
     for (final t in todos) {
-      if (t.isDone) continue;
+      if (t.isDone || t.effectiveDueAt == null) continue;
       final cDate = DateTime.fromMillisecondsSinceEpoch(
         t.createdDate ?? t.createdAt,
         isUtc: true,
       ).toLocal();
-      final end =
-          t.dueDate ?? DateTime(cDate.year, cDate.month, cDate.day, 23, 59, 59);
+      final end = t.effectiveDueAt!;
       final totalMin = end.difference(cDate).inMinutes;
       if (totalMin > 0 && now.isAfter(cDate)) {
         final p = (now.difference(cDate).inMinutes / totalMin).clamp(0.0, 1.0);
@@ -539,7 +538,7 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final target = DateTime(deadline.year, deadline.month, deadline.day);
-    final diff = target.difference(today).inDays;
+    final diff = CalendarDateMath.daysBetween(today, target);
 
     String label;
     Color color;
@@ -592,7 +591,7 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
     }
 
     final now = DateTime.now();
-    final isPast = todo.dueDate != null && todo.dueDate!.isBefore(now);
+    final isPast = todo.isOverdueAt(now);
 
     // ── 徽章计算 (与主列表同步) ──
     String badge = "";
@@ -613,7 +612,7 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
         badgeColor = Colors.orange.shade700;
         badgeBg = Colors.orange.withValues(alpha: 0.12);
       } else {
-        int days = d.difference(today).inDays;
+        int days = CalendarDateMath.daysBetween(today, d);
         badge = "$days天后";
         badgeColor = colorScheme.secondary;
         badgeBg = colorScheme.secondaryContainer.withValues(alpha: 0.5);
@@ -643,11 +642,15 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
             todo.createdDate ?? todo.createdAt,
             isUtc: true)
         .toLocal();
-    final end = todo.dueDate ??
-        DateTime(cDate.year, cDate.month, cDate.day, 23, 59, 59);
-    final totalMin = end.difference(cDate).inMinutes;
-    if (totalMin > 0 && now.isAfter(cDate)) {
-      progress = (now.difference(cDate).inMinutes / totalMin).clamp(0.0, 1.0);
+    final end = todo.effectiveDueAt;
+    if (end != null) {
+      final totalMin = end.difference(cDate).inMinutes;
+      if (totalMin > 0 && now.isAfter(cDate)) {
+        progress = (now.difference(cDate).inMinutes / totalMin).clamp(
+          0.0,
+          1.0,
+        );
+      }
     }
     final fillBrush =
         isPast ? Colors.redAccent : Theme.of(context).colorScheme.primary;

@@ -12,6 +12,7 @@ import '../services/course_service.dart';
 import '../services/device_calendar_read_service.dart';
 import '../storage_service.dart';
 import '../utils/page_transitions.dart';
+import '../utils/time_utils.dart';
 import 'optional_liquid_glass_surface.dart';
 import 'version_history_sheet.dart';
 
@@ -292,9 +293,10 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
   Future<void> _loadBlocks() async {
     setState(() => _loading = true);
     final now = DateTime.now();
-    final todayStart = DateTime(now.year, now.month, now.day);
-    final tomorrowStart = todayStart.add(const Duration(days: 1));
-    final afterTomorrowStart = tomorrowStart.add(const Duration(days: 1));
+    final todayStart = AppTimeFormats.dayStart(now);
+    final tomorrowStart = AppTimeFormats.localDayStartOffset(todayStart, 1);
+    final afterTomorrowStart =
+        AppTimeFormats.localDayStartOffset(todayStart, 2);
     // Read one shared current-month grid window when the app first needs
     // calendar data. The week, half-month and month views reuse this in-memory
     // range instead of starting another provider query after the homepage.
@@ -305,12 +307,12 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
       StorageService.getPlanBlocksByDay(widget.username, now),
       StorageService.getPlanBlocksByDay(
         widget.username,
-        now.add(const Duration(days: 1)),
+        tomorrowStart,
       ),
       StorageService.getFixedSchedulesByDay(widget.username, now),
       StorageService.getFixedSchedulesByDay(
         widget.username,
-        now.add(const Duration(days: 1)),
+        tomorrowStart,
       ),
       CourseService.getAllCourses(widget.username),
       DeviceCalendarReadService.readEvents(
@@ -325,8 +327,7 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
     final allCourses = results[4] as List<CourseItem>;
     final deviceCalendarEvents = results[5] as List<DeviceCalendarEvent>;
     final today = DateFormat('yyyy-MM-dd').format(now);
-    final tomorrow =
-        DateFormat('yyyy-MM-dd').format(now.add(const Duration(days: 1)));
+    final tomorrow = DateFormat('yyyy-MM-dd').format(tomorrowStart);
 
     final missed = <TodoPlanBlock>[];
     for (final block in blocks) {
@@ -430,8 +431,9 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
 
   @override
   Widget build(BuildContext context) {
-    final nowMs = DateTime.now().millisecondsSinceEpoch;
-    final fallbackToday = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    final now = DateTime.now();
+    final nowMs = now.millisecondsSinceEpoch;
+    final fallbackToday = DateFormat('yyyy-MM-dd').format(now);
     final fallbackCourses =
         widget.courses.where((course) => course.date == fallbackToday).toList();
     final todayCourses = _todayCourses.isNotEmpty
@@ -456,7 +458,7 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
     );
     final tomorrowTimedTodos = _todayTimedTodos(
       widget.todos,
-      DateTime.now().add(const Duration(days: 1)),
+      AppTimeFormats.localDayStartOffset(now, 1),
       excludeTodoIds: allPlannedTodoIds,
     );
     final todayItems = <_TodayScheduleItem>[
@@ -480,8 +482,7 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
       ..._tomorrowDeviceCalendarEvents.map(_TodayScheduleItem.deviceCalendar),
     ]..sort((a, b) => a.startMs.compareTo(b.startMs));
 
-    final showingTomorrow = activeItems.isEmpty &&
-        (todayItems.isNotEmpty || tomorrowItems.isNotEmpty);
+    final showingTomorrow = activeItems.isEmpty && tomorrowItems.isNotEmpty;
     final items = showingTomorrow ? tomorrowItems : activeItems;
 
     final scheduleTitle = showingTomorrow ? '明日日程' : '今日日程';

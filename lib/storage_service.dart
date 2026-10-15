@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
 import 'models.dart';
+import 'models/plan_cleanup.dart';
 
 import 'services/api_service.dart';
 import 'services/band_sync_service.dart';
@@ -25,7 +26,9 @@ import 'services/storage/pomodoro_storage.dart';
 import 'services/storage/storage_conflict_cleanup.dart';
 import 'services/storage/storage_key_scope.dart';
 import 'services/storage/user_session_storage.dart';
+import 'utils/calendar_date_math.dart';
 import 'utils/json_value_parser.dart';
+import 'utils/time_utils.dart' as time_utils;
 import 'features/habits/models/habit_checkin.dart';
 import 'features/habits/models/habit_goal.dart';
 import 'features/habits/models/habit_goal_rule.dart';
@@ -344,6 +347,18 @@ class StorageService {
           sync: sync, isSyncSource: isSyncSource);
 
   /// Editor-only conditional write; synchronization retains its existing path.
+  static Future<List<TodoPlanBlock>> cancelPlanBlocksReviewed(
+    String username, PlanCleanupRequest request, {
+    required Future<void> Function(DatabaseExecutor executor, bool retry) validate,
+    bool sync = true,
+  }) => _storage.cancelPlanBlocksReviewed(username, request, validate: validate, sync: sync);
+
+  static Future<List<TodoPlanBlock>> savePlanBlocksCreated(
+    String username, List<TodoPlanBlock> drafts, {
+    required Future<void> Function(DatabaseExecutor executor) beforeWrite,
+    bool sync = true,
+  }) => _storage.savePlanBlocksCreated(username, drafts, beforeWrite: beforeWrite, sync: sync);
+
   static Future<TodoPlanBlock> savePlanBlockEdited(
     String username,
     TodoPlanBlock draft, {

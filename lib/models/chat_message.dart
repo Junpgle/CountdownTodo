@@ -7,6 +7,7 @@ import 'ai_todo_action.dart';
 import '../features/finance/models/finance_ai_action.dart';
 import '../features/finance/models/finance_models.dart';
 import '../services/ai_tool_result_context.dart';
+import '../services/ai_settings_navigation_service.dart';
 
 enum ChatRole { user, assistant }
 
@@ -332,6 +333,7 @@ class ChatMessage {
   final List<FinanceEntryDraft>? financeDrafts;
   final List<FinanceAiAction>? financeActions;
   final List<ChatNativeToolCall>? nativeToolCalls;
+  final List<String> settingsTargets;
 
   ChatMessage({
     String? id,
@@ -349,6 +351,7 @@ class ChatMessage {
     this.financeDrafts,
     this.financeActions,
     this.nativeToolCalls,
+    this.settingsTargets = const [],
   }) : id = id ?? const Uuid().v4(),
        timestamp = timestamp ?? DateTime.now();
 
@@ -368,6 +371,7 @@ class ChatMessage {
     'financeDrafts': financeDrafts?.map((e) => e.toJson()).toList(),
     'financeActions': financeActions?.map((e) => e.toJson()).toList(),
     'nativeToolCalls': nativeToolCalls?.map((e) => e.toJson()).toList(),
+    'settingsTargets': settingsTargets,
   };
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) {
@@ -375,6 +379,9 @@ class ChatMessage {
       id: json['id'] as String? ?? const Uuid().v4(),
       role: json['role'] == 'assistant' ? ChatRole.assistant : ChatRole.user,
       content: json['content'] as String,
+      settingsTargets: AiSettingsNavigationService.validateTargets(
+        json['settingsTargets'],
+      ),
       rawContent: json['rawContent'] as String? ?? '',
       reasoningContent: json['reasoningContent'] as String? ?? '',
       smartContext: json['smartContext'] as String? ?? '',
@@ -436,6 +443,7 @@ class ChatMessage {
     bool clearFinanceDrafts = false,
     List<FinanceAiAction>? financeActions,
     List<ChatNativeToolCall>? nativeToolCalls,
+    List<String>? settingsTargets,
   }) {
     return ChatMessage(
       id: id,
@@ -457,6 +465,7 @@ class ChatMessage {
           : financeDrafts ?? this.financeDrafts,
       financeActions: financeActions ?? this.financeActions,
       nativeToolCalls: nativeToolCalls ?? this.nativeToolCalls,
+      settingsTargets: settingsTargets ?? this.settingsTargets,
     );
   }
 
@@ -482,7 +491,20 @@ class ChatMessage {
         ?.where((action) => !action.isIgnored)
         .map((action) => action.toJson())
         .toList();
-    final sections = <String>[content];
+    final sections = <String>[
+      role == ChatRole.assistant
+          ? AiToolResultContext.withoutHistory(content)
+          : content,
+    ];
+    final validSettingsTargets =
+        AiSettingsNavigationService.validateTargets(settingsTargets);
+    if (validSettingsTargets.isNotEmpty) {
+      sections.add(
+        '[SETTINGS_NAVIGATION_CONTEXT]\n${jsonEncode(validSettingsTargets)}\n'
+        '以上入口卡片已展示，设置由用户进入后手动调整，未自动修改。\n'
+        '[/SETTINGS_NAVIGATION_CONTEXT]',
+      );
+    }
     final queryResults = [
       for (final call in nativeToolCalls ?? <ChatNativeToolCall>[])
         if (call.result != null && call.name.startsWith('query_'))

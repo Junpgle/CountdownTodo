@@ -20,6 +20,7 @@ import 'screens/team_management_screen.dart';
 import 'screens/feature_guide_screen.dart';
 import 'screens/splash_screen.dart';
 import 'screens/default_splash_screen.dart';
+import 'widgets/initial_view_layout_gate.dart';
 import 'screens/share_view_screen.dart';
 import 'services/team_share_link.dart';
 import 'services/api_service.dart';
@@ -284,15 +285,17 @@ Future<void> main(List<String> args) async {
   // 立刻运行 App。平台初始化在开屏可见期间并行完成，避免原生启动页
   // 因多个串行 timeout 最坏阻塞数秒。
   final initialShareCode = _detectInitialShareCode();
-  runApp(
-    LiquidGlassWidgets.wrap(
-      child: MyApp(
-        platformReady: platformReady,
-        initialShareCode: initialShareCode,
-      ),
-      theme: GlassThemeData.simple(quality: GlassQuality.standard),
-      brightnessResolver: Theme.maybeBrightnessOf,
+  final app = LiquidGlassWidgets.wrap(
+    child: MyApp(
+      platformReady: platformReady,
+      initialShareCode: initialShareCode,
     ),
+    theme: GlassThemeData.simple(quality: GlassQuality.standard),
+    brightnessResolver: Theme.maybeBrightnessOf,
+  );
+  // 浏览器可能在首帧布局前请求焦点遍历；让首个 Flutter 帧先完成，再挂载应用控件。
+  runApp(
+    kIsWeb ? InitialViewLayoutGate(child: app) : app,
   );
 }
 

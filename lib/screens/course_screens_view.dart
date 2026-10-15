@@ -36,10 +36,13 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
             }
 
             DateTime todayStart = DateTime(now.year, now.month, now.day);
-            DateTime todayEnd = todayStart
-                .add(const Duration(hours: 23, minutes: 59, seconds: 59));
+            DateTime todayEndExclusive = CalendarDateMath.addDays(
+              todayStart,
+              1,
+            );
 
-            return start.isBefore(todayEnd) && end.isAfter(todayStart);
+            return start.isBefore(todayEndExclusive) &&
+                end.isAfter(todayStart);
           }).toList();
 
     // 排序：未完成优先
@@ -806,19 +809,31 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
   }
 
   void _showDayDetailSheet(DateTime day) {
+    // Keep filtering and sorting out of the modal builder so the sheet stays
+    // responsive when the calendar contains many entries.
+    final dayItems = _dayDetailItems(day);
     showAppModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        height: MediaQuery.of(context).size.height * 0.75,
+      useGlassSheet: false,
+      builder: (sheetContext) => Container(
+        height: MediaQuery.of(sheetContext).size.height * 0.75,
         decoration: BoxDecoration(
-          color: Theme.of(context).cardColor,
+          color: Theme.of(sheetContext).cardColor,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
         ),
         child: ClipRRect(
           borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
-          child: _buildMonthDaySidebar(day),
+          child: _buildMonthDaySidebar(
+            day,
+            dayItems: dayItems,
+            keyScope: 'modal',
+            onClose: () {
+              Navigator.of(sheetContext).pop();
+              if (mounted) setState(() => _selectedMonthDay = null);
+            },
+          ),
         ),
       ),
     );

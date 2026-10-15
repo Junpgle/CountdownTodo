@@ -49,6 +49,7 @@ class AiToolCallTile extends StatelessWidget {
     final args = _arguments;
     if (!call.name.startsWith('query_')) {
       return switch (call.name) {
+        'propose_settings_navigation' => '查找应用设置入口',
         'propose_cdt_actions' => '生成待办、日程操作草案',
         'propose_finance_drafts' => '生成记账草案',
         'propose_finance_actions' => '生成账单修改草案',

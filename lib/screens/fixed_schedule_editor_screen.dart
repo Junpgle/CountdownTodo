@@ -223,13 +223,14 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
         _recurrenceEndDate = activeDates.last;
       }
       if (_recurrence == RecurrenceType.customDays &&
-          current.customIntervalDays == null &&
-          activeDates.length > 1) {
-        _customIntervalController.text = activeDates[1]
-            .difference(activeDates.first)
-            .inDays
-            .clamp(1, 3650)
-            .toString();
+          current.customIntervalDays == null) {
+        final inferredInterval =
+            FixedScheduleRecurrenceService.inferCustomIntervalDays(
+          activeDates,
+        );
+        if (inferredInterval != null) {
+          _customIntervalController.text = inferredInterval.toString();
+        }
       }
     }
 

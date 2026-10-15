@@ -99,6 +99,18 @@ void main() {
     await PageTransitions.init();
   });
 
+  testWidgets('浮层在自动聚焦前关闭会取消延迟任务', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: GlobalSearchOverlay(
+          search: (query, {required scope, required recordHistory}) async => [],
+          warmupRemote: () async {},
+        ),
+      ),
+    );
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('范围切换保留关键词且防御过滤无关结果', (tester) async {
     final calls = <SearchCall>[];
     await pumpSearch(

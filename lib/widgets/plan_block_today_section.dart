@@ -11,6 +11,7 @@ import '../utils/page_transitions.dart';
 import 'optional_liquid_glass_surface.dart';
 import 'missed_plan_recovery_flow.dart';
 import 'plan_conflict_review.dart';
+import '../utils/calendar_date_math.dart';
 
 class PlanBlockTodaySection extends StatefulWidget {
   final String username;
@@ -107,8 +108,9 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection> {
     if (!mounted) return;
     setState(() => _loading = true);
     final now = DateTime.now();
-    final dayStart = DateTime(now.year, now.month, now.day);
-    final dayEnd = dayStart.add(const Duration(days: 1));
+    final dayRange = CalendarDateMath.dayRange(now);
+    final dayStart = dayRange.start;
+    final dayEnd = dayRange.endExclusive;
     final results = await Future.wait([
       StorageService.getPlanBlocksByDay(widget.username, now),
       PomodoroService.getRecordsInRange(dayStart, dayEnd),
@@ -162,12 +164,9 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection> {
   /// 不属于任何规划块的自由专注记录
   List<PomodoroRecord> _freeRecords(
       Map<String, List<PomodoroRecord>> blockRecordsMap) {
-    final now = DateTime.now();
-    final dayStart =
-        DateTime(now.year, now.month, now.day).millisecondsSinceEpoch;
-    final dayEnd = DateTime(now.year, now.month, now.day)
-        .add(const Duration(days: 1))
-        .millisecondsSinceEpoch;
+    final dayRange = CalendarDateMath.dayRange(DateTime.now());
+    final dayStart = dayRange.start.millisecondsSinceEpoch;
+    final dayEnd = dayRange.endExclusive.millisecondsSinceEpoch;
     final associatedUuids = blockRecordsMap.values
         .expand((records) => records)
         .map((r) => r.uuid)

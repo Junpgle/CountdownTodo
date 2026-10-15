@@ -514,7 +514,7 @@ abstract final class FinanceAutomationService {
     );
   }
 
-  /// 检查本月预算的 80% 和 100% 阈值，并按预算版本去重通知。
+  /// 检查本月预算的 80% 和 100% 阈值，并按预算配置去重通知。
   static Future<void> checkBudgetAlerts({DateTime? now}) async {
     if (!await AppSettingsStorage.isFinanceBudgetAlertEnabled()) return;
     if (!await AppSettingsStorage.isNormalNotificationEnabled()) return;
@@ -554,12 +554,21 @@ abstract final class FinanceAutomationService {
               : 0;
       if (threshold == 0) continue;
 
-      final alertKey =
-          'finance-budget-v1-$accountKey-${budget.uuid}-${budget.monthKey}-${budget.version}-$threshold';
-      if (prefs.getBool(alertKey) == true ||
-          !_budgetAlertInFlight.add(alertKey)) {
+      final scopeKey = budget.categoryUuid ?? 'overall';
+      final alertKey = 'finance-budget-v2-$accountKey-${budget.uuid}-'
+          '${budget.monthKey}-$scopeKey-${budget.amountMinor}-$threshold';
+      if (prefs.getBool(alertKey) == true) continue;
+
+      // Keep an already delivered v1 alert from firing again immediately
+      // after upgrading. The current version matches only alerts sent for
+      // the budget's current configuration in the old key format.
+      final legacyAlertKey = 'finance-budget-v1-$accountKey-${budget.uuid}-'
+          '${budget.monthKey}-${budget.version}-$threshold';
+      if (prefs.getBool(legacyAlertKey) == true) {
+        await prefs.setBool(alertKey, true);
         continue;
       }
+      if (!_budgetAlertInFlight.add(alertKey)) continue;
       final scope = budget.categoryUuid == null
           ? '本月总支出'
           : '${categoryNames[budget.categoryUuid] ?? '分类'}支出';

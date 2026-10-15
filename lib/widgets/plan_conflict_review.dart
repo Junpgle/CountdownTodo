@@ -11,6 +11,7 @@ import '../screens/pomodoro_screen.dart';
 import '../services/device_calendar_read_service.dart';
 import '../services/plan_conflict_review_service.dart';
 import '../storage_service.dart';
+import '../utils/calendar_date_math.dart';
 import '../utils/page_transitions.dart';
 import 'optional_liquid_glass_surface.dart';
 import 'plan_block_editor_sheet.dart';
@@ -691,7 +692,9 @@ class _PlanConflictReviewSheetState extends State<PlanConflictReviewSheet>
                             ],
                             if (result != null) ...[
                               Text(
-                                '${DateFormat('M月d日').format(result.start)}–${DateFormat('M月d日').format(result.end.subtract(const Duration(days: 1)))} · ${result.entries.length}条规划时间重叠',
+                                '${DateFormat('M月d日').format(result.start)}–'
+                                '${DateFormat('M月d日').format(CalendarDateMath.inclusiveEndDate(result.end))} · '
+                                '${result.entries.length}条规划时间重叠',
                               ),
                               const SizedBox(height: 8),
                               Text(

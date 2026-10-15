@@ -33,6 +33,20 @@ Future<void> _pump(WidgetTester tester, Widget child) async {
   await tester.pumpAndSettle();
 }
 
+Future<void> _scrollOverviewToText(WidgetTester tester, String text) async {
+  await tester.scrollUntilVisible(
+    find.text(text),
+    300,
+    scrollable: find.byType(Scrollable).first,
+  );
+  await tester.pumpAndSettle();
+}
+
+Future<void> _scrollOverviewToTop(WidgetTester tester) async {
+  await tester.drag(find.byType(Scrollable).first, const Offset(0, 1200));
+  await tester.pumpAndSettle();
+}
+
 void main() {
   testWidgets('账单列表点击打开详情而不是直接编辑', (tester) async {
     var opened = false;
@@ -168,8 +182,10 @@ void main() {
     );
 
     expect(find.text('月视图'), findsOneWidget);
-    expect(find.text('每日净支出'), findsOneWidget);
     expect(find.text('2026 年 9 月'), findsOneWidget);
+    await _scrollOverviewToText(tester, '每日净支出');
+    expect(find.text('每日净支出'), findsOneWidget);
+    await _scrollOverviewToTop(tester);
 
     await tester.tap(
       find.byKey(const ValueKey('finance-overview-period-previous')),
@@ -180,7 +196,9 @@ void main() {
     await tester.tap(find.text('周视图'));
     await tester.pumpAndSettle();
     expect(find.text('周一至周日'), findsOneWidget);
+    await _scrollOverviewToText(tester, '8月31日 - 9月6日每日净支出');
     expect(find.text('8月31日 - 9月6日每日净支出'), findsOneWidget);
+    await _scrollOverviewToTop(tester);
     expect(
       tester
           .widget<IconButton>(
@@ -193,7 +211,9 @@ void main() {
       find.byKey(const ValueKey('finance-overview-period-next')),
     );
     await tester.pumpAndSettle();
+    await _scrollOverviewToText(tester, '9月7日 - 13日每日净支出');
     expect(find.text('9月7日 - 13日每日净支出'), findsOneWidget);
+    await _scrollOverviewToTop(tester);
     expect(
       tester
           .widget<IconButton>(
@@ -206,12 +226,16 @@ void main() {
       find.byKey(const ValueKey('finance-overview-period-previous')),
     );
     await tester.pumpAndSettle();
+    await _scrollOverviewToText(tester, '8月31日 - 9月6日每日净支出');
     expect(find.text('8月31日 - 9月6日每日净支出'), findsOneWidget);
 
+    await _scrollOverviewToTop(tester);
     await tester.tap(find.text('日视图'));
     await tester.pumpAndSettle();
     expect(find.text('选择具体日期'), findsOneWidget);
+    await _scrollOverviewToText(tester, '9月1日 周二时段净支出');
     expect(find.text('9月1日 周二时段净支出'), findsOneWidget);
+    await _scrollOverviewToTop(tester);
     expect(
       tester
           .widget<IconButton>(
@@ -305,8 +329,13 @@ void main() {
       ),
     );
 
-    await tester.ensureVisible(
-      find.byKey(const ValueKey('finance-overview-category-food')),
+    final foodCategory = find.byKey(
+      const ValueKey('finance-overview-category-food'),
+    );
+    await tester.scrollUntilVisible(
+      foodCategory,
+      200,
+      scrollable: find.byType(Scrollable).first,
     );
     await tester.pumpAndSettle();
     expect(find.text('餐饮 - 奶茶'), findsNothing);

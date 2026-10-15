@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -31,6 +33,7 @@ class _MinorModeSettingsPageState extends State<MinorModeSettingsPage> {
     'minor_mode_status': GlobalKey(),
   };
   String? _highlightTarget;
+  Timer? _highlightTimer;
 
   @override
   void initState() {
@@ -43,6 +46,12 @@ class _MinorModeSettingsPageState extends State<MinorModeSettingsPage> {
     }
   }
 
+  @override
+  void dispose() {
+    _highlightTimer?.cancel();
+    super.dispose();
+  }
+
   void _scrollToTarget(String target) {
     final key = _itemKeys[target];
     if (key?.currentContext == null) return;
@@ -53,7 +62,9 @@ class _MinorModeSettingsPageState extends State<MinorModeSettingsPage> {
       curve: Curves.easeInOut,
       alignment: 0.15,
     );
-    Future.delayed(const Duration(seconds: 3), () {
+    _highlightTimer?.cancel();
+    _highlightTimer = Timer(const Duration(seconds: 3), () {
+      _highlightTimer = null;
       if (mounted) setState(() => _highlightTarget = null);
     });
   }
