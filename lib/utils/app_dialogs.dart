@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 import '../services/liquid_glass_effect_service.dart';
+import '../widgets/optional_liquid_glass_surface.dart';
 import 'semester_week_context.dart';
 import 'system_ui_style.dart';
 import 'theme_color_tokens.dart';
@@ -150,7 +151,10 @@ Future<T?> showAppDialog<T>({
     requestFocus: requestFocus,
     animationStyle: animationStyle,
     builder: (dialogContext) {
-      return _applyAppDialogTheme(dialogContext, builder(dialogContext));
+      return _applyAppDialogTheme(
+        dialogContext,
+        OptionalLiquidGlassOverlayScope(child: builder(dialogContext)),
+      );
     },
   );
 }
@@ -175,14 +179,26 @@ Future<T?> showAppGeneralDialog<T extends Object?>({
     pageBuilder: (dialogContext, animation, secondaryAnimation) {
       return _applyAppDialogTheme(
         dialogContext,
-        pageBuilder(dialogContext, animation, secondaryAnimation),
+        OptionalLiquidGlassOverlayScope(
+          child: pageBuilder(dialogContext, animation, secondaryAnimation),
+        ),
       );
     },
     barrierDismissible: barrierDismissible,
     barrierLabel: barrierLabel,
     barrierColor: barrierColor,
     transitionDuration: transitionDuration,
-    transitionBuilder: transitionBuilder,
+    transitionBuilder: transitionBuilder == null
+        ? null
+        : (dialogContext, animation, secondaryAnimation, child) =>
+              OptionalLiquidGlassOverlayScope(
+                child: transitionBuilder(
+                  dialogContext,
+                  animation,
+                  secondaryAnimation,
+                  child,
+                ),
+              ),
     useRootNavigator: useRootNavigator,
     fullscreenDialog: fullscreenDialog,
     routeSettings: routeSettings,
@@ -471,10 +487,11 @@ Future<T?> showAppModalBottomSheet<T>({
       interactionScale: 1,
       enableInteractionGlow: false,
       enableSaturationGlow: false,
-      quality: glassConfiguration.mode == LiquidGlassEffectMode.enhanced
-          ? GlassQuality.premium
-          : GlassQuality.standard,
-      settings: _glassOverlaySettings(context, glassConfiguration),
+      // This route animates while entering and leaving. The package recommends
+      // backdrop-filter rendering for animated sheets; premium texture capture
+      // can hitch during those transitions on mobile GPUs.
+      quality: GlassQuality.standard,
+      settings: _glassAnimatedOverlaySettings(context, glassConfiguration),
       builder: (sheetContext) {
         final media = MediaQuery.of(sheetContext);
         final bottomInset = media.padding.bottom;
@@ -524,9 +541,12 @@ Future<T?> showAppModalBottomSheet<T>({
                       // GlassSheet 不像 showModalBottomSheet 的 _BottomSheet
                       // 那样自带 Material 表面，ListTile/InkWell 会找不到祖先。
                       // 补一层透明 Material 保持与原生弹层一致的行为。
-                      child: Material(
-                        type: MaterialType.transparency,
-                        child: builder(sheetContext),
+                      child: OptionalLiquidGlassOverlayScope(
+                        hasOuterSurface: true,
+                        child: Material(
+                          type: MaterialType.transparency,
+                          child: builder(sheetContext),
+                        ),
                       ),
                     ),
                   ),
@@ -628,6 +648,17 @@ LiquidGlassSettings _glassOverlaySettings(
         configuration,
       ),
     ),
+  );
+}
+
+LiquidGlassSettings _glassAnimatedOverlaySettings(
+  BuildContext context,
+  LiquidGlassEffectConfiguration configuration,
+) {
+  // Animated overlays re-sample their backdrop every frame. Keep their blur
+  // radius bounded even when enhanced glass is selected for static surfaces.
+  return _glassOverlaySettings(context, configuration).copyWith(
+    blur: configuration.mode == LiquidGlassEffectMode.enhanced ? 10 : 8,
   );
 }
 
@@ -941,10 +972,10 @@ class AppDialogs {
             : effectiveContent,
         barrierDismissible: barrierDismissible,
         barrierColor: colorScheme.scrim.withValues(alpha: 0.42),
-        quality: glassConfiguration.mode == LiquidGlassEffectMode.enhanced
-            ? GlassQuality.premium
-            : GlassQuality.standard,
-        settings: _glassOverlaySettings(context, glassConfiguration),
+        // Dialog routes animate too, so use the predictable overlay renderer
+        // even when static surfaces use enhanced glass.
+        quality: GlassQuality.standard,
+        settings: _glassAnimatedOverlaySettings(context, glassConfiguration),
         actions: [
           GlassDialogAction(
             label: cancelLabel,

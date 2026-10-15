@@ -1550,7 +1550,7 @@ class _TimePickerCard extends StatelessWidget {
 
 class _TagRecord {
   final bool isPomodoro;
-  final String title, id;
+  final String title, id, timeRangeLabel;
   final int startTime, endTime, durationMin;
   final bool isCompleted;
   const _TagRecord(
@@ -1560,8 +1560,21 @@ class _TagRecord {
       required this.endTime,
       required this.durationMin,
       required this.id,
+      required this.timeRangeLabel,
       this.isCompleted = false});
 }
+
+String _tagMonthDay(DateTime date) =>
+    '${date.month.toString().padLeft(2, '0')}/${date.day.toString().padLeft(2, '0')}';
+
+String _tagClockTime(DateTime date) =>
+    '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+
+String _tagDateTimeRange(DateTime start, DateTime end) =>
+    '${_tagMonthDay(start)} ${_tagClockTime(start)} → ${_tagClockTime(end)}';
+
+String _tagChartMonth(DateTime date) =>
+    '${(date.year % 100).toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}';
 
 class _TagDetailSheet extends StatefulWidget {
   final PomodoroTag tag;
@@ -1583,12 +1596,171 @@ enum _ChartScale { session, day, week, month }
 class _TagDetailSheetState extends State<_TagDetailSheet> {
   int _chartType = 0; // 0: 时长, 1: 开始时间, 2: 结束时间
   _ChartScale _scale = _ChartScale.session;
-  Offset? _touchPos;
+  List<_TagRecord> _allRecs = const [];
+  List<_TagRecord> _recentRecs = const [];
+  List<int> _chartData = const [];
+  List<String> _xLabels = const [];
+  String Function(int) _formatLabel = _formatChartDuration;
+  int _totalMin = 0;
+  int _avgMin = 0;
+  int _maxMin = 0;
+  late Color _tagColor;
+
+  @override
+  void initState() {
+    super.initState();
+    _tagColor = hexColor(widget.tag.color);
+    _rebuildRecordCache();
+    _rebuildChartCache();
+  }
+
+  @override
+  void didUpdateWidget(covariant _TagDetailSheet oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final tagChanged = oldWidget.tag.uuid != widget.tag.uuid ||
+        oldWidget.tag.name != widget.tag.name ||
+        oldWidget.tag.color != widget.tag.color;
+    if (tagChanged ||
+        !identical(oldWidget.logs, widget.logs) ||
+        !identical(oldWidget.pomodoros, widget.pomodoros)) {
+      _tagColor = hexColor(widget.tag.color);
+      _rebuildRecordCache();
+      _rebuildChartCache();
+    }
+  }
+
+  void _rebuildRecordCache() {
+    final records = <_TagRecord>[];
+    for (final log in widget.logs) {
+      if (!log.tagUuids.contains(widget.tag.uuid)) continue;
+      final start = DateTime.fromMillisecondsSinceEpoch(log.startTime);
+      final end = DateTime.fromMillisecondsSinceEpoch(log.endTime);
+      records.add(_TagRecord(
+        isPomodoro: false,
+        title: log.title.isNotEmpty ? log.title : widget.tag.name,
+        startTime: log.startTime,
+        endTime: log.endTime,
+        durationMin: (log.endTime - log.startTime) ~/ 60000,
+        id: log.id,
+        timeRangeLabel: _tagDateTimeRange(start, end),
+      ));
+    }
+    for (final pomodoro in widget.pomodoros) {
+      if (!pomodoro.tagUuids.contains(widget.tag.uuid)) continue;
+      final endTime = pomodoro.endTime ??
+          (pomodoro.startTime + pomodoro.effectiveDuration * 1000);
+      final start = DateTime.fromMillisecondsSinceEpoch(pomodoro.startTime);
+      final end = DateTime.fromMillisecondsSinceEpoch(endTime);
+      records.add(_TagRecord(
+        isPomodoro: true,
+        title: (pomodoro.todoTitle?.isNotEmpty ?? false)
+            ? pomodoro.todoTitle!
+            : widget.tag.name,
+        startTime: pomodoro.startTime,
+        endTime: endTime,
+        durationMin: (endTime - pomodoro.startTime) ~/ 60000,
+        id: pomodoro.uuid,
+        timeRangeLabel: _tagDateTimeRange(start, end),
+        isCompleted: pomodoro.isCompleted,
+      ));
+    }
+    records.sort((a, b) => a.startTime.compareTo(b.startTime));
+    _allRecs = List<_TagRecord>.unmodifiable(records);
+    _recentRecs = List<_TagRecord>.unmodifiable(records.reversed);
+
+    var total = 0;
+    var longest = records.isEmpty ? 0 : records.first.durationMin;
+    for (final record in records) {
+      total += record.durationMin;
+      if (record.durationMin > longest) longest = record.durationMin;
+    }
+    _totalMin = total;
+    _avgMin = records.isEmpty ? 0 : total ~/ records.length;
+    _maxMin = longest;
+  }
+
+  void _rebuildChartCache() {
+    if (_scale == _ChartScale.session) {
+      final firstIndex = max(0, _allRecs.length - 30);
+      final chartRecords = _allRecs.skip(firstIndex);
+      if (_chartType == 0) {
+        _chartData = List<int>.unmodifiable(
+          chartRecords.map((record) => record.durationMin),
+        );
+        _formatLabel = _formatChartDuration;
+      } else {
+        _chartData = List<int>.unmodifiable(chartRecords.map((record) {
+          final timestamp =
+              _chartType == 1 ? record.startTime : record.endTime;
+          final date = DateTime.fromMillisecondsSinceEpoch(timestamp);
+          return date.hour * 60 + date.minute;
+        }));
+        _formatLabel = _formatChartClockTime;
+      }
+      _xLabels = List<String>.unmodifiable(chartRecords.map((record) =>
+          _tagMonthDay(DateTime.fromMillisecondsSinceEpoch(record.startTime))));
+      return;
+    }
+
+    // Numeric keys preserve chronological ordering without allocating and
+    // formatting a date string for every record on each chart interaction.
+    final grouped = <int, int>{};
+    for (final record in _allRecs) {
+      final date = DateTime.fromMillisecondsSinceEpoch(record.startTime);
+      final key = switch (_scale) {
+        _ChartScale.day =>
+          DateTime(date.year, date.month, date.day).millisecondsSinceEpoch,
+        _ChartScale.week => DateTime(
+          date.year,
+          date.month,
+          date.day - date.weekday + 1,
+        ).millisecondsSinceEpoch,
+        _ChartScale.month => date.year * 12 + date.month - 1,
+        _ChartScale.session => throw StateError('session chart handled above'),
+      };
+      grouped.update(key, (value) => value + record.durationMin,
+          ifAbsent: () => record.durationMin);
+    }
+    final keys = grouped.keys.toList()..sort();
+    if (keys.length > 20) keys.removeRange(0, keys.length - 20);
+    _chartData = List<int>.unmodifiable(keys.map((key) => grouped[key]!));
+    _xLabels = List<String>.unmodifiable(keys.map((key) {
+      if (_scale == _ChartScale.month) {
+        return _tagChartMonth(DateTime(key ~/ 12, key % 12 + 1));
+      }
+      final date = DateTime.fromMillisecondsSinceEpoch(key);
+      final label = _tagMonthDay(date);
+      return _scale == _ChartScale.week ? 'W$label' : label;
+    }));
+    _formatLabel = _formatChartDuration;
+  }
+
+  void _selectChartType(int index) {
+    if (_chartType == index) return;
+    setState(() {
+      _chartType = index;
+      _rebuildChartCache();
+    });
+  }
+
+  void _selectChartScale(_ChartScale scale) {
+    if (_scale == scale) return;
+    setState(() {
+      _scale = scale;
+      if (scale != _ChartScale.session) _chartType = 0;
+      _rebuildChartCache();
+    });
+  }
+
+  static String _formatChartDuration(int value) => '${value}m';
+
+  static String _formatChartClockTime(int value) =>
+      '${(value ~/ 60).toString().padLeft(2, '0')}:${(value % 60).toString().padLeft(2, '0')}';
 
   Widget _buildChartTab(String title, int index, Color color) {
     final isSel = _chartType == index;
     return GestureDetector(
-      onTap: () => setState(() => _chartType = index),
+      onTap: () => _selectChartType(index),
       child: Container(
         margin: const EdgeInsets.only(left: 6),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -1609,10 +1781,7 @@ class _TagDetailSheetState extends State<_TagDetailSheet> {
   Widget _buildScaleTab(String title, _ChartScale scale, Color color) {
     final isSel = _scale == scale;
     return GestureDetector(
-      onTap: () => setState(() {
-        _scale = scale;
-        if (scale != _ChartScale.session) _chartType = 0; // 聚合模式仅限时长
-      }),
+      onTap: () => _selectChartScale(scale),
       child: Container(
         margin: const EdgeInsets.only(right: 8),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -1634,87 +1803,7 @@ class _TagDetailSheetState extends State<_TagDetailSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final tagLogs =
-        widget.logs.where((l) => l.tagUuids.contains(widget.tag.uuid)).toList();
-    final tagPoms = widget.pomodoros
-        .where((p) => p.tagUuids.contains(widget.tag.uuid))
-        .toList();
-
-    final allRecs = <_TagRecord>[
-      ...tagLogs.map((l) => _TagRecord(
-          isPomodoro: false,
-          title: l.title.isNotEmpty ? l.title : widget.tag.name,
-          startTime: l.startTime,
-          endTime: l.endTime,
-          durationMin: (l.endTime - l.startTime) ~/ 60000,
-          id: l.id)),
-      ...tagPoms.map((p) {
-        final end = p.endTime ?? (p.startTime + p.effectiveDuration * 1000);
-        return _TagRecord(
-            isPomodoro: true,
-            title: (p.todoTitle?.isNotEmpty ?? false)
-                ? p.todoTitle!
-                : widget.tag.name,
-            startTime: p.startTime,
-            endTime: end,
-            durationMin: (end - p.startTime) ~/ 60000,
-            id: p.uuid,
-            isCompleted: p.isCompleted);
-      }),
-    ]..sort((a, b) => a.startTime.compareTo(b.startTime)); // 改为升序，方便聚合处理
-
-    final totalMin = allRecs.fold(0, (s, r) => s + r.durationMin);
-    final avgMin = allRecs.isEmpty ? 0 : totalMin ~/ allRecs.length;
-    final maxMin =
-        allRecs.isEmpty ? 0 : allRecs.map((r) => r.durationMin).reduce(max);
-    final c = hexColor(widget.tag.color);
-
-    // ── 数据聚合处理逻辑 ─────────────────────────────────────
-    List<int> chartData = [];
-    List<String> xLabels = [];
-    String Function(int) formatLabel = (v) => '${v}m';
-
-    if (_scale == _ChartScale.session) {
-      final chartRecs =
-          allRecs.length > 30 ? allRecs.sublist(allRecs.length - 30) : allRecs;
-      if (_chartType == 0) {
-        chartData = chartRecs.map((r) => r.durationMin).toList();
-        formatLabel = (v) => '${v}m';
-      } else {
-        chartData = chartRecs.map((r) {
-          final dt = DateTime.fromMillisecondsSinceEpoch(
-              _chartType == 1 ? r.startTime : r.endTime);
-          return dt.hour * 60 + dt.minute;
-        }).toList();
-        formatLabel = (v) =>
-            '${(v ~/ 60).toString().padLeft(2, '0')}:${(v % 60).toString().padLeft(2, '0')}';
-      }
-      xLabels = chartRecs.map((r) {
-        final dt = DateTime.fromMillisecondsSinceEpoch(r.startTime);
-        return DateFormat('MM/dd').format(dt);
-      }).toList();
-    } else {
-      // 按天/周/月聚合
-      final Map<String, int> grouped = {};
-      for (final r in allRecs) {
-        final dt = DateTime.fromMillisecondsSinceEpoch(r.startTime);
-        String key;
-        if (_scale == _ChartScale.day) {
-          key = DateFormat('MM/dd').format(dt);
-        } else if (_scale == _ChartScale.week) {
-          final weekStart = dt.subtract(Duration(days: dt.weekday - 1));
-          key = 'W${DateFormat('MM/dd').format(weekStart)}';
-        } else {
-          key = DateFormat('yy/MM').format(dt);
-        }
-        grouped[key] = (grouped[key] ?? 0) + r.durationMin;
-      }
-      final sortedKeys = grouped.keys.toList(); // 已经按时间顺序
-      xLabels = sortedKeys.length > 20
-          ? sortedKeys.sublist(sortedKeys.length - 20)
-          : sortedKeys;
-      chartData = xLabels.map((k) => grouped[k]!).toList();
-    }
+    final c = _tagColor;
 
     return OptionalLiquidGlassSheet(
       topRadius: 24,
@@ -1750,7 +1839,7 @@ class _TagDetailSheetState extends State<_TagDetailSheet> {
                       color: c.withValues(alpha: 0.12),
                       border: Border.all(color: c.withValues(alpha: 0.3)),
                       borderRadius: BorderRadius.circular(20)),
-                  child: Text('${(totalMin / 60).toStringAsFixed(1)}h 累计',
+              child: Text('${(_totalMin / 60).toStringAsFixed(1)}h 累计',
                       style: TextStyle(
                           fontSize: 11,
                           color: c,
@@ -1762,11 +1851,11 @@ class _TagDetailSheetState extends State<_TagDetailSheet> {
             ]),
             const SizedBox(height: 16),
             Row(children: [
-              _StatCard(label: '记录次数', value: '${allRecs.length}次', color: c),
+              _StatCard(label: '记录次数', value: '${_allRecs.length}次', color: c),
               const SizedBox(width: 10),
-              _StatCard(label: '平均时长', value: '${avgMin}min', color: c),
+              _StatCard(label: '平均时长', value: '${_avgMin}min', color: c),
               const SizedBox(width: 10),
-              _StatCard(label: '最长一次', value: '${maxMin}min', color: c),
+              _StatCard(label: '最长一次', value: '${_maxMin}min', color: c),
             ]),
             const SizedBox(height: 16),
             Row(children: [
@@ -1798,15 +1887,16 @@ class _TagDetailSheetState extends State<_TagDetailSheet> {
               ],
             ]),
             const SizedBox(height: 10),
-            if (chartData.length >= 2)
-              _MiniLineChart(
-                  data: chartData,
-                  xLabels: xLabels,
+            if (_chartData.length >= 2)
+              RepaintBoundary(
+                child: _MiniLineChart(
+                  data: _chartData,
+                  xLabels: _xLabels,
                   color: c,
                   height: 130,
-                  formatLabel: formatLabel,
-                  touchPos: _touchPos,
-                  onTouch: (p) => setState(() => _touchPos = p))
+                  formatLabel: _formatLabel,
+                ),
+              )
             else
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 24),
@@ -1826,14 +1916,12 @@ class _TagDetailSheetState extends State<_TagDetailSheet> {
                 constraints: const BoxConstraints(maxHeight: 220),
                 child: ListView.separated(
                     shrinkWrap: true,
-                    itemCount: allRecs.length,
+                    itemCount: _recentRecs.length,
+                    primary: false,
                     separatorBuilder: (_, _) => const SizedBox(height: 6),
                     itemBuilder: (ctx, i) {
-                      final r = allRecs.reversed.elementAt(i);
+                      final r = _recentRecs[i];
                       final colorScheme = Theme.of(ctx).colorScheme;
-                      final s =
-                          DateTime.fromMillisecondsSinceEpoch(r.startTime);
-                      final e = DateTime.fromMillisecondsSinceEpoch(r.endTime);
                       return Container(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 14, vertical: 10),
@@ -1864,7 +1952,7 @@ class _TagDetailSheetState extends State<_TagDetailSheet> {
                                         fontWeight: FontWeight.w600)),
                                 const SizedBox(height: 2),
                                 Text(
-                                    '${DateFormat('MM/dd').format(s)} ${DateFormat('HH:mm').format(s)} → ${DateFormat('HH:mm').format(e)}',
+                                    r.timeRangeLabel,
                                     style: TextStyle(
                                         fontSize: 10,
                                         color: _TC.textHint(ctx))),
@@ -1901,17 +1989,13 @@ class _MiniLineChart extends StatefulWidget {
   final Color color;
   final double height;
   final String Function(int) formatLabel;
-  final Offset? touchPos;
-  final ValueChanged<Offset?> onTouch;
 
   const _MiniLineChart(
       {required this.data,
       required this.xLabels,
       required this.color,
       this.height = 130,
-      required this.formatLabel,
-      this.touchPos,
-      required this.onTouch});
+      required this.formatLabel});
 
   @override
   State<_MiniLineChart> createState() => _MiniLineChartState();
@@ -1919,6 +2003,12 @@ class _MiniLineChart extends StatefulWidget {
 
 class _MiniLineChartState extends State<_MiniLineChart> {
   late ScrollController _sc;
+  Offset? _touchPos;
+
+  void _updateTouch(Offset? position) {
+    if (_touchPos == position) return;
+    setState(() => _touchPos = position);
+  }
 
   @override
   void initState() {
@@ -1963,11 +2053,11 @@ class _MiniLineChartState extends State<_MiniLineChart> {
       width: double.infinity,
       child: GestureDetector(
         onPanUpdate: (d) =>
-            widget.onTouch(d.localPosition.translate(_sc.offset, 0)),
-        onPanEnd: (_) => widget.onTouch(null),
+            _updateTouch(d.localPosition.translate(_sc.offset, 0)),
+        onPanEnd: (_) => _updateTouch(null),
         onTapDown: (d) =>
-            widget.onTouch(d.localPosition.translate(_sc.offset, 0)),
-        onTapUp: (_) => widget.onTouch(null),
+            _updateTouch(d.localPosition.translate(_sc.offset, 0)),
+        onTapUp: (_) => _updateTouch(null),
         child: SingleChildScrollView(
           controller: _sc,
           scrollDirection: Axis.horizontal,
@@ -1981,7 +2071,7 @@ class _MiniLineChartState extends State<_MiniLineChart> {
                     xLabels: widget.xLabels,
                     color: widget.color,
                     formatLabel: widget.formatLabel,
-                    touchPos: widget.touchPos,
+                    touchPos: _touchPos,
                     itemW: itemW)),
           ),
         ),

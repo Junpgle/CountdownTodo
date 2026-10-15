@@ -128,6 +128,38 @@ class _OptionalGlassScrollableScope extends InheritedWidget {
   bool updateShouldNotify(_OptionalGlassScrollableScope oldWidget) => false;
 }
 
+/// Marks content rendered inside one of the app's modal overlay surfaces.
+///
+/// The outer surface already samples and blurs the backdrop. Panels inside
+/// that route should use translucent material instead of adding another
+/// backdrop capture over the same moving page.
+class OptionalLiquidGlassOverlayScope extends InheritedWidget {
+  const OptionalLiquidGlassOverlayScope({
+    super.key,
+    required super.child,
+    this.hasOuterSurface = false,
+  });
+
+  /// Whether the overlay route already draws the sheet's rounded surface.
+  final bool hasOuterSurface;
+
+  static bool isActive(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<
+        OptionalLiquidGlassOverlayScope
+      >() !=
+      null;
+
+  static bool hasOuterSurfaceFor(BuildContext context) {
+    final scope = context
+        .dependOnInheritedWidgetOfExactType<OptionalLiquidGlassOverlayScope>();
+    return scope?.hasOuterSurface ?? false;
+  }
+
+  @override
+  bool updateShouldNotify(OptionalLiquidGlassOverlayScope oldWidget) =>
+      hasOuterSurface != oldWidget.hasOuterSurface;
+}
+
 /// A content-sized glass panel for shared cards, drawers, and compact controls.
 ///
 /// Single prominent panels use the package's shader-free frosted tier. Repeated
@@ -195,6 +227,8 @@ class OptionalLiquidGlassPanel extends StatelessWidget {
         final useStaticAndroidMaterial = AppPlatform.isAndroid &&
             (MediaQuery.sizeOf(context).width >= 768.0 ||
                 _OptionalGlassScrollableScope.contains(context));
+        final useStaticOverlayMaterial =
+            OptionalLiquidGlassOverlayScope.isActive(context);
         final tintSource = tint ?? colorScheme.primary;
         final neutralBase = dark ? colorScheme.scrim : colorScheme.surface;
         final resolvedTint = Color.alphaBlend(
@@ -206,6 +240,7 @@ class OptionalLiquidGlassPanel extends StatelessWidget {
 
         final useStaticMaterial =
             mode == OptionalLiquidGlassPanelMode.staticMaterial ||
+                useStaticOverlayMaterial ||
                 (mode == OptionalLiquidGlassPanelMode.adaptiveRepeated &&
                     (!enhanced || useStaticAndroidMaterial));
         // Per-corner radii are only expressible by the tiers that clip with
@@ -853,13 +888,11 @@ List<BoxShadow> _surfaceHaloShadows({
   ];
 }
 
-/// Rounded-top content shell for self-drawn bottom sheets.
+/// Rounded-top content shell for app bottom sheets.
 ///
-/// Sheets that draw their own container inside a transparent
-/// [showModalBottomSheet] bypass the themed bottom-sheet surface entirely;
-/// this shell gives them the same adaptive liquid-glass treatment as cards
-/// while the fallback keeps the caller's original decoration when the effect
-/// is disabled.
+/// Sheets on the shared glass route use that route's single rounded surface;
+/// other sheets draw their own adaptive surface here. The fallback keeps the
+/// caller's original decoration when the effect is disabled.
 class OptionalLiquidGlassSheet extends StatelessWidget {
   const OptionalLiquidGlassSheet({
     super.key,
@@ -876,6 +909,15 @@ class OptionalLiquidGlassSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (OptionalLiquidGlassOverlayScope.hasOuterSurfaceFor(context)) {
+      // GlassSheet already owns the rounded, blurred surface. Keep the
+      // caller's content spacing without drawing a second panel over it.
+      return Material(
+        color: Colors.transparent,
+        child: Padding(padding: padding ?? EdgeInsets.zero, child: child),
+      );
+    }
+
     return Material(
       color: Colors.transparent,
       child: OptionalLiquidGlassPanel(

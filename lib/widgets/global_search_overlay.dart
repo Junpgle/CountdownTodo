@@ -612,7 +612,7 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
             alpha: isDark ? 0.14 : 0.11,
           ),
           thickness: enhanced ? 22 : 18,
-          blur: enhanced ? 14 : 10,
+          blur: enhanced ? 10 : 8,
           chromaticAberration: enhanced ? 0.004 : 0.002,
           lightIntensity: isDark ? 0.56 : 0.62,
           ambientStrength: isDark ? 0.12 : 0.14,
@@ -624,7 +624,9 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
           ),
         ),
         useOwnLayer: true,
-        quality: enhanced ? GlassQuality.premium : GlassQuality.standard,
+        // This search surface enters with a route animation, so avoid the
+        // premium texture-capture path reserved for static glass surfaces.
+        quality: GlassQuality.standard,
       );
     }
 
