@@ -268,8 +268,7 @@ abstract final class FinanceLoanCalculator {
   /// Round monthly interest in integer minor units. Multiplying large balances
   /// by a double rate can move a value across a half-cent boundary.
   static int _monthlyInterestMinor(int principalMinor, int annualRateBps) {
-    final numerator =
-        BigInt.from(principalMinor) * BigInt.from(annualRateBps);
+    final numerator = BigInt.from(principalMinor) * BigInt.from(annualRateBps);
     final rounded = _roundPositiveFractionHalfUp(
       numerator,
       BigInt.from(120000),
@@ -284,9 +283,7 @@ abstract final class FinanceLoanCalculator {
     final quotient = numerator ~/ denominator;
     final remainder = numerator % denominator;
     return quotient +
-        (remainder * BigInt.from(2) >= denominator
-            ? BigInt.one
-            : BigInt.zero);
+        (remainder * BigInt.from(2) >= denominator ? BigInt.one : BigInt.zero);
   }
 
   static DateTime _dueDate(
@@ -415,17 +412,18 @@ String financeLoanDisplayName(
   bool includeDeleted = false,
 }) {
   final normalizedName = _normalizeFinanceDisplayName(loan.name);
-  final sameNameLoans = loans
-      .where(
-        (item) =>
-            (includeDeleted || !item.isDeleted) &&
-            _normalizeFinanceDisplayName(item.name) == normalizedName,
-      )
-      .toList()
-    ..sort((left, right) {
-      final createdAt = left.createdAt.compareTo(right.createdAt);
-      return createdAt != 0 ? createdAt : left.uuid.compareTo(right.uuid);
-    });
+  final sameNameLoans =
+      loans
+          .where(
+            (item) =>
+                (includeDeleted || !item.isDeleted) &&
+                _normalizeFinanceDisplayName(item.name) == normalizedName,
+          )
+          .toList()
+        ..sort((left, right) {
+          final createdAt = left.createdAt.compareTo(right.createdAt);
+          return createdAt != 0 ? createdAt : left.uuid.compareTo(right.uuid);
+        });
   if (sameNameLoans.length < 2) return loan.name;
   final index = sameNameLoans.indexWhere((item) => item.uuid == loan.uuid);
   if (index < 0) return loan.name;
@@ -1425,7 +1423,9 @@ String financeCategoryReferenceDisplayName(
   final normalizedUuid = categoryUuid?.trim();
   if (normalizedUuid == null || normalizedUuid.isEmpty) return '未分类';
   final allCategories = categories.toList();
-  final byUuid = {for (final category in allCategories) category.uuid: category};
+  final byUuid = {
+    for (final category in allCategories) category.uuid: category,
+  };
   var current = byUuid[normalizedUuid];
   if (current == null) return '分类已删除或不可用';
 
@@ -1452,19 +1452,20 @@ String financeCategorySiblingDisplayName(
 ) {
   final normalizedName = _normalizeFinanceCategoryName(category.name);
   final parentUuid = category.parentUuid?.trim() ?? '';
-  final siblings = categories
-      .where(
-        (item) =>
-            !item.isDeleted &&
-            item.type == category.type &&
-            (item.parentUuid?.trim() ?? '') == parentUuid &&
-            _normalizeFinanceCategoryName(item.name) == normalizedName,
-      )
-      .toList()
-    ..sort((left, right) {
-      final sortOrder = left.sortOrder.compareTo(right.sortOrder);
-      return sortOrder != 0 ? sortOrder : left.uuid.compareTo(right.uuid);
-    });
+  final siblings =
+      categories
+          .where(
+            (item) =>
+                !item.isDeleted &&
+                item.type == category.type &&
+                (item.parentUuid?.trim() ?? '') == parentUuid &&
+                _normalizeFinanceCategoryName(item.name) == normalizedName,
+          )
+          .toList()
+        ..sort((left, right) {
+          final sortOrder = left.sortOrder.compareTo(right.sortOrder);
+          return sortOrder != 0 ? sortOrder : left.uuid.compareTo(right.uuid);
+        });
   if (siblings.length < 2) return category.name;
   final index = siblings.indexWhere((item) => item.uuid == category.uuid);
   if (index < 0) return category.name;
@@ -1551,19 +1552,19 @@ String financePaymentMethodDisplayName(
   FinancePaymentMethod paymentMethod,
   Iterable<FinancePaymentMethod> paymentMethods,
 ) {
-  final normalizedName =
-      _normalizeFinancePaymentMethodName(paymentMethod.name);
-  final sameNameMethods = paymentMethods
-      .where(
-        (item) =>
-            !item.isDeleted &&
-            _normalizeFinancePaymentMethodName(item.name) == normalizedName,
-      )
-      .toList()
-    ..sort((left, right) {
-      final sortOrder = left.sortOrder.compareTo(right.sortOrder);
-      return sortOrder != 0 ? sortOrder : left.uuid.compareTo(right.uuid);
-    });
+  final normalizedName = _normalizeFinancePaymentMethodName(paymentMethod.name);
+  final sameNameMethods =
+      paymentMethods
+          .where(
+            (item) =>
+                !item.isDeleted &&
+                _normalizeFinancePaymentMethodName(item.name) == normalizedName,
+          )
+          .toList()
+        ..sort((left, right) {
+          final sortOrder = left.sortOrder.compareTo(right.sortOrder);
+          return sortOrder != 0 ? sortOrder : left.uuid.compareTo(right.uuid);
+        });
   if (sameNameMethods.length < 2) return paymentMethod.name;
   final index = sameNameMethods.indexWhere(
     (item) => item.uuid == paymentMethod.uuid,
@@ -1683,9 +1684,10 @@ class FinanceTransaction {
       eventAt = createdAt > dateStartAt ? createdAt : dateStartAt;
     } else if (dateKey(occurred) != transactionDate) {
       final createdDate = dateKey(
-        DateTime.fromMillisecondsSinceEpoch(createdAt, isUtc: true).add(
-          Duration(minutes: timezoneOffsetMinutes),
-        ),
+        DateTime.fromMillisecondsSinceEpoch(
+          createdAt,
+          isUtc: true,
+        ).add(Duration(minutes: timezoneOffsetMinutes)),
       );
       final occurrencePredatesEntry =
           timestamp != null && timestamp < createdAt;
@@ -1929,9 +1931,8 @@ class FinanceEntryDraft {
         .replaceAll('日', '')
         .replaceAll('/', '-')
         .replaceAll('.', '-');
-    final match = RegExp(
-      r'^(\d{4})-(\d{1,2})-(\d{1,2})(?=$|[Tt ])',
-    ).firstMatch(normalized);
+    final match = RegExp(r'^(\d{4})-(\d{1,2})-(\d{1,2})(?=$|[Tt ])')
+        .firstMatch(normalized);
     if (match == null) return fallback;
 
     final year = int.parse(match.group(1)!);
@@ -1953,16 +1954,16 @@ class FinanceEntryDraft {
           RegExp(r'\s*(?:元|块|人民币|CNY)\s*$', caseSensitive: false),
           '',
         );
-    final match = RegExp(r'^([+-]?)(\d*)(?:\.(\d*))?$').firstMatch(
-      normalized ?? '',
-    );
+    final match = RegExp(r'^([+-]?)(\d*)(?:\.(\d*))?$')
+        .firstMatch(normalized ?? '');
     if (match == null) return 0;
     final wholeText = match.group(2) ?? '';
     final fraction = match.group(3) ?? '';
     if (wholeText.isEmpty && fraction.isEmpty) return 0;
     final whole = BigInt.tryParse(wholeText.isEmpty ? '0' : wholeText);
     if (whole == null) return 0;
-    var amountMinor = whole * BigInt.from(100) +
+    var amountMinor =
+        whole * BigInt.from(100) +
         BigInt.tryParse(fraction.padRight(2, '0').substring(0, 2))!;
     if (fraction.length > 2 && fraction.codeUnitAt(2) >= 53) {
       amountMinor += BigInt.one;
@@ -2096,7 +2097,8 @@ class FinanceBudget {
     return [
       for (final entry in scopes.entries)
         if (!ancestors[entry.key]!.any(
-          (parent) => scopes.containsKey(parent) &&
+          (parent) =>
+              scopes.containsKey(parent) &&
               (!ancestors[parent]!.contains(entry.key) ||
                   parent.compareTo(entry.key) < 0),
         ))
@@ -2370,17 +2372,18 @@ String financeRecurringRuleDisplayName(
   bool includeDeleted = false,
 }) {
   final normalizedName = _normalizeFinanceDisplayName(rule.name);
-  final sameNameRules = rules
-      .where(
-        (item) =>
-            (includeDeleted || !item.isDeleted) &&
-            _normalizeFinanceDisplayName(item.name) == normalizedName,
-      )
-      .toList()
-    ..sort((left, right) {
-      final createdAt = left.createdAt.compareTo(right.createdAt);
-      return createdAt != 0 ? createdAt : left.uuid.compareTo(right.uuid);
-    });
+  final sameNameRules =
+      rules
+          .where(
+            (item) =>
+                (includeDeleted || !item.isDeleted) &&
+                _normalizeFinanceDisplayName(item.name) == normalizedName,
+          )
+          .toList()
+        ..sort((left, right) {
+          final createdAt = left.createdAt.compareTo(right.createdAt);
+          return createdAt != 0 ? createdAt : left.uuid.compareTo(right.uuid);
+        });
   if (sameNameRules.length < 2) return rule.name;
   final index = sameNameRules.indexWhere((item) => item.uuid == rule.uuid);
   if (index < 0) return rule.name;
@@ -2494,17 +2497,18 @@ String financeEntryTemplateDisplayName(
   bool includeDeleted = false,
 }) {
   final normalizedName = _normalizeFinanceDisplayName(template.name);
-  final sameNameTemplates = templates
-      .where(
-        (item) =>
-            (includeDeleted || !item.isDeleted) &&
-            _normalizeFinanceDisplayName(item.name) == normalizedName,
-      )
-      .toList()
-    ..sort((left, right) {
-      final createdAt = left.createdAt.compareTo(right.createdAt);
-      return createdAt != 0 ? createdAt : left.uuid.compareTo(right.uuid);
-    });
+  final sameNameTemplates =
+      templates
+          .where(
+            (item) =>
+                (includeDeleted || !item.isDeleted) &&
+                _normalizeFinanceDisplayName(item.name) == normalizedName,
+          )
+          .toList()
+        ..sort((left, right) {
+          final createdAt = left.createdAt.compareTo(right.createdAt);
+          return createdAt != 0 ? createdAt : left.uuid.compareTo(right.uuid);
+        });
   if (sameNameTemplates.length < 2) return template.name;
   final index = sameNameTemplates.indexWhere(
     (item) => item.uuid == template.uuid,

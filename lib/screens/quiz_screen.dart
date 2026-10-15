@@ -149,10 +149,11 @@ class _QuizScreenState extends State<QuizScreen>
 
     // 新增：保存到静态会话中
     _currentSession = QuizSession(
-        questions: newQuestions,
-        currentIndex: 0,
-        startTime: now,
-        username: widget.username);
+      questions: newQuestions,
+      currentIndex: 0,
+      startTime: now,
+      username: widget.username,
+    );
 
     // 题目生成成功，立即发送第一题的通知
     _updateNotification();
@@ -184,7 +185,8 @@ class _QuizScreenState extends State<QuizScreen>
     _correctFlashDimTimer?.cancel();
     _correctFlashClearTimer?.cancel();
 
-    bool isCorrect = int.tryParse(_answerController.text) ==
+    bool isCorrect =
+        int.tryParse(_answerController.text) ==
         questions[currentIndex].correctAnswer;
 
     setState(() {
@@ -274,8 +276,8 @@ class _QuizScreenState extends State<QuizScreen>
       setState(() {
         currentIndex--;
         if (questions[currentIndex].isAnswered) {
-          _answerController.text =
-              questions[currentIndex].userAnswer.toString();
+          _answerController.text = questions[currentIndex].userAnswer
+              .toString();
         } else {
           _answerController.clear();
         }
@@ -376,17 +378,20 @@ class _QuizScreenState extends State<QuizScreen>
                 return Text(
                   "得分: $value",
                   style: TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.bold,
-                      color: Theme.of(context).colorScheme.primary),
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
                 );
               },
             ),
             const SizedBox(height: 8),
             Text("用时: $duration秒"),
             const SizedBox(height: 4),
-            Text("评价: $comment",
-                style: const TextStyle(fontWeight: FontWeight.bold)),
+            Text(
+              "评价: $comment",
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
           ],
         ),
         actions: [
@@ -403,7 +408,7 @@ class _QuizScreenState extends State<QuizScreen>
               startNewTest(); // 重新开始，这会创建新的 Session
             },
             child: const Text("再来一次"),
-          )
+          ),
         ],
       ),
     );
@@ -455,8 +460,9 @@ class _QuizScreenState extends State<QuizScreen>
     if (isLoading) {
       return Scaffold(
         appBar: FloatingGlassAppBar(
-            flexibleSpace: const FloatingGlassTopBarBackground(),
-            title: const Text("准备中...")),
+          flexibleSpace: const FloatingGlassTopBarBackground(),
+          title: const Text("准备中..."),
+        ),
         body: const Center(child: CircularProgressIndicator()),
       );
     }
@@ -464,8 +470,9 @@ class _QuizScreenState extends State<QuizScreen>
     if (questions.isEmpty) {
       return Scaffold(
         appBar: FloatingGlassAppBar(
-            flexibleSpace: const FloatingGlassTopBarBackground(),
-            title: const Text("错误")),
+          flexibleSpace: const FloatingGlassTopBarBackground(),
+          title: const Text("错误"),
+        ),
         body: const Center(child: Text("无法生成题目，请调整设置范围")),
       );
     }
@@ -486,11 +493,13 @@ class _QuizScreenState extends State<QuizScreen>
                   content: const Text("当前进度将丢失。"),
                   actions: [
                     TextButton(
-                        onPressed: () => Navigator.pop(ctx, false),
-                        child: const Text("取消")),
+                      onPressed: () => Navigator.pop(ctx, false),
+                      child: const Text("取消"),
+                    ),
                     TextButton(
-                        onPressed: () => Navigator.pop(ctx, true),
-                        child: const Text("确定")),
+                      onPressed: () => Navigator.pop(ctx, true),
+                      child: const Text("确定"),
+                    ),
                   ],
                 ),
               );
@@ -498,7 +507,7 @@ class _QuizScreenState extends State<QuizScreen>
                 startNewTest();
               }
             },
-          )
+          ),
         ],
       ),
       body: Padding(
@@ -522,7 +531,8 @@ class _QuizScreenState extends State<QuizScreen>
                       value: value,
                       backgroundColor: Colors.grey[200],
                       valueColor: AlwaysStoppedAnimation<Color>(
-                          Theme.of(context).colorScheme.primary),
+                        Theme.of(context).colorScheme.primary,
+                      ),
                       minHeight: 8,
                     ),
                     const SizedBox(height: 4),
@@ -572,10 +582,12 @@ class _QuizScreenState extends State<QuizScreen>
                       ? null
                       : _submitAnswer,
                   style: ElevatedButton.styleFrom(
-                      backgroundColor: Theme.of(context).colorScheme.primary,
-                      foregroundColor: Colors.white),
+                    backgroundColor: Theme.of(context).colorScheme.primary,
+                    foregroundColor: Colors.white,
+                  ),
                   child: Text(
-                      currentIndex == questions.length - 1 ? "提交试卷" : "下一题"),
+                    currentIndex == questions.length - 1 ? "提交试卷" : "下一题",
+                  ),
                 ),
               ],
             ),

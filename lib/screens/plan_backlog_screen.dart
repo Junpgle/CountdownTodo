@@ -243,8 +243,11 @@ class _PlanBacklogScreenState extends State<PlanBacklogScreen>
           clock: widget.clock,
           backlogContext: saveContext,
           draftOrigin: 'backlog',
-          onManageDrafts: () => openPlanEditorDrafts(context, widget.username,
-            onSaved: () => saved = true),
+          onManageDrafts: () => openPlanEditorDrafts(
+            context,
+            widget.username,
+            onSaved: () => saved = true,
+          ),
           onViewExisting: () => _viewExistingDuringDraft(row),
           onSaved: () => saved = true,
         ),
@@ -423,18 +426,25 @@ class _PlanBacklogScreenState extends State<PlanBacklogScreen>
               try {
                 await _identity?.check();
                 if (!mounted) return;
-                await navigator.push(MaterialPageRoute<void>(
-                  builder: (_) => PlanCleanupScreen(username: widget.username),
-                ));
+                await navigator.push(
+                  MaterialPageRoute<void>(
+                    builder: (_) =>
+                        PlanCleanupScreen(username: widget.username),
+                  ),
+                );
               } catch (error) {
-                if (mounted) messenger.showSnackBar(SnackBar(content: Text(_message(error))));
+                if (mounted)
+                  messenger.showSnackBar(
+                    SnackBar(content: Text(_message(error))),
+                  );
               } finally {
                 _opening = false;
                 if (mounted) await _load();
               }
             },
-            itemBuilder: (_) => const [PopupMenuItem(value: 'cleanup',
-              child: Text('已完成待办的剩余规划'))],
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'cleanup', child: Text('已完成待办的剩余规划')),
+            ],
           ),
           IconButton(
             tooltip: '刷新清单',

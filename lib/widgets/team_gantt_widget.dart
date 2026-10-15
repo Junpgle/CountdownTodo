@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+
 import '../models.dart';
 import '../utils/calendar_date_math.dart';
 
@@ -9,24 +10,29 @@ class TeamGanttWidget extends StatelessWidget {
   final Function(TodoItem)? onTodoTap;
   final DateTime? now;
 
-  const TeamGanttWidget(
-      {super.key,
-      required this.todos,
-      this.viewDays = 30,
-      this.onTodoTap,
-      this.now});
+  const TeamGanttWidget({
+    super.key,
+    required this.todos,
+    this.viewDays = 30,
+    this.onTodoTap,
+    this.now,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final datedTodos =
-        todos.where((t) => t.dueDate != null && !t.isDone).toList();
+    final datedTodos = todos
+        .where((t) => t.dueDate != null && !t.isDone)
+        .toList();
     // 🚀 按截止时间升序排序，确保甘特图从早到晚排列
     datedTodos.sort((a, b) => a.dueDate!.compareTo(b.dueDate!));
 
     if (datedTodos.isEmpty) {
       return const Center(
-          child: Text("暂无带排期的活跃任务",
-              style: TextStyle(fontSize: 10, color: Colors.grey)));
+        child: Text(
+          "暂无带排期的活跃任务",
+          style: TextStyle(fontSize: 10, color: Colors.grey),
+        ),
+      );
     }
 
     // 确定时间跨度
@@ -49,13 +55,21 @@ class TeamGanttWidget extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                  "任务线性排期 (${viewDays == 30 ? '月视图' : viewDays == 14 ? '双周' : '周视图'})",
-                  style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.grey)),
-              Text("${datedTodos.length} 活跃",
-                  style: const TextStyle(fontSize: 9, color: Colors.grey)),
+                "任务线性排期 (${viewDays == 30
+                    ? '月视图'
+                    : viewDays == 14
+                    ? '双周'
+                    : '周视图'})",
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey,
+                ),
+              ),
+              Text(
+                "${datedTodos.length} 活跃",
+                style: const TextStyle(fontSize: 9, color: Colors.grey),
+              ),
             ],
           ),
         ),
@@ -82,11 +96,12 @@ class TeamGanttWidget extends StatelessWidget {
                       child: Text(
                         isToday ? "今天" : DateFormat('dd').format(date),
                         style: TextStyle(
-                            fontSize: 9,
-                            color: isToday
-                                ? Theme.of(context).colorScheme.primary
-                                : Colors.grey[400],
-                            fontWeight: isToday ? FontWeight.bold : null),
+                          fontSize: 9,
+                          color: isToday
+                              ? Theme.of(context).colorScheme.primary
+                              : Colors.grey[400],
+                          fontWeight: isToday ? FontWeight.bold : null,
+                        ),
                       ),
                     );
                   }),
@@ -95,14 +110,14 @@ class TeamGanttWidget extends StatelessWidget {
                 // 2. 任务条
                 ...datedTodos.take(6).map((todo) {
                   final start = DateTime.fromMillisecondsSinceEpoch(
-                          todo.createdDate ?? todo.createdAt)
-                      .toLocal();
+                    todo.createdDate ?? todo.createdAt,
+                  ).toLocal();
                   final end = todo.dueDate!;
 
                   // 计算偏移与长度 (相对于 timelineStart)
                   double startPos =
                       CalendarDateMath.dayOffset(timelineStart, start) /
-                          totalDays;
+                      totalDays;
                   double duration =
                       CalendarDateMath.dayOffset(start, end) / totalDays;
 
@@ -119,11 +134,13 @@ class TeamGanttWidget extends StatelessWidget {
                     child: Stack(
                       children: [
                         Container(
-                            height: 14,
-                            width: timelineWidth,
-                            decoration: BoxDecoration(
-                                color: Colors.grey.withValues(alpha: 0.05),
-                                borderRadius: BorderRadius.circular(4))),
+                          height: 14,
+                          width: timelineWidth,
+                          decoration: BoxDecoration(
+                            color: Colors.grey.withValues(alpha: 0.05),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ),
                         Positioned(
                           left: timelineWidth * startPos,
                           width: timelineWidth * duration,
@@ -133,24 +150,28 @@ class TeamGanttWidget extends StatelessWidget {
                             child: Container(
                               height: 14,
                               decoration: BoxDecoration(
-                                  gradient: LinearGradient(colors: [
-                                    color.withValues(alpha: 0.8),
-                                    color
-                                  ]),
-                                  borderRadius: BorderRadius.circular(4),
-                                  boxShadow: [
-                                    BoxShadow(
-                                        color: color.withValues(alpha: 0.3),
-                                        blurRadius: 4)
-                                  ]),
+                                gradient: LinearGradient(
+                                  colors: [color.withValues(alpha: 0.8), color],
+                                ),
+                                borderRadius: BorderRadius.circular(4),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: color.withValues(alpha: 0.3),
+                                    blurRadius: 4,
+                                  ),
+                                ],
+                              ),
                               alignment: Alignment.centerLeft,
                               padding: const EdgeInsets.only(left: 4),
-                              child: Text(_safeStr(todo.title),
-                                  style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 8,
-                                      fontWeight: FontWeight.bold),
-                                  overflow: TextOverflow.ellipsis),
+                              child: Text(
+                                _safeStr(todo.title),
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 8,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
                           ),
                         ),
@@ -169,8 +190,10 @@ class TeamGanttWidget extends StatelessWidget {
   String _safeStr(String? s) {
     if (s == null) return '';
     return s.replaceAll(
-        RegExp(
-            r'[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(^|[^\uD800-\uDBFF])[\uDC00-\uDFFF]'),
-        '');
+      RegExp(
+        r'[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(^|[^\uD800-\uDBFF])[\uDC00-\uDFFF]',
+      ),
+      '',
+    );
   }
 }

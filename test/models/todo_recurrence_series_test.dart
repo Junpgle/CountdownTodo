@@ -40,86 +40,88 @@ void main() {
   });
 
   test(
-      'recurrence dedupe keeps newer completion over higher-version stale copy',
-      () {
-    final occurrenceDate = DateTime(2026, 8, 3, 19).millisecondsSinceEpoch;
-    final completed = TodoItem(
-      id: 'completed-occurrence',
-      title: '每日复习',
-      isDone: true,
-      version: 2,
-      updatedAt: 2000,
-      createdAt: 1000,
-      createdDate: occurrenceDate,
-      recurrenceSeriesId: 'series-1',
-    );
-    final staleIncomplete = TodoItem(
-      id: 'stale-incomplete-occurrence',
-      title: '每日复习',
-      isDone: false,
-      version: 99,
-      updatedAt: 1000,
-      createdAt: 2000,
-      createdDate: occurrenceDate,
-      recurrenceSeriesId: 'series-1',
-    );
-    final occurrences = [completed, staleIncomplete];
-
-    final changed =
-        StorageService.deduplicatePersistedRecurrenceOccurrencesForTest(
-      occurrences,
-    );
-
-    expect(changed, isTrue);
-    expect(completed.isDone, isTrue);
-    expect(completed.updatedAt, 2000);
-    expect(completed.version, 2);
-    expect(staleIncomplete.isDeleted, isTrue);
-  });
-
-  test('old cloud instances recover one recurrence series from its timeline',
-      () {
-    TodoItem occurrence(
-      int day, {
-      RecurrenceType recurrence = RecurrenceType.none,
-      bool isDone = false,
-    }) {
-      return TodoItem(
-        id: 'occurrence-$day',
-        title: '公考七日班',
-        remark: '固定晚间课程',
-        isDone: isDone,
-        recurrence: recurrence,
-        customIntervalDays: 0,
-        recurrenceEndDate: DateTime(2026, 7, 19),
-        createdDate: DateTime(2026, 7, day, 19).millisecondsSinceEpoch,
-        dueDate: DateTime(2026, 7, day, 22),
+    'recurrence dedupe keeps newer completion over higher-version stale copy',
+    () {
+      final occurrenceDate = DateTime(2026, 8, 3, 19).millisecondsSinceEpoch;
+      final completed = TodoItem(
+        id: 'completed-occurrence',
+        title: '每日复习',
+        isDone: true,
+        version: 2,
+        updatedAt: 2000,
+        createdAt: 1000,
+        createdDate: occurrenceDate,
+        recurrenceSeriesId: 'series-1',
       );
-    }
+      final staleIncomplete = TodoItem(
+        id: 'stale-incomplete-occurrence',
+        title: '每日复习',
+        isDone: false,
+        version: 99,
+        updatedAt: 1000,
+        createdAt: 2000,
+        createdDate: occurrenceDate,
+        recurrenceSeriesId: 'series-1',
+      );
+      final occurrences = [completed, staleIncomplete];
 
-    final incoming = [
-      occurrence(13, isDone: true),
-      occurrence(14, isDone: true),
-      occurrence(15),
-      occurrence(16),
-      occurrence(17, recurrence: RecurrenceType.daily),
-      occurrence(18),
-      occurrence(19),
-    ];
+      final changed =
+          StorageService.deduplicatePersistedRecurrenceOccurrencesForTest(
+            occurrences,
+          );
 
-    final repaired =
-        StorageService.repairMissingRemoteRecurrenceSeriesIdsForTest(
-      incoming,
-      const [],
-    );
+      expect(changed, isTrue);
+      expect(completed.isDone, isTrue);
+      expect(completed.updatedAt, 2000);
+      expect(completed.version, 2);
+      expect(staleIncomplete.isDeleted, isTrue);
+    },
+  );
 
-    expect(repaired, hasLength(7));
-    expect(
-      incoming.map((todo) => todo.recurrenceSeriesId).toSet(),
-      {'occurrence-13'},
-    );
-    expect(incoming.where((todo) => todo.isDone), hasLength(2));
-  });
+  test(
+    'old cloud instances recover one recurrence series from its timeline',
+    () {
+      TodoItem occurrence(
+        int day, {
+        RecurrenceType recurrence = RecurrenceType.none,
+        bool isDone = false,
+      }) {
+        return TodoItem(
+          id: 'occurrence-$day',
+          title: '公考七日班',
+          remark: '固定晚间课程',
+          isDone: isDone,
+          recurrence: recurrence,
+          customIntervalDays: 0,
+          recurrenceEndDate: DateTime(2026, 7, 19),
+          createdDate: DateTime(2026, 7, day, 19).millisecondsSinceEpoch,
+          dueDate: DateTime(2026, 7, day, 22),
+        );
+      }
+
+      final incoming = [
+        occurrence(13, isDone: true),
+        occurrence(14, isDone: true),
+        occurrence(15),
+        occurrence(16),
+        occurrence(17, recurrence: RecurrenceType.daily),
+        occurrence(18),
+        occurrence(19),
+      ];
+
+      final repaired =
+          StorageService.repairMissingRemoteRecurrenceSeriesIdsForTest(
+            incoming,
+            const [],
+          );
+
+      expect(repaired, hasLength(7));
+      expect(incoming.map((todo) => todo.recurrenceSeriesId).toSet(), {
+        'occurrence-13',
+      });
+      expect(incoming.where((todo) => todo.isDone), hasLength(2));
+    },
+  );
 
   test('old cloud repair does not merge a same-title task at another time', () {
     final historical = TodoItem(
@@ -145,39 +147,43 @@ void main() {
       dueDate: DateTime(2026, 7, 16, 9),
     );
 
-    StorageService.repairMissingRemoteRecurrenceSeriesIdsForTest(
-      [historical, active, unrelated],
-      const [],
-    );
+    StorageService.repairMissingRemoteRecurrenceSeriesIdsForTest([
+      historical,
+      active,
+      unrelated,
+    ], const []);
 
     expect(historical.recurrenceSeriesId, 'historical');
     expect(active.recurrenceSeriesId, 'historical');
     expect(unrelated.recurrenceSeriesId, isNull);
   });
 
-  test('ambiguous identical active series are not guessed from old cloud data',
-      () {
-    TodoItem todo(String id, int day, {bool active = false}) => TodoItem(
-          id: id,
-          title: '同配置循环',
-          recurrence: active ? RecurrenceType.daily : RecurrenceType.none,
-          customIntervalDays: 0,
-          createdDate: DateTime(2026, 7, day, 19).millisecondsSinceEpoch,
-          dueDate: DateTime(2026, 7, day, 22),
-        );
-    final firstActive = todo('active-a', 17, active: true);
-    final secondActive = todo('active-b', 17, active: true);
-    final historical = todo('history', 16);
+  test(
+    'ambiguous identical active series are not guessed from old cloud data',
+    () {
+      TodoItem todo(String id, int day, {bool active = false}) => TodoItem(
+        id: id,
+        title: '同配置循环',
+        recurrence: active ? RecurrenceType.daily : RecurrenceType.none,
+        customIntervalDays: 0,
+        createdDate: DateTime(2026, 7, day, 19).millisecondsSinceEpoch,
+        dueDate: DateTime(2026, 7, day, 22),
+      );
+      final firstActive = todo('active-a', 17, active: true);
+      final secondActive = todo('active-b', 17, active: true);
+      final historical = todo('history', 16);
 
-    StorageService.repairMissingRemoteRecurrenceSeriesIdsForTest(
-      [historical, firstActive, secondActive],
-      const [],
-    );
+      StorageService.repairMissingRemoteRecurrenceSeriesIdsForTest([
+        historical,
+        firstActive,
+        secondActive,
+      ], const []);
 
-    expect(firstActive.recurrenceSeriesId, 'active-a');
-    expect(secondActive.recurrenceSeriesId, 'active-b');
-    expect(historical.recurrenceSeriesId, isNull);
-  });
+      expect(firstActive.recurrenceSeriesId, 'active-a');
+      expect(secondActive.recurrenceSeriesId, 'active-b');
+      expect(historical.recurrenceSeriesId, isNull);
+    },
+  );
 
   test('local series id is authoritative when old cloud response omits it', () {
     final incoming = TodoItem(
@@ -198,9 +204,9 @@ void main() {
 
     final repaired =
         StorageService.repairMissingRemoteRecurrenceSeriesIdsForTest(
-      [incoming],
-      [local],
-    );
+          [incoming],
+          [local],
+        );
 
     expect(repaired, {'same-uuid'});
     expect(incoming.recurrenceSeriesId, 'original-series');
@@ -234,93 +240,97 @@ void main() {
 
     final repaired =
         StorageService.repairMissingRemoteRecurrenceSeriesIdsForTest(
-      [incomingActive],
-      [localHistory, localActive],
-    );
+          [incomingActive],
+          [localHistory, localActive],
+        );
 
     expect(repaired, containsAll({'history-13', 'active-17'}));
     expect(incomingActive.recurrenceSeriesId, 'active-17');
     expect(localHistory.recurrenceSeriesId, 'active-17');
   });
 
-  test('stale child series id follows its anchor into the canonical series',
-      () {
-    final original = TodoItem(
-      id: 'original-series',
-      title: '每日复习',
-      recurrenceSeriesId: 'original-series',
-      createdDate: DateTime(2026, 7, 13, 19).millisecondsSinceEpoch,
-      dueDate: DateTime(2026, 7, 13, 22),
-    );
-    final active = TodoItem(
-      id: 'active-17',
-      title: '每日复习',
-      recurrence: RecurrenceType.daily,
-      recurrenceSeriesId: 'original-series',
-      createdDate: DateTime(2026, 7, 17, 19).millisecondsSinceEpoch,
-      dueDate: DateTime(2026, 7, 17, 22),
-    );
-    final orphan = TodoItem(
-      id: 'orphan-16',
-      title: '每日复习',
-      recurrenceSeriesId: 'active-17',
-      createdDate: DateTime(2026, 7, 16, 19).millisecondsSinceEpoch,
-      dueDate: DateTime(2026, 7, 16, 22, 30),
-    );
+  test(
+    'stale child series id follows its anchor into the canonical series',
+    () {
+      final original = TodoItem(
+        id: 'original-series',
+        title: '每日复习',
+        recurrenceSeriesId: 'original-series',
+        createdDate: DateTime(2026, 7, 13, 19).millisecondsSinceEpoch,
+        dueDate: DateTime(2026, 7, 13, 22),
+      );
+      final active = TodoItem(
+        id: 'active-17',
+        title: '每日复习',
+        recurrence: RecurrenceType.daily,
+        recurrenceSeriesId: 'original-series',
+        createdDate: DateTime(2026, 7, 17, 19).millisecondsSinceEpoch,
+        dueDate: DateTime(2026, 7, 17, 22),
+      );
+      final orphan = TodoItem(
+        id: 'orphan-16',
+        title: '每日复习',
+        recurrenceSeriesId: 'active-17',
+        createdDate: DateTime(2026, 7, 16, 19).millisecondsSinceEpoch,
+        dueDate: DateTime(2026, 7, 16, 22, 30),
+      );
 
-    final repaired =
-        StorageService.repairMissingRemoteRecurrenceSeriesIdsForTest(
-      const [],
-      [original, orphan, active],
-    );
+      final repaired =
+          StorageService.repairMissingRemoteRecurrenceSeriesIdsForTest(
+            const [],
+            [original, orphan, active],
+          );
 
-    expect(repaired, contains('orphan-16'));
-    expect(orphan.recurrenceSeriesId, 'original-series');
-  });
+      expect(repaired, contains('orphan-16'));
+      expect(orphan.recurrenceSeriesId, 'original-series');
+    },
+  );
 
-  test('non-empty cloud split aliases are restored from local UUID lineage',
-      () {
-    final original = TodoItem(
-      id: 'original-series',
-      title: '每日复习',
-      recurrenceSeriesId: 'original-series',
-      createdDate: DateTime(2026, 7, 13, 19).millisecondsSinceEpoch,
-    );
-    final localAliasAnchor = TodoItem(
-      id: 'child-anchor',
-      title: '每日复习',
-      recurrenceSeriesId: 'original-series',
-      createdDate: DateTime(2026, 7, 14, 19).millisecondsSinceEpoch,
-    );
-    final localOccurrence = TodoItem(
-      id: 'occurrence-15',
-      title: '每日复习',
-      recurrenceSeriesId: 'original-series',
-      createdDate: DateTime(2026, 7, 15, 19).millisecondsSinceEpoch,
-    );
-    final remoteAliasAnchor = TodoItem(
-      id: 'child-anchor',
-      title: '每日复习',
-      recurrenceSeriesId: 'child-anchor',
-      createdDate: DateTime(2026, 7, 14, 19).millisecondsSinceEpoch,
-    );
-    final remoteOccurrence = TodoItem(
-      id: 'occurrence-15',
-      title: '每日复习',
-      recurrenceSeriesId: 'child-anchor',
-      createdDate: DateTime(2026, 7, 15, 19).millisecondsSinceEpoch,
-    );
+  test(
+    'non-empty cloud split aliases are restored from local UUID lineage',
+    () {
+      final original = TodoItem(
+        id: 'original-series',
+        title: '每日复习',
+        recurrenceSeriesId: 'original-series',
+        createdDate: DateTime(2026, 7, 13, 19).millisecondsSinceEpoch,
+      );
+      final localAliasAnchor = TodoItem(
+        id: 'child-anchor',
+        title: '每日复习',
+        recurrenceSeriesId: 'original-series',
+        createdDate: DateTime(2026, 7, 14, 19).millisecondsSinceEpoch,
+      );
+      final localOccurrence = TodoItem(
+        id: 'occurrence-15',
+        title: '每日复习',
+        recurrenceSeriesId: 'original-series',
+        createdDate: DateTime(2026, 7, 15, 19).millisecondsSinceEpoch,
+      );
+      final remoteAliasAnchor = TodoItem(
+        id: 'child-anchor',
+        title: '每日复习',
+        recurrenceSeriesId: 'child-anchor',
+        createdDate: DateTime(2026, 7, 14, 19).millisecondsSinceEpoch,
+      );
+      final remoteOccurrence = TodoItem(
+        id: 'occurrence-15',
+        title: '每日复习',
+        recurrenceSeriesId: 'child-anchor',
+        createdDate: DateTime(2026, 7, 15, 19).millisecondsSinceEpoch,
+      );
 
-    final repaired =
-        StorageService.repairMissingRemoteRecurrenceSeriesIdsForTest(
-      [remoteAliasAnchor, remoteOccurrence],
-      [original, localAliasAnchor, localOccurrence],
-    );
+      final repaired =
+          StorageService.repairMissingRemoteRecurrenceSeriesIdsForTest(
+            [remoteAliasAnchor, remoteOccurrence],
+            [original, localAliasAnchor, localOccurrence],
+          );
 
-    expect(repaired, containsAll({'child-anchor', 'occurrence-15'}));
-    expect(remoteAliasAnchor.recurrenceSeriesId, 'original-series');
-    expect(remoteOccurrence.recurrenceSeriesId, 'original-series');
-  });
+      expect(repaired, containsAll({'child-anchor', 'occurrence-15'}));
+      expect(remoteAliasAnchor.recurrenceSeriesId, 'original-series');
+      expect(remoteOccurrence.recurrenceSeriesId, 'original-series');
+    },
+  );
 
   test('local oplog history rejoins a child that became its own series', () {
     final original = TodoItem(
@@ -350,16 +360,16 @@ void main() {
 
     final repaired =
         StorageService.repairLocalRecurrenceSeriesAliasesFromHistoryForTest(
-      [original, splitAnchor, splitOccurrence, unrelated],
-      {
-        'child-anchor': [
-          'original-series',
-          'original-series',
-          'child-anchor',
-        ],
-        'unrelated-series': ['unrelated-series'],
-      },
-    );
+          [original, splitAnchor, splitOccurrence, unrelated],
+          {
+            'child-anchor': [
+              'original-series',
+              'original-series',
+              'child-anchor',
+            ],
+            'unrelated-series': ['unrelated-series'],
+          },
+        );
 
     expect(repaired, {'child-anchor', 'occurrence-15'});
     expect(splitAnchor.recurrenceSeriesId, 'original-series');
@@ -376,49 +386,51 @@ void main() {
 
     final repaired =
         StorageService.repairLocalRecurrenceSeriesAliasesFromHistoryForTest(
-      [established],
-      {
-        'established-series': [
-          'ancient-alias',
-          'established-series',
-          'established-series',
-          'established-series',
-        ],
-      },
-    );
+          [established],
+          {
+            'established-series': [
+              'ancient-alias',
+              'established-series',
+              'established-series',
+              'established-series',
+            ],
+          },
+        );
 
     expect(repaired, isEmpty);
     expect(established.recurrenceSeriesId, 'established-series');
   });
 
-  test('identical migration snapshot is cleared as a stale version conflict',
-      () {
-    final todo = TodoItem(
-      id: 'migration-conflict',
-      title: '每日复习',
-      isDone: true,
-      recurrenceSeriesId: 'original-series',
-      createdDate: DateTime(2026, 7, 13, 19).millisecondsSinceEpoch,
-      dueDate: DateTime(2026, 7, 13, 22),
-      reminderMinutes: 5,
-    );
-    final serverSnapshot = Map<String, dynamic>.from(todo.toJson())
-      ..remove('recurrence_series_id')
-      ..remove('recurrenceSeriesId');
-    todo.hasConflict = true;
-    todo.serverVersionData = serverSnapshot;
-    final previousVersion = todo.version;
+  test(
+    'identical migration snapshot is cleared as a stale version conflict',
+    () {
+      final todo = TodoItem(
+        id: 'migration-conflict',
+        title: '每日复习',
+        isDone: true,
+        recurrenceSeriesId: 'original-series',
+        createdDate: DateTime(2026, 7, 13, 19).millisecondsSinceEpoch,
+        dueDate: DateTime(2026, 7, 13, 22),
+        reminderMinutes: 5,
+      );
+      final serverSnapshot = Map<String, dynamic>.from(todo.toJson())
+        ..remove('recurrence_series_id')
+        ..remove('recurrenceSeriesId');
+      todo.hasConflict = true;
+      todo.serverVersionData = serverSnapshot;
+      final previousVersion = todo.version;
 
-    final resolved =
-        StorageService.clearResolvedRecurrenceMigrationConflictsForTest(
-      [todo],
-    );
+      final resolved =
+          StorageService.clearResolvedRecurrenceMigrationConflictsForTest([
+            todo,
+          ]);
 
-    expect(resolved, [todo]);
-    expect(todo.hasConflict, isFalse);
-    expect(todo.serverVersionData, isNull);
-    expect(todo.version, previousVersion + 1);
-  });
+      expect(resolved, [todo]);
+      expect(todo.hasConflict, isFalse);
+      expect(todo.serverVersionData, isNull);
+      expect(todo.version, previousVersion + 1);
+    },
+  );
 
   test('migration conflict with a real completion difference is preserved', () {
     final todo = TodoItem(
@@ -437,9 +449,7 @@ void main() {
     todo.serverVersionData = serverSnapshot;
 
     final resolved =
-        StorageService.clearResolvedRecurrenceMigrationConflictsForTest(
-      [todo],
-    );
+        StorageService.clearResolvedRecurrenceMigrationConflictsForTest([todo]);
 
     expect(resolved, isEmpty);
     expect(todo.hasConflict, isTrue);
@@ -447,10 +457,7 @@ void main() {
   });
 
   test('daily recurrence backfills every missing day', () {
-    final todo = TodoItem(
-      title: '每日循环',
-      recurrence: RecurrenceType.daily,
-    );
+    final todo = TodoItem(title: '每日循环', recurrence: RecurrenceType.daily);
 
     final offsets = StorageService.recurrenceRollOffsetsForTest(
       todo,
@@ -462,10 +469,7 @@ void main() {
   });
 
   test('daily recurrence backfills the next date across spring DST', () {
-    final todo = TodoItem(
-      title: '每日循环',
-      recurrence: RecurrenceType.daily,
-    );
+    final todo = TodoItem(title: '每日循环', recurrence: RecurrenceType.daily);
 
     final offsets = StorageService.recurrenceRollOffsetsForTest(
       todo,
@@ -477,10 +481,7 @@ void main() {
   });
 
   test('monthly recurrence offsets remain calendar days across spring DST', () {
-    final todo = TodoItem(
-      title: '每月循环',
-      recurrence: RecurrenceType.monthly,
-    );
+    final todo = TodoItem(title: '每月循环', recurrence: RecurrenceType.monthly);
 
     final offsets = StorageService.recurrenceRollOffsetsForTest(
       todo,
@@ -492,10 +493,7 @@ void main() {
   });
 
   test('monthly month-end backfill matches successive recurrence dates', () {
-    final todo = TodoItem(
-      title: '每月循环',
-      recurrence: RecurrenceType.monthly,
-    );
+    final todo = TodoItem(title: '每月循环', recurrence: RecurrenceType.monthly);
     final base = DateTime(2026, 1, 31);
     final offsets = StorageService.recurrenceRollOffsetsForTest(
       todo,
@@ -507,17 +505,16 @@ void main() {
         .map((offset) => DateTime(base.year, base.month, base.day + offset))
         .toList();
     final firstOccurrence = TodoRecurrenceDateService.nextDate(base, todo)!;
-    final secondOccurrence =
-        TodoRecurrenceDateService.nextDate(firstOccurrence, todo)!;
+    final secondOccurrence = TodoRecurrenceDateService.nextDate(
+      firstOccurrence,
+      todo,
+    )!;
 
     expect(backfilledDates, [firstOccurrence, secondOccurrence]);
   });
 
   test('yearly leap-day backfill matches successive recurrence dates', () {
-    final todo = TodoItem(
-      title: '每年循环',
-      recurrence: RecurrenceType.yearly,
-    );
+    final todo = TodoItem(title: '每年循环', recurrence: RecurrenceType.yearly);
     final base = DateTime(2024, 2, 29);
     final offsets = StorageService.recurrenceRollOffsetsForTest(
       todo,
@@ -567,10 +564,7 @@ void main() {
   });
 
   test('weekday recurrence skips weekend while backfilling', () {
-    final todo = TodoItem(
-      title: '工作日循环',
-      recurrence: RecurrenceType.weekdays,
-    );
+    final todo = TodoItem(title: '工作日循环', recurrence: RecurrenceType.weekdays);
 
     final offsets = StorageService.recurrenceRollOffsetsForTest(
       todo,
@@ -581,43 +575,47 @@ void main() {
     expect(offsets, [3]);
   });
 
-  test('finite recurrence pre-generates every future occurrence to end date',
-      () {
-    final source = TodoItem(
-      title: '每日循环',
-      recurrence: RecurrenceType.daily,
-      recurrenceSeriesId: 'series-future',
-      createdDate: DateTime(2026, 7, 15, 19).millisecondsSinceEpoch,
-      dueDate: DateTime(2026, 7, 15, 22),
-      recurrenceEndDate: DateTime(2026, 7, 19),
-    );
+  test(
+    'finite recurrence pre-generates every future occurrence to end date',
+    () {
+      final source = TodoItem(
+        title: '每日循环',
+        recurrence: RecurrenceType.daily,
+        recurrenceSeriesId: 'series-future',
+        createdDate: DateTime(2026, 7, 15, 19).millisecondsSinceEpoch,
+        dueDate: DateTime(2026, 7, 15, 22),
+        recurrenceEndDate: DateTime(2026, 7, 19),
+      );
 
-    final generated =
-        StorageService.futureRecurrenceOccurrencesForTest(source, [source]);
-    final days = generated.map((todo) {
-      return DateTime.fromMillisecondsSinceEpoch(
-        todo.createdDate!,
-        isUtc: true,
-      ).toLocal().day;
-    }).toList();
+      final generated = StorageService.futureRecurrenceOccurrencesForTest(
+        source,
+        [source],
+      );
+      final days = generated.map((todo) {
+        return DateTime.fromMillisecondsSinceEpoch(
+          todo.createdDate!,
+          isUtc: true,
+        ).toLocal().day;
+      }).toList();
 
-    expect(days, [16, 17, 18, 19]);
-    expect(generated.map((todo) => todo.id).toSet(), hasLength(4));
-    expect(
-      generated.every(
-        (todo) =>
-            todo.recurrenceSeriesId == 'series-future' &&
-            todo.recurrence == RecurrenceType.none,
-      ),
-      isTrue,
-    );
+      expect(days, [16, 17, 18, 19]);
+      expect(generated.map((todo) => todo.id).toSet(), hasLength(4));
+      expect(
+        generated.every(
+          (todo) =>
+              todo.recurrenceSeriesId == 'series-future' &&
+              todo.recurrence == RecurrenceType.none,
+        ),
+        isTrue,
+      );
 
-    final duplicatePass = StorageService.futureRecurrenceOccurrencesForTest(
-      source,
-      [source, ...generated],
-    );
-    expect(duplicatePass, isEmpty);
-  });
+      final duplicatePass = StorageService.futureRecurrenceOccurrencesForTest(
+        source,
+        [source, ...generated],
+      );
+      expect(duplicatePass, isEmpty);
+    },
+  );
 
   test('generated recurrence UUID is stable for one series and local day', () {
     final morning = DateTime(2026, 7, 24, 8).millisecondsSinceEpoch;
@@ -635,31 +633,25 @@ void main() {
 
     expect(eveningId, morningId);
     expect(
-      StorageService.recurrenceOccurrenceIdForTest(
-        'series-stable-id',
-        nextDay,
-      ),
+      StorageService.recurrenceOccurrenceIdForTest('series-stable-id', nextDay),
       isNot(morningId),
     );
     expect(
-      StorageService.recurrenceOccurrenceIdForTest(
-        'another-series',
-        morning,
-      ),
+      StorageService.recurrenceOccurrenceIdForTest('another-series', morning),
       isNot(morningId),
     );
   });
 
   test('different devices generate the same future occurrence UUIDs', () {
     TodoItem source() => TodoItem(
-          id: '550e8400-e29b-41d4-a716-446655440000',
-          title: '每日循环',
-          recurrence: RecurrenceType.daily,
-          recurrenceSeriesId: '20ba0262-5d45-4fef-979e-b763a6f9f42e',
-          createdDate: DateTime(2026, 7, 23, 19).millisecondsSinceEpoch,
-          dueDate: DateTime(2026, 7, 23, 22),
-          recurrenceEndDate: DateTime(2026, 7, 25),
-        );
+      id: '550e8400-e29b-41d4-a716-446655440000',
+      title: '每日循环',
+      recurrence: RecurrenceType.daily,
+      recurrenceSeriesId: '20ba0262-5d45-4fef-979e-b763a6f9f42e',
+      createdDate: DateTime(2026, 7, 23, 19).millisecondsSinceEpoch,
+      dueDate: DateTime(2026, 7, 23, 22),
+      recurrenceEndDate: DateTime(2026, 7, 25),
+    );
 
     final firstSource = source();
     final secondSource = source();
@@ -684,13 +676,17 @@ void main() {
       dueDate: DateTime(2026, 7, 15, 22),
     );
 
-    final generated =
-        StorageService.futureRecurrenceOccurrencesForTest(source, [source]);
+    final generated = StorageService.futureRecurrenceOccurrencesForTest(
+      source,
+      [source],
+    );
     final starts = generated
-        .map((todo) => DateTime.fromMillisecondsSinceEpoch(
-              todo.createdDate!,
-              isUtc: true,
-            ).toLocal())
+        .map(
+          (todo) => DateTime.fromMillisecondsSinceEpoch(
+            todo.createdDate!,
+            isUtc: true,
+          ).toLocal(),
+        )
         .toList();
 
     expect(generated, hasLength(2));
@@ -729,98 +725,104 @@ void main() {
   });
 
   test(
-      'moving recurrence end date back deletes already materialized future days',
-      () {
-    final endDate = DateTime(2026, 7, 17);
-    final current = TodoItem(
-      id: 'recurrence-current',
-      title: '每日循环',
-      recurrence: RecurrenceType.daily,
-      recurrenceSeriesId: 'series-end-date-prune',
-      createdDate: DateTime(2026, 7, 15, 19).millisecondsSinceEpoch,
-      dueDate: DateTime(2026, 7, 15, 22),
-      recurrenceEndDate: DateTime(2026, 7, 30),
-    );
-    final retained = TodoItem(
-      id: 'recurrence-retained',
-      title: '每日循环',
-      recurrenceSeriesId: 'series-end-date-prune',
-      createdDate: DateTime(2026, 7, 17, 19).millisecondsSinceEpoch,
-      dueDate: DateTime(2026, 7, 17, 22),
-    );
-    final removed = TodoItem(
-      id: 'recurrence-removed',
-      title: '每日循环',
-      recurrenceSeriesId: 'series-end-date-prune',
-      createdDate: DateTime(2026, 7, 18, 19).millisecondsSinceEpoch,
-      dueDate: DateTime(2026, 7, 18, 22),
-    );
+    'moving recurrence end date back deletes already materialized future days',
+    () {
+      final endDate = DateTime(2026, 7, 17);
+      final current = TodoItem(
+        id: 'recurrence-current',
+        title: '每日循环',
+        recurrence: RecurrenceType.daily,
+        recurrenceSeriesId: 'series-end-date-prune',
+        createdDate: DateTime(2026, 7, 15, 19).millisecondsSinceEpoch,
+        dueDate: DateTime(2026, 7, 15, 22),
+        recurrenceEndDate: DateTime(2026, 7, 30),
+      );
+      final retained = TodoItem(
+        id: 'recurrence-retained',
+        title: '每日循环',
+        recurrenceSeriesId: 'series-end-date-prune',
+        createdDate: DateTime(2026, 7, 17, 19).millisecondsSinceEpoch,
+        dueDate: DateTime(2026, 7, 17, 22),
+      );
+      final removed = TodoItem(
+        id: 'recurrence-removed',
+        title: '每日循环',
+        recurrenceSeriesId: 'series-end-date-prune',
+        createdDate: DateTime(2026, 7, 18, 19).millisecondsSinceEpoch,
+        dueDate: DateTime(2026, 7, 18, 22),
+      );
 
-    final changed =
-        StorageService.pruneRecurrenceOccurrencesAfterEndDateForTest(
-      [current, retained, removed],
-      seriesId: 'series-end-date-prune',
-      recurrenceEndDate: endDate,
-    );
+      final changed =
+          StorageService.pruneRecurrenceOccurrencesAfterEndDateForTest(
+            [current, retained, removed],
+            seriesId: 'series-end-date-prune',
+            recurrenceEndDate: endDate,
+          );
 
-    expect(changed, isTrue);
-    expect(current.isDeleted, isFalse);
-    expect(retained.isDeleted, isFalse);
-    expect(removed.isDeleted, isTrue);
-    expect(removed.recurrence, RecurrenceType.none);
-  });
+      expect(changed, isTrue);
+      expect(current.isDeleted, isFalse);
+      expect(retained.isDeleted, isFalse);
+      expect(removed.isDeleted, isTrue);
+      expect(removed.recurrence, RecurrenceType.none);
+    },
+  );
 
-  test('sync boundary repair does not restore an expired remote occurrence',
-      () {
-    final active = TodoItem(
-      id: 'sync-active-rule',
-      title: '每日循环',
-      recurrence: RecurrenceType.daily,
-      recurrenceSeriesId: 'sync-expired-series',
-      createdDate: DateTime(2026, 7, 15, 19).millisecondsSinceEpoch,
-      dueDate: DateTime(2026, 7, 15, 22),
-      recurrenceEndDate: DateTime(2099, 1, 2),
-    );
-    final remoteOldOccurrence = TodoItem(
-      id: 'sync-remote-old-occurrence',
-      title: '每日循环',
-      recurrenceSeriesId: 'sync-expired-series',
-      createdDate: DateTime(2099, 1, 3, 19).millisecondsSinceEpoch,
-      dueDate: DateTime(2099, 1, 3, 22),
-    );
+  test(
+    'sync boundary repair does not restore an expired remote occurrence',
+    () {
+      final active = TodoItem(
+        id: 'sync-active-rule',
+        title: '每日循环',
+        recurrence: RecurrenceType.daily,
+        recurrenceSeriesId: 'sync-expired-series',
+        createdDate: DateTime(2026, 7, 15, 19).millisecondsSinceEpoch,
+        dueDate: DateTime(2026, 7, 15, 22),
+        recurrenceEndDate: DateTime(2099, 1, 2),
+      );
+      final remoteOldOccurrence = TodoItem(
+        id: 'sync-remote-old-occurrence',
+        title: '每日循环',
+        recurrenceSeriesId: 'sync-expired-series',
+        createdDate: DateTime(2099, 1, 3, 19).millisecondsSinceEpoch,
+        dueDate: DateTime(2099, 1, 3, 22),
+      );
 
-    final changed =
-        StorageService.pruneRecurrenceOccurrencesAfterEndDatesForTest(
-      [active, remoteOldOccurrence],
-    );
+      final changed =
+          StorageService.pruneRecurrenceOccurrencesAfterEndDatesForTest([
+            active,
+            remoteOldOccurrence,
+          ]);
 
-    expect(changed, contains(remoteOldOccurrence.id));
-    expect(remoteOldOccurrence.isDeleted, isTrue);
-    expect(remoteOldOccurrence.recurrence, RecurrenceType.none);
-    expect(active.recurrence, RecurrenceType.daily);
-  });
+      expect(changed, contains(remoteOldOccurrence.id));
+      expect(remoteOldOccurrence.isDeleted, isTrue);
+      expect(remoteOldOccurrence.recurrence, RecurrenceType.none);
+      expect(active.recurrence, RecurrenceType.daily);
+    },
+  );
 
-  test('sync boundary repair deactivates a recurrence whose end date passed',
-      () {
-    final active = TodoItem(
-      id: 'sync-ended-rule',
-      title: '每日循环',
-      recurrence: RecurrenceType.daily,
-      recurrenceSeriesId: 'sync-ended-series',
-      createdDate: DateTime(2026, 7, 15, 19).millisecondsSinceEpoch,
-      dueDate: DateTime(2026, 7, 15, 22),
-      recurrenceEndDate: DateTime(2026, 7, 17),
-    );
+  test(
+    'sync boundary repair deactivates a recurrence whose end date passed',
+    () {
+      final active = TodoItem(
+        id: 'sync-ended-rule',
+        title: '每日循环',
+        recurrence: RecurrenceType.daily,
+        recurrenceSeriesId: 'sync-ended-series',
+        createdDate: DateTime(2026, 7, 15, 19).millisecondsSinceEpoch,
+        dueDate: DateTime(2026, 7, 15, 22),
+        recurrenceEndDate: DateTime(2026, 7, 17),
+      );
 
-    final changed =
-        StorageService.pruneRecurrenceOccurrencesAfterEndDatesForTest(
-      [active],
-    );
+      final changed =
+          StorageService.pruneRecurrenceOccurrencesAfterEndDatesForTest([
+            active,
+          ]);
 
-    expect(changed, contains(active.id));
-    expect(active.recurrence, RecurrenceType.none);
-    expect(active.isDeleted, isFalse);
-  });
+      expect(changed, contains(active.id));
+      expect(active.recurrence, RecurrenceType.none);
+      expect(active.isDeleted, isFalse);
+    },
+  );
 
   test('existing recurrence series repairs missing past occurrences', () {
     final previous = TodoItem(
@@ -838,10 +840,10 @@ void main() {
     );
 
     final repaired =
-        StorageService.repairMissingPastRecurrenceOccurrencesForTest(
-      active,
-      [previous, active],
-    );
+        StorageService.repairMissingPastRecurrenceOccurrencesForTest(active, [
+          previous,
+          active,
+        ]);
     final repairedStart = DateTime.fromMillisecondsSinceEpoch(
       repaired.single.createdDate!,
       isUtc: true,
@@ -854,10 +856,11 @@ void main() {
     expect(repaired.single.recurrence, RecurrenceType.none);
 
     final duplicatePass =
-        StorageService.repairMissingPastRecurrenceOccurrencesForTest(
-      active,
-      [previous, ...repaired, active],
-    );
+        StorageService.repairMissingPastRecurrenceOccurrencesForTest(active, [
+          previous,
+          ...repaired,
+          active,
+        ]);
     expect(duplicatePass, isEmpty);
   });
 
@@ -871,10 +874,9 @@ void main() {
     );
 
     final repaired =
-        StorageService.repairMissingPastRecurrenceOccurrencesForTest(
-      active,
-      [active],
-    );
+        StorageService.repairMissingPastRecurrenceOccurrencesForTest(active, [
+          active,
+        ]);
 
     expect(repaired, isEmpty);
   });
@@ -914,11 +916,11 @@ void main() {
 
     final changed =
         StorageService.deduplicatePersistedRecurrenceOccurrencesForTest([
-      completedDuplicate,
-      active,
-      extraDuplicate,
-      nextDay,
-    ]);
+          completedDuplicate,
+          active,
+          extraDuplicate,
+          nextDay,
+        ]);
 
     expect(changed, isTrue);
     expect(active.isDeleted, isFalse);
@@ -954,9 +956,10 @@ void main() {
     );
 
     final changed =
-        StorageService.deduplicatePersistedRecurrenceOccurrencesForTest(
-      [stableIdentity, editedLive],
-    );
+        StorageService.deduplicatePersistedRecurrenceOccurrencesForTest([
+          stableIdentity,
+          editedLive,
+        ]);
 
     expect(changed, isTrue);
     expect(stableIdentity.isDeleted, isFalse);
@@ -989,9 +992,10 @@ void main() {
       createdDate: DateTime(2026, 7, 24, 19).millisecondsSinceEpoch,
     );
 
-    StorageService.deduplicatePersistedRecurrenceOccurrencesForTest(
-      [completed, cancelled],
-    );
+    StorageService.deduplicatePersistedRecurrenceOccurrencesForTest([
+      completed,
+      cancelled,
+    ]);
 
     expect(completed.isDeleted, isFalse);
     expect(completed.isDone, isFalse);
@@ -1019,9 +1023,10 @@ void main() {
     );
 
     final changed =
-        StorageService.deduplicatePersistedRecurrenceOccurrencesForTest(
-      [edited, migratedCopy],
-    );
+        StorageService.deduplicatePersistedRecurrenceOccurrencesForTest([
+          edited,
+          migratedCopy,
+        ]);
 
     expect(changed, isTrue);
     expect(edited.isDeleted, isFalse);
@@ -1070,13 +1075,7 @@ void main() {
     );
 
     final changedIds = StorageService.mergeRecurrenceSeriesForTest(
-      [
-        mainHistory,
-        mainActive,
-        splitDuplicate,
-        splitFuture,
-        unrelated,
-      ],
+      [mainHistory, mainActive, splitDuplicate, splitFuture, unrelated],
       targetSeriesId: 'main-series',
       seriesIds: {'main-series', 'split-series'},
     );

@@ -15,7 +15,7 @@ class FinanceCatalogManager extends StatefulWidget {
   final String initialSection;
   final List<FinancePaymentMethod> paymentMethods;
   final Future<FinanceCategory?> Function(FinanceCategoryType type)
-      onAddCategory;
+  onAddCategory;
   final Future<void> Function(FinanceCategory parent)? onAddSubcategory;
   final Future<bool> Function() onAddPaymentMethod;
   final Future<void> Function(FinanceCategory category) onEditCategory;
@@ -23,9 +23,9 @@ class FinanceCatalogManager extends StatefulWidget {
   final Future<void> Function(FinanceCategory category) onRestoreCategory;
   final Future<void> Function(FinancePaymentMethod method) onEditPaymentMethod;
   final Future<void> Function(FinancePaymentMethod method)
-      onArchivePaymentMethod;
+  onArchivePaymentMethod;
   final Future<void> Function(FinancePaymentMethod method)
-      onRestorePaymentMethod;
+  onRestorePaymentMethod;
 
   const FinanceCatalogManager({
     super.key,
@@ -69,10 +69,10 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
   String get _itemLabel => _isPayment ? '付款方式' : '一级分类';
   String get _lockedItemLabel => _isPayment ? '付款方式' : '分类';
   String get _sectionLabel => switch (_section) {
-        _CatalogSection.expense => '支出分类',
-        _CatalogSection.income => '收入分类',
-        _CatalogSection.payment => '付款方式',
-      };
+    _CatalogSection.expense => '支出分类',
+    _CatalogSection.income => '收入分类',
+    _CatalogSection.payment => '付款方式',
+  };
 
   List<_CatalogEntry> get _entries {
     if (_isPayment) {
@@ -82,7 +82,9 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
             _CatalogEntry(
               uuid: method.uuid,
               name: financePaymentMethodDisplayName(
-                  method, widget.paymentMethods),
+                method,
+                widget.paymentMethods,
+              ),
               icon: method.icon,
               isSystem: method.isSystem,
               isArchived: method.isArchived,
@@ -118,7 +120,8 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
           onEdit: () => widget.onEditCategory(category),
           onArchive: () => widget.onArchiveCategory(category),
           onRestore: () => widget.onRestoreCategory(category),
-          onAddSubcategory: category.parentUuid?.trim().isNotEmpty == true ||
+          onAddSubcategory:
+              category.parentUuid?.trim().isNotEmpty == true ||
                   category.isArchived ||
                   widget.onAddSubcategory == null
               ? null
@@ -201,7 +204,9 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
   }
 
   Future<void> _runAction(
-      _CatalogEntry entry, Future<void> Function() action) async {
+    _CatalogEntry entry,
+    Future<void> Function() action,
+  ) async {
     if (!_busyItems.add(entry.uuid)) return;
     setState(() {});
     try {
@@ -227,8 +232,10 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
     final entries = _entries;
     final query = _searchController.text.trim().toLowerCase();
     final visible = entries
-        .where((entry) =>
-            _matchesFilter(entry, _filter) && _matchesSearch(entry, query))
+        .where(
+          (entry) =>
+              _matchesFilter(entry, _filter) && _matchesSearch(entry, query),
+        )
         .toList();
     final personal = visible.where((entry) => !entry.isSystem).toList();
     final system = visible.where((entry) => entry.isSystem).toList();
@@ -245,22 +252,28 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
                 color: colors.primaryContainer,
                 borderRadius: BorderRadius.circular(18),
               ),
-              child: Icon(Icons.category_outlined,
-                  color: colors.onPrimaryContainer),
+              child: Icon(
+                Icons.category_outlined,
+                color: colors.onPrimaryContainer,
+              ),
             ),
             const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('分类与付款方式',
-                      style: theme.textTheme.titleLarge
-                          ?.copyWith(fontWeight: FontWeight.w700)),
+                  Text(
+                    '分类与付款方式',
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                   const SizedBox(height: 4),
                   Text(
                     '整理常用项目，让每次记账更顺手',
-                    style: theme.textTheme.bodySmall
-                        ?.copyWith(color: colors.onSurfaceVariant),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: colors.onSurfaceVariant,
+                    ),
                   ),
                 ],
               ),
@@ -270,7 +283,8 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
         const SizedBox(height: 24),
         LayoutBuilder(
           builder: (context, constraints) {
-            final showIcons = constraints.maxWidth >=
+            final showIcons =
+                constraints.maxWidth >=
                 340 * MediaQuery.textScalerOf(context).scale(14) / 14;
             return SingleChildScrollView(
               scrollDirection: Axis.horizontal,
@@ -280,24 +294,29 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
                   showSelectedIcon: false,
                   segments: [
                     ButtonSegment(
-                        value: _CatalogSection.expense,
-                        icon: showIcons
-                            ? const Icon(Icons.north_east_rounded, size: 18)
-                            : null,
-                        label: const Text('支出分类')),
+                      value: _CatalogSection.expense,
+                      icon: showIcons
+                          ? const Icon(Icons.north_east_rounded, size: 18)
+                          : null,
+                      label: const Text('支出分类'),
+                    ),
                     ButtonSegment(
-                        value: _CatalogSection.income,
-                        icon: showIcons
-                            ? const Icon(Icons.south_west_rounded, size: 18)
-                            : null,
-                        label: const Text('收入分类')),
+                      value: _CatalogSection.income,
+                      icon: showIcons
+                          ? const Icon(Icons.south_west_rounded, size: 18)
+                          : null,
+                      label: const Text('收入分类'),
+                    ),
                     ButtonSegment(
-                        value: _CatalogSection.payment,
-                        icon: showIcons
-                            ? const Icon(Icons.account_balance_wallet_outlined,
-                                size: 18)
-                            : null,
-                        label: const Text('付款方式')),
+                      value: _CatalogSection.payment,
+                      icon: showIcons
+                          ? const Icon(
+                              Icons.account_balance_wallet_outlined,
+                              size: 18,
+                            )
+                          : null,
+                      label: const Text('付款方式'),
+                    ),
                   ],
                   selected: {_section},
                   onSelectionChanged: (selection) =>
@@ -305,9 +324,13 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
                   style: ButtonStyle(
                     minimumSize: const WidgetStatePropertyAll(Size(0, 48)),
                     padding: const WidgetStatePropertyAll(
-                        EdgeInsets.symmetric(horizontal: 14)),
-                    side: WidgetStatePropertyAll(BorderSide(
-                        color: colors.outlineVariant.withValues(alpha: 0.6))),
+                      EdgeInsets.symmetric(horizontal: 14),
+                    ),
+                    side: WidgetStatePropertyAll(
+                      BorderSide(
+                        color: colors.outlineVariant.withValues(alpha: 0.6),
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -334,14 +357,18 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
                           icon: const Icon(Icons.close_rounded, size: 18),
                         ),
                   filled: true,
-                  fillColor:
-                      colors.surfaceContainerHighest.withValues(alpha: 0.45),
+                  fillColor: colors.surfaceContainerHighest.withValues(
+                    alpha: 0.45,
+                  ),
                   isDense: true,
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 14,
+                  ),
                   border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      borderSide: BorderSide.none),
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide.none,
+                  ),
                 ),
               ),
             ),
@@ -352,8 +379,9 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
                 key: const ValueKey('finance-catalog-add'),
                 onPressed: _isAdding ? null : _add,
                 style: FilledButton.styleFrom(
-                    minimumSize: const Size(0, 48),
-                    padding: const EdgeInsets.symmetric(horizontal: 16)),
+                  minimumSize: const Size(0, 48),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                ),
                 icon: const Icon(Icons.add_rounded, size: 20),
                 label: const Text('新增'),
               ),
@@ -371,11 +399,13 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
                   child: ChoiceChip(
                     key: ValueKey('finance-catalog-filter-${filter.name}'),
                     showCheckmark: false,
-                    label: Text('${switch (filter) {
-                      _CatalogFilter.active => '使用中',
-                      _CatalogFilter.custom => '自定义',
-                      _CatalogFilter.archived => '已归档',
-                    }} · ${entries.where((entry) => _matchesFilter(entry, filter)).length}'),
+                    label: Text(
+                      '${switch (filter) {
+                        _CatalogFilter.active => '使用中',
+                        _CatalogFilter.custom => '自定义',
+                        _CatalogFilter.archived => '已归档',
+                      }} · ${entries.where((entry) => _matchesFilter(entry, filter)).length}',
+                    ),
                     selected: filter == _filter,
                     onSelected: (_) => setState(() => _filter = filter),
                     side: BorderSide.none,
@@ -432,23 +462,28 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
           if (_matchesFilter(child, _filter)) child,
       ];
       final rootMatches = visibleUuids.contains(root.uuid);
-      final matchingChildren =
-          children.where((entry) => visibleUuids.contains(entry.uuid)).toList();
+      final matchingChildren = children
+          .where((entry) => visibleUuids.contains(entry.uuid))
+          .toList();
       if (!rootMatches && matchingChildren.isEmpty) continue;
 
       final showAllChildren = query.isEmpty || rootMatches;
-      groups.add(_CategoryGroup(
-        parent: root,
-        children: showAllChildren ? children : matchingChildren,
-      ));
+      groups.add(
+        _CategoryGroup(
+          parent: root,
+          children: showAllChildren ? children : matchingChildren,
+        ),
+      );
       assigned.add(root.uuid);
       assigned.addAll(children.map((entry) => entry.uuid));
     }
 
     final orphans = visible
-        .where((entry) =>
-            entry.parentUuid?.trim().isNotEmpty == true &&
-            !assigned.contains(entry.uuid))
+        .where(
+          (entry) =>
+              entry.parentUuid?.trim().isNotEmpty == true &&
+              !assigned.contains(entry.uuid),
+        )
         .toList();
     if (orphans.isNotEmpty) {
       groups.add(_CategoryGroup(parent: null, children: orphans));
@@ -501,19 +536,28 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
         runSpacing: 4,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          Text(title,
-              style: theme.textTheme.titleSmall
-                  ?.copyWith(fontWeight: FontWeight.w700)),
-          Text(subtitle,
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+          Text(
+            title,
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          Text(
+            subtitle,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
         ],
       ),
     );
   }
 
   Widget _buildCategoryGroup(
-      BuildContext context, _CategoryGroup group, String query) {
+    BuildContext context,
+    _CategoryGroup group,
+    String query,
+  ) {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
     final parent = group.parent;
@@ -522,8 +566,9 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
         color: colors.surfaceContainerLow,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20),
-          side:
-              BorderSide(color: colors.outlineVariant.withValues(alpha: 0.45)),
+          side: BorderSide(
+            color: colors.outlineVariant.withValues(alpha: 0.45),
+          ),
         ),
         clipBehavior: Clip.antiAlias,
         child: Padding(
@@ -531,13 +576,19 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('未归类的二级分类',
-                  style: theme.textTheme.titleSmall
-                      ?.copyWith(fontWeight: FontWeight.w700)),
+              Text(
+                '未归类的二级分类',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
               const SizedBox(height: 4),
-              Text('上级一级分类已不存在，历史数据仍可继续管理',
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: colors.onSurfaceVariant)),
+              Text(
+                '上级一级分类已不存在，历史数据仍可继续管理',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: colors.onSurfaceVariant,
+                ),
+              ),
               const SizedBox(height: 8),
               for (final child in group.children)
                 _buildSubcategoryTile(context, child),
@@ -547,7 +598,8 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
       );
     }
 
-    final expanded = _expandedCategoryUuids.contains(parent.uuid) ||
+    final expanded =
+        _expandedCategoryUuids.contains(parent.uuid) ||
         (query.isNotEmpty &&
             group.children.any((child) => _matchesSearch(child, query)));
 
@@ -577,18 +629,22 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(parent.name,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.titleMedium
-                                ?.copyWith(fontWeight: FontWeight.w700)),
+                        Text(
+                          parent.name,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
                         const SizedBox(height: 4),
                         Text(
                           parent.isArchived
                               ? '已归档 · ${group.children.length} 个二级分类'
                               : '${parent.isSystem ? '系统预设' : '自定义'} · ${group.children.length} 个二级分类',
-                          style: theme.textTheme.bodySmall
-                              ?.copyWith(color: colors.onSurfaceVariant),
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: colors.onSurfaceVariant,
+                          ),
                         ),
                       ],
                     ),
@@ -599,13 +655,16 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
                       child: Semantics(
                         label: expanded ? '收起二级分类' : '展开二级分类',
                         child: AnimatedRotation(
-                          key:
-                              ValueKey('finance-catalog-expand-${parent.uuid}'),
+                          key: ValueKey(
+                            'finance-catalog-expand-${parent.uuid}',
+                          ),
                           turns: expanded ? 0.5 : 0,
                           duration: const Duration(milliseconds: 160),
                           curve: Curves.easeOutCubic,
-                          child: Icon(Icons.expand_more_rounded,
-                              color: colors.onSurfaceVariant),
+                          child: Icon(
+                            Icons.expand_more_rounded,
+                            color: colors.onSurfaceVariant,
+                          ),
                         ),
                       ),
                     ),
@@ -619,8 +678,9 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
               padding: const EdgeInsets.fromLTRB(70, 0, 14, 12),
               child: Text(
                 parent.isArchived ? '归档后不会在新账单中显示' : '还没有二级分类',
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: colors.onSurfaceVariant),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: colors.onSurfaceVariant,
+                ),
               ),
             )
           else
@@ -634,9 +694,9 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
                       child: Column(
                         children: [
                           Divider(
-                              height: 1,
-                              color:
-                                  colors.outlineVariant.withValues(alpha: 0.5)),
+                            height: 1,
+                            color: colors.outlineVariant.withValues(alpha: 0.5),
+                          ),
                           const SizedBox(height: 2),
                           for (final child in group.children)
                             _buildSubcategoryTile(context, child),
@@ -682,27 +742,34 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
                   color: colors.secondaryContainer.withValues(alpha: 0.65),
                   borderRadius: BorderRadius.circular(9),
                 ),
-                child: Text(entry.icon.isEmpty ? '📦' : entry.icon,
-                    textScaler: TextScaler.noScaling,
-                    style: const TextStyle(fontSize: 16)),
+                child: Text(
+                  entry.icon.isEmpty ? '📦' : entry.icon,
+                  textScaler: TextScaler.noScaling,
+                  style: const TextStyle(fontSize: 16),
+                ),
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: Text(entry.name,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodyMedium
-                        ?.copyWith(fontWeight: FontWeight.w600)),
+                child: Text(
+                  entry.name,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ),
               const SizedBox(width: 8),
               Text(
-                  entry.isArchived
-                      ? '已归档'
-                      : entry.isSystem
-                          ? '系统'
-                          : '自定义',
-                  style: theme.textTheme.labelSmall
-                      ?.copyWith(color: colors.onSurfaceVariant)),
+                entry.isArchived
+                    ? '已归档'
+                    : entry.isSystem
+                    ? '系统'
+                    : '自定义',
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: colors.onSurfaceVariant,
+                ),
+              ),
               _buildEntryActions(context, entry),
             ],
           ),
@@ -711,8 +778,12 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
     );
   }
 
-  Widget _buildGroup(BuildContext context, String title, String subtitle,
-      List<_CatalogEntry> entries) {
+  Widget _buildGroup(
+    BuildContext context,
+    String title,
+    String subtitle,
+    List<_CatalogEntry> entries,
+  ) {
     final theme = Theme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -724,12 +795,18 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
             runSpacing: 4,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              Text('$title · ${entries.length}',
-                  style: theme.textTheme.titleSmall
-                      ?.copyWith(fontWeight: FontWeight.w700)),
-              Text(subtitle,
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+              Text(
+                '$title · ${entries.length}',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              Text(
+                subtitle,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
             ],
           ),
         ),
@@ -790,8 +867,9 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
                   entry.name,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.titleSmall
-                      ?.copyWith(fontWeight: FontWeight.w700),
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
               const SizedBox(height: 4),
@@ -799,10 +877,11 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
                 entry.isArchived
                     ? '已归档'
                     : entry.isSystem
-                        ? '系统预设'
-                        : '自定义',
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: colors.onSurfaceVariant),
+                    ? '系统预设'
+                    : '自定义',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: colors.onSurfaceVariant,
+                ),
               ),
             ],
           ),
@@ -832,9 +911,11 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
         padding: const EdgeInsets.all(6),
         child: FittedBox(
           fit: BoxFit.scaleDown,
-          child: Text(entry.icon.isEmpty ? '📦' : entry.icon,
-              textScaler: TextScaler.noScaling,
-              style: const TextStyle(fontSize: 24)),
+          child: Text(
+            entry.icon.isEmpty ? '📦' : entry.icon,
+            textScaler: TextScaler.noScaling,
+            style: const TextStyle(fontSize: 24),
+          ),
         ),
       ),
     );
@@ -845,18 +926,22 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
     final busy = _busyItems.contains(entry.uuid);
     if (busy) {
       return const SizedBox(
-          width: 40,
-          height: 40,
-          child: Padding(
-            padding: EdgeInsets.all(10),
-            child: CircularProgressIndicator(strokeWidth: 2),
-          ));
+        width: 40,
+        height: 40,
+        child: Padding(
+          padding: EdgeInsets.all(10),
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+      );
     }
     if (entry.isSystem && _isPayment) {
       return Tooltip(
         message: '系统预设$_lockedItemLabel不可编辑或归档',
-        child: Icon(Icons.lock_outline_rounded,
-            size: 16, color: colors.onSurfaceVariant),
+        child: Icon(
+          Icons.lock_outline_rounded,
+          size: 16,
+          color: colors.onSurfaceVariant,
+        ),
       );
     }
     if (entry.isSystem) {
@@ -897,20 +982,26 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
           tooltip: '管理${entry.name}',
           icon: Icon(Icons.more_horiz_rounded, color: colors.onSurfaceVariant),
           onSelected: (action) => _runAction(
-              entry, action == 'edit' ? entry.onEdit : entry.onArchive),
+            entry,
+            action == 'edit' ? entry.onEdit : entry.onArchive,
+          ),
           itemBuilder: (_) => [
             const PopupMenuItem(
-                value: 'edit',
-                child: ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: Icon(Icons.edit_outlined),
-                    title: Text('编辑'))),
+              value: 'edit',
+              child: ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(Icons.edit_outlined),
+                title: Text('编辑'),
+              ),
+            ),
             const PopupMenuItem(
-                value: 'archive',
-                child: ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: Icon(Icons.archive_outlined),
-                    title: Text('归档'))),
+              value: 'archive',
+              child: ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(Icons.archive_outlined),
+                title: Text('归档'),
+              ),
+            ),
           ],
         ),
       ],
@@ -925,16 +1016,17 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
       decoration: BoxDecoration(
-          color: theme.colorScheme.surfaceContainerLow,
-          borderRadius: BorderRadius.circular(24)),
+        color: theme.colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(24),
+      ),
       child: Column(
         children: [
           Icon(
             searching
                 ? Icons.search_off_rounded
                 : archived
-                    ? Icons.inventory_2_outlined
-                    : Icons.add_reaction_outlined,
+                ? Icons.inventory_2_outlined
+                : Icons.add_reaction_outlined,
             size: 36,
             color: theme.colorScheme.primary,
           ),
@@ -943,8 +1035,8 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
             searching
                 ? '没有找到匹配的$_itemLabel'
                 : archived
-                    ? '还没有归档的$_itemLabel'
-                    : '添加你的第一个$_sectionLabel',
+                ? '还没有归档的$_itemLabel'
+                : '添加你的第一个$_sectionLabel',
             textAlign: TextAlign.center,
             style: theme.textTheme.titleMedium,
           ),
@@ -953,33 +1045,37 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
             searching
                 ? '试试其他名称，或清空搜索查看全部'
                 : archived
-                    ? '不常用的项目可以归档，历史账单仍会保留'
-                    : '选择喜欢的图标，按自己的习惯命名',
+                ? '不常用的项目可以归档，历史账单仍会保留'
+                : '选择喜欢的图标，按自己的习惯命名',
             textAlign: TextAlign.center,
-            style: theme.textTheme.bodySmall
-                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
           ),
           const SizedBox(height: 16),
           TextButton.icon(
             onPressed: searching
                 ? () => setState(() => _searchController.clear())
                 : archived
-                    ? () => setState(() => _filter = _CatalogFilter.active)
-                    : _isAdding
-                        ? null
-                        : _add,
+                ? () => setState(() => _filter = _CatalogFilter.active)
+                : _isAdding
+                ? null
+                : _add,
             icon: Icon(
-                searching
-                    ? Icons.close_rounded
-                    : archived
-                        ? Icons.arrow_back_rounded
-                        : Icons.add_rounded,
-                size: 18),
-            label: Text(searching
-                ? '清空搜索'
-                : archived
-                    ? '查看使用中'
-                    : '新增$_itemLabel'),
+              searching
+                  ? Icons.close_rounded
+                  : archived
+                  ? Icons.arrow_back_rounded
+                  : Icons.add_rounded,
+              size: 18,
+            ),
+            label: Text(
+              searching
+                  ? '清空搜索'
+                  : archived
+                  ? '查看使用中'
+                  : '新增$_itemLabel',
+            ),
           ),
         ],
       ),

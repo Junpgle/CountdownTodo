@@ -33,12 +33,11 @@ class FixedScheduleRecurrenceService {
       RecurrenceType.none => start,
       RecurrenceType.daily ||
       RecurrenceType.weekdays ||
-      RecurrenceType.weekly =>
-        CalendarDateMath.addDays(start, 56),
+      RecurrenceType.weekly => CalendarDateMath.addDays(start, 56),
       RecurrenceType.customDays => CalendarDateMath.addDays(
-          start,
-          customIntervalDays * 8 > 56 ? customIntervalDays * 8 : 56,
-        ),
+        start,
+        customIntervalDays * 8 > 56 ? customIntervalDays * 8 : 56,
+      ),
       RecurrenceType.monthly => _addMonths(start, 12, start.day),
       RecurrenceType.yearly => _addYears(start, 5, start.month, start.day),
     };
@@ -50,9 +49,10 @@ class FixedScheduleRecurrenceService {
   static int? inferCustomIntervalDays(Iterable<DateTime> occurrenceDates) {
     final dates = occurrenceDates.toList()..sort();
     if (dates.length < 2) return null;
-    return CalendarDateMath.daysBetween(dates[0], dates[1])
-        .clamp(1, 3650)
-        .toInt();
+    return CalendarDateMath.daysBetween(
+      dates[0],
+      dates[1],
+    ).clamp(1, 3650).toInt();
   }
 
   static List<DateTime> occurrenceDates({
@@ -75,15 +75,14 @@ class FixedScheduleRecurrenceService {
       }
       cursor = switch (recurrence) {
         RecurrenceType.daily ||
-        RecurrenceType.weekdays =>
-          CalendarDateMath.addDays(cursor, 1),
+        RecurrenceType.weekdays => CalendarDateMath.addDays(cursor, 1),
         RecurrenceType.weekly => CalendarDateMath.addDays(cursor, 7),
         RecurrenceType.monthly => _addMonths(cursor, 1, start.day),
         RecurrenceType.yearly => _addYears(cursor, 1, start.month, start.day),
         RecurrenceType.customDays => CalendarDateMath.addDays(
-            cursor,
-            customIntervalDays.clamp(1, 3650).toInt(),
-          ),
+          cursor,
+          customIntervalDays.clamp(1, 3650).toInt(),
+        ),
         RecurrenceType.none => CalendarDateMath.addDays(end, 1),
       };
     }
@@ -94,7 +93,7 @@ class FixedScheduleRecurrenceService {
   }
 
   static ({List<FixedScheduleItem> active, List<FixedScheduleItem> changes})
-      rebuildSeries({
+  rebuildSeries({
     required FixedScheduleItem template,
     required List<FixedScheduleItem> existingSeries,
     required RecurrenceType recurrence,
@@ -122,8 +121,8 @@ class FixedScheduleRecurrenceService {
     final isRepeating = recurrence != RecurrenceType.none;
     final seriesId = isRepeating
         ? (template.recurrenceSeriesId?.trim().isNotEmpty == true
-            ? template.recurrenceSeriesId!
-            : template.id)
+              ? template.recurrenceSeriesId!
+              : template.id)
         : null;
     final active = <FixedScheduleItem>[];
     final changes = <FixedScheduleItem>[];
@@ -132,7 +131,8 @@ class FixedScheduleRecurrenceService {
     for (var index = 0; index < dates.length; index++) {
       final date = dates[index];
       final dateKey = _dateKey(date);
-      final existing = existingByDate[dateKey] ??
+      final existing =
+          existingByDate[dateKey] ??
           (index == 0 ? existingById[template.id] : null);
       final item = existing == null
           ? _newOccurrence(template, index == 0 ? template.id : null)
@@ -167,13 +167,12 @@ class FixedScheduleRecurrenceService {
   static FixedScheduleItem _newOccurrence(
     FixedScheduleItem template,
     String? id,
-  ) =>
-      FixedScheduleItem(
-        id: id,
-        title: template.title,
-        date: template.date,
-        source: template.source,
-      );
+  ) => FixedScheduleItem(
+    id: id,
+    title: template.title,
+    date: template.date,
+    source: template.source,
+  );
 
   static void _applyTemplate(
     FixedScheduleItem item, {

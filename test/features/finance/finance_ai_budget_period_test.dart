@@ -109,7 +109,10 @@ void main() {
     expect(expenseContext, contains('查询范围: 全部历史中最近1笔已发生账单'));
     expect(incomeContext, contains('[transactionId: recent-income]'));
     expect(recentExpensesContext, contains('[transactionId: today]'));
-    expect(recentExpensesContext, contains('[transactionId: earlier-september]'));
+    expect(
+      recentExpensesContext,
+      contains('[transactionId: earlier-september]'),
+    );
     expect(recentExpensesContext, isNot(contains('[transactionId: august]')));
     expect(
       FinanceAiContextService.buildContextInjectionSummary(
@@ -231,10 +234,7 @@ void main() {
 
   test('最近半个月查询按滚动十五个自然日跨月取账单', () async {
     final now = DateTime(2026, 9, 2, 23, 59);
-    final range = FinanceAiContextService.resolveDateRange(
-      '最近半个月支出',
-      now: now,
-    );
+    final range = FinanceAiContextService.resolveDateRange('最近半个月支出', now: now);
     final context = await FinanceAiContextService.buildContext(
       userMessage: '最近半个月支出多少',
       now: now,
@@ -310,12 +310,7 @@ void main() {
     expect(context, isNot(contains('[transactionId: today]')));
     expect(preview, '记账查询范围待确认');
 
-    for (final phrase in [
-      '过去几天',
-      '近几个星期',
-      '这几周',
-      '最近几个月',
-    ]) {
+    for (final phrase in ['过去几天', '近几个星期', '这几周', '最近几个月']) {
       expect(
         FinanceAiContextService.shouldInjectFor('$phrase支出多少'),
         isFalse,
@@ -514,14 +509,8 @@ void main() {
     expect(dateKey(chineseNumeralRange.from), '2026-09-21');
     expect(dateKey(chineseNumeralRange.to), '2026-09-22');
 
-    expect(
-      FinanceAiContextService.shouldInjectFor('2026年9月31日支出多少'),
-      isFalse,
-    );
-    expect(
-      FinanceAiContextService.shouldInjectFor('九月三十一日支出多少'),
-      isFalse,
-    );
+    expect(FinanceAiContextService.shouldInjectFor('2026年9月31日支出多少'), isFalse);
+    expect(FinanceAiContextService.shouldInjectFor('九月三十一日支出多少'), isFalse);
     expect(
       await FinanceAiContextService.buildContext(
         userMessage: '2026年9月31日支出多少',
@@ -699,10 +688,7 @@ void main() {
       await FinanceStorage.saveTransaction(transaction);
     }
 
-    final range = FinanceAiContextService.resolveDateRange(
-      '2025年支出',
-      now: now,
-    );
+    final range = FinanceAiContextService.resolveDateRange('2025年支出', now: now);
     final context = await FinanceAiContextService.buildContext(
       userMessage: '2025年支出多少',
       now: now,
@@ -737,16 +723,9 @@ void main() {
       secondHalfContext,
       isNot(contains('[transactionId: numeric-year-2025]')),
     );
-    expect(
-      FinanceAiContextService.shouldInjectFor('2025年支出多少'),
-      isTrue,
-    );
+    expect(FinanceAiContextService.shouldInjectFor('2025年支出多少'), isTrue);
     expect(followUp, '记账明细 2025-01-01 至 2025-12-31');
-    for (final query in [
-      '0000年支出多少',
-      '0000年第二季度支出多少',
-      '0000年下半年支出多少',
-    ]) {
+    for (final query in ['0000年支出多少', '0000年第二季度支出多少', '0000年下半年支出多少']) {
       expect(FinanceAiContextService.shouldInjectFor(query), isFalse);
     }
   });
@@ -817,10 +796,7 @@ void main() {
       ('近一年支出', '2025-10-02'),
       ('过去两年支出', '2024-10-02'),
     ]) {
-      final range = FinanceAiContextService.resolveDateRange(
-        query,
-        now: now,
-      );
+      final range = FinanceAiContextService.resolveDateRange(query, now: now);
       expect(dateKey(range.from), expectedFrom, reason: query);
       expect(dateKey(range.to), '2026-10-03', reason: query);
       expect(
@@ -884,11 +860,7 @@ void main() {
   });
 
   test('效率分析不会注入无关月份的账单数据', () async {
-    for (final query in [
-      '分析我上个月的效率',
-      '分析我9月的效率',
-      '分析我2026年9月的效率',
-    ]) {
+    for (final query in ['分析我上个月的效率', '分析我9月的效率', '分析我2026年9月的效率']) {
       expect(
         FinanceAiContextService.shouldInjectFor(query),
         isFalse,
@@ -965,8 +937,7 @@ void main() {
     );
     await db.insert(
       'finance_payment_methods',
-      FinancePaymentMethod(uuid: 'ai-card-no-snapshot', name: '备用银行卡')
-          .toMap(),
+      FinancePaymentMethod(uuid: 'ai-card-no-snapshot', name: '备用银行卡').toMap(),
     );
     await FinanceStorage.saveBudget(
       FinanceBudget(
@@ -1037,10 +1008,7 @@ void main() {
       now: DateTime(2026, 9, 2, 23, 59),
     );
     expect(budgetBalanceContext, contains('预算（2026-09，整月）'));
-    expect(
-      budgetBalanceContext,
-      isNot(contains('关联账户实际余额（截至')),
-    );
+    expect(budgetBalanceContext, isNot(contains('关联账户实际余额（截至')));
     expect(
       FinanceAiContextService.buildContextInjectionSummary(
         userMessage: '本月预算余额多少',
@@ -1058,12 +1026,7 @@ void main() {
       FinancePaymentMethod(uuid: 'historical-card', name: '历史银行卡').toMap(),
     );
     for (final (uuid, monthKey, amountMinor, snapshotAt) in [
-      (
-        'historical-card-august-snapshot',
-        '2026-08',
-        10000,
-        augustSnapshotAt,
-      ),
+      ('historical-card-august-snapshot', '2026-08', 10000, augustSnapshotAt),
       (
         'historical-card-september-snapshot',
         '2026-09',
@@ -1108,10 +1071,7 @@ void main() {
 
     expect(currentContext, contains('- 历史银行卡: ¥60.00'));
     expect(historicalContext, contains('- 历史银行卡: ¥80.00'));
-    expect(
-      historicalContext,
-      contains('关联账户实际余额（截至 2026-08-31 23:59:59.999'),
-    );
+    expect(historicalContext, contains('关联账户实际余额（截至 2026-08-31 23:59:59.999'));
   });
 
   test('AI 历史余额按快照月份识别跨时区后的月末快照', () async {
@@ -1145,10 +1105,7 @@ void main() {
   test('AI 财务上下文会说明账单和预算明细被截断', () {
     final categories = [
       for (var index = 0; index < 21; index++)
-        FinanceCategory(
-          uuid: 'context-category-$index',
-          name: '上下文分类$index',
-        ),
+        FinanceCategory(uuid: 'context-category-$index', name: '上下文分类$index'),
     ];
     final budgets = [
       for (var index = 0; index < 21; index++)
@@ -1267,10 +1224,7 @@ void main() {
       ],
     );
 
-    expect(
-      context,
-      contains('关联账户（支出用作付款方式，收入和退款用作到账账户）:'),
-    );
+    expect(context, contains('关联账户（支出用作付款方式，收入和退款用作到账账户）:'));
     expect(
       context,
       contains('paymentMethodUuid=ai-bank-account | paymentMethodName=建设银行'),
@@ -1312,9 +1266,7 @@ void main() {
     );
     expect(
       catalog,
-      contains(
-        '展示标签只用于辨认；输出 categoryName/paymentMethodName 时照抄原始名称',
-      ),
+      contains('展示标签只用于辨认；输出 categoryName/paymentMethodName 时照抄原始名称'),
     );
 
     final transaction = FinanceTransaction(
@@ -1338,10 +1290,7 @@ void main() {
         methods.last.uuid: 12000,
       },
     );
-    expect(
-      history,
-      contains('付款方式: AI同名账户（同名账户 2/2）'),
-    );
+    expect(history, contains('付款方式: AI同名账户（同名账户 2/2）'));
     expect(history, contains('AI同名账户（同名账户 1/2）: ¥80.00'));
     expect(history, contains('AI同名账户（同名账户 2/2）: ¥120.00'));
   });
@@ -1416,10 +1365,7 @@ void main() {
 
   test('上一个月查询使用上个自然月并排除本月账单', () async {
     final now = DateTime(2026, 9, 2, 23, 59);
-    final range = FinanceAiContextService.resolveDateRange(
-      '上一个月支出',
-      now: now,
-    );
+    final range = FinanceAiContextService.resolveDateRange('上一个月支出', now: now);
     final context = await FinanceAiContextService.buildContext(
       userMessage: '上一个月支出多少',
       now: now,
@@ -1436,10 +1382,7 @@ void main() {
 
   test('前一个月查询使用上个自然月并排除本月账单', () async {
     final now = DateTime(2026, 9, 2, 23, 59);
-    final range = FinanceAiContextService.resolveDateRange(
-      '前一个月支出',
-      now: now,
-    );
+    final range = FinanceAiContextService.resolveDateRange('前一个月支出', now: now);
     final context = await FinanceAiContextService.buildContext(
       userMessage: '前一个月支出多少',
       now: now,
@@ -1764,10 +1707,7 @@ void main() {
       ),
     );
 
-    final range = FinanceAiContextService.resolveDateRange(
-      '今年下半年支出',
-      now: now,
-    );
+    final range = FinanceAiContextService.resolveDateRange('今年下半年支出', now: now);
     final context = await FinanceAiContextService.buildContext(
       userMessage: '今年下半年支出多少',
       now: now,

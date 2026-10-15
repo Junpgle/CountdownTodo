@@ -6,20 +6,20 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 FinanceTransaction _transaction() => FinanceTransaction(
-      uuid: 'transaction-detail-test',
-      type: FinanceTransactionType.expense,
-      amountMinor: 2850,
-      transactionDate: '2026-09-07',
-      occurredAt: DateTime(2026, 9, 7, 12, 30).millisecondsSinceEpoch,
-      merchant: '午餐',
-      note: '和同事一起吃饭',
-      categoryUuid: 'food',
-      paymentMethodUuid: 'wechat',
-      installmentGroupUuid: 'lunch-installment',
-      installmentIndex: 1,
-      installmentCount: 3,
-      installmentTotalMinor: 8550,
-    );
+  uuid: 'transaction-detail-test',
+  type: FinanceTransactionType.expense,
+  amountMinor: 2850,
+  transactionDate: '2026-09-07',
+  occurredAt: DateTime(2026, 9, 7, 12, 30).millisecondsSinceEpoch,
+  merchant: '午餐',
+  note: '和同事一起吃饭',
+  categoryUuid: 'food',
+  paymentMethodUuid: 'wechat',
+  installmentGroupUuid: 'lunch-installment',
+  installmentIndex: 1,
+  installmentCount: 3,
+  installmentTotalMinor: 8550,
+);
 
 Future<void> _pump(WidgetTester tester, Widget child) async {
   await tester.pumpWidget(
@@ -314,8 +314,11 @@ void main() {
               icon: '☕',
               parentUuid: 'food',
             ),
-            'transport':
-                FinanceCategory(uuid: 'transport', name: '交通', icon: '🚕'),
+            'transport': FinanceCategory(
+              uuid: 'transport',
+              name: '交通',
+              icon: '🚕',
+            ),
           },
           onAdd: () {},
           addActionKey: GlobalKey(),
@@ -472,8 +475,10 @@ void main() {
     expect(find.textContaining('微信'), findsOneWidget);
     expect(find.text('和同事一起吃饭'), findsOneWidget);
     expect(find.text('第 1/3 期 · 总额 ¥85.50'), findsOneWidget);
-    expect(find.byKey(const ValueKey('finance-transaction-detail-edit')),
-        findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('finance-transaction-detail-edit')),
+      findsOneWidget,
+    );
     expect(find.byTooltip('编辑账单'), findsOneWidget);
   });
 }

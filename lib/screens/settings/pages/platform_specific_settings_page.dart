@@ -26,8 +26,11 @@ import '../dialogs/island_priority_dialog.dart';
 class PlatformSpecificSettingsPage extends StatefulWidget {
   final String? initialTarget;
   final bool isEmbedded;
-  const PlatformSpecificSettingsPage(
-      {super.key, this.initialTarget, this.isEmbedded = false});
+  const PlatformSpecificSettingsPage({
+    super.key,
+    this.initialTarget,
+    this.isEmbedded = false,
+  });
 
   @override
   State<PlatformSpecificSettingsPage> createState() =>
@@ -36,8 +39,9 @@ class PlatformSpecificSettingsPage extends StatefulWidget {
 
 class _PlatformSpecificSettingsPageState
     extends State<PlatformSpecificSettingsPage> {
-  static const platform =
-      MethodChannel('com.math_quiz.junpgle.com.math_quiz_app/notifications');
+  static const platform = MethodChannel(
+    'com.math_quiz.junpgle.com.math_quiz_app/notifications',
+  );
 
   final Map<String, GlobalKey> _itemKeys = {
     'float_window_style': GlobalKey(),
@@ -133,7 +137,8 @@ class _PlatformSpecificSettingsPageState
       }
       style = style == 0 ? (prefs.getInt('float_window_style') ?? 0) : style;
 
-      final taiPath = await TaiService.getSavedDbPath() ??
+      final taiPath =
+          await TaiService.getSavedDbPath() ??
           await TaiService.detectDefaultPath();
       if (taiPath != null) await TaiService.saveDbPath(taiPath);
 
@@ -164,7 +169,8 @@ class _PlatformSpecificSettingsPageState
           : (prefs.getString('macos_island_clipboard_selected_browser') ?? '');
       if (mounted) {
         setState(() {
-          _macIslandEnabled = prefs.getBool('macos_island_enabled') ??
+          _macIslandEnabled =
+              prefs.getBool('macos_island_enabled') ??
               prefs.getBool('macos_status_bar_enabled') ??
               true;
           _macIslandShowWithoutNotch =
@@ -210,12 +216,12 @@ class _PlatformSpecificSettingsPageState
   }
 
   _MacIslandShortcut get _macIslandShortcut => _MacIslandShortcut(
-        key: _macIslandShortcutKey,
-        command: _macIslandShortcutCommand,
-        option: _macIslandShortcutOption,
-        control: _macIslandShortcutControl,
-        shift: _macIslandShortcutShift,
-      );
+    key: _macIslandShortcutKey,
+    command: _macIslandShortcutCommand,
+    option: _macIslandShortcutOption,
+    control: _macIslandShortcutControl,
+    shift: _macIslandShortcutShift,
+  );
 
   Future<void> _editMacIslandShortcut() async {
     final shortcut = await showAppDialog<_MacIslandShortcut>(
@@ -343,8 +349,9 @@ class _PlatformSpecificSettingsPageState
   // --- Android Methods ---
   Future<void> _checkAndOpenLiveUpdates() async {
     try {
-      final result =
-          await _permissionCoordinator.request(AppPermissionKind.liveUpdates);
+      final result = await _permissionCoordinator.request(
+        AppPermissionKind.liveUpdates,
+      );
       if (!mounted) return;
       if (result.cancelledByUser) {
         setState(() => _liveUpdatesStatus = "用户暂未允许实时通知权限");
@@ -382,8 +389,8 @@ class _PlatformSpecificSettingsPageState
     final String pageTitle = AppPlatform.isWindows
         ? 'Windows 专属设置'
         : (AppPlatform.isAndroid
-            ? 'Android 专属整合'
-            : (AppPlatform.isMacOS ? 'macOS 专属设置' : '平台专属设置'));
+              ? 'Android 专属整合'
+              : (AppPlatform.isMacOS ? 'macOS 专属设置' : '平台专属设置'));
 
     return Scaffold(
       extendBodyBehindAppBar: !widget.isEmbedded,
@@ -415,18 +422,25 @@ class _PlatformSpecificSettingsPageState
             ],
             if (AppPlatform.isWindows) ...[
               Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
                 child: AppSettingsSection(
                   title: '屏幕时间统计',
-                  headerPadding:
-                      const EdgeInsets.only(left: 8, bottom: 8, top: 0),
+                  headerPadding: const EdgeInsets.only(
+                    left: 8,
+                    bottom: 8,
+                    top: 0,
+                  ),
                   children: [
                     _buildTile(
                       targetId: 'tai_db',
                       child: ListTile(
-                        leading: Icon(Icons.timer_outlined,
-                            color: colorScheme.primary),
+                        leading: Icon(
+                          Icons.timer_outlined,
+                          color: colorScheme.primary,
+                        ),
                         title: const Text('Tai 屏幕时间数据库'),
                         subtitle: Text(
                           _taiDbPath.isEmpty
@@ -449,12 +463,17 @@ class _PlatformSpecificSettingsPageState
                 ),
               ),
               Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
                 child: AppSettingsSection(
                   title: '桌面挂件设置',
-                  headerPadding:
-                      const EdgeInsets.only(left: 8, bottom: 8, top: 0),
+                  headerPadding: const EdgeInsets.only(
+                    left: 8,
+                    bottom: 8,
+                    top: 0,
+                  ),
                   children: [
                     _buildTile(
                       targetId: 'float_window_style',
@@ -485,7 +504,8 @@ class _PlatformSpecificSettingsPageState
                               IslandDataProvider().invalidateCache();
                               IslandManagerBridge.clearIslandCache('island-1');
                               await IslandManagerBridge.createIsland(
-                                  'island-1');
+                                'island-1',
+                              );
                             } catch (_) {
                               // Ignore stale island window errors during style changes.
                             }
@@ -502,15 +522,19 @@ class _PlatformSpecificSettingsPageState
                     _buildTile(
                       targetId: 'force_refresh',
                       child: ListTile(
-                        leading:
-                            Icon(Icons.refresh, color: colorScheme.primary),
+                        leading: Icon(
+                          Icons.refresh,
+                          color: colorScheme.primary,
+                        ),
                         title: const Text('强制刷新悬浮窗位置'),
                         subtitle: const Text('将灵动岛悬浮窗重置到屏幕中央'),
                         trailing: TextButton(
                           onPressed: () async {
                             try {
                               await StorageService.saveIslandBounds(
-                                  'island-1', {});
+                                'island-1',
+                                {},
+                              );
                             } catch (_) {}
                             try {
                               IslandDataProvider().invalidateCache();
@@ -531,8 +555,10 @@ class _PlatformSpecificSettingsPageState
                       _buildTile(
                         targetId: 'island_priority',
                         child: ListTile(
-                          leading: Icon(Icons.priority_high,
-                              color: colorScheme.primary),
+                          leading: Icon(
+                            Icons.priority_high,
+                            color: colorScheme.primary,
+                          ),
                           title: const Text('灵动岛优先级设置'),
                           subtitle: const Text('配置哪些应用可以抢占灵动岛显示'),
                           trailing: const Icon(Icons.chevron_right),
@@ -546,25 +572,35 @@ class _PlatformSpecificSettingsPageState
             ],
             if (AppPlatform.isAndroid) ...[
               Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
                 child: AppSettingsSection(
                   title: 'Android 系统特性',
-                  headerPadding:
-                      const EdgeInsets.only(left: 8, bottom: 8, top: 0),
+                  headerPadding: const EdgeInsets.only(
+                    left: 8,
+                    bottom: 8,
+                    top: 0,
+                  ),
                   children: [
                     _buildTile(
                       targetId: 'live_updates',
                       child: ListTile(
-                        leading:
-                            Icon(Icons.update, color: colorScheme.cdtSuccess),
+                        leading: Icon(
+                          Icons.update,
+                          color: colorScheme.cdtSuccess,
+                        ),
                         title: const Text('Android 16 实时活动 (Live Updates)'),
-                        subtitle: Text(_liveUpdatesStatus,
-                            style: TextStyle(
-                                color: _liveUpdatesStatus.contains('✅')
-                                    ? colorScheme.cdtSuccess
-                                    : colorScheme.cdtWarning,
-                                fontSize: 12)),
+                        subtitle: Text(
+                          _liveUpdatesStatus,
+                          style: TextStyle(
+                            color: _liveUpdatesStatus.contains('✅')
+                                ? colorScheme.cdtSuccess
+                                : colorScheme.cdtWarning,
+                            fontSize: 12,
+                          ),
+                        ),
                         trailing: const Icon(Icons.chevron_right),
                         onTap: _checkAndOpenLiveUpdates,
                       ),
@@ -573,15 +609,20 @@ class _PlatformSpecificSettingsPageState
                     _buildTile(
                       targetId: 'island_support',
                       child: ListTile(
-                        leading: Icon(Icons.phone_android,
-                            color: colorScheme.primary),
+                        leading: Icon(
+                          Icons.phone_android,
+                          color: colorScheme.primary,
+                        ),
                         title: const Text('检测状态栏超级岛支持 (OriginOS/ColorOS等)'),
-                        subtitle: Text(_islandStatus,
-                            style: TextStyle(
-                                color: _islandStatus.contains('✅')
-                                    ? colorScheme.cdtSuccess
-                                    : colorScheme.cdtWarning,
-                                fontSize: 12)),
+                        subtitle: Text(
+                          _islandStatus,
+                          style: TextStyle(
+                            color: _islandStatus.contains('✅')
+                                ? colorScheme.cdtSuccess
+                                : colorScheme.cdtWarning,
+                            fontSize: 12,
+                          ),
+                        ),
                         trailing: const Icon(Icons.chevron_right),
                         onTap: _checkIslandSupport,
                       ),
@@ -592,12 +633,17 @@ class _PlatformSpecificSettingsPageState
             ],
             if (AppPlatform.isMacOS) ...[
               Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
                 child: AppSettingsSection(
                   title: 'Mac 灵动岛',
-                  headerPadding:
-                      const EdgeInsets.only(left: 8, bottom: 8, top: 0),
+                  headerPadding: const EdgeInsets.only(
+                    left: 8,
+                    bottom: 8,
+                    top: 0,
+                  ),
                   children: [
                     _buildTile(
                       targetId: 'mac_status_bar',
@@ -616,18 +662,21 @@ class _PlatformSpecificSettingsPageState
                           });
                           final prefs = await SharedPreferences.getInstance();
                           await prefs.setBool(
-                              'macos_island_enabled', isEnabled);
+                            'macos_island_enabled',
+                            isEnabled,
+                          );
                           await prefs.setBool('macos_tray_icon_enabled', false);
                           await WindowService.configureMacIsland();
                           if (!isEnabled) {
                             MacPomodoroStatusBarService.clearNative();
                           } else {
-                            await MacPomodoroStatusBarService
-                                .syncCurrentStatus();
+                            await MacPomodoroStatusBarService.syncCurrentStatus();
                           }
                           if (!context.mounted) return;
                           AppSnackBars.success(
-                              context, isEnabled ? 'Mac 灵动岛已开启' : 'Mac 灵动岛已关闭');
+                            context,
+                            isEnabled ? 'Mac 灵动岛已开启' : 'Mac 灵动岛已关闭',
+                          );
                         },
                       ),
                     ),
@@ -649,12 +698,14 @@ class _PlatformSpecificSettingsPageState
                               : '按 ${_macIslandShortcut.displayText} 隐藏，再按一次恢复',
                         ),
                         trailing: OutlinedButton(
-                          onPressed:
-                              _macIslandEnabled ? _editMacIslandShortcut : null,
+                          onPressed: _macIslandEnabled
+                              ? _editMacIslandShortcut
+                              : null,
                           child: Text(_macIslandShortcut.isEmpty ? '设置' : '修改'),
                         ),
-                        onTap:
-                            _macIslandEnabled ? _editMacIslandShortcut : null,
+                        onTap: _macIslandEnabled
+                            ? _editMacIslandShortcut
+                            : null,
                       ),
                     ),
                     const AppSettingsDivider(),
@@ -669,31 +720,33 @@ class _PlatformSpecificSettingsPageState
                             ? (val) async {
                                 final isEnabled = val ?? false;
                                 if (!mounted) return;
-                                WidgetsBinding.instance
-                                    .addPostFrameCallback((_) {
+                                WidgetsBinding.instance.addPostFrameCallback((
+                                  _,
+                                ) {
                                   if (mounted) {
-                                    setState(() =>
-                                        _macIslandRemindersEnabled = isEnabled);
+                                    setState(
+                                      () => _macIslandRemindersEnabled =
+                                          isEnabled,
+                                    );
                                   }
                                 });
                                 final prefs =
                                     await SharedPreferences.getInstance();
                                 await prefs.setBool(
-                                    'macos_island_reminders_enabled',
-                                    isEnabled);
+                                  'macos_island_reminders_enabled',
+                                  isEnabled,
+                                );
                                 await WindowService.configureMacIsland();
                                 if (isEnabled) {
-                                  final reminders = await NotificationService
-                                      .getScheduledReminders();
-                                  await MacPomodoroStatusBarService
-                                      .scheduleIslandReminders(
+                                  final reminders =
+                                      await NotificationService.getScheduledReminders();
+                                  await MacPomodoroStatusBarService.scheduleIslandReminders(
                                     reminders,
                                     clearFirst: true,
                                     restoring: true,
                                   );
                                 } else {
-                                  MacPomodoroStatusBarService
-                                      .clearIslandReminders();
+                                  MacPomodoroStatusBarService.clearIslandReminders();
                                 }
                               }
                             : null,
@@ -711,19 +764,22 @@ class _PlatformSpecificSettingsPageState
                             ? (val) async {
                                 final isEnabled = val ?? false;
                                 if (!mounted) return;
-                                WidgetsBinding.instance
-                                    .addPostFrameCallback((_) {
+                                WidgetsBinding.instance.addPostFrameCallback((
+                                  _,
+                                ) {
                                   if (mounted) {
-                                    setState(() =>
-                                        _macIslandClipboardLinksEnabled =
-                                            isEnabled);
+                                    setState(
+                                      () => _macIslandClipboardLinksEnabled =
+                                          isEnabled,
+                                    );
                                   }
                                 });
                                 final prefs =
                                     await SharedPreferences.getInstance();
                                 await prefs.setBool(
-                                    'macos_island_clipboard_links_enabled',
-                                    isEnabled);
+                                  'macos_island_clipboard_links_enabled',
+                                  isEnabled,
+                                );
                                 await WindowService.configureMacIsland();
                               }
                             : null,
@@ -751,9 +807,12 @@ class _PlatformSpecificSettingsPageState
                           child: DropdownButtonHideUnderline(
                             child: DropdownButton<String>(
                               isExpanded: true,
-                              value: _macIslandBrowsers.any((browser) =>
-                                      browser['id'] ==
-                                      _macIslandDefaultBrowserId)
+                              value:
+                                  _macIslandBrowsers.any(
+                                    (browser) =>
+                                        browser['id'] ==
+                                        _macIslandDefaultBrowserId,
+                                  )
                                   ? _macIslandDefaultBrowserId
                                   : null,
                               hint: const Text('选择浏览器'),
@@ -767,7 +826,8 @@ class _PlatformSpecificSettingsPageState
                                   ),
                                 );
                               }).toList(),
-                              onChanged: _macIslandEnabled &&
+                              onChanged:
+                                  _macIslandEnabled &&
                                       _macIslandBrowsers.isNotEmpty
                                   ? _selectMacIslandDefaultBrowser
                                   : null,
@@ -782,18 +842,18 @@ class _PlatformSpecificSettingsPageState
                       child: ListTile(
                         enabled:
                             _macIslandEnabled && _macIslandRemindersEnabled,
-                        leading: Icon(Icons.play_circle_outline_rounded,
-                            color:
-                                _macIslandEnabled && _macIslandRemindersEnabled
-                                    ? colorScheme.primary
-                                    : colorScheme.onSurfaceVariant),
+                        leading: Icon(
+                          Icons.play_circle_outline_rounded,
+                          color: _macIslandEnabled && _macIslandRemindersEnabled
+                              ? colorScheme.primary
+                              : colorScheme.onSurfaceVariant,
+                        ),
                         title: const Text('测试灵动岛提醒'),
                         subtitle: const Text('立即显示一条测试提醒，用于检查位置和交互'),
                         trailing: const Icon(Icons.chevron_right),
                         onTap: _macIslandEnabled && _macIslandRemindersEnabled
                             ? () async {
-                                await MacPomodoroStatusBarService
-                                    .showTestReminder();
+                                await MacPomodoroStatusBarService.showTestReminder();
                               }
                             : null,
                       ),
@@ -810,18 +870,22 @@ class _PlatformSpecificSettingsPageState
                             ? (val) async {
                                 final isEnabled = val ?? false;
                                 if (!mounted) return;
-                                WidgetsBinding.instance
-                                    .addPostFrameCallback((_) {
+                                WidgetsBinding.instance.addPostFrameCallback((
+                                  _,
+                                ) {
                                   if (mounted) {
-                                    setState(() =>
-                                        _macIslandShowWithoutNotch = isEnabled);
+                                    setState(
+                                      () => _macIslandShowWithoutNotch =
+                                          isEnabled,
+                                    );
                                   }
                                 });
                                 final prefs =
                                     await SharedPreferences.getInstance();
                                 await prefs.setBool(
-                                    'macos_island_show_without_notch',
-                                    isEnabled);
+                                  'macos_island_show_without_notch',
+                                  isEnabled,
+                                );
                                 await WindowService.configureMacIsland();
                               }
                             : null,
@@ -848,11 +912,11 @@ class _MacIslandShortcut {
   });
 
   const _MacIslandShortcut.empty()
-      : key = '',
-        command = false,
-        option = false,
-        control = false,
-        shift = false;
+    : key = '',
+      command = false,
+      option = false,
+      control = false,
+      shift = false;
 
   final String key;
   final bool command;
@@ -996,10 +1060,8 @@ class _MacIslandShortcutDialogState extends State<_MacIslandShortcutDialog> {
       actions: [
         if (!widget.initialShortcut.isEmpty)
           TextButton(
-            onPressed: () => Navigator.pop(
-              context,
-              const _MacIslandShortcut.empty(),
-            ),
+            onPressed: () =>
+                Navigator.pop(context, const _MacIslandShortcut.empty()),
             child: const Text('清除'),
           ),
         TextButton(

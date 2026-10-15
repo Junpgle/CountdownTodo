@@ -1,4 +1,5 @@
 import 'package:intl/intl.dart';
+
 import '../storage_service.dart';
 import '../models.dart';
 import '../utils/calendar_date_math.dart';
@@ -29,28 +30,28 @@ class IslandSlotData {
   });
 
   const IslandSlotData.empty()
-      : display = '',
-        type = '',
-        detailTitle = '',
-        detailSubtitle = '',
-        detailLocation = '',
-        detailTime = '',
-        detailNote = '',
-        specialType = '';
+    : display = '',
+      type = '',
+      detailTitle = '',
+      detailSubtitle = '',
+      detailLocation = '',
+      detailTime = '',
+      detailNote = '',
+      specialType = '';
 
   bool get isEmpty => display.isEmpty;
   bool get isNotEmpty => display.isNotEmpty;
 
   Map<String, String> toMap() => {
-        'display': display,
-        'type': type,
-        'detail_title': detailTitle,
-        'detail_subtitle': detailSubtitle,
-        'detail_location': detailLocation,
-        'detail_time': detailTime,
-        'detail_note': detailNote,
-        if (specialType.isNotEmpty) 'specialType': specialType,
-      };
+    'display': display,
+    'type': type,
+    'detail_title': detailTitle,
+    'detail_subtitle': detailSubtitle,
+    'detail_location': detailLocation,
+    'detail_time': detailTime,
+    'detail_note': detailNote,
+    if (specialType.isNotEmpty) 'specialType': specialType,
+  };
 }
 
 /// Provider for island slot data (todo, course, countdown, record).
@@ -70,17 +71,21 @@ class IslandSlotProvider {
     final startMs = start.millisecondsSinceEpoch;
     final endMs = endExclusive.millisecondsSinceEpoch;
     return records
-        .where((record) =>
-            !record.isDeleted &&
-            record.status == PomodoroRecordStatus.completed &&
-            record.startTime >= startMs &&
-            record.startTime < endMs)
+        .where(
+          (record) =>
+              !record.isDeleted &&
+              record.status == PomodoroRecordStatus.completed &&
+              record.startTime >= startMs &&
+              record.startTime < endMs,
+        )
         .fold(0, (seconds, record) => seconds + (record.actualDuration ?? 0));
   }
 
   /// Get slot data for a specific type
-  static Future<IslandSlotData> getSlotData(String type,
-      {required bool isLeft}) async {
+  static Future<IslandSlotData> getSlotData(
+    String type, {
+    required bool isLeft,
+  }) async {
     try {
       switch (type) {
         case 'todo':
@@ -110,11 +115,7 @@ class IslandSlotProvider {
   static Future<IslandSlotData> _getDateSlot(bool isLeft) async {
     final now = DateTime.now();
     final display = DateFormat('M月d日').format(now);
-    return IslandSlotData(
-      display: display,
-      type: 'date',
-      detailTitle: display,
-    );
+    return IslandSlotData(display: display, type: 'date', detailTitle: display);
   }
 
   /// Get weekday slot data
@@ -144,8 +145,11 @@ class IslandSlotProvider {
 
     int urgencyScore(dynamic t) {
       if (t.dueDate == null) return 3;
-      final dueDay =
-          DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day);
+      final dueDay = DateTime(
+        t.dueDate!.year,
+        t.dueDate!.month,
+        t.dueDate!.day,
+      );
       if (dueDay.isBefore(today)) return 0; // 逾期
       if (dueDay.isAtSameMomentAs(today)) return 1; // 今天到期
       return 2; // 未来到期
@@ -165,13 +169,18 @@ class IslandSlotProvider {
     });
 
     final t = active.first;
-    final time =
-        t.dueDate != null ? DateFormat('MM-dd').format(t.dueDate!) : '';
+    final time = t.dueDate != null
+        ? DateFormat('MM-dd').format(t.dueDate!)
+        : '';
 
     // 判断是否逾期
-    final isOverdue = t.dueDate != null &&
-        DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day)
-            .isBefore(today);
+    final isOverdue =
+        t.dueDate != null &&
+        DateTime(
+          t.dueDate!.year,
+          t.dueDate!.month,
+          t.dueDate!.day,
+        ).isBefore(today);
 
     // 检测特殊待办类型
     final specialType = detectTodoType(t.title);
@@ -181,8 +190,9 @@ class IslandSlotProvider {
         ? (time.isNotEmpty ? '[$overdueTag$time] ${t.title}' : t.title)
         : (time.isNotEmpty ? '${t.title} [$overdueTag$time]' : t.title);
 
-    final timeRange =
-        t.dueDate != null ? DateFormat('HH:mm').format(t.dueDate!) : '';
+    final timeRange = t.dueDate != null
+        ? DateFormat('HH:mm').format(t.dueDate!)
+        : '';
 
     return IslandSlotData(
       display: display,
@@ -210,8 +220,13 @@ class IslandSlotProvider {
           if (!isToday) return true; // 明日课程不会过期
           final endHour = c.endTime ~/ 100;
           final endMin = c.endTime % 100;
-          final courseEnd =
-              DateTime(now.year, now.month, now.day, endHour, endMin);
+          final courseEnd = DateTime(
+            now.year,
+            now.month,
+            now.day,
+            endHour,
+            endMin,
+          );
           return now.isBefore(courseEnd);
         }).toList();
 
@@ -219,8 +234,13 @@ class IslandSlotProvider {
           final c = valid.first as CourseItem;
           final startHour = c.startTime ~/ 100;
           final startMin = c.startTime % 100;
-          final courseStart =
-              DateTime(now.year, now.month, now.day, startHour, startMin);
+          final courseStart = DateTime(
+            now.year,
+            now.month,
+            now.day,
+            startHour,
+            startMin,
+          );
           final isOngoing = now.isAfter(courseStart);
 
           final time = isOngoing ? c.formattedEndTime : c.formattedStartTime;
@@ -283,8 +303,9 @@ class IslandSlotProvider {
       final records = await PomodoroService.getRecords();
       if (records.isNotEmpty) {
         final r = records.first;
-        final time = DateFormat('HH:mm').format(
-            DateTime.fromMillisecondsSinceEpoch(r.endTime ?? r.startTime));
+        final time = DateFormat(
+          'HH:mm',
+        ).format(DateTime.fromMillisecondsSinceEpoch(r.endTime ?? r.startTime));
         final title = r.todoTitle ?? '专注';
         return IslandSlotData(
           display: isLeft ? '[$time] $title' : '$title [$time]',
@@ -306,9 +327,11 @@ class IslandSlotProvider {
       final now = DateTime.now();
       final today = CalendarDateMath.dateOnly(now);
       final active = cds
-          .where((c) =>
-              !c.isDeleted &&
-              CalendarDateMath.daysBetween(today, c.targetDate) >= 0)
+          .where(
+            (c) =>
+                !c.isDeleted &&
+                CalendarDateMath.daysBetween(today, c.targetDate) >= 0,
+          )
           .toList();
       // debugPrint('[IslandSlotProvider] active countdowns: ${active.length}');
       active.sort((a, b) => a.targetDate.compareTo(b.targetDate));
@@ -339,8 +362,7 @@ class IslandSlotProvider {
       final records = await PomodoroService.getRecords();
       final now = DateTime.now();
       final todayRange = CalendarDateMath.dayRange(now);
-      final yesterdayStart =
-          CalendarDateMath.addDays(todayRange.start, -1);
+      final yesterdayStart = CalendarDateMath.addDays(todayRange.start, -1);
       final yesterdayRange = CalendarDateMath.dayRange(yesterdayStart);
       final todayFocusSeconds = completedFocusSecondsInRange(
         records,

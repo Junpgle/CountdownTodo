@@ -3,6 +3,7 @@ import '../services/plan_continuous_range_service.dart';
 import '../models/plan_weekly_availability.dart';
 import '../services/plan_weekly_availability_preferences.dart';
 import '../screens/plan_weekly_availability_screen.dart';
+
 import 'dart:async';
 import 'dart:convert';
 
@@ -111,39 +112,89 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
   bool _weeklyIgnored = false;
   int _weeklySequence = 0;
   Future<void> _loadWeekly({bool invalidate = true}) async {
-    final previousKey=_weeklyRules?.fingerprint, previousError=_weeklyError;
+    final previousKey = _weeklyRules?.fingerprint, previousError = _weeklyError;
     final sequence = ++_weeklySequence, username = widget.username;
     try {
       final saved = await PlanWeeklyAvailabilityPreferences.load(username);
-      if(!mounted || sequence != _weeklySequence || username != widget.username) return;
-      setState(() { _weeklyRules = saved.rules; _weeklyError = saved.error; });
-    } catch(_) {
-      if(!mounted || sequence != _weeklySequence || username != widget.username) return;
-      setState(() { _weeklyRules = null; _weeklyError = '每周可安排时间读取失败，请重试或明确选择本次不使用'; });
+      if (!mounted ||
+          sequence != _weeklySequence ||
+          username != widget.username)
+        return;
+      setState(() {
+        _weeklyRules = saved.rules;
+        _weeklyError = saved.error;
+      });
+    } catch (_) {
+      if (!mounted ||
+          sequence != _weeklySequence ||
+          username != widget.username)
+        return;
+      setState(() {
+        _weeklyRules = null;
+        _weeklyError = '每周可安排时间读取失败，请重试或明确选择本次不使用';
+      });
     }
-    if(invalidate && (previousKey != _weeklyRules?.fingerprint || previousError != _weeklyError)) _invalidate();
+    if (invalidate &&
+        (previousKey != _weeklyRules?.fingerprint ||
+            previousError != _weeklyError))
+      _invalidate();
   }
-  void _weeklyChanged() { unawaited(_loadWeekly()); }
+
+  void _weeklyChanged() {
+    unawaited(_loadWeekly());
+  }
+
   Future<void> _weeklySettings() async {
-    await Navigator.of(context).push(MaterialPageRoute(builder: (_) =>
-      PlanWeeklyAvailabilityScreen(username: widget.username)));
-    if(mounted) await _loadWeekly();
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => PlanWeeklyAvailabilityScreen(username: widget.username),
+      ),
+    );
+    if (mounted) await _loadWeekly();
   }
-  Widget _weeklyControls({bool compact = false}) => Material(color:Colors.transparent,child:Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      if(!compact || _weeklyRules?.enabled == true || _weeklyError != null || _weeklyIgnored)
-        TextButton.icon(key: const ValueKey('plan-weekly-settings'), onPressed: _loading ? null : _weeklySettings,
-          icon: const Icon(Icons.date_range_outlined,size:18),
-          label: Text(compact && _weeklyRules?.enabled == true
-            ? '${PlanWeeklyRules.weekdays[_date.weekday-1]} · ${_weeklyIgnored ? '本次不使用每周规则' : '按每周时间推荐'}'
-            : '每周可安排时间${_weeklyRules?.enabled == true ? ' · 已开启' : ''}')),
-      if(_weeklyError != null && !_weeklyIgnored)
-        Text(_weeklyError!,style:TextStyle(color:Theme.of(context).colorScheme.error)),
-      if(!compact || _weeklyError != null || (_result?.slots.isEmpty == true && _weeklyRules?.enabled == true))
-        CheckboxListTile(key:const ValueKey('plan-weekly-ignore'), contentPadding:EdgeInsets.zero,
-          title: const Text('本次不使用每周规则'),
-          value:_weeklyIgnored, onChanged:_loading?null:(v) { _weeklyIgnored=v!; _invalidate(); }),
-    ]));
+
+  Widget _weeklyControls({bool compact = false}) => Material(
+    color: Colors.transparent,
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (!compact ||
+            _weeklyRules?.enabled == true ||
+            _weeklyError != null ||
+            _weeklyIgnored)
+          TextButton.icon(
+            key: const ValueKey('plan-weekly-settings'),
+            onPressed: _loading ? null : _weeklySettings,
+            icon: const Icon(Icons.date_range_outlined, size: 18),
+            label: Text(
+              compact && _weeklyRules?.enabled == true
+                  ? '${PlanWeeklyRules.weekdays[_date.weekday - 1]} · ${_weeklyIgnored ? '本次不使用每周规则' : '按每周时间推荐'}'
+                  : '每周可安排时间${_weeklyRules?.enabled == true ? ' · 已开启' : ''}',
+            ),
+          ),
+        if (_weeklyError != null && !_weeklyIgnored)
+          Text(
+            _weeklyError!,
+            style: TextStyle(color: Theme.of(context).colorScheme.error),
+          ),
+        if (!compact ||
+            _weeklyError != null ||
+            (_result?.slots.isEmpty == true && _weeklyRules?.enabled == true))
+          CheckboxListTile(
+            key: const ValueKey('plan-weekly-ignore'),
+            contentPadding: EdgeInsets.zero,
+            title: const Text('本次不使用每周规则'),
+            value: _weeklyIgnored,
+            onChanged: _loading
+                ? null
+                : (v) {
+                    _weeklyIgnored = v!;
+                    _invalidate();
+                  },
+          ),
+      ],
+    ),
+  );
 
   PlanAvailabilityQuery get _query => PlanAvailabilityQuery(
     username: widget.username,
@@ -162,7 +213,7 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
     bufferDefaultsKey: _bufferDefaultsKey,
     avoidanceOverride: _avoidanceOverride,
     avoidanceDefaultsKey: _avoidanceDefaultsKey,
-    weekly: PlanWeeklyContext(_weeklyRules,ignored:_weeklyIgnored),
+    weekly: PlanWeeklyContext(_weeklyRules, ignored: _weeklyIgnored),
   );
 
   @override
@@ -200,29 +251,52 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
 
   DateTime _day(DateTime value) => DateTime(value.year, value.month, value.day);
 
-  String _preferenceKey(List<PlanDailyTimeWindow> options, Set<int> selected,
-      int before, int after, String? error) => jsonEncode([
+  String _preferenceKey(
+    List<PlanDailyTimeWindow> options,
+    Set<int> selected,
+    int before,
+    int after,
+    String? error,
+  ) => jsonEncode([
     for (var i = 0; i < options.length; i++)
-      [options[i].label, options[i].startMinutes, options[i].endMinutes,
-        selected.contains(i)],
+      [
+        options[i].label,
+        options[i].startMinutes,
+        options[i].endMinutes,
+        selected.contains(i),
+      ],
     if (!_bufferOverride) [before, after, error],
   ]);
 
   Future<void> _reloadPreferencesIfChanged() async {
     final sequence = _avoidPreferencesSequence, username = widget.username;
     try {
-      final saved = await (widget.avoidancePreferencesLoader?.call(username) ??
-          PlanAvailabilityPreferences.load(username));
-      if (!mounted || sequence != _avoidPreferencesSequence ||
+      final saved =
+          await (widget.avoidancePreferencesLoader?.call(username) ??
+              PlanAvailabilityPreferences.load(username));
+      if (!mounted ||
+          sequence != _avoidPreferencesSequence ||
           username != widget.username) {
         return;
       }
-      final currentIndices = <int>{for (var i = 0; i < _avoidOptions.length; i++)
-        if (_enabledAvoid.contains(_avoidOptions[i])) i};
-      if (_preferenceKey(_avoidOptions, currentIndices, _bufferBefore,
-              _bufferAfter, _bufferError) !=
-          _preferenceKey(saved.options, saved.selectedIndices,
-              saved.bufferBefore, saved.bufferAfter, saved.bufferError)) {
+      final currentIndices = <int>{
+        for (var i = 0; i < _avoidOptions.length; i++)
+          if (_enabledAvoid.contains(_avoidOptions[i])) i,
+      };
+      if (_preferenceKey(
+            _avoidOptions,
+            currentIndices,
+            _bufferBefore,
+            _bufferAfter,
+            _bufferError,
+          ) !=
+          _preferenceKey(
+            saved.options,
+            saved.selectedIndices,
+            saved.bufferBefore,
+            saved.bufferAfter,
+            saved.bufferError,
+          )) {
         await _loadAvoidPreferences();
       }
     } catch (_) {
@@ -235,8 +309,11 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
     final username = widget.username;
     final initialQuery = widget.initialQuery;
     final preserveAvoidance = initialQuery != null || _avoidanceOverride;
-    final preservedAvoidance = initialQuery?.avoidWindows ??
-        (_avoidanceOverride ? List<PlanDailyTimeWindow>.of(_enabledAvoid) : null);
+    final preservedAvoidance =
+        initialQuery?.avoidWindows ??
+        (_avoidanceOverride
+            ? List<PlanDailyTimeWindow>.of(_enabledAvoid)
+            : null);
     _avoidPreferencesLoaded = false;
     _avoidOptions
       ..clear()
@@ -251,10 +328,11 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
       debugPrint('Unable to load availability preferences: $error');
       saved = PlanAvoidancePreferences(
         PlanAvailabilityPreferences.defaultWindows,
-        const {}, bufferError: '查找设置读取失败，请重试',
+        const {},
+        bufferError: '查找设置读取失败，请重试',
       );
     }
-    await _loadWeekly(invalidate:false);
+    await _loadWeekly(invalidate: false);
     if (!mounted ||
         sequence != _avoidPreferencesSequence ||
         username != widget.username) {
@@ -265,10 +343,12 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
       ..addAll(saved.options);
     if (preserveAvoidance && preservedAvoidance != null) {
       for (final window in preservedAvoidance) {
-        final index = _avoidOptions.indexWhere((option) =>
-            option.label == window.label &&
-            option.startMinutes == window.startMinutes &&
-            option.endMinutes == window.endMinutes);
+        final index = _avoidOptions.indexWhere(
+          (option) =>
+              option.label == window.label &&
+              option.startMinutes == window.startMinutes &&
+              option.endMinutes == window.endMinutes,
+        );
         if (index == -1) {
           _avoidOptions.add(window);
           _enabledAvoid.add(window);
@@ -319,10 +399,8 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
       if (_enabledAvoid.contains(_avoidOptions[i])) i,
   };
 
-  String get _currentAvoidanceKey => PlanAvoidancePreferences.keyFor(
-    _avoidOptions,
-    _selectedAvoidanceIndices,
-  );
+  String get _currentAvoidanceKey =>
+      PlanAvoidancePreferences.keyFor(_avoidOptions, _selectedAvoidanceIndices);
 
   void _avoidChanged({
     bool avoidanceChanged = false,
@@ -346,7 +424,8 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
         updateBuffers: !avoidanceChanged || repairPreferences,
       ).catchError((Object error) {
         debugPrint('Unable to save availability preferences: $error');
-        if (!mounted || username != widget.username ||
+        if (!mounted ||
+            username != widget.username ||
             writeSequence != _preferenceWriteSequence) {
           return;
         }
@@ -358,8 +437,9 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
           }
         });
         widget.onQueryChanged?.call(_query);
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('本次查找已使用，默认设置未能记住，请重试')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('本次查找已使用，默认设置未能记住，请重试')));
       }),
     );
   }
@@ -648,10 +728,13 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
         },
       ),
       if (_bufferOverride)
-        TextButton(onPressed: () {
-          _bufferOverride = false;
-          unawaited(_loadAvoidPreferences());
-        }, child: const Text('恢复记住的缓冲')),
+        TextButton(
+          onPressed: () {
+            _bufferOverride = false;
+            unawaited(_loadAvoidPreferences());
+          },
+          child: const Text('恢复记住的缓冲'),
+        ),
     ],
   );
 
@@ -661,36 +744,64 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
       if (_query.hasBuffers || _bufferOverride)
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 6),
-          child: Text(_query.bufferSummary,
+          child: Text(
+            _query.bufferSummary,
             key: const ValueKey('plan-buffer-summary'),
-            style: Theme.of(context).textTheme.bodySmall),
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
         ),
       if (_bufferError != null) ...[
-        Text(_bufferError!,
-          style: TextStyle(color: Theme.of(context).colorScheme.error)),
-        TextButton(key: const ValueKey('plan-reset-buffers'), onPressed: () {
-          _bufferBefore = 0; _bufferAfter = 0; _bufferOverride = false;
-          _bufferError = null; _bufferDefaultsKey = '0:0';
-          _avoidChanged(repairPreferences: true);
-        }, child: const Text('重置前后缓冲')),
+        Text(
+          _bufferError!,
+          style: TextStyle(color: Theme.of(context).colorScheme.error),
+        ),
+        TextButton(
+          key: const ValueKey('plan-reset-buffers'),
+          onPressed: () {
+            _bufferBefore = 0;
+            _bufferAfter = 0;
+            _bufferOverride = false;
+            _bufferError = null;
+            _bufferDefaultsKey = '0:0';
+            _avoidChanged(repairPreferences: true);
+          },
+          child: const Text('重置前后缓冲'),
+        ),
       ],
       if (_result != null && _result!.slots.isEmpty && _query.hasBuffers)
-        TextButton(key: const ValueKey('plan-search-without-buffers'),
-          onPressed: _loading ? null : () {
-            _bufferBefore = 0; _bufferAfter = 0; _bufferOverride = true;
-            _invalidate(); unawaited(_lookup());
-          }, child: const Text('本次不留缓冲再查找')),
+        TextButton(
+          key: const ValueKey('plan-search-without-buffers'),
+          onPressed: _loading
+              ? null
+              : () {
+                  _bufferBefore = 0;
+                  _bufferAfter = 0;
+                  _bufferOverride = true;
+                  _invalidate();
+                  unawaited(_lookup());
+                },
+          child: const Text('本次不留缓冲再查找'),
+        ),
     ],
   );
 
   Future<void> _lookup({bool selectFirst = false}) async {
-    final preparation=++_sequence;
-    setState(() { _loading=true; _selectedStart=null; _snapshot=null; _result=null; _error=null; });
+    final preparation = ++_sequence;
+    setState(() {
+      _loading = true;
+      _selectedStart = null;
+      _snapshot = null;
+      _result = null;
+      _error = null;
+    });
     widget.onInvalidated();
-    await _loadWeekly(invalidate:false);
-    if(!mounted || preparation != _sequence) return;
+    await _loadWeekly(invalidate: false);
+    if (!mounted || preparation != _sequence) return;
     if (_bufferError != null || (_weeklyError != null && !_weeklyIgnored)) {
-      setState(() { _loading=false; _error = PlanAvailabilityException(_bufferError ?? _weeklyError!); });
+      setState(() {
+        _loading = false;
+        _error = PlanAvailabilityException(_bufferError ?? _weeklyError!);
+      });
       widget.onAutoLookupPendingChanged?.call(false);
       return;
     }
@@ -702,7 +813,10 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
       _now,
     );
     if (invalid != null) {
-      setState(() { _loading=false; _error = PlanAvailabilityException(invalid); });
+      setState(() {
+        _loading = false;
+        _error = PlanAvailabilityException(invalid);
+      });
       if (selectFirst) widget.onAutoLookupPendingChanged?.call(false);
       return;
     }
@@ -869,35 +983,35 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
   // Source refreshes may advance request sequences without changing the draft.
   // Bind adoption to actual inputs; a freshly rechecked choice can then return.
   String get _selectionContextKey => jsonEncode([
-        widget.username,
-        widget.todo?.id,
-        widget.todo?.version,
-        widget.todo?.updatedAt,
-        widget.todo?.isDone,
-        widget.todo?.isDeleted,
-        widget.todo?.hasConflict,
-        widget.editingBlock?.id,
-        widget.editingBlock?.version,
-        widget.editingBlock?.updatedAt,
-        widget.editingBlock?.status.name,
-        _date.millisecondsSinceEpoch,
-        _minutes,
-        _resultLimit,
-        _start,
-        _end,
-        _appOnly,
-        _bufferBefore,
-        _bufferAfter,
-        _bufferOverride,
-        _bufferDefaultsKey,
-        _avoidanceOverride,
-        _avoidanceDefaultsKey,
-        PlanAvoidancePreferences.keyForWindows(_enabledAvoid),
-        _weeklyRules?.fingerprint,
-        _weeklyIgnored,
-        _weeklyError,
-        _bufferError,
-      ]);
+    widget.username,
+    widget.todo?.id,
+    widget.todo?.version,
+    widget.todo?.updatedAt,
+    widget.todo?.isDone,
+    widget.todo?.isDeleted,
+    widget.todo?.hasConflict,
+    widget.editingBlock?.id,
+    widget.editingBlock?.version,
+    widget.editingBlock?.updatedAt,
+    widget.editingBlock?.status.name,
+    _date.millisecondsSinceEpoch,
+    _minutes,
+    _resultLimit,
+    _start,
+    _end,
+    _appOnly,
+    _bufferBefore,
+    _bufferAfter,
+    _bufferOverride,
+    _bufferDefaultsKey,
+    _avoidanceOverride,
+    _avoidanceDefaultsKey,
+    PlanAvoidancePreferences.keyForWindows(_enabledAvoid),
+    _weeklyRules?.fingerprint,
+    _weeklyIgnored,
+    _weeklyError,
+    _bufferError,
+  ]);
 
   Future<void> _customSearch() async {
     final parentDate = _date, parentMinutes = _minutes;
@@ -960,8 +1074,12 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
                       estimatedMinutes: widget.estimatedMinutes,
                       loader: widget.loader,
                       rangeLoader: widget.rangeLoader,
-                      onSplitRequested: widget.onSplitRequested == null ? null
-                          : (q) => Navigator.pop(dialogContext, _PlanSplitRequest(q)),
+                      onSplitRequested: widget.onSplitRequested == null
+                          ? null
+                          : (q) => Navigator.pop(
+                              dialogContext,
+                              _PlanSplitRequest(q),
+                            ),
                       clock: widget.clock,
                       initialExpanded: true,
                       dateShortcuts: true,
@@ -1013,9 +1131,8 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
       await PlanAvailabilityPreferences.validateQueryDefaults(selection.query);
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$error')),
-        );
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('$error')));
       }
       return;
     }
@@ -1095,36 +1212,67 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
       return;
     }
     if (result.selection != null) {
-      await _adoptExternal(result.selection!, date, minutes, revision, contextKey);
+      await _adoptExternal(
+        result.selection!,
+        date,
+        minutes,
+        revision,
+        contextKey,
+      );
     } else if (result.action == PlanExplanationAction.split) {
       widget.onSplitRequested?.call(q);
     } else if (result.action == PlanExplanationAction.modify) {
-      if (widget.resultsOnly) { await _customSearch(); }
-      else { setState(() => _expanded = true); }
+      if (widget.resultsOnly) {
+        await _customSearch();
+      } else {
+        setState(() => _expanded = true);
+      }
     }
   }
 
   Widget _emptyExplanation() {
     final d = _result?.diagnostics;
-    if (_loading || _snapshot == null || _result?.slots.isEmpty != true ||
-        d == null || !d.valid) { return const SizedBox.shrink(); }
+    if (_loading ||
+        _snapshot == null ||
+        _result?.slots.isEmpty != true ||
+        d == null ||
+        !d.valid) {
+      return const SizedBox.shrink();
+    }
     final theme = Theme.of(context);
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 8),
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(color: theme.colorScheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(14)),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        if (d.reason == PlanAvailabilityReason.fragmented ||
-            d.reason == PlanAvailabilityReason.noTime)
-          Text(d.summary, key: const ValueKey('plan-empty-summary'),
-            style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-        const SizedBox(height: 4),
-        TextButton.icon(key: const ValueKey('plan-explain-availability'),
-          style: TextButton.styleFrom(alignment: Alignment.centerLeft, padding: EdgeInsets.zero),
-          onPressed: _explain, icon: const Icon(Icons.arrow_forward, size: 18),
-          label: const Text('查看原因与其他日期')),
-      ]));
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (d.reason == PlanAvailabilityReason.fragmented ||
+              d.reason == PlanAvailabilityReason.noTime)
+            Text(
+              d.summary,
+              key: const ValueKey('plan-empty-summary'),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          const SizedBox(height: 4),
+          TextButton.icon(
+            key: const ValueKey('plan-explain-availability'),
+            style: TextButton.styleFrom(
+              alignment: Alignment.centerLeft,
+              padding: EdgeInsets.zero,
+            ),
+            onPressed: _explain,
+            icon: const Icon(Icons.arrow_forward, size: 18),
+            label: const Text('查看原因与其他日期'),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _compactResults() {
@@ -1157,7 +1305,14 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
                 color: colors.primary,
               ),
               const SizedBox(width: 8),
-              Expanded(child: Text('推荐时段', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700))),
+              Expanded(
+                child: Text(
+                  '推荐时段',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
               IconButton(
                 key: const ValueKey('plan-refresh-slots'),
                 tooltip: '刷新推荐',
@@ -1190,7 +1345,7 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
             ),
           _emptyExplanation(),
           _bufferStatus(),
-          _weeklyControls(compact:true),
+          _weeklyControls(compact: true),
           for (final slot in visible) _slotButton(slot),
           if (_snapshot != null)
             Padding(
@@ -1262,37 +1417,38 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (!widget.configurationOnly) OutlinedButton.icon(
-              key: const ValueKey('plan-find-time'),
-              style: OutlinedButton.styleFrom(
-                side: BorderSide.none,
-                padding: EdgeInsets.zero,
-                alignment: Alignment.centerLeft,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
+            if (!widget.configurationOnly)
+              OutlinedButton.icon(
+                key: const ValueKey('plan-find-time'),
+                style: OutlinedButton.styleFrom(
+                  side: BorderSide.none,
+                  padding: EdgeInsets.zero,
+                  alignment: Alignment.centerLeft,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                onPressed: editable
+                    ? () => setState(() => _expanded = !_expanded)
+                    : null,
+                icon: const Icon(Icons.event_available_outlined),
+                label: Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        '找可用时间',
+                        style: TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                    AnimatedRotation(
+                      turns: open ? 0.5 : 0,
+                      duration: transitionDuration,
+                      curve: Curves.easeInOutCubic,
+                      child: const Icon(Icons.expand_more),
+                    ),
+                  ],
                 ),
               ),
-              onPressed: editable
-                  ? () => setState(() => _expanded = !_expanded)
-                  : null,
-              icon: const Icon(Icons.event_available_outlined),
-              label: Row(
-                children: [
-                  const Expanded(
-                    child: Text(
-                      '找可用时间',
-                      style: TextStyle(fontWeight: FontWeight.w600),
-                    ),
-                  ),
-                  AnimatedRotation(
-                    turns: open ? 0.5 : 0,
-                    duration: transitionDuration,
-                    curve: Curves.easeInOutCubic,
-                    child: const Icon(Icons.expand_more),
-                  ),
-                ],
-              ),
-            ),
             _expansion(
               open: open,
               duration: transitionDuration,
@@ -1361,14 +1517,20 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
                     ],
                   ),
                   const SizedBox(height: 12),
-                  Text(widget.configurationOnly ? '本次总时长（30–720分钟）' : '需要多长时间？', style: theme.textTheme.labelLarge),
+                  Text(
+                    widget.configurationOnly ? '本次总时长（30–720分钟）' : '需要多长时间？',
+                    style: theme.textTheme.labelLarge,
+                  ),
                   const SizedBox(height: 8),
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
                     crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
-                      for (final value in (widget.configurationOnly ? [30, 60, 90, 120] : [15, 30, 45, 60]))
+                      for (final value
+                          in (widget.configurationOnly
+                              ? [30, 60, 90, 120]
+                              : [15, 30, 45, 60]))
                         ChoiceChip(
                           key: ValueKey('plan-duration-$value'),
                           label: Text('$value 分钟'),
@@ -1414,55 +1576,57 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
                       ),
                     ),
                   const SizedBox(height: 16),
-                  if (!widget.configurationOnly) Wrap(
-                    spacing: 8,
-                    runSpacing: 4,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      const Text('推荐数量'),
-                      for (final limit in [3, 5, 8])
-                        ChoiceChip(
-                          key: ValueKey('plan-result-limit-$limit'),
-                          label: Text('$limit 个'),
-                          selected: _resultLimit == limit,
-                          showCheckmark: false,
-                          onSelected: (_) {
-                            _resultLimit = limit;
-                            _invalidate();
-                          },
-                        ),
-                    ],
-                  ),
+                  if (!widget.configurationOnly)
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        const Text('推荐数量'),
+                        for (final limit in [3, 5, 8])
+                          ChoiceChip(
+                            key: ValueKey('plan-result-limit-$limit'),
+                            label: Text('$limit 个'),
+                            selected: _resultLimit == limit,
+                            showCheckmark: false,
+                            onSelected: (_) {
+                              _resultLimit = limit;
+                              _invalidate();
+                            },
+                          ),
+                      ],
+                    ),
                   _weeklyControls(),
                   _avoidControls(),
                   const SizedBox(height: 12),
                   _bufferControls(),
                   const SizedBox(height: 8),
-                  if (!widget.configurationOnly) FilledButton.icon(
-                    key: const ValueKey('plan-lookup-slots'),
-                    style: FilledButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 14,
+                  if (!widget.configurationOnly)
+                    FilledButton.icon(
+                      key: const ValueKey('plan-lookup-slots'),
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 14,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                       ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                      onPressed: _loading || !_avoidPreferencesLoaded
+                          ? null
+                          : _lookup,
+                      icon: _loading
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.search, size: 20),
+                      label: Text(
+                        _loading ? '正在查找' : (_error == null ? '查找时段' : '重新查找'),
                       ),
                     ),
-                    onPressed: _loading || !_avoidPreferencesLoaded
-                        ? null
-                        : _lookup,
-                    icon: _loading
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.search, size: 20),
-                    label: Text(
-                      _loading ? '正在查找' : (_error == null ? '查找时段' : '重新查找'),
-                    ),
-                  ),
                   if (_error != null) ...[
                     const SizedBox(height: 12),
                     Text(

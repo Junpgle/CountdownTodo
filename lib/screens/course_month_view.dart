@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+
 import '../models.dart';
 import '../services/device_calendar_read_service.dart';
 import '../services/pomodoro_service.dart';
@@ -24,9 +25,9 @@ class CourseMonthView extends StatelessWidget {
   final Function(TodoItem)? onGanttTodoTap;
   final DateTime? currentWeekMonday;
   final void Function(DeviceCalendarEvent event, GlobalKey? sourceKey)?
-      onDeviceCalendarTap;
+  onDeviceCalendarTap;
   final GlobalKey? Function(DeviceCalendarEvent event, String dateKey)?
-      deviceCalendarCardKeyBuilder;
+  deviceCalendarCardKeyBuilder;
 
   const CourseMonthView({
     super.key,
@@ -58,11 +59,15 @@ class CourseMonthView extends StatelessWidget {
     final DateTime startDate;
     int showDays;
     if (viewMode == 2) {
-      final firstDayOfMonth =
-          DateTime(selectedMonth.year, selectedMonth.month, 1);
+      final firstDayOfMonth = DateTime(
+        selectedMonth.year,
+        selectedMonth.month,
+        1,
+      );
       final daysBefore = firstDayOfMonth.weekday - 1;
       startDate = CalendarDateMath.addDays(firstDayOfMonth, -daysBefore);
-      showDays = daysBefore +
+      showDays =
+          daysBefore +
           DateTime(selectedMonth.year, selectedMonth.month + 1, 0).day;
     } else {
       startDate = CalendarDateMath.dateOnly(currentWeekMonday ?? selectedMonth);
@@ -70,11 +75,12 @@ class CourseMonthView extends StatelessWidget {
     }
     final int rowCount = (showDays / 7).ceil();
     final List<List<DateTime>> weeks = List.generate(
-        rowCount,
-        (w) => List.generate(
-              7,
-              (d) => CalendarDateMath.addDays(startDate, w * 7 + d),
-            ));
+      rowCount,
+      (w) => List.generate(
+        7,
+        (d) => CalendarDateMath.addDays(startDate, w * 7 + d),
+      ),
+    );
 
     // 2. 预计算所有全局数据 (应用筛选逻辑)
     final Map<String, int> densityMap = {};
@@ -89,8 +95,9 @@ class CourseMonthView extends StatelessWidget {
     }
     if (activeDataViews.contains('todos')) {
       todoMap.forEach((date, list) => addDensity(date, 1 * list.length));
-      crossDayTodoMap
-          .forEach((date, list) => addDensity(date, 1 * list.length));
+      crossDayTodoMap.forEach(
+        (date, list) => addDensity(date, 1 * list.length),
+      );
     }
     if (activeDataViews.contains('timeLogs')) {
       logMap.forEach((date, list) => addDensity(date, 2 * list.length));
@@ -99,20 +106,22 @@ class CourseMonthView extends StatelessWidget {
       pomMap.forEach((date, list) => addDensity(date, 2 * list.length));
     }
     if (activeDataViews.contains('fixedSchedules')) {
-      fixedScheduleMap
-          .forEach((date, list) => addDensity(date, 3 * list.length));
+      fixedScheduleMap.forEach(
+        (date, list) => addDensity(date, 3 * list.length),
+      );
     }
     if (activeDataViews.contains('deviceCalendar')) {
-      deviceCalendarMap
-          .forEach((date, list) => addDensity(date, 2 * list.length));
+      deviceCalendarMap.forEach(
+        (date, list) => addDensity(date, 2 * list.length),
+      );
     }
 
     final List<TodoItem> ganttTodos = activeDataViews.contains('todos')
         ? allTodos.where((t) {
             if (t.isDeleted || t.dueDate == null) return false;
             final start = DateTime.fromMillisecondsSinceEpoch(
-                    t.createdDate ?? t.createdAt)
-                .toLocal();
+              t.createdDate ?? t.createdAt,
+            ).toLocal();
             bool isCrossDay =
                 t.dueDate != null && !DateUtils.isSameDay(start, t.dueDate!);
             if (isCrossDay && activeDataViews.contains('hideCrossDay')) {
@@ -129,15 +138,23 @@ class CourseMonthView extends StatelessWidget {
           child: LayoutBuilder(
             builder: (context, constraints) {
               double availableHeight = constraints.maxHeight;
-              double rowHeight =
-                  (availableHeight / weeks.length).clamp(110.0, 1000.0);
+              double rowHeight = (availableHeight / weeks.length).clamp(
+                110.0,
+                1000.0,
+              );
               return ListView.builder(
                 padding: const EdgeInsets.symmetric(horizontal: 4),
                 physics: const NeverScrollableScrollPhysics(),
                 itemCount: weeks.length,
                 itemBuilder: (context, weekIdx) {
-                  return _buildWeekRow(context, weeks[weekIdx], ganttTodos,
-                      densityMap, isDark, rowHeight);
+                  return _buildWeekRow(
+                    context,
+                    weeks[weekIdx],
+                    ganttTodos,
+                    densityMap,
+                    isDark,
+                    rowHeight,
+                  );
                 },
               );
             },
@@ -148,16 +165,19 @@ class CourseMonthView extends StatelessWidget {
   }
 
   Widget _buildWeekRow(
-      BuildContext context,
-      List<DateTime> weekDays,
-      List<TodoItem> allGanttTodos,
-      Map<String, int> densityMap,
-      bool isDark,
-      double cellHeight) {
+    BuildContext context,
+    List<DateTime> weekDays,
+    List<TodoItem> allGanttTodos,
+    Map<String, int> densityMap,
+    bool isDark,
+    double cellHeight,
+  ) {
     final List<Map<String, dynamic>> weekBars = [];
     final DateTime weekStart = weekDays.first;
-    final DateTime weekEnd = CalendarDateMath.addDays(weekDays.last, 1)
-        .subtract(const Duration(microseconds: 1));
+    final DateTime weekEnd = CalendarDateMath.addDays(
+      weekDays.last,
+      1,
+    ).subtract(const Duration(microseconds: 1));
 
     // 1. 收集课程和单日待办 (按天遍历)
     for (int i = 0; i < weekDays.length; i++) {
@@ -166,8 +186,12 @@ class CourseMonthView extends StatelessWidget {
 
       if (activeDataViews.contains('courses')) {
         for (var c in (courseMap[dStr] ?? [])) {
-          weekBars
-              .add({'course': c, 'start': i, 'end': i, 'title': c.courseName});
+          weekBars.add({
+            'course': c,
+            'start': i,
+            'end': i,
+            'title': c.courseName,
+          });
         }
       }
 
@@ -185,9 +209,9 @@ class CourseMonthView extends StatelessWidget {
       if (activeDataViews.contains('todos')) {
         for (var t in (todoMap[dStr] ?? [])) {
           // 只添加非跨周任务，跨周任务统一在下面处理
-          DateTime start =
-              DateTime.fromMillisecondsSinceEpoch(t.createdDate ?? t.createdAt)
-                  .toLocal();
+          DateTime start = DateTime.fromMillisecondsSinceEpoch(
+            t.createdDate ?? t.createdAt,
+          ).toLocal();
           DateTime end = t.dueDate ?? start;
           if (DateUtils.isSameDay(start, end)) {
             weekBars.add({'todo': t, 'start': i, 'end': i, 'title': t.title});
@@ -232,9 +256,9 @@ class CourseMonthView extends StatelessWidget {
     // 2. 收集跨周/跨天待办 (区间判定)
     if (activeDataViews.contains('todos')) {
       for (var t in allGanttTodos) {
-        DateTime tStart =
-            DateTime.fromMillisecondsSinceEpoch(t.createdDate ?? t.createdAt)
-                .toLocal();
+        DateTime tStart = DateTime.fromMillisecondsSinceEpoch(
+          t.createdDate ?? t.createdAt,
+        ).toLocal();
         DateTime tEnd = t.dueDate ?? tStart;
 
         // 如果是单日任务，上面已经处理过了
@@ -273,53 +297,52 @@ class CourseMonthView extends StatelessWidget {
       return (a['start'] as int).compareTo(b['start'] as int);
     });
 
-    return LayoutBuilder(builder: (context, constraints) {
-      double cellWidth = constraints.maxWidth / 7;
-      return Container(
-        height: cellHeight,
-        margin: const EdgeInsets.only(bottom: 2),
-        child: Stack(
-          children: [
-            // 背景层：热力图
-            Row(
-              children: weekDays.map((day) {
-                final dStr = DateFormat('yyyy-MM-dd').format(day);
-                int count = densityMap[dStr] ?? 0;
-                Color? heatColor;
-                if (count > 0) {
-                  double opacity = (count / 15).clamp(0.05, 0.4);
-                  heatColor = Theme.of(context)
-                      .colorScheme
-                      .primary
-                      .withValues(alpha: opacity);
-                }
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        double cellWidth = constraints.maxWidth / 7;
+        return Container(
+          height: cellHeight,
+          margin: const EdgeInsets.only(bottom: 2),
+          child: Stack(
+            children: [
+              // 背景层：热力图
+              Row(
+                children: weekDays.map((day) {
+                  final dStr = DateFormat('yyyy-MM-dd').format(day);
+                  int count = densityMap[dStr] ?? 0;
+                  Color? heatColor;
+                  if (count > 0) {
+                    double opacity = (count / 15).clamp(0.05, 0.4);
+                    heatColor = Theme.of(context).colorScheme.primary
+                        .withValues(alpha: opacity);
+                  }
 
-                final List<CourseItem> dayCourses =
-                    activeDataViews.contains('courses')
-                        ? (courseMap[dStr] ?? [])
-                        : [];
-                final List<TodoItem> dayTodos =
-                    activeDataViews.contains('todos')
-                        ? (todoMap[dStr] ?? [])
-                        : [];
-                final List<TimeLogItem> dayLogs =
-                    activeDataViews.contains('timeLogs')
-                        ? (logMap[dStr] ?? [])
-                        : [];
-                final List<PomodoroRecord> dayPoms =
-                    activeDataViews.contains('pomodoros')
-                        ? (pomMap[dStr] ?? [])
-                        : [];
-                final List<FixedScheduleItem> dayFixedSchedules =
-                    activeDataViews.contains('fixedSchedules')
-                        ? (fixedScheduleMap[dStr] ?? [])
-                        : [];
+                  final List<CourseItem> dayCourses =
+                      activeDataViews.contains('courses')
+                      ? (courseMap[dStr] ?? [])
+                      : [];
+                  final List<TodoItem> dayTodos =
+                      activeDataViews.contains('todos')
+                      ? (todoMap[dStr] ?? [])
+                      : [];
+                  final List<TimeLogItem> dayLogs =
+                      activeDataViews.contains('timeLogs')
+                      ? (logMap[dStr] ?? [])
+                      : [];
+                  final List<PomodoroRecord> dayPoms =
+                      activeDataViews.contains('pomodoros')
+                      ? (pomMap[dStr] ?? [])
+                      : [];
+                  final List<FixedScheduleItem> dayFixedSchedules =
+                      activeDataViews.contains('fixedSchedules')
+                      ? (fixedScheduleMap[dStr] ?? [])
+                      : [];
 
-                return Expanded(
-                  child: RepaintBoundary(
-                    child: GestureDetector(
-                      onTap: () => onDayTapped(day),
-                      child: _buildDetailedDayBackground(
+                  return Expanded(
+                    child: RepaintBoundary(
+                      child: GestureDetector(
+                        onTap: () => onDayTapped(day),
+                        child: _buildDetailedDayBackground(
                           context,
                           day,
                           heatColor,
@@ -329,175 +352,194 @@ class CourseMonthView extends StatelessWidget {
                           dayTodos,
                           dayLogs,
                           dayPoms,
-                          dayFixedSchedules),
-                    ),
-                  ),
-                );
-              }).toList(),
-            ),
-
-            // 甘特图层
-            Positioned(
-              left: 0,
-              right: 0,
-              top: 25,
-              bottom: viewMode == 2 ? 12 : 4,
-              child: LayoutBuilder(
-                builder: (context, ganttConstraints) {
-                  final clusteredRows = _clusterBars(weekBars);
-                  if (clusteredRows.isEmpty) return const SizedBox.shrink();
-
-                  final bool isHalfMonthView = viewMode != 2;
-                  final double rowSpacing = isHalfMonthView ? 4.0 : 2.0;
-                  final double minRowHeight = 18.0;
-
-                  final double calculatedRowHeight =
-                      (ganttConstraints.maxHeight -
-                              ((clusteredRows.length - 1) * rowSpacing)) /
-                          clusteredRows.length;
-                  final double rowHeight = calculatedRowHeight.clamp(
-                      minRowHeight, isHalfMonthView ? 40.0 : 24.0);
-                  final double barHeight = (rowHeight - 4).clamp(14.0, 22.0);
-
-                  return SingleChildScrollView(
-                    physics: const BouncingScrollPhysics(),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.start,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: clusteredRows.map((rowGroup) {
-                        return Container(
-                          height: rowHeight,
-                          margin: EdgeInsets.only(
-                            bottom:
-                                rowGroup == clusteredRows.last ? 0 : rowSpacing,
-                          ),
-                          child: Stack(
-                            clipBehavior: Clip.none,
-                            children: rowGroup.map((bar) {
-                              final todo = bar['todo'] as TodoItem?;
-                              final course = bar['course'] as CourseItem?;
-                              final fixedSchedule =
-                                  bar['fixedSchedule'] as FixedScheduleItem?;
-                              final timeLog = bar['timeLog'] as TimeLogItem?;
-                              final pomodoro =
-                                  bar['pomodoro'] as PomodoroRecord?;
-                              final deviceCalendarEvent =
-                                  bar['deviceCalendar'] as DeviceCalendarEvent?;
-                              final int start = bar['start'];
-                              final int end = bar['end'];
-                              final String dateKey = DateFormat('yyyy-MM-dd')
-                                  .format(weekDays[start]);
-                              final sourceKey = deviceCalendarEvent == null
-                                  ? null
-                                  : deviceCalendarCardKeyBuilder?.call(
-                                      deviceCalendarEvent, dateKey);
-
-                              final Color barColor = _barColor(
-                                bar,
-                                isDark,
-                                Theme.of(context).colorScheme.tertiary,
-                                Theme.of(context).colorScheme.primary,
-                              );
-                              final Color textColor =
-                                  _barTextColor(bar, isDark);
-
-                              return Positioned(
-                                left: start * cellWidth + 2,
-                                width: (end - start + 1) * cellWidth - 4,
-                                height: barHeight,
-                                child: GestureDetector(
-                                  behavior: HitTestBehavior.opaque,
-                                  onTap: () {
-                                    if (deviceCalendarEvent != null) {
-                                      onDeviceCalendarTap?.call(
-                                          deviceCalendarEvent, sourceKey);
-                                    } else if (course != null) {
-                                      onDayTapped(weekDays[start]);
-                                    } else if (fixedSchedule != null) {
-                                      onDayTapped(weekDays[start]);
-                                    } else if (todo != null) {
-                                      onGanttTodoTap?.call(todo);
-                                    } else if (timeLog != null ||
-                                        pomodoro != null) {
-                                      onDayTapped(weekDays[start]);
-                                    }
-                                  },
-                                  child: Container(
-                                    key: sourceKey,
-                                    decoration: BoxDecoration(
-                                      color: barColor,
-                                      borderRadius: BorderRadius.circular(4),
-                                    ),
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 4),
-                                    alignment: Alignment.centerLeft,
-                                    child: deviceCalendarEvent == null
-                                        ? Text(
-                                            bar['title'] ?? '',
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: TextStyle(
-                                              color: textColor,
-                                              fontSize: (barHeight * 0.6)
-                                                  .clamp(8.0, 11.0),
-                                              fontWeight: FontWeight.w500,
-                                              decoration: (todo?.isDone ??
-                                                      false)
-                                                  ? TextDecoration.lineThrough
-                                                  : null,
-                                            ),
-                                          )
-                                        : Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              Icon(
-                                                Icons.phone_android_rounded,
-                                                size: 9,
-                                                color: textColor,
-                                              ),
-                                              const SizedBox(width: 2),
-                                              Flexible(
-                                                child: Text(
-                                                  bar['title'] ?? '',
-                                                  maxLines: 1,
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
-                                                  style: TextStyle(
-                                                    color: textColor,
-                                                    fontSize: (barHeight * 0.6)
-                                                        .clamp(8.0, 11.0),
-                                                    fontWeight: FontWeight.w500,
-                                                  ),
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                  ),
-                                ),
-                              );
-                            }).toList(),
-                          ),
-                        );
-                      }).toList(),
+                          dayFixedSchedules,
+                        ),
+                      ),
                     ),
                   );
-                },
+                }).toList(),
               ),
-            ),
-          ],
-        ),
-      );
-    });
+
+              // 甘特图层
+              Positioned(
+                left: 0,
+                right: 0,
+                top: 25,
+                bottom: viewMode == 2 ? 12 : 4,
+                child: LayoutBuilder(
+                  builder: (context, ganttConstraints) {
+                    final clusteredRows = _clusterBars(weekBars);
+                    if (clusteredRows.isEmpty) return const SizedBox.shrink();
+
+                    final bool isHalfMonthView = viewMode != 2;
+                    final double rowSpacing = isHalfMonthView ? 4.0 : 2.0;
+                    final double minRowHeight = 18.0;
+
+                    final double calculatedRowHeight =
+                        (ganttConstraints.maxHeight -
+                            ((clusteredRows.length - 1) * rowSpacing)) /
+                        clusteredRows.length;
+                    final double rowHeight = calculatedRowHeight.clamp(
+                      minRowHeight,
+                      isHalfMonthView ? 40.0 : 24.0,
+                    );
+                    final double barHeight = (rowHeight - 4).clamp(14.0, 22.0);
+
+                    return SingleChildScrollView(
+                      physics: const BouncingScrollPhysics(),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.start,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: clusteredRows.map((rowGroup) {
+                          return Container(
+                            height: rowHeight,
+                            margin: EdgeInsets.only(
+                              bottom: rowGroup == clusteredRows.last
+                                  ? 0
+                                  : rowSpacing,
+                            ),
+                            child: Stack(
+                              clipBehavior: Clip.none,
+                              children: rowGroup.map((bar) {
+                                final todo = bar['todo'] as TodoItem?;
+                                final course = bar['course'] as CourseItem?;
+                                final fixedSchedule =
+                                    bar['fixedSchedule'] as FixedScheduleItem?;
+                                final timeLog = bar['timeLog'] as TimeLogItem?;
+                                final pomodoro =
+                                    bar['pomodoro'] as PomodoroRecord?;
+                                final deviceCalendarEvent =
+                                    bar['deviceCalendar']
+                                        as DeviceCalendarEvent?;
+                                final int start = bar['start'];
+                                final int end = bar['end'];
+                                final String dateKey = DateFormat('yyyy-MM-dd')
+                                    .format(weekDays[start]);
+                                final sourceKey = deviceCalendarEvent == null
+                                    ? null
+                                    : deviceCalendarCardKeyBuilder?.call(
+                                        deviceCalendarEvent,
+                                        dateKey,
+                                      );
+
+                                final Color barColor = _barColor(
+                                  bar,
+                                  isDark,
+                                  Theme.of(context).colorScheme.tertiary,
+                                  Theme.of(context).colorScheme.primary,
+                                );
+                                final Color textColor = _barTextColor(
+                                  bar,
+                                  isDark,
+                                );
+
+                                return Positioned(
+                                  left: start * cellWidth + 2,
+                                  width: (end - start + 1) * cellWidth - 4,
+                                  height: barHeight,
+                                  child: GestureDetector(
+                                    behavior: HitTestBehavior.opaque,
+                                    onTap: () {
+                                      if (deviceCalendarEvent != null) {
+                                        onDeviceCalendarTap?.call(
+                                          deviceCalendarEvent,
+                                          sourceKey,
+                                        );
+                                      } else if (course != null) {
+                                        onDayTapped(weekDays[start]);
+                                      } else if (fixedSchedule != null) {
+                                        onDayTapped(weekDays[start]);
+                                      } else if (todo != null) {
+                                        onGanttTodoTap?.call(todo);
+                                      } else if (timeLog != null ||
+                                          pomodoro != null) {
+                                        onDayTapped(weekDays[start]);
+                                      }
+                                    },
+                                    child: Container(
+                                      key: sourceKey,
+                                      decoration: BoxDecoration(
+                                        color: barColor,
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 4,
+                                      ),
+                                      alignment: Alignment.centerLeft,
+                                      child: deviceCalendarEvent == null
+                                          ? Text(
+                                              bar['title'] ?? '',
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                color: textColor,
+                                                fontSize: (barHeight * 0.6)
+                                                    .clamp(8.0, 11.0),
+                                                fontWeight: FontWeight.w500,
+                                                decoration:
+                                                    (todo?.isDone ?? false)
+                                                    ? TextDecoration.lineThrough
+                                                    : null,
+                                              ),
+                                            )
+                                          : Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Icon(
+                                                  Icons.phone_android_rounded,
+                                                  size: 9,
+                                                  color: textColor,
+                                                ),
+                                                const SizedBox(width: 2),
+                                                Flexible(
+                                                  child: Text(
+                                                    bar['title'] ?? '',
+                                                    maxLines: 1,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                    style: TextStyle(
+                                                      color: textColor,
+                                                      fontSize:
+                                                          (barHeight * 0.6)
+                                                              .clamp(8.0, 11.0),
+                                                      fontWeight:
+                                                          FontWeight.w500,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                    ),
+                                  ),
+                                );
+                              }).toList(),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   List<List<Map<String, dynamic>>> _clusterBars(
-      List<Map<String, dynamic>> bars) {
+    List<Map<String, dynamic>> bars,
+  ) {
     List<List<Map<String, dynamic>>> rows = [];
     for (var bar in bars) {
       bool placed = false;
       for (var row in rows) {
-        bool overlap = row.any((existing) => !(bar['end'] < existing['start'] ||
-            bar['start'] > existing['end']));
+        bool overlap = row.any(
+          (existing) =>
+              !(bar['end'] < existing['start'] ||
+                  bar['start'] > existing['end']),
+        );
         if (!overlap) {
           row.add(bar);
           placed = true;
@@ -520,8 +562,12 @@ class CourseMonthView extends StatelessWidget {
     return 5;
   }
 
-  Color _barColor(Map<String, dynamic> bar, bool isDark,
-      [Color? deviceCalendarFallback, Color? fixedScheduleFallback]) {
+  Color _barColor(
+    Map<String, dynamic> bar,
+    bool isDark, [
+    Color? deviceCalendarFallback,
+    Color? fixedScheduleFallback,
+  ]) {
     final todo = bar['todo'] as TodoItem?;
     final log = bar['timeLog'] as TimeLogItem?;
     final pomodoro = bar['pomodoro'] as PomodoroRecord?;
@@ -539,8 +585,8 @@ class CourseMonthView extends StatelessWidget {
       return todo.isDone
           ? (isDark ? Colors.white24 : Colors.black12)
           : (isTeam
-              ? Colors.green.withValues(alpha: 0.7)
-              : Colors.orange.withValues(alpha: 0.7));
+                ? Colors.green.withValues(alpha: 0.7)
+                : Colors.orange.withValues(alpha: 0.7));
     }
     if (log != null) {
       final tagColor = _firstTagColor(log.tagUuids);
@@ -579,8 +625,9 @@ class CourseMonthView extends StatelessWidget {
   }
 
   String _deviceCalendarTitle(DeviceCalendarEvent event) {
-    final timeLabel =
-        event.allDay ? '全天' : DateFormat('HH:mm').format(event.start);
+    final timeLabel = event.allDay
+        ? '全天'
+        : DateFormat('HH:mm').format(event.start);
     return '$timeLabel · ${event.title}';
   }
 
@@ -599,32 +646,30 @@ class CourseMonthView extends StatelessWidget {
   }
 
   Color _hexToColor(String hex) {
-    return AppColorUtils.hexToColor(
-      hex,
-      fallback: const Color(0xFF607D8B),
-    );
+    return AppColorUtils.hexToColor(hex, fallback: const Color(0xFF607D8B));
   }
 
   Widget _buildDetailedDayBackground(
-      BuildContext context,
-      DateTime day,
-      Color? heatColor,
-      bool isDark,
-      double height,
-      List<CourseItem> courses,
-      List<TodoItem> todos,
-      List<TimeLogItem> logs,
-      List<PomodoroRecord> poms,
-      List<FixedScheduleItem> fixedSchedules) {
+    BuildContext context,
+    DateTime day,
+    Color? heatColor,
+    bool isDark,
+    double height,
+    List<CourseItem> courses,
+    List<TodoItem> todos,
+    List<TimeLogItem> logs,
+    List<PomodoroRecord> poms,
+    List<FixedScheduleItem> fixedSchedules,
+  ) {
     bool isToday = DateUtils.isSameDay(day, DateTime.now());
     bool isCurrentMonth = day.month == selectedMonth.month;
 
     // 🚀 核心修复：小圆点和时间轴也要响应隐藏跨天设置
     List<TodoItem> filteredTodos = todos.where((t) {
       if (activeDataViews.contains('hideCrossDay')) {
-        final start =
-            DateTime.fromMillisecondsSinceEpoch(t.createdDate ?? t.createdAt)
-                .toLocal();
+        final start = DateTime.fromMillisecondsSinceEpoch(
+          t.createdDate ?? t.createdAt,
+        ).toLocal();
         bool isCrossDay =
             t.dueDate != null && !DateUtils.isSameDay(start, t.dueDate!);
         if (isCrossDay) return false;
@@ -634,28 +679,32 @@ class CourseMonthView extends StatelessWidget {
 
     return Container(
       decoration: BoxDecoration(
-        color: heatColor ??
+        color:
+            heatColor ??
             (isCurrentMonth
                 ? (isDark ? Colors.white.withValues(alpha: 0.02) : Colors.white)
                 : Colors.transparent),
         border: Border.all(
-            color:
-                isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.03),
-            width: 0.5),
+          color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.03),
+          width: 0.5,
+        ),
       ),
       child: Stack(
         children: [
           Padding(
             padding: const EdgeInsets.all(4.0),
-            child: Text('${day.day}',
-                style: TextStyle(
-                    fontSize: 10.5,
-                    color: isToday
-                        ? Colors.redAccent
-                        : (isCurrentMonth
-                            ? (isDark ? Colors.white70 : Colors.black87)
-                            : Colors.grey.withValues(alpha: 0.3)),
-                    fontWeight: isToday ? FontWeight.bold : FontWeight.normal)),
+            child: Text(
+              '${day.day}',
+              style: TextStyle(
+                fontSize: 10.5,
+                color: isToday
+                    ? Colors.redAccent
+                    : (isCurrentMonth
+                          ? (isDark ? Colors.white70 : Colors.black87)
+                          : Colors.grey.withValues(alpha: 0.3)),
+                fontWeight: isToday ? FontWeight.bold : FontWeight.normal,
+              ),
+            ),
           ),
           if (viewMode == 1 && height > 150)
             Positioned(
@@ -666,77 +715,87 @@ class CourseMonthView extends StatelessWidget {
               child: Stack(
                 children: [
                   Column(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: List.generate(
-                          4,
-                          (i) => Container(
-                              height: 0.5,
-                              width: double.infinity,
-                              color: isDark
-                                  ? Colors.white.withValues(alpha: 0.05)
-                                  : Colors.black.withValues(alpha: 0.05)))),
-                  ...courses.map((c) => _buildVerticalBar(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: List.generate(
+                      4,
+                      (i) => Container(
+                        height: 0.5,
+                        width: double.infinity,
+                        color: isDark
+                            ? Colors.white.withValues(alpha: 0.05)
+                            : Colors.black.withValues(alpha: 0.05),
+                      ),
+                    ),
+                  ),
+                  ...courses.map(
+                    (c) => _buildVerticalBar(
                       c.startTime,
                       c.endTime,
-                      Theme.of(context)
-                          .colorScheme
-                          .primary
+                      Theme.of(context).colorScheme.primary
                           .withValues(alpha: 0.6),
-                      height)),
-                  ...filteredTodos.where((t) => t.dueDate != null).map((t) =>
-                      _buildTimeDot(t.dueDate!.hour * 100 + t.dueDate!.minute,
-                          Colors.amber, height)),
+                      height,
+                    ),
+                  ),
+                  ...filteredTodos
+                      .where((t) => t.dueDate != null)
+                      .map(
+                        (t) => _buildTimeDot(
+                          t.dueDate!.hour * 100 + t.dueDate!.minute,
+                          Colors.amber,
+                          height,
+                        ),
+                      ),
                   ...logs.map((l) {
-                    DateTime s =
-                        DateTime.fromMillisecondsSinceEpoch(l.startTime)
-                            .toLocal();
+                    DateTime s = DateTime.fromMillisecondsSinceEpoch(
+                      l.startTime,
+                    ).toLocal();
                     DateTime e = DateTime.fromMillisecondsSinceEpoch(l.endTime)
                         .toLocal();
                     return _buildVerticalBar(
-                        s.hour * 100 + s.minute,
-                        e.hour * 100 + e.minute,
-                        Theme.of(context)
-                            .colorScheme
-                            .secondary
-                            .withValues(alpha: 0.4),
-                        height);
-                  }),
-                  ...poms.map((p) {
-                    final DateTime s =
-                        DateTime.fromMillisecondsSinceEpoch(p.startTime)
-                            .toLocal();
-                    final int endMs =
-                        p.endTime ?? (p.startTime + p.effectiveDuration * 1000);
-                    final DateTime e =
-                        DateTime.fromMillisecondsSinceEpoch(endMs).toLocal();
-                    return _buildVerticalBar(
-                        s.hour * 100 + s.minute,
-                        e.hour * 100 + e.minute,
-                        Colors.redAccent.withValues(alpha: 0.4),
-                        height);
-                  }),
-                  ...fixedSchedules
-                      .where((item) => item.startTime != null)
-                      .map((item) {
-                    final start =
-                        DateTime.fromMillisecondsSinceEpoch(item.startTime!);
-                    final end = item.endTime == null
-                        ? start.add(const Duration(hours: 1))
-                        : DateTime.fromMillisecondsSinceEpoch(item.endTime!);
-                    final startTime = start.hour * 100 + start.minute;
-                    final endTime = end.day == start.day
-                        ? end.hour * 100 + end.minute
-                        : 2400;
-                    return _buildVerticalBar(
-                      startTime,
-                      endTime,
-                      Theme.of(context)
-                          .colorScheme
-                          .primary
-                          .withValues(alpha: 0.55),
+                      s.hour * 100 + s.minute,
+                      e.hour * 100 + e.minute,
+                      Theme.of(context).colorScheme.secondary
+                          .withValues(alpha: 0.4),
                       height,
                     );
                   }),
+                  ...poms.map((p) {
+                    final DateTime s = DateTime.fromMillisecondsSinceEpoch(
+                      p.startTime,
+                    ).toLocal();
+                    final int endMs =
+                        p.endTime ?? (p.startTime + p.effectiveDuration * 1000);
+                    final DateTime e = DateTime.fromMillisecondsSinceEpoch(
+                      endMs,
+                    ).toLocal();
+                    return _buildVerticalBar(
+                      s.hour * 100 + s.minute,
+                      e.hour * 100 + e.minute,
+                      Colors.redAccent.withValues(alpha: 0.4),
+                      height,
+                    );
+                  }),
+                  ...fixedSchedules.where((item) => item.startTime != null).map(
+                    (item) {
+                      final start = DateTime.fromMillisecondsSinceEpoch(
+                        item.startTime!,
+                      );
+                      final end = item.endTime == null
+                          ? start.add(const Duration(hours: 1))
+                          : DateTime.fromMillisecondsSinceEpoch(item.endTime!);
+                      final startTime = start.hour * 100 + start.minute;
+                      final endTime = end.day == start.day
+                          ? end.hour * 100 + end.minute
+                          : 2400;
+                      return _buildVerticalBar(
+                        startTime,
+                        endTime,
+                        Theme.of(context).colorScheme.primary
+                            .withValues(alpha: 0.55),
+                        height,
+                      );
+                    },
+                  ),
                 ],
               ),
             ),
@@ -745,16 +804,19 @@ class CourseMonthView extends StatelessWidget {
               bottom: 4,
               left: 4,
               right: 4,
-              child: Wrap(spacing: 2, children: [
-                if (courses.isNotEmpty)
-                  _buildMiniDot(Theme.of(context).colorScheme.primary),
-                if (filteredTodos.isNotEmpty) _buildMiniDot(Colors.amber),
-                if (logs.isNotEmpty)
-                  _buildMiniDot(Theme.of(context).colorScheme.secondary),
-                if (poms.isNotEmpty) _buildMiniDot(Colors.redAccent),
-                if (fixedSchedules.isNotEmpty)
-                  _buildMiniDot(Theme.of(context).colorScheme.primary),
-              ]),
+              child: Wrap(
+                spacing: 2,
+                children: [
+                  if (courses.isNotEmpty)
+                    _buildMiniDot(Theme.of(context).colorScheme.primary),
+                  if (filteredTodos.isNotEmpty) _buildMiniDot(Colors.amber),
+                  if (logs.isNotEmpty)
+                    _buildMiniDot(Theme.of(context).colorScheme.secondary),
+                  if (poms.isNotEmpty) _buildMiniDot(Colors.redAccent),
+                  if (fixedSchedules.isNotEmpty)
+                    _buildMiniDot(Theme.of(context).colorScheme.primary),
+                ],
+              ),
             ),
         ],
       ),
@@ -765,31 +827,40 @@ class CourseMonthView extends StatelessWidget {
     double startY = _calculateTimeY(start, 600, 2400);
     double endY = _calculateTimeY(end, 600, 2400);
     return Positioned(
-        top: startY * (height - 30),
-        height: (endY - startY).clamp(0.02, 1.0) * (height - 30),
-        left: 0,
-        width: 3,
-        child: Container(
-            decoration: BoxDecoration(
-                color: color, borderRadius: BorderRadius.circular(1))));
+      top: startY * (height - 30),
+      height: (endY - startY).clamp(0.02, 1.0) * (height - 30),
+      left: 0,
+      width: 3,
+      child: Container(
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(1),
+        ),
+      ),
+    );
   }
 
   Widget _buildTimeDot(int time, Color color, double height) {
     double y = _calculateTimeY(time, 600, 2400);
     return Positioned(
-        top: y * (height - 30),
-        left: 4,
-        width: 4,
-        height: 4,
-        child: Container(
-            decoration: BoxDecoration(color: color, shape: BoxShape.circle)));
+      top: y * (height - 30),
+      left: 4,
+      width: 4,
+      height: 4,
+      child: Container(
+        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+      ),
+    );
   }
 
   Widget _buildMiniDot(Color color) => Container(
-      width: 4,
-      height: 4,
-      decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.6), shape: BoxShape.circle));
+    width: 4,
+    height: 4,
+    decoration: BoxDecoration(
+      color: color.withValues(alpha: 0.6),
+      shape: BoxShape.circle,
+    ),
+  );
 
   double _calculateTimeY(int time, int start, int end) {
     int minutes = (time ~/ 100) * 60 + (time % 100);
@@ -801,16 +872,25 @@ class CourseMonthView extends StatelessWidget {
   Widget _buildWeekdayHeader(BuildContext context) {
     final weekdays = ['一', '二', '三', '四', '五', '六', '日'];
     return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Row(
-            children: weekdays
-                .map((day) => Expanded(
-                    child: Center(
-                        child: Text(day,
-                            style: const TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey,
-                                fontWeight: FontWeight.bold)))))
-                .toList()));
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: weekdays
+            .map(
+              (day) => Expanded(
+                child: Center(
+                  child: Text(
+                    day,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+            )
+            .toList(),
+      ),
+    );
   }
 }

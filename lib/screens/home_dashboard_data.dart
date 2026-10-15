@@ -1,4 +1,5 @@
 part of 'home_dashboard.dart';
+
 // ignore_for_file: annotate_overrides
 
 mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
@@ -27,7 +28,8 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
     List<TodoPlanBlock> planBlocks,
   ) {
     final courses = courseData['courses'];
-    final isCourseEmpty = courses == null ||
+    final isCourseEmpty =
+        courses == null ||
         (courses is List && courses.isEmpty) ||
         (courseData['title']?.toString().contains('天后') ?? false) ||
         courseData['title'] == '最近无课' ||
@@ -36,8 +38,11 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
 
     final now = DateTime.now();
     final nowMs = now.millisecondsSinceEpoch;
-    final tomorrowEndMs =
-        DateTime(now.year, now.month, now.day + 2).millisecondsSinceEpoch;
+    final tomorrowEndMs = DateTime(
+      now.year,
+      now.month,
+      now.day + 2,
+    ).millisecondsSinceEpoch;
     final hasActivePlans = planBlocks.any(
       (block) =>
           !block.isDeleted &&
@@ -175,8 +180,8 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
           final startMinute = slotMap['startMinute'] as int;
           final endHour = slotMap['endHour'] as int;
           final endMinute = slotMap['endMinute'] as int;
-          final greetings =
-              (slotMap['greetings'] as List<dynamic>?)?.cast<String>();
+          final greetings = (slotMap['greetings'] as List<dynamic>?)
+              ?.cast<String>();
 
           if (greetings == null || greetings.isEmpty) continue;
 
@@ -300,12 +305,14 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
 
   void _debounceCollaborativeSync() {
     _collaborativeSyncDebouncer?.cancel();
-    _collaborativeSyncDebouncer =
-        Timer(const Duration(milliseconds: 1500), () async {
-      if (!mounted) return;
-      // debugPrint('🔄 [协同] 防抖触发：执行批量同步与界面刷新...');
-      await _handleManualSync(silent: true);
-    });
+    _collaborativeSyncDebouncer = Timer(
+      const Duration(milliseconds: 1500),
+      () async {
+        if (!mounted) return;
+        // debugPrint('🔄 [协同] 防抖触发：执行批量同步与界面刷新...');
+        await _handleManualSync(silent: true);
+      },
+    );
   }
 
   /// 🚀 辅助：带超时和错误捕获的任务加载器
@@ -354,7 +361,8 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
     }
 
     _isDashboardLoadInProgress = true;
-    final showInitialSkeleton = _todos.isEmpty &&
+    final showInitialSkeleton =
+        _todos.isEmpty &&
         (_dashboardCourseData['courses'] as List? ?? const []).isEmpty;
     if (showInitialSkeleton) _isGlobalLoadingNotifier.value = true;
     var hadTaskFailure = false;
@@ -364,16 +372,20 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
 
       // 1. 读取基础数据 (并发执行，带超时保护)
       final loadTodos = requestedDomains.contains(DataRefreshDomain.todos);
-      final loadGroups =
-          requestedDomains.contains(DataRefreshDomain.todoGroups);
-      final loadCountdowns =
-          requestedDomains.contains(DataRefreshDomain.countdowns);
+      final loadGroups = requestedDomains.contains(
+        DataRefreshDomain.todoGroups,
+      );
+      final loadCountdowns = requestedDomains.contains(
+        DataRefreshDomain.countdowns,
+      );
       final loadMath = requestedDomains.contains(DataRefreshDomain.mathStats);
       final loadCourses = requestedDomains.contains(DataRefreshDomain.courses);
-      final loadPlanBlocks =
-          requestedDomains.contains(DataRefreshDomain.planBlocks);
-      final loadFixedSchedules =
-          requestedDomains.contains(DataRefreshDomain.fixedSchedules);
+      final loadPlanBlocks = requestedDomains.contains(
+        DataRefreshDomain.planBlocks,
+      );
+      final loadFixedSchedules = requestedDomains.contains(
+        DataRefreshDomain.fixedSchedules,
+      );
       final requestedTasks = [
         loadTodos,
         loadGroups,
@@ -387,7 +399,9 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
       final results = await Future.wait<dynamic>([
         if (loadTodos)
           _loadDataTask(
-              "Todos", StorageService.getTodos(widget.username, limit: 200))
+            "Todos",
+            StorageService.getTodos(widget.username, limit: 200),
+          )
         else
           Future<dynamic>.value(_todos),
         if (loadGroups)
@@ -396,7 +410,9 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
           Future<dynamic>.value(_todoGroups),
         if (loadCountdowns)
           _loadDataTask(
-              "Countdowns", StorageService.getCountdowns(widget.username))
+            "Countdowns",
+            StorageService.getCountdowns(widget.username),
+          )
         else
           Future<dynamic>.value(_countdowns),
         if (loadMath)
@@ -405,17 +421,23 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
           Future<dynamic>.value(_mathStats),
         if (loadCourses)
           _loadDataTask(
-              "Courses", CourseService.getDashboardCourses(widget.username))
+            "Courses",
+            CourseService.getDashboardCourses(widget.username),
+          )
         else
           Future<dynamic>.value(_dashboardCourseData),
         if (loadPlanBlocks)
           _loadDataTask(
-              "PlanBlocks", StorageService.getPlanBlocks(widget.username))
+            "PlanBlocks",
+            StorageService.getPlanBlocks(widget.username),
+          )
         else
           Future<dynamic>.value(_planBlocks),
         if (loadFixedSchedules)
-          _loadDataTask("FixedSchedules",
-              StorageService.getFixedSchedules(widget.username))
+          _loadDataTask(
+            "FixedSchedules",
+            StorageService.getFixedSchedules(widget.username),
+          )
         else
           Future<dynamic>.value(_fixedSchedules),
       ]);
@@ -443,11 +465,12 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
             .where((t) => !t.isDeleted)
             .toList(),
       );
-      final List<TodoGroup> allGroups = (results[1] == null
-              ? List<TodoGroup>.from(_todoGroups)
-              : _safeListResult<TodoGroup>(results[1]))
-          .where((g) => !g.isDeleted)
-          .toList();
+      final List<TodoGroup> allGroups =
+          (results[1] == null
+                  ? List<TodoGroup>.from(_todoGroups)
+                  : _safeListResult<TodoGroup>(results[1]))
+              .where((g) => !g.isDeleted)
+              .toList();
       final List<CountdownItem> allCountdowns = _safeListResult<CountdownItem>(
         results[2] ?? _countdowns,
       ).where((c) => !c.isDeleted).toList();
@@ -459,11 +482,11 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
       final bool hasTeamConflict = !conflictInputsChanged
           ? _hasTeamConflictDot
           : conflictDetectionEnabled &&
-              ConflictVisibilityService.hasTeamConflict(
-                todos: allTodos,
-                groups: allGroups,
-                countdowns: allCountdowns,
-              );
+                ConflictVisibilityService.hasTeamConflict(
+                  todos: allTodos,
+                  groups: allGroups,
+                  countdowns: allCountdowns,
+                );
 
       final Map<String, dynamic> mathStats = results[3] == null
           ? Map<String, dynamic>.from(_mathStats)
@@ -477,12 +500,14 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
       final List<FixedScheduleItem> allFixedSchedules = results[6] == null
           ? List<FixedScheduleItem>.from(_fixedSchedules)
           : _safeListResult<FixedScheduleItem>(results[6]);
-      final activityInputsChanged = loadTodos ||
+      final activityInputsChanged =
+          loadTodos ||
           loadGroups ||
           loadCourses ||
           loadPlanBlocks ||
           loadFixedSchedules;
-      final activityInputsReady = activityInputsChanged &&
+      final activityInputsReady =
+          activityInputsChanged &&
           (!loadTodos || results[0] != null) &&
           (!loadGroups || results[1] != null) &&
           (!loadCourses || results[4] != null) &&
@@ -492,19 +517,27 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
       if (mounted) {
         final bool todosChanged = !_isListEqual(_todos, allTodos);
         final bool groupsChanged = !_isListEqual(_todoGroups, allGroups);
-        final bool countdownsChanged =
-            !_isListEqual(_countdowns, allCountdowns);
+        final bool countdownsChanged = !_isListEqual(
+          _countdowns,
+          allCountdowns,
+        );
         final bool mathChanged = !_isMapEqual(_mathStats, mathStats);
-        final bool coursesChanged =
-            !_isMapEqual(_dashboardCourseData, courseData);
+        final bool coursesChanged = !_isMapEqual(
+          _dashboardCourseData,
+          courseData,
+        );
         final bool plansChanged = !_isListEqual(_planBlocks, allPlanBlocks);
-        final bool fixedSchedulesChanged =
-            !_isListEqual(_fixedSchedules, allFixedSchedules);
+        final bool fixedSchedulesChanged = !_isListEqual(
+          _fixedSchedules,
+          allFixedSchedules,
+        );
         final conflictDotChanged = _hasTeamConflictDot != hasTeamConflict;
-        final noCourseLayoutChanged = todosChanged &&
+        final noCourseLayoutChanged =
+            todosChanged &&
             _hasNoCourseLayout(_todos, _dashboardCourseData, _planBlocks) !=
                 _hasNoCourseLayout(allTodos, courseData, allPlanBlocks);
-        final requiresRootLayoutRebuild = coursesChanged ||
+        final requiresRootLayoutRebuild =
+            coursesChanged ||
             plansChanged ||
             fixedSchedulesChanged ||
             noCourseLayoutChanged;
@@ -551,13 +584,15 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
         }
 
         if (activityInputsReady) {
-          unawaited(MacPomodoroStatusBarService.syncOngoingActivityFromData(
-            todos: allTodos,
-            todoGroups: allGroups,
-            planBlocks: allPlanBlocks,
-            courses: _safeListResult<CourseItem>(courseData['courses']),
-            fixedSchedules: allFixedSchedules,
-          ));
+          unawaited(
+            MacPomodoroStatusBarService.syncOngoingActivityFromData(
+              todos: allTodos,
+              todoGroups: allGroups,
+              planBlocks: allPlanBlocks,
+              courses: _safeListResult<CourseItem>(courseData['courses']),
+              fixedSchedules: allFixedSchedules,
+            ),
+          );
         }
 
         _debouncedSyncTodoNotification(todosChanged);
@@ -589,8 +624,9 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
           _isGlobalLoadingNotifier.value = false;
         }
         if (_pendingReloadDomains.isNotEmpty) {
-          final pendingDomains =
-              Set<DataRefreshDomain>.from(_pendingReloadDomains);
+          final pendingDomains = Set<DataRefreshDomain>.from(
+            _pendingReloadDomains,
+          );
           _pendingReloadDomains.clear();
           // 局部刷新不能吞掉本轮失败域；两者合并后立即重试，
           // 后续仍会沿用既有的指数退避策略。
@@ -606,10 +642,13 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
           _dashboardLoadRetryTimer?.cancel();
           _dashboardLoadRetryTimer = Timer(retryDelay, () {
             if (mounted) {
-              unawaited(_loadAllData(
-                domains:
-                    failedDomains.isEmpty ? requestedDomains : failedDomains,
-              ));
+              unawaited(
+                _loadAllData(
+                  domains: failedDomains.isEmpty
+                      ? requestedDomains
+                      : failedDomains,
+                ),
+              );
             }
           });
         }
@@ -621,15 +660,17 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
 
   Future<void> _checkCoachMarks() async {
     if (_showCoachMarks || !mounted) return;
-    final hasSeenCoachMarks =
-        await FeatureTipService.hasTipBeenShown('coach_home_intro');
+    final hasSeenCoachMarks = await FeatureTipService.hasTipBeenShown(
+      'coach_home_intro',
+    );
     if (hasSeenCoachMarks) {
       await _checkQuickVoiceCoachMarks();
       return;
     }
     if (mounted) {
       _showCoachMarks = true;
-      final isTablet = MediaQuery.of(context).size.shortestSide >= 600 ||
+      final isTablet =
+          MediaQuery.of(context).size.shortestSide >= 600 ||
           MediaQuery.of(context).size.width > 800;
 
       final finished = await CoachMarkOverlay.show(
@@ -765,8 +806,9 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
   // 🚀 新增：检查并显示专注 Tab 的引导
   Future<void> _checkFocusTabCoachMarks() async {
     if (_showCoachMarks || !mounted) return;
-    final hasSeenCoachMarks =
-        await FeatureTipService.hasTipBeenShown('coach_focus_tab');
+    final hasSeenCoachMarks = await FeatureTipService.hasTipBeenShown(
+      'coach_focus_tab',
+    );
     if (hasSeenCoachMarks) return;
     if (mounted) {
       _showCoachMarks = true;
@@ -842,7 +884,8 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
 
     if (action == 'snooze_today') {
       await CourseCalendarAdjustmentService.snoozeOfficialHolidayPromptForToday(
-          window.key);
+        window.key,
+      );
       return;
     }
 
@@ -850,9 +893,7 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
       await Navigator.push(
         context,
         PageTransitions.slideHorizontal(
-          CourseCalendarAdjustmentScreen(
-            initialOfficialHolidayKey: window.key,
-          ),
+          CourseCalendarAdjustmentScreen(initialOfficialHolidayKey: window.key),
         ),
       );
       if (mounted) {

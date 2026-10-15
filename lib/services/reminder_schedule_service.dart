@@ -1,4 +1,5 @@
 import 'package:shared_preferences/shared_preferences.dart';
+
 import '../models.dart';
 import '../features/finance/services/finance_automation_service.dart';
 import '../storage_service.dart';
@@ -92,8 +93,9 @@ class ReminderScheduleService {
     // ── 获取当前用户 ────────────────────────────────────────────────
     final effectiveUsername = username.isEmpty ? 'default' : username;
 
-    final fixedSchedules =
-        await StorageService.getFixedSchedules(effectiveUsername);
+    final fixedSchedules = await StorageService.getFixedSchedules(
+      effectiveUsername,
+    );
 
     // ── 记账自动化 ──────────────────────────────────────────────────
     // 自动生成当前已到期周期账单，并把未来 7 天的账单加入同一套系统提醒。
@@ -128,9 +130,10 @@ class ReminderScheduleService {
         dateOnlyDayStart = DateTime(date.year, date.month, date.day);
         refTime = DateTime(date.year, date.month, date.day, 23, 59);
       } else if (t.createdDate != null && t.createdDate! > 0) {
-        refTime =
-            DateTime.fromMillisecondsSinceEpoch(t.createdDate!, isUtc: true)
-                .toLocal();
+        refTime = DateTime.fromMillisecondsSinceEpoch(
+          t.createdDate!,
+          isUtc: true,
+        ).toLocal();
       } else if (t.dueDate != null) {
         refTime = t.dueDate!.toLocal();
       }
@@ -140,7 +143,8 @@ class ReminderScheduleService {
       // 提醒提前量
       final advance = t.reminderMinutes ?? _todoAdvanceMinutes;
       final requestedTriggerAt = refTime.subtract(Duration(minutes: advance));
-      final triggerAt = dateOnlyDayStart != null &&
+      final triggerAt =
+          dateOnlyDayStart != null &&
               requestedTriggerAt.isBefore(dateOnlyDayStart)
           ? dateOnlyDayStart
           : requestedTriggerAt;
@@ -219,8 +223,9 @@ class ReminderScheduleService {
         final hour = c.startTime ~/ 100;
         final minute = c.startTime % 100;
         final courseStart = DateTime(year, month, day, hour, minute);
-        final triggerAt =
-            courseStart.subtract(Duration(minutes: courseAdvanceMinutes));
+        final triggerAt = courseStart.subtract(
+          Duration(minutes: courseAdvanceMinutes),
+        );
         if (shouldSchedulePreStart(
           startAt: courseStart,
           triggerAt: triggerAt,
@@ -231,10 +236,13 @@ class ReminderScheduleService {
             'triggerAtMs': triggerAt.toUtc().millisecondsSinceEpoch,
             'startAtMs': courseStart.toUtc().millisecondsSinceEpoch,
             'courseStartMs': courseStart.toUtc().millisecondsSinceEpoch,
-            'courseEndMs':
-                DateTime(year, month, day, c.endTime ~/ 100, c.endTime % 100)
-                    .toUtc()
-                    .millisecondsSinceEpoch,
+            'courseEndMs': DateTime(
+              year,
+              month,
+              day,
+              c.endTime ~/ 100,
+              c.endTime % 100,
+            ).toUtc().millisecondsSinceEpoch,
             'title': '📚 ${c.courseName}',
             'text': '${_hm(courseStart)} · ${c.roomName}',
             'notifId': _courseBaseId + i,
@@ -252,11 +260,13 @@ class ReminderScheduleService {
       }
     }
 
-    reminders.addAll(buildFixedScheduleReminders(
-      fixedSchedules: fixedSchedules,
-      now: now,
-      limit: limit,
-    ));
+    reminders.addAll(
+      buildFixedScheduleReminders(
+        fixedSchedules: fixedSchedules,
+        now: now,
+        limit: limit,
+      ),
+    );
 
     // ── 规划块提醒 ──────────────────────────────────────────────────
     final planBlocks = await StorageService.getPlanBlocks(effectiveUsername);
@@ -320,10 +330,12 @@ class ReminderScheduleService {
       await UserSessionStorage.ensureCurrentSession(session);
     }
     final ownedReminders = reminders
-        .map((reminder) => ScheduledReminderRegistry.withSource(
-              reminder,
-              ScheduledReminderSources.reminderSchedule,
-            ))
+        .map(
+          (reminder) => ScheduledReminderRegistry.withSource(
+            reminder,
+            ScheduledReminderSources.reminderSchedule,
+          ),
+        )
         .toList(growable: false);
     await NotificationService.scheduleReminders(
       ownedReminders,
@@ -384,13 +396,11 @@ class ReminderScheduleService {
           item.startTime == null) {
         continue;
       }
-      final start =
-          DateTime.fromMillisecondsSinceEpoch(item.startTime!).toLocal();
-      final advances = item.reminderMinutes
-          .where((minutes) => minutes >= 0)
-          .toSet()
-          .toList()
-        ..sort((left, right) => right.compareTo(left));
+      final start = DateTime.fromMillisecondsSinceEpoch(item.startTime!)
+          .toLocal();
+      final advances =
+          item.reminderMinutes.where((minutes) => minutes >= 0).toSet().toList()
+            ..sort((left, right) => right.compareTo(left));
       final timeText = item.endTime == null
           ? '${_hm(start)} · 结束时间待定'
           : '${_hm(start)} - ${_hm(DateTime.fromMillisecondsSinceEpoch(item.endTime!).toLocal())}';
@@ -399,10 +409,12 @@ class ReminderScheduleService {
         if (item.remark?.trim().isNotEmpty == true) item.remark!.trim(),
         timeText,
       ];
-      for (var reminderIndex = 0;
-          reminderIndex < advances.length &&
-              reminderIndex < _fixedScheduleReminderStride;
-          reminderIndex++) {
+      for (
+        var reminderIndex = 0;
+        reminderIndex < advances.length &&
+            reminderIndex < _fixedScheduleReminderStride;
+        reminderIndex++
+      ) {
         final advance = advances[reminderIndex];
         final triggerAt = start.subtract(Duration(minutes: advance));
         if (!shouldSchedulePreStart(
@@ -418,7 +430,8 @@ class ReminderScheduleService {
           'startAtMs': start.toUtc().millisecondsSinceEpoch,
           'title': '📌 ${item.title}',
           'text': detailParts.join(' · '),
-          'notifId': _fixedScheduleBaseId +
+          'notifId':
+              _fixedScheduleBaseId +
               index * _fixedScheduleReminderStride +
               reminderIndex,
           'type': 'fixed_schedule',

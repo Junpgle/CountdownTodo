@@ -27,9 +27,7 @@ abstract final class HabitRuleResolver {
   static DateTime logicalDateFor(DateTime localTime, int dayBoundaryMinute) {
     final date = DateTime(localTime.year, localTime.month, localTime.day);
     final minuteOfDay = localTime.hour * 60 + localTime.minute;
-    return minuteOfDay < dayBoundaryMinute
-        ? addCalendarDays(date, -1)
-        : date;
+    return minuteOfDay < dayBoundaryMinute ? addCalendarDays(date, -1) : date;
   }
 
   /// 逻辑日期键（'yyyy-MM-dd'），用于数据库存储与比较。
@@ -226,10 +224,7 @@ abstract final class HabitRuleResolver {
   }
 
   /// 周期键：每天习惯按天、每周按 ISO 周、每月按年月。
-  static String periodKey(
-    HabitGoalRuleRevision rule,
-    DateTime logicalDate,
-  ) {
+  static String periodKey(HabitGoalRuleRevision rule, DateTime logicalDate) {
     switch (rule.periodType) {
       case HabitPeriodType.daily:
       case HabitPeriodType.weekdays:

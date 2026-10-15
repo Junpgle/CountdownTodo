@@ -2,16 +2,22 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_zoom_drawer/flutter_zoom_drawer.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+
 import 'dart:async';
+
 import '../widgets/home_drawer_menu.dart';
+
 import 'package:intl/intl.dart';
+
 import 'dart:math';
 import 'dart:convert';
+
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'package:url_launcher/url_launcher.dart';
+
 import '../services/search_service.dart';
 import '../utils/page_transitions.dart';
 
@@ -137,10 +143,7 @@ const _homeFocusTabIndex = 4;
 
 class HomeDashboard extends StatefulWidget {
   final String username;
-  const HomeDashboard({
-    super.key,
-    required this.username,
-  });
+  const HomeDashboard({super.key, required this.username});
 
   @override
   State<HomeDashboard> createState() => _HomeDashboardState();
@@ -159,7 +162,7 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
   List<dynamic> _screenTimeStats = [];
   Map<String, dynamic> _dashboardCourseData = {
     'title': '课程提醒',
-    'courses': <CourseItem>[]
+    'courses': <CourseItem>[],
   };
 
   String _noCourseBehavior = 'keep';
@@ -192,10 +195,12 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
     'pomodoro',
     'finance',
   ];
-  List<String> _mobileHomeSections =
-      HomeLayoutService.defaultOrder(HomeLayoutTarget.mobileHome);
-  List<String> _mobileFocusSections =
-      HomeLayoutService.defaultOrder(HomeLayoutTarget.mobileFocus);
+  List<String> _mobileHomeSections = HomeLayoutService.defaultOrder(
+    HomeLayoutTarget.mobileHome,
+  );
+  List<String> _mobileFocusSections = HomeLayoutService.defaultOrder(
+    HomeLayoutTarget.mobileFocus,
+  );
   int _habitDisplayLimit = HomeLayoutService.defaultHabitDisplayLimit;
 
   Map<String, bool> _sectionVisibility = {
@@ -249,7 +254,9 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
   final ValueNotifier<int> _habitsRevision = ValueNotifier<int>(0);
 
   Future<void> _extractColorFromProvider(
-      ImageProvider provider, String url) async {
+    ImageProvider provider,
+    String url,
+  ) async {
     if (_extractedWallpaperUrl == url) return;
     _extractedWallpaperUrl = url;
     try {
@@ -262,7 +269,8 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
       if (mounted) {
         setState(() {
           // 增加多级降级策略，确保一定能取到颜色
-          _wallpaperDominantColor = palette.dominantColor?.color ??
+          _wallpaperDominantColor =
+              palette.dominantColor?.color ??
               palette.vibrantColor?.color ??
               palette.mutedColor?.color ??
               palette.lightVibrantColor?.color ??
@@ -346,8 +354,9 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
   late final ValueNotifier<List<CountdownItem>> _countdownsNotifier;
   late final ValueNotifier<Map<String, dynamic>> _mathStatsNotifier;
 
-  final ValueNotifier<bool> _isGlobalLoadingNotifier =
-      ValueNotifier<bool>(false);
+  final ValueNotifier<bool> _isGlobalLoadingNotifier = ValueNotifier<bool>(
+    false,
+  );
   bool _isDashboardLoadInProgress = false;
   final ValueNotifier<int> _todoUpdateSignalNotifier = ValueNotifier<int>(0);
 
@@ -385,7 +394,7 @@ class _HomeDashboardState extends _HomeDashboardStateBase
 /// 🚀 首页 Banner 事件模型
 class HomeBannerEvent {
   final String
-      type; // 'pomodoro', 'course', 'todo', 'special_todo', 'plan_block'
+  type; // 'pomodoro', 'course', 'todo', 'special_todo', 'plan_block'
   final String title;
   final String? subtitle; // 地点或备注
   final String label; // e.g. "正在进行的课程"
@@ -460,8 +469,9 @@ class _WallpaperNetworkImageState extends State<_WallpaperNetworkImage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       widget.onError();
-      widget.onImageProvider
-          ?.call(const AssetImage('assets/images/default_wallpaper.webp'));
+      widget.onImageProvider?.call(
+        const AssetImage('assets/images/default_wallpaper.webp'),
+      );
     });
   }
 
@@ -469,10 +479,14 @@ class _WallpaperNetworkImageState extends State<_WallpaperNetworkImage> {
   Widget build(BuildContext context) {
     final media = MediaQuery.sizeOf(context);
     final pixelRatio = MediaQuery.devicePixelRatioOf(context);
-    final cacheWidth =
-        (media.width * pixelRatio).round().clamp(1, 4096).toInt();
-    final cacheHeight =
-        (media.height * pixelRatio).round().clamp(1, 4096).toInt();
+    final cacheWidth = (media.width * pixelRatio)
+        .round()
+        .clamp(1, 4096)
+        .toInt();
+    final cacheHeight = (media.height * pixelRatio)
+        .round()
+        .clamp(1, 4096)
+        .toInt();
     return CachedNetworkImage(
       imageUrl: widget.url,
       cacheManager: WallpaperCacheService.cacheManager,
@@ -482,8 +496,7 @@ class _WallpaperNetworkImageState extends State<_WallpaperNetworkImage> {
       fadeInDuration: const Duration(milliseconds: 350),
       useOldImageOnUrlChange: true,
       httpHeaders: const {
-        'User-Agent':
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
       },
       imageBuilder: (context, provider) {
         _reportSuccess(provider);

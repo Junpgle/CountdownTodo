@@ -67,11 +67,7 @@ String formatCountdown(int totalSeconds) {
 class AppTimeFormats {
   const AppTimeFormats._();
 
-  static String format(
-    DateTime time,
-    String pattern, {
-    String? locale,
-  }) {
+  static String format(DateTime time, String pattern, {String? locale}) {
     return DateFormat(pattern, locale).format(time);
   }
 
@@ -129,8 +125,10 @@ class AppTimeFormats {
   }
 
   static DateTime localFromTimestamp(int timestamp, {bool isUtc = false}) {
-    return DateTime.fromMillisecondsSinceEpoch(timestamp, isUtc: isUtc)
-        .toLocal();
+    return DateTime.fromMillisecondsSinceEpoch(
+      timestamp,
+      isUtc: isUtc,
+    ).toLocal();
   }
 
   static DateTime localFromServerTimestamp(int timestamp) {
@@ -149,10 +147,7 @@ class AppTimeFormats {
     return format(localFromServerTimestamp(timestamp), pattern);
   }
 
-  static String relativeFromServerTimestamp(
-    int timestamp, {
-    DateTime? now,
-  }) {
+  static String relativeFromServerTimestamp(int timestamp, {DateTime? now}) {
     final instant = now ?? DateTime.now();
     final date = localFromServerTimestamp(timestamp);
     final days = CalendarDateMath.daysBetween(instant, date);
@@ -177,8 +172,10 @@ class TimezoneUtils {
   }
 
   /// 将服务器 UTC 时间戳转换为设备本地显示时间
-  static String formatToLocal(int? timestamp,
-      {String pattern = 'MM-dd HH:mm'}) {
+  static String formatToLocal(
+    int? timestamp, {
+    String pattern = 'MM-dd HH:mm',
+  }) {
     return AppTimeFormats.formatServerTimestamp(timestamp, pattern: pattern);
   }
 

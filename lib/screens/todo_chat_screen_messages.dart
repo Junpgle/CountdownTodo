@@ -102,7 +102,8 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
                               if (msg.usageSummary != null)
                                 _buildUsageSummaryFooter(
                                   msg.usageSummary!,
-                                  isVoice: msg.usageSummary!.model ==
+                                  isVoice:
+                                      msg.usageSummary!.model ==
                                       MimoAsrService.model,
                                   foregroundColor: colorScheme.onPrimary,
                                 ),
@@ -514,8 +515,9 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
       decoration: BoxDecoration(
         border: Border(
           top: BorderSide(
-            color: (foregroundColor ?? scheme.outlineVariant)
-                .withValues(alpha: 0.55),
+            color: (foregroundColor ?? scheme.outlineVariant).withValues(
+              alpha: 0.55,
+            ),
           ),
         ),
       ),

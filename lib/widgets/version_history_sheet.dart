@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../services/api_service.dart';
 import '../storage_service.dart';
 import '../utils/app_dialogs.dart';
@@ -20,7 +21,11 @@ class VersionHistorySheet extends StatefulWidget {
   });
 
   static void show(
-      BuildContext context, String uuid, String table, String title) {
+    BuildContext context,
+    String uuid,
+    String table,
+    String title,
+  ) {
     AppDialogs.showAppBottomSheet<void>(
       context: context,
       builder: (context) =>
@@ -60,8 +65,10 @@ class _VersionHistorySheetState extends State<VersionHistorySheet>
 
   Future<void> _loadHistory() async {
     setState(() => _isLoading = true);
-    final history =
-        await ApiService.fetchItemHistory(widget.uuid, widget.table);
+    final history = await ApiService.fetchItemHistory(
+      widget.uuid,
+      widget.table,
+    );
     if (mounted) {
       setState(() {
         _history = history;
@@ -115,10 +122,7 @@ class _VersionHistorySheetState extends State<VersionHistorySheet>
 
     if (confirmed) {
       if (!mounted) return;
-      AppDialogs.showLoading(
-        context,
-        isLocal ? '正在回滚本地版本...' : '正在执行云端回滚...',
-      );
+      AppDialogs.showLoading(context, isLocal ? '正在回滚本地版本...' : '正在执行云端回滚...');
 
       try {
         final username = await StorageService.getCurrentUsername();
@@ -236,10 +240,12 @@ class _VersionHistorySheetState extends State<VersionHistorySheet>
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final localHistory =
-        _history.where((item) => item['is_local'] == true).toList();
-    final cloudHistory =
-        _history.where((item) => item['is_local'] != true).toList();
+    final localHistory = _history
+        .where((item) => item['is_local'] == true)
+        .toList();
+    final cloudHistory = _history
+        .where((item) => item['is_local'] != true)
+        .toList();
 
     return DraggableScrollableSheet(
       initialChildSize: 0.45,
@@ -284,14 +290,16 @@ class _VersionHistorySheetState extends State<VersionHistorySheet>
                           _buildHistoryList(
                             history: localHistory,
                             emptyLabel: '暂无本地修改记录',
-                            scrollController:
-                                _currentTabIndex == 0 ? scrollController : null,
+                            scrollController: _currentTabIndex == 0
+                                ? scrollController
+                                : null,
                           ),
                           _buildHistoryList(
                             history: cloudHistory,
                             emptyLabel: '暂无云端修改记录',
-                            scrollController:
-                                _currentTabIndex == 1 ? scrollController : null,
+                            scrollController: _currentTabIndex == 1
+                                ? scrollController
+                                : null,
                           ),
                         ],
                       ),
@@ -304,10 +312,7 @@ class _VersionHistorySheetState extends State<VersionHistorySheet>
   }
 
   Widget _buildEmptyState([String message = '暂无修改记录']) {
-    return AppEmptyState(
-      icon: Icons.history_toggle_off,
-      title: message,
-    );
+    return AppEmptyState(icon: Icons.history_toggle_off, title: message);
   }
 
   Widget _buildHistoryList({
@@ -364,7 +369,8 @@ class _VersionHistorySheetState extends State<VersionHistorySheet>
         color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-            color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+          color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -373,15 +379,22 @@ class _VersionHistorySheetState extends State<VersionHistorySheet>
             children: [
               Icon(opIcon, size: 16, color: opColor),
               const SizedBox(width: 8),
-              Text(opType,
-                  style: TextStyle(
-                      color: opColor,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12)),
+              Text(
+                opType,
+                style: TextStyle(
+                  color: opColor,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                ),
+              ),
               const Spacer(),
-              Text(timeStr,
-                  style: TextStyle(
-                      color: colorScheme.onSurfaceVariant, fontSize: 12)),
+              Text(
+                timeStr,
+                style: TextStyle(
+                  color: colorScheme.onSurfaceVariant,
+                  fontSize: 12,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 12),
@@ -390,39 +403,52 @@ class _VersionHistorySheetState extends State<VersionHistorySheet>
               CircleAvatar(
                 radius: 10,
                 backgroundColor: colorScheme.primaryContainer,
-                child: Text(operator.substring(0, 1),
-                    style: TextStyle(
-                        fontSize: 10, color: colorScheme.onPrimaryContainer)),
+                child: Text(
+                  operator.substring(0, 1),
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: colorScheme.onPrimaryContainer,
+                  ),
+                ),
               ),
               const SizedBox(width: 8),
-              Text(operator,
-                  style: TextStyle(
-                      color: colorScheme.onSurface,
-                      fontWeight: FontWeight.w500)),
+              Text(
+                operator,
+                style: TextStyle(
+                  color: colorScheme.onSurface,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
               if (item['is_local'] == true)
                 Container(
                   margin: const EdgeInsets.only(left: 8),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 4,
+                    vertical: 1,
+                  ),
                   decoration: BoxDecoration(
                     color: colorScheme.secondaryContainer,
                     borderRadius: BorderRadius.circular(4),
                   ),
-                  child: Text('本地',
-                      style: TextStyle(
-                          fontSize: 9,
-                          color: colorScheme.onSecondaryContainer)),
+                  child: Text(
+                    '本地',
+                    style: TextStyle(
+                      fontSize: 9,
+                      color: colorScheme.onSecondaryContainer,
+                    ),
+                  ),
                 ),
               const Spacer(),
               // 🚀 核心修复：只有非第一项（非当前最新版）才显示还原按钮
               if (index != 0)
                 TextButton.icon(
-                  onPressed: () => _handleRollback(item,
-                      isLocal: item['is_local'] == true),
+                  onPressed: () =>
+                      _handleRollback(item, isLocal: item['is_local'] == true),
                   icon: const Icon(Icons.settings_backup_restore, size: 14),
                   label: const Text('还原此版本', style: TextStyle(fontSize: 12)),
                   style: TextButton.styleFrom(
-                      visualDensity: VisualDensity.compact),
+                    visualDensity: VisualDensity.compact,
+                  ),
                 ),
             ],
           ),
@@ -458,8 +484,12 @@ class _VersionHistorySheetState extends State<VersionHistorySheet>
       return '未知';
     }
 
-    void addChange(String label, dynamic bVal, dynamic aVal,
-        {String Function(dynamic, dynamic)? contextFormatter}) {
+    void addChange(
+      String label,
+      dynamic bVal,
+      dynamic aVal, {
+      String Function(dynamic, dynamic)? contextFormatter,
+    }) {
       final formattedB = contextFormatter != null
           ? contextFormatter(bVal, before)
           : (bVal?.toString() ?? '无');
@@ -468,102 +498,165 @@ class _VersionHistorySheetState extends State<VersionHistorySheet>
           : (aVal?.toString() ?? '无');
 
       if (formattedB != formattedA) {
-        changes.add(Padding(
-          padding: const EdgeInsets.only(bottom: 6),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(label,
+        changes.add(
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
                   style: TextStyle(
-                      fontSize: 11,
-                      color: colorScheme.primary,
-                      fontWeight: FontWeight.bold)),
-              const SizedBox(height: 2),
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(formattedB,
+                    fontSize: 11,
+                    color: colorScheme.primary,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        formattedB,
                         style: TextStyle(
-                            fontSize: 12,
-                            decoration: TextDecoration.lineThrough,
-                            color: colorScheme.onSurfaceVariant),
+                          fontSize: 12,
+                          decoration: TextDecoration.lineThrough,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
                         maxLines: 1,
-                        overflow: TextOverflow.ellipsis),
-                  ),
-                  Icon(Icons.arrow_right_alt,
-                      size: 14, color: colorScheme.onSurfaceVariant),
-                  Expanded(
-                    child: Text(formattedA,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    Icon(
+                      Icons.arrow_right_alt,
+                      size: 14,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                    Expanded(
+                      child: Text(
+                        formattedA,
                         style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                            color: colorScheme.onSurface),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          color: colorScheme.onSurface,
+                        ),
                         maxLines: 2,
-                        overflow: TextOverflow.ellipsis),
-                  ),
-                ],
-              ),
-            ],
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
-        ));
+        );
       }
     }
 
     if (widget.table == 'todos') {
       addChange('内容', before?['content'], after['content']);
       addChange('备注', before?['remark'], after['remark']);
-      addChange('截止时间', before?['due_date'], after['due_date'],
-          contextFormatter: (v, ctx) => formatTime(v));
-      addChange('开始时间', before?['created_date'], after['created_date'],
-          contextFormatter: (v, ctx) => formatTime(v));
-      addChange('重复规则', before?['recurrence'] ?? 0, after['recurrence'] ?? 0,
-          contextFormatter: (v, ctx) => getRecurrenceName(v as int));
-      addChange('日期待办', before?['is_all_day'] ?? 0, after['is_all_day'] ?? 0,
-          contextFormatter: (v, ctx) => v == 1 ? '是' : '否');
+      addChange(
+        '截止时间',
+        before?['due_date'],
+        after['due_date'],
+        contextFormatter: (v, ctx) => formatTime(v),
+      );
+      addChange(
+        '开始时间',
+        before?['created_date'],
+        after['created_date'],
+        contextFormatter: (v, ctx) => formatTime(v),
+      );
+      addChange(
+        '重复规则',
+        before?['recurrence'] ?? 0,
+        after['recurrence'] ?? 0,
+        contextFormatter: (v, ctx) => getRecurrenceName(v as int),
+      );
+      addChange(
+        '日期待办',
+        before?['is_all_day'] ?? 0,
+        after['is_all_day'] ?? 0,
+        contextFormatter: (v, ctx) => v == 1 ? '是' : '否',
+      );
 
       // 🚀 新增：显示循环截止时间的变更
-      addChange('循环截止时间', before?['recurrence_end_date'],
-          after['recurrence_end_date'],
-          contextFormatter: (v, ctx) => formatTime(v));
+      addChange(
+        '循环截止时间',
+        before?['recurrence_end_date'],
+        after['recurrence_end_date'],
+        contextFormatter: (v, ctx) => formatTime(v),
+      );
 
       // 🚀 新增：显示自定义循环间隔的变更
-      addChange('循环间隔', before?['custom_interval_days'],
-          after['custom_interval_days'],
-          contextFormatter: (v, ctx) => v == null ? '无' : '每$v天');
+      addChange(
+        '循环间隔',
+        before?['custom_interval_days'],
+        after['custom_interval_days'],
+        contextFormatter: (v, ctx) => v == null ? '无' : '每$v天',
+      );
 
       // 🚀 新增：显示提醒时间的变更
-      addChange('提醒时间', before?['reminder_minutes'] ?? -1,
-          after['reminder_minutes'] ?? -1, contextFormatter: (v, ctx) {
-        if (v == null || v == -1) return '无';
-        return '提前$v分钟';
-      });
+      addChange(
+        '提醒时间',
+        before?['reminder_minutes'] ?? -1,
+        after['reminder_minutes'] ?? -1,
+        contextFormatter: (v, ctx) {
+          if (v == null || v == -1) return '无';
+          return '提前$v分钟';
+        },
+      );
 
       // 🚀 优化：使用 context 准确获取对应快照中的名称
-      addChange('文件夹', before?['group_id'], after['group_id'],
-          contextFormatter: (v, ctx) => (v == null || v == '')
-              ? '未分组'
-              : (ctx?['group_name'] ?? v.toString()));
+      addChange(
+        '文件夹',
+        before?['group_id'],
+        after['group_id'],
+        contextFormatter: (v, ctx) => (v == null || v == '')
+            ? '未分组'
+            : (ctx?['group_name'] ?? v.toString()),
+      );
 
-      addChange('团队归属', before?['team_uuid'], after['team_uuid'],
-          contextFormatter: (v, ctx) => (v == null || v == '')
-              ? '个人'
-              : (ctx?['team_name'] ?? v.toString()));
+      addChange(
+        '团队归属',
+        before?['team_uuid'],
+        after['team_uuid'],
+        contextFormatter: (v, ctx) =>
+            (v == null || v == '') ? '个人' : (ctx?['team_name'] ?? v.toString()),
+      );
 
-      addChange('协作方式', before?['collab_type'] ?? 0, after['collab_type'] ?? 0,
-          contextFormatter: (v, ctx) => v == 1 ? '每个人独立完成' : '全员共同协作');
+      addChange(
+        '协作方式',
+        before?['collab_type'] ?? 0,
+        after['collab_type'] ?? 0,
+        contextFormatter: (v, ctx) => v == 1 ? '每个人独立完成' : '全员共同协作',
+      );
 
       if (before?['is_completed'] != after['is_completed']) {
-        addChange('状态', before?['is_completed'], after['is_completed'],
-            contextFormatter: (v, ctx) => v == 1 ? '已完成' : '待办');
+        addChange(
+          '状态',
+          before?['is_completed'],
+          after['is_completed'],
+          contextFormatter: (v, ctx) => v == 1 ? '已完成' : '待办',
+        );
       }
       if (before?['is_deleted'] != after['is_deleted']) {
-        addChange('删除状态', before?['is_deleted'], after['is_deleted'],
-            contextFormatter: (v, ctx) => v == 1 ? '已删除' : '正常');
+        addChange(
+          '删除状态',
+          before?['is_deleted'],
+          after['is_deleted'],
+          contextFormatter: (v, ctx) => v == 1 ? '已删除' : '正常',
+        );
       }
     } else if (widget.table == 'countdowns') {
       addChange('标题', before?['title'], after['title']);
-      addChange('目标时间', before?['target_time'], after['target_time'],
-          contextFormatter: (v, ctx) => formatTime(v));
+      addChange(
+        '目标时间',
+        before?['target_time'],
+        after['target_time'],
+        contextFormatter: (v, ctx) => formatTime(v),
+      );
     }
 
     if (changes.isEmpty) {
@@ -582,10 +675,7 @@ class _VersionHistorySheetState extends State<VersionHistorySheet>
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Divider(height: 24),
-        ...changes,
-      ],
+      children: [const Divider(height: 24), ...changes],
     );
   }
 }

@@ -190,53 +190,85 @@ void main() {
     expect(row['updated_at'], maximum);
     expect((await f.db.query('op_logs')).length, 1);
   });
-  test('stale reminder maintenance cannot revive cancellation or other sources', () async {
-    await block('a'); await block('b', start: day.add(const Duration(hours: 12)));
-    final stale = TodoPlanBlock.fromJson((await f.db.query('todo_plan_blocks', where: 'uuid=?', whereArgs: ['a'])).single);
-    await repo.cancel(await request({'a'}), sync: false);
-    stale.status = TodoPlanStatus.reminded; stale.markAsChanged();
-    await StorageService.savePlanBlocks(user, [stale], sync: false);
-    expect((await f.db.query('todo_plan_blocks', where: 'uuid=?', whereArgs: ['a'])).single['status'], 3);
-    expect((await f.db.query('op_logs')).length, 1);
-    final reminders = await PlanReminderGuard.filterSchedulablePlanReminders([
-      {'type': 'plan_block', 'planBlockId': 'a', 'notifId': 33001},
-      {'type': 'plan_block', 'planBlockId': 'b', 'notifId': 33002},
-      {'type': 'pomodoro', 'planBlockId': 'a', 'notifId': 40001},
-      {'type': 'habit', 'planBlockId': 'a', 'notifId': 42001},
-    ], databaseOverride: f.db);
-    expect(reminders.map((r) => r['notifId']), [33002,40001,42001]);
-  });
-  test('queued plan alarms remain only for planned, delayed and reminded blocks', () async {
-    for (final status in TodoPlanStatus.values) {
-      await block(status.name, status: status);
-    }
-    final reminders = await PlanReminderGuard.filterSchedulablePlanReminders([
-      for (var i = 0; i < TodoPlanStatus.values.length; i++)
-        {'type': 'plan_block', 'planBlockId': TodoPlanStatus.values[i].name, 'notifId': 33001 + i},
-    ], databaseOverride: f.db);
-    expect(reminders.map((r) => r['planBlockId']), ['planned', 'delayed', 'reminded']);
-  });
   test(
-    'malformed and unknown plan reminder ids are dropped without affecting other sources',
+    'stale reminder maintenance cannot revive cancellation or other sources',
     () async {
+      await block('a');
+      await block('b', start: day.add(const Duration(hours: 12)));
+      final stale = TodoPlanBlock.fromJson(
+        (await f.db.query(
+          'todo_plan_blocks',
+          where: 'uuid=?',
+          whereArgs: ['a'],
+        )).single,
+      );
+      await repo.cancel(await request({'a'}), sync: false);
+      stale.status = TodoPlanStatus.reminded;
+      stale.markAsChanged();
+      await StorageService.savePlanBlocks(user, [stale], sync: false);
+      expect(
+        (await f.db.query(
+          'todo_plan_blocks',
+          where: 'uuid=?',
+          whereArgs: ['a'],
+        )).single['status'],
+        3,
+      );
+      expect((await f.db.query('op_logs')).length, 1);
       final reminders = await PlanReminderGuard.filterSchedulablePlanReminders([
-        {'type': 'plan_block', 'notifId': 33001},
-        {'type': 'plan_block', 'planBlockId': '   ', 'notifId': 33002},
-        {'type': 'plan_block', 'planBlockId': 'missing', 'notifId': 33003},
-        {'type': 'pomodoro', 'planBlockId': 'missing', 'notifId': 40001},
-        {'type': 'habit', 'planBlockId': 'missing', 'notifId': 42001},
+        {'type': 'plan_block', 'planBlockId': 'a', 'notifId': 33001},
+        {'type': 'plan_block', 'planBlockId': 'b', 'notifId': 33002},
+        {'type': 'pomodoro', 'planBlockId': 'a', 'notifId': 40001},
+        {'type': 'habit', 'planBlockId': 'a', 'notifId': 42001},
       ], databaseOverride: f.db);
-      expect(reminders.map((r) => r['notifId']), [40001, 42001]);
+      expect(reminders.map((r) => r['notifId']), [33002, 40001, 42001]);
     },
   );
-  test('reminder state updates still work for an active plan and write one oplog', () async {
-    await block('a');
-    final plan = TodoPlanBlock.fromJson((await f.db.query('todo_plan_blocks')).single);
-    plan.status = TodoPlanStatus.reminded; plan.markAsChanged();
-    await StorageService.savePlanBlocks(user, [plan], sync: false);
-    expect((await f.db.query('todo_plan_blocks')).single['status'], 4);
-    expect((await f.db.query('op_logs')).length, 1);
+  test(
+    'queued plan alarms remain only for planned, delayed and reminded blocks',
+    () async {
+      for (final status in TodoPlanStatus.values) {
+        await block(status.name, status: status);
+      }
+      final reminders = await PlanReminderGuard.filterSchedulablePlanReminders([
+        for (var i = 0; i < TodoPlanStatus.values.length; i++)
+          {
+            'type': 'plan_block',
+            'planBlockId': TodoPlanStatus.values[i].name,
+            'notifId': 33001 + i,
+          },
+      ], databaseOverride: f.db);
+      expect(reminders.map((r) => r['planBlockId']), [
+        'planned',
+        'delayed',
+        'reminded',
+      ]);
+    },
+  );
+  test('malformed and unknown plan reminder ids are dropped without affecting other sources', () async {
+    final reminders = await PlanReminderGuard.filterSchedulablePlanReminders([
+      {'type': 'plan_block', 'notifId': 33001},
+      {'type': 'plan_block', 'planBlockId': '   ', 'notifId': 33002},
+      {'type': 'plan_block', 'planBlockId': 'missing', 'notifId': 33003},
+      {'type': 'pomodoro', 'planBlockId': 'missing', 'notifId': 40001},
+      {'type': 'habit', 'planBlockId': 'missing', 'notifId': 42001},
+    ], databaseOverride: f.db);
+    expect(reminders.map((r) => r['notifId']), [40001, 42001]);
   });
+  test(
+    'reminder state updates still work for an active plan and write one oplog',
+    () async {
+      await block('a');
+      final plan = TodoPlanBlock.fromJson(
+        (await f.db.query('todo_plan_blocks')).single,
+      );
+      plan.status = TodoPlanStatus.reminded;
+      plan.markAsChanged();
+      await StorageService.savePlanBlocks(user, [plan], sync: false);
+      expect((await f.db.query('todo_plan_blocks')).single['status'], 4);
+      expect((await f.db.query('op_logs')).length, 1);
+    },
+  );
   test(
     'an exact retry remains idempotent after the cancelled plan start passes',
     () async {

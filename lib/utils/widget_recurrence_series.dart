@@ -32,7 +32,8 @@ List<WidgetRecurrenceSeriesItem> buildWidgetRecurrenceSeries(
     final activeRules = occurrences
         .where((todo) => todo.recurrence != RecurrenceType.none)
         .toList();
-    final ruleAnchor = _selectRuleAnchor(activeRules, current) ??
+    final ruleAnchor =
+        _selectRuleAnchor(activeRules, current) ??
         _selectRepresentative(occurrences, current);
     final representative = _selectRepresentative(occurrences, current);
     final recurrenceEnd = ruleAnchor.recurrenceEndDate?.toLocal();
@@ -49,8 +50,8 @@ List<WidgetRecurrenceSeriesItem> buildWidgetRecurrenceSeries(
           );
     final isActive =
         TodoRecurrenceDateService.nextDate(_startOf(ruleAnchor), ruleAnchor) !=
-                null &&
-            (recurrenceEndDay == null || !recurrenceEndDay.isBefore(current));
+            null &&
+        (recurrenceEndDay == null || !recurrenceEndDay.isBefore(current));
 
     var completedCount = 0;
     var overdueCount = 0;
@@ -64,7 +65,8 @@ List<WidgetRecurrenceSeriesItem> buildWidgetRecurrenceSeries(
       }
       if (start.isAfter(current)) continue;
       elapsedCount++;
-      final effectiveEnd = occurrence.dueDate?.toLocal() ??
+      final effectiveEnd =
+          occurrence.dueDate?.toLocal() ??
           DateTime(start.year, start.month, start.day + 1);
       if (effectiveEnd.isBefore(current)) overdueCount++;
     }
@@ -107,8 +109,9 @@ List<WidgetRecurrenceSeriesItem> buildWidgetRecurrenceSeries(
 
 TodoItem? _selectRuleAnchor(List<TodoItem> activeRules, DateTime now) {
   if (activeRules.isEmpty) return null;
-  final pastOrCurrent =
-      activeRules.where((todo) => !_startOf(todo).isAfter(now)).toList();
+  final pastOrCurrent = activeRules
+      .where((todo) => !_startOf(todo).isAfter(now))
+      .toList();
   if (pastOrCurrent.isNotEmpty) return pastOrCurrent.last;
   return activeRules.first;
 }
@@ -131,8 +134,9 @@ TodoItem _selectRepresentative(List<TodoItem> occurrences, DateTime now) {
       .toList();
   if (active.isNotEmpty) return _selectRuleAnchor(active, now)!;
 
-  final past =
-      occurrences.where((todo) => !_startOf(todo).isAfter(now)).toList();
+  final past = occurrences
+      .where((todo) => !_startOf(todo).isAfter(now))
+      .toList();
   if (past.isNotEmpty) return past.last;
   return occurrences.first;
 }
@@ -174,8 +178,10 @@ List<WidgetRecurrenceOccurrenceItem> _buildOccurrenceWindow(
           isProjected: true,
         ),
       );
-      final nextStart =
-          TodoRecurrenceDateService.nextDate(projectedStart, ruleAnchor);
+      final nextStart = TodoRecurrenceDateService.nextDate(
+        projectedStart,
+        ruleAnchor,
+      );
       if (nextStart == null) break;
       projectedStart = nextStart;
     }

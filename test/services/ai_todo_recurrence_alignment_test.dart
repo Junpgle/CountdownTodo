@@ -890,12 +890,13 @@ void main() {
         customEnd: customEnd,
         now: now,
       )!;
-      final expandedRange = AiTodoContextBuilder.resolveCustomInjectionDateRange(
-        customStart: customStart,
-        customEnd: customEnd,
-        injectMoreContext: true,
-        now: now,
-      )!;
+      final expandedRange =
+          AiTodoContextBuilder.resolveCustomInjectionDateRange(
+            customStart: customStart,
+            customEnd: customEnd,
+            injectMoreContext: true,
+            now: now,
+          )!;
 
       expect(regularRange.start, DateTime(2026, 8, 1));
       expect(regularRange.endExclusive, DateTime(2026, 10, 1));
@@ -1127,10 +1128,7 @@ void main() {
         now: DateTime(2026, 10, 2, 12),
       )!;
 
-      expect(
-        context.split('待办规划（按时间范围筛选').length - 1,
-        1,
-      );
+      expect(context.split('待办规划（按时间范围筛选').length - 1, 1);
       expect(preview.split('规划块').length - 1, 1);
     });
 
@@ -1138,11 +1136,12 @@ void main() {
       final now = DateTime(2026, 10, 2, 12);
       final customStart = DateTime(2026, 11, 15);
       final customEnd = DateTime(2026, 11, 20);
-      final selectedRange = AiTodoContextBuilder.resolveCustomInjectionDateRange(
-        customStart: customStart,
-        customEnd: customEnd,
-        now: now,
-      )!;
+      final selectedRange =
+          AiTodoContextBuilder.resolveCustomInjectionDateRange(
+            customStart: customStart,
+            customEnd: customEnd,
+            now: now,
+          )!;
       final expandedQuery = AiTodoContextBuilder.buildContextQueryText(
         userMessage: '分析我上个月的效率',
         customStart: customStart,
@@ -1420,15 +1419,14 @@ void main() {
         customEnd: DateTime(2026, 8, 31),
         now: now,
       );
-      final twoMonthPreview =
-          AiTodoContextBuilder.buildContextInjectionSummary(
-            userMessage: '分析过去两个月的效率',
-            courses: const [],
-            timeLogs: timeLogs,
-            conflicts: const [],
-            teams: const [],
-            now: now,
-          )!;
+      final twoMonthPreview = AiTodoContextBuilder.buildContextInjectionSummary(
+        userMessage: '分析过去两个月的效率',
+        courses: const [],
+        timeLogs: timeLogs,
+        conflicts: const [],
+        teams: const [],
+        now: now,
+      )!;
 
       expect(context, contains('first-day-half-year'));
       expect(context, contains('today-half-year'));
@@ -1824,16 +1822,23 @@ void main() {
 
     test('本周和本月效率范围截止今天，不包含未来日志', () {
       final now = DateTime(2026, 10, 2, 12);
-      final timeLogs = [
-        ('last-week', DateTime(2026, 9, 27, 9)),
-        ('current-week', DateTime(2026, 10, 1, 9)),
-        ('future', DateTime(2026, 10, 3, 9)),
-      ].map((entry) => TimeLogItem(
-        id: entry.$1,
-        title: entry.$1,
-        startTime: entry.$2.millisecondsSinceEpoch,
-        endTime: entry.$2.add(const Duration(hours: 1)).millisecondsSinceEpoch,
-      )).toList();
+      final timeLogs =
+          [
+                ('last-week', DateTime(2026, 9, 27, 9)),
+                ('current-week', DateTime(2026, 10, 1, 9)),
+                ('future', DateTime(2026, 10, 3, 9)),
+              ]
+              .map(
+                (entry) => TimeLogItem(
+                  id: entry.$1,
+                  title: entry.$1,
+                  startTime: entry.$2.millisecondsSinceEpoch,
+                  endTime: entry.$2
+                      .add(const Duration(hours: 1))
+                      .millisecondsSinceEpoch,
+                ),
+              )
+              .toList();
 
       String contextFor(String prompt) =>
           AiTodoContextBuilder.buildContextInjection(
@@ -1870,20 +1875,27 @@ void main() {
 
     test('指定年份和最近一年效率查询使用完整对应日期范围', () {
       final now = DateTime(2026, 10, 2, 12);
-      final timeLogs = [
-        ('year-2024', DateTime(2024, 12, 31, 9)),
-        ('year-2025-start', DateTime(2025, 1, 1, 9)),
-        ('rolling-outside', DateTime(2025, 10, 1, 9)),
-        ('rolling-start', DateTime(2025, 10, 2, 9)),
-        ('year-2025-end', DateTime(2025, 12, 31, 9)),
-        ('year-2026', DateTime(2026, 1, 1, 9)),
-        ('future', DateTime(2026, 10, 3, 9)),
-      ].map((entry) => TimeLogItem(
-        id: entry.$1,
-        title: entry.$1,
-        startTime: entry.$2.millisecondsSinceEpoch,
-        endTime: entry.$2.add(const Duration(hours: 1)).millisecondsSinceEpoch,
-      )).toList();
+      final timeLogs =
+          [
+                ('year-2024', DateTime(2024, 12, 31, 9)),
+                ('year-2025-start', DateTime(2025, 1, 1, 9)),
+                ('rolling-outside', DateTime(2025, 10, 1, 9)),
+                ('rolling-start', DateTime(2025, 10, 2, 9)),
+                ('year-2025-end', DateTime(2025, 12, 31, 9)),
+                ('year-2026', DateTime(2026, 1, 1, 9)),
+                ('future', DateTime(2026, 10, 3, 9)),
+              ]
+              .map(
+                (entry) => TimeLogItem(
+                  id: entry.$1,
+                  title: entry.$1,
+                  startTime: entry.$2.millisecondsSinceEpoch,
+                  endTime: entry.$2
+                      .add(const Duration(hours: 1))
+                      .millisecondsSinceEpoch,
+                ),
+              )
+              .toList();
 
       String contextFor(String prompt) =>
           AiTodoContextBuilder.buildContextInjection(
@@ -1924,17 +1936,24 @@ void main() {
 
     test('明确年月和去年某月效率查询不会回退到最近30条', () {
       final now = DateTime(2026, 10, 2, 12);
-      final timeLogs = [
-        ('before-month', DateTime(2025, 8, 31, 9)),
-        ('month-start', DateTime(2025, 9, 1, 9)),
-        ('month-end', DateTime(2025, 9, 30, 9)),
-        ('after-month', DateTime(2025, 10, 1, 9)),
-      ].map((entry) => TimeLogItem(
-        id: entry.$1,
-        title: entry.$1,
-        startTime: entry.$2.millisecondsSinceEpoch,
-        endTime: entry.$2.add(const Duration(hours: 1)).millisecondsSinceEpoch,
-      )).toList();
+      final timeLogs =
+          [
+                ('before-month', DateTime(2025, 8, 31, 9)),
+                ('month-start', DateTime(2025, 9, 1, 9)),
+                ('month-end', DateTime(2025, 9, 30, 9)),
+                ('after-month', DateTime(2025, 10, 1, 9)),
+              ]
+              .map(
+                (entry) => TimeLogItem(
+                  id: entry.$1,
+                  title: entry.$1,
+                  startTime: entry.$2.millisecondsSinceEpoch,
+                  endTime: entry.$2
+                      .add(const Duration(hours: 1))
+                      .millisecondsSinceEpoch,
+                ),
+              )
+              .toList();
 
       String contextFor(String prompt) =>
           AiTodoContextBuilder.buildContextInjection(
@@ -1972,20 +1991,27 @@ void main() {
 
     test('自然语言具体季度效率查询筛选正确的季度和年份', () {
       final now = DateTime(2026, 10, 2, 12);
-      final timeLogs = [
-        ('2025-q2', DateTime(2025, 6, 30, 9)),
-        ('2025-q3-start', DateTime(2025, 7, 1, 9)),
-        ('2025-q3-end', DateTime(2025, 9, 30, 9)),
-        ('2025-q4', DateTime(2025, 10, 1, 9)),
-        ('2026-q3-start', DateTime(2026, 7, 1, 9)),
-        ('2026-q3-end', DateTime(2026, 9, 30, 9)),
-        ('2026-q4', DateTime(2026, 10, 1, 9)),
-      ].map((entry) => TimeLogItem(
-        id: entry.$1,
-        title: entry.$1,
-        startTime: entry.$2.millisecondsSinceEpoch,
-        endTime: entry.$2.add(const Duration(hours: 1)).millisecondsSinceEpoch,
-      )).toList();
+      final timeLogs =
+          [
+                ('2025-q2', DateTime(2025, 6, 30, 9)),
+                ('2025-q3-start', DateTime(2025, 7, 1, 9)),
+                ('2025-q3-end', DateTime(2025, 9, 30, 9)),
+                ('2025-q4', DateTime(2025, 10, 1, 9)),
+                ('2026-q3-start', DateTime(2026, 7, 1, 9)),
+                ('2026-q3-end', DateTime(2026, 9, 30, 9)),
+                ('2026-q4', DateTime(2026, 10, 1, 9)),
+              ]
+              .map(
+                (entry) => TimeLogItem(
+                  id: entry.$1,
+                  title: entry.$1,
+                  startTime: entry.$2.millisecondsSinceEpoch,
+                  endTime: entry.$2
+                      .add(const Duration(hours: 1))
+                      .millisecondsSinceEpoch,
+                ),
+              )
+              .toList();
 
       String contextFor(String prompt) =>
           AiTodoContextBuilder.buildContextInjection(
@@ -2024,17 +2050,24 @@ void main() {
 
     test('显式单日效率查询只汇总指定日期', () {
       final now = DateTime(2026, 10, 2, 12);
-      final timeLogs = [
-        ('previous-day', DateTime(2026, 9, 30, 9)),
-        ('selected-day', DateTime(2026, 10, 1, 9)),
-        ('today', DateTime(2026, 10, 2, 9)),
-        ('future-day', DateTime(2026, 10, 3, 9)),
-      ].map((entry) => TimeLogItem(
-        id: entry.$1,
-        title: entry.$1,
-        startTime: entry.$2.millisecondsSinceEpoch,
-        endTime: entry.$2.add(const Duration(hours: 1)).millisecondsSinceEpoch,
-      )).toList();
+      final timeLogs =
+          [
+                ('previous-day', DateTime(2026, 9, 30, 9)),
+                ('selected-day', DateTime(2026, 10, 1, 9)),
+                ('today', DateTime(2026, 10, 2, 9)),
+                ('future-day', DateTime(2026, 10, 3, 9)),
+              ]
+              .map(
+                (entry) => TimeLogItem(
+                  id: entry.$1,
+                  title: entry.$1,
+                  startTime: entry.$2.millisecondsSinceEpoch,
+                  endTime: entry.$2
+                      .add(const Duration(hours: 1))
+                      .millisecondsSinceEpoch,
+                ),
+              )
+              .toList();
 
       final context = AiTodoContextBuilder.buildContextInjection(
         userMessage: '分析2026-10-01的效率',
@@ -2063,18 +2096,25 @@ void main() {
 
     test('具体年月日和月日效率范围优先于整月匹配', () {
       final now = DateTime(2026, 10, 2, 12);
-      final timeLogs = [
-        ('last-year-september-first', DateTime(2025, 9, 1, 9)),
-        ('last-year-september-last', DateTime(2025, 9, 30, 9)),
-        ('current-october-first', DateTime(2026, 10, 1, 9)),
-        ('today', DateTime(2026, 10, 2, 9)),
-        ('future', DateTime(2026, 10, 3, 9)),
-      ].map((entry) => TimeLogItem(
-        id: entry.$1,
-        title: entry.$1,
-        startTime: entry.$2.millisecondsSinceEpoch,
-        endTime: entry.$2.add(const Duration(hours: 1)).millisecondsSinceEpoch,
-      )).toList();
+      final timeLogs =
+          [
+                ('last-year-september-first', DateTime(2025, 9, 1, 9)),
+                ('last-year-september-last', DateTime(2025, 9, 30, 9)),
+                ('current-october-first', DateTime(2026, 10, 1, 9)),
+                ('today', DateTime(2026, 10, 2, 9)),
+                ('future', DateTime(2026, 10, 3, 9)),
+              ]
+              .map(
+                (entry) => TimeLogItem(
+                  id: entry.$1,
+                  title: entry.$1,
+                  startTime: entry.$2.millisecondsSinceEpoch,
+                  endTime: entry.$2
+                      .add(const Duration(hours: 1))
+                      .millisecondsSinceEpoch,
+                ),
+              )
+              .toList();
 
       String contextFor(String prompt) =>
           AiTodoContextBuilder.buildContextInjection(
@@ -2129,10 +2169,18 @@ void main() {
           TimeLogItem(
             id: 'log-$phrase',
             title: phrase,
-            startTime: DateTime(date.year, date.month, date.day, 9)
-                .millisecondsSinceEpoch,
-            endTime: DateTime(date.year, date.month, date.day, 10)
-                .millisecondsSinceEpoch,
+            startTime: DateTime(
+              date.year,
+              date.month,
+              date.day,
+              9,
+            ).millisecondsSinceEpoch,
+            endTime: DateTime(
+              date.year,
+              date.month,
+              date.day,
+              10,
+            ).millisecondsSinceEpoch,
           ),
       ];
 
@@ -2210,18 +2258,25 @@ void main() {
 
     test('上上周和上上个月效率范围不会匹配上一期', () {
       final now = DateTime(2026, 10, 2, 12);
-      final timeLogs = [
-        ('two-months-prior', DateTime(2026, 8, 31, 9)),
-        ('last-month', DateTime(2026, 9, 30, 9)),
-        ('two-weeks-prior', DateTime(2026, 9, 18, 9)),
-        ('last-week', DateTime(2026, 9, 25, 9)),
-        ('this-week', DateTime(2026, 9, 29, 9)),
-      ].map((entry) => TimeLogItem(
-        id: entry.$1,
-        title: entry.$1,
-        startTime: entry.$2.millisecondsSinceEpoch,
-        endTime: entry.$2.add(const Duration(hours: 1)).millisecondsSinceEpoch,
-      )).toList();
+      final timeLogs =
+          [
+                ('two-months-prior', DateTime(2026, 8, 31, 9)),
+                ('last-month', DateTime(2026, 9, 30, 9)),
+                ('two-weeks-prior', DateTime(2026, 9, 18, 9)),
+                ('last-week', DateTime(2026, 9, 25, 9)),
+                ('this-week', DateTime(2026, 9, 29, 9)),
+              ]
+              .map(
+                (entry) => TimeLogItem(
+                  id: entry.$1,
+                  title: entry.$1,
+                  startTime: entry.$2.millisecondsSinceEpoch,
+                  endTime: entry.$2
+                      .add(const Duration(hours: 1))
+                      .millisecondsSinceEpoch,
+                ),
+              )
+              .toList();
 
       String contextFor(String prompt) =>
           AiTodoContextBuilder.buildContextInjection(
@@ -2246,34 +2301,35 @@ void main() {
       expect(twoMonths, contains('上上个月合计'));
       expect(twoMonths, contains('two-months-prior'));
       expect(twoMonths, isNot(contains('last-month')));
-      expect(
-        previewFor('分析上上个月效率'),
-        contains('专注记录20260801-20260831'),
-      );
+      expect(previewFor('分析上上个月效率'), contains('专注记录20260801-20260831'));
 
       final twoWeeks = contextFor('分析上上周效率');
       expect(twoWeeks, contains('上上周合计'));
       expect(twoWeeks, contains('two-weeks-prior'));
       expect(twoWeeks, isNot(contains('last-week')));
       expect(twoWeeks, isNot(contains('this-week')));
-      expect(
-        previewFor('分析上上周效率'),
-        contains('专注记录20260914-20260920'),
-      );
+      expect(previewFor('分析上上周效率'), contains('专注记录20260914-20260920'));
     });
 
     test('上上季度效率范围不会命中上一季度', () {
       final now = DateTime(2026, 10, 2, 12);
-      final timeLogs = [
-        ('two-quarters-prior', DateTime(2026, 4, 15, 9)),
-        ('last-quarter', DateTime(2026, 7, 15, 9)),
-        ('this-quarter', DateTime(2026, 10, 1, 9)),
-      ].map((entry) => TimeLogItem(
-        id: entry.$1,
-        title: entry.$1,
-        startTime: entry.$2.millisecondsSinceEpoch,
-        endTime: entry.$2.add(const Duration(hours: 1)).millisecondsSinceEpoch,
-      )).toList();
+      final timeLogs =
+          [
+                ('two-quarters-prior', DateTime(2026, 4, 15, 9)),
+                ('last-quarter', DateTime(2026, 7, 15, 9)),
+                ('this-quarter', DateTime(2026, 10, 1, 9)),
+              ]
+              .map(
+                (entry) => TimeLogItem(
+                  id: entry.$1,
+                  title: entry.$1,
+                  startTime: entry.$2.millisecondsSinceEpoch,
+                  endTime: entry.$2
+                      .add(const Duration(hours: 1))
+                      .millisecondsSinceEpoch,
+                ),
+              )
+              .toList();
 
       String contextFor(String prompt) =>
           AiTodoContextBuilder.buildContextInjection(
@@ -2309,5 +2365,4 @@ void main() {
       }
     });
   });
-
 }

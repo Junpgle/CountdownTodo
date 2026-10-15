@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:math' as math;
+
 import 'package:countdown_todo/screens/pomodoro/widgets/fading_indexed_stack.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
 import '../services/notification_service.dart';
 import '../services/pomodoro_service.dart';
 import 'pomodoro/views/workbench_view.dart';
@@ -66,8 +68,11 @@ class _PomodoroScreenState extends State<PomodoroScreen>
     super.initState();
     // debugPrint(
     //     '[PomodoroScreen] initState start; initialTab=${widget.initialTab} username=${widget.username}');
-    _tabController =
-        TabController(length: 2, vsync: this, initialIndex: widget.initialTab);
+    _tabController = TabController(
+      length: 2,
+      vsync: this,
+      initialIndex: widget.initialTab,
+    );
     _tabController.addListener(() {
       if (_disposed || !mounted) return;
       // 🚀 性能优化：只有在确实需要刷新 UI 时才 setState
@@ -107,11 +112,14 @@ class _PomodoroScreenState extends State<PomodoroScreen>
 
   Future<void> _checkCoachMarks() async {
     if (widget.initialSettingsTarget != null ||
-        _showCoachMarks || !mounted || !_workbenchReady) {
+        _showCoachMarks ||
+        !mounted ||
+        !_workbenchReady) {
       return;
     }
-    final hasSeenCoachMarks =
-        await FeatureTipService.hasTipBeenShown('coach_pomodoro_intro');
+    final hasSeenCoachMarks = await FeatureTipService.hasTipBeenShown(
+      'coach_pomodoro_intro',
+    );
     if (hasSeenCoachMarks) return;
 
     // 等待 AppBar 的 AnimatedContainer 动画（300ms）完成，否则目标会因为布局展开而向下偏移
@@ -181,12 +189,16 @@ class _PomodoroScreenState extends State<PomodoroScreen>
 
   void _setupMethodChannelListener() {
     _pendingNotificationAction = widget.initialNotificationAction;
-    _notifSubs.add(NotificationService.listen('pomodoroFinishEarly', (call) {
-      _queueNotificationAction('pomodoroFinishEarly');
-    }));
-    _notifSubs.add(NotificationService.listen('pomodoroAbandon', (call) {
-      _queueNotificationAction('pomodoroAbandon');
-    }));
+    _notifSubs.add(
+      NotificationService.listen('pomodoroFinishEarly', (call) {
+        _queueNotificationAction('pomodoroFinishEarly');
+      }),
+    );
+    _notifSubs.add(
+      NotificationService.listen('pomodoroAbandon', (call) {
+        _queueNotificationAction('pomodoroAbandon');
+      }),
+    );
   }
 
   void _queueNotificationAction(String action) {
@@ -271,7 +283,8 @@ class _PomodoroScreenState extends State<PomodoroScreen>
   Widget build(BuildContext context) {
     // isFocusingOrWatching controls AppBar / bottom tab visibility (when focusing/remote watching)
     // Keep existing logic for those UI parts but compute more explicit helpers for landscape stats.
-    final bool isTimerRunning = _currentPhase == PomodoroPhase.focusing ||
+    final bool isTimerRunning =
+        _currentPhase == PomodoroPhase.focusing ||
         _currentPhase == PomodoroPhase.breaking ||
         _currentPhase == PomodoroPhase.remoteWatching;
 
@@ -283,7 +296,8 @@ class _PomodoroScreenState extends State<PomodoroScreen>
     final isAppBarCollapsed = isTimerRunning;
 
     // Show the compact landscape stats column only when timer is idle or finished
-    final bool showLandscapeStats = _currentPhase == PomodoroPhase.idle ||
+    final bool showLandscapeStats =
+        _currentPhase == PomodoroPhase.idle ||
         _currentPhase == PomodoroPhase.finished;
 
     final int tabIndex = _tabController.index;
@@ -311,8 +325,10 @@ class _PomodoroScreenState extends State<PomodoroScreen>
               Expanded(
                 flex: 3,
                 child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 16,
+                  ),
                   alignment: Alignment.center,
                   child: PomodoroWorkbench(
                     key: _workbenchKey,
@@ -339,16 +355,19 @@ class _PomodoroScreenState extends State<PomodoroScreen>
               if (showLandscapeStats)
                 Container(
                   width: math.min(420.0, math.max(300.0, windowWidth * 0.38)),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
                   decoration: BoxDecoration(
-                    color: Theme.of(context)
-                        .colorScheme
-                        .surface
+                    color: Theme.of(context).colorScheme.surface
                         .withValues(alpha: 0.02),
                     border: Border(
-                        left: BorderSide(
-                            color: Theme.of(context).dividerColor, width: 0.5)),
+                      left: BorderSide(
+                        color: Theme.of(context).dividerColor,
+                        width: 0.5,
+                      ),
+                    ),
                   ),
                   child: SafeArea(
                     top: false,
@@ -360,11 +379,11 @@ class _PomodoroScreenState extends State<PomodoroScreen>
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Text('番茄统计',
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .titleSmall
-                                      ?.copyWith(fontWeight: FontWeight.bold)),
+                              Text(
+                                '番茄统计',
+                                style: Theme.of(context).textTheme.titleSmall
+                                    ?.copyWith(fontWeight: FontWeight.bold),
+                              ),
                               ToggleButtons(
                                 isSelected: [tabIndex == 0, tabIndex == 1],
                                 onPressed: (i) {
@@ -372,11 +391,13 @@ class _PomodoroScreenState extends State<PomodoroScreen>
                                   setState(() {});
                                 },
                                 constraints: const BoxConstraints(
-                                    minWidth: 32, minHeight: 32),
+                                  minWidth: 32,
+                                  minHeight: 32,
+                                ),
                                 borderRadius: BorderRadius.circular(8),
                                 children: const [
                                   Icon(Icons.timer_outlined, size: 18),
-                                  Icon(Icons.bar_chart_rounded, size: 18)
+                                  Icon(Icons.bar_chart_rounded, size: 18),
                                 ],
                               ),
                             ],
@@ -388,14 +409,16 @@ class _PomodoroScreenState extends State<PomodoroScreen>
                           Card(
                             elevation: 0,
                             shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12)),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
                             child: Padding(
                               padding: const EdgeInsets.all(4),
                               child: PomodoroStats(
-                                  key: _statsKey,
-                                  username: widget.username,
-                                  initialDimension: widget.initialDimension,
-                                  isCompact: true),
+                                key: _statsKey,
+                                username: widget.username,
+                                initialDimension: widget.initialDimension,
+                                isCompact: true,
+                              ),
                             ),
                           ),
                         ],
@@ -497,9 +520,13 @@ class _PomodoroScreenState extends State<PomodoroScreen>
                       ),
                     const Expanded(
                       child: Center(
-                        child: Text('🍅 番茄钟',
-                            style: TextStyle(
-                                fontSize: 18, fontWeight: FontWeight.bold)),
+                        child: Text(
+                          '🍅 番茄钟',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                       ),
                     ),
                     if (Navigator.canPop(context)) const SizedBox(width: 48),
@@ -535,9 +562,7 @@ class _PomodoroScreenState extends State<PomodoroScreen>
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeInOut,
       height: isFocusingOrWatching ? 0 : null,
-      clipBehavior: !isFocusingOrWatching
-          ? Clip.none
-          : Clip.hardEdge,
+      clipBehavior: !isFocusingOrWatching ? Clip.none : Clip.hardEdge,
       decoration: const BoxDecoration(),
       child: AnimatedOpacity(
         opacity: isFocusingOrWatching ? 0.0 : 1.0,

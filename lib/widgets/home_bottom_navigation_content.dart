@@ -16,8 +16,8 @@ double homeBottomBarHorizontalMarginFor(double screenWidth) {
   final responsiveMargin = screenWidth >= 430
       ? 78.0
       : screenWidth >= 360
-          ? 64.0
-          : 40.0;
+      ? 64.0
+      : 40.0;
   final maxWidthMargin = (screenWidth - 380) / 2;
   return math.max(responsiveMargin, maxWidthMargin);
 }
@@ -70,29 +70,33 @@ class FloatingBottomNavigationItem {
     this.onLongPressCancel,
     this.semanticsLabel,
     this.key,
-  })  : assert(
-          builder != null || icon != null || iconWidget != null,
-          'Provide an icon, icon widget, or a custom builder.',
-        ),
-        assert(
-          icon == null || iconWidget == null,
-          'Provide either icon or iconWidget, not both.',
-        ),
-        assert(
-          selectedIcon == null || icon != null,
-          'A selected icon requires an icon.',
-        ),
-        assert(
-          selectable || onPressed != null || builder != null,
-          'A non-selectable item needs an action or a custom builder.',
-        );
+  }) : assert(
+         builder != null || icon != null || iconWidget != null,
+         'Provide an icon, icon widget, or a custom builder.',
+       ),
+       assert(
+         icon == null || iconWidget == null,
+         'Provide either icon or iconWidget, not both.',
+       ),
+       assert(
+         selectedIcon == null || icon != null,
+         'A selected icon requires an icon.',
+       ),
+       assert(
+         selectable || onPressed != null || builder != null,
+         'A non-selectable item needs an action or a custom builder.',
+       );
 
   final String label;
   final IconData? icon;
   final IconData? selectedIcon;
   final Widget? iconWidget;
   final Widget Function(
-      BuildContext context, bool selectedLayer, bool interactive)? builder;
+    BuildContext context,
+    bool selectedLayer,
+    bool interactive,
+  )?
+  builder;
   final bool selectable;
   final VoidCallback? onPressed;
   final VoidCallback? onLongPress;
@@ -124,11 +128,11 @@ class FloatingBottomNavigationContent extends StatefulWidget {
     this.showSelectionLens = true,
     this.keyPrefix = 'floating-bottom',
     this.borderRadius = floatingBottomNavigationBorderRadius,
-  })  : assert(items.length > 0, 'At least one bottom-bar item is required.'),
-        assert(
-          selectedIndex >= 0 && selectedIndex < items.length,
-          'selectedIndex must point to an item.',
-        );
+  }) : assert(items.length > 0, 'At least one bottom-bar item is required.'),
+       assert(
+         selectedIndex >= 0 && selectedIndex < items.length,
+         'selectedIndex must point to an item.',
+       );
 
   final List<FloatingBottomNavigationItem> items;
   final int selectedIndex;
@@ -194,8 +198,8 @@ class _FloatingBottomNavigationContentState
   FloatingBottomNavigationItem? _heldItem;
 
   bool get _hasLongPress => widget.items.any(
-        (item) => item.onLongPress != null || item.onLongPressStart != null,
-      );
+    (item) => item.onLongPress != null || item.onLongPressStart != null,
+  );
 
   void _moveBarLongPress(LongPressMoveUpdateDetails details) =>
       _heldItem?.onLongPressMoveUpdate?.call(details);
@@ -339,10 +343,7 @@ class _FloatingBottomNavigationContentState
       return;
     }
 
-    _animateToTab(
-      index,
-      notifyOnSettle: index != widget.selectedIndex,
-    );
+    _animateToTab(index, notifyOnSettle: index != widget.selectedIndex);
   }
 
   void _handleBarTap(TapUpDetails details, double width) {
@@ -460,10 +461,10 @@ class _FloatingBottomNavigationContentState
     final releaseVelocity = travelWidth <= 0
         ? 0.0
         : (details.velocity.pixelsPerSecond.dx * 2 / travelWidth)
-            .clamp(-14.0, 14.0)
-            .toDouble();
-    final projectedAlignment =
-        (_positionSpring.value + releaseVelocity * 0.065).clamp(-1.0, 1.0);
+              .clamp(-14.0, 14.0)
+              .toDouble();
+    final projectedAlignment = (_positionSpring.value + releaseVelocity * 0.065)
+        .clamp(-1.0, 1.0);
     final targetIndex = _nearestSelectableIndex(projectedAlignment);
 
     _animateToTab(
@@ -521,7 +522,8 @@ class _FloatingBottomNavigationContentState
         final item = widget.items[index];
         final interactive = !selectedLayer;
         final custom = item.builder?.call(context, selectedLayer, interactive);
-        final content = custom ??
+        final content =
+            custom ??
             _FloatingBottomTabItem(
               index: index,
               icon: item.icon,
@@ -572,10 +574,7 @@ class _FloatingBottomNavigationContentState
             key: paintGlass
                 ? ValueKey<String>(_keyName('selection-overflow-layer'))
                 : null,
-            alignment: Alignment(
-              alignment.x * (1 - 1 / _slotCount),
-              0,
-            ),
+            alignment: Alignment(alignment.x * (1 - 1 / _slotCount), 0),
             transform: Matrix4.diagonal3Values(
               _indicatorHorizontalScale,
               _indicatorVerticalScale,
@@ -638,7 +637,8 @@ class _FloatingBottomNavigationContentState
             .clamp(-14.0, 14.0)
             .toDouble();
     final jellyTransform = _jellyTransform(velocity, quality);
-    final customTransparency = configuration.enabled &&
+    final customTransparency =
+        configuration.enabled &&
         configuration.transparencyPercent !=
             LiquidGlassEffectConfiguration.defaultTransparencyPercent;
     final indicatorColor = customTransparency
@@ -661,23 +661,14 @@ class _FloatingBottomNavigationContentState
         : _indicatorSettings;
     // The two selection masks clip icon rows; an extra offscreen save layer
     // for each mask is costly while Android rasterizes the scrolling page.
-    final selectionClipBehavior =
-        AppPlatform.isAndroid ? Clip.antiAlias : Clip.antiAliasWithSaveLayer;
+    final selectionClipBehavior = AppPlatform.isAndroid
+        ? Clip.antiAlias
+        : Clip.antiAliasWithSaveLayer;
     final directionalMotion = (velocity / 14).clamp(-1.0, 1.0).toDouble();
     final contentTransform = Matrix4.identity()
-      ..translateByDouble(
-        directionalMotion * 3,
-        0,
-        0,
-        1,
-      )
+      ..translateByDouble(directionalMotion * 3, 0, 0, 1)
       ..rotateZ(directionalMotion * 0.008)
-      ..scaleByDouble(
-        1 + thickness * 0.006,
-        1 + thickness * 0.012,
-        1,
-        1,
-      );
+      ..scaleByDouble(1 + thickness * 0.006, 1 + thickness * 0.012, 1, 1);
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 6),
@@ -696,7 +687,7 @@ class _FloatingBottomNavigationContentState
             onTapUp: (details) => _handleBarTap(details, constraints.maxWidth),
             onLongPressStart: _hasLongPress
                 ? (details) =>
-                    _handleBarLongPress(details, constraints.maxWidth)
+                      _handleBarLongPress(details, constraints.maxWidth)
                 : null,
             onLongPressMoveUpdate: _hasLongPress ? _moveBarLongPress : null,
             onLongPressEnd: _hasLongPress ? _endBarLongPress : null,
@@ -735,7 +726,8 @@ class _FloatingBottomNavigationContentState
                     children: [
                       _buildIndicator(
                         key: ValueKey<String>(
-                            _keyName('selection-indicator-fill')),
+                          _keyName('selection-indicator-fill'),
+                        ),
                         alignment: alignment,
                         thickness: thickness,
                         velocity: velocity,
@@ -829,16 +821,13 @@ class _FloatingBottomNavigationContentState
             onTapUp: (details) => _handleBarTap(details, constraints.maxWidth),
             onLongPressStart: _hasLongPress
                 ? (details) =>
-                    _handleBarLongPress(details, constraints.maxWidth)
+                      _handleBarLongPress(details, constraints.maxWidth)
                 : null,
             onLongPressMoveUpdate: _hasLongPress ? _moveBarLongPress : null,
             onLongPressEnd: _hasLongPress ? _endBarLongPress : null,
             onLongPressCancel: _hasLongPress ? _cancelBarLongPress : null,
             child: SizedBox.expand(
-              child: _buildNavigationRow(
-                context,
-                selectedLayer: false,
-              ),
+              child: _buildNavigationRow(context, selectedLayer: false),
             ),
           );
         },
@@ -870,9 +859,9 @@ class HomeBottomNavigationContent extends StatelessWidget {
     required this.onCalendarPressed,
     this.onDragStretchChanged,
   }) : assert(
-          selectedIndex == 0 || selectedIndex == 2,
-          'The home bottom bar only supports the home and focus tabs.',
-        );
+         selectedIndex == 0 || selectedIndex == 2,
+         'The home bottom bar only supports the home and focus tabs.',
+       );
 
   final int selectedIndex;
   final Color primaryColor;
@@ -971,10 +960,12 @@ class _OverflowingJellyClipper extends CustomClipper<Path> {
     final maxRadius = (inflatedRect.shortestSide / 2) - 0.1;
     final safeRadius = borderRadius > maxRadius ? maxRadius : borderRadius;
     final path = Path()
-      ..addRRect(RRect.fromRectAndRadius(
-        inflatedRect,
-        Radius.circular(safeRadius > 0 ? safeRadius : 0),
-      ));
+      ..addRRect(
+        RRect.fromRectAndRadius(
+          inflatedRect,
+          Radius.circular(safeRadius > 0 ? safeRadius : 0),
+        ),
+      );
     final baseCenter = inflatedRect.center;
     final centeredTransform = Matrix4.identity()
       ..translateByDouble(baseCenter.dx, baseCenter.dy, 0, 1)

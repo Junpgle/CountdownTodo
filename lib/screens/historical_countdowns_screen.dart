@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+
 import '../models.dart';
 import '../storage_service.dart';
 import '../utils/calendar_date_math.dart';
@@ -55,19 +56,23 @@ class _HistoricalCountdownsScreenState
     final generation = ++_loadGeneration;
     setState(() => _isLoading = true);
     try {
-      final items = await (widget.loadCountdowns?.call() ??
-          StorageService.getCountdowns(widget.username));
+      final items =
+          await (widget.loadCountdowns?.call() ??
+              StorageService.getCountdowns(widget.username));
       if (!mounted || generation != _loadGeneration) return;
       final today = _now();
       setState(() {
         // Countdown targets are calendar dates, so avoid elapsed-hour math
         // around daylight-saving transitions.
-        _history = items
-            .where((item) =>
-                !item.isDeleted &&
-                CalendarDateMath.daysBetween(item.targetDate, today) > 0)
-            .toList()
-          ..sort((a, b) => b.targetDate.compareTo(a.targetDate));
+        _history =
+            items
+                .where(
+                  (item) =>
+                      !item.isDeleted &&
+                      CalendarDateMath.daysBetween(item.targetDate, today) > 0,
+                )
+                .toList()
+              ..sort((a, b) => b.targetDate.compareTo(a.targetDate));
         _isLoading = false;
         _loadFailed = false;
       });
@@ -92,14 +97,17 @@ class _HistoricalCountdownsScreenState
         content: Text('“${item.title}”将被永久删除，删除后无法恢复。'),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('取消')),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
           FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              style: FilledButton.styleFrom(
-                  backgroundColor: scheme.error,
-                  foregroundColor: scheme.onError),
-              child: const Text('确认删除')),
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: scheme.error,
+              foregroundColor: scheme.onError,
+            ),
+            child: const Text('确认删除'),
+          ),
         ],
       ),
     );
@@ -110,17 +118,23 @@ class _HistoricalCountdownsScreenState
         await widget.deleteCountdown!(item);
       } else {
         await StorageService.permanentlyDeleteCountdown(
-            widget.username, item.id);
+          widget.username,
+          item.id,
+        );
       }
       if (!mounted) return;
       await _loadData();
       if (!mounted) return;
-      AppSnackBars.showSnackBar(context,
-          const SnackBar(content: Text('已彻底删除该历史记录')));
+      AppSnackBars.showSnackBar(
+        context,
+        const SnackBar(content: Text('已彻底删除该历史记录')),
+      );
     } catch (_) {
       if (!mounted) return;
-      AppSnackBars.showSnackBar(context,
-          const SnackBar(content: Text('删除失败，请稍后重试')));
+      AppSnackBars.showSnackBar(
+        context,
+        const SnackBar(content: Text('删除失败，请稍后重试')),
+      );
     } finally {
       if (mounted) setState(() => _deletingId = null);
     }
@@ -143,9 +157,10 @@ class _HistoricalCountdownsScreenState
         title: const Text('历史倒计时'),
         actions: [
           IconButton(
-              tooltip: '刷新',
-              onPressed: _isLoading || _deletingId != null ? null : _loadData,
-              icon: const Icon(Icons.refresh_rounded))
+            tooltip: '刷新',
+            onPressed: _isLoading || _deletingId != null ? null : _loadData,
+            icon: const Icon(Icons.refresh_rounded),
+          ),
         ],
       ),
       body: FloatingGlassTopBarContentFade(
@@ -159,43 +174,50 @@ class _HistoricalCountdownsScreenState
                   maxWidth: 900,
                   children: [
                     const ManagementIntro(
-                        icon: Icons.history_rounded,
-                        title: '那些期待过的日子',
-                        description: '已结束的倒计时留在这里，方便回顾与整理。'),
+                      icon: Icons.history_rounded,
+                      title: '那些期待过的日子',
+                      description: '已结束的倒计时留在这里，方便回顾与整理。',
+                    ),
                     if (_loadFailed) ...[
                       ManagementLoadError(
-                          title: '暂时无法加载记录',
-                          description: '请重试，已保存的倒计时不会受影响。',
-                          onRetry: _loadData),
+                        title: '暂时无法加载记录',
+                        description: '请重试，已保存的倒计时不会受影响。',
+                        onRetry: _loadData,
+                      ),
                     ] else ...[
                       ManagementSearchField(
-                          controller: _searchController,
-                          hintText: '搜索历史倒计时',
-                          onChanged: (_) => setState(() {})),
+                        controller: _searchController,
+                        hintText: '搜索历史倒计时',
+                        onChanged: (_) => setState(() {}),
+                      ),
                       const SizedBox(height: 16),
                       ManagementFilterBar<bool>(
-                          value: _oldestFirst,
-                          onChanged: (value) =>
-                              setState(() => _oldestFirst = value),
-                          options: [
-                            ManagementFilterOption(value: false, label: '最近结束'),
-                            ManagementFilterOption(value: true, label: '最早结束')
-                          ]),
+                        value: _oldestFirst,
+                        onChanged: (value) =>
+                            setState(() => _oldestFirst = value),
+                        options: [
+                          ManagementFilterOption(value: false, label: '最近结束'),
+                          ManagementFilterOption(value: true, label: '最早结束'),
+                        ],
+                      ),
                       const SizedBox(height: 16),
                       Text(
-                          query.isEmpty
-                              ? '共 ${_history.length} 段记录'
-                              : '找到 ${visible.length} 段记录',
-                          style: theme.textTheme.titleSmall
-                              ?.copyWith(color: scheme.onSurfaceVariant)),
+                        query.isEmpty
+                            ? '共 ${_history.length} 段记录'
+                            : '找到 ${visible.length} 段记录',
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
                       const SizedBox(height: 12),
                       if (visible.isEmpty)
                         ManagementEmptyState(
-                            icon: Icons.hourglass_empty_rounded,
-                            title: query.isEmpty ? '还没有历史倒计时' : '没有找到匹配的记录',
-                            description: query.isEmpty
-                                ? '倒计时结束后，可以在这里回顾。'
-                                : '试试其他关键词，或清空搜索。'),
+                          icon: Icons.hourglass_empty_rounded,
+                          title: query.isEmpty ? '还没有历史倒计时' : '没有找到匹配的记录',
+                          description: query.isEmpty
+                              ? '倒计时结束后，可以在这里回顾。'
+                              : '试试其他关键词，或清空搜索。',
+                        ),
                       ...visible.map(_buildCard),
                     ],
                   ],
@@ -212,53 +234,76 @@ class _HistoricalCountdownsScreenState
     final busy = _deletingId == item.id;
     return ManagementCard(
       key: ValueKey(item.id),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
                   color: scheme.secondaryContainer,
-                  borderRadius: BorderRadius.circular(14)),
-              child: Icon(Icons.event_available_outlined,
-                  color: scheme.onSecondaryContainer)),
-          const SizedBox(width: 12),
-          Expanded(
-              child: Column(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(
+                  Icons.event_available_outlined,
+                  color: scheme.onSecondaryContainer,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                Text(item.title,
-                    style: theme.textTheme.titleMedium
-                        ?.copyWith(fontWeight: FontWeight.w700)),
-                const SizedBox(height: 6),
-                Text(
-                    '目标日 · ${DateFormat('yyyy-MM-dd').format(item.targetDate)}',
-                    style: TextStyle(color: scheme.onSurfaceVariant)),
-              ])),
-        ]),
-        const SizedBox(height: 12),
-        ManagementActionBar(
+                    Text(
+                      item.title,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '目标日 · ${DateFormat('yyyy-MM-dd').format(item.targetDate)}',
+                      style: TextStyle(color: scheme.onSurfaceVariant),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ManagementActionBar(
             alignment: WrapAlignment.spaceBetween,
             crossAxisAlignment: WrapCrossAlignment.center,
             spacing: 12,
             runSpacing: 8,
             children: [
-              Text('$days 天前结束',
-                  style: theme.textTheme.labelLarge
-                      ?.copyWith(color: scheme.primary)),
+              Text(
+                '$days 天前结束',
+                style: theme.textTheme.labelLarge?.copyWith(
+                  color: scheme.primary,
+                ),
+              ),
               TextButton.icon(
-                  onPressed:
-                      _deletingId != null ? null : () => _confirmDelete(item),
-                  style: TextButton.styleFrom(foregroundColor: scheme.error),
-                  icon: busy
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Icon(Icons.delete_outline_rounded, size: 18),
-                  label: Text(busy ? '删除中…' : '彻底删除')),
-            ]),
-      ]),
+                onPressed: _deletingId != null
+                    ? null
+                    : () => _confirmDelete(item),
+                style: TextButton.styleFrom(foregroundColor: scheme.error),
+                icon: busy
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.delete_outline_rounded, size: 18),
+                label: Text(busy ? '删除中…' : '彻底删除'),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }

@@ -5,9 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   testWidgets('数据与互联页展示 MCP 介绍入口并可打开说明', (tester) async {
     await tester.pumpWidget(
-      const MaterialApp(
-        home: InterconnectSettingsPage(username: 'tester'),
-      ),
+      const MaterialApp(home: InterconnectSettingsPage(username: 'tester')),
     );
     await tester.pumpAndSettle();
 
@@ -25,9 +23,7 @@ void main() {
 
   testWidgets('数据与互联页展示重复待办合并入口', (tester) async {
     await tester.pumpWidget(
-      const MaterialApp(
-        home: InterconnectSettingsPage(username: 'tester'),
-      ),
+      const MaterialApp(home: InterconnectSettingsPage(username: 'tester')),
     );
     await tester.pumpAndSettle();
 

@@ -1059,7 +1059,8 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
       categories: categories,
       onCategorySelected: onCategorySelected == null
           ? null
-          : (categoryUuid, sourceKey, periodTransactions) => onCategorySelected!(
+          : (categoryUuid, sourceKey, periodTransactions) =>
+                onCategorySelected!(
                   categoryUuid,
                   sourceKey,
                   periodTransactions,
@@ -1584,10 +1585,7 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
         ? '分类 · 未分类'
         : categoryUuid == null
         ? '分类筛选'
-        : '分类 · ${financeCategoryReferenceDisplayName(
-            categoryUuid,
-            categories.values,
-          )}';
+        : '分类 · ${financeCategoryReferenceDisplayName(categoryUuid, categories.values)}';
     return Padding(
       padding: const EdgeInsets.only(right: 8),
       child: FilterChip(
@@ -1810,9 +1808,7 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
           ),
           const SizedBox(height: 12),
           Text(
-            keyword.trim().isEmpty &&
-                filterType == null &&
-                categoryUuid == null
+            keyword.trim().isEmpty && filterType == null && categoryUuid == null
                 ? '$monthLabel还没有账单'
                 : '没有匹配的账单',
             style: TextStyle(color: colorScheme.onSurfaceVariant),

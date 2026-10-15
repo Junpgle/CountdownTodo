@@ -98,11 +98,13 @@ class TodoParserService {
     }
 
     if (results.isEmpty && input.trim().isNotEmpty) {
-      results.add(ParsedTodoResult(
-        title: input.trim(),
-        isValid: true,
-        segments: [TodoSegment(input.trim(), SegmentType.text)],
-      ));
+      results.add(
+        ParsedTodoResult(
+          title: input.trim(),
+          isValid: true,
+          segments: [TodoSegment(input.trim(), SegmentType.text)],
+        ),
+      );
     }
 
     return results;
@@ -169,8 +171,9 @@ class TodoParserService {
 
     // 蒙版函数
     void applyMask(Match m, SegmentType type) {
-      spans.add(_MatchedSpan(
-          m.start, m.end, original.substring(m.start, m.end), type));
+      spans.add(
+        _MatchedSpan(m.start, m.end, original.substring(m.start, m.end), type),
+      );
       masked = masked.replaceRange(m.start, m.end, ' ' * (m.end - m.start));
     }
 
@@ -194,7 +197,8 @@ class TodoParserService {
     } else {
       final locPatterns = [
         RegExp(
-            r'在([\u4e00-\u9fa5]{2,10}(?:图书馆|教室|办公室|会议室|学校|公司|食堂|超市|公园|医院|餐厅|咖啡厅|酒店|机场|车站|广场|体育馆|商场|社区|中心|家里|家|店里|楼上|楼下))'),
+          r'在([\u4e00-\u9fa5]{2,10}(?:图书馆|教室|办公室|会议室|学校|公司|食堂|超市|公园|医院|餐厅|咖啡厅|酒店|机场|车站|广场|体育馆|商场|社区|中心|家里|家|店里|楼上|楼下))',
+        ),
         RegExp(r'地点[：:]\s*([^\s，,。！!]{1,20})'),
         RegExp(r'备注[：:]\s*([^\s，,。！!]{1,30})'),
       ];
@@ -238,16 +242,19 @@ class TodoParserService {
 
     // 3. 提取重复结束 (Recurrence End)
     if (recurrence != RecurrenceType.none) {
-      final udm =
-          RegExp(r'(?:直到|到)\s*(?<y>\d{4}年)?(?<m>\d{1,2})月(?<d>\d{1,2})(?:日|号)?')
-              .firstMatch(masked);
+      final udm = RegExp(
+        r'(?:直到|到)\s*(?<y>\d{4}年)?(?<m>\d{1,2})月(?<d>\d{1,2})(?:日|号)?',
+      ).firstMatch(masked);
       if (udm != null) {
         final yStr = udm.namedGroup('y');
         final year = yStr != null
             ? int.parse(yStr.replaceAll('年', ''))
             : now.year;
-        recurrenceEndDate = DateTime(year, int.parse(udm.namedGroup('m')!),
-            int.parse(udm.namedGroup('d')!));
+        recurrenceEndDate = DateTime(
+          year,
+          int.parse(udm.namedGroup('m')!),
+          int.parse(udm.namedGroup('d')!),
+        );
         applyMask(udm, SegmentType.recurrence);
       }
     }
@@ -256,12 +263,13 @@ class TodoParserService {
     final durCombined = RegExp(r'(?<h>\d+(?:\.\d+)?)\s*小时\s*(?<m>\d+)\s*分钟?')
         .firstMatch(masked);
     if (durCombined != null) {
-      durationMin = (double.parse(durCombined.namedGroup('h')!) * 60).round() +
+      durationMin =
+          (double.parse(durCombined.namedGroup('h')!) * 60).round() +
           int.parse(durCombined.namedGroup('m')!);
       applyMask(durCombined, SegmentType.duration);
     } else {
-      final durHours =
-          RegExp(r'(?<h>\d+(?:\.\d+)?|一|二|两|三|四|半)\s*个?小时').firstMatch(masked);
+      final durHours = RegExp(r'(?<h>\d+(?:\.\d+)?|一|二|两|三|四|半)\s*个?小时')
+          .firstMatch(masked);
       if (durHours != null) {
         durationMin = (_parseCnNum(durHours.namedGroup('h')!) * 60).round();
         applyMask(durHours, SegmentType.duration);
@@ -281,8 +289,8 @@ class TodoParserService {
     }
 
     // 5. 提取单独的日期 (Date) - 独立剥离，不受时间影响
-    final relDate =
-        RegExp(r'(今天|今日|今早|今晚|明天|明日|明早|明晚|后天|后日|后早|后晚)').firstMatch(masked);
+    final relDate = RegExp(r'(今天|今日|今早|今晚|明天|明日|明早|明晚|后天|后日|后早|后晚)')
+        .firstMatch(masked);
     if (relDate != null) {
       final str = relDate.group(1)!;
       if (str.endsWith('早')) timePrefixHint = '早上';
@@ -297,20 +305,22 @@ class TodoParserService {
         parsedDate = AppTimeFormats.localDayStartOffset(now, v);
         applyMask(nDays, SegmentType.time);
       } else {
-        final weekday =
-            RegExp(r'(?<next>下周|这周)?(?:周|星期)(?<day>一|二|三|四|五|六|日|天)')
-                .firstMatch(masked);
+        final weekday = RegExp(
+          r'(?<next>下周|这周)?(?:周|星期)(?<day>一|二|三|四|五|六|日|天)',
+        ).firstMatch(masked);
         if (weekday != null) {
           parsedDate = _getWeekdayDate(
-              _weekdayCharToInt(weekday.namedGroup('day')!),
-              weekday.namedGroup('next') == '下周',
-              referenceTime: now);
+            _weekdayCharToInt(weekday.namedGroup('day')!),
+            weekday.namedGroup('next') == '下周',
+            referenceTime: now,
+          );
           applyMask(weekday, SegmentType.time);
         } else {
           // 修改点1: 确保所有的提取分组 (<y>, <m>, <d>) 都存在于每个表达式中，避免 namedGroup('y') 抛出异常
           final specificPatterns = [
             RegExp(
-                r'(?:(?<y>\d{4})年)?(?<m>\d{1,2})\s*月\s*(?<d>\d{1,2})(?:日|号)?'),
+              r'(?:(?<y>\d{4})年)?(?<m>\d{1,2})\s*月\s*(?<d>\d{1,2})(?:日|号)?',
+            ),
             RegExp(r'(?<y>\d{4})[/\-](?<m>\d{1,2})[/\-](?<d>\d{1,2})'),
           ];
           for (var p in specificPatterns) {
@@ -321,9 +331,9 @@ class TodoParserService {
               int year = m.namedGroup('y') != null
                   ? int.parse(m.namedGroup('y')!)
                   : ((month < now.month ||
-                          (month == now.month && day < now.day))
-                      ? now.year + 1
-                      : now.year);
+                            (month == now.month && day < now.day))
+                        ? now.year + 1
+                        : now.year);
               parsedDate = DateTime(year, month, day);
               applyMask(m, SegmentType.time);
               break;
@@ -337,9 +347,11 @@ class TodoParserService {
     RegExpMatch? timeRangeMatch;
     final trPatterns = [
       RegExp(
-          r'(?<p1>上午|下午|早上|晚上|中午|凌晨)?\s*(?<sh>\d{1,2})[点时](?:(?<sm>\d{1,2})分?)?\s*(?:到|至|-|~)\s*(?<p2>上午|下午|早上|晚上|中午|凌晨)?\s*(?<eh>\d{1,2})[点时](?:(?<em>\d{1,2})分?)?'),
+        r'(?<p1>上午|下午|早上|晚上|中午|凌晨)?\s*(?<sh>\d{1,2})[点时](?:(?<sm>\d{1,2})分?)?\s*(?:到|至|-|~)\s*(?<p2>上午|下午|早上|晚上|中午|凌晨)?\s*(?<eh>\d{1,2})[点时](?:(?<em>\d{1,2})分?)?',
+      ),
       RegExp(
-          r'(?<p1>上午|下午|早上|晚上|中午|凌晨)?\s*(?<sh>\d{1,2}):(?<sm>\d{2})\s*(?:到|至|-|~)\s*(?<p2>上午|下午|早上|晚上|中午|凌晨)?\s*(?<eh>\d{1,2}):(?<em>\d{2})'),
+        r'(?<p1>上午|下午|早上|晚上|中午|凌晨)?\s*(?<sh>\d{1,2}):(?<sm>\d{2})\s*(?:到|至|-|~)\s*(?<p2>上午|下午|早上|晚上|中午|凌晨)?\s*(?<eh>\d{1,2}):(?<em>\d{2})',
+      ),
     ];
     for (var p in trPatterns) {
       timeRangeMatch = p.firstMatch(masked);
@@ -354,7 +366,8 @@ class TodoParserService {
       // 修改点2: 将前缀 <p1> 改为可选，统一匹配有前缀和无前缀的时间，确保 <p1> 这个捕获组总是存在。
       final stPatterns = [
         RegExp(
-            r'(?<p1>上午|早上|中午|下午|晚上|凌晨)?\s*(?<sh>\d{1,2})[点时](?:(?<sm>\d{1,2})分?)?'),
+          r'(?<p1>上午|早上|中午|下午|晚上|凌晨)?\s*(?<sh>\d{1,2})[点时](?:(?<sm>\d{1,2})分?)?',
+        ),
         RegExp(r'(?<p1>上午|早上|中午|下午|晚上|凌晨)?\s*(?<sh>\d{1,2}):(?<sm>\d{2})'),
       ];
       for (var p in stPatterns) {
@@ -383,8 +396,13 @@ class TodoParserService {
         sH = _adjustHour(p1, sH);
         eH = _adjustHour(p2, eH);
 
-        startTime =
-            DateTime(baseDate.year, baseDate.month, baseDate.day, sH, sM);
+        startTime = DateTime(
+          baseDate.year,
+          baseDate.month,
+          baseDate.day,
+          sH,
+          sM,
+        );
         endTime = DateTime(baseDate.year, baseDate.month, baseDate.day, eH, eM);
         if (endTime.isBefore(startTime)) {
           endTime = endTime.add(const Duration(days: 1));
@@ -450,10 +468,10 @@ class TodoParserService {
       timeSemantics: isAllDay
           ? ParsedTimeSemantics.dateOnly
           : timeRangeMatch != null
-              ? ParsedTimeSemantics.range
-              : singleTimeMatch != null
-                  ? ParsedTimeSemantics.deadline
-                  : ParsedTimeSemantics.unscheduled,
+          ? ParsedTimeSemantics.range
+          : singleTimeMatch != null
+          ? ParsedTimeSemantics.deadline
+          : ParsedTimeSemantics.unscheduled,
       recurrence: recurrence,
       customIntervalDays: customIntervalDays,
       recurrenceEndDate: recurrenceEndDate,
@@ -480,15 +498,12 @@ class TodoParserService {
       '八': 8.0,
       '九': 9.0,
       '十': 10.0,
-      '半': 0.5
+      '半': 0.5,
     };
     return map[s] ?? 0;
   }
 
-  static DateTime _parseRelativeDay(
-    String prefix, {
-    DateTime? referenceTime,
-  }) {
+  static DateTime _parseRelativeDay(String prefix, {DateTime? referenceTime}) {
     final now = referenceTime ?? DateTime.now();
     final today = AppTimeFormats.dayStart(now);
     if (['明天', '明日', '明早', '明晚'].contains(prefix)) {
@@ -509,7 +524,7 @@ class TodoParserService {
       '五': 5,
       '六': 6,
       '日': 7,
-      '天': 7
+      '天': 7,
     };
     return map[char] ?? 1;
   }

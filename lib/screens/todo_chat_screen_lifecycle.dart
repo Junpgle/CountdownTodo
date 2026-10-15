@@ -631,10 +631,12 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
           AiNativeToolDefinitionBuilder.resolvePlanningRequest(
             protocolSourceText,
             previousUserMessage: previousUserMessage,
-            previousAssistantMessage: _messages.reversed
-                .where((message) => message.role == ChatRole.assistant)
-                .firstOrNull
-                ?.content ?? '',
+            previousAssistantMessage:
+                _messages.reversed
+                    .where((message) => message.role == ChatRole.assistant)
+                    .firstOrNull
+                    ?.content ??
+                '',
           ),
           previousUserMessage: previousUserMessage,
         ),

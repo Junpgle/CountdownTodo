@@ -119,7 +119,9 @@ class ScreenTimeDetailScreen extends StatefulWidget {
   }
 
   static List<dynamic> getFilteredStats(
-      List<dynamic> rawStats, DeviceFilter filter) {
+    List<dynamic> rawStats,
+    DeviceFilter filter,
+  ) {
     return rawStats
         .where((item) => matchesFilter(item['device_name'] ?? "", filter))
         .toList();
@@ -196,8 +198,8 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
   static String simplifyDeviceName(String device) {
     if (device.isEmpty) return "未知设备";
     if (RegExp(
-            r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$')
-        .hasMatch(device)) {
+      r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
+    ).hasMatch(device)) {
       return "未知设备(旧)";
     }
     return device
@@ -256,7 +258,10 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
   }
 
   static String getCategoryForApp(
-      String appName, String? backendCategory, Map<String, String> mappings) {
+    String appName,
+    String? backendCategory,
+    Map<String, String> mappings,
+  ) {
     if (mappings.containsKey(appName) && mappings[appName] != '未分类') {
       return mappings[appName]!;
     }
@@ -330,7 +335,8 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
   }
 
   static List<MapEntry<String, Map<String, dynamic>>> getGroupedApps(
-      List<dynamic> filteredStats) {
+    List<dynamic> filteredStats,
+  ) {
     Map<String, Map<String, dynamic>> grouped = {};
     for (var item in filteredStats) {
       String appName = item['app_name'] ?? "未知应用";
@@ -343,17 +349,17 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
           (grouped[appName]!['total'] as int) + duration;
       (grouped[appName]!['devices'] as Map<String, int>)[deviceName] =
           ((grouped[appName]!['devices'] as Map<String, int>)[deviceName] ??
-                  0) +
-              duration;
+              0) +
+          duration;
     }
     var sorted = grouped.entries.toList();
     sorted.sort(
-        (a, b) => (b.value['total'] as int).compareTo(a.value['total'] as int));
+      (a, b) => (b.value['total'] as int).compareTo(a.value['total'] as int),
+    );
     return sorted;
   }
 
-  static DateTime _dateOnly(DateTime date) =>
-      CalendarDateMath.dateOnly(date);
+  static DateTime _dateOnly(DateTime date) => CalendarDateMath.dateOnly(date);
 
   static DateTime _startOfWeek(DateTime date) {
     return CalendarDateMath.weekRange(date).start;
@@ -383,7 +389,9 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
   }
 
   static DateTime _previousPeriodStart(
-      DateTime periodStart, ScreenTimeRange range) {
+    DateTime periodStart,
+    ScreenTimeRange range,
+  ) {
     switch (range) {
       case ScreenTimeRange.day:
         return CalendarDateMath.addDays(periodStart, -1);
@@ -395,7 +403,10 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
   }
 
   static DateTime _shiftPeriod(
-      DateTime periodStart, ScreenTimeRange range, int offset) {
+    DateTime periodStart,
+    ScreenTimeRange range,
+    int offset,
+  ) {
     switch (range) {
       case ScreenTimeRange.day:
         return CalendarDateMath.addDays(periodStart, offset);
@@ -410,14 +421,20 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
       DateFormat('yyyy-MM-dd').format(date);
 
   static Iterable<DateTime> _daysInPeriod(
-      DateTime periodStart, ScreenTimeRange range, DateTime today) sync* {
+    DateTime periodStart,
+    ScreenTimeRange range,
+    DateTime today,
+  ) sync* {
     final end = _periodEnd(periodStart, range);
     final cappedEnd = end.isAfter(today) ? today : end;
     yield* CalendarDateMath.datesBetweenInclusive(periodStart, cappedEnd);
   }
 
   static String _periodLabel(
-      DateTime periodStart, ScreenTimeRange range, DateTime today) {
+    DateTime periodStart,
+    ScreenTimeRange range,
+    DateTime today,
+  ) {
     switch (range) {
       case ScreenTimeRange.day:
         return periodStart == today
@@ -469,18 +486,20 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
         final deviceName = item['device_name']?.toString() ?? '未知设备';
         final category = item['category']?.toString() ?? '未分类';
         final key = '$packageName::$appName::$deviceName::$category';
-        final duration =
-            (item['duration'] is num) ? (item['duration'] as num).toInt() : 0;
+        final duration = (item['duration'] is num)
+            ? (item['duration'] as num).toInt()
+            : 0;
 
         grouped.putIfAbsent(
-            key,
-            () => {
-                  'package_name': packageName,
-                  'app_name': appName,
-                  'device_name': deviceName,
-                  'category': category,
-                  'duration': 0,
-                });
+          key,
+          () => {
+            'package_name': packageName,
+            'app_name': appName,
+            'device_name': deviceName,
+            'category': category,
+            'duration': 0,
+          },
+        );
         grouped[key]!['duration'] =
             (grouped[key]!['duration'] as int) + duration;
       }
@@ -490,29 +509,45 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
 
   // ─── 设备分布小组件（复用） ───
   static Widget buildDeviceBreakdown(
-      Map<String, int> devices, bool isAllFilter) {
+    Map<String, int> devices,
+    bool isAllFilter,
+  ) {
     if (!isAllFilter && devices.length == 1) {
-      return Text(simplifyDeviceName(devices.keys.first),
-          style: const TextStyle(fontSize: 11, color: Colors.blueGrey),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis);
+      return Text(
+        simplifyDeviceName(devices.keys.first),
+        style: const TextStyle(fontSize: 11, color: Colors.blueGrey),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      );
     }
     return Wrap(
       spacing: 8,
       runSpacing: 4,
       children: devices.entries
-          .map((e) => Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(getDeviceIcon(e.key),
-                    size: 11, color: Colors.blueGrey.shade300),
+          .map(
+            (e) => Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  getDeviceIcon(e.key),
+                  size: 11,
+                  color: Colors.blueGrey.shade300,
+                ),
                 const SizedBox(width: 2),
                 Flexible(
-                    child: Text(
-                        "${simplifyDeviceName(e.key)} ${formatShortHM(e.value)}",
-                        style: const TextStyle(
-                            fontSize: 10, color: Colors.blueGrey),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis)),
-              ]))
+                  child: Text(
+                    "${simplifyDeviceName(e.key)} ${formatShortHM(e.value)}",
+                    style: const TextStyle(
+                      fontSize: 10,
+                      color: Colors.blueGrey,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          )
           .toList(),
     );
   }
@@ -529,8 +564,10 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
       extendBodyBehindAppBar: true,
       backgroundColor: cs.surfaceContainerLowest,
       appBar: FloatingGlassAppBar(
-        title: const Text("详细统计",
-            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
+        title: const Text(
+          "详细统计",
+          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
+        ),
         centerTitle: true,
         elevation: 0,
         backgroundColor: Colors.transparent,
@@ -540,10 +577,7 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
       bottomNavigationBar: FloatingBottomNavigationBar(
         mobilePortraitOnly: false,
         items: const [
-          FloatingBottomNavigationItem(
-            icon: Icons.today_outlined,
-            label: '日',
-          ),
+          FloatingBottomNavigationItem(icon: Icons.today_outlined, label: '日'),
           FloatingBottomNavigationItem(
             icon: Icons.date_range_outlined,
             label: '周',
@@ -585,23 +619,33 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
   Widget _buildMainContent() {
     final periodStart = _periodStart(_selectedDate, _currentRange);
     final prevPeriodStart = _previousPeriodStart(periodStart, _currentRange);
-    final datePrefix =
-        _periodLabel(periodStart, _currentRange, _todayNormalized);
+    final datePrefix = _periodLabel(
+      periodStart,
+      _currentRange,
+      _todayNormalized,
+    );
 
     final periodStats = _statsForPeriod(periodStart, _currentRange);
     final prevPeriodStats = _statsForPeriod(prevPeriodStart, _currentRange);
 
-    int selectedTotal =
-        ScreenTimeDetailScreen.getTotalDuration(periodStats, _currentFilter);
+    int selectedTotal = ScreenTimeDetailScreen.getTotalDuration(
+      periodStats,
+      _currentFilter,
+    );
     int prevTotal = ScreenTimeDetailScreen.getTotalDuration(
-        prevPeriodStats, _currentFilter);
+      prevPeriodStats,
+      _currentFilter,
+    );
     int diff = selectedTotal - prevTotal;
 
-    final filteredStats =
-        ScreenTimeDetailScreen.getFilteredStats(periodStats, _currentFilter);
+    final filteredStats = ScreenTimeDetailScreen.getFilteredStats(
+      periodStats,
+      _currentFilter,
+    );
     final topApps = getGroupedApps(filteredStats);
-    final bottomContentPadding =
-        floatingBottomNavigationContentPaddingFor(context);
+    final bottomContentPadding = floatingBottomNavigationContentPaddingFor(
+      context,
+    );
 
     // 分类
     Map<String, List<dynamic>> catGroups = {};
@@ -614,21 +658,23 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
     var catDurs = catGroups.entries.map((e) {
       int dur = e.value.fold(0, (sum, item) => sum + (item['duration'] as int));
       return MapEntry(e.key, dur);
-    }).toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
+    }).toList()..sort((a, b) => b.value.compareTo(a.value));
 
     List<Map<String, dynamic>> finalCategories = [];
     if (catDurs.length <= 6) {
       for (var e in catDurs) {
-        finalCategories.add(
-            {'name': e.key, 'duration': e.value, 'items': catGroups[e.key]});
+        finalCategories.add({
+          'name': e.key,
+          'duration': e.value,
+          'items': catGroups[e.key],
+        });
       }
     } else {
       for (int i = 0; i < 5; i++) {
         finalCategories.add({
           'name': catDurs[i].key,
           'duration': catDurs[i].value,
-          'items': catGroups[catDurs[i].key]
+          'items': catGroups[catDurs[i].key],
         });
       }
       int otherDur = 0;
@@ -637,124 +683,179 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
         otherDur += catDurs[i].value;
         otherItems.addAll(catGroups[catDurs[i].key]!);
       }
-      finalCategories
-          .add({'name': '其他类别', 'duration': otherDur, 'items': otherItems});
+      finalCategories.add({
+        'name': '其他类别',
+        'duration': otherDur,
+        'items': otherItems,
+      });
     }
 
-    return LayoutBuilder(builder: (ctx, constraints) {
-      final double w = constraints.maxWidth;
-      final bool isDesktop = w >= 900;
-      final bool isTablet = w >= 600 && w < 900;
+    return LayoutBuilder(
+      builder: (ctx, constraints) {
+        final double w = constraints.maxWidth;
+        final bool isDesktop = w >= 900;
+        final bool isTablet = w >= 600 && w < 900;
 
-      if (isDesktop) {
-        return SizedBox(
-          height: constraints.maxHeight,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Expanded(
-                  flex: 4,
-                  child: Column(
+        if (isDesktop) {
+          return SizedBox(
+            height: constraints.maxHeight,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    flex: 4,
+                    child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         _buildFilters(
-                            padding: const EdgeInsets.only(bottom: 12),
-                            includeRange: false),
+                          padding: const EdgeInsets.only(bottom: 12),
+                          includeRange: false,
+                        ),
                         Expanded(
-                            child: SingleChildScrollView(
-                                child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                              _buildHeroCard(selectedTotal, diff, datePrefix),
-                              const SizedBox(height: 16),
-                              _buildSectionHeader(_trendTitle(_currentRange),
-                                  Icons.bar_chart_rounded),
-                              _buildChartCard(height: 280),
-                              SizedBox(height: bottomContentPadding),
-                            ]))),
-                      ])),
-              const SizedBox(width: 24),
-              Expanded(
-                  flex: 5,
-                  child: SingleChildScrollView(
+                          child: SingleChildScrollView(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _buildHeroCard(selectedTotal, diff, datePrefix),
+                                const SizedBox(height: 16),
+                                _buildSectionHeader(
+                                  _trendTitle(_currentRange),
+                                  Icons.bar_chart_rounded,
+                                ),
+                                _buildChartCard(height: 280),
+                                SizedBox(height: bottomContentPadding),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 24),
+                  Expanded(
+                    flex: 5,
+                    child: SingleChildScrollView(
                       child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                        if (finalCategories.isNotEmpty) ...[
-                          _buildSectionHeader(
-                              "$datePrefix类别分布", Icons.category_rounded),
-                          _buildCategoryGrid(finalCategories,
-                              crossAxisCount: 3, childAspectRatio: 1.1),
-                          const SizedBox(height: 24),
-                        ],
-                        if (topApps.isNotEmpty) ...[
-                          _buildSectionHeader(
-                              "$datePrefix最常使用", Icons.dashboard_rounded),
-                          _buildTopAppsGrid(topApps,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (finalCategories.isNotEmpty) ...[
+                            _buildSectionHeader(
+                              "$datePrefix类别分布",
+                              Icons.category_rounded,
+                            ),
+                            _buildCategoryGrid(
+                              finalCategories,
+                              crossAxisCount: 3,
+                              childAspectRatio: 1.1,
+                            ),
+                            const SizedBox(height: 24),
+                          ],
+                          if (topApps.isNotEmpty) ...[
+                            _buildSectionHeader(
+                              "$datePrefix最常使用",
+                              Icons.dashboard_rounded,
+                            ),
+                            _buildTopAppsGrid(
+                              topApps,
                               totalDur: selectedTotal,
                               crossAxisCount: 3,
                               childAspectRatio: 1.1,
-                              maxItems: 6),
-                          const SizedBox(height: 24),
+                              maxItems: 6,
+                            ),
+                            const SizedBox(height: 24),
+                          ],
+                          if (topApps.length > 6) ...[
+                            _buildSectionHeader(
+                              "其余应用明细",
+                              Icons.format_list_bulleted_rounded,
+                            ),
+                            _buildRestList(topApps, skipCount: 6),
+                          ],
+                          SizedBox(height: bottomContentPadding),
                         ],
-                        if (topApps.length > 6) ...[
-                          _buildSectionHeader(
-                              "其余应用明细", Icons.format_list_bulleted_rounded),
-                          _buildRestList(topApps, skipCount: 6),
-                        ],
-                        SizedBox(height: bottomContentPadding),
-                      ]))),
-            ]),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
+        int catCount = isTablet ? 6 : 3;
+        int topCount = isTablet ? 4 : 2;
+        int maxTop = 4;
+
+        return SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildFilters(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 4,
+                ),
+                includeRange: false,
+              ),
+              _buildHeroCard(selectedTotal, diff, datePrefix),
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 4,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildSectionHeader(
+                      _trendTitle(_currentRange),
+                      Icons.bar_chart_rounded,
+                    ),
+                    _buildChartCard(height: 200),
+                    const SizedBox(height: 20),
+                    if (finalCategories.isNotEmpty) ...[
+                      _buildSectionHeader(
+                        "$datePrefix类别分布",
+                        Icons.category_rounded,
+                      ),
+                      _buildCategoryGrid(
+                        finalCategories,
+                        crossAxisCount: catCount,
+                        childAspectRatio: isTablet ? 0.9 : 1.0,
+                      ),
+                      const SizedBox(height: 20),
+                    ],
+                    if (topApps.isNotEmpty) ...[
+                      _buildSectionHeader(
+                        "$datePrefix最常使用",
+                        Icons.dashboard_rounded,
+                      ),
+                      _buildTopAppsGrid(
+                        topApps,
+                        totalDur: selectedTotal,
+                        crossAxisCount: topCount,
+                        childAspectRatio: isTablet ? 1.0 : 1.15,
+                        maxItems: maxTop,
+                      ),
+                      const SizedBox(height: 20),
+                    ],
+                    if (topApps.length > maxTop) ...[
+                      _buildSectionHeader(
+                        "其余应用明细",
+                        Icons.format_list_bulleted_rounded,
+                      ),
+                      _buildRestList(topApps, skipCount: maxTop),
+                    ],
+                    SizedBox(height: bottomContentPadding),
+                  ],
+                ),
+              ),
+            ],
           ),
         );
-      }
-
-      int catCount = isTablet ? 6 : 3;
-      int topCount = isTablet ? 4 : 2;
-      int maxTop = 4;
-
-      return SingleChildScrollView(
-          child:
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        _buildFilters(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-          includeRange: false,
-        ),
-        _buildHeroCard(selectedTotal, diff, datePrefix),
-        Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-            child:
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              _buildSectionHeader(
-                  _trendTitle(_currentRange), Icons.bar_chart_rounded),
-              _buildChartCard(height: 200),
-              const SizedBox(height: 20),
-              if (finalCategories.isNotEmpty) ...[
-                _buildSectionHeader("$datePrefix类别分布", Icons.category_rounded),
-                _buildCategoryGrid(finalCategories,
-                    crossAxisCount: catCount,
-                    childAspectRatio: isTablet ? 0.9 : 1.0),
-                const SizedBox(height: 20),
-              ],
-              if (topApps.isNotEmpty) ...[
-                _buildSectionHeader("$datePrefix最常使用", Icons.dashboard_rounded),
-                _buildTopAppsGrid(topApps,
-                    totalDur: selectedTotal,
-                    crossAxisCount: topCount,
-                    childAspectRatio: isTablet ? 1.0 : 1.15,
-                    maxItems: maxTop),
-                const SizedBox(height: 20),
-              ],
-              if (topApps.length > maxTop) ...[
-                _buildSectionHeader(
-                    "其余应用明细", Icons.format_list_bulleted_rounded),
-                _buildRestList(topApps, skipCount: maxTop),
-              ],
-              SizedBox(height: bottomContentPadding),
-            ])),
-      ]));
-    });
+      },
+    );
   }
 
   // ─────────────────────────────────────────────
@@ -763,24 +864,29 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
   Widget _buildSectionHeader(String title, IconData icon) {
     return Padding(
       padding: const EdgeInsets.only(top: 6, bottom: 10),
-      child: Row(children: [
-        Container(
-          width: 28,
-          height: 28,
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.primaryContainer,
-            borderRadius: BorderRadius.circular(8),
+      child: Row(
+        children: [
+          Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.primaryContainer,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(
+              icon,
+              size: 16,
+              color: Theme.of(context).colorScheme.primary,
+            ),
           ),
-          child: Icon(icon,
-              size: 16, color: Theme.of(context).colorScheme.primary),
-        ),
-        const SizedBox(width: 10),
-        Text(title,
-            style: Theme.of(context)
-                .textTheme
-                .titleMedium
-                ?.copyWith(fontWeight: FontWeight.w700)),
-      ]),
+          const SizedBox(width: 10),
+          Text(
+            title,
+            style: Theme.of(context).textTheme.titleMedium
+                ?.copyWith(fontWeight: FontWeight.w700),
+          ),
+        ],
+      ),
     );
   }
 
@@ -794,11 +900,14 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
       return Padding(
         padding: const EdgeInsets.only(right: 8),
         child: ChoiceChip(
-          label: Text(range.label,
-              style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 13,
-                  color: selected ? cs.onPrimary : cs.onSurfaceVariant)),
+          label: Text(
+            range.label,
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: 13,
+              color: selected ? cs.onPrimary : cs.onSurfaceVariant,
+            ),
+          ),
           selected: selected,
           onSelected: (v) {
             if (!v) return;
@@ -817,8 +926,8 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
             color: selected
                 ? cs.primary
                 : (floating
-                    ? cs.onSurfaceVariant.withValues(alpha: 0.35)
-                    : cs.outlineVariant),
+                      ? cs.onSurfaceVariant.withValues(alpha: 0.35)
+                      : cs.outlineVariant),
             width: 1,
           ),
           padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -843,11 +952,14 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
       return Padding(
         padding: const EdgeInsets.only(right: 8),
         child: ChoiceChip(
-          label: Text(filter.label,
-              style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 13,
-                  color: selected ? cs.onPrimary : cs.onSurfaceVariant)),
+          label: Text(
+            filter.label,
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: 13,
+              color: selected ? cs.onPrimary : cs.onSurfaceVariant,
+            ),
+          ),
           selected: selected,
           onSelected: (v) {
             if (v) setState(() => _currentFilter = filter);
@@ -857,7 +969,9 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
           selectedColor: cs.primary,
           backgroundColor: cs.surfaceContainerHighest,
           side: BorderSide(
-              color: selected ? cs.primary : cs.outlineVariant, width: 1),
+            color: selected ? cs.primary : cs.outlineVariant,
+            width: 1,
+          ),
           padding: const EdgeInsets.symmetric(horizontal: 4),
         ),
       );
@@ -897,10 +1011,12 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
   Widget _buildHeroCard(int total, int diff, String datePrefix) {
     final cs = Theme.of(context).colorScheme;
     bool isIncrease = diff >= 0;
-    Color diffColor =
-        isIncrease ? const Color(0xFFB07820) : const Color(0xFF1A8C5E);
-    IconData diffIcon =
-        isIncrease ? Icons.trending_up_rounded : Icons.trending_down_rounded;
+    Color diffColor = isIncrease
+        ? const Color(0xFFB07820)
+        : const Color(0xFF1A8C5E);
+    IconData diffIcon = isIncrease
+        ? Icons.trending_up_rounded
+        : Icons.trending_down_rounded;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
@@ -911,54 +1027,74 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
             end: Alignment.bottomRight,
             colors: [
               cs.primary.withValues(alpha: 0.08),
-              cs.primary.withValues(alpha: 0.02)
+              cs.primary.withValues(alpha: 0.02),
             ],
           ),
           borderRadius: BorderRadius.circular(24),
-          border:
-              Border.all(color: cs.primary.withValues(alpha: 0.15), width: 1),
+          border: Border.all(
+            color: cs.primary.withValues(alpha: 0.15),
+            width: 1,
+          ),
         ),
         child: Padding(
           padding: const EdgeInsets.all(22),
-          child: Row(children: [
-            Expanded(
+          child: Row(
+            children: [
+              Expanded(
                 child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                  Text("$datePrefix使用时长",
-                      style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
-                          color: cs.onSurfaceVariant)),
-                  const SizedBox(height: 8),
-                  Text(formatHM(total),
-                      style: TextStyle(
-                          fontSize: 32,
-                          fontWeight: FontWeight.w800,
-                          color: cs.primary,
-                          height: 1.1)),
-                  const SizedBox(height: 10),
-                  Row(children: [
-                    Icon(diffIcon, size: 15, color: diffColor),
-                    const SizedBox(width: 4),
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                     Text(
-                        "${_compareText(_currentRange)}${isIncrease ? '增加' : '减少'} ${formatHM(diff.abs())}",
-                        style: TextStyle(
+                      "$datePrefix使用时长",
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        color: cs.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      formatHM(total),
+                      style: TextStyle(
+                        fontSize: 32,
+                        fontWeight: FontWeight.w800,
+                        color: cs.primary,
+                        height: 1.1,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Icon(diffIcon, size: 15, color: diffColor),
+                        const SizedBox(width: 4),
+                        Text(
+                          "${_compareText(_currentRange)}${isIncrease ? '增加' : '减少'} ${formatHM(diff.abs())}",
+                          style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
-                            color: diffColor)),
-                  ]),
-                ])),
-            Container(
-              width: 64,
-              height: 64,
-              decoration: BoxDecoration(
+                            color: diffColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                width: 64,
+                height: 64,
+                decoration: BoxDecoration(
                   color: cs.primary.withValues(alpha: 0.12),
-                  shape: BoxShape.circle),
-              child: Icon(Icons.access_time_filled_rounded,
-                  size: 32, color: cs.primary),
-            ),
-          ]),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.access_time_filled_rounded,
+                  size: 32,
+                  color: cs.primary,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -976,15 +1112,22 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
 
     for (int i = slotCount - 1; i >= 0; i--) {
       final slotStart = _shiftPeriod(currentPeriodStart, _currentRange, -i);
-      totals.add(ScreenTimeDetailScreen.getTotalDuration(
-          _statsForPeriod(slotStart, _currentRange), _currentFilter));
+      totals.add(
+        ScreenTimeDetailScreen.getTotalDuration(
+          _statsForPeriod(slotStart, _currentRange),
+          _currentFilter,
+        ),
+      );
       labels.add(_chartLabel(slotStart, i == 0));
     }
 
     int selectedIndex = -1;
     for (int i = 0; i < slotCount; i++) {
-      final slotStart =
-          _shiftPeriod(currentPeriodStart, _currentRange, i - slotCount + 1);
+      final slotStart = _shiftPeriod(
+        currentPeriodStart,
+        _currentRange,
+        i - slotCount + 1,
+      );
       if (slotStart == selectedPeriodStart) {
         selectedIndex = i;
         break;
@@ -997,34 +1140,40 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
       fallbackDecoration: _cardDecoration(context),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
-        child: LayoutBuilder(builder: (ctx, constraints) {
-          return GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTapUp: (details) {
-              double sectionWidth = constraints.maxWidth / slotCount;
-              int tappedIndex =
-                  (details.localPosition.dx / sectionWidth).floor();
-              if (tappedIndex >= 0 && tappedIndex < slotCount) {
-                setState(() {
-                  _selectedDate = _shiftPeriod(currentPeriodStart,
-                      _currentRange, tappedIndex - slotCount + 1);
-                });
-              }
-            },
-            child: SizedBox(
-              width: double.infinity,
-              height: height,
-              child: CustomPaint(
+        child: LayoutBuilder(
+          builder: (ctx, constraints) {
+            return GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTapUp: (details) {
+                double sectionWidth = constraints.maxWidth / slotCount;
+                int tappedIndex = (details.localPosition.dx / sectionWidth)
+                    .floor();
+                if (tappedIndex >= 0 && tappedIndex < slotCount) {
+                  setState(() {
+                    _selectedDate = _shiftPeriod(
+                      currentPeriodStart,
+                      _currentRange,
+                      tappedIndex - slotCount + 1,
+                    );
+                  });
+                }
+              },
+              child: SizedBox(
+                width: double.infinity,
+                height: height,
+                child: CustomPaint(
                   painter: BarChartPainter(
-                data: totals,
-                labels: labels,
-                primaryColor: Theme.of(context).colorScheme.primary,
-                textColor: Theme.of(context).colorScheme.onSurfaceVariant,
-                selectedIndex: selectedIndex,
-              )),
-            ),
-          );
-        }),
+                    data: totals,
+                    labels: labels,
+                    primaryColor: Theme.of(context).colorScheme.primary,
+                    textColor: Theme.of(context).colorScheme.onSurfaceVariant,
+                    selectedIndex: selectedIndex,
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
       ),
     );
   }
@@ -1043,16 +1192,20 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
   // ─────────────────────────────────────────────
   // 类别网格 — 改进：色彩鲜明的图标容器
   // ─────────────────────────────────────────────
-  Widget _buildCategoryGrid(List<Map<String, dynamic>> categories,
-      {required int crossAxisCount, required double childAspectRatio}) {
+  Widget _buildCategoryGrid(
+    List<Map<String, dynamic>> categories, {
+    required int crossAxisCount,
+    required double childAspectRatio,
+  }) {
     return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: crossAxisCount,
-          crossAxisSpacing: 10,
-          mainAxisSpacing: 10,
-          childAspectRatio: childAspectRatio),
+        crossAxisCount: crossAxisCount,
+        crossAxisSpacing: 10,
+        mainAxisSpacing: 10,
+        childAspectRatio: childAspectRatio,
+      ),
       itemCount: categories.length,
       itemBuilder: (ctx, i) {
         final cat = categories[i];
@@ -1070,9 +1223,10 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
             range: _currentRange,
             anchorDate: _selectedDate,
             periodLabel: _periodLabel(
-                _periodStart(_selectedDate, _currentRange),
-                _currentRange,
-                _todayNormalized),
+              _periodStart(_selectedDate, _currentRange),
+              _currentRange,
+              _todayNormalized,
+            ),
           ),
           sourceColor: color.withValues(alpha: 0.06),
           borderRadius: BorderRadius.circular(18),
@@ -1080,33 +1234,47 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
             decoration: BoxDecoration(
               color: color.withValues(alpha: 0.06),
               borderRadius: BorderRadius.circular(18),
-              border:
-                  Border.all(color: color.withValues(alpha: 0.18), width: 1),
-            ),
-            child:
-                Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.15),
-                    shape: BoxShape.circle),
-                child: Icon(getCategoryIcon(name), color: color, size: 20),
+              border: Border.all(
+                color: color.withValues(alpha: 0.18),
+                width: 1,
               ),
-              const SizedBox(height: 8),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 6),
-                child: Text(name,
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.15),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(getCategoryIcon(name), color: color, size: 20),
+                ),
+                const SizedBox(height: 8),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                  child: Text(
+                    name,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                        fontWeight: FontWeight.w600, fontSize: 12)),
-              ),
-              const SizedBox(height: 4),
-              Text(formatShortHM(dur),
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  formatShortHM(dur),
                   style: TextStyle(
-                      fontSize: 12, color: color, fontWeight: FontWeight.w700)),
-            ]),
+                    fontSize: 12,
+                    color: color,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
           ),
         );
       },
@@ -1130,10 +1298,11 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: crossAxisCount,
-          crossAxisSpacing: 10,
-          mainAxisSpacing: 10,
-          childAspectRatio: childAspectRatio),
+        crossAxisCount: crossAxisCount,
+        crossAxisSpacing: 10,
+        mainAxisSpacing: 10,
+        childAspectRatio: childAspectRatio,
+      ),
       itemCount: math.min(maxItems, apps.length),
       itemBuilder: (ctx, i) {
         final app = apps[i];
@@ -1157,48 +1326,65 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
             highContrast: true,
             padding: const EdgeInsets.all(14),
             fallbackDecoration: _cardDecoration(context),
-            child:
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                CircleAvatar(
-                  radius: 16,
-                  backgroundColor: cs.primary.withValues(alpha: 0.14),
-                  child: Text(
-                      app.key.isNotEmpty ? app.key[0].toUpperCase() : "?",
-                      style: TextStyle(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 16,
+                      backgroundColor: cs.primary.withValues(alpha: 0.14),
+                      child: Text(
+                        app.key.isNotEmpty ? app.key[0].toUpperCase() : "?",
+                        style: TextStyle(
                           color: cs.primary,
                           fontSize: 13,
-                          fontWeight: FontWeight.w700)),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                    child: Text(app.key,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        app.key,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                            fontWeight: FontWeight.w600, fontSize: 13))),
-              ]),
-              const Spacer(),
-              Text(formatHM(appDur),
-                  style: TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w800,
-                      color: cs.primary,
-                      height: 1.2)),
-              const SizedBox(height: 6),
-              // 相对进度条
-              ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: LinearProgressIndicator(
-                  value: ratio,
-                  minHeight: 4,
-                  backgroundColor: cs.primary.withValues(alpha: 0.1),
-                  color: cs.primary.withValues(alpha: 0.6),
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-              const SizedBox(height: 6),
-              buildDeviceBreakdown(devices, _currentFilter == DeviceFilter.all),
-            ]),
+                const Spacer(),
+                Text(
+                  formatHM(appDur),
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                    color: cs.primary,
+                    height: 1.2,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                // 相对进度条
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: ratio,
+                    minHeight: 4,
+                    backgroundColor: cs.primary.withValues(alpha: 0.1),
+                    color: cs.primary.withValues(alpha: 0.6),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                buildDeviceBreakdown(
+                  devices,
+                  _currentFilter == DeviceFilter.all,
+                ),
+              ],
+            ),
           ),
         );
       },
@@ -1208,8 +1394,10 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
   // ─────────────────────────────────────────────
   // 其余应用列表
   // ─────────────────────────────────────────────
-  Widget _buildRestList(List<MapEntry<String, Map<String, dynamic>>> apps,
-      {required int skipCount}) {
+  Widget _buildRestList(
+    List<MapEntry<String, Map<String, dynamic>>> apps, {
+    required int skipCount,
+  }) {
     final cs = Theme.of(context).colorScheme;
     return OptionalLiquidGlassCard(
       borderRadius: 22,
@@ -1222,10 +1410,11 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
           physics: const NeverScrollableScrollPhysics(),
           itemCount: apps.length - skipCount,
           separatorBuilder: (_, _) => Divider(
-              height: 1,
-              indent: 60,
-              endIndent: 16,
-              color: cs.outlineVariant.withValues(alpha: 0.4)),
+            height: 1,
+            indent: 60,
+            endIndent: 16,
+            color: cs.outlineVariant.withValues(alpha: 0.4),
+          ),
           itemBuilder: (ctx, i) {
             final app = apps[i + skipCount];
             final devices = app.value['devices'] as Map<String, int>;
@@ -1240,41 +1429,61 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
               sourceColor: cs.surface,
               borderRadius: BorderRadius.zero,
               child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                child: Row(children: [
-                  CircleAvatar(
-                    radius: 18,
-                    backgroundColor: cs.surfaceContainerHighest,
-                    child: Text(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 18,
+                      backgroundColor: cs.surfaceContainerHighest,
+                      child: Text(
                         app.key.isNotEmpty ? app.key[0].toUpperCase() : "?",
                         style: TextStyle(
-                            color: cs.onSurfaceVariant,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600)),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                      child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                        Text(app.key,
-                            style: const TextStyle(
-                                fontWeight: FontWeight.w600, fontSize: 14)),
-                        const SizedBox(height: 4),
-                        buildDeviceBreakdown(
-                            devices, _currentFilter == DeviceFilter.all),
-                      ])),
-                  const SizedBox(width: 8),
-                  Text(formatHM(app.value['total'] as int),
-                      style: TextStyle(
+                          color: cs.onSurfaceVariant,
+                          fontSize: 14,
                           fontWeight: FontWeight.w600,
-                          fontSize: 13,
-                          color: cs.onSurfaceVariant)),
-                  const SizedBox(width: 2),
-                  Icon(Icons.chevron_right_rounded,
-                      size: 18, color: cs.outlineVariant),
-                ]),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            app.key,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 14,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          buildDeviceBreakdown(
+                            devices,
+                            _currentFilter == DeviceFilter.all,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      formatHM(app.value['total'] as int),
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                        color: cs.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(width: 2),
+                    Icon(
+                      Icons.chevron_right_rounded,
+                      size: 18,
+                      color: cs.outlineVariant,
+                    ),
+                  ],
+                ),
               ),
             );
           },
@@ -1290,12 +1499,15 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
       color: cs.surface,
       borderRadius: BorderRadius.circular(22),
       border: Border.all(
-          color: cs.outlineVariant.withValues(alpha: 0.5), width: 0.8),
+        color: cs.outlineVariant.withValues(alpha: 0.5),
+        width: 0.8,
+      ),
       boxShadow: [
         BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 8,
-            offset: const Offset(0, 2))
+          color: Colors.black.withValues(alpha: 0.03),
+          blurRadius: 8,
+          offset: const Offset(0, 2),
+        ),
       ],
     );
   }
@@ -1376,12 +1588,15 @@ class CategoryDetailScreen extends StatelessWidget {
       color: cs.surface,
       borderRadius: BorderRadius.circular(22),
       border: Border.all(
-          color: cs.outlineVariant.withValues(alpha: 0.5), width: 0.8),
+        color: cs.outlineVariant.withValues(alpha: 0.5),
+        width: 0.8,
+      ),
       boxShadow: [
         BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 8,
-            offset: const Offset(0, 2))
+          color: Colors.black.withValues(alpha: 0.03),
+          blurRadius: 8,
+          offset: const Offset(0, 2),
+        ),
       ],
     );
   }
@@ -1391,16 +1606,20 @@ class CategoryDetailScreen extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final topBarHeight = floatingGlassTopBarHeight(context);
     final apps = _ScreenTimeDetailScreenState.getGroupedApps(stats);
-    final int totalDur =
-        apps.fold(0, (sum, app) => sum + (app.value['total'] as int));
+    final int totalDur = apps.fold(
+      0,
+      (sum, app) => sum + (app.value['total'] as int),
+    );
     final Color catColor = _catColor(categoryName);
 
     return Scaffold(
       backgroundColor: cs.surfaceContainerLowest,
       extendBodyBehindAppBar: true,
       appBar: FloatingGlassAppBar(
-        title: Text(categoryName,
-            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
+        title: Text(
+          categoryName,
+          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
+        ),
         centerTitle: true,
         elevation: 0,
         backgroundColor: Colors.transparent,
@@ -1416,127 +1635,163 @@ class CategoryDetailScreen extends StatelessWidget {
             alignment: Alignment.topCenter,
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 800),
-              child: Column(children: [
-                // hero 分类卡
-                Container(
-                  margin: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(28),
-                  decoration: BoxDecoration(
-                    color: catColor.withValues(alpha: 0.07),
-                    borderRadius: BorderRadius.circular(24),
-                    border: Border.all(color: catColor.withValues(alpha: 0.2)),
-                  ),
-                  child: Column(children: [
-                    Container(
-                      width: 64,
-                      height: 64,
-                      decoration: BoxDecoration(
-                          color: catColor.withValues(alpha: 0.15),
-                          shape: BoxShape.circle),
-                      child: Icon(
-                          _ScreenTimeDetailScreenState.getCategoryIcon(
-                              categoryName),
-                          size: 30,
-                          color: catColor),
+              child: Column(
+                children: [
+                  // hero 分类卡
+                  Container(
+                    margin: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(28),
+                    decoration: BoxDecoration(
+                      color: catColor.withValues(alpha: 0.07),
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(
+                        color: catColor.withValues(alpha: 0.2),
+                      ),
                     ),
-                    const SizedBox(height: 12),
-                    Text("该类别$periodLabel总计",
-                        style: TextStyle(
-                            color: cs.onSurfaceVariant, fontSize: 13)),
-                    const SizedBox(height: 6),
-                    Text(_ScreenTimeDetailScreenState.formatHM(totalDur),
-                        style: TextStyle(
+                    child: Column(
+                      children: [
+                        Container(
+                          width: 64,
+                          height: 64,
+                          decoration: BoxDecoration(
+                            color: catColor.withValues(alpha: 0.15),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            _ScreenTimeDetailScreenState.getCategoryIcon(
+                              categoryName,
+                            ),
+                            size: 30,
+                            color: catColor,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          "该类别$periodLabel总计",
+                          style: TextStyle(
+                            color: cs.onSurfaceVariant,
+                            fontSize: 13,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          _ScreenTimeDetailScreenState.formatHM(totalDur),
+                          style: TextStyle(
                             fontSize: 32,
                             fontWeight: FontWeight.w800,
-                            color: catColor)),
-                  ]),
-                ),
-                Expanded(
-                  child: apps.isEmpty
-                      ? const Center(child: Text("暂无数据"))
-                      : OptionalLiquidGlassCard(
-                          margin: const EdgeInsets.symmetric(horizontal: 16),
-                          borderRadius: 22,
-                          highContrast: true,
-                          fallbackDecoration: _cardDecoration(context),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(22),
-                            child: ListView.separated(
-                              padding: EdgeInsets.zero,
-                              itemCount: apps.length,
-                              separatorBuilder: (_, _) => Divider(
+                            color: catColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    child: apps.isEmpty
+                        ? const Center(child: Text("暂无数据"))
+                        : OptionalLiquidGlassCard(
+                            margin: const EdgeInsets.symmetric(horizontal: 16),
+                            borderRadius: 22,
+                            highContrast: true,
+                            fallbackDecoration: _cardDecoration(context),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(22),
+                              child: ListView.separated(
+                                padding: EdgeInsets.zero,
+                                itemCount: apps.length,
+                                separatorBuilder: (_, _) => Divider(
                                   height: 1,
                                   indent: 60,
                                   endIndent: 16,
-                                  color:
-                                      cs.outlineVariant.withValues(alpha: 0.4)),
-                              itemBuilder: (ctx, i) {
-                                final app = apps[i];
-                                final devices =
-                                    app.value['devices'] as Map<String, int>;
-                                return _ExpandableCard(
-                                  pageBuilder: (_) => AppDetailScreen(
-                                    appName: app.key,
-                                    historyStats: historyStats,
-                                    filter: currentFilter,
-                                    range: range,
-                                    anchorDate: anchorDate,
+                                  color: cs.outlineVariant.withValues(
+                                    alpha: 0.4,
                                   ),
-                                  sourceColor: cs.surface,
-                                  borderRadius: BorderRadius.zero,
-                                  child: Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 16, vertical: 12),
-                                    child: Row(children: [
-                                      CircleAvatar(
-                                        radius: 20,
-                                        backgroundColor:
-                                            catColor.withValues(alpha: 0.1),
-                                        child: Text(
-                                            app.key.isNotEmpty
-                                                ? app.key[0].toUpperCase()
-                                                : "?",
-                                            style: TextStyle(
+                                ),
+                                itemBuilder: (ctx, i) {
+                                  final app = apps[i];
+                                  final devices =
+                                      app.value['devices'] as Map<String, int>;
+                                  return _ExpandableCard(
+                                    pageBuilder: (_) => AppDetailScreen(
+                                      appName: app.key,
+                                      historyStats: historyStats,
+                                      filter: currentFilter,
+                                      range: range,
+                                      anchorDate: anchorDate,
+                                    ),
+                                    sourceColor: cs.surface,
+                                    borderRadius: BorderRadius.zero,
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 16,
+                                        vertical: 12,
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          CircleAvatar(
+                                            radius: 20,
+                                            backgroundColor: catColor
+                                                .withValues(alpha: 0.1),
+                                            child: Text(
+                                              app.key.isNotEmpty
+                                                  ? app.key[0].toUpperCase()
+                                                  : "?",
+                                              style: TextStyle(
                                                 color: catColor,
                                                 fontWeight: FontWeight.w700,
-                                                fontSize: 15)),
-                                      ),
-                                      const SizedBox(width: 12),
-                                      Expanded(
-                                          child: Column(
+                                                fontSize: 15,
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 12),
+                                          Expanded(
+                                            child: Column(
                                               crossAxisAlignment:
                                                   CrossAxisAlignment.start,
                                               children: [
-                                            Text(app.key,
-                                                style: const TextStyle(
+                                                Text(
+                                                  app.key,
+                                                  style: const TextStyle(
                                                     fontWeight: FontWeight.w600,
-                                                    fontSize: 15)),
-                                            const SizedBox(height: 5),
-                                            _ScreenTimeDetailScreenState
-                                                .buildDeviceBreakdown(
-                                                    devices, isAllFilter),
-                                          ])),
-                                      Text(
-                                          _ScreenTimeDetailScreenState.formatHM(
-                                              app.value['total'] as int),
-                                          style: TextStyle(
+                                                    fontSize: 15,
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 5),
+                                                _ScreenTimeDetailScreenState.buildDeviceBreakdown(
+                                                  devices,
+                                                  isAllFilter,
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                          Text(
+                                            _ScreenTimeDetailScreenState.formatHM(
+                                              app.value['total'] as int,
+                                            ),
+                                            style: TextStyle(
                                               fontWeight: FontWeight.w700,
                                               fontSize: 14,
-                                              color: cs.onSurfaceVariant)),
-                                      const SizedBox(width: 4),
-                                      Icon(Icons.chevron_right_rounded,
-                                          size: 18, color: cs.outlineVariant),
-                                    ]),
-                                  ),
-                                );
-                              },
+                                              color: cs.onSurfaceVariant,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Icon(
+                                            Icons.chevron_right_rounded,
+                                            size: 18,
+                                            color: cs.outlineVariant,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
                             ),
                           ),
-                        ),
-                ),
-                const SizedBox(height: 24),
-              ]),
+                  ),
+                  const SizedBox(height: 24),
+                ],
+              ),
             ),
           ),
         ),
@@ -1555,13 +1810,14 @@ class AppDetailScreen extends StatelessWidget {
   final ScreenTimeRange range;
   final DateTime anchorDate;
 
-  const AppDetailScreen(
-      {super.key,
-      required this.appName,
-      required this.historyStats,
-      required this.filter,
-      required this.range,
-      required this.anchorDate});
+  const AppDetailScreen({
+    super.key,
+    required this.appName,
+    required this.historyStats,
+    required this.filter,
+    required this.range,
+    required this.anchorDate,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1569,8 +1825,10 @@ class AppDetailScreen extends StatelessWidget {
     List<String> labels = [];
     DateTime now = DateTime.now();
     DateTime today = DateTime(now.year, now.month, now.day);
-    final currentPeriodStart =
-        _ScreenTimeDetailScreenState._periodStart(anchorDate, range);
+    final currentPeriodStart = _ScreenTimeDetailScreenState._periodStart(
+      anchorDate,
+      range,
+    );
     final slotCount = range == ScreenTimeRange.month ? 6 : 7;
     int totalAcrossSlots = 0;
     Map<String, List<int>> deviceTrends = {};
@@ -1585,22 +1843,34 @@ class AppDetailScreen extends StatelessWidget {
         case ScreenTimeRange.week:
           return isCurrentSlot
               ? _ScreenTimeDetailScreenState._periodLabel(
-                  periodStart, range, today)
+                  periodStart,
+                  range,
+                  today,
+                )
               : DateFormat('MM/dd').format(periodStart);
         case ScreenTimeRange.month:
           return isCurrentSlot
               ? _ScreenTimeDetailScreenState._periodLabel(
-                  periodStart, range, today)
+                  periodStart,
+                  range,
+                  today,
+                )
               : DateFormat('MM月').format(periodStart);
       }
     }
 
     for (int slot = 0; slot < slotCount; slot++) {
       final periodStart = _ScreenTimeDetailScreenState._shiftPeriod(
-          currentPeriodStart, range, slot - slotCount + 1);
+        currentPeriodStart,
+        range,
+        slot - slotCount + 1,
+      );
       labels.add(chartLabel(periodStart, slot == slotCount - 1));
       for (final d in _ScreenTimeDetailScreenState._daysInPeriod(
-          periodStart, range, today)) {
+        periodStart,
+        range,
+        today,
+      )) {
         for (var item
             in historyStats[_ScreenTimeDetailScreenState._historyKey(d)] ??
                 []) {
@@ -1616,9 +1886,15 @@ class AppDetailScreen extends StatelessWidget {
 
     for (int slot = 0; slot < slotCount; slot++) {
       final periodStart = _ScreenTimeDetailScreenState._shiftPeriod(
-          currentPeriodStart, range, slot - slotCount + 1);
+        currentPeriodStart,
+        range,
+        slot - slotCount + 1,
+      );
       for (final d in _ScreenTimeDetailScreenState._daysInPeriod(
-          periodStart, range, today)) {
+        periodStart,
+        range,
+        today,
+      )) {
         for (var item
             in historyStats[_ScreenTimeDetailScreenState._historyKey(d)] ??
                 []) {
@@ -1639,7 +1915,10 @@ class AppDetailScreen extends StatelessWidget {
     }
     int avgPerPeriod = totalAcrossSlots ~/ slotCount;
     final String selectedLabel = _ScreenTimeDetailScreenState._periodLabel(
-        currentPeriodStart, range, today);
+      currentPeriodStart,
+      range,
+      today,
+    );
     final String totalLabel = switch (range) {
       ScreenTimeRange.day => "多端近七日总计",
       ScreenTimeRange.week => "多端近七周总计",
@@ -1664,20 +1943,25 @@ class AppDetailScreen extends StatelessWidget {
       color: cs.surface,
       borderRadius: BorderRadius.circular(22),
       border: Border.all(
-          color: cs.outlineVariant.withValues(alpha: 0.5), width: 0.8),
+        color: cs.outlineVariant.withValues(alpha: 0.5),
+        width: 0.8,
+      ),
       boxShadow: [
         BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 8,
-            offset: const Offset(0, 2))
+          color: Colors.black.withValues(alpha: 0.03),
+          blurRadius: 8,
+          offset: const Offset(0, 2),
+        ),
       ],
     );
 
     return Scaffold(
       backgroundColor: cs.surfaceContainerLowest,
       appBar: FloatingGlassAppBar(
-        title: const Text("应用详情",
-            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
+        title: const Text(
+          "应用详情",
+          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
+        ),
         centerTitle: true,
         elevation: 0,
         backgroundColor: Colors.transparent,
@@ -1687,102 +1971,128 @@ class AppDetailScreen extends StatelessWidget {
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 1200),
-          child: LayoutBuilder(builder: (ctx, constraints) {
-            final bool isDesktop = constraints.maxWidth >= 800;
+          child: LayoutBuilder(
+            builder: (ctx, constraints) {
+              final bool isDesktop = constraints.maxWidth >= 800;
 
-            List<Widget> deviceTrendCards = [];
-            for (String device in sortedDevices) {
-              List<int> trend = deviceTrends[device]!;
-              int currentUse = deviceCurrent[device] ?? 0;
-              int totalUse = trend.fold(0, (sum, val) => sum + val);
-              if (totalUse == 0) continue;
+              List<Widget> deviceTrendCards = [];
+              for (String device in sortedDevices) {
+                List<int> trend = deviceTrends[device]!;
+                int currentUse = deviceCurrent[device] ?? 0;
+                int totalUse = trend.fold(0, (sum, val) => sum + val);
+                if (totalUse == 0) continue;
 
-              double cardWidth = isDesktop
-                  ? ((constraints.maxWidth - 32 - 24) / 2).floorToDouble()
-                  : double.infinity;
+                double cardWidth = isDesktop
+                    ? ((constraints.maxWidth - 32 - 24) / 2).floorToDouble()
+                    : double.infinity;
 
-              deviceTrendCards.add(SizedBox(
-                width: cardWidth,
-                child: OptionalLiquidGlassCard(
-                  borderRadius: 22,
-                  highContrast: true,
-                  padding: const EdgeInsets.all(20),
-                  fallbackDecoration: cardDec,
-                  child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(children: [
-                          Container(
-                            width: 34,
-                            height: 34,
-                            decoration: BoxDecoration(
-                                color: cs.primary.withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(10)),
-                            child: Icon(
-                                _ScreenTimeDetailScreenState.getDeviceIcon(
-                                    device),
-                                size: 18,
-                                color: cs.primary),
+                deviceTrendCards.add(
+                  SizedBox(
+                    width: cardWidth,
+                    child: OptionalLiquidGlassCard(
+                      borderRadius: 22,
+                      highContrast: true,
+                      padding: const EdgeInsets.all(20),
+                      fallbackDecoration: cardDec,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                width: 34,
+                                height: 34,
+                                decoration: BoxDecoration(
+                                  color: cs.primary.withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Icon(
+                                  _ScreenTimeDetailScreenState.getDeviceIcon(
+                                    device,
+                                  ),
+                                  size: 18,
+                                  color: cs.primary,
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  _ScreenTimeDetailScreenState.simplifyDeviceName(
+                                    device,
+                                  ),
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 14,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 5,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: currentUse > 0
+                                      ? cs.primaryContainer
+                                      : cs.surfaceContainerHighest,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      "$selectedLabel ",
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: cs.onSurfaceVariant,
+                                      ),
+                                    ),
+                                    Text(
+                                      _ScreenTimeDetailScreenState.formatShortHM(
+                                        currentUse,
+                                      ),
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w700,
+                                        color: currentUse > 0
+                                            ? cs.onPrimaryContainer
+                                            : cs.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
                           ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                              child: Text(
-                            _ScreenTimeDetailScreenState.simplifyDeviceName(
-                                device),
-                            style: const TextStyle(
-                                fontWeight: FontWeight.w700, fontSize: 14),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          )),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 10, vertical: 5),
-                            decoration: BoxDecoration(
-                              color: currentUse > 0
-                                  ? cs.primaryContainer
-                                  : cs.surfaceContainerHighest,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child:
-                                Row(mainAxisSize: MainAxisSize.min, children: [
-                              Text("$selectedLabel ",
-                                  style: TextStyle(
-                                      fontSize: 11,
-                                      color: cs.onSurfaceVariant)),
-                              Text(
-                                  _ScreenTimeDetailScreenState.formatShortHM(
-                                      currentUse),
-                                  style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w700,
-                                      color: currentUse > 0
-                                          ? cs.onPrimaryContainer
-                                          : cs.onSurfaceVariant)),
-                            ]),
-                          ),
-                        ]),
-                        const SizedBox(height: 20),
-                        SizedBox(
-                          width: double.infinity,
-                          height: 180,
-                          child: CustomPaint(
+                          const SizedBox(height: 20),
+                          SizedBox(
+                            width: double.infinity,
+                            height: 180,
+                            child: CustomPaint(
                               painter: LineChartPainter(
-                            data: trend,
-                            labels: labels,
-                            primaryColor: cs.primary,
-                            textColor: cs.onSurfaceVariant,
-                          )),
-                        ),
-                      ]),
-                ),
-              ));
-            }
+                                data: trend,
+                                labels: labels,
+                                primaryColor: cs.primary,
+                                textColor: cs.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              }
 
-            return SingleChildScrollView(
-              child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: Column(
+              return SingleChildScrollView(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
+                  child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       // 应用 hero 卡
@@ -1795,104 +2105,145 @@ class AppDetailScreen extends StatelessWidget {
                             end: Alignment.bottomRight,
                             colors: [
                               cs.primary.withValues(alpha: 0.08),
-                              cs.primaryContainer.withValues(alpha: 0.3)
+                              cs.primaryContainer.withValues(alpha: 0.3),
                             ],
                           ),
                           borderRadius: BorderRadius.circular(24),
                           border: Border.all(
-                              color: cs.primary.withValues(alpha: 0.15)),
+                            color: cs.primary.withValues(alpha: 0.15),
+                          ),
                         ),
-                        child: Column(children: [
-                          CircleAvatar(
-                            radius: 36,
-                            backgroundColor: cs.primary.withValues(alpha: 0.18),
-                            child: Text(
+                        child: Column(
+                          children: [
+                            CircleAvatar(
+                              radius: 36,
+                              backgroundColor: cs.primary.withValues(
+                                alpha: 0.18,
+                              ),
+                              child: Text(
                                 appName.isNotEmpty
                                     ? appName[0].toUpperCase()
                                     : "?",
                                 style: TextStyle(
-                                    color: cs.primary,
-                                    fontSize: 30,
-                                    fontWeight: FontWeight.w700)),
-                          ),
-                          const SizedBox(height: 14),
-                          Text(appName,
+                                  color: cs.primary,
+                                  fontSize: 30,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 14),
+                            Text(
+                              appName,
                               style: const TextStyle(
-                                  fontSize: 20, fontWeight: FontWeight.w700)),
-                          const SizedBox(height: 20),
-                          Row(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: 20),
+                            Row(
                               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                               children: [
-                                Column(children: [
-                                  Text(totalLabel,
+                                Column(
+                                  children: [
+                                    Text(
+                                      totalLabel,
                                       style: TextStyle(
-                                          color: cs.onSurfaceVariant,
-                                          fontSize: 13)),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                      _ScreenTimeDetailScreenState
-                                          .formatShortHM(totalAcrossSlots),
+                                        color: cs.onSurfaceVariant,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      _ScreenTimeDetailScreenState.formatShortHM(
+                                        totalAcrossSlots,
+                                      ),
                                       style: TextStyle(
-                                          fontSize: 22,
-                                          fontWeight: FontWeight.w800,
-                                          color: cs.primary)),
-                                ]),
+                                        fontSize: 22,
+                                        fontWeight: FontWeight.w800,
+                                        color: cs.primary,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                                 Container(
-                                    width: 1,
-                                    height: 44,
-                                    color: cs.outlineVariant
-                                        .withValues(alpha: 0.5)),
-                                Column(children: [
-                                  Text(avgLabel,
+                                  width: 1,
+                                  height: 44,
+                                  color: cs.outlineVariant.withValues(
+                                    alpha: 0.5,
+                                  ),
+                                ),
+                                Column(
+                                  children: [
+                                    Text(
+                                      avgLabel,
                                       style: TextStyle(
-                                          color: cs.onSurfaceVariant,
-                                          fontSize: 13)),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                      _ScreenTimeDetailScreenState
-                                          .formatShortHM(avgPerPeriod),
+                                        color: cs.onSurfaceVariant,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      _ScreenTimeDetailScreenState.formatShortHM(
+                                        avgPerPeriod,
+                                      ),
                                       style: TextStyle(
-                                          fontSize: 22,
-                                          fontWeight: FontWeight.w800,
-                                          color: cs.primary)),
-                                ]),
-                              ]),
-                        ]),
+                                        fontSize: 22,
+                                        fontWeight: FontWeight.w800,
+                                        color: cs.primary,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
                       const SizedBox(height: 28),
                       if (deviceTrendCards.isNotEmpty) ...[
-                        Row(children: [
-                          Container(
-                            width: 28,
-                            height: 28,
-                            decoration: BoxDecoration(
+                        Row(
+                          children: [
+                            Container(
+                              width: 28,
+                              height: 28,
+                              decoration: BoxDecoration(
                                 color: cs.primaryContainer,
-                                borderRadius: BorderRadius.circular(8)),
-                            child: Icon(Icons.devices_rounded,
-                                size: 16, color: cs.primary),
-                          ),
-                          const SizedBox(width: 10),
-                          Text("各端使用趋势",
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .titleMedium
-                                  ?.copyWith(fontWeight: FontWeight.w700)),
-                        ]),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Icon(
+                                Icons.devices_rounded,
+                                size: 16,
+                                color: cs.primary,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Text(
+                              "各端使用趋势",
+                              style: Theme.of(context).textTheme.titleMedium
+                                  ?.copyWith(fontWeight: FontWeight.w700),
+                            ),
+                          ],
+                        ),
                         const SizedBox(height: 16),
                         Wrap(
-                            spacing: 24,
-                            runSpacing: 24,
-                            children: deviceTrendCards),
+                          spacing: 24,
+                          runSpacing: 24,
+                          children: deviceTrendCards,
+                        ),
                       ] else
                         const Center(
-                            child: Padding(
-                                padding: EdgeInsets.all(40),
-                                child: Text("暂无数据"))),
+                          child: Padding(
+                            padding: EdgeInsets.all(40),
+                            child: Text("暂无数据"),
+                          ),
+                        ),
                       const SizedBox(height: 40),
-                    ]),
-              ),
-            );
-          }),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
         ),
       ),
     );
@@ -1908,11 +2259,12 @@ class LineChartPainter extends CustomPainter {
   final Color primaryColor;
   final Color textColor;
 
-  LineChartPainter(
-      {required this.data,
-      required this.labels,
-      required this.primaryColor,
-      required this.textColor});
+  LineChartPainter({
+    required this.data,
+    required this.labels,
+    required this.primaryColor,
+    required this.textColor,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -1925,27 +2277,30 @@ class LineChartPainter extends CustomPainter {
     int maxVal = data.reduce(math.max);
     if (maxVal == 0) maxVal = 1;
 
-    double yAvg = size.height -
+    double yAvg =
+        size.height -
         bottomPadding -
         ((data.reduce((a, b) => a + b) / data.length) / maxVal) * chartHeight;
     if (maxVal > 1) {
       _drawDashedLine(
-          canvas,
-          Offset(horizontalPadding, yAvg),
-          Offset(size.width - horizontalPadding, yAvg),
-          Paint()
-            ..color = textColor.withValues(alpha: 0.15)
-            ..strokeWidth = 1
-            ..style = PaintingStyle.stroke);
+        canvas,
+        Offset(horizontalPadding, yAvg),
+        Offset(size.width - horizontalPadding, yAvg),
+        Paint()
+          ..color = textColor.withValues(alpha: 0.15)
+          ..strokeWidth = 1
+          ..style = PaintingStyle.stroke,
+      );
     }
 
     final double stepX = drawWidth / (data.length - 1);
     List<Offset> points = List.generate(
-        data.length,
-        (i) => Offset(
-              horizontalPadding + i * stepX,
-              size.height - bottomPadding - (data[i] / maxVal) * chartHeight,
-            ));
+      data.length,
+      (i) => Offset(
+        horizontalPadding + i * stepX,
+        size.height - bottomPadding - (data[i] / maxVal) * chartHeight,
+      ),
+    );
 
     Path linePath = Path()..moveTo(points.first.dx, points.first.dy);
     for (int i = 1; i < points.length; i++) {
@@ -1958,24 +2313,26 @@ class LineChartPainter extends CustomPainter {
       ..close();
 
     canvas.drawPath(
-        areaPath,
-        Paint()
-          ..shader = ui.Gradient.linear(
-            Offset(0, topPadding),
-            Offset(0, size.height - bottomPadding),
-            [
-              primaryColor.withValues(alpha: 0.3),
-              primaryColor.withValues(alpha: 0.0)
-            ],
-          ));
+      areaPath,
+      Paint()
+        ..shader = ui.Gradient.linear(
+          Offset(0, topPadding),
+          Offset(0, size.height - bottomPadding),
+          [
+            primaryColor.withValues(alpha: 0.3),
+            primaryColor.withValues(alpha: 0.0),
+          ],
+        ),
+    );
     canvas.drawPath(
-        linePath,
-        Paint()
-          ..color = primaryColor
-          ..strokeWidth = 2.5
-          ..style = PaintingStyle.stroke
-          ..strokeJoin = StrokeJoin.round
-          ..strokeCap = StrokeCap.round);
+      linePath,
+      Paint()
+        ..color = primaryColor
+        ..strokeWidth = 2.5
+        ..style = PaintingStyle.stroke
+        ..strokeJoin = StrokeJoin.round
+        ..strokeCap = StrokeCap.round,
+    );
 
     final dotOuter = Paint()
       ..color = Colors.white
@@ -1987,28 +2344,49 @@ class LineChartPainter extends CustomPainter {
       canvas.drawCircle(points[i], 4.5, dotOuter);
       canvas.drawCircle(points[i], 3.0, dotInner);
       if (data[i] == maxVal && maxVal > 1) {
-        _drawText(canvas, _ScreenTimeDetailScreenState.formatShortHM(data[i]),
-            Offset(points[i].dx, points[i].dy - 16),
-            fontSize: 10, color: primaryColor, bold: true);
+        _drawText(
+          canvas,
+          _ScreenTimeDetailScreenState.formatShortHM(data[i]),
+          Offset(points[i].dx, points[i].dy - 16),
+          fontSize: 10,
+          color: primaryColor,
+          bold: true,
+        );
       }
-      _drawText(canvas, labels[i], Offset(points[i].dx, size.height - 12),
-          fontSize: 11, color: textColor, bold: i == data.length - 1);
+      _drawText(
+        canvas,
+        labels[i],
+        Offset(points[i].dx, size.height - 12),
+        fontSize: 11,
+        color: textColor,
+        bold: i == data.length - 1,
+      );
     }
   }
 
-  void _drawText(Canvas canvas, String text, Offset center,
-      {double fontSize = 12, Color color = Colors.black, bool bold = false}) {
+  void _drawText(
+    Canvas canvas,
+    String text,
+    Offset center, {
+    double fontSize = 12,
+    Color color = Colors.black,
+    bool bold = false,
+  }) {
     final tp = TextPainter(
       text: TextSpan(
-          text: text,
-          style: TextStyle(
-              color: color,
-              fontSize: fontSize,
-              fontWeight: bold ? FontWeight.w700 : FontWeight.normal)),
+        text: text,
+        style: TextStyle(
+          color: color,
+          fontSize: fontSize,
+          fontWeight: bold ? FontWeight.w700 : FontWeight.normal,
+        ),
+      ),
       textDirection: TextDirection.ltr,
     )..layout();
     tp.paint(
-        canvas, Offset(center.dx - tp.width / 2, center.dy - tp.height / 2));
+      canvas,
+      Offset(center.dx - tp.width / 2, center.dy - tp.height / 2),
+    );
   }
 
   void _drawDashedLine(Canvas canvas, Offset p1, Offset p2, Paint paint) {
@@ -2020,7 +2398,10 @@ class LineChartPainter extends CustomPainter {
     while (dist >= 0) {
       double dl = math.min(dw, dist);
       canvas.drawLine(
-          Offset(sx, sy), Offset(sx + dx * dl, sy + dy * dl), paint);
+        Offset(sx, sy),
+        Offset(sx + dx * dl, sy + dy * dl),
+        paint,
+      );
       sx += dx * (dw + ds);
       sy += dy * (dw + ds);
       dist -= (dw + ds);
@@ -2045,12 +2426,13 @@ class BarChartPainter extends CustomPainter {
   final Color textColor;
   final int selectedIndex;
 
-  BarChartPainter(
-      {required this.data,
-      required this.labels,
-      required this.primaryColor,
-      required this.textColor,
-      required this.selectedIndex});
+  BarChartPainter({
+    required this.data,
+    required this.labels,
+    required this.primaryColor,
+    required this.textColor,
+    required this.selectedIndex,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -2071,53 +2453,82 @@ class BarChartPainter extends CustomPainter {
           ? primaryColor
           : primaryColor.withValues(alpha: 0.22);
       canvas.drawRRect(
-          RRect.fromRectAndRadius(
-              Rect.fromLTWH(xc - barWidth / 2,
-                  size.height - bottomPadding - barH, barWidth, barH),
-              const Radius.circular(6)),
-          barPaint);
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(
+            xc - barWidth / 2,
+            size.height - bottomPadding - barH,
+            barWidth,
+            barH,
+          ),
+          const Radius.circular(6),
+        ),
+        barPaint,
+      );
       if (data[i] == maxVal && maxVal > 1) {
-        _drawText(canvas, _ScreenTimeDetailScreenState.formatShortHM(data[i]),
-            Offset(xc, size.height - bottomPadding - barH - 12),
-            fontSize: 10, color: primaryColor, bold: true);
+        _drawText(
+          canvas,
+          _ScreenTimeDetailScreenState.formatShortHM(data[i]),
+          Offset(xc, size.height - bottomPadding - barH - 12),
+          fontSize: 10,
+          color: primaryColor,
+          bold: true,
+        );
       }
-      _drawText(canvas, labels[i], Offset(xc, size.height - 12),
-          fontSize: 11, color: textColor, bold: i == selectedIndex);
+      _drawText(
+        canvas,
+        labels[i],
+        Offset(xc, size.height - 12),
+        fontSize: 11,
+        color: textColor,
+        bold: i == selectedIndex,
+      );
     }
     if (avgVal > 0) {
       double avgY =
           size.height - bottomPadding - (avgVal / maxVal) * chartHeight;
       _drawDashedLine(
-          canvas,
-          Offset(0, avgY),
-          Offset(size.width, avgY),
-          Paint()
-            ..color = Colors.orangeAccent.shade400
-            ..strokeWidth = 1.5
-            ..style = PaintingStyle.stroke);
+        canvas,
+        Offset(0, avgY),
+        Offset(size.width, avgY),
+        Paint()
+          ..color = Colors.orangeAccent.shade400
+          ..strokeWidth = 1.5
+          ..style = PaintingStyle.stroke,
+      );
       _drawText(
-          canvas,
-          "平均 ${_ScreenTimeDetailScreenState.formatShortHM(avgVal.toInt())}",
-          Offset(size.width - 25, avgY - 10),
-          fontSize: 10,
-          color: Colors.orange.shade800,
-          bold: true);
+        canvas,
+        "平均 ${_ScreenTimeDetailScreenState.formatShortHM(avgVal.toInt())}",
+        Offset(size.width - 25, avgY - 10),
+        fontSize: 10,
+        color: Colors.orange.shade800,
+        bold: true,
+      );
     }
   }
 
-  void _drawText(Canvas canvas, String text, Offset center,
-      {double fontSize = 12, Color color = Colors.black, bool bold = false}) {
+  void _drawText(
+    Canvas canvas,
+    String text,
+    Offset center, {
+    double fontSize = 12,
+    Color color = Colors.black,
+    bool bold = false,
+  }) {
     final tp = TextPainter(
       text: TextSpan(
-          text: text,
-          style: TextStyle(
-              color: color,
-              fontSize: fontSize,
-              fontWeight: bold ? FontWeight.w700 : FontWeight.normal)),
+        text: text,
+        style: TextStyle(
+          color: color,
+          fontSize: fontSize,
+          fontWeight: bold ? FontWeight.w700 : FontWeight.normal,
+        ),
+      ),
       textDirection: TextDirection.ltr,
     )..layout();
     tp.paint(
-        canvas, Offset(center.dx - tp.width / 2, center.dy - tp.height / 2));
+      canvas,
+      Offset(center.dx - tp.width / 2, center.dy - tp.height / 2),
+    );
   }
 
   void _drawDashedLine(Canvas canvas, Offset p1, Offset p2, Paint paint) {
@@ -2129,7 +2540,10 @@ class BarChartPainter extends CustomPainter {
     while (dist >= 0) {
       double dl = math.min(dw, dist);
       canvas.drawLine(
-          Offset(sx, sy), Offset(sx + dx * dl, sy + dy * dl), paint);
+        Offset(sx, sy),
+        Offset(sx + dx * dl, sy + dy * dl),
+        paint,
+      );
       sx += dx * (dw + ds);
       sy += dy * (dw + ds);
       dist -= (dw + ds);

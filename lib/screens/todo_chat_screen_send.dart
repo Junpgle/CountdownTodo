@@ -258,10 +258,12 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
     );
     final requestText = userMsg.content;
     final previousUserMessage = _latestUserTextFromHistory();
-    final previousAssistantMessage = _messages.reversed
-        .where((message) => message.role == ChatRole.assistant)
-        .firstOrNull
-        ?.content ?? '';
+    final previousAssistantMessage =
+        _messages.reversed
+            .where((message) => message.role == ChatRole.assistant)
+            .firstOrNull
+            ?.content ??
+        '';
 
     setState(() {
       _messages.add(userMsg);
@@ -302,7 +304,9 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
           : '';
       final nativeTools = nativeToolMode
           ? <Map<String, dynamic>>[
-              if (!AiNativeToolDefinitionBuilder.isMissingActionCardReport(requestText))
+              if (!AiNativeToolDefinitionBuilder.isMissingActionCardReport(
+                requestText,
+              ))
                 AiSettingsNavigationService.buildDefinition(),
               if (useQueryTools) ...AiQueryToolService.buildDefinitions(),
               ...AiNativeToolDefinitionBuilder.buildNativeToolDefinitions(
@@ -359,15 +363,19 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
               tools: nativeTools!,
               streamRound: streamRound,
               streamProposalRound: (messages, tools) => streamRound(
-                messages, tools, toolChoiceName: 'propose_cdt_actions',
+                messages,
+                tools,
+                toolChoiceName: 'propose_cdt_actions',
               ),
               executeRead: _createQueryToolService().execute,
               cancelToken: _cancelGeneration,
               includeReasoningContent: includeReasoningContent,
               planningRequestText: requestText,
-              requirePlanningProposal: (RegExp(r'生成|确认|确定|^可以|^要的|^好的|^需要')
-                  .hasMatch(requestText) ||
-                  AiNativeToolDefinitionBuilder.isMissingActionCardReport(requestText)) &&
+              requirePlanningProposal:
+                  (RegExp(r'生成|确认|确定|^可以|^要的|^好的|^需要').hasMatch(requestText) ||
+                      AiNativeToolDefinitionBuilder.isMissingActionCardReport(
+                        requestText,
+                      )) &&
                   allowedNativeCdtActions.contains('create_plan_block'),
             )
           : streamRound(apiMessages, nativeTools ?? []);
@@ -457,8 +465,10 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
         nativeToolCalls,
       );
       final parsingTodos = actionContent.contains('create_plan_block')
-          ? [for (final todo in await StorageService.getTodos(widget.username))
-              {'id': todo.id, 'title': todo.title}]
+          ? [
+              for (final todo in await StorageService.getTodos(widget.username))
+                {'id': todo.id, 'title': todo.title},
+            ]
           : widget.todos;
       final existingTodoTitles = {
         for (final todo in parsingTodos)
@@ -590,8 +600,10 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
           : todoActions.any((action) => action.isPlanBlockAction)
           ? _planningDraftSummary(todoActions)
           : allowedNativeCdtActions.contains('create_plan_block') &&
-              nativeToolCalls.any((call) => call.name == 'propose_cdt_actions') &&
-              todoActions.isEmpty
+                nativeToolCalls.any(
+                  (call) => call.name == 'propose_cdt_actions',
+                ) &&
+                todoActions.isEmpty
           ? '规划工具返回的草案未通过校验，没有生成可执行卡片，也未保存任何数据。请重新生成规划。'
           : cleanContent.isNotEmpty
           ? cleanContent
@@ -720,24 +732,40 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
     if (!AiNativeToolDefinitionBuilder.isMissingActionCardReport(text)) {
       return false;
     }
-    final source = _messages.reversed.where((message) =>
-        message.role == ChatRole.assistant &&
-        message.todoActions?.any((action) => action.isPlanBlockAction &&
-            !action.isAdded && !action.isIgnored) == true).firstOrNull;
+    final source = _messages.reversed
+        .where(
+          (message) =>
+              message.role == ChatRole.assistant &&
+              message.todoActions?.any(
+                    (action) =>
+                        action.isPlanBlockAction &&
+                        !action.isAdded &&
+                        !action.isIgnored,
+                  ) ==
+                  true,
+        )
+        .firstOrNull;
     final sessionId = _activeSessionId;
     if (source == null || sessionId == null) return false;
-    final pending = source.todoActions!.where((action) =>
-        !action.isAdded && !action.isIgnored).toList();
+    final pending = source.todoActions!
+        .where((action) => !action.isAdded && !action.isIgnored)
+        .toList();
     final previous = source.copyWith(
-      todoActions: source.todoActions!.where((action) =>
-          action.isAdded || action.isIgnored).toList(),
+      todoActions: source.todoActions!
+          .where((action) => action.isAdded || action.isIgnored)
+          .toList(),
       content: '尚未执行的操作草案已移至最新回复。',
     );
-    final user = ChatMessage(role: ChatRole.user, content: text,
-        usageSummary: _takePendingVoiceUsageSummary());
-    final reply = ChatMessage(role: ChatRole.assistant,
+    final user = ChatMessage(
+      role: ChatRole.user,
+      content: text,
+      usageSummary: _takePendingVoiceUsageSummary(),
+    );
+    final reply = ChatMessage(
+      role: ChatRole.assistant,
       content: '已把尚未执行的规划操作移到这条回复下方，请核对后点击“执行所选操作”保存。',
-      todoActions: pending);
+      todoActions: pending,
+    );
     setState(() {
       _messages[_messages.indexOf(source)] = previous;
       _messages.addAll([user, reply]);
@@ -761,8 +789,11 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
               message.content != _planningConfirmationHint,
         )
         .firstOrNull;
-    if (latest?.todoActions?.any((action) => action.isPlanBlockAction &&
-        !action.isAdded && !action.isIgnored) != true) {
+    if (latest?.todoActions?.any(
+          (action) =>
+              action.isPlanBlockAction && !action.isAdded && !action.isIgnored,
+        ) !=
+        true) {
       return false;
     }
     final sessionId = _activeSessionId;
@@ -790,8 +821,11 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
   }
 
   String _planningDraftSummary(List<AiTodoAction> actions) {
-    final newTodos = actions.where((action) => action.newTodoTitle != null)
-        .map((action) => action.newTodoTitle!).toSet().length;
+    final newTodos = actions
+        .where((action) => action.newTodoTitle != null)
+        .map((action) => action.newTodoTitle!)
+        .toSet()
+        .length;
     return '已生成 ${actions.length} 条待确认操作。'
         '${newTodos > 0 ? '其中 $newTodos 项会在执行时新建待办并关联规划。' : ''}'
         '请核对操作卡片，点击“执行所选操作”后才会保存；聊天回复“确认”不会保存。';
@@ -847,9 +881,8 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
         .map((call) {
           final summary = switch (call.name) {
             AiSettingsNavigationService.toolName =>
-              AiSettingsNavigationService.targetsFromArguments(
-                call.arguments,
-              ).isNotEmpty
+              AiSettingsNavigationService.targetsFromArguments(call.arguments)
+                      .isNotEmpty
                   ? '已生成设置入口卡片，点击后前往；设置未自动修改。'
                   : '未找到有效的设置入口。',
             'propose_cdt_actions' =>
@@ -1083,9 +1116,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
       : '已生成 $count 笔待确认记账。请逐笔在下方卡片核对并点击“编辑并保存”；聊天回复“确认”不会直接入账。';
 
   Future<bool> _tryConfirmPendingFinanceDraft(String text) async {
-    final command = text
-        .trim()
-        .replaceAll(RegExp(r'[\s，。！？、,.!?]'), '');
+    final command = text.trim().replaceAll(RegExp(r'[\s，。！？、,.!?]'), '');
     if (!const {
       '确认',
       '确认记账',
@@ -1137,10 +1168,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
       }
     }
     final supersededDraftsIgnored = drafts.length == 1
-        ? _ignoreSupersededDateCorrectionDrafts(
-            latestAssistant,
-            drafts.single,
-          )
+        ? _ignoreSupersededDateCorrectionDrafts(latestAssistant, drafts.single)
         : false;
     final historyNeedsSave =
         legacyMessageNeedsMigration || supersededDraftsIgnored;
@@ -1205,29 +1233,32 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
         );
       }
     }
-    final matchingDrafts = previousDrafts.where((draft) {
-      final hasDescriptor = [
-        draft.merchant,
-        draft.categoryName ?? draft.categoryUuid,
-        draft.note,
-      ].any((value) => value?.trim().isNotEmpty == true);
-      return !draft.isAdded &&
-          !draft.isIgnored &&
-          hasDescriptor &&
-          draft.transactionDate != confirmedDraft.transactionDate &&
-          draft.type == confirmedDraft.type &&
-          draft.amountMinor == confirmedDraft.amountMinor &&
-          _sameFinanceDraftText(draft.merchant, confirmedDraft.merchant) &&
-          _sameFinanceDraftText(
+    final matchingDrafts = previousDrafts
+        .where((draft) {
+          final hasDescriptor = [
+            draft.merchant,
             draft.categoryName ?? draft.categoryUuid,
-            confirmedDraft.categoryName ?? confirmedDraft.categoryUuid,
-          ) &&
-          _sameFinanceDraftText(
-            draft.paymentMethodName ?? draft.paymentMethodUuid,
-            confirmedDraft.paymentMethodName ?? confirmedDraft.paymentMethodUuid,
-          ) &&
-          _sameFinanceDraftText(draft.note, confirmedDraft.note);
-    }).toList(growable: false);
+            draft.note,
+          ].any((value) => value?.trim().isNotEmpty == true);
+          return !draft.isAdded &&
+              !draft.isIgnored &&
+              hasDescriptor &&
+              draft.transactionDate != confirmedDraft.transactionDate &&
+              draft.type == confirmedDraft.type &&
+              draft.amountMinor == confirmedDraft.amountMinor &&
+              _sameFinanceDraftText(draft.merchant, confirmedDraft.merchant) &&
+              _sameFinanceDraftText(
+                draft.categoryName ?? draft.categoryUuid,
+                confirmedDraft.categoryName ?? confirmedDraft.categoryUuid,
+              ) &&
+              _sameFinanceDraftText(
+                draft.paymentMethodName ?? draft.paymentMethodUuid,
+                confirmedDraft.paymentMethodName ??
+                    confirmedDraft.paymentMethodUuid,
+              ) &&
+              _sameFinanceDraftText(draft.note, confirmedDraft.note);
+        })
+        .toList(growable: false);
     if (matchingDrafts.isEmpty) return false;
     for (final draft in matchingDrafts) {
       draft.isIgnored = true;
@@ -1246,8 +1277,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
   }
 
   bool _sameFinanceDraftText(String? first, String? second) =>
-      (first ?? '').trim().toLowerCase() ==
-      (second ?? '').trim().toLowerCase();
+      (first ?? '').trim().toLowerCase() == (second ?? '').trim().toLowerCase();
 
   Future<void> _copyManualPromptFromInput() async {
     final text = _inputCtrl.text.trim();
@@ -1361,8 +1391,9 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
       existingTodoTitles: existingTodoTitles,
       existingScheduleTitles: existingScheduleTitles,
     );
-    final settingsTargets =
-        AiSettingsNavigationService.extractTargets(fullContent);
+    final settingsTargets = AiSettingsNavigationService.extractTargets(
+      fullContent,
+    );
     final inlineSuggestions = AiActionParser.extractSuggestions(fullContent);
     final financeDrafts = FinanceTextParser.extractAssistantDrafts(fullContent);
     final financeActions = FinanceTextParser.extractAssistantActions(
@@ -1382,10 +1413,10 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
           ? _financeDraftSummary(financeDrafts.length)
           : cleanContent.isEmpty
           ? settingsTargets.isNotEmpty
-              ? '已找到相关设置，点击卡片即可前往调整。'
-              : financeActions.isNotEmpty
-              ? '已生成账单操作草案，请在确认卡中核对。'
-              : fullContent
+                ? '已找到相关设置，点击卡片即可前往调整。'
+                : financeActions.isNotEmpty
+                ? '已生成账单操作草案，请在确认卡中核对。'
+                : fullContent
           : cleanContent,
       rawContent: fullContent,
       settingsTargets: settingsTargets,

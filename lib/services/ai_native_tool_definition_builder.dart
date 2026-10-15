@@ -750,8 +750,11 @@ class AiNativeToolDefinitionBuilder {
         .hasMatch(message);
     final isTaskDescription = RegExp(r'我(?:打算|准备|想|要).*(?:做|学|复习|安排)')
         .hasMatch(message);
-    if (!isAssent && !isPlanningDetail && !isSchedulingRequest &&
-        !isTaskDescription && !isMissingActionCardReport(message)) {
+    if (!isAssent &&
+        !isPlanningDetail &&
+        !isSchedulingRequest &&
+        !isTaskDescription &&
+        !isMissingActionCardReport(message)) {
       return message;
     }
     final previousPlanningRequest =

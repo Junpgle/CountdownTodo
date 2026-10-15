@@ -27,87 +27,89 @@ void main() {
   });
 
   testWidgets(
-      'today schedule displays a device-calendar event and opens shared detail',
-      (tester) async {
-    final now = DateTime.now();
-    final start = now.add(const Duration(minutes: 5));
-    final end = start.add(const Duration(minutes: 30));
-    final expectedScheduleTitle =
-        DateUtils.dateOnly(start) == DateUtils.dateOnly(now)
-            ? '今日日程'
-            : '明日日程';
+    'today schedule displays a device-calendar event and opens shared detail',
+    (tester) async {
+      final now = DateTime.now();
+      final start = now.add(const Duration(minutes: 5));
+      final end = start.add(const Duration(minutes: 30));
+      final expectedScheduleTitle =
+          DateUtils.dateOnly(start) == DateUtils.dateOnly(now)
+          ? '今日日程'
+          : '明日日程';
 
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(channel, (call) async {
-      if (call.method == 'checkPermission') return true;
-      if (call.method == 'readEvents') {
-        return [
-          {
-            'id': 'home-device-event',
-            'calendarId': 'device-calendar',
-            'title': '首页手机日程',
-            'startMs': start.millisecondsSinceEpoch,
-            'endMs': end.millisecondsSinceEpoch,
-            'allDay': false,
-            'location': '会议室',
-          },
-        ];
-      }
-      return null;
-    });
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+            if (call.method == 'checkPermission') return true;
+            if (call.method == 'readEvents') {
+              return [
+                {
+                  'id': 'home-device-event',
+                  'calendarId': 'device-calendar',
+                  'title': '首页手机日程',
+                  'startMs': start.millisecondsSinceEpoch,
+                  'endMs': end.millisecondsSinceEpoch,
+                  'allDay': false,
+                  'location': '会议室',
+                },
+              ];
+            }
+            return null;
+          });
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: CourseSectionWidget(
-            dashboardCourseData: const {
-              'title': '暂无课表',
-              'courses': <dynamic>[],
-            },
-            username: 'home-calendar-test',
-            todos: const [],
-            isLight: true,
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: CourseSectionWidget(
+              dashboardCourseData: const {
+                'title': '暂无课表',
+                'courses': <dynamic>[],
+              },
+              username: 'home-calendar-test',
+              todos: const [],
+              isLight: true,
+            ),
           ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
+      await tester.pumpAndSettle();
 
-    expect(find.text(expectedScheduleTitle), findsOneWidget);
-    expect(find.text('首页手机日程'), findsOneWidget);
-    expect(find.text('手机日历'), findsOneWidget);
+      expect(find.text(expectedScheduleTitle), findsOneWidget);
+      expect(find.text('首页手机日程'), findsOneWidget);
+      expect(find.text('手机日历'), findsOneWidget);
 
-    await tester.tap(find.text('首页手机日程'));
-    await tester.pumpAndSettle();
+      await tester.tap(find.text('首页手机日程'));
+      await tester.pumpAndSettle();
 
-    expect(find.text('日程详情'), findsOneWidget);
-    expect(find.text('手机日历 · 只读'), findsOneWidget);
-    expect(find.text('会议室'), findsOneWidget);
-  });
+      expect(find.text('日程详情'), findsOneWidget);
+      expect(find.text('手机日历 · 只读'), findsOneWidget);
+      expect(find.text('会议室'), findsOneWidget);
+    },
+  );
 
-  testWidgets('keeps ended today events visible when tomorrow has no events',
-      (tester) async {
+  testWidgets('keeps ended today events visible when tomorrow has no events', (
+    tester,
+  ) async {
     final todayStart = DateUtils.dateOnly(DateTime.now());
     final eventEnd = todayStart.add(const Duration(milliseconds: 1));
 
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (call) async {
-      if (call.method == 'checkPermission') return true;
-      if (call.method == 'readEvents') {
-        return [
-          {
-            'id': 'ended-home-device-event',
-            'calendarId': 'device-calendar',
-            'title': '已结束的首页日程',
-            'startMs': todayStart.millisecondsSinceEpoch,
-            'endMs': eventEnd.millisecondsSinceEpoch,
-            'allDay': false,
-            'location': '',
-          },
-        ];
-      }
-      return null;
-    });
+          if (call.method == 'checkPermission') return true;
+          if (call.method == 'readEvents') {
+            return [
+              {
+                'id': 'ended-home-device-event',
+                'calendarId': 'device-calendar',
+                'title': '已结束的首页日程',
+                'startMs': todayStart.millisecondsSinceEpoch,
+                'endMs': eventEnd.millisecondsSinceEpoch,
+                'allDay': false,
+                'location': '',
+              },
+            ];
+          }
+          return null;
+        });
 
     await tester.pumpWidget(
       MaterialApp(

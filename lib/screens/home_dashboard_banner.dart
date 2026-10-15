@@ -1,4 +1,5 @@
 part of 'home_dashboard.dart';
+
 // ignore_for_file: annotate_overrides
 
 String _formatDashboardPomodoroTimeInfo(
@@ -28,9 +29,7 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
         priority: -1,
         onTap: () async {
           await Navigator.of(context, rootNavigator: true).push(
-            PageTransitions.slideHorizontal(
-              const ChallengeCenterScreen(),
-            ),
+            PageTransitions.slideHorizontal(const ChallengeCenterScreen()),
           );
           if (mounted) {
             _loadThirtyDayChallengeStatus();
@@ -49,15 +48,9 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
             width: MediaQuery.sizeOf(context).width * 0.5,
             child: positionedBanner,
           )
-        : SizedBox(
-            width: double.infinity,
-            child: positionedBanner,
-          );
+        : SizedBox(width: double.infinity, child: positionedBanner);
 
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: topBanner,
-    );
+    return Align(alignment: Alignment.centerLeft, child: topBanner);
   }
 
   Widget _buildPendingTodoConfirmCard(bool isLight) {
@@ -200,7 +193,9 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
                         onTap: _ignorePendingTodoRecognition,
                         child: Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 6),
+                            horizontal: 10,
+                            vertical: 6,
+                          ),
                           decoration: BoxDecoration(
                             color: Colors.grey.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(8),
@@ -221,7 +216,9 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
                         onTap: _retryPendingTodoRecognition,
                         child: Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 6),
+                            horizontal: 10,
+                            vertical: 6,
+                          ),
                           decoration: BoxDecoration(
                             color: Colors.red.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(8),
@@ -255,10 +252,7 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
   Future<void> _retryPendingTodoRecognition() async {
     // 更新状态为重试中
     setState(() {
-      _pendingTodoConfirm = {
-        ...?_pendingTodoConfirm,
-        'status': 'retrying',
-      };
+      _pendingTodoConfirm = {...?_pendingTodoConfirm, 'status': 'retrying'};
     });
 
     await ExternalShareHandler.retryTodoRecognition(
@@ -356,16 +350,19 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
                         Container(
                           margin: const EdgeInsets.only(left: 6),
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 5, vertical: 1),
+                            horizontal: 5,
+                            vertical: 1,
+                          ),
                           decoration: BoxDecoration(
                             color: isLight
                                 ? Colors.white.withValues(alpha: 0.2)
                                 : baseColor.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(4),
                             border: Border.all(
-                                color: isLight
-                                    ? Colors.white38
-                                    : baseColor.withValues(alpha: 0.3)),
+                              color: isLight
+                                  ? Colors.white38
+                                  : baseColor.withValues(alpha: 0.3),
+                            ),
                           ),
                           child: Text(
                             '团队',
@@ -387,8 +384,8 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
                             event.type == 'course'
                                 ? Icons.location_on_outlined
                                 : event.type == 'special_todo'
-                                    ? Icons.confirmation_number_outlined
-                                    : Icons.sticky_note_2_outlined,
+                                ? Icons.confirmation_number_outlined
+                                : Icons.sticky_note_2_outlined,
                             size: 11,
                             color: isLight ? Colors.white70 : Colors.grey[600],
                           ),
@@ -398,8 +395,9 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
                               event.subtitle!,
                               style: TextStyle(
                                 fontSize: 11,
-                                color:
-                                    isLight ? Colors.white70 : Colors.grey[600],
+                                color: isLight
+                                    ? Colors.white70
+                                    : Colors.grey[600],
                               ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -425,8 +423,10 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
               GestureDetector(
                 onTap: event.onAction,
                 child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 5,
+                  ),
                   decoration: BoxDecoration(
                     color: isLight
                         ? Colors.white.withValues(alpha: 0.25)
@@ -437,9 +437,11 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       if (event.actionIcon != null) ...[
-                        Icon(event.actionIcon,
-                            size: 14,
-                            color: isLight ? Colors.white : baseColor),
+                        Icon(
+                          event.actionIcon,
+                          size: 14,
+                          color: isLight ? Colors.white : baseColor,
+                        ),
                         const SizedBox(width: 4),
                       ],
                       Text(
@@ -456,8 +458,11 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
               ),
             ],
             const SizedBox(width: 4),
-            Icon(Icons.chevron_right,
-                color: isLight ? Colors.white70 : baseColor, size: 18),
+            Icon(
+              Icons.chevron_right,
+              color: isLight ? Colors.white70 : baseColor,
+              size: 18,
+            ),
           ],
         ),
       ),
@@ -476,62 +481,62 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
           ? ((nowMs - _localPomodoro!.sessionStartMs) / 1000).floor()
           : ((_localPomodoro!.targetEndMs - nowMs) / 1000).ceil();
 
-      final timeStr = _formatDashboardPomodoroTimeInfo(
-        rem,
-        countUp: isCountUp,
-      );
+      final timeStr = _formatDashboardPomodoroTimeInfo(rem, countUp: isCountUp);
 
       // 规划块即将结束时显示停止按钮
-      final hasActivePlanBlock = _planBlocks
-          .any((b) => !b.isDeleted && b.status == TodoPlanStatus.focusing);
+      final hasActivePlanBlock = _planBlocks.any(
+        (b) => !b.isDeleted && b.status == TodoPlanStatus.focusing,
+      );
       final bool showStopBtn =
           hasActivePlanBlock && !isCountUp && rem > 0 && rem <= 1800;
 
-      events.add(HomeBannerEvent(
-        type: 'pomodoro',
-        title: _localPomodoro!.todoTitle ?? '无标题专注',
-        label: '⚡ 正在专注 (本机)',
-        timeInfo: timeStr,
-        baseColor: const Color(0xFF4F46E5),
-        icon: '🍅',
-        priority: 0,
-        actionLabel: showStopBtn ? '关闭' : null,
-        actionIcon: showStopBtn ? Icons.stop_rounded : null,
-        onAction: showStopBtn ? _stopPlanBlockPomodoro : null,
-        onTap: () async {
-          await PageTransitions.pushFromRect(
-            context: context,
-            page: PomodoroScreen(username: widget.username),
-            sourceKey: _focusBannerKey,
-          );
-        },
-      ));
+      events.add(
+        HomeBannerEvent(
+          type: 'pomodoro',
+          title: _localPomodoro!.todoTitle ?? '无标题专注',
+          label: '⚡ 正在专注 (本机)',
+          timeInfo: timeStr,
+          baseColor: const Color(0xFF4F46E5),
+          icon: '🍅',
+          priority: 0,
+          actionLabel: showStopBtn ? '关闭' : null,
+          actionIcon: showStopBtn ? Icons.stop_rounded : null,
+          onAction: showStopBtn ? _stopPlanBlockPomodoro : null,
+          onTap: () async {
+            await PageTransitions.pushFromRect(
+              context: context,
+              page: PomodoroScreen(username: widget.username),
+              sourceKey: _focusBannerKey,
+            );
+          },
+        ),
+      );
     } else if (_remotePomodoro != null) {
-      final deviceLabel = _remotePomodoro!.sourceDevice
+      final deviceLabel =
+          _remotePomodoro!.sourceDevice
               ?.replaceFirst('flutter_', '')
               .substring(0, 8) ??
           '其他设备';
       final rem = _remotePomodoroRemaining;
       final isCountUp = _remotePomodoro!.mode == 1;
-      final timeStr = _formatDashboardPomodoroTimeInfo(
-        rem,
-        countUp: isCountUp,
-      );
+      final timeStr = _formatDashboardPomodoroTimeInfo(rem, countUp: isCountUp);
 
-      events.add(HomeBannerEvent(
-        type: 'pomodoro',
-        title: _remotePomodoro!.todoTitle ?? '其他设备专注',
-        label: '📱 $deviceLabel 正在专注',
-        timeInfo: timeStr,
-        baseColor: const Color(0xFFFF6B6B),
-        icon: '🍅',
-        priority: 1,
-        onTap: () => PageTransitions.pushFromRect(
-          context: context,
-          page: PomodoroScreen(username: widget.username),
-          sourceKey: _focusBannerKey,
+      events.add(
+        HomeBannerEvent(
+          type: 'pomodoro',
+          title: _remotePomodoro!.todoTitle ?? '其他设备专注',
+          label: '📱 $deviceLabel 正在专注',
+          timeInfo: timeStr,
+          baseColor: const Color(0xFFFF6B6B),
+          icon: '🍅',
+          priority: 1,
+          onTap: () => PageTransitions.pushFromRect(
+            context: context,
+            page: PomodoroScreen(username: widget.username),
+            sourceKey: _focusBannerKey,
+          ),
         ),
-      ));
+      );
     }
 
     // 1.5 规划块 (无本地/远端番茄钟运行时展示，支持一键开始/重新开始)
@@ -555,41 +560,44 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
         final timeText = isInterrupted
             ? (remainMin > 0 ? '剩 ${remainMin}m' : '已超时')
             : (nowMs < activeBlock.startTime
-                ? _planBlockStartText(activeBlock.startTime, nowMs)
-                : (remainMin > 0 ? '剩 ${remainMin}m' : '进行中'));
+                  ? _planBlockStartText(activeBlock.startTime, nowMs)
+                  : (remainMin > 0 ? '剩 ${remainMin}m' : '进行中'));
 
-        events.add(HomeBannerEvent(
-          type: 'plan_block',
-          title: title,
-          label: isInterrupted ? '⏱ 专注中断' : '📋 规划待专注',
-          timeInfo: timeText,
-          baseColor:
-              isInterrupted ? Colors.deepOrange : const Color(0xFF7C4DFF),
-          icon: '📋',
-          priority: 1,
-          actionLabel: isInterrupted ? '重新开始' : '开始',
-          actionIcon: Icons.play_arrow_rounded,
-          onTap: () async {
-            await Navigator.of(context).push(
-              PageTransitions.material(
-                builder: (_) => TodoPlanScreen(
-                  username: widget.username,
-                  initialDate: DateTime.now(),
+        events.add(
+          HomeBannerEvent(
+            type: 'plan_block',
+            title: title,
+            label: isInterrupted ? '⏱ 专注中断' : '📋 规划待专注',
+            timeInfo: timeText,
+            baseColor: isInterrupted
+                ? Colors.deepOrange
+                : const Color(0xFF7C4DFF),
+            icon: '📋',
+            priority: 1,
+            actionLabel: isInterrupted ? '重新开始' : '开始',
+            actionIcon: Icons.play_arrow_rounded,
+            onTap: () async {
+              await Navigator.of(context).push(
+                PageTransitions.material(
+                  builder: (_) => TodoPlanScreen(
+                    username: widget.username,
+                    initialDate: DateTime.now(),
+                  ),
                 ),
-              ),
-            );
-            _scheduleRevision.value++;
-            _timelineRevision.value++;
-            _loadAllData(
-              domains: const {
-                DataRefreshDomain.todos,
-                DataRefreshDomain.planBlocks,
-                DataRefreshDomain.fixedSchedules,
-              },
-            );
-          },
-          onAction: () => _startPlanBlockFocus(activeBlock),
-        ));
+              );
+              _scheduleRevision.value++;
+              _timelineRevision.value++;
+              _loadAllData(
+                domains: const {
+                  DataRefreshDomain.todos,
+                  DataRefreshDomain.planBlocks,
+                  DataRefreshDomain.fixedSchedules,
+                },
+              );
+            },
+            onAction: () => _startPlanBlockFocus(activeBlock),
+          ),
+        );
       }
     }
 
@@ -603,44 +611,57 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
       final endHour = course.endTime ~/ 100;
       final endMin = course.endTime % 100;
       final endTime = DateTime(
-          startTime.year, startTime.month, startTime.day, endHour, endMin);
+        startTime.year,
+        startTime.month,
+        startTime.day,
+        endHour,
+        endMin,
+      );
 
       final diffStart = startTime.difference(now).inMinutes;
       final isOngoing = now.isAfter(startTime) && now.isBefore(endTime);
 
       if (isOngoing) {
         final remaining = endTime.difference(now).inMinutes;
-        events.add(HomeBannerEvent(
-          type: 'course',
-          title: course.courseName,
-          subtitle: course.roomName,
-          label: '📖 正在进行的课程',
-          timeInfo: '剩 ${remaining}m',
-          baseColor: Colors.teal,
-          icon: '🏫',
-          priority: 2,
-          isTeam: course.teamUuid != null,
-          onTap: () => Navigator.push(
-            context,
-            PageTransitions.slideHorizontal(CourseDetailScreen(course: course)),
+        events.add(
+          HomeBannerEvent(
+            type: 'course',
+            title: course.courseName,
+            subtitle: course.roomName,
+            label: '📖 正在进行的课程',
+            timeInfo: '剩 ${remaining}m',
+            baseColor: Colors.teal,
+            icon: '🏫',
+            priority: 2,
+            isTeam: course.teamUuid != null,
+            onTap: () => Navigator.push(
+              context,
+              PageTransitions.slideHorizontal(
+                CourseDetailScreen(course: course),
+              ),
+            ),
           ),
-        ));
+        );
       } else if (diffStart >= 0 && diffStart <= 20) {
-        events.add(HomeBannerEvent(
-          type: 'course',
-          title: course.courseName,
-          subtitle: course.roomName,
-          label: '🔔 即将开始的课程',
-          timeInfo: '${diffStart}m 后开始',
-          baseColor: Colors.cyan,
-          icon: '🏫',
-          priority: 4,
-          isTeam: course.teamUuid != null,
-          onTap: () => Navigator.push(
-            context,
-            PageTransitions.slideHorizontal(CourseDetailScreen(course: course)),
+        events.add(
+          HomeBannerEvent(
+            type: 'course',
+            title: course.courseName,
+            subtitle: course.roomName,
+            label: '🔔 即将开始的课程',
+            timeInfo: '${diffStart}m 后开始',
+            baseColor: Colors.cyan,
+            icon: '🏫',
+            priority: 4,
+            isTeam: course.teamUuid != null,
+            onTap: () => Navigator.push(
+              context,
+              PageTransitions.slideHorizontal(
+                CourseDetailScreen(course: course),
+              ),
+            ),
           ),
-        ));
+        );
       }
     }
 
@@ -652,18 +673,20 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
       if (specialType == 'default') continue;
       if (!AppTimeFormats.isSameDay(todo.dueDate!.toLocal(), now)) continue;
 
-      events.add(HomeBannerEvent(
-        type: 'special_todo',
-        title: todo.title,
-        subtitle: todo.remark,
-        label: _specialTodoBannerLabel(specialType),
-        timeInfo: _specialTodoBannerTimeInfo(todo, now),
-        baseColor: _specialTodoBannerColor(specialType),
-        icon: _specialTodoBannerIcon(specialType),
-        priority: 2,
-        isTeam: todo.teamUuid != null,
-        onTap: () => _openTodoEditor(todo),
-      ));
+      events.add(
+        HomeBannerEvent(
+          type: 'special_todo',
+          title: todo.title,
+          subtitle: todo.remark,
+          label: _specialTodoBannerLabel(specialType),
+          timeInfo: _specialTodoBannerTimeInfo(todo, now),
+          baseColor: _specialTodoBannerColor(specialType),
+          icon: _specialTodoBannerIcon(specialType),
+          priority: 2,
+          isTeam: todo.teamUuid != null,
+          onTap: () => _openTodoEditor(todo),
+        ),
+      );
     }
 
     // 4. 普通待办 (临近或进行中)
@@ -676,11 +699,13 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
       final endTime = todo.dueDate!.toLocal();
 
       // 判定全天任务或跨天任务
-      bool isAllDay = startTime.hour == 0 &&
+      bool isAllDay =
+          startTime.hour == 0 &&
           startTime.minute == 0 &&
           endTime.hour == 23 &&
           endTime.minute == 59;
-      bool isCrossDay = startTime.year != endTime.year ||
+      bool isCrossDay =
+          startTime.year != endTime.year ||
           startTime.month != endTime.month ||
           startTime.day != endTime.day;
       if (isAllDay || isCrossDay) continue;
@@ -690,31 +715,35 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
 
       if (isOngoing) {
         final remaining = endTime.difference(now).inMinutes;
-        events.add(HomeBannerEvent(
-          type: 'todo',
-          title: todo.title,
-          subtitle: todo.remark,
-          label: '📌 正在进行的任务',
-          timeInfo: '剩 ${remaining}m',
-          baseColor: Colors.amber[700]!,
-          icon: '📝',
-          priority: 3,
-          isTeam: todo.teamUuid != null,
-          onTap: () => _openTodoEditor(todo),
-        ));
+        events.add(
+          HomeBannerEvent(
+            type: 'todo',
+            title: todo.title,
+            subtitle: todo.remark,
+            label: '📌 正在进行的任务',
+            timeInfo: '剩 ${remaining}m',
+            baseColor: Colors.amber[700]!,
+            icon: '📝',
+            priority: 3,
+            isTeam: todo.teamUuid != null,
+            onTap: () => _openTodoEditor(todo),
+          ),
+        );
       } else if (diffStart >= 0 && diffStart <= 30) {
-        events.add(HomeBannerEvent(
-          type: 'todo',
-          title: todo.title,
-          subtitle: todo.remark,
-          label: '⏰ 即将开始的任务',
-          timeInfo: '${diffStart}m 后开始',
-          baseColor: Colors.orange,
-          icon: '📝',
-          priority: 5,
-          isTeam: todo.teamUuid != null,
-          onTap: () => _openTodoEditor(todo),
-        ));
+        events.add(
+          HomeBannerEvent(
+            type: 'todo',
+            title: todo.title,
+            subtitle: todo.remark,
+            label: '⏰ 即将开始的任务',
+            timeInfo: '${diffStart}m 后开始',
+            baseColor: Colors.orange,
+            icon: '📝',
+            priority: 5,
+            isTeam: todo.teamUuid != null,
+            onTap: () => _openTodoEditor(todo),
+          ),
+        );
       }
     }
 
@@ -734,8 +763,9 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
           todoGroups: _todoGroups,
           onGroupsChanged: (newGroups) async {
             setState(() => _todoGroups = newGroups);
-            final allGroups =
-                await StorageService.getTodoGroups(widget.username);
+            final allGroups = await StorageService.getTodoGroups(
+              widget.username,
+            );
             for (var g in newGroups) {
               int idx = allGroups.indexWhere((x) => x.id == g.id);
               if (idx != -1) {
@@ -745,9 +775,7 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
               }
             }
             await StorageService.saveTodoGroups(widget.username, allGroups);
-            _loadAllData(
-              domains: const {DataRefreshDomain.todoGroups},
-            );
+            _loadAllData(domains: const {DataRefreshDomain.todoGroups});
           },
           username: widget.username,
         ),
@@ -877,11 +905,12 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
         AppPlatform.isWindows || AppPlatform.isMacOS;
     final desktopShownStateKey =
         'desktop_live_notification_shown_${widget.username}';
-    final desktopPrefs =
-        persistDesktopShownState ? await SharedPreferences.getInstance() : null;
+    final desktopPrefs = persistDesktopShownState
+        ? await SharedPreferences.getInstance()
+        : null;
     final desktopShownKeys =
         desktopPrefs?.getStringList(desktopShownStateKey)?.toSet() ??
-            <String>{};
+        <String>{};
 
     Future<void> markDesktopNotificationShown(String key) async {
       if (desktopPrefs == null || !desktopShownKeys.add(key)) return;
@@ -918,8 +947,9 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
     // ── 课程通知 ────────────────────────────────────────────────
     const int courseNotificationId = 12347;
 
-    final dashboardData =
-        await CourseService.getDashboardCourses(widget.username);
+    final dashboardData = await CourseService.getDashboardCourses(
+      widget.username,
+    );
     List<CourseItem> courses =
         (dashboardData['courses'] as List?)?.cast<CourseItem>() ?? [];
 
@@ -934,7 +964,7 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
         // 显示窗口：自上课前 20 分钟起，直到下课结束
         final isInsideWindow =
             now.isAfter(courseTime.subtract(const Duration(minutes: 20))) &&
-                now.isBefore(courseEndTime);
+            now.isBefore(courseEndTime);
         if (isInsideWindow) {
           // 已有定时闹钟的课程不再弹实时活动通知
           if (_coursesWithScheduledAlarms.contains(course.courseName)) {
@@ -989,7 +1019,8 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
       // A scheduled reminder is only the later alarm (usually five minutes
       // before the deadline). Today's pickup still needs to appear on the
       // island as soon as it is added, and stay active until completed.
-      var notificationIsActive = previousTodoIds.contains(notifId) ||
+      var notificationIsActive =
+          previousTodoIds.contains(notifId) ||
           desktopShownKeys.contains(desktopEventKey);
       if (!notificationIsActive) {
         notificationIsActive =
@@ -1036,9 +1067,9 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
       DateTime localDueDate = t.dueDate!.toLocal();
       if (!AppTimeFormats.isSameDay(localDueDate, now)) return false;
       DateTime startDate = DateTime.fromMillisecondsSinceEpoch(
-              t.createdDate ?? t.createdAt,
-              isUtc: true)
-          .toLocal();
+        t.createdDate ?? t.createdAt,
+        isUtc: true,
+      ).toLocal();
       return startDate.hour == 0 &&
           startDate.minute == 0 &&
           localDueDate.hour == 23 &&

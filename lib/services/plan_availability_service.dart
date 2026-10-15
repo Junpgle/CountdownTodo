@@ -22,8 +22,13 @@ abstract final class PlanAvailabilityService {
       }.contains(block.status);
 
   static DateTime minuteCeiling(DateTime value) {
-    final minute = value.subtract(Duration(seconds: value.second,
-        milliseconds: value.millisecond, microseconds: value.microsecond));
+    final minute = value.subtract(
+      Duration(
+        seconds: value.second,
+        milliseconds: value.millisecond,
+        microseconds: value.microsecond,
+      ),
+    );
     return value.isAfter(minute)
         ? minute.add(const Duration(minutes: 1))
         : minute;
@@ -62,16 +67,20 @@ abstract final class PlanAvailabilityService {
     )) {
       return '请设置有效的避让时段，结束须晚于开始';
     }
-    if (query.weekly != null && !query.weekly!.ignored && query.weekly!.rules == null) {
+    if (query.weekly != null &&
+        !query.weekly!.ignored &&
+        query.weekly!.rules == null) {
       return '每周可安排时间无法读取，请修复规则或明确选择本次不使用';
     }
     if (query.weekly?.active ?? false) {
       try {
-        for(final w in query.weekly!.rules!.days[query.date.weekday-1]) {
-          PlanWeeklyRules.boundary(query.date,w.start);
-          PlanWeeklyRules.boundary(query.date,w.end);
+        for (final w in query.weekly!.rules!.days[query.date.weekday - 1]) {
+          PlanWeeklyRules.boundary(query.date, w.start);
+          PlanWeeklyRules.boundary(query.date, w.end);
         }
-      } on FormatException catch (error) { return error.message; }
+      } on FormatException catch (error) {
+        return error.message;
+      }
     }
     final today = DateTime(now.year, now.month, now.day);
     if (query.dayStart.isBefore(today)) return '所选日期已过去，请选择今天或之后的日期';
@@ -80,12 +89,17 @@ abstract final class PlanAvailabilityService {
 
   static DateTime? deadline(TodoItem todo) {
     final due = todo.dueDate?.toLocal();
-    return due == null ? null : todo.isDateOnly
-        ? DateTime(due.year, due.month, due.day + 1) : due;
+    return due == null
+        ? null
+        : todo.isDateOnly
+        ? DateTime(due.year, due.month, due.day + 1)
+        : due;
   }
 
-  static List<PlanTimeSlot> _subtract(List<PlanTimeSlot> input,
-      Iterable<PlanTimeSlot> blocked) {
+  static List<PlanTimeSlot> _subtract(
+    List<PlanTimeSlot> input,
+    Iterable<PlanTimeSlot> blocked,
+  ) {
     final sorted = blocked.where((b) => b.end.isAfter(b.start)).toList()
       ..sort((a, b) => a.start.compareTo(b.start));
     final merged = <PlanTimeSlot>[];
@@ -100,11 +114,16 @@ abstract final class PlanAvailabilityService {
     var i = 0;
     for (final gap in input) {
       var cursor = gap.start;
-      while (i < merged.length && !merged[i].end.isAfter(cursor)) { i++; }
+      while (i < merged.length && !merged[i].end.isAfter(cursor)) {
+        i++;
+      }
       while (i < merged.length && merged[i].start.isBefore(gap.end)) {
         final b = merged[i];
         if (b.start.isAfter(cursor)) result.add(PlanTimeSlot(cursor, b.start));
-        if (!b.end.isBefore(gap.end)) { cursor = gap.end; break; }
+        if (!b.end.isBefore(gap.end)) {
+          cursor = gap.end;
+          break;
+        }
         if (b.end.isAfter(cursor)) cursor = b.end;
         i++;
       }
@@ -113,33 +132,59 @@ abstract final class PlanAvailabilityService {
     return result;
   }
 
-  static PlanAvailabilityDiagnostics diagnose(PlanAvailabilityQuery query,
-      PlanAvailabilitySnapshot snapshot, {required DateTime now}) {
+  static PlanAvailabilityDiagnostics diagnose(
+    PlanAvailabilityQuery query,
+    PlanAvailabilitySnapshot snapshot, {
+    required DateTime now,
+  }) {
     final invalid = invalidReason(query, snapshot.todo, now);
     if (invalid != null) {
-      return PlanAvailabilityDiagnostics(PlanAvailabilityReason.invalid, invalid);
+      return PlanAvailabilityDiagnostics(
+        PlanAvailabilityReason.invalid,
+        invalid,
+      );
     }
-    var start = DateTime(query.date.year, query.date.month, query.date.day,
-        query.windowStart ~/ 60, query.windowStart % 60);
-    var end = DateTime(query.date.year, query.date.month, query.date.day,
-        query.windowEnd ~/ 60, query.windowEnd % 60);
+    var start = DateTime(
+      query.date.year,
+      query.date.month,
+      query.date.day,
+      query.windowStart ~/ 60,
+      query.windowStart % 60,
+    );
+    var end = DateTime(
+      query.date.year,
+      query.date.month,
+      query.date.day,
+      query.windowEnd ~/ 60,
+      query.windowEnd % 60,
+    );
     final stages = <PlanAvailabilityStage>[];
     void stage(String label, List<PlanTimeSlot> gaps) => stages.add(
-        PlanAvailabilityStage(label, gaps.fold(0, (n, s) => n + (s.minutes > 0 ? s.minutes : 0))));
+      PlanAvailabilityStage(
+        label,
+        gaps.fold(0, (n, s) => n + (s.minutes > 0 ? s.minutes : 0)),
+      ),
+    );
     stage('本次窗口', [PlanTimeSlot(start, end)]);
     final current = minuteCeiling(now), due = deadline(snapshot.todo);
     if (current.isAfter(start)) start = current;
     final deadlineLimited = due != null && due.isBefore(end);
     if (due != null && !due.isAfter(start)) {
       stage('当前时刻与截止裁剪后', []);
-      return PlanAvailabilityDiagnostics(PlanAvailabilityReason.deadline,
-          '截止前已无可用时段', stages: stages);
+      return PlanAvailabilityDiagnostics(
+        PlanAvailabilityReason.deadline,
+        '截止前已无可用时段',
+        stages: stages,
+      );
     }
     if (deadlineLimited) end = due;
     if (!end.isAfter(start)) {
       stage('当前时刻与截止裁剪后', []);
-      return PlanAvailabilityDiagnostics(PlanAvailabilityReason.rangeEnded,
-          '该时间范围已结束，请调整日期或时间范围', stages: stages);
+      return PlanAvailabilityDiagnostics(
+        PlanAvailabilityReason.rangeEnded,
+        '该时间范围已结束，请调整日期或时间范围',
+        stages: stages,
+      );
     }
     var gaps = [PlanTimeSlot(start, end)];
     stage('当前时刻与截止裁剪后', gaps);
@@ -148,53 +193,85 @@ abstract final class PlanAvailabilityService {
       final windows = weekly!.rules!.days[query.date.weekday - 1];
       if (windows.isEmpty) {
         stage('每周可安排时间后', []);
-        return PlanAvailabilityDiagnostics(PlanAvailabilityReason.weeklyNone,
-            '${PlanWeeklyRules.weekdays[query.date.weekday - 1]}未设置可安排时间',
-            stages: stages);
+        return PlanAvailabilityDiagnostics(
+          PlanAvailabilityReason.weeklyNone,
+          '${PlanWeeklyRules.weekdays[query.date.weekday - 1]}未设置可安排时间',
+          stages: stages,
+        );
       }
-      gaps = [for (final w in windows)
-        if (PlanWeeklyRules.boundary(query.date, w.end).isAfter(start) &&
-            PlanWeeklyRules.boundary(query.date, w.start).isBefore(end))
-          PlanTimeSlot(
-            PlanWeeklyRules.boundary(query.date, w.start).isAfter(start)
-                ? PlanWeeklyRules.boundary(query.date, w.start) : start,
-            PlanWeeklyRules.boundary(query.date, w.end).isBefore(end)
-                ? PlanWeeklyRules.boundary(query.date, w.end) : end)];
+      gaps = [
+        for (final w in windows)
+          if (PlanWeeklyRules.boundary(query.date, w.end).isAfter(start) &&
+              PlanWeeklyRules.boundary(query.date, w.start).isBefore(end))
+            PlanTimeSlot(
+              PlanWeeklyRules.boundary(query.date, w.start).isAfter(start)
+                  ? PlanWeeklyRules.boundary(query.date, w.start)
+                  : start,
+              PlanWeeklyRules.boundary(query.date, w.end).isBefore(end)
+                  ? PlanWeeklyRules.boundary(query.date, w.end)
+                  : end,
+            ),
+      ];
     }
     stage('每周可安排时间后', gaps);
     if (gaps.isEmpty) {
-      return PlanAvailabilityDiagnostics(PlanAvailabilityReason.weeklyOutside,
-          '每周可安排时间与本次查找范围没有交集', stages: stages);
+      return PlanAvailabilityDiagnostics(
+        PlanAvailabilityReason.weeklyOutside,
+        '每周可安排时间与本次查找范围没有交集',
+        stages: stages,
+      );
     }
     gaps = _subtract(gaps, query.avoidWindows.map((w) => w.onDate(query.date)));
     stage('避让后', gaps);
-    gaps = _subtract(gaps, snapshot.busy.map((b) => PlanTimeSlot(b.start, b.end)));
+    gaps = _subtract(
+      gaps,
+      snapshot.busy.map((b) => PlanTimeSlot(b.start, b.end)),
+    );
     stage('日程占用后', gaps);
-    gaps = _subtract(gaps, snapshot.busy.where((b) => b.end.isAfter(b.start))
-        .map(query.buffered));
-    gaps = [for (final gap in gaps)
-      if (gap.end.isAfter(minuteCeiling(gap.start)))
-        PlanTimeSlot(minuteCeiling(gap.start), gap.end)]
-      ..sort((a, b) => a.start.compareTo(b.start));
+    gaps = _subtract(
+      gaps,
+      snapshot.busy.where((b) => b.end.isAfter(b.start)).map(query.buffered),
+    );
+    gaps = [
+      for (final gap in gaps)
+        if (gap.end.isAfter(minuteCeiling(gap.start)))
+          PlanTimeSlot(minuteCeiling(gap.start), gap.end),
+    ]..sort((a, b) => a.start.compareTo(b.start));
     stage('缓冲与整分钟裁剪后', gaps);
     final enough = gaps.any((g) => g.minutes >= query.minutes);
-    final message = enough ? null
+    final message = enough
+        ? null
         : '${deadlineLimited ? '截止前' : '当天'}没有连续 ${query.minutes} 分钟的可用时段${query.hasBuffers ? '（开始前${query.bufferBefore}分钟、结束后${query.bufferAfter}分钟缓冲）' : ''}';
-    return PlanAvailabilityDiagnostics(enough ? PlanAvailabilityReason.available
-        : gaps.any((g) => g.minutes > 0) ? PlanAvailabilityReason.fragmented
-        : PlanAvailabilityReason.noTime, message, fragments: gaps, stages: stages);
+    return PlanAvailabilityDiagnostics(
+      enough
+          ? PlanAvailabilityReason.available
+          : gaps.any((g) => g.minutes > 0)
+          ? PlanAvailabilityReason.fragmented
+          : PlanAvailabilityReason.noTime,
+      message,
+      fragments: gaps,
+      stages: stages,
+    );
   }
 
-  static PlanAvailabilityResult freeGaps(PlanAvailabilityQuery query,
-      PlanAvailabilitySnapshot snapshot, {required DateTime now}) {
+  static PlanAvailabilityResult freeGaps(
+    PlanAvailabilityQuery query,
+    PlanAvailabilitySnapshot snapshot, {
+    required DateTime now,
+  }) {
     final diagnostics = diagnose(query, snapshot, now: now);
     return PlanAvailabilityResult(
       diagnostics.fragments.where((s) => s.minutes >= query.minutes).toList(),
-      message: diagnostics.message, diagnostics: diagnostics);
+      message: diagnostics.message,
+      diagnostics: diagnostics,
+    );
   }
 
-  static PlanAvailabilityResult find(PlanAvailabilityQuery query,
-      PlanAvailabilitySnapshot snapshot, {required DateTime now}) {
+  static PlanAvailabilityResult find(
+    PlanAvailabilityQuery query,
+    PlanAvailabilitySnapshot snapshot, {
+    required DateTime now,
+  }) {
     final available = freeGaps(query, snapshot, now: now);
     final gaps = available.slots;
     final slots = gaps
@@ -222,8 +299,11 @@ abstract final class PlanAvailabilityService {
       if (!added) break;
     }
     slots.sort((a, b) => a.start.compareTo(b.start));
-    return PlanAvailabilityResult(slots, message: available.message,
-        diagnostics: available.diagnostics);
+    return PlanAvailabilityResult(
+      slots,
+      message: available.message,
+      diagnostics: available.diagnostics,
+    );
   }
 
   static bool accepts(
@@ -261,9 +341,16 @@ abstract final class PlanAvailabilityService {
       if (deadline.isBefore(upper)) upper = deadline;
     }
     final weekly = query.weekly;
-    if(weekly?.active == true && !weekly!.rules!.days[query.date.weekday-1].any((w) =>
-      !slot.start.isBefore(PlanWeeklyRules.boundary(query.date,w.start)) &&
-      !slot.end.isAfter(PlanWeeklyRules.boundary(query.date,w.end)))) { return false; }
+    if (weekly?.active == true &&
+        !weekly!.rules!.days[query.date.weekday - 1].any(
+          (w) =>
+              !slot.start.isBefore(
+                PlanWeeklyRules.boundary(query.date, w.start),
+              ) &&
+              !slot.end.isAfter(PlanWeeklyRules.boundary(query.date, w.end)),
+        )) {
+      return false;
+    }
     return !slot.start.isBefore(lower) &&
         !slot.end.isAfter(upper) &&
         !query.avoidWindows.any((item) {

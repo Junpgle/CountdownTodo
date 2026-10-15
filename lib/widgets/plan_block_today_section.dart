@@ -2,6 +2,7 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+
 import '../models.dart';
 import '../storage_service.dart';
 import '../services/pomodoro_service.dart';
@@ -40,7 +41,11 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection> {
   String? _expandedBlockId;
 
   bool _timeRangesOverlap(
-      int startA, int endAExclusive, int startB, int endBExclusive) {
+    int startA,
+    int endAExclusive,
+    int startB,
+    int endBExclusive,
+  ) {
     return endAExclusive > startB && startA < endBExclusive;
   }
 
@@ -50,7 +55,9 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection> {
   }
 
   bool _isRecordAssociatedWithBlock(
-      PomodoroRecord record, TodoPlanBlock block) {
+    PomodoroRecord record,
+    TodoPlanBlock block,
+  ) {
     if (record.isDeleted || block.isDeleted) return false;
 
     if (record.planBlockId != null &&
@@ -71,19 +78,29 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection> {
         record.todoUuid!.isNotEmpty &&
         block.todoId.isNotEmpty &&
         record.todoUuid == block.todoId) {
-      final recordEnd = record.endTime ??
+      final recordEnd =
+          record.endTime ??
           (record.startTime + record.effectiveDuration * 1000);
       return _timeRangesOverlap(
-          record.startTime, recordEnd, block.startTime, block.endTime);
+        record.startTime,
+        recordEnd,
+        block.startTime,
+        block.endTime,
+      );
     }
 
     final recordTitle = _normalizeTitle(record.todoTitle);
     final blockTitle = _normalizeTitle(block.titleSnapshot);
     if (recordTitle.isNotEmpty && blockTitle.isNotEmpty) {
-      final recordEnd = record.endTime ??
+      final recordEnd =
+          record.endTime ??
           (record.startTime + record.effectiveDuration * 1000);
       if (_timeRangesOverlap(
-              record.startTime, recordEnd, block.startTime, block.endTime) &&
+            record.startTime,
+            recordEnd,
+            block.startTime,
+            block.endTime,
+          ) &&
           recordTitle == blockTitle) {
         return true;
       }
@@ -117,10 +134,12 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection> {
     ]);
     final blocks = results[0] as List<TodoPlanBlock>;
     final records = (results[1] as List<PomodoroRecord>)
-        .where((record) =>
-            !record.isDeleted &&
-            record.startTime >= dayStart.millisecondsSinceEpoch &&
-            record.startTime < dayEnd.millisecondsSinceEpoch)
+        .where(
+          (record) =>
+              !record.isDeleted &&
+              record.startTime >= dayStart.millisecondsSinceEpoch &&
+              record.startTime < dayEnd.millisecondsSinceEpoch,
+        )
         .toList();
     // 自动标记过期
     final missed = <TodoPlanBlock>[];
@@ -163,7 +182,8 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection> {
 
   /// 不属于任何规划块的自由专注记录
   List<PomodoroRecord> _freeRecords(
-      Map<String, List<PomodoroRecord>> blockRecordsMap) {
+    Map<String, List<PomodoroRecord>> blockRecordsMap,
+  ) {
     final dayRange = CalendarDateMath.dayRange(DateTime.now());
     final dayStart = dayRange.start.millisecondsSinceEpoch;
     final dayEnd = dayRange.endExclusive.millisecondsSinceEpoch;
@@ -190,8 +210,11 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection> {
     final freeRecords = _freeRecords(blockRecordsMap);
     final planned = _blocks.fold<int>(0, (s, b) => s + b.plannedMinutes);
     final actual = _blocks.fold<int>(0, (s, b) {
-      final fromRecords = (blockRecordsMap[b.uuid] ?? const <PomodoroRecord>[])
-              .fold<int>(0, (sum, r) => sum + r.effectiveDuration) ~/
+      final fromRecords =
+          (blockRecordsMap[b.uuid] ?? const <PomodoroRecord>[]).fold<int>(
+            0,
+            (sum, r) => sum + r.effectiveDuration,
+          ) ~/
           60;
       final fromBlock = b.actualFocusSeconds ~/ 60;
       return s + max(fromRecords, fromBlock);
@@ -199,12 +222,13 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection> {
     final rate = planned <= 0 ? 0.0 : (actual / planned).clamp(0.0, 999.0);
 
     return GestureDetector(
-      onTap: widget.onTap ??
+      onTap:
+          widget.onTap ??
           () => Navigator.of(context).push(
-                PageTransitions.material(
-                  builder: (_) => TodoPlanScreen(username: widget.username),
-                ),
-              ),
+            PageTransitions.material(
+              builder: (_) => TodoPlanScreen(username: widget.username),
+            ),
+          ),
       child: OptionalLiquidGlassCard(
         borderRadius: 20,
         tint: colorScheme.primary.withValues(alpha: 0.18),
@@ -236,8 +260,11 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _buildHeader(theme, planned, rate),
-            PlanConflictIndicator(username: widget.username,
-              refreshTrigger: widget.refreshTrigger, onSaved: _loadData),
+            PlanConflictIndicator(
+              username: widget.username,
+              refreshTrigger: widget.refreshTrigger,
+              onSaved: _loadData,
+            ),
             const SizedBox(height: 12),
             if (_blocks.isEmpty && freeRecords.isEmpty)
               _buildEmpty(theme)
@@ -257,14 +284,20 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection> {
   Widget _buildHeader(ThemeData theme, int planned, double rate) {
     return Row(
       children: [
-        Icon(Icons.event_note_rounded,
-            size: 20, color: theme.colorScheme.primary),
+        Icon(
+          Icons.event_note_rounded,
+          size: 20,
+          color: theme.colorScheme.primary,
+        ),
         const SizedBox(width: 8),
-        Text('今日规划',
-            style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.bold,
-                color: theme.colorScheme.onSurface)),
+        Text(
+          '今日规划',
+          style: TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.bold,
+            color: theme.colorScheme.onSurface,
+          ),
+        ),
         const Spacer(),
         if (_blocks.isNotEmpty) ...[
           Container(
@@ -276,9 +309,10 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection> {
             child: Text(
               '${planned}m 计划 · ${(rate * 100).round()}% 达成',
               style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: _rateColor(rate)),
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: _rateColor(rate),
+              ),
             ),
           ),
           const SizedBox(width: 4),
@@ -286,8 +320,11 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection> {
         SizedBox(
           key: widget.chartKey,
           child: IconButton(
-            icon: Icon(Icons.bar_chart_rounded,
-                size: 20, color: theme.colorScheme.onSurfaceVariant),
+            icon: Icon(
+              Icons.bar_chart_rounded,
+              size: 20,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
             tooltip: '规划统计',
             onPressed: () => Navigator.of(context).push(
               PageTransitions.material(
@@ -305,22 +342,28 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection> {
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
         children: [
-          Icon(Icons.event_busy_outlined,
-              size: 18,
-              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4)),
+          Icon(
+            Icons.event_busy_outlined,
+            size: 18,
+            color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
+          ),
           const SizedBox(width: 8),
-          Text('暂无规划，点击添加',
-              style: TextStyle(
-                  fontSize: 13,
-                  color: theme.colorScheme.onSurfaceVariant
-                      .withValues(alpha: 0.5))),
+          Text(
+            '暂无规划，点击添加',
+            style: TextStyle(
+              fontSize: 13,
+              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+            ),
+          ),
         ],
       ),
     );
   }
 
   List<Widget> _buildBlockList(
-      ThemeData theme, Map<String, List<PomodoroRecord>> blockRecordsMap) {
+    ThemeData theme,
+    Map<String, List<PomodoroRecord>> blockRecordsMap,
+  ) {
     final sorted = List<TodoPlanBlock>.from(_blocks)
       ..sort((a, b) => a.startTime.compareTo(b.startTime));
     return sorted
@@ -353,8 +396,8 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection> {
           key: ValueKey('plan-today-row-${block.id}'),
           onTap: hasRecords || canRecover
               ? () => setState(() {
-                    _expandedBlockId = isExpanded ? null : block.uuid;
-                  })
+                  _expandedBlockId = isExpanded ? null : block.uuid;
+                })
               : null,
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 3),
@@ -368,9 +411,10 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection> {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        color: theme.colorScheme.onSurface),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: theme.colorScheme.onSurface,
+                    ),
                   ),
                 ),
                 if (hasRecords || canRecover)
@@ -381,21 +425,26 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection> {
                           ? Icons.keyboard_arrow_up
                           : Icons.keyboard_arrow_down,
                       size: 16,
-                      color: theme.colorScheme.onSurfaceVariant
-                          .withValues(alpha: 0.5),
+                      color: theme.colorScheme.onSurfaceVariant.withValues(
+                        alpha: 0.5,
+                      ),
                     ),
                   ),
-                Text('$start-$end',
-                    style: TextStyle(
-                        fontSize: 11,
-                        color: theme.colorScheme.onSurfaceVariant)),
+                Text(
+                  '$start-$end',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
                 const SizedBox(width: 4),
                 Text(
                   _blockActualText(block, records),
                   style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: statusColor),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: statusColor,
+                  ),
                 ),
               ],
             ),
@@ -432,8 +481,10 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection> {
   }
 
   /// 规划块右侧时长文本：实际/计划
-  String _blockActualText(TodoPlanBlock block,
-      [List<PomodoroRecord> records = const <PomodoroRecord>[]]) {
+  String _blockActualText(
+    TodoPlanBlock block, [
+    List<PomodoroRecord> records = const <PomodoroRecord>[],
+  ]) {
     final actualFromRecords =
         records.fold<int>(0, (sum, r) => sum + r.effectiveDuration) ~/ 60;
     final actualMin = max(actualFromRecords, block.actualFocusSeconds ~/ 60);
@@ -458,17 +509,18 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection> {
       padding: const EdgeInsets.only(left: 23, top: 4, bottom: 4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          ...sorted.map((r) => _buildRecordRow(r, theme)),
-        ],
+        children: [...sorted.map((r) => _buildRecordRow(r, theme))],
       ),
     );
   }
 
   Widget _buildRecordRow(PomodoroRecord record, ThemeData theme) {
     final startTime = DateFormat('HH:mm').format(
-        DateTime.fromMillisecondsSinceEpoch(record.startTime, isUtc: true)
-            .toLocal());
+      DateTime.fromMillisecondsSinceEpoch(
+        record.startTime,
+        isUtc: true,
+      ).toLocal(),
+    );
     final duration = PomodoroService.formatDuration(record.effectiveDuration);
     final (icon, color) = _recordStatusIcon(record);
 
@@ -481,17 +533,18 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection> {
           Text(
             startTime,
             style: TextStyle(
-                fontSize: 12,
-                color:
-                    theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7)),
+              fontSize: 12,
+              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+            ),
           ),
           const SizedBox(width: 8),
           Text(
             duration,
             style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: theme.colorScheme.onSurfaceVariant),
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
           ),
           if (record.todoTitle != null && record.todoTitle!.isNotEmpty) ...[
             const SizedBox(width: 8),
@@ -501,9 +554,11 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection> {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                    fontSize: 11,
-                    color: theme.colorScheme.onSurfaceVariant
-                        .withValues(alpha: 0.5)),
+                  fontSize: 11,
+                  color: theme.colorScheme.onSurfaceVariant.withValues(
+                    alpha: 0.5,
+                  ),
+                ),
               ),
             ),
           ],
@@ -521,13 +576,15 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection> {
       case PomodoroRecordStatus.switched:
         return (
           Icons.swap_horiz_rounded,
-          Theme.of(context).colorScheme.primary
+          Theme.of(context).colorScheme.primary,
         );
     }
   }
 
   Widget _buildFreeRecordsSection(
-      ThemeData theme, List<PomodoroRecord> freeRecords) {
+    ThemeData theme,
+    List<PomodoroRecord> freeRecords,
+  ) {
     final sorted = List<PomodoroRecord>.from(freeRecords)
       ..sort((a, b) => a.startTime.compareTo(b.startTime));
     final totalSec = sorted.fold<int>(0, (s, r) => s + r.effectiveDuration);
@@ -537,25 +594,29 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection> {
       children: [
         Row(
           children: [
-            Icon(Icons.timer_outlined,
-                size: 15,
-                color:
-                    theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6)),
+            Icon(
+              Icons.timer_outlined,
+              size: 15,
+              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+            ),
             const SizedBox(width: 8),
             Text(
               '自由专注',
               style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: theme.colorScheme.onSurfaceVariant),
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
             ),
             const SizedBox(width: 8),
             Text(
               '${sorted.length} 次 · ${PomodoroService.formatDuration(totalSec)}',
               style: TextStyle(
-                  fontSize: 11,
-                  color: theme.colorScheme.onSurfaceVariant
-                      .withValues(alpha: 0.6)),
+                fontSize: 11,
+                color: theme.colorScheme.onSurfaceVariant.withValues(
+                  alpha: 0.6,
+                ),
+              ),
             ),
           ],
         ),
@@ -617,25 +678,31 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-              width: 100,
-              height: 16,
-              decoration: BoxDecoration(
-                  color: colorScheme.onSurface.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(4))),
+            width: 100,
+            height: 16,
+            decoration: BoxDecoration(
+              color: colorScheme.onSurface.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(4),
+            ),
+          ),
           const SizedBox(height: 16),
           Container(
-              width: double.infinity,
-              height: 12,
-              decoration: BoxDecoration(
-                  color: colorScheme.onSurface.withValues(alpha: 0.06),
-                  borderRadius: BorderRadius.circular(4))),
+            width: double.infinity,
+            height: 12,
+            decoration: BoxDecoration(
+              color: colorScheme.onSurface.withValues(alpha: 0.06),
+              borderRadius: BorderRadius.circular(4),
+            ),
+          ),
           const SizedBox(height: 8),
           Container(
-              width: 200,
-              height: 12,
-              decoration: BoxDecoration(
-                  color: colorScheme.onSurface.withValues(alpha: 0.06),
-                  borderRadius: BorderRadius.circular(4))),
+            width: 200,
+            height: 12,
+            decoration: BoxDecoration(
+              color: colorScheme.onSurface.withValues(alpha: 0.06),
+              borderRadius: BorderRadius.circular(4),
+            ),
+          ),
         ],
       ),
     );

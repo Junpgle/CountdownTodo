@@ -16,7 +16,8 @@ int? financeOccurrenceTimestampForDate(
   String targetDate,
 ) {
   final occurrence = transaction.occurrenceLocalTime;
-  if (occurrence == null || dateKey(occurrence) != transaction.transactionDate) {
+  if (occurrence == null ||
+      dateKey(occurrence) != transaction.transactionDate) {
     return null;
   }
   final date = dateFromKey(targetDate);
@@ -184,7 +185,8 @@ abstract final class FinanceRepository {
       if (event.eventAt > nowAt || !isFinanceDateKey(event.transactionDate)) {
         continue;
       }
-      if (earliestDate == null || event.transactionDate.compareTo(earliestDate) < 0) {
+      if (earliestDate == null ||
+          event.transactionDate.compareTo(earliestDate) < 0) {
         earliestDate = event.transactionDate;
       }
     }
@@ -202,8 +204,10 @@ abstract final class FinanceRepository {
     final asOfDate = DateTime.fromMillisecondsSinceEpoch(asOfAt);
     final asOfMonthKey = financeMonthKey(asOfDate);
     const snapshotTimezoneDriftMs = 28 * 60 * 60 * 1000;
-    final nextMonthStartAt =
-        DateTime(asOfDate.year, asOfDate.month + 1).millisecondsSinceEpoch;
+    final nextMonthStartAt = DateTime(
+      asOfDate.year,
+      asOfDate.month + 1,
+    ).millisecondsSinceEpoch;
     final latestByMethod = <String, FinanceBudget>{};
     for (final budget in budgets) {
       final paymentMethodUuid = budget.paymentMethodUuid;
@@ -290,7 +294,8 @@ abstract final class FinanceRepository {
           // the snapshot time because the picker stores minute precision.
           // Use the repayment edit time so the new cash movement is applied
           // only from when the record became available.
-          final eventAt = paidAt <= snapshotAt &&
+          final eventAt =
+              paidAt <= snapshotAt &&
                   paidAt ~/ 60000 == snapshotAt ~/ 60000 &&
                   item.updatedAt > snapshotAt
               ? item.updatedAt
@@ -617,10 +622,7 @@ abstract final class FinanceRepository {
         final category = categories[transaction.categoryUuid];
         final payment = paymentMethods[transaction.paymentMethodUuid];
         final paymentLabel = payment != null
-            ? '${payment.icon} ${financePaymentMethodDisplayName(
-                payment,
-                paymentMethods.values,
-              )}'
+            ? '${payment.icon} ${financePaymentMethodDisplayName(payment, paymentMethods.values)}'
             : transaction.paymentMethodUuid?.trim().isNotEmpty == true
             ? switch (transaction.type) {
                 FinanceTransactionType.expense => '已删除或未知付款方式',
@@ -641,10 +643,7 @@ abstract final class FinanceRepository {
                     transaction.categoryUuid,
                     categories.values,
                   )
-                : '${category.icon} ${financeCategoryReferenceDisplayName(
-                    transaction.categoryUuid,
-                    categories.values,
-                  )}',
+                : '${category.icon} ${financeCategoryReferenceDisplayName(transaction.categoryUuid, categories.values)}',
           ),
           sanitizeFinanceCsvText(paymentLabel),
           sanitizeFinanceCsvText(transaction.merchant ?? ''),

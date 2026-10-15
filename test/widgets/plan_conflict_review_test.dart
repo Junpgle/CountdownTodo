@@ -180,24 +180,24 @@ void main() {
     expect(await tester.runAsync(() => fixture.db.query('op_logs')), isEmpty);
   });
 
-  testWidgets(
-    '冲突范围的最后日期跨春季夏令时仍按日历日显示',
-    (tester) async {
-      final date = DateTime(2026, 3, 8);
-      await host(
-        tester,
-        date: date,
-        loader:
-            (user, selectedDate, {int days = 1, bool appOnly = false}) async =>
-                synthetic(selectedDate, days: days, appOnly: appOnly),
-      );
+  testWidgets('冲突范围的最后日期跨春季夏令时仍按日历日显示', (tester) async {
+    final date = DateTime(2026, 3, 8);
+    await host(
+      tester,
+      date: date,
+      loader: (
+        user,
+        selectedDate, {
+        int days = 1,
+        bool appOnly = false,
+      }) async => synthetic(selectedDate, days: days, appOnly: appOnly),
+    );
 
-      await click(tester, key('plan-conflict-indicator'));
+    await click(tester, key('plan-conflict-indicator'));
 
-      expect(find.text('3月8日–3月8日 · 1条规划时间重叠'), findsOneWidget);
-      expect(find.text('3月8日–3月7日 · 1条规划时间重叠'), findsNothing);
-    },
-  );
+    expect(find.text('3月8日–3月8日 · 1条规划时间重叠'), findsOneWidget);
+    expect(find.text('3月8日–3月7日 · 1条规划时间重叠'), findsNothing);
+  });
 
   for (final kind in ['course', 'legacy', 'device', 'plan']) {
     testWidgets('查看$kind来源进入正确只读详情，保持零写入', (tester) async {

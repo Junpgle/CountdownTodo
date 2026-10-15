@@ -1,4 +1,5 @@
 part of 'course_screens.dart';
+
 // ignore_for_file: annotate_overrides, unused_element, unused_element_parameter
 
 mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
@@ -60,8 +61,11 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
   void _changeMonth(int delta) {
     setState(() {
       _isNextSlide = delta > 0;
-      _selectedMonth =
-          DateTime(_selectedMonth.year, _selectedMonth.month + delta, 1);
+      _selectedMonth = DateTime(
+        _selectedMonth.year,
+        _selectedMonth.month + delta,
+        1,
+      );
     });
     _loadDeviceCalendarEventsForCurrentView().then((_) {
       if (mounted) setState(() {});
@@ -76,12 +80,16 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
       return '第 $_currentWeek 周';
     }
 
-    final currentWeekMonday =
-        CalendarDateMath.addDays(_semesterMonday!, (_currentWeek - 1) * 7);
+    final currentWeekMonday = CalendarDateMath.addDays(
+      _semesterMonday!,
+      (_currentWeek - 1) * 7,
+    );
     final targetSemester = _semesterForDate(currentWeekMonday);
     if (targetSemester != null) {
-      final relativeWeek =
-          _relativeWeekForDate(currentWeekMonday, targetSemester);
+      final relativeWeek = _relativeWeekForDate(
+        currentWeekMonday,
+        targetSemester,
+      );
       return '${targetSemester.name} 第 $relativeWeek 周';
     }
 
@@ -95,8 +103,10 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
     }
 
     // 计算当前周次对应的周一日期
-    DateTime w1Monday =
-        CalendarDateMath.addDays(_semesterMonday!, (_currentWeek - 1) * 7);
+    DateTime w1Monday = CalendarDateMath.addDays(
+      _semesterMonday!,
+      (_currentWeek - 1) * 7,
+    );
     DateTime w2Monday = CalendarDateMath.addDays(w1Monday, 7);
 
     // 找到这两个日期属于哪个学期
@@ -125,8 +135,9 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
   }
 
   void _showWeekJumpDialog() {
-    final TextEditingController controller =
-        TextEditingController(text: '$_currentWeek');
+    final TextEditingController controller = TextEditingController(
+      text: '$_currentWeek',
+    );
     showAppDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -150,8 +161,9 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
               Text(
                 '有课周次：${_availableWeeks.first}-${_availableWeeks.last}周',
                 style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    fontSize: 12),
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontSize: 12,
+                ),
               ),
             ],
             const SizedBox(height: 12),
@@ -187,7 +199,9 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('取消'),
+          ),
           FilledButton(
             onPressed: () {
               int? week = int.tryParse(controller.text.trim());
@@ -472,8 +486,12 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
     );
   }
 
-  Widget _buildDetailSidebarItem(BuildContext context, dynamic item,
-      [String? sourceDate, String keyScope = 'sidebar']) {
+  Widget _buildDetailSidebarItem(
+    BuildContext context,
+    dynamic item, [
+    String? sourceDate,
+    String keyScope = 'sidebar',
+  ]) {
     if (item is CourseItem) {
       final color = _getCourseColor(item.courseName);
       final sourceKey = _getDetailSidebarCardKey(
@@ -487,28 +505,31 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
         leading: Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.1), shape: BoxShape.circle),
+            color: color.withValues(alpha: 0.1),
+            shape: BoxShape.circle,
+          ),
           child: Icon(Icons.class_, color: color, size: 20),
         ),
-        title: Text(item.courseName,
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+        title: Text(
+          item.courseName,
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+        ),
         subtitle: Text(
-            '${item.formattedStartTime}-${item.formattedEndTime} @ ${item.roomName}',
-            style: const TextStyle(fontSize: 12)),
+          '${item.formattedStartTime}-${item.formattedEndTime} @ ${item.roomName}',
+          style: const TextStyle(fontSize: 12),
+        ),
         onTap: () => _openSidebarDetailFromRect(
           context,
           sourceKey: sourceKey,
-          page: CourseDetailScreen(
-            course: item,
-            courseSchedule: _allCourses,
-          ),
+          page: CourseDetailScreen(course: item, courseSchedule: _allCourses),
           placeholderIcon: Icons.class_,
         ),
       );
     } else if (item is TodoItem) {
       final colorScheme = Theme.of(context).colorScheme;
-      final statusColor =
-          item.isDone ? colorScheme.cdtSuccess : colorScheme.cdtWarning;
+      final statusColor = item.isDone
+          ? colorScheme.cdtSuccess
+          : colorScheme.cdtWarning;
       final sourceKey = _getDetailSidebarCardKey(
         'todo',
         item.id,
@@ -523,51 +544,57 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
             color: statusColor.withValues(alpha: 0.1),
             shape: BoxShape.circle,
           ),
-          child: Icon(item.isDone ? Icons.check_circle : Icons.task_alt,
-              color: statusColor, size: 20),
+          child: Icon(
+            item.isDone ? Icons.check_circle : Icons.task_alt,
+            color: statusColor,
+            size: 20,
+          ),
         ),
         title: Row(
           children: [
             Expanded(
-              child: Text(item.title,
-                  style: TextStyle(
-                    fontSize: 15,
-                    decoration: item.isDone ? TextDecoration.lineThrough : null,
-                    color: item.isDone ? colorScheme.cdtDisabled : null,
-                  )),
+              child: Text(
+                item.title,
+                style: TextStyle(
+                  fontSize: 15,
+                  decoration: item.isDone ? TextDecoration.lineThrough : null,
+                  color: item.isDone ? colorScheme.cdtDisabled : null,
+                ),
+              ),
             ),
             if (item.teamUuid != null)
               Container(
                 margin: const EdgeInsets.only(left: 4),
                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
                 decoration: BoxDecoration(
-                  color: Theme.of(context)
-                      .colorScheme
-                      .primary
+                  color: Theme.of(context).colorScheme.primary
                       .withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(4),
                   border: Border.all(
-                      color: Theme.of(context)
-                          .colorScheme
-                          .primary
-                          .withValues(alpha: 0.3)),
+                    color: Theme.of(context).colorScheme.primary
+                        .withValues(alpha: 0.3),
+                  ),
                 ),
-                child: Icon(Icons.group,
-                    size: 12, color: Theme.of(context).colorScheme.primary),
+                child: Icon(
+                  Icons.group,
+                  size: 12,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
               ),
           ],
         ),
         subtitle: Text(
-            (item.teamUuid != null ? '${item.teamName ?? '团队'} · ' : '') +
-                (item.dueDate != null
-                    ? '截止: ${DateFormat('HH:mm').format(item.dueDate!)}'
-                    : '无截止时间') +
-                (item.remark != null && item.remark!.isNotEmpty
-                    ? ' · ${item.remark}'
-                    : ''),
-            style: const TextStyle(fontSize: 12),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis),
+          (item.teamUuid != null ? '${item.teamName ?? '团队'} · ' : '') +
+              (item.dueDate != null
+                  ? '截止: ${DateFormat('HH:mm').format(item.dueDate!)}'
+                  : '无截止时间') +
+              (item.remark != null && item.remark!.isNotEmpty
+                  ? ' · ${item.remark}'
+                  : ''),
+          style: const TextStyle(fontSize: 12),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
         onTap: () => _openSidebarDetailFromRect(
           context,
           sourceKey: sourceKey,
@@ -588,14 +615,19 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
         leading: Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.1), shape: BoxShape.circle),
+            color: color.withValues(alpha: 0.1),
+            shape: BoxShape.circle,
+          ),
           child: Icon(Icons.edit_calendar, color: color, size: 20),
         ),
-        title: Text(item.title.isNotEmpty ? item.title : '时间日志',
-            style: const TextStyle(fontSize: 15)),
+        title: Text(
+          item.title.isNotEmpty ? item.title : '时间日志',
+          style: const TextStyle(fontSize: 15),
+        ),
         subtitle: Text(
-            '${DateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(item.startTime, isUtc: true).toLocal())} - ${DateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(item.endTime, isUtc: true).toLocal())}',
-            style: const TextStyle(fontSize: 12)),
+          '${DateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(item.startTime, isUtc: true).toLocal())} - ${DateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(item.endTime, isUtc: true).toLocal())}',
+          style: const TextStyle(fontSize: 12),
+        ),
         onTap: () => _openSidebarDetailFromRect(
           context,
           sourceKey: sourceKey,
@@ -605,8 +637,8 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
       );
     } else if (item is TodoPlanBlock) {
       final color = Theme.of(context).colorScheme.secondary;
-      final start =
-          DateTime.fromMillisecondsSinceEpoch(item.startTime).toLocal();
+      final start = DateTime.fromMillisecondsSinceEpoch(item.startTime)
+          .toLocal();
       final end = DateTime.fromMillisecondsSinceEpoch(item.endTime).toLocal();
       final sourceKey = _getDetailSidebarCardKey(
         'plan_block',
@@ -619,19 +651,25 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
         leading: Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.1), shape: BoxShape.circle),
+            color: color.withValues(alpha: 0.1),
+            shape: BoxShape.circle,
+          ),
           child: Icon(
-              item.status == TodoPlanStatus.finished
-                  ? Icons.event_available
-                  : Icons.event_note,
-              color: color,
-              size: 20),
+            item.status == TodoPlanStatus.finished
+                ? Icons.event_available
+                : Icons.event_note,
+            color: color,
+            size: 20,
+          ),
         ),
-        title: Text(item.titleSnapshot ?? '规划任务',
-            style: const TextStyle(fontSize: 15)),
+        title: Text(
+          item.titleSnapshot ?? '规划任务',
+          style: const TextStyle(fontSize: 15),
+        ),
         subtitle: Text(
-            '${DateFormat('HH:mm').format(start)} - ${DateFormat('HH:mm').format(end)} · 计划 ${item.plannedMinutes} 分钟',
-            style: const TextStyle(fontSize: 12)),
+          '${DateFormat('HH:mm').format(start)} - ${DateFormat('HH:mm').format(end)} · 计划 ${item.plannedMinutes} 分钟',
+          style: const TextStyle(fontSize: 12),
+        ),
         onTap: () => _openSidebarDetailFromRect(
           context,
           sourceKey: sourceKey,
@@ -652,12 +690,16 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
         leading: Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.1), shape: BoxShape.circle),
+            color: color.withValues(alpha: 0.1),
+            shape: BoxShape.circle,
+          ),
           child: Icon(Icons.timer, color: color, size: 20),
         ),
         title: const Text('番茄专注', style: TextStyle(fontSize: 15)),
-        subtitle: Text('时长: ${item.effectiveDuration ~/ 60} 分钟',
-            style: const TextStyle(fontSize: 12)),
+        subtitle: Text(
+          '时长: ${item.effectiveDuration ~/ 60} 分钟',
+          style: const TextStyle(fontSize: 12),
+        ),
         onTap: () => _openSidebarDetailFromRect(
           context,
           sourceKey: sourceKey,
@@ -725,11 +767,8 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
               : '${DateFormat('HH:mm').format(item.start)} - ${DateFormat('HH:mm').format(item.end)} · 手机日历（只读）',
           style: const TextStyle(fontSize: 12),
         ),
-        onTap: () => _showDeviceCalendarEventDetail(
-          context,
-          item,
-          sourceKey: sourceKey,
-        ),
+        onTap: () =>
+            _showDeviceCalendarEventDetail(context, item, sourceKey: sourceKey),
       );
     }
     return const SizedBox.shrink();
@@ -764,7 +803,7 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
           'plans',
           'timeLogs',
           'pomodoros',
-          'deviceCalendar'
+          'deviceCalendar',
         });
         _updateWeekTodos();
       } else if (value == 'disableFreeTimeCollapse') {
@@ -789,14 +828,14 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
   }
 
   int get _selectedFilterCount => const {
-        'courses',
-        'fixedSchedules',
-        'todos',
-        'timeLogs',
-        'plans',
-        'pomodoros',
-        'deviceCalendar',
-      }.where(_activeDataViews.contains).length;
+    'courses',
+    'fixedSchedules',
+    'todos',
+    'timeLogs',
+    'plans',
+    'pomodoros',
+    'deviceCalendar',
+  }.where(_activeDataViews.contains).length;
 
   IconData _filterIconForKey(String key) {
     switch (key) {
@@ -880,18 +919,16 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
                     '日历筛选',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
+                    style: Theme.of(context).textTheme.titleSmall
+                        ?.copyWith(fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: 2),
                   Text(
                     '$selectedCount/7 项内容显示',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: colorScheme.onSurfaceVariant,
-                        ),
+                    style: Theme.of(context).textTheme.labelSmall
+                        ?.copyWith(color: colorScheme.onSurfaceVariant),
                   ),
                 ],
               ),
@@ -900,9 +937,9 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
             Text(
               statusLabel,
               style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                    color: colorScheme.primary,
-                    fontWeight: FontWeight.w700,
-                  ),
+                color: colorScheme.primary,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ],
         ),
@@ -919,10 +956,10 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
         child: Text(
           label,
           style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                color: colorScheme.primary,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.2,
-              ),
+            color: colorScheme.primary,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.2,
+          ),
         ),
       ),
     );
@@ -963,8 +1000,9 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
               ? colorScheme.primary.withValues(alpha: 0.08)
               : colorScheme.surface.withValues(alpha: 0),
           overlayColor: colorScheme.primary.withValues(alpha: 0.12),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
         ),
         child: Row(
           children: [
@@ -991,9 +1029,8 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      fontWeight:
-                          isSelected ? FontWeight.w600 : FontWeight.w500,
-                    ),
+                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                ),
               ),
             ),
           ],
@@ -1003,7 +1040,11 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
   }
 
   Widget _buildFilterActionItem(
-      String value, String label, IconData icon, Color color) {
+    String value,
+    String label,
+    IconData icon,
+    Color color,
+  ) {
     final colorScheme = Theme.of(context).colorScheme;
     return SizedBox(
       width: _filterMenuWidth(context),
@@ -1017,8 +1058,9 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
           foregroundColor: color,
           backgroundColor: colorScheme.surface.withValues(alpha: 0),
           overlayColor: color.withValues(alpha: 0.12),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
         ),
         child: Row(
           children: [
@@ -1035,10 +1077,8 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
             const SizedBox(width: 10),
             Text(
               label,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: color,
-                    fontWeight: FontWeight.w700,
-                  ),
+              style: Theme.of(context).textTheme.bodyMedium
+                  ?.copyWith(color: color, fontWeight: FontWeight.w700),
             ),
           ],
         ),
@@ -1048,10 +1088,7 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
 
   DateTime? _getMondayOfCurrentWeek() {
     if (_semesterMonday != null) {
-      return CalendarDateMath.addDays(
-        _semesterMonday!,
-        (_currentWeek - 1) * 7,
-      );
+      return CalendarDateMath.addDays(_semesterMonday!, (_currentWeek - 1) * 7);
     }
     return null;
   }
@@ -1120,8 +1157,9 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
       for (final schedules in _fixedSchedulesPerDay.values) {
         for (final schedule in schedules) {
           if (schedule.startTime == null) continue;
-          final start =
-              DateTime.fromMillisecondsSinceEpoch(schedule.startTime!);
+          final start = DateTime.fromMillisecondsSinceEpoch(
+            schedule.startTime!,
+          );
           final end = schedule.endTime == null
               ? start.add(const Duration(hours: 1))
               : DateTime.fromMillisecondsSinceEpoch(schedule.endTime!);
@@ -1144,13 +1182,20 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
     void updateBoundsFromEpochRange(int startMs, int endMs) {
       if (weekMonday == null || endMs <= startMs) return;
 
-      final weekStart =
-          DateTime(weekMonday.year, weekMonday.month, weekMonday.day);
+      final weekStart = DateTime(
+        weekMonday.year,
+        weekMonday.month,
+        weekMonday.day,
+      );
       final weekEnd = CalendarDateMath.addDays(weekStart, 7);
-      DateTime start =
-          DateTime.fromMillisecondsSinceEpoch(startMs, isUtc: true).toLocal();
-      DateTime end =
-          DateTime.fromMillisecondsSinceEpoch(endMs, isUtc: true).toLocal();
+      DateTime start = DateTime.fromMillisecondsSinceEpoch(
+        startMs,
+        isUtc: true,
+      ).toLocal();
+      DateTime end = DateTime.fromMillisecondsSinceEpoch(
+        endMs,
+        isUtc: true,
+      ).toLocal();
 
       if (!end.isAfter(weekStart) || !start.isBefore(weekEnd)) return;
       if (start.isBefore(weekStart)) start = weekStart;
@@ -1167,10 +1212,7 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
           final double sliceEndMinute = sliceEnd == dayEnd
               ? 1440.0
               : sliceEnd.hour * 60.0 + sliceEnd.minute;
-          updateBounds(
-            sliceStartMinute,
-            sliceEndMinute,
-          );
+          updateBounds(sliceStartMinute, sliceEndMinute);
         }
         dayStart = dayEnd;
       }
@@ -1206,7 +1248,8 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
     // 界面重复显示而跳过已关联计划块的专注记录。
     if (_activeDataViews.contains('pomodoros')) {
       for (var record in _allPomodoroRecords) {
-        final int endMs = record.endTime ??
+        final int endMs =
+            record.endTime ??
             (record.startTime + record.effectiveDuration * 1000);
         updateBoundsFromEpochRange(record.startTime, endMs);
       }
@@ -1226,8 +1269,12 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
     }
 
     ({double pre, double post}) buildHideLengths(
-        double rangeStart, double rangeEnd, double minStart, double maxEnd,
-        {bool onlyHideBefore = false}) {
+      double rangeStart,
+      double rangeEnd,
+      double minStart,
+      double maxEnd, {
+      bool onlyHideBefore = false,
+    }) {
       if (minStart >= maxEnd) {
         return (pre: rangeEnd - rangeStart, post: 0.0);
       }
@@ -1256,13 +1303,27 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
       addRange(ranges, rangeEnd - post, rangeEnd);
     }
 
-    final early = buildHideLengths(earlyStart, earlyEnd, minEarly, maxEarly,
-        onlyHideBefore: true);
+    final early = buildHideLengths(
+      earlyStart,
+      earlyEnd,
+      minEarly,
+      maxEarly,
+      onlyHideBefore: true,
+    );
     final lunch = buildHideLengths(lunchStart, lunchEnd, minLunch, maxLunch);
-    final late = buildHideLengths(lateStart, lateEnd, minLate, maxLate,
-        onlyHideBefore: true);
-    final String lunchCollapseText =
-        _buildLunchCollapseText(lunchStart, lunchEnd, lunch.pre, lunch.post);
+    final late = buildHideLengths(
+      lateStart,
+      lateEnd,
+      minLate,
+      maxLate,
+      onlyHideBefore: true,
+    );
+    final String lunchCollapseText = _buildLunchCollapseText(
+      lunchStart,
+      lunchEnd,
+      lunch.pre,
+      lunch.post,
+    );
 
     double lunchPre = lunch.pre;
     double lunchPost = lunch.post;
@@ -1271,29 +1332,40 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
 
     final double totalLunchHide = lunchPre + lunchPost;
     if (totalLunchHide > 0.0) {
-      lunchCardDuration =
-          totalLunchHide > lunchReserve ? lunchReserve : totalLunchHide;
+      lunchCardDuration = totalLunchHide > lunchReserve
+          ? lunchReserve
+          : totalLunchHide;
 
       if (lunchPre > 0.0) {
         lunchCardStartMinute = lunchStart;
-        final double reserveFromPre =
-            lunchPre >= lunchCardDuration ? lunchCardDuration : lunchPre;
+        final double reserveFromPre = lunchPre >= lunchCardDuration
+            ? lunchCardDuration
+            : lunchPre;
         lunchPre -= reserveFromPre;
         final double reserveRemain = lunchCardDuration - reserveFromPre;
         if (reserveRemain > 0.0) {
-          lunchPost =
-              (lunchPost - reserveRemain).clamp(0.0, lunchEnd - lunchStart);
+          lunchPost = (lunchPost - reserveRemain).clamp(
+            0.0,
+            lunchEnd - lunchStart,
+          );
         }
       } else {
         lunchCardStartMinute = lunchEnd - lunchPost;
-        lunchPost =
-            (lunchPost - lunchCardDuration).clamp(0.0, lunchEnd - lunchStart);
+        lunchPost = (lunchPost - lunchCardDuration).clamp(
+          0.0,
+          lunchEnd - lunchStart,
+        );
       }
     }
 
     final hiddenRanges = <_HiddenTimeRange>[];
     addTwoSidedRanges(
-        hiddenRanges, earlyStart, earlyEnd, early.pre, early.post);
+      hiddenRanges,
+      earlyStart,
+      earlyEnd,
+      early.pre,
+      early.post,
+    );
     addTwoSidedRanges(hiddenRanges, lunchStart, lunchEnd, lunchPre, lunchPost);
     addTwoSidedRanges(hiddenRanges, lateStart, lateEnd, late.pre, late.post);
     hiddenRanges.sort((a, b) => a.startMinute.compareTo(b.startMinute));

@@ -1,31 +1,41 @@
 part of 'course_screens.dart';
+
 // ignore_for_file: annotate_overrides, unused_element, unused_element_parameter
 
 mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
   Widget _buildTodaySidebar() {
     DateTime now = DateTime.now();
     String dateStr = DateFormat('M月d日').format(now);
-    String weekdayStr =
-        ['周一', '周二', '周三', '周四', '周五', '周六', '周日'][now.weekday - 1];
+    String weekdayStr = [
+      '周一',
+      '周二',
+      '周三',
+      '周四',
+      '周五',
+      '周六',
+      '周日',
+    ][now.weekday - 1];
     bool isDark = Theme.of(context).brightness == Brightness.dark;
 
     List<TodoItem> todayAllDay = !_activeDataViews.contains('todos')
         ? []
         : _allTodos.where((todo) {
             DateTime start = DateTime.fromMillisecondsSinceEpoch(
-                    todo.createdDate ?? todo.createdAt,
-                    isUtc: true)
-                .toLocal();
+              todo.createdDate ?? todo.createdAt,
+              isUtc: true,
+            ).toLocal();
             DateTime end = todo.dueDate ?? start.add(const Duration(hours: 1));
 
-            bool isAllDayFlag = todo.dueDate != null &&
+            bool isAllDayFlag =
+                todo.dueDate != null &&
                 start.hour == 0 &&
                 start.minute == 0 &&
                 todo.dueDate!.hour == 23 &&
                 todo.dueDate!.minute == 59;
-            bool isCrossDay = !(start.year == end.year &&
-                start.month == end.month &&
-                start.day == end.day);
+            bool isCrossDay =
+                !(start.year == end.year &&
+                    start.month == end.month &&
+                    start.day == end.day);
             bool treatAsAllDay = isAllDayFlag || isCrossDay;
 
             if (!treatAsAllDay) return false;
@@ -41,8 +51,7 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
               1,
             );
 
-            return start.isBefore(todayEndExclusive) &&
-                end.isAfter(todayStart);
+            return start.isBefore(todayEndExclusive) && end.isAfter(todayStart);
           }).toList();
 
     // 排序：未完成优先
@@ -96,9 +105,11 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.event_available,
-                            size: 48,
-                            color: isDark ? Colors.white12 : Colors.black12),
+                        Icon(
+                          Icons.event_available,
+                          size: 48,
+                          color: isDark ? Colors.white12 : Colors.black12,
+                        ),
                         const SizedBox(height: 16),
                         Text(
                           "今天没有全天待办",
@@ -117,13 +128,17 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
                       final todo = todayAllDay[index];
                       return Padding(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 4),
+                          horizontal: 16,
+                          vertical: 4,
+                        ),
                         child: InkWell(
                           onTap: () {
                             Navigator.push(
-                                context,
-                                PageTransitions.slideHorizontal(
-                                    TodoDetailScreen(todo: todo)));
+                              context,
+                              PageTransitions.slideHorizontal(
+                                TodoDetailScreen(todo: todo),
+                              ),
+                            );
                           },
                           borderRadius: BorderRadius.circular(12),
                           child: Container(
@@ -131,34 +146,30 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
                             decoration: BoxDecoration(
                               color: todo.isDone
                                   ? (isDark
-                                      ? Theme.of(context)
-                                          .colorScheme
-                                          .cdtSuccess
-                                          .withValues(alpha: 0.1)
-                                      : Theme.of(context)
-                                          .colorScheme
-                                          .cdtSuccess
-                                          .withValues(alpha: 0.05))
+                                        ? Theme.of(context)
+                                              .colorScheme
+                                              .cdtSuccess
+                                              .withValues(alpha: 0.1)
+                                        : Theme.of(context)
+                                              .colorScheme
+                                              .cdtSuccess
+                                              .withValues(alpha: 0.05))
                                   : (isDark
-                                      ? Theme.of(context)
-                                          .colorScheme
-                                          .cdtWarning
-                                          .withValues(alpha: 0.1)
-                                      : Theme.of(context)
-                                          .colorScheme
-                                          .cdtWarning
-                                          .withValues(alpha: 0.05)),
+                                        ? Theme.of(context)
+                                              .colorScheme
+                                              .cdtWarning
+                                              .withValues(alpha: 0.1)
+                                        : Theme.of(context)
+                                              .colorScheme
+                                              .cdtWarning
+                                              .withValues(alpha: 0.05)),
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(
                                 color: todo.isDone
-                                    ? Theme.of(context)
-                                        .colorScheme
-                                        .cdtSuccess
-                                        .withValues(alpha: 0.3)
-                                    : Theme.of(context)
-                                        .colorScheme
-                                        .cdtWarning
-                                        .withValues(alpha: 0.3),
+                                    ? Theme.of(context).colorScheme.cdtSuccess
+                                          .withValues(alpha: 0.3)
+                                    : Theme.of(context).colorScheme.cdtWarning
+                                          .withValues(alpha: 0.3),
                               ),
                             ),
                             child: Row(
@@ -171,8 +182,8 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
                                   color: todo.isDone
                                       ? Theme.of(context).colorScheme.cdtSuccess
                                       : Theme.of(context)
-                                          .colorScheme
-                                          .cdtWarning,
+                                            .colorScheme
+                                            .cdtWarning,
                                 ),
                                 const SizedBox(width: 12),
                                 Expanded(
@@ -182,24 +193,29 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
                                     children: [
                                       if (todo.teamUuid != null)
                                         Padding(
-                                          padding:
-                                              const EdgeInsets.only(bottom: 2),
+                                          padding: const EdgeInsets.only(
+                                            bottom: 2,
+                                          ),
                                           child: Row(
                                             children: [
-                                              Icon(Icons.group,
-                                                  size: 10,
+                                              Icon(
+                                                Icons.group,
+                                                size: 10,
+                                                color: Theme.of(context)
+                                                    .colorScheme
+                                                    .primary,
+                                              ),
+                                              const SizedBox(width: 4),
+                                              Text(
+                                                todo.teamName ?? '团队',
+                                                style: TextStyle(
+                                                  fontSize: 10,
                                                   color: Theme.of(context)
                                                       .colorScheme
-                                                      .primary),
-                                              const SizedBox(width: 4),
-                                              Text(todo.teamName ?? '团队',
-                                                  style: TextStyle(
-                                                      fontSize: 10,
-                                                      color: Theme.of(context)
-                                                          .colorScheme
-                                                          .primary,
-                                                      fontWeight:
-                                                          FontWeight.bold)),
+                                                      .primary,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
                                             ],
                                           ),
                                         ),
@@ -213,11 +229,11 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
                                               : null,
                                           color: todo.isDone
                                               ? (isDark
-                                                  ? Colors.white38
-                                                  : Colors.black38)
+                                                    ? Colors.white38
+                                                    : Colors.black38)
                                               : (isDark
-                                                  ? Colors.white
-                                                  : Colors.black87),
+                                                    ? Colors.white
+                                                    : Colors.black87),
                                         ),
                                         maxLines: 2,
                                         overflow: TextOverflow.ellipsis,
@@ -238,8 +254,9 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
             child: Text(
               "共 ${todayAllDay.length} 项全天事项",
               style: TextStyle(
-                  fontSize: 12,
-                  color: isDark ? Colors.white24 : Colors.black26),
+                fontSize: 12,
+                color: isDark ? Colors.white24 : Colors.black26,
+              ),
             ),
           ),
         ],
@@ -259,8 +276,9 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
         flexibleSpace: const FloatingGlassTopBarBackground(),
         title: LayoutBuilder(
           builder: (context, constraints) {
-            final navigationWidth =
-                constraints.maxWidth < 420 ? constraints.maxWidth : 420.0;
+            final navigationWidth = constraints.maxWidth < 420
+                ? constraints.maxWidth
+                : 420.0;
 
             return SizedBox(
               width: navigationWidth,
@@ -293,12 +311,14 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
                           _viewMode == 2
                               ? DateFormat('yyyy年M月').format(_selectedMonth)
                               : (_viewMode == 1
-                                  ? _getBiWeekLabel()
-                                  : _getWeekLabel()),
+                                    ? _getBiWeekLabel()
+                                    : _getWeekLabel()),
                           maxLines: 1,
                           textAlign: TextAlign.center,
                           style: const TextStyle(
-                              fontSize: 15, fontWeight: FontWeight.bold),
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
                     ),
@@ -332,12 +352,13 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
             visualDensity: const VisualDensity(horizontal: -2),
             style: floatingGlassPlainIconButtonStyle(),
             icon: Icon(
-                _viewMode == 2
-                    ? Icons.view_week
-                    : (_viewMode == 1
+              _viewMode == 2
+                  ? Icons.view_week
+                  : (_viewMode == 1
                         ? Icons.calendar_month
                         : Icons.calendar_view_week),
-                size: 20),
+              size: 20,
+            ),
             tooltip: '切换视图模式',
             onPressed: () => _toggleViewMode((_viewMode + 1) % 3),
           ),
@@ -385,9 +406,7 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
                 RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(22),
                   side: BorderSide(
-                    color: Theme.of(context)
-                        .colorScheme
-                        .outlineVariant
+                    color: Theme.of(context).colorScheme.outlineVariant
                         .withValues(alpha: 0.5),
                   ),
                 ),
@@ -425,7 +444,8 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
             builder: (context, controller, child) {
               final colorScheme = Theme.of(context).colorScheme;
               final selectedCount = _selectedFilterCount;
-              final hasFilterChanges = selectedCount != 7 ||
+              final hasFilterChanges =
+                  selectedCount != 7 ||
                   _activeDataViews.contains('hideCrossDay') ||
                   !_collapseFreeTime;
               return IconButton(
@@ -445,8 +465,10 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
                         top: -6,
                         right: -7,
                         child: Container(
-                          constraints:
-                              const BoxConstraints(minWidth: 14, minHeight: 14),
+                          constraints: const BoxConstraints(
+                            minWidth: 14,
+                            minHeight: 14,
+                          ),
                           padding: const EdgeInsets.symmetric(horizontal: 3),
                           decoration: BoxDecoration(
                             color: colorScheme.primary,
@@ -534,8 +556,9 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
                               });
                             },
                             onHorizontalDragEnd: (details) {
-                              final screenWidth =
-                                  MediaQuery.of(context).size.width;
+                              final screenWidth = MediaQuery.of(context)
+                                  .size
+                                  .width;
                               final threshold = screenWidth * 0.2; // 20% 宽度触发切换
 
                               if (_dragOffset.abs() > threshold ||
@@ -569,26 +592,30 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
                                 if (_viewMode == 0) ...[
                                   SizedBox(
                                     key: _dayHeaderKey,
-                                    child:
-                                        _buildHeader(_getMondayOfCurrentWeek()),
+                                    child: _buildHeader(
+                                      _getMondayOfCurrentWeek(),
+                                    ),
                                   ),
                                   SizedBox(
                                     key: _allDayKey,
                                     child: _buildAllDayHeaderRow(
-                                        _getMondayOfCurrentWeek()),
+                                      _getMondayOfCurrentWeek(),
+                                    ),
                                   ),
                                   Divider(
-                                      height: 1,
-                                      thickness: 0.5,
-                                      color: isDark
-                                          ? Colors.white10
-                                          : Colors.black12),
+                                    height: 1,
+                                    thickness: 0.5,
+                                    color: isDark
+                                        ? Colors.white10
+                                        : Colors.black12,
+                                  ),
                                 ],
                                 Expanded(
                                   child: _viewMode > 0
                                       ? CourseMonthView(
                                           key: ValueKey(
-                                              'MonthView_${_selectedMonth.year}_${_selectedMonth.month}_mode$_viewMode'),
+                                            'MonthView_${_selectedMonth.year}_${_selectedMonth.month}_mode$_viewMode',
+                                          ),
                                           selectedMonth: _selectedMonth,
                                           courseMap: _monthCourseMap,
                                           todoMap: _monthTodoMap,
@@ -609,86 +636,106 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
                                           deviceCalendarCardKeyBuilder:
                                               (event, dateKey) =>
                                                   _getDeviceCalendarCardKey(
-                                            event.id,
-                                            dateKey,
-                                            surface: 'month',
-                                          ),
+                                                    event.id,
+                                                    dateKey,
+                                                    surface: 'month',
+                                                  ),
                                           onDeviceCalendarTap:
                                               (event, sourceKey) {
-                                            _showDeviceCalendarEventDetail(
-                                              context,
-                                              event,
-                                              sourceKey: sourceKey,
-                                            );
-                                          },
+                                                _showDeviceCalendarEventDetail(
+                                                  context,
+                                                  event,
+                                                  sourceKey: sourceKey,
+                                                );
+                                              },
                                           onMonthChanged: (m) => setState(
-                                              () => _selectedMonth = m),
+                                            () => _selectedMonth = m,
+                                          ),
                                           onDayTapped: (d) {
                                             setState(
-                                                () => _selectedMonthDay = d);
+                                              () => _selectedMonthDay = d,
+                                            );
                                             if (constraints.maxWidth <= 900) {
                                               _showDayDetailSheet(d);
                                             }
                                           },
                                           onGanttTodoTap: (todo) {
                                             if (todo.dueDate != null) {
-                                              setState(() => _selectedMonthDay =
-                                                  todo.dueDate);
+                                              setState(
+                                                () => _selectedMonthDay =
+                                                    todo.dueDate,
+                                              );
                                               if (constraints.maxWidth <= 900) {
                                                 _showDayDetailSheet(
-                                                    todo.dueDate!);
+                                                  todo.dueDate!,
+                                                );
                                               }
                                             }
                                           },
                                         )
                                       : AnimatedSwitcher(
                                           key: _gridKey,
-                                          duration:
-                                              const Duration(milliseconds: 400),
+                                          duration: const Duration(
+                                            milliseconds: 400,
+                                          ),
                                           transitionBuilder:
                                               (child, animation) {
-                                            return Transform.translate(
-                                              offset: Offset(
-                                                  _dragOffset *
-                                                      (1.0 - animation.value),
-                                                  0),
-                                              child: SlideTransition(
-                                                position: Tween<Offset>(
-                                                  begin: Offset(
-                                                      _isNextSlide ? 1.0 : -1.0,
-                                                      0.0),
-                                                  end: Offset.zero,
-                                                ).animate(CurvedAnimation(
-                                                    parent: animation,
-                                                    curve:
-                                                        Curves.easeOutCubic)),
-                                                child: FadeTransition(
-                                                    opacity: animation,
-                                                    child: child),
-                                              ),
-                                            );
-                                          },
+                                                return Transform.translate(
+                                                  offset: Offset(
+                                                    _dragOffset *
+                                                        (1.0 - animation.value),
+                                                    0,
+                                                  ),
+                                                  child: SlideTransition(
+                                                    position:
+                                                        Tween<Offset>(
+                                                          begin: Offset(
+                                                            _isNextSlide
+                                                                ? 1.0
+                                                                : -1.0,
+                                                            0.0,
+                                                          ),
+                                                          end: Offset.zero,
+                                                        ).animate(
+                                                          CurvedAnimation(
+                                                            parent: animation,
+                                                            curve: Curves
+                                                                .easeOutCubic,
+                                                          ),
+                                                        ),
+                                                    child: FadeTransition(
+                                                      opacity: animation,
+                                                      child: child,
+                                                    ),
+                                                  ),
+                                                );
+                                              },
                                           child: RepaintBoundary(
                                             key: ValueKey(
-                                                'WeekView_$_currentWeek'),
+                                              'WeekView_$_currentWeek',
+                                            ),
                                             child: LayoutBuilder(
                                               builder:
                                                   (context, innerConstraints) {
-                                                double cellWidth =
-                                                    (innerConstraints.maxWidth -
+                                                    double cellWidth =
+                                                        (innerConstraints
+                                                                .maxWidth -
                                                             timeColumnWidth) /
                                                         7;
-                                                double totalMinutes =
-                                                    (endHour - startHour) *
+                                                    double totalMinutes =
+                                                        (endHour - startHour) *
                                                             60.0 -
                                                         _totalHiddenMinutes;
-                                                double minuteHeight =
-                                                    innerConstraints.maxHeight /
+                                                    double minuteHeight =
+                                                        innerConstraints
+                                                            .maxHeight /
                                                         totalMinutes;
 
-                                                return _buildGrid(
-                                                    cellWidth, minuteHeight);
-                                              },
+                                                    return _buildGrid(
+                                                      cellWidth,
+                                                      minuteHeight,
+                                                    );
+                                                  },
                                             ),
                                           ),
                                         ),
@@ -703,8 +750,9 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
                             decoration: BoxDecoration(
                               border: Border(
                                 left: BorderSide(
-                                  color:
-                                      isDark ? Colors.white10 : Colors.black12,
+                                  color: isDark
+                                      ? Colors.white10
+                                      : Colors.black12,
                                   width: 1,
                                 ),
                               ),
@@ -724,8 +772,9 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
 
   Widget _buildSkeleton() {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
-    Color baseColor =
-        isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05);
+    Color baseColor = isDark
+        ? Colors.white10
+        : Colors.black.withValues(alpha: 0.05);
 
     return FadeTransition(
       opacity: _pulseAnimation,
@@ -793,7 +842,12 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
   }
 
   Widget _buildSkeletonBox(
-      double cellWidth, double top, double height, int dayIndex, Color color) {
+    double cellWidth,
+    double top,
+    double height,
+    int dayIndex,
+    Color color,
+  ) {
     return Positioned(
       left: dayIndex * cellWidth + 4,
       top: top,

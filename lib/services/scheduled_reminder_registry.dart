@@ -13,10 +13,17 @@ abstract final class ScheduledReminderRegistry {
   static const _maxDateTimeMilliseconds = 8640000000000000;
 
   static List<Map<String, dynamic>> withoutPlanBlocks(
-    Iterable<Map<String, dynamic>> reminders, Set<String> planIds,
-  ) => reminders.where((r) => !(sourceOf(r) == ScheduledReminderSources.reminderSchedule &&
-      r['type'] == 'plan_block' && planIds.contains(r['planBlockId']?.toString())))
-    .map(Map<String, dynamic>.from).toList(growable: false);
+    Iterable<Map<String, dynamic>> reminders,
+    Set<String> planIds,
+  ) => reminders
+      .where(
+        (r) =>
+            !(sourceOf(r) == ScheduledReminderSources.reminderSchedule &&
+                r['type'] == 'plan_block' &&
+                planIds.contains(r['planBlockId']?.toString())),
+      )
+      .map(Map<String, dynamic>.from)
+      .toList(growable: false);
 
   static Map<String, dynamic> withSource(
     Map<String, dynamic> reminder,

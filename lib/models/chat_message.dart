@@ -496,8 +496,9 @@ class ChatMessage {
           ? AiToolResultContext.withoutHistory(content)
           : content,
     ];
-    final validSettingsTargets =
-        AiSettingsNavigationService.validateTargets(settingsTargets);
+    final validSettingsTargets = AiSettingsNavigationService.validateTargets(
+      settingsTargets,
+    );
     if (validSettingsTargets.isNotEmpty) {
       sections.add(
         '[SETTINGS_NAVIGATION_CONTEXT]\n${jsonEncode(validSettingsTargets)}\n'

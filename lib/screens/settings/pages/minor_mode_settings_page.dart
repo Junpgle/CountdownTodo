@@ -202,8 +202,8 @@ class _MinorModeSettingsPageState extends State<MinorModeSettingsPage> {
           subtitle: Text(
             state.status == MinorAgeSignalStatus.shared
                 ? state.isMinor
-                    ? '年龄范围：${state.ageRangeLabel}；已纳入 Android 未成年人策略'
-                    : '年龄范围：${state.ageRangeLabel}；当前不触发未成年人策略'
+                      ? '年龄范围：${state.ageRangeLabel}；已纳入 Android 未成年人策略'
+                      : '年龄范围：${state.ageRangeLabel}；当前不触发未成年人策略'
                 : '仅主动请求后生效，未分享时不会改变当前模式',
           ),
         ),
@@ -234,14 +234,15 @@ class _MinorModeSettingsPageState extends State<MinorModeSettingsPage> {
     final status = googleMinorEnabled
         ? 'Google Play 年龄信号已开启未成年人策略'
         : state.systemEnabled
-            ? '已跟随系统开启'
-            : effective
-                ? 'App 未成年人模式已开启'
-                : state.systemSupported
-                    ? '系统未成年人模式未开启'
-                    : '系统联动当前设备暂不支持';
-    final statusIcon =
-        effective ? Icons.shield_outlined : Icons.shield_moon_outlined;
+        ? '已跟随系统开启'
+        : effective
+        ? 'App 未成年人模式已开启'
+        : state.systemSupported
+        ? '系统未成年人模式未开启'
+        : '系统联动当前设备暂不支持';
+    final statusIcon = effective
+        ? Icons.shield_outlined
+        : Icons.shield_moon_outlined;
 
     return AppSettingsSection(
       title: '状态',
@@ -273,8 +274,10 @@ class _MinorModeSettingsPageState extends State<MinorModeSettingsPage> {
         ),
         const AppSettingsDivider(),
         ListTile(
-          leading: Icon(Icons.groups_2_outlined,
-              color: colorScheme.onSurfaceVariant),
+          leading: Icon(
+            Icons.groups_2_outlined,
+            color: colorScheme.onSurfaceVariant,
+          ),
           title: const Text('年龄范围'),
           trailing: Text(
             ageRangeLabel,
@@ -283,8 +286,10 @@ class _MinorModeSettingsPageState extends State<MinorModeSettingsPage> {
         ),
         const AppSettingsDivider(),
         ListTile(
-          leading: Icon(Icons.verified_user_outlined,
-              color: colorScheme.onSurfaceVariant),
+          leading: Icon(
+            Icons.verified_user_outlined,
+            color: colorScheme.onSurfaceVariant,
+          ),
           title: const Text('家长身份认证'),
           trailing: Text(
             state.parentAuthenticationSupported ? '支持' : '暂不支持',
@@ -302,8 +307,10 @@ class _MinorModeSettingsPageState extends State<MinorModeSettingsPage> {
         if (state.systemStateReadFailed) ...[
           const AppSettingsDivider(),
           ListTile(
-            leading:
-                Icon(Icons.warning_amber_outlined, color: colorScheme.error),
+            leading: Icon(
+              Icons.warning_amber_outlined,
+              color: colorScheme.error,
+            ),
             title: const Text('系统状态暂时无法读取'),
             subtitle: const Text('应用会在恢复前保留最近一次安全状态'),
           ),
@@ -321,10 +328,11 @@ class _MinorModeSettingsPageState extends State<MinorModeSettingsPage> {
     final currentAgeBand = googleAgeSignal.isMinor
         ? googleAgeSignal.ageBand
         : state.effectiveMinorMode
-            ? state.ageBand
-            : MinorAgeBand.unknown;
-    final currentAgeLabel =
-        currentAgeBand == MinorAgeBand.unknown ? '尚未识别' : currentAgeBand.label;
+        ? state.ageBand
+        : MinorAgeBand.unknown;
+    final currentAgeLabel = currentAgeBand == MinorAgeBand.unknown
+        ? '尚未识别'
+        : currentAgeBand.label;
 
     return AppSettingsSection(
       title: '年龄段功能权限',
@@ -351,9 +359,7 @@ class _MinorModeSettingsPageState extends State<MinorModeSettingsPage> {
             dataRowMinHeight: 58,
             dataRowMaxHeight: 72,
             columns: [
-              const DataColumn(
-                label: SizedBox(width: 176, child: Text('功能')),
-              ),
+              const DataColumn(label: SizedBox(width: 176, child: Text('功能'))),
               ...MinorModePolicy.capabilityAgeBands.map(
                 (ageBand) => DataColumn(
                   label: SizedBox(
@@ -391,12 +397,7 @@ class _MinorModeSettingsPageState extends State<MinorModeSettingsPage> {
                 .map(
                   (row) => DataRow(
                     cells: [
-                      DataCell(
-                        SizedBox(
-                          width: 176,
-                          child: Text(row.label),
-                        ),
-                      ),
+                      DataCell(SizedBox(width: 176, child: Text(row.label))),
                       ...row.availability.map(
                         (availability) => DataCell(
                           _buildAvailabilityCell(context, availability),
@@ -416,10 +417,8 @@ class _MinorModeSettingsPageState extends State<MinorModeSettingsPage> {
             runSpacing: 8,
             children: MinorModeAvailability.values
                 .map(
-                  (availability) => _buildAvailabilityLegend(
-                    context,
-                    availability,
-                  ),
+                  (availability) =>
+                      _buildAvailabilityLegend(context, availability),
                 )
                 .toList(),
           ),
@@ -428,10 +427,7 @@ class _MinorModeSettingsPageState extends State<MinorModeSettingsPage> {
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
           child: Text(
             '家长认证由手机系统提供；系统未提供认证接口时，应用会采用兼容策略处理受保护操作。年龄未知时按更严格的策略处理。',
-            style: TextStyle(
-              color: colorScheme.onSurfaceVariant,
-              fontSize: 12,
-            ),
+            style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 12),
           ),
         ),
       ],
@@ -445,21 +441,21 @@ class _MinorModeSettingsPageState extends State<MinorModeSettingsPage> {
     final colorScheme = Theme.of(context).colorScheme;
     final (icon, color) = switch (availability) {
       MinorModeAvailability.available => (
-          Icons.check_circle_outline,
-          colorScheme.primary
-        ),
+        Icons.check_circle_outline,
+        colorScheme.primary,
+      ),
       MinorModeAvailability.parentAuthentication => (
-          Icons.verified_user_outlined,
-          colorScheme.tertiary
-        ),
+        Icons.verified_user_outlined,
+        colorScheme.tertiary,
+      ),
       MinorModeAvailability.unavailable => (
-          Icons.block_outlined,
-          colorScheme.error
-        ),
+        Icons.block_outlined,
+        colorScheme.error,
+      ),
       MinorModeAvailability.systemManaged => (
-          Icons.settings_outlined,
-          colorScheme.onSurfaceVariant
-        ),
+        Icons.settings_outlined,
+        colorScheme.onSurfaceVariant,
+      ),
     };
     return SizedBox(
       width: 82,

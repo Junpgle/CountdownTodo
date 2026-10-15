@@ -1050,19 +1050,15 @@ ${sections.join('\n')}
           .replaceAll(RegExp(r'(?:别|不要)忘(?:了|记)?'), '');
       final completedStatus =
           trigger == '完成' &&
-          RegExp(r'(?:已|已经|已被|已经被|需要|应该|尚未|未|待)\s*$')
-              .hasMatch(prefix);
+          RegExp(r'(?:已|已经|已被|已经被|需要|应该|尚未|未|待)\s*$').hasMatch(prefix);
       final completionMetric =
           trigger == '完成' &&
-          RegExp(r'^(?:率|情况|数量|进度|状态)').hasMatch(
-            text.substring(index + trigger.length),
-          );
-      final descriptiveStatus = RegExp(
-        r'(?:哪些|什么|需要|应该|尚未|未|待)\s*$',
-      ).hasMatch(prefix);
-      final howToQuestion = RegExp(
-        r'(?:为什么|怎么|如何|怎样|是否|能不能|可不可以)[^，。；！？,;]*$',
-      ).hasMatch(prefix);
+          RegExp(r'^(?:率|情况|数量|进度|状态)')
+              .hasMatch(text.substring(index + trigger.length));
+      final descriptiveStatus = RegExp(r'(?:哪些|什么|需要|应该|尚未|未|待)\s*$')
+          .hasMatch(prefix);
+      final howToQuestion = RegExp(r'(?:为什么|怎么|如何|怎样|是否|能不能|可不可以)[^，。；！？,;]*$')
+          .hasMatch(prefix);
       if (completedStatus ||
           completionMetric ||
           descriptiveStatus ||
@@ -1738,9 +1734,7 @@ ${sections.join('\n')}
     final remainingLimit = limit - selected.length;
     if (remainingLimit > 0) {
       selected.addAll(
-        blocks
-            .where((block) => !isInPriorityRange(block))
-            .take(remainingLimit),
+        blocks.where((block) => !isInPriorityRange(block)).take(remainingLimit),
       );
     }
     selected.sort((left, right) => left.startTime.compareTo(right.startTime));
@@ -1878,10 +1872,7 @@ ${sections.join('\n')}
     }).toList();
   }
 
-  static _DateRange? _resolveRollingMonthRange(
-    String text,
-    DateTime now,
-  ) {
+  static _DateRange? _resolveRollingMonthRange(String text, DateTime now) {
     final match = _rollingMonthRangePattern.firstMatch(text);
     if (match == null) return null;
     final months = _parseRollingMonthCount(match.group(1) ?? '6');
@@ -1907,15 +1898,13 @@ ${sections.join('\n')}
   }
 
   static _DateRange? _resolveRecentDayRange(String text, DateTime now) {
-    final numericDays = RegExp(
-      r'(?:最近|过去|近)\s*(\d{1,6})\s*(?:天|日)',
-    ).firstMatch(text);
+    final numericDays = RegExp(r'(?:最近|过去|近)\s*(\d{1,6})\s*(?:天|日)')
+        .firstMatch(text);
     final chineseDays = RegExp(
       r'(?:最近|过去|近)\s*([零〇一二两三四五六七八九十百千]{1,12})\s*(?:天|日)',
     ).firstMatch(text);
-    final numericWeeks = RegExp(
-      r'(?:最近|过去|近)\s*(\d{1,3})\s*(?:周|星期|礼拜)',
-    ).firstMatch(text);
+    final numericWeeks = RegExp(r'(?:最近|过去|近)\s*(\d{1,3})\s*(?:周|星期|礼拜)')
+        .firstMatch(text);
     final chineseWeeks = RegExp(
       r'(?:最近|过去|近)\s*([一二两三四五六七八九十]{1,3})\s*(?:周|星期|礼拜)',
     ).firstMatch(text);
@@ -2095,9 +2084,7 @@ ${sections.join('\n')}
       }
     }
 
-    final hanMatch = RegExp(
-      r'(?:未来|接下来)\s*([零〇一二两三四五六七八九十百千]{1,12})\s*(?:天|日)',
-    )
+    final hanMatch = RegExp(r'(?:未来|接下来)\s*([零〇一二两三四五六七八九十百千]{1,12})\s*(?:天|日)')
         .firstMatch(text);
     if (hanMatch != null) {
       final parsed = _parseChineseDayCount(hanMatch.group(1)!);
@@ -2217,8 +2204,7 @@ ${sections.join('\n')}
           .fold<int>(0, (sum, seconds) => sum + seconds);
       final totalMinutes = (totalFocusSeconds(scopedRecords) / 60).round();
       final timeLogMinutes =
-          (totalFocusSeconds(scopedRecords.where((r) => r.source == '补录')) /
-                  60)
+          (totalFocusSeconds(scopedRecords.where((r) => r.source == '补录')) / 60)
               .round();
       final pomodoroMinutes =
           (totalFocusSeconds(scopedRecords.where((r) => r.source == '番茄钟')) /
@@ -2255,12 +2241,12 @@ ${lines.isEmpty ? '暂无' : lines}''';
     List<TimeLogItem> timeLogs,
     List<PomodoroRecord> pomodoroRecords,
   ) => [
-    ...timeLogs.where((record) => !record.isDeleted).map(
-      _FocusRecord.fromTimeLog,
-    ),
-    ...pomodoroRecords.where((record) => !record.isDeleted).map(
-      _FocusRecord.fromPomodoro,
-    ),
+    ...timeLogs
+        .where((record) => !record.isDeleted)
+        .map(_FocusRecord.fromTimeLog),
+    ...pomodoroRecords
+        .where((record) => !record.isDeleted)
+        .map(_FocusRecord.fromPomodoro),
   ]..sort((left, right) => right.startMs.compareTo(left.startMs));
 
   static List<_FocusRecord> _scopeFocusRecords(
@@ -2268,7 +2254,9 @@ ${lines.isEmpty ? '暂无' : lines}''';
     _TimeLogPeriod? period,
   ) => period == null
       ? records
-      : records.where((record) => _focusOverlapsPeriod(record, period)).toList();
+      : records
+            .where((record) => _focusOverlapsPeriod(record, period))
+            .toList();
 
   static int _countFocusRecords(
     List<TimeLogItem> timeLogs,
@@ -2371,9 +2359,9 @@ ${lines.isEmpty ? '暂无' : lines}''';
     if (explicitChineseRange != null) {
       return _parseExplicitChineseDateRange(explicitChineseRange, now);
     }
-    final dateMatches = RegExp(
-      r'(?<!\d)(\d{4})-(\d{2})-(\d{2})(?!\d)',
-    ).allMatches(text).toList();
+    final dateMatches = RegExp(r'(?<!\d)(\d{4})-(\d{2})-(\d{2})(?!\d)')
+        .allMatches(text)
+        .toList();
     if (dateMatches.length == 1) {
       final match = dateMatches.single;
       final year = int.parse(match.group(1)!);
@@ -2424,9 +2412,7 @@ ${lines.isEmpty ? '暂无' : lines}''';
       r'(今年|去年)\s*(\d{1,2})\s*月\s*(\d{1,2})\s*(?:日|号)',
     ).firstMatch(text);
     if (relativeMonthDay != null) {
-      final year = relativeMonthDay.group(1) == '去年'
-          ? now.year - 1
-          : now.year;
+      final year = relativeMonthDay.group(1) == '去年' ? now.year - 1 : now.year;
       final period = exactDayPeriod(
         year,
         int.parse(relativeMonthDay.group(2)!),
@@ -2434,17 +2420,12 @@ ${lines.isEmpty ? '暂无' : lines}''';
       );
       if (period != null) return period;
     }
-    final monthDay = RegExp(
-      r'(?:^|[^\d])(\d{1,2})\s*月\s*(\d{1,2})\s*(?:日|号)',
-    ).firstMatch(text);
+    final monthDay = RegExp(r'(?:^|[^\d])(\d{1,2})\s*月\s*(\d{1,2})\s*(?:日|号)')
+        .firstMatch(text);
     if (monthDay != null) {
       final month = int.parse(monthDay.group(1)!);
       final year = month > now.month ? now.year - 1 : now.year;
-      final period = exactDayPeriod(
-        year,
-        month,
-        int.parse(monthDay.group(2)!),
-      );
+      final period = exactDayPeriod(year, month, int.parse(monthDay.group(2)!));
       if (period != null) return period;
     }
     final explicitYearMonth = RegExp(
@@ -2463,9 +2444,7 @@ ${lines.isEmpty ? '暂无' : lines}''';
       r'(今年|去年)\s*(0?[1-9]|1[0-2])\s*月(?:份)?(?!\s*\d{1,2}\s*(?:日|号))',
     ).firstMatch(text);
     if (relativeYearMonth != null) {
-      final year = relativeYearMonth.group(1) == '去年'
-          ? now.year - 1
-          : now.year;
+      final year = relativeYearMonth.group(1) == '去年' ? now.year - 1 : now.year;
       final month = int.parse(relativeYearMonth.group(2)!);
       return _TimeLogPeriod(
         label: '$year年$month月',
@@ -2512,11 +2491,7 @@ ${lines.isEmpty ? '暂无' : lines}''';
       final end = year == now.year && quarter == currentQuarter
           ? AppTimeFormats.localDayStartOffset(todayStart, 1)
           : DateTime(year, start.month + 3);
-      return _TimeLogPeriod(
-        label: '$year年第$quarter季度',
-        start: start,
-        end: end,
-      );
+      return _TimeLogPeriod(label: '$year年第$quarter季度', start: start, end: end);
     }
     final explicitYear = RegExp(
       r'(?:^|[^\d])(\d{4})\s*年(?:份)?(?!\s*(?:\d{1,2}\s*月|第?\s*[一二三四1-4]\s*季度))',
@@ -2543,8 +2518,11 @@ ${lines.isEmpty ? '暂无' : lines}''';
       '近12个月',
     ])) {
       final previousYear = todayStart.year - 1;
-      final previousYearMonthEnd =
-          DateTime(previousYear, todayStart.month + 1, 0).day;
+      final previousYearMonthEnd = DateTime(
+        previousYear,
+        todayStart.month + 1,
+        0,
+      ).day;
       final start = DateTime(
         previousYear,
         todayStart.month,
@@ -2646,10 +2624,7 @@ ${lines.isEmpty ? '暂无' : lines}''';
           currentQuarterStart.year,
           currentQuarterStart.month - 6,
         ),
-        end: DateTime(
-          currentQuarterStart.year,
-          currentQuarterStart.month - 3,
-        ),
+        end: DateTime(currentQuarterStart.year, currentQuarterStart.month - 3),
       );
     }
     if (_matchesAny(text, ['上季度', '上一季度', '上个季度', '前一季度'])) {
@@ -2709,7 +2684,8 @@ ${lines.isEmpty ? '暂无' : lines}''';
     final periodStart = period.start.millisecondsSinceEpoch;
     final periodEnd = period.end.millisecondsSinceEpoch;
     return record.focusIntervals.any(
-      (interval) => interval.endMs > periodStart && interval.startMs < periodEnd,
+      (interval) =>
+          interval.endMs > periodStart && interval.startMs < periodEnd,
     );
   }
 
@@ -2777,12 +2753,7 @@ ${lines.isEmpty ? '暂无' : lines}''';
       startYear = int.parse(startYearText);
     } else if (endYearText != null) {
       final endYear = int.parse(endYearText);
-      startYear = _monthDayIsAfter(
-        startMonth,
-        startDay,
-        endMonth,
-        endDay,
-      )
+      startYear = _monthDayIsAfter(startMonth, startDay, endMonth, endDay)
           ? endYear - 1
           : endYear;
     } else {
@@ -2812,8 +2783,7 @@ ${lines.isEmpty ? '暂无' : lines}''';
     int rightMonth,
     int rightDay,
   ) =>
-      leftMonth > rightMonth ||
-      (leftMonth == rightMonth && leftDay > rightDay);
+      leftMonth > rightMonth || (leftMonth == rightMonth && leftDay > rightDay);
 
   static DateTime? _parseStrictCalendarDate(int year, int month, int day) {
     if (year < 1 || month < 1 || month > 12 || day < 1 || day > 31) {
@@ -2912,12 +2882,10 @@ ${lines.isEmpty ? '暂无' : lines}''';
   static bool _hasAmbiguousMonthPeriods(String text) {
     final monthPeriods = _monthPeriodPattern.allMatches(text).length;
     final rollingMonthRanges = _rollingMonthRangePattern.allMatches(text);
-    if (rollingMonthRanges.any(
-      (match) {
-        final months = _parseRollingMonthCount(match.group(1) ?? '6');
-        return months == null || months < 1;
-      },
-    )) {
+    if (rollingMonthRanges.any((match) {
+      final months = _parseRollingMonthCount(match.group(1) ?? '6');
+      return months == null || months < 1;
+    })) {
       return true;
     }
     final rollingMonthCount = rollingMonthRanges.length;
@@ -2932,10 +2900,7 @@ ${lines.isEmpty ? '暂无' : lines}''';
   }
 
   static bool _hasMultipleRecognizedDatePeriods(String text) {
-    final periodText = text.replaceAll(
-      RegExp(r'(?:并)?扩大到未来30天范围'),
-      '',
-    );
+    final periodText = text.replaceAll(RegExp(r'(?:并)?扩大到未来30天范围'), '');
     final spans = <(int, int)>[];
     for (final pattern in [
       _explicitIsoDateRangePattern,
@@ -3177,7 +3142,8 @@ class _FocusRecord {
   factory _FocusRecord.fromPomodoro(PomodoroRecord record) {
     final totalPauseSeconds = record.totalPauseSeconds ?? 0;
     final pauseSeconds = totalPauseSeconds > 0 ? totalPauseSeconds : 0;
-    final endMs = record.endTime ??
+    final endMs =
+        record.endTime ??
         record.startTime + (record.effectiveDuration + pauseSeconds) * 1000;
     final pauses = record.pauseIntervals;
     final focusIntervals = pauses != null && pauses.isNotEmpty

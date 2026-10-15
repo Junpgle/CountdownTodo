@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+
 import '../models.dart';
 import '../utils/calendar_date_math.dart';
 
@@ -62,8 +63,10 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
         .where((item) => _isBeforeDay(item.date, today))
         .toList();
     final todayItems = displayItems
-        .where((item) => !_isBeforeDay(item.date, today) &&
-            !_isAfterDay(item.date, today))
+        .where(
+          (item) =>
+              !_isBeforeDay(item.date, today) && !_isAfterDay(item.date, today),
+        )
         .toList();
     final futureItems = displayItems
         .where((item) => _isAfterDay(item.date, today))
@@ -80,8 +83,11 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Expanded(
-          child:
-              _buildSectionHeader(context, "待办清单", Icons.check_circle_outline),
+          child: _buildSectionHeader(
+            context,
+            "待办清单",
+            Icons.check_circle_outline,
+          ),
         ),
         Row(
           mainAxisSize: MainAxisSize.min,
@@ -140,9 +146,10 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
           return FadeTransition(
             opacity: animation,
             child: SizeTransition(
-                sizeFactor: animation,
-                alignment: Alignment.topCenter,
-                child: child),
+              sizeFactor: animation,
+              alignment: Alignment.topCenter,
+              child: child,
+            ),
           );
         },
         child: (!showTodayItems && todayItems.isNotEmpty)
@@ -157,33 +164,37 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
                   decoration: BoxDecoration(
                     color: widget.isLight
                         ? (isDarkTheme
-                            ? Colors.grey[850]!.withValues(alpha: 0.95)
-                            : Colors.white.withValues(alpha: 0.95))
+                              ? Colors.grey[850]!.withValues(alpha: 0.95)
+                              : Colors.white.withValues(alpha: 0.95))
                         : (allTodayDone
-                            ? (isDarkTheme
-                                ? Colors.green.withValues(alpha: 0.15)
-                                : Colors.green.withValues(alpha: 0.08))
-                            : (isDarkTheme
-                                ? Colors.white.withValues(alpha: 0.08)
-                                : colorScheme.primary.withValues(alpha: 0.04))),
+                              ? (isDarkTheme
+                                    ? Colors.green.withValues(alpha: 0.15)
+                                    : Colors.green.withValues(alpha: 0.08))
+                              : (isDarkTheme
+                                    ? Colors.white.withValues(alpha: 0.08)
+                                    : colorScheme.primary.withValues(
+                                        alpha: 0.04,
+                                      ))),
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(
                       color: allTodayDone
                           ? Colors.green.withValues(alpha: 0.4)
                           : (widget.isLight
-                              ? (isDarkTheme
-                                  ? Colors.white.withValues(alpha: 0.15)
-                                  : Colors.black.withValues(alpha: 0.1))
-                              : (isDarkTheme
-                                  ? Colors.white.withValues(alpha: 0.22)
-                                  : colorScheme.primary
-                                      .withValues(alpha: 0.25))),
+                                ? (isDarkTheme
+                                      ? Colors.white.withValues(alpha: 0.15)
+                                      : Colors.black.withValues(alpha: 0.1))
+                                : (isDarkTheme
+                                      ? Colors.white.withValues(alpha: 0.22)
+                                      : colorScheme.primary.withValues(
+                                          alpha: 0.25,
+                                        ))),
                       width: 1.5,
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black
-                            .withValues(alpha: widget.isLight ? 0.15 : 0.08),
+                        color: Colors.black.withValues(
+                          alpha: widget.isLight ? 0.15 : 0.08,
+                        ),
                         blurRadius: 12,
                         offset: const Offset(0, 5),
                       ),
@@ -191,7 +202,9 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
                   ),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 20, vertical: 16),
+                      horizontal: 20,
+                      vertical: 16,
+                    ),
                     child: Row(
                       children: [
                         Container(
@@ -226,8 +239,8 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
                                   fontSize: 15,
                                   color: widget.isLight
                                       ? (isDarkTheme
-                                          ? Colors.white
-                                          : Colors.black)
+                                            ? Colors.white
+                                            : Colors.black)
                                       : (useDarkUI ? Colors.white : null),
                                   letterSpacing: 0.2,
                                 ),
@@ -239,22 +252,27 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
                                   fontSize: 12,
                                   color: widget.isLight
                                       ? (isDarkTheme
-                                          ? Colors.white.withValues(alpha: 0.6)
-                                          : Colors.black
-                                              .withValues(alpha: 0.55))
+                                            ? Colors.white.withValues(
+                                                alpha: 0.6,
+                                              )
+                                            : Colors.black.withValues(
+                                                alpha: 0.55,
+                                              ))
                                       : (useDarkUI
-                                              ? Colors.white
-                                              : Colors.black)
-                                          .withValues(alpha: 0.5),
+                                                ? Colors.white
+                                                : Colors.black)
+                                            .withValues(alpha: 0.5),
                                 ),
                               ),
                             ],
                           ),
                         ),
-                        Icon(Icons.unfold_more_rounded,
-                            size: 18,
-                            color: (useDarkUI ? Colors.white : Colors.grey)
-                                .withValues(alpha: 0.4)),
+                        Icon(
+                          Icons.unfold_more_rounded,
+                          size: 18,
+                          color: (useDarkUI ? Colors.white : Colors.grey)
+                              .withValues(alpha: 0.4),
+                        ),
                       ],
                     ),
                   ),
@@ -277,7 +295,8 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
                       },
                     ),
                     ...todayItems.map(
-                        (item) => _buildDisplayItem(context, item, today)),
+                      (item) => _buildDisplayItem(context, item, today),
+                    ),
                   ],
                 ],
               ),
@@ -312,9 +331,10 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
         return FadeTransition(
           opacity: animation,
           child: SizeTransition(
-              sizeFactor: animation,
-              alignment: Alignment.topCenter,
-              child: child),
+            sizeFactor: animation,
+            alignment: Alignment.topCenter,
+            child: child,
+          ),
         );
       },
       child: !_isWholeListExpanded
@@ -323,13 +343,15 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
               onTap: () => setState(() => _isWholeListExpanded = true),
               child: Container(
                 margin: const EdgeInsets.symmetric(vertical: 8),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 14,
+                ),
                 decoration: BoxDecoration(
                   color: widget.isLight
                       ? (isDarkTheme
-                          ? Colors.grey[850]!.withValues(alpha: 0.95)
-                          : Colors.white.withValues(alpha: 0.95))
+                            ? Colors.grey[850]!.withValues(alpha: 0.95)
+                            : Colors.white.withValues(alpha: 0.95))
                       : null,
                   gradient: widget.isLight
                       ? null
@@ -337,11 +359,11 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
                           colors: useDarkUI
                               ? [
                                   Colors.white.withValues(alpha: 0.12),
-                                  Colors.white.withValues(alpha: 0.04)
+                                  Colors.white.withValues(alpha: 0.04),
                                 ]
                               : [
                                   colorScheme.primary.withValues(alpha: 0.06),
-                                  colorScheme.primary.withValues(alpha: 0.01)
+                                  colorScheme.primary.withValues(alpha: 0.01),
                                 ],
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
@@ -350,11 +372,11 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
                   border: Border.all(
                     color: widget.isLight
                         ? (isDarkTheme
-                            ? Colors.white.withValues(alpha: 0.15)
-                            : Colors.black.withValues(alpha: 0.1))
+                              ? Colors.white.withValues(alpha: 0.15)
+                              : Colors.black.withValues(alpha: 0.1))
                         : (useDarkUI
-                            ? Colors.white.withValues(alpha: 0.1)
-                            : colorScheme.primary.withValues(alpha: 0.08)),
+                              ? Colors.white.withValues(alpha: 0.1)
+                              : colorScheme.primary.withValues(alpha: 0.08)),
                     width: 1,
                   ),
                 ),
@@ -366,8 +388,11 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
                         color: colorScheme.primary.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(10),
                       ),
-                      child: Icon(Icons.checklist_rtl_rounded,
-                          size: 20, color: colorScheme.primary),
+                      child: Icon(
+                        Icons.checklist_rtl_rounded,
+                        size: 20,
+                        color: colorScheme.primary,
+                      ),
                     ),
                     const SizedBox(width: 16),
                     Expanded(
@@ -395,20 +420,22 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
                             style: TextStyle(
                               color: widget.isLight
                                   ? (isDarkTheme
-                                      ? Colors.white.withValues(alpha: 0.6)
-                                      : Colors.black.withValues(alpha: 0.55))
+                                        ? Colors.white.withValues(alpha: 0.6)
+                                        : Colors.black.withValues(alpha: 0.55))
                                   : (useDarkUI ? Colors.white : Colors.black)
-                                      .withValues(alpha: 0.5),
+                                        .withValues(alpha: 0.5),
                               fontSize: 12,
                             ),
                           ),
                         ],
                       ),
                     ),
-                    Icon(Icons.unfold_more_rounded,
-                        size: 18,
-                        color: (useDarkUI ? Colors.white : Colors.grey)
-                            .withValues(alpha: 0.4)),
+                    Icon(
+                      Icons.unfold_more_rounded,
+                      size: 18,
+                      color: (useDarkUI ? Colors.white : Colors.grey)
+                          .withValues(alpha: 0.4),
+                    ),
                   ],
                 ),
               ),
@@ -422,7 +449,10 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
   }
 
   Widget _buildSectionHeader(
-      BuildContext context, String title, IconData icon) {
+    BuildContext context,
+    String title,
+    IconData icon,
+  ) {
     final colorScheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 12),
@@ -439,10 +469,8 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
           const SizedBox(width: 10),
           Text(
             title,
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 0.5,
-                ),
+            style: Theme.of(context).textTheme.titleLarge
+                ?.copyWith(fontWeight: FontWeight.bold, letterSpacing: 0.5),
           ),
         ],
       ),
@@ -487,8 +515,10 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
     );
   }
 
-  Widget _buildAnimatedSection(
-      {required bool expanded, required Widget child}) {
+  Widget _buildAnimatedSection({
+    required bool expanded,
+    required Widget child,
+  }) {
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 300),
       transitionBuilder: (Widget child, Animation<double> animation) {
@@ -562,22 +592,26 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
         }
       }
 
-      items.add(_ShareTodoDisplayItem(
-        group: group,
-        groupTodos: groupTodos,
-        date: groupDate,
-        isDone: groupTodos.every((todo) => todo.isDone),
-        progress: groupProgress,
-      ));
+      items.add(
+        _ShareTodoDisplayItem(
+          group: group,
+          groupTodos: groupTodos,
+          date: groupDate,
+          isDone: groupTodos.every((todo) => todo.isDone),
+          progress: groupProgress,
+        ),
+      );
     }
 
     for (final todo in standaloneTodos) {
-      items.add(_ShareTodoDisplayItem(
-        todo: todo,
-        date: todo.dueDate,
-        isDone: todo.isDone,
-        progress: _todoProgress(todo, now),
-      ));
+      items.add(
+        _ShareTodoDisplayItem(
+          todo: todo,
+          date: todo.dueDate,
+          isDone: todo.isDone,
+          progress: _todoProgress(todo, now),
+        ),
+      );
     }
 
     // Keep the same urgency order as TodoSectionWidget: unfinished first,
@@ -700,8 +734,9 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
                     width: 34,
                     height: 34,
                     decoration: BoxDecoration(
-                      color:
-                          colorScheme.primaryContainer.withValues(alpha: 0.7),
+                      color: colorScheme.primaryContainer.withValues(
+                        alpha: 0.7,
+                      ),
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Icon(
@@ -721,9 +756,8 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
                           group.name,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                                fontWeight: FontWeight.w700,
-                              ),
+                          style: Theme.of(context).textTheme.titleSmall
+                              ?.copyWith(fontWeight: FontWeight.w700),
                         ),
                         const SizedBox(height: 2),
                         Text(
@@ -786,8 +820,12 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
     );
   }
 
-  Widget _buildTodoCard(BuildContext context, TodoItem todo,
-      {bool isOverdue = false, bool isFuture = false}) {
+  Widget _buildTodoCard(
+    BuildContext context,
+    TodoItem todo, {
+    bool isOverdue = false,
+    bool isFuture = false,
+  }) {
     final colorScheme = Theme.of(context).colorScheme;
     final now = widget.clock?.call() ?? DateTime.now();
     final DateTime today = DateTime(now.year, now.month, now.day);
@@ -801,21 +839,22 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
 
     // 颜色
     final Color cardBg = todo.isDone
-        ? colorScheme.surfaceContainerHighest
-            .withValues(alpha: widget.isLight ? 0.25 : 0.08)
+        ? colorScheme.surfaceContainerHighest.withValues(
+            alpha: widget.isLight ? 0.25 : 0.08,
+          )
         : colorScheme.surface.withValues(
             alpha: _isPastDue(todo, today)
                 ? (widget.isLight ? 0.9 : 0.45)
                 : isFuture
-                    ? (widget.isLight ? 0.85 : 0.35)
-                    : (widget.isLight ? 0.97 : 0.75),
+                ? (widget.isLight ? 0.85 : 0.35)
+                : (widget.isLight ? 0.97 : 0.75),
           );
 
     final Color titleColor = todo.isDone
         ? colorScheme.onSurface.withValues(alpha: 0.35)
         : (isOverdue || isFuture
-            ? colorScheme.onSurface.withValues(alpha: 0.65)
-            : colorScheme.onSurface);
+              ? colorScheme.onSurface.withValues(alpha: 0.65)
+              : colorScheme.onSurface);
 
     // 时间标签
     String badge = "";
@@ -823,8 +862,11 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
     Color badgeBg = colorScheme.primaryContainer.withValues(alpha: 0.6);
 
     if (todo.dueDate != null) {
-      final d =
-          DateTime(todo.dueDate!.year, todo.dueDate!.month, todo.dueDate!.day);
+      final d = DateTime(
+        todo.dueDate!.year,
+        todo.dueDate!.month,
+        todo.dueDate!.day,
+      );
       final todayDate = DateTime(now.year, now.month, now.day);
       if (isOverdue) {
         badge = "已逾期";
@@ -880,8 +922,11 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
               else if (isOverdue)
                 Icon(Icons.warning_rounded, size: 18, color: Colors.redAccent)
               else
-                Icon(Icons.radio_button_unchecked,
-                    size: 18, color: Colors.grey.shade400),
+                Icon(
+                  Icons.radio_button_unchecked,
+                  size: 18,
+                  color: Colors.grey.shade400,
+                ),
             ],
           ),
           const SizedBox(height: 6),
@@ -896,16 +941,19 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
                 child: Text(
                   badge,
                   style: TextStyle(
-                      fontSize: 11,
-                      color: badgeColor,
-                      fontWeight: FontWeight.w600),
+                    fontSize: 11,
+                    color: badgeColor,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
               if (todo.collabType == 1 && todo.teamName != null) ...[
                 const SizedBox(width: 6),
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
                   decoration: BoxDecoration(
                     color: colorScheme.primaryContainer.withValues(alpha: 0.5),
                     borderRadius: BorderRadius.circular(8),
@@ -918,9 +966,10 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
                       Text(
                         todo.teamName!,
                         style: TextStyle(
-                            fontSize: 10,
-                            color: colorScheme.primary,
-                            fontWeight: FontWeight.w500),
+                          fontSize: 10,
+                          color: colorScheme.primary,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
                     ],
                   ),
@@ -963,8 +1012,9 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
               child: LinearProgressIndicator(
                 value: progress,
                 minHeight: 4,
-                backgroundColor:
-                    colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                backgroundColor: colorScheme.surfaceContainerHighest.withValues(
+                  alpha: 0.3,
+                ),
                 color: isOverdue ? Colors.redAccent : colorScheme.primary,
               ),
             ),
@@ -1060,8 +1110,11 @@ class ShareScheduleSection extends StatelessWidget {
             color: colorScheme.secondary.withValues(alpha: 0.13),
             borderRadius: BorderRadius.circular(13),
           ),
-          child: Icon(Icons.event_available_rounded,
-              size: 20, color: colorScheme.secondary),
+          child: Icon(
+            Icons.event_available_rounded,
+            size: 20,
+            color: colorScheme.secondary,
+          ),
         ),
         const SizedBox(width: 11),
         Expanded(
@@ -1070,9 +1123,7 @@ class ShareScheduleSection extends StatelessWidget {
             children: [
               Text(
                 '日程',
-                style: Theme.of(context)
-                    .textTheme
-                    .titleMedium
+                style: Theme.of(context).textTheme.titleMedium
                     ?.copyWith(fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 2),
@@ -1100,23 +1151,23 @@ class ShareScheduleSection extends StatelessWidget {
       padding: const EdgeInsets.only(top: 8, bottom: 10, left: 4, right: 4),
       child: Row(
         children: [
-          Icon(Icons.history_rounded,
-              size: 17, color: colorScheme.onSurfaceVariant),
+          Icon(
+            Icons.history_rounded,
+            size: 17,
+            color: colorScheme.onSurfaceVariant,
+          ),
           const SizedBox(width: 7),
           Text(
             '已结束',
             style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
-                  fontWeight: FontWeight.w700,
-                ),
+              color: colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.w700,
+            ),
           ),
           const Spacer(),
           Text(
             '$count 项',
-            style: TextStyle(
-              fontSize: 12,
-              color: colorScheme.onSurfaceVariant,
-            ),
+            style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
           ),
         ],
       ),
@@ -1150,8 +1201,9 @@ class ShareScheduleSection extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerHighest
-            .withValues(alpha: isLight ? 0.62 : 0.42),
+        color: colorScheme.surfaceContainerHighest.withValues(
+          alpha: isLight ? 0.62 : 0.42,
+        ),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: phaseColor.withValues(alpha: 0.24)),
       ),
@@ -1176,16 +1228,18 @@ class ShareScheduleSection extends StatelessWidget {
                   item.title,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                  style: Theme.of(context).textTheme.titleSmall
+                      ?.copyWith(fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: 6),
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(Icons.schedule_rounded,
-                        size: 15, color: colorScheme.onSurfaceVariant),
+                    Icon(
+                      Icons.schedule_rounded,
+                      size: 15,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
                     const SizedBox(width: 5),
                     Expanded(
                       child: Text(
@@ -1203,8 +1257,11 @@ class ShareScheduleSection extends StatelessWidget {
                   const SizedBox(height: 4),
                   Row(
                     children: [
-                      Icon(Icons.location_on_outlined,
-                          size: 15, color: colorScheme.onSurfaceVariant),
+                      Icon(
+                        Icons.location_on_outlined,
+                        size: 15,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
                       const SizedBox(width: 5),
                       Expanded(
                         child: Text(
@@ -1258,12 +1315,16 @@ class ShareScheduleSection extends StatelessWidget {
   String _formatScheduleTime(FixedScheduleItem item) {
     final start = item.startTime == null
         ? null
-        : DateTime.fromMillisecondsSinceEpoch(item.startTime!, isUtc: true)
-            .toLocal();
+        : DateTime.fromMillisecondsSinceEpoch(
+            item.startTime!,
+            isUtc: true,
+          ).toLocal();
     final end = item.endTime == null
         ? null
-        : DateTime.fromMillisecondsSinceEpoch(item.endTime!, isUtc: true)
-            .toLocal();
+        : DateTime.fromMillisecondsSinceEpoch(
+            item.endTime!,
+            isUtc: true,
+          ).toLocal();
     final date = DateTime.tryParse(item.date)?.toLocal();
 
     if (start == null && end == null) {
@@ -1272,15 +1333,16 @@ class ShareScheduleSection extends StatelessWidget {
           : '${DateFormat('MM/dd').format(date)} · 时间待定';
     }
     if (start != null && end != null) {
-      final sameDay = start.year == end.year &&
+      final sameDay =
+          start.year == end.year &&
           start.month == end.month &&
           start.day == end.day;
       return sameDay
           ? '${DateFormat('MM/dd').format(start)} '
-              '${DateFormat('HH:mm').format(start)} → '
-              '${DateFormat('HH:mm').format(end)}'
+                '${DateFormat('HH:mm').format(start)} → '
+                '${DateFormat('HH:mm').format(end)}'
           : '${DateFormat('MM/dd HH:mm').format(start)} → '
-              '${DateFormat('MM/dd HH:mm').format(end)}';
+                '${DateFormat('MM/dd HH:mm').format(end)}';
     }
     if (start != null) {
       return '${DateFormat('MM/dd HH:mm').format(start)} · 结束待定';
@@ -1332,8 +1394,7 @@ class ShareCountdownSection extends StatelessWidget {
     final activeCountdowns = countdowns.where((item) {
       return !item.isCompleted &&
           CalendarDateMath.daysBetween(today, item.targetDate) >= 0;
-    }).toList()
-      ..sort((a, b) => a.targetDate.compareTo(b.targetDate));
+    }).toList()..sort((a, b) => a.targetDate.compareTo(b.targetDate));
 
     if (activeCountdowns.isEmpty) return const SizedBox.shrink();
 
@@ -1367,46 +1428,49 @@ class ShareCountdownSection extends StatelessWidget {
               // 颜色
               final Color bgColor = useDarkUI
                   ? (isUrgent && isHoliday
-                      ? Colors.greenAccent.withValues(alpha: 0.18)
-                      : isUrgent
-                          ? Colors.redAccent.withValues(alpha: 0.25)
-                          : isLight
-                              ? Colors.white.withValues(alpha: 0.1)
-                              : colorScheme.surfaceContainerHighest
-                                  .withValues(alpha: 0.5))
+                        ? Colors.greenAccent.withValues(alpha: 0.18)
+                        : isUrgent
+                        ? Colors.redAccent.withValues(alpha: 0.25)
+                        : isLight
+                        ? Colors.white.withValues(alpha: 0.1)
+                        : colorScheme.surfaceContainerHighest.withValues(
+                            alpha: 0.5,
+                          ))
                   : (isUrgent && isHoliday
-                      ? Colors.green.shade50
-                      : isUrgent
-                          ? Colors.red.shade50
-                          : colorScheme.surface);
+                        ? Colors.green.shade50
+                        : isUrgent
+                        ? Colors.red.shade50
+                        : colorScheme.surface);
 
               final borderColor = useDarkUI
                   ? (isUrgent && isHoliday
-                      ? Colors.greenAccent.withValues(alpha: 0.5)
-                      : isUrgent
-                          ? Colors.redAccent.withValues(alpha: 0.5)
-                          : Colors.white.withValues(alpha: 0.15))
+                        ? Colors.greenAccent.withValues(alpha: 0.5)
+                        : isUrgent
+                        ? Colors.redAccent.withValues(alpha: 0.5)
+                        : Colors.white.withValues(alpha: 0.15))
                   : (isUrgent && isHoliday
-                      ? Colors.green.withValues(alpha: 0.3)
-                      : isUrgent
-                          ? Colors.redAccent.withValues(alpha: 0.3)
-                          : Colors.black.withValues(alpha: 0.05));
+                        ? Colors.green.withValues(alpha: 0.3)
+                        : isUrgent
+                        ? Colors.redAccent.withValues(alpha: 0.3)
+                        : Colors.black.withValues(alpha: 0.05));
 
-              final textColor =
-                  useDarkUI ? Colors.white : colorScheme.onSurface;
-              final subTextColor =
-                  useDarkUI ? Colors.white70 : colorScheme.onSurfaceVariant;
+              final textColor = useDarkUI
+                  ? Colors.white
+                  : colorScheme.onSurface;
+              final subTextColor = useDarkUI
+                  ? Colors.white70
+                  : colorScheme.onSurfaceVariant;
               final accentColor = useDarkUI
                   ? (isUrgent && isHoliday
-                      ? Colors.greenAccent.shade100
-                      : isUrgent
-                          ? Colors.redAccent.shade100
-                          : Colors.white)
+                        ? Colors.greenAccent.shade100
+                        : isUrgent
+                        ? Colors.redAccent.shade100
+                        : Colors.white)
                   : (isUrgent && isHoliday
-                      ? Colors.green
-                      : isUrgent
-                          ? Colors.redAccent
-                          : colorScheme.primary);
+                        ? Colors.green
+                        : isUrgent
+                        ? Colors.redAccent
+                        : colorScheme.primary);
 
               return Container(
                 width: 130,
@@ -1422,7 +1486,7 @@ class ShareCountdownSection extends StatelessWidget {
                             color: Colors.black.withValues(alpha: 0.04),
                             blurRadius: 10,
                             offset: const Offset(0, 4),
-                          )
+                          ),
                         ],
                 ),
                 child: Padding(
@@ -1455,9 +1519,11 @@ class ShareCountdownSection extends StatelessWidget {
                         const SizedBox(height: 2),
                         Row(
                           children: [
-                            Icon(Icons.groups_rounded,
-                                size: 10,
-                                color: accentColor.withValues(alpha: 0.6)),
+                            Icon(
+                              Icons.groups_rounded,
+                              size: 10,
+                              color: accentColor.withValues(alpha: 0.6),
+                            ),
                             const SizedBox(width: 3),
                             Expanded(
                               child: Text(
@@ -1547,7 +1613,10 @@ class ShareCountdownSection extends StatelessWidget {
   }
 
   Widget _buildSectionHeader(
-      BuildContext context, String title, IconData icon) {
+    BuildContext context,
+    String title,
+    IconData icon,
+  ) {
     final colorScheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 12),
@@ -1564,9 +1633,7 @@ class ShareCountdownSection extends StatelessWidget {
           const SizedBox(width: 10),
           Text(
             title,
-            style: Theme.of(context)
-                .textTheme
-                .titleLarge
+            style: Theme.of(context).textTheme.titleLarge
                 ?.copyWith(fontWeight: FontWeight.bold, letterSpacing: 0.5),
           ),
         ],

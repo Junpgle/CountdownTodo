@@ -1,6 +1,8 @@
 import '../widgets/floating_glass_control.dart';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 import 'dart:async';
 import 'dart:convert';
 
@@ -79,23 +81,22 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _updateCheckInitialized = false;
 
   GlobalKey _navigationKey(String id) => _navigationKeys.putIfAbsent(
-        id,
-        () => GlobalKey(debugLabel: 'settings-$id'),
-      );
+    id,
+    () => GlobalKey(debugLabel: 'settings-$id'),
+  );
 
   Future<T?> _openSettingsPage<T>(
     String id,
     Widget page, {
     RouteSettings? settings,
     bool rootNavigator = false,
-  }) =>
-      SettingsNavigation.push<T>(
-        context: context,
-        page: page,
-        sourceKey: _navigationKey(id),
-        rootNavigator: rootNavigator,
-        settings: settings,
-      );
+  }) => SettingsNavigation.push<T>(
+    context: context,
+    page: page,
+    sourceKey: _navigationKey(id),
+    rootNavigator: rootNavigator,
+    settings: settings,
+  );
 
   @override
   void initState() {
@@ -147,8 +148,9 @@ class _SettingsPageState extends State<SettingsPage> {
 
   void _handleUpdateCheckAnimationStatus(AnimationStatus status) {
     if (status != AnimationStatus.completed) return;
-    _updateCheckAnimation
-        ?.removeStatusListener(_handleUpdateCheckAnimationStatus);
+    _updateCheckAnimation?.removeStatusListener(
+      _handleUpdateCheckAnimationStatus,
+    );
     _updateCheckAnimation = null;
     _scheduleManualUpdateCheck();
   }
@@ -168,8 +170,9 @@ class _SettingsPageState extends State<SettingsPage> {
 
   @override
   void dispose() {
-    _updateCheckAnimation
-        ?.removeStatusListener(_handleUpdateCheckAnimationStatus);
+    _updateCheckAnimation?.removeStatusListener(
+      _handleUpdateCheckAnimationStatus,
+    );
     super.dispose();
   }
 
@@ -214,7 +217,7 @@ class _SettingsPageState extends State<SettingsPage> {
       'home_layout',
       'sidebar_menu',
       'wallpaper',
-      'home_text'
+      'home_text',
     ];
     final minorModeTargets = ['minor_mode', 'minor_mode_status'];
     final courseTargets = [
@@ -229,7 +232,7 @@ class _SettingsPageState extends State<SettingsPage> {
       'semester_start',
       'semester_end',
       'semester_sync',
-      'semester_management'
+      'semester_management',
     ];
     final interconnectTargets = [
       'lan_sync',
@@ -248,7 +251,7 @@ class _SettingsPageState extends State<SettingsPage> {
       'storage',
       'help_center',
       'changelog',
-      'feature_guide'
+      'feature_guide',
     ];
     final platformTargets = [
       'float_window_style',
@@ -264,34 +267,35 @@ class _SettingsPageState extends State<SettingsPage> {
       'mac_island_clipboard_links',
       'mac_island_clipboard_browser',
       'mac_island_test',
-      'mac_island_without_notch'
+      'mac_island_without_notch',
     ];
 
     if (minorModeTargets.contains(target)) {
       paneId = 'minor_mode';
-      paneBuilder = () => MinorModeSettingsPage(
-            initialTarget: target,
-            isEmbedded: true,
-          );
+      paneBuilder = () =>
+          MinorModeSettingsPage(initialTarget: target, isEmbedded: true);
     } else if (accountTargets.contains(target)) {
       paneId = 'account';
       paneBuilder = _buildAccountAndAnnouncementsPane;
     } else if (preferenceTargets.contains(target)) {
       paneId = 'preference';
-      paneBuilder =
-          () => PreferenceSettingsPage(initialTarget: target, isEmbedded: true);
+      paneBuilder = () =>
+          PreferenceSettingsPage(initialTarget: target, isEmbedded: true);
     } else if (courseTargets.contains(target)) {
       paneId = 'course';
-      paneBuilder =
-          () => CourseSettingsPage(initialTarget: target, isEmbedded: true);
+      paneBuilder = () =>
+          CourseSettingsPage(initialTarget: target, isEmbedded: true);
     } else if (interconnectTargets.contains(target)) {
       paneId = 'interconnect';
       paneBuilder = () => InterconnectSettingsPage(
-          initialTarget: target, isEmbedded: true, username: _username);
+        initialTarget: target,
+        isEmbedded: true,
+        username: _username,
+      );
     } else if (advancedTargets.contains(target)) {
       paneId = 'preference'; // merged into preference
-      paneBuilder =
-          () => PreferenceSettingsPage(initialTarget: target, isEmbedded: true);
+      paneBuilder = () =>
+          PreferenceSettingsPage(initialTarget: target, isEmbedded: true);
     } else if (target == 'llm_config') {
       paneId = 'llm_config';
       paneBuilder = () => const LLMConfigPage(isEmbedded: true);
@@ -321,14 +325,15 @@ class _SettingsPageState extends State<SettingsPage> {
     if (widget.openInitialTargetAsRoot && paneId == 'account') {
       setState(() {
         _initialTargetRootBuilder = () => Scaffold(
-              appBar: const FloatingGlassAppBar(title: Text('账户与同步')),
-              body: _buildAccountAndAnnouncementsPane(),
-            );
+          appBar: const FloatingGlassAppBar(title: Text('账户与同步')),
+          body: _buildAccountAndAnnouncementsPane(),
+        );
       });
       return;
     }
 
-    final isWide = MediaQuery.of(context).size.width >= 800 &&
+    final isWide =
+        MediaQuery.of(context).size.width >= 800 &&
         !widget.openInitialTargetAsRoot;
     if (isWide) {
       setState(() {
@@ -354,7 +359,9 @@ class _SettingsPageState extends State<SettingsPage> {
         pushWidget = CourseSettingsPage(initialTarget: target);
       } else if (paneId == 'interconnect') {
         pushWidget = InterconnectSettingsPage(
-            initialTarget: target, username: _username);
+          initialTarget: target,
+          username: _username,
+        );
       } else if (paneId == 'llm_config') {
         pushWidget = const LLMConfigPage();
       } else if (paneId == 'ai_assistant') {
@@ -382,7 +389,8 @@ class _SettingsPageState extends State<SettingsPage> {
   void _ensureUpdateSectionVisible([int attempt = 0]) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      final targetContext = _updateSettingsSectionKey.currentContext ??
+      final targetContext =
+          _updateSettingsSectionKey.currentContext ??
           _embeddedUpdateSettingsSectionKey.currentContext;
       if (targetContext != null) {
         unawaited(
@@ -446,9 +454,10 @@ class _SettingsPageState extends State<SettingsPage> {
 
     bool useCache = false;
     if (cachedDataStr != null && lastSyncTime != null) {
-      final DateTime lastSync =
-          DateTime.fromMillisecondsSinceEpoch(lastSyncTime, isUtc: true)
-              .toLocal();
+      final DateTime lastSync = DateTime.fromMillisecondsSinceEpoch(
+        lastSyncTime,
+        isUtc: true,
+      ).toLocal();
       if (DateTime.now().difference(lastSync).inMinutes < 5) {
         useCache = true;
         try {
@@ -583,7 +592,9 @@ class _SettingsPageState extends State<SettingsPage> {
                     child: Text(
                       latest.title.isEmpty ? '最新公告' : latest.title,
                       style: const TextStyle(
-                          fontSize: 16, fontWeight: FontWeight.w700),
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
                 ],
@@ -609,8 +620,10 @@ class _SettingsPageState extends State<SettingsPage> {
                   ...others.map(
                     (ann) => ListTile(
                       dense: true,
-                      leading:
-                          const Icon(Icons.announcement_outlined, size: 18),
+                      leading: const Icon(
+                        Icons.announcement_outlined,
+                        size: 18,
+                      ),
                       title: Text(ann.title.isEmpty ? '未命名公告' : ann.title),
                       subtitle: Text(
                         ann.content,
@@ -696,8 +709,10 @@ class _SettingsPageState extends State<SettingsPage> {
     if (!mounted) return;
 
     if (_username.isEmpty || _userId == null) {
-      AppSnackBars.showSnackBar(context,
-          const SnackBar(content: Text('请先登录账号')));
+      AppSnackBars.showSnackBar(
+        context,
+        const SnackBar(content: Text('请先登录账号')),
+      );
       return;
     }
 
@@ -710,11 +725,13 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('取消')),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
           FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('确认')),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('确认'),
+          ),
         ],
       ),
     );
@@ -724,13 +741,17 @@ class _SettingsPageState extends State<SettingsPage> {
     AppSnackBars.showSnackBar(
       context,
       const SnackBar(
-          content: Text('🔄 正在全量同步...'), duration: Duration(seconds: 10)),
+        content: Text('🔄 正在全量同步...'),
+        duration: Duration(seconds: 10),
+      ),
     );
 
     try {
       await StorageService.resetSyncTime(_username);
-      final syncResult =
-          await StorageService.syncData(_username, forceFullSync: true);
+      final syncResult = await StorageService.syncData(
+        _username,
+        forceFullSync: true,
+      );
 
       if (syncResult['success'] != true) {
         throw Exception(syncResult['error'] ?? '同步未执行，请稍后重试');
@@ -759,18 +780,21 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _handleLogout({bool force = false}) async {
     bool confirm = force;
     if (!force) {
-      confirm = await showAppDialog<bool>(
+      confirm =
+          await showAppDialog<bool>(
             context: context,
             builder: (ctx) => AlertDialog(
               title: const Text("退出账号"),
               content: const Text("确定要退出当前账号吗？"),
               actions: [
                 TextButton(
-                    onPressed: () => Navigator.pop(ctx, false),
-                    child: const Text("取消")),
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text("取消"),
+                ),
                 FilledButton(
-                  style:
-                      FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Colors.redAccent,
+                  ),
                   onPressed: () => Navigator.pop(ctx, true),
                   child: const Text("退出"),
                 ),
@@ -781,8 +805,8 @@ class _SettingsPageState extends State<SettingsPage> {
     }
 
     if (confirm) {
-      final authorized =
-          await MinorModeService.instance.authorizeSensitiveAction();
+      final authorized = await MinorModeService.instance
+          .authorizeSensitiveAction();
       if (!authorized) {
         if (mounted) {
           AppSnackBars.showSnackBar(
@@ -796,9 +820,10 @@ class _SettingsPageState extends State<SettingsPage> {
       await StorageService.clearLoginSession();
       if (mounted) {
         Navigator.pushAndRemoveUntil(
-            context,
-            PageTransitions.material(builder: (_) => const LoginScreen()),
-            (route) => false);
+          context,
+          PageTransitions.material(builder: (_) => const LoginScreen()),
+          (route) => false,
+        );
       }
     }
   }
@@ -825,8 +850,8 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _openChangePasswordDialog() async {
     if (_userId == null) return;
-    final authorized =
-        await MinorModeService.instance.authorizeSensitiveAction();
+    final authorized = await MinorModeService.instance
+        .authorizeSensitiveAction();
     if (!authorized || !mounted) {
       if (mounted && !authorized) {
         AppSnackBars.showSnackBar(
@@ -905,15 +930,17 @@ class _SettingsPageState extends State<SettingsPage> {
         InkWell(
           onTap: () {
             // 点击根节点，清空嵌套路由
-            _nestedNavigatorKey.currentState
-                ?.popUntil((route) => route.isFirst);
+            _nestedNavigatorKey.currentState?.popUntil(
+              (route) => route.isFirst,
+            );
           },
           child: Text('设置 > $paneTitle', style: const TextStyle(fontSize: 18)),
         ),
       ];
       for (int i = 0; i < _nestedRouteNames.length; i++) {
-        breadcrumbs.add(const Text(' > ',
-            style: TextStyle(fontSize: 18, color: Colors.grey)));
+        breadcrumbs.add(
+          const Text(' > ', style: TextStyle(fontSize: 18, color: Colors.grey)),
+        );
         breadcrumbs.add(
           InkWell(
             onTap: () {
@@ -924,15 +951,14 @@ class _SettingsPageState extends State<SettingsPage> {
                 (route) => route.settings.name == routeName,
               );
             },
-            child: Text(_nestedRouteNames[i],
-                style: const TextStyle(fontSize: 18)),
+            child: Text(
+              _nestedRouteNames[i],
+              style: const TextStyle(fontSize: 18),
+            ),
           ),
         );
       }
-      titleWidget = Row(
-        mainAxisSize: MainAxisSize.min,
-        children: breadcrumbs,
-      );
+      titleWidget = Row(mainAxisSize: MainAxisSize.min, children: breadcrumbs);
     } else {
       titleWidget = const Text('设置');
     }
@@ -1001,8 +1027,9 @@ class _SettingsPageState extends State<SettingsPage> {
                   children: [
                     CircleAvatar(
                       radius: 20,
-                      backgroundColor:
-                          colorScheme.primary.withValues(alpha: 0.2),
+                      backgroundColor: colorScheme.primary.withValues(
+                        alpha: 0.2,
+                      ),
                       child: Text(
                         _username.isNotEmpty ? _username[0].toUpperCase() : '?',
                         style: TextStyle(
@@ -1106,11 +1133,14 @@ class _SettingsPageState extends State<SettingsPage> {
           width: 280,
           color: isDark
               ? theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3)
-              : theme.colorScheme.surfaceContainerHighest
-                  .withValues(alpha: 0.5),
+              : theme.colorScheme.surfaceContainerHighest.withValues(
+                  alpha: 0.5,
+                ),
           child: SingleChildScrollView(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 12.0, vertical: 20.0),
+            padding: const EdgeInsets.symmetric(
+              horizontal: 12.0,
+              vertical: 20.0,
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -1140,7 +1170,9 @@ class _SettingsPageState extends State<SettingsPage> {
                         borderRadius: BorderRadius.circular(12),
                         border: _selectedPaneId == 'account'
                             ? Border.all(
-                                color: theme.colorScheme.primary, width: 2)
+                                color: theme.colorScheme.primary,
+                                width: 2,
+                              )
                             : Border.all(color: Colors.transparent, width: 2),
                       ),
                       child: _buildSidebarAccountSummary(theme),
@@ -1189,7 +1221,9 @@ class _SettingsPageState extends State<SettingsPage> {
                   color: Colors.blue,
                   title: '数据与互联',
                   widgetBuilder: () => InterconnectSettingsPage(
-                      isEmbedded: true, username: _username),
+                    isEmbedded: true,
+                    username: _username,
+                  ),
                 ),
                 _buildMacSidebarItem(
                   id: 'llm_config',
@@ -1336,9 +1370,11 @@ class _SettingsPageState extends State<SettingsPage> {
                         : color.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(6),
                   ),
-                  child: Icon(icon,
-                      size: 16,
-                      color: isSelected ? theme.colorScheme.onPrimary : color),
+                  child: Icon(
+                    icon,
+                    size: 16,
+                    color: isSelected ? theme.colorScheme.onPrimary : color,
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -1346,8 +1382,9 @@ class _SettingsPageState extends State<SettingsPage> {
                     title,
                     style: TextStyle(
                       fontSize: 14,
-                      fontWeight:
-                          isSelected ? FontWeight.w600 : FontWeight.w500,
+                      fontWeight: isSelected
+                          ? FontWeight.w600
+                          : FontWeight.w500,
                       color: isSelected ? theme.colorScheme.onPrimary : null,
                     ),
                   ),
@@ -1393,16 +1430,20 @@ class _SettingsPageState extends State<SettingsPage> {
           const SizedBox(height: 24),
           const Padding(
             padding: EdgeInsets.only(left: 8.0, bottom: 8.0),
-            child: Text('核心设置',
-                style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.grey)),
+            child: Text(
+              '核心设置',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: Colors.grey,
+              ),
+            ),
           ),
           Card(
             elevation: 1,
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
             child: Column(
               children: [
                 ListTile(
@@ -1419,8 +1460,10 @@ class _SettingsPageState extends State<SettingsPage> {
                 const Divider(height: 1, indent: 56),
                 ListTile(
                   key: _navigationKey('preference'),
-                  leading:
-                      const Icon(Icons.palette_outlined, color: Colors.indigo),
+                  leading: const Icon(
+                    Icons.palette_outlined,
+                    color: Colors.indigo,
+                  ),
                   title: const Text('系统与外观'),
                   subtitle: const Text('主题、动画、存储清理、数据迁移与高级选项'),
                   trailing: const Icon(Icons.chevron_right),
@@ -1432,8 +1475,10 @@ class _SettingsPageState extends State<SettingsPage> {
                 const Divider(height: 1, indent: 56),
                 ListTile(
                   key: _navigationKey('animation'),
-                  leading: const Icon(Icons.animation_outlined,
-                      color: Colors.pinkAccent),
+                  leading: const Icon(
+                    Icons.animation_outlined,
+                    color: Colors.pinkAccent,
+                  ),
                   title: const Text('动画与特效'),
                   subtitle: const Text('页面切换动画、过渡效果及性能选项'),
                   trailing: const Icon(Icons.chevron_right),
@@ -1445,25 +1490,29 @@ class _SettingsPageState extends State<SettingsPage> {
                 const Divider(height: 1, indent: 56),
                 ListTile(
                   key: _navigationKey('course'),
-                  leading:
-                      const Icon(Icons.school_outlined, color: Colors.teal),
+                  leading: const Icon(
+                    Icons.school_outlined,
+                    color: Colors.teal,
+                  ),
                   title: const Text('课表与学期'),
                   subtitle: const Text('教务导入、上课时间、学期进度条等'),
                   trailing: const Icon(Icons.chevron_right),
-                  onTap: () => _openSettingsPage(
-                    'course',
-                    const CourseSettingsPage(),
-                  ),
+                  onTap: () =>
+                      _openSettingsPage('course', const CourseSettingsPage()),
                 ),
                 const Divider(height: 1, indent: 56),
                 ListTile(
                   key: _navigationKey('interconnect'),
-                  leading:
-                      const Icon(Icons.devices_outlined, color: Colors.blue),
+                  leading: const Icon(
+                    Icons.devices_outlined,
+                    color: Colors.blue,
+                  ),
                   title: const Text('数据与互联'),
-                  subtitle: Text(AppPlatform.isWeb
-                      ? '浏览器导入导出、MCP 说明与 ICS 日历文件'
-                      : '局域网同步、MCP、手环与日历同步'),
+                  subtitle: Text(
+                    AppPlatform.isWeb
+                        ? '浏览器导入导出、MCP 说明与 ICS 日历文件'
+                        : '局域网同步、MCP、手环与日历同步',
+                  ),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => _openSettingsPage(
                     'interconnect',
@@ -1473,21 +1522,23 @@ class _SettingsPageState extends State<SettingsPage> {
                 const Divider(height: 1, indent: 56),
                 ListTile(
                   key: _navigationKey('llm_config'),
-                  leading: const Icon(Icons.psychology_outlined,
-                      color: Colors.deepPurple),
+                  leading: const Icon(
+                    Icons.psychology_outlined,
+                    color: Colors.deepPurple,
+                  ),
                   title: const Text('模型与 API 配置'),
                   subtitle: const Text('服务商、密钥、对话模型与多模态模型'),
                   trailing: const Icon(Icons.chevron_right),
-                  onTap: () => _openSettingsPage(
-                    'llm_config',
-                    const LLMConfigPage(),
-                  ),
+                  onTap: () =>
+                      _openSettingsPage('llm_config', const LLMConfigPage()),
                 ),
                 const Divider(height: 1, indent: 56),
                 ListTile(
                   key: _navigationKey('ai_assistant'),
-                  leading: Icon(Icons.auto_awesome_rounded,
-                      color: Theme.of(context).colorScheme.tertiary),
+                  leading: Icon(
+                    Icons.auto_awesome_rounded,
+                    color: Theme.of(context).colorScheme.tertiary,
+                  ),
                   title: const Text('AI 助手设置'),
                   subtitle: const Text('工具查询、智能注入、提示词与深度思考'),
                   trailing: const Icon(Icons.chevron_right),
@@ -1501,20 +1552,26 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
           Card(
             elevation: 1,
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
             child: Column(
               children: [
                 if (!AppPlatform.isWeb) ...[
                   ListTile(
                     key: _navigationKey('platform'),
-                    leading: const Icon(Icons.stars_rounded,
-                        color: Colors.deepPurple),
-                    title: Text(AppPlatform.isWindows
-                        ? 'Windows 专属设置'
-                        : (AppPlatform.isAndroid ? 'Android 专属设置' : '平台专属设置')),
+                    leading: const Icon(
+                      Icons.stars_rounded,
+                      color: Colors.deepPurple,
+                    ),
+                    title: Text(
+                      AppPlatform.isWindows
+                          ? 'Windows 专属设置'
+                          : (AppPlatform.isAndroid ? 'Android 专属设置' : '平台专属设置'),
+                    ),
                     subtitle: Text(
-                        AppPlatform.isWindows ? '悬浮窗、屏幕时间、灵动岛' : '活动提醒、权限优化等'),
+                      AppPlatform.isWindows ? '悬浮窗、屏幕时间、灵动岛' : '活动提醒、权限优化等',
+                    ),
                     trailing: const Icon(Icons.chevron_right),
                     onTap: () => _openSettingsPage(
                       'platform',
@@ -1525,12 +1582,14 @@ class _SettingsPageState extends State<SettingsPage> {
                 ],
                 ListTile(
                   key: _navigationKey('notifications'),
-                  leading: const Icon(Icons.notifications_outlined,
-                      color: Colors.amber),
+                  leading: const Icon(
+                    Icons.notifications_outlined,
+                    color: Colors.amber,
+                  ),
                   title: Text(AppPlatform.isWeb ? '浏览器通知' : '通知管理'),
-                  subtitle: Text(AppPlatform.isWeb
-                      ? '权限授权、番茄钟结束、待办和课程提醒'
-                      : '实时活动、定时闹钟与通知偏好'),
+                  subtitle: Text(
+                    AppPlatform.isWeb ? '权限授权、番茄钟结束、待办和课程提醒' : '实时活动、定时闹钟与通知偏好',
+                  ),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => _openSettingsPage(
                     'notifications',
@@ -1541,8 +1600,10 @@ class _SettingsPageState extends State<SettingsPage> {
                 if (!AppPlatform.isWeb) ...[
                   ListTile(
                     key: _navigationKey('permissions'),
-                    leading:
-                        const Icon(Icons.security_outlined, color: Colors.red),
+                    leading: const Icon(
+                      Icons.security_outlined,
+                      color: Colors.red,
+                    ),
                     title: const Text('权限管理'),
                     trailing: const Icon(Icons.chevron_right),
                     onTap: () => _openSettingsPage(
@@ -1554,8 +1615,10 @@ class _SettingsPageState extends State<SettingsPage> {
                 ],
                 ListTile(
                   key: _navigationKey('help'),
-                  leading:
-                      const Icon(Icons.help_outline, color: Colors.blueGrey),
+                  leading: const Icon(
+                    Icons.help_outline,
+                    color: Colors.blueGrey,
+                  ),
                   title: const Text('帮助与反馈'),
                   subtitle: const Text('使用指南、快速上手、常见问题'),
                   trailing: const Icon(Icons.chevron_right),
@@ -1570,10 +1633,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   leading: const Icon(Icons.info_outline, color: Colors.grey),
                   title: const Text('关于此应用'),
                   trailing: const Icon(Icons.chevron_right),
-                  onTap: () => _openSettingsPage(
-                    'about',
-                    const AboutScreen(),
-                  ),
+                  onTap: () => _openSettingsPage('about', const AboutScreen()),
                 ),
               ],
             ),

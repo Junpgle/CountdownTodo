@@ -135,17 +135,18 @@ class AiActionParser {
   }
 
   static String cleanActionContent(String content) {
-    String cleaned = AiSettingsNavigationService.cleanContent(
-      AiToolResultContext.withoutHistory(content),
-    )
-        .replaceAll(
-          RegExp(r'\[ACTION_START\].*?\[ACTION_END\]', dotAll: true),
-          '',
-        )
-        .replaceAll(
-          RegExp(r'\[SUGGEST_START\].*?\[SUGGEST_END\]', dotAll: true),
-          '',
-        );
+    String cleaned =
+        AiSettingsNavigationService.cleanContent(
+              AiToolResultContext.withoutHistory(content),
+            )
+            .replaceAll(
+              RegExp(r'\[ACTION_START\].*?\[ACTION_END\]', dotAll: true),
+              '',
+            )
+            .replaceAll(
+              RegExp(r'\[SUGGEST_START\].*?\[SUGGEST_END\]', dotAll: true),
+              '',
+            );
 
     // Only remove well-formed JSON arrays/objects that start with "action" key
     // and contain known action types, to avoid accidentally removing user text.
@@ -279,24 +280,28 @@ class AiActionParser {
             .map((block) {
               final newTitle = block['newTodoTitle'];
               final newTodoTitle = newTitle is String ? newTitle.trim() : '';
-              final inferredTodoId = _existingTodoIdForPlan(
-                {
-                  ...block,
-                  if (newTodoTitle.isNotEmpty && block['title'] == null)
-                    'title': newTodoTitle,
-                },
-                existingTodoTitles,
-              );
+              final inferredTodoId = _existingTodoIdForPlan({
+                ...block,
+                if (newTodoTitle.isNotEmpty && block['title'] == null)
+                  'title': newTodoTitle,
+              }, existingTodoTitles);
               final hasSuppliedId = [
-                block['todoId'], block['todo_id'], block['todoUuid'], block['id'],
+                block['todoId'],
+                block['todo_id'],
+                block['todoUuid'],
+                block['id'],
               ].any((id) => id?.toString().trim().isNotEmpty == true);
               return AiTodoAction.fromJson({
                 ...block,
                 'todoId': inferredTodoId,
-                'title': block['title'] ?? block['titleSnapshot'] ??
+                'title':
+                    block['title'] ??
+                    block['titleSnapshot'] ??
                     (newTodoTitle.isEmpty ? null : newTodoTitle),
                 'metadata': {
-                  if (inferredTodoId == null && !hasSuppliedId && newTodoTitle.isNotEmpty)
+                  if (inferredTodoId == null &&
+                      !hasSuppliedId &&
+                      newTodoTitle.isNotEmpty)
                     'newTodoTitle': newTodoTitle,
                 },
                 'action': actionData['action'],
@@ -304,9 +309,10 @@ class AiActionParser {
             })
             .where((action) {
               final todoId = action.todoId?.trim();
-              return action.newTodoTitle != null || (todoId != null &&
-                  todoId.isNotEmpty &&
-                  existingTodoTitles.containsKey(todoId));
+              return action.newTodoTitle != null ||
+                  (todoId != null &&
+                      todoId.isNotEmpty &&
+                      existingTodoTitles.containsKey(todoId));
             })
             .toList();
       case 'update_plan_block':

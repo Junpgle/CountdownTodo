@@ -5,24 +5,25 @@ import 'package:countdown_todo/services/pomodoro_sync_service.dart';
 
 void main() {
   test('persists the focus Do Not Disturb setting', () {
-    final settings = PomodoroSettings(
-      doNotDisturbDuringFocus: true,
-    );
+    final settings = PomodoroSettings(doNotDisturbDuringFocus: true);
 
     final restored = PomodoroSettings.fromJson(settings.toJson());
 
     expect(restored.doNotDisturbDuringFocus, isTrue);
   });
 
-  test('parses a one-minute backend duration without expanding it to an hour', () {
-    final settings = PomodoroSettings.fromJson({
-      'default_focus_duration': 60,
-      'default_rest_duration': 60,
-    });
+  test(
+    'parses a one-minute backend duration without expanding it to an hour',
+    () {
+      final settings = PomodoroSettings.fromJson({
+        'default_focus_duration': 60,
+        'default_rest_duration': 60,
+      });
 
-    expect(settings.focusMinutes, 1);
-    expect(settings.breakMinutes, 1);
-  });
+      expect(settings.focusMinutes, 1);
+      expect(settings.breakMinutes, 1);
+    },
+  );
 
   test('persists the focus Do Not Disturb run-state flag', () {
     final state = PomodoroRunState(

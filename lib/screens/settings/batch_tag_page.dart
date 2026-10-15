@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+
 import '../../models.dart';
 import '../../services/pomodoro_service.dart';
 import '../../storage_service.dart';
@@ -77,8 +78,9 @@ class _BatchTagPageState extends State<BatchTagPage>
       _allPomodoros = (results[1] as List<PomodoroRecord>)
           .where((p) => !p.isDeleted)
           .toList();
-      _allTimeLogs =
-          (results[2] as List<TimeLogItem>).where((l) => !l.isDeleted).toList();
+      _allTimeLogs = (results[2] as List<TimeLogItem>)
+          .where((l) => !l.isDeleted)
+          .toList();
       _isLoading = false;
     });
   }
@@ -204,7 +206,8 @@ class _BatchTagPageState extends State<BatchTagPage>
       builder: (ctx) => AlertDialog(
         title: const Text('确认添加'),
         content: Text(
-            '将为 $pomodoroCount 条番茄钟记录和 $timeLogCount 条时间日志添加 $tagCount 个标签'),
+          '将为 $pomodoroCount 条番茄钟记录和 $timeLogCount 条时间日志添加 $tagCount 个标签',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -258,8 +261,11 @@ class _BatchTagPageState extends State<BatchTagPage>
             }
           }
         }
-        await StorageService.saveTimeLogs(widget.username, _allTimeLogs,
-            sync: true);
+        await StorageService.saveTimeLogs(
+          widget.username,
+          _allTimeLogs,
+          sync: true,
+        );
       }
 
       if (!mounted) return;
@@ -281,10 +287,7 @@ class _BatchTagPageState extends State<BatchTagPage>
       await _loadData();
     } catch (e) {
       if (!mounted) return;
-      AppSnackBars.showSnackBar(
-        context,
-        SnackBar(content: Text('保存失败: $e')),
-      );
+      AppSnackBars.showSnackBar(context, SnackBar(content: Text('保存失败: $e')));
       setState(() => _isLoading = false);
     }
   }
@@ -311,7 +314,9 @@ class _BatchTagPageState extends State<BatchTagPage>
                     child: Center(
                       child: Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 4),
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
                         decoration: BoxDecoration(
                           color: colorScheme.primaryContainer,
                           borderRadius: BorderRadius.circular(12),
@@ -346,7 +351,7 @@ class _BatchTagPageState extends State<BatchTagPage>
                   top: widget.isEmbedded
                       ? 0
                       : floatingGlassSettingsContentTopInset(context) +
-                          kTextTabBarHeight,
+                            kTextTabBarHeight,
                 ),
                 child: Column(
                   children: [
@@ -355,10 +360,7 @@ class _BatchTagPageState extends State<BatchTagPage>
                     Expanded(
                       child: TabBarView(
                         controller: _tabController,
-                        children: [
-                          _buildPomodoroList(),
-                          _buildTimeLogList(),
-                        ],
+                        children: [_buildPomodoroList(), _buildTimeLogList()],
                       ),
                     ),
                   ],
@@ -398,8 +400,10 @@ class _BatchTagPageState extends State<BatchTagPage>
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(20),
                     ),
-                    contentPadding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
                   ),
                 ),
               ),
@@ -450,8 +454,10 @@ class _BatchTagPageState extends State<BatchTagPage>
         itemCount: _tags.length,
         itemBuilder: (ctx, i) {
           final tag = _tags[i];
-          final color =
-              AppColorUtils.hexToColor(tag.color, fallback: Colors.grey);
+          final color = AppColorUtils.hexToColor(
+            tag.color,
+            fallback: Colors.grey,
+          );
           final isSelected = _targetTagUuids.contains(tag.uuid);
           return Padding(
             padding: const EdgeInsets.only(right: 8),
@@ -467,8 +473,10 @@ class _BatchTagPageState extends State<BatchTagPage>
               },
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 150),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: isSelected
                       ? color.withValues(alpha: 0.2)
@@ -499,8 +507,9 @@ class _BatchTagPageState extends State<BatchTagPage>
                       style: TextStyle(
                         fontSize: 12,
                         color: color,
-                        fontWeight:
-                            isSelected ? FontWeight.bold : FontWeight.normal,
+                        fontWeight: isSelected
+                            ? FontWeight.bold
+                            : FontWeight.normal,
                       ),
                     ),
                   ],
@@ -531,8 +540,9 @@ class _BatchTagPageState extends State<BatchTagPage>
             itemBuilder: (ctx, i) {
               final pom = filtered[i];
               final isSelected = _selectedPomodoros.contains(pom.uuid);
-              final startTime =
-                  DateTime.fromMillisecondsSinceEpoch(pom.startTime);
+              final startTime = DateTime.fromMillisecondsSinceEpoch(
+                pom.startTime,
+              );
               final endTime = pom.endTime != null
                   ? DateTime.fromMillisecondsSinceEpoch(pom.endTime!)
                   : startTime.add(Duration(seconds: pom.effectiveDuration));
@@ -562,8 +572,10 @@ class _BatchTagPageState extends State<BatchTagPage>
                 ),
                 trailing: pom.tagUuids.isNotEmpty
                     ? _buildTagChips(pom.tagUuids)
-                    : const Text('无标签',
-                        style: TextStyle(fontSize: 11, color: Colors.grey)),
+                    : const Text(
+                        '无标签',
+                        style: TextStyle(fontSize: 11, color: Colors.grey),
+                      ),
               );
             },
           ),
@@ -590,8 +602,9 @@ class _BatchTagPageState extends State<BatchTagPage>
             itemBuilder: (ctx, i) {
               final log = filtered[i];
               final isSelected = _selectedTimeLogs.contains(log.id);
-              final startTime =
-                  DateTime.fromMillisecondsSinceEpoch(log.startTime);
+              final startTime = DateTime.fromMillisecondsSinceEpoch(
+                log.startTime,
+              );
               final endTime = DateTime.fromMillisecondsSinceEpoch(log.endTime);
               final duration = (log.endTime - log.startTime) ~/ 60000;
 
@@ -619,8 +632,10 @@ class _BatchTagPageState extends State<BatchTagPage>
                 ),
                 trailing: log.tagUuids.isNotEmpty
                     ? _buildTagChips(log.tagUuids)
-                    : const Text('无标签',
-                        style: TextStyle(fontSize: 11, color: Colors.grey)),
+                    : const Text(
+                        '无标签',
+                        style: TextStyle(fontSize: 11, color: Colors.grey),
+                      ),
               );
             },
           ),
@@ -630,8 +645,9 @@ class _BatchTagPageState extends State<BatchTagPage>
   }
 
   Widget _buildSelectAllBar(bool isPomodoro, int totalCount) {
-    final selectedCount =
-        isPomodoro ? _selectedPomodoros.length : _selectedTimeLogs.length;
+    final selectedCount = isPomodoro
+        ? _selectedPomodoros.length
+        : _selectedTimeLogs.length;
     final allSelected = selectedCount == totalCount && totalCount > 0;
 
     final useFloating = floatingBottomBarShouldFloat(context);
@@ -679,19 +695,18 @@ class _BatchTagPageState extends State<BatchTagPage>
         spacing: 2,
         children: tagUuids.take(2).map((uuid) {
           final tag = _tags.cast<PomodoroTag?>().firstWhere(
-                (t) => t?.uuid == uuid,
-                orElse: () => null,
-              );
+            (t) => t?.uuid == uuid,
+            orElse: () => null,
+          );
           if (tag == null) return const SizedBox();
-          final color =
-              AppColorUtils.hexToColor(tag.color, fallback: Colors.grey);
+          final color = AppColorUtils.hexToColor(
+            tag.color,
+            fallback: Colors.grey,
+          );
           return Container(
             width: 6,
             height: 6,
-            decoration: BoxDecoration(
-              color: color,
-              shape: BoxShape.circle,
-            ),
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
           );
         }).toList(),
       ),
@@ -722,9 +737,7 @@ class _BatchTagPageState extends State<BatchTagPage>
               ),
               boxShadow: [
                 BoxShadow(
-                  color: Theme.of(context)
-                      .colorScheme
-                      .shadow
+                  color: Theme.of(context).colorScheme.shadow
                       .withValues(alpha: 0.08),
                   blurRadius: 8,
                   offset: const Offset(0, -2),
@@ -748,10 +761,7 @@ class _BatchTagPageState extends State<BatchTagPage>
                 if (selectedTagNames.isNotEmpty)
                   Text(
                     '将添加: ${selectedTagNames.join(", ")}',
-                    style: const TextStyle(
-                      fontSize: 11,
-                      color: Colors.grey,
-                    ),
+                    style: const TextStyle(fontSize: 11, color: Colors.grey),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),

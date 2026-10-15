@@ -101,18 +101,13 @@ bool _hasUniformRadius(BorderRadiusGeometry radius) {
 /// backdrop input instead of creating independent captures. Adaptive repeated
 /// cards use static material on Android while this scrollable is active.
 class OptionalLiquidGlassScrollOptimizer extends StatelessWidget {
-  const OptionalLiquidGlassScrollOptimizer({
-    super.key,
-    required this.child,
-  });
+  const OptionalLiquidGlassScrollOptimizer({super.key, required this.child});
 
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
-    return BackdropGroup(
-      child: _OptionalGlassScrollableScope(child: child),
-    );
+    return BackdropGroup(child: _OptionalGlassScrollableScope(child: child));
   }
 }
 
@@ -120,8 +115,10 @@ class _OptionalGlassScrollableScope extends InheritedWidget {
   const _OptionalGlassScrollableScope({required super.child});
 
   static bool contains(BuildContext context) =>
-      context.dependOnInheritedWidgetOfExactType<
-          _OptionalGlassScrollableScope>() !=
+      context
+          .dependOnInheritedWidgetOfExactType<
+            _OptionalGlassScrollableScope
+          >() !=
       null;
 
   @override
@@ -144,9 +141,10 @@ class OptionalLiquidGlassOverlayScope extends InheritedWidget {
   final bool hasOuterSurface;
 
   static bool isActive(BuildContext context) =>
-      context.dependOnInheritedWidgetOfExactType<
-        OptionalLiquidGlassOverlayScope
-      >() !=
+      context
+          .dependOnInheritedWidgetOfExactType<
+            OptionalLiquidGlassOverlayScope
+          >() !=
       null;
 
   static bool hasOuterSurfaceFor(BuildContext context) {
@@ -224,7 +222,8 @@ class OptionalLiquidGlassPanel extends StatelessWidget {
         final colorScheme = Theme.of(context).colorScheme;
         final dark = isDark ?? colorScheme.brightness == Brightness.dark;
         final enhanced = configuration.mode == LiquidGlassEffectMode.enhanced;
-        final useStaticAndroidMaterial = AppPlatform.isAndroid &&
+        final useStaticAndroidMaterial =
+            AppPlatform.isAndroid &&
             (MediaQuery.sizeOf(context).width >= 768.0 ||
                 _OptionalGlassScrollableScope.contains(context));
         final useStaticOverlayMaterial =
@@ -240,9 +239,9 @@ class OptionalLiquidGlassPanel extends StatelessWidget {
 
         final useStaticMaterial =
             mode == OptionalLiquidGlassPanelMode.staticMaterial ||
-                useStaticOverlayMaterial ||
-                (mode == OptionalLiquidGlassPanelMode.adaptiveRepeated &&
-                    (!enhanced || useStaticAndroidMaterial));
+            useStaticOverlayMaterial ||
+            (mode == OptionalLiquidGlassPanelMode.adaptiveRepeated &&
+                (!enhanced || useStaticAndroidMaterial));
         // Per-corner radii are only expressible by the tiers that clip with
         // BorderRadius; the superellipse shader shape needs a uniform radius.
         final resolvedRadius =
@@ -251,14 +250,17 @@ class OptionalLiquidGlassPanel extends StatelessWidget {
         if (useStaticMaterial) {
           final isAdaptiveCard =
               mode == OptionalLiquidGlassPanelMode.adaptiveRepeated;
-          final originalOpacity = staticMaterialOpacity ??
+          final originalOpacity =
+              staticMaterialOpacity ??
               (isAdaptiveCard
                   ? (highContrast
-                      ? liquidGlassHighContrastStaticOpacityFor(isDark: dark)
-                      : liquidGlassAdaptiveStaticOpacityFor(isDark: dark))
+                        ? liquidGlassHighContrastStaticOpacityFor(isDark: dark)
+                        : liquidGlassAdaptiveStaticOpacityFor(isDark: dark))
                   : (dark ? 0.86 : 0.9));
-          final materialOpacity =
-              liquidGlassBackerOpacity(originalOpacity, configuration);
+          final materialOpacity = liquidGlassBackerOpacity(
+            originalOpacity,
+            configuration,
+          );
           final baseColor = Color.alphaBlend(
             resolvedTint.withValues(alpha: dark ? 0.18 : 0.12),
             neutralBase,
@@ -266,17 +268,18 @@ class OptionalLiquidGlassPanel extends StatelessWidget {
           final highlightBase = dark
               ? colorScheme.surfaceBright
               : colorScheme.surfaceContainerHighest;
-          final highlightColor = Color.alphaBlend(
-            highlightBase.withValues(alpha: dark ? 0.1 : 0.16),
-            baseColor.withValues(alpha: 1),
-          ).withValues(
-            alpha: liquidGlassBackerOpacity(
-              (originalOpacity + (dark ? 0.05 : 0.04))
-                  .clamp(0.0, 1.0)
-                  .toDouble(),
-              configuration,
-            ),
-          );
+          final highlightColor =
+              Color.alphaBlend(
+                highlightBase.withValues(alpha: dark ? 0.1 : 0.16),
+                baseColor.withValues(alpha: 1),
+              ).withValues(
+                alpha: liquidGlassBackerOpacity(
+                  (originalOpacity + (dark ? 0.05 : 0.04))
+                      .clamp(0.0, 1.0)
+                      .toDouble(),
+                  configuration,
+                ),
+              );
           final decoration = BoxDecoration(
             shape: circular ? BoxShape.circle : BoxShape.rectangle,
             borderRadius: circular ? null : resolvedRadius,
@@ -286,10 +289,11 @@ class OptionalLiquidGlassPanel extends StatelessWidget {
               colors: <Color>[highlightColor, baseColor],
             ),
             border: Border.all(
-              color: (dark
-                      ? colorScheme.surfaceBright
-                      : colorScheme.outlineVariant)
-                  .withValues(alpha: dark ? 0.28 : 0.62),
+              color:
+                  (dark
+                          ? colorScheme.surfaceBright
+                          : colorScheme.outlineVariant)
+                      .withValues(alpha: dark ? 0.28 : 0.62),
               width: 0.8,
             ),
             boxShadow: <BoxShadow>[
@@ -318,27 +322,29 @@ class OptionalLiquidGlassPanel extends StatelessWidget {
           // BackdropKey into one blur operation. This keeps a real, live
           // frosted background throughout a 120 Hz scroll gesture without
           // paying one offscreen blur + fragment shader pass per visible card.
-          final baseColor = Color.alphaBlend(
-            resolvedTint.withValues(alpha: dark ? 0.2 : 0.14),
-            neutralBase,
-          ).withValues(
-            alpha: liquidGlassBackerOpacity(
-              highContrast ? (dark ? 0.5 : 0.6) : (dark ? 0.32 : 0.44),
-              configuration,
-            ),
-          );
+          final baseColor =
+              Color.alphaBlend(
+                resolvedTint.withValues(alpha: dark ? 0.2 : 0.14),
+                neutralBase,
+              ).withValues(
+                alpha: liquidGlassBackerOpacity(
+                  highContrast ? (dark ? 0.5 : 0.6) : (dark ? 0.32 : 0.44),
+                  configuration,
+                ),
+              );
           final highlightBase = dark
               ? colorScheme.surfaceBright
               : colorScheme.surfaceContainerHighest;
-          final highlightColor = Color.alphaBlend(
-            highlightBase.withValues(alpha: dark ? 0.12 : 0.18),
-            baseColor.withValues(alpha: 1),
-          ).withValues(
-            alpha: liquidGlassBackerOpacity(
-              highContrast ? (dark ? 0.56 : 0.68) : (dark ? 0.38 : 0.5),
-              configuration,
-            ),
-          );
+          final highlightColor =
+              Color.alphaBlend(
+                highlightBase.withValues(alpha: dark ? 0.12 : 0.18),
+                baseColor.withValues(alpha: 1),
+              ).withValues(
+                alpha: liquidGlassBackerOpacity(
+                  highContrast ? (dark ? 0.56 : 0.68) : (dark ? 0.38 : 0.5),
+                  configuration,
+                ),
+              );
           final decoration = BoxDecoration(
             shape: circular ? BoxShape.circle : BoxShape.rectangle,
             borderRadius: circular ? null : resolvedRadius,
@@ -348,10 +354,11 @@ class OptionalLiquidGlassPanel extends StatelessWidget {
               colors: <Color>[highlightColor, baseColor],
             ),
             border: Border.all(
-              color: (dark
-                      ? colorScheme.surfaceBright
-                      : colorScheme.outlineVariant)
-                  .withValues(alpha: dark ? 0.42 : 0.58),
+              color:
+                  (dark
+                          ? colorScheme.surfaceBright
+                          : colorScheme.outlineVariant)
+                      .withValues(alpha: dark ? 0.42 : 0.58),
               width: 0.8,
             ),
           );
@@ -377,16 +384,16 @@ class OptionalLiquidGlassPanel extends StatelessWidget {
           final clipped = circular
               ? ClipOval(clipBehavior: clipBehavior, child: filtered)
               : hasUniformRadius
-                  ? ClipRSuperellipse(
-                      borderRadius: resolvedRadius as BorderRadius,
-                      clipBehavior: clipBehavior,
-                      child: filtered,
-                    )
-                  : ClipRRect(
-                      borderRadius: resolvedRadius,
-                      clipBehavior: clipBehavior,
-                      child: filtered,
-                    );
+              ? ClipRSuperellipse(
+                  borderRadius: resolvedRadius as BorderRadius,
+                  clipBehavior: clipBehavior,
+                  child: filtered,
+                )
+              : ClipRRect(
+                  borderRadius: resolvedRadius,
+                  clipBehavior: clipBehavior,
+                  child: filtered,
+                );
           return Container(margin: margin, child: clipped);
         }
 
@@ -405,10 +412,12 @@ class OptionalLiquidGlassPanel extends StatelessWidget {
               thickness: enhanced ? 24 : 18,
               blur: enhanced ? 16 : 12,
               chromaticAberration: enhanced ? 0.008 : 0.004,
-              lightIntensity:
-                  enhanced ? (dark ? 0.72 : 0.6) : (dark ? 0.58 : 0.46),
-              ambientStrength:
-                  enhanced ? (dark ? 0.22 : 0.16) : (dark ? 0.16 : 0.1),
+              lightIntensity: enhanced
+                  ? (dark ? 0.72 : 0.6)
+                  : (dark ? 0.58 : 0.46),
+              ambientStrength: enhanced
+                  ? (dark ? 0.22 : 0.16)
+                  : (dark ? 0.16 : 0.1),
               fresnelStrength: enhanced ? 0.94 : 0.78,
               refractiveIndex: enhanced ? 1.2 : 1.12,
               saturation: enhanced ? 1.06 : 0.95,
@@ -795,15 +804,13 @@ class _FrostedGlassSurface extends StatelessWidget {
     final highlightBase = isDark
         ? colorScheme.surfaceBright
         : colorScheme.surfaceContainerHighest;
-    final highlightColor = Color.alphaBlend(
-      highlightBase.withValues(alpha: isDark ? 0.12 : 0.18),
-      baseColor.withValues(alpha: 1),
-    ).withValues(
-      alpha: liquidGlassBackerOpacity(
-        isDark ? 0.4 : 0.52,
-        configuration,
-      ),
-    );
+    final highlightColor =
+        Color.alphaBlend(
+          highlightBase.withValues(alpha: isDark ? 0.12 : 0.18),
+          baseColor.withValues(alpha: 1),
+        ).withValues(
+          alpha: liquidGlassBackerOpacity(isDark ? 0.4 : 0.52, configuration),
+        );
 
     final clippedSurface = ClipRSuperellipse(
       borderRadius: BorderRadius.circular(borderRadius),
@@ -822,9 +829,7 @@ class _FrostedGlassSurface extends StatelessWidget {
               colors: <Color>[highlightColor, baseColor],
             ),
             border: Border.all(
-              color: Colors.white.withValues(
-                alpha: isDark ? 0.4 : 0.62,
-              ),
+              color: Colors.white.withValues(alpha: isDark ? 0.4 : 0.62),
               width: 1,
             ),
           ),
@@ -871,17 +876,13 @@ List<BoxShadow> _surfaceHaloShadows({
   final opacity = (haloOpacity ?? 1.0).clamp(0.0, 1.0).toDouble();
   return [
     BoxShadow(
-      color: haloColor.withValues(
-        alpha: (isDark ? 0.16 : 0.22) * opacity,
-      ),
+      color: haloColor.withValues(alpha: (isDark ? 0.16 : 0.22) * opacity),
       blurRadius: 26,
       spreadRadius: 1,
       offset: const Offset(0, 4),
     ),
     BoxShadow(
-      color: shadowColor.withValues(
-        alpha: (isDark ? 0.2 : 0.08) * opacity,
-      ),
+      color: shadowColor.withValues(alpha: (isDark ? 0.2 : 0.08) * opacity),
       blurRadius: 14,
       offset: const Offset(0, 5),
     ),
@@ -924,8 +925,9 @@ class OptionalLiquidGlassSheet extends StatelessWidget {
         mode: OptionalLiquidGlassPanelMode.adaptiveRepeated,
         highContrast: true,
         clipBehavior: Clip.antiAlias,
-        borderRadiusGeometry:
-            BorderRadius.vertical(top: Radius.circular(topRadius)),
+        borderRadiusGeometry: BorderRadius.vertical(
+          top: Radius.circular(topRadius),
+        ),
         padding: padding,
         fallback: Container(
           padding: padding,
@@ -984,10 +986,7 @@ class OptionalLiquidGlassCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final content = alignment == null
         ? child
-        : Align(
-            alignment: alignment!,
-            child: child,
-          );
+        : Align(alignment: alignment!, child: child);
     final fallback = Container(
       width: width,
       height: height,

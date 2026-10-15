@@ -1,8 +1,10 @@
 import 'dart:ui';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
+
 import '../models.dart';
 import '../models/search_scope.dart';
 import '../services/search_service.dart';
@@ -13,7 +15,9 @@ import '../utils/app_platform.dart';
 import '../utils/theme_color_tokens.dart';
 import 'app_state_views.dart';
 import 'platform_backdrop_filter.dart';
+
 import 'dart:async';
+
 import '../utils/app_dialogs.dart';
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -53,16 +57,22 @@ const _typeMeta = <SearchResultType, _TypeMeta>{
   SearchResultType.log: _TypeMeta('时间日志', Icons.history_edu_rounded),
   SearchResultType.finance: _TypeMeta('记账', Icons.receipt_long_rounded),
   SearchResultType.journal: _TypeMeta('私密日记', Icons.auto_stories_outlined),
-  SearchResultType.fixedSchedule:
-      _TypeMeta('固定日程', Icons.event_available_outlined),
+  SearchResultType.fixedSchedule: _TypeMeta(
+    '固定日程',
+    Icons.event_available_outlined,
+  ),
   SearchResultType.planBlock: _TypeMeta('规划块', Icons.view_timeline_outlined),
   SearchResultType.team: _TypeMeta('团队', Icons.groups_rounded),
   SearchResultType.chat: _TypeMeta('AI 对话', Icons.forum_outlined),
   SearchResultType.habitCheckIn: _TypeMeta('习惯打卡', Icons.task_alt_rounded),
-  SearchResultType.challengeTask:
-      _TypeMeta('挑战任务', Icons.auto_awesome_outlined),
-  SearchResultType.challengeTemplate:
-      _TypeMeta('挑战模板', Icons.auto_awesome_motion_rounded),
+  SearchResultType.challengeTask: _TypeMeta(
+    '挑战任务',
+    Icons.auto_awesome_outlined,
+  ),
+  SearchResultType.challengeTemplate: _TypeMeta(
+    '挑战模板',
+    Icons.auto_awesome_motion_rounded,
+  ),
   SearchResultType.setting: _TypeMeta('设置', Icons.settings_rounded),
   SearchResultType.action: _TypeMeta('快捷操作', Icons.bolt_rounded),
   SearchResultType.recommend: _TypeMeta('猜你想搜', Icons.auto_awesome_outlined),
@@ -755,7 +765,10 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
   // ──────────────────────────────────────────────────────────────────────────
 
   Widget _buildResultsPanel(
-      ColorScheme colorScheme, bool isDark, Size screenSize) {
+    ColorScheme colorScheme,
+    bool isDark,
+    Size screenSize,
+  ) {
     if (_results.isEmpty && _isSearching) {
       return _buildSearchSkeleton(isDark, screenSize);
     }
@@ -778,18 +791,20 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
       final estimatedHeight =
           58 + (displayItems.length * 86.0) + (hasMore ? 38 : 0);
 
-      sections.add(_SearchSectionLayoutItem(
-        widget: _buildSection(
-          type: type,
-          meta: meta,
-          items: displayItems,
-          hasMore: hasMore,
-          totalCount: items.length,
-          colorScheme: colorScheme,
-          isDark: isDark,
+      sections.add(
+        _SearchSectionLayoutItem(
+          widget: _buildSection(
+            type: type,
+            meta: meta,
+            items: displayItems,
+            hasMore: hasMore,
+            totalCount: items.length,
+            colorScheme: colorScheme,
+            isDark: isDark,
+          ),
+          estimatedHeight: estimatedHeight,
         ),
-        estimatedHeight: estimatedHeight,
-      ));
+      );
     }
 
     final isCompact = screenSize.shortestSide < 600;
@@ -802,16 +817,19 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
                 padding: const EdgeInsets.only(bottom: 10),
                 child: Container(
                   width: double.infinity,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 10,
+                  ),
                   decoration: BoxDecoration(
                     color: isDark
                         ? colorScheme.surfaceContainerHighest
                         : colorScheme.primary.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(
-                      color: colorScheme.primary
-                          .withValues(alpha: isDark ? 0.18 : 0.12),
+                      color: colorScheme.primary.withValues(
+                        alpha: isDark ? 0.18 : 0.12,
+                      ),
                     ),
                   ),
                   child: Text(
@@ -819,8 +837,9 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
                     style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
-                      color:
-                          isDark ? colorScheme.onSurface : colorScheme.primary,
+                      color: isDark
+                          ? colorScheme.onSurface
+                          : colorScheme.primary,
                     ),
                   ),
                 ),
@@ -831,10 +850,7 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
           return SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
-              children: [
-                banner,
-                ...sections.map((section) => section.widget),
-              ],
+              children: [banner, ...sections.map((section) => section.widget)],
             ),
           );
         }
@@ -915,8 +931,9 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        color:
-            isDark ? colorScheme.surfaceContainerHighest : colorScheme.surface,
+        color: isDark
+            ? colorScheme.surfaceContainerHighest
+            : colorScheme.surface,
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
@@ -951,8 +968,10 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
                   ),
                   const SizedBox(width: 6),
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 1,
+                    ),
                     decoration: BoxDecoration(
                       color: typeColor.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(8),
@@ -960,9 +979,10 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
                     child: Text(
                       '$totalCount',
                       style: TextStyle(
-                          fontSize: 11,
-                          color: typeColor,
-                          fontWeight: FontWeight.w600),
+                        fontSize: 11,
+                        color: typeColor,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                 ],
@@ -995,16 +1015,17 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
                   padding: const EdgeInsets.symmetric(vertical: 10),
                   decoration: BoxDecoration(
                     border: Border(
-                      top: BorderSide(
-                        color: colorScheme.cdtDivider,
-                      ),
+                      top: BorderSide(color: colorScheme.cdtDivider),
                     ),
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.expand_more_rounded,
-                          size: 16, color: typeColor),
+                      Icon(
+                        Icons.expand_more_rounded,
+                        size: 16,
+                        color: typeColor,
+                      ),
                       const SizedBox(width: 4),
                       Text(
                         '查看全部 $totalCount 项',
@@ -1087,7 +1108,8 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
                       Container(
                         margin: const EdgeInsets.only(top: 4),
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 7, vertical: 2,
+                          horizontal: 7,
+                          vertical: 2,
                         ),
                         decoration: BoxDecoration(
                           color: typeColor.withValues(alpha: 0.1),
@@ -1111,8 +1133,9 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
                           _currentQuery,
                           TextStyle(
                             fontSize: 12,
-                            color: colorScheme.onSurfaceVariant
-                                .withValues(alpha: 0.78),
+                            color: colorScheme.onSurfaceVariant.withValues(
+                              alpha: 0.78,
+                            ),
                           ),
                           colorScheme.primary,
                         ),
@@ -1192,8 +1215,12 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
         .toList();
 
     if (terms.isEmpty) {
-      return Text(text,
-          style: style, maxLines: 2, overflow: TextOverflow.ellipsis);
+      return Text(
+        text,
+        style: style,
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+      );
     }
 
     final lower = text.toLowerCase();
@@ -1210,8 +1237,12 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
     }
 
     if (matches.isEmpty) {
-      return Text(text,
-          style: style, maxLines: 2, overflow: TextOverflow.ellipsis);
+      return Text(
+        text,
+        style: style,
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+      );
     }
 
     matches.sort((a, b) => a.start.compareTo(b.start));
@@ -1230,14 +1261,16 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
       if (m.start > start) {
         spans.add(TextSpan(text: text.substring(start, m.start), style: style));
       }
-      spans.add(TextSpan(
-        text: text.substring(m.start, m.end),
-        style: style.copyWith(
-          color: highlightColor,
-          fontWeight: FontWeight.w900,
-          backgroundColor: highlightColor.withValues(alpha: 0.1),
+      spans.add(
+        TextSpan(
+          text: text.substring(m.start, m.end),
+          style: style.copyWith(
+            color: highlightColor,
+            fontWeight: FontWeight.w900,
+            backgroundColor: highlightColor.withValues(alpha: 0.1),
+          ),
         ),
-      ));
+      );
       start = m.end;
     }
     if (start < text.length) {
@@ -1293,22 +1326,21 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
 
   // 🚀 搜索结果骨架屏
   Widget _buildSearchSkeleton(bool isDark, Size screenSize) {
-    final baseColor = Theme.of(context)
-        .colorScheme
-        .surfaceContainerHighest
+    final baseColor = Theme.of(context).colorScheme.surfaceContainerHighest
         .withValues(alpha: isDark ? 0.42 : 0.55);
 
     return ListView(
       children: List.generate(
-          4,
-          (i) => Container(
-                height: 70,
-                margin: const EdgeInsets.only(bottom: 12),
-                decoration: BoxDecoration(
-                  color: baseColor,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-              )),
+        4,
+        (i) => Container(
+          height: 70,
+          margin: const EdgeInsets.only(bottom: 12),
+          decoration: BoxDecoration(
+            color: baseColor,
+            borderRadius: BorderRadius.circular(20),
+          ),
+        ),
+      ),
     );
   }
 }

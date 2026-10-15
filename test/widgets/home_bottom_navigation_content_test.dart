@@ -111,8 +111,9 @@ void main() {
       const ValueKey<String>('home-bottom-selection-indicator-fill'),
     );
     final indicator = tester.widget<AnimatedGlassIndicator>(indicatorFinder);
-    final indicatorFill =
-        tester.widget<AnimatedGlassIndicator>(indicatorFillFinder);
+    final indicatorFill = tester.widget<AnimatedGlassIndicator>(
+      indicatorFillFinder,
+    );
     expect(indicator.alignment, const Alignment(-1, 0));
     expect(indicator.thickness, 0);
     expect(indicatorFill.indicatorColor, selectedBackground);
@@ -145,8 +146,10 @@ void main() {
         .getClip(tester.getSize(selectedClipFinder))
         .getBounds();
     expect(selectedClipBounds.top, greaterThan(0));
-    expect(selectedClipBounds.bottom,
-        lessThan(tester.getSize(selectedClipFinder).height));
+    expect(
+      selectedClipBounds.bottom,
+      lessThan(tester.getSize(selectedClipFinder).height),
+    );
     expect(
       selectedClipBounds.width / selectedClipBounds.height,
       greaterThan(1.35),
@@ -165,17 +168,20 @@ void main() {
     expect(selectedIndex, 0);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
-    final movingIndicator =
-        tester.widget<AnimatedGlassIndicator>(indicatorFinder);
-    final movingAlignment =
-        movingIndicator.alignment.resolve(TextDirection.ltr).x;
+    final movingIndicator = tester.widget<AnimatedGlassIndicator>(
+      indicatorFinder,
+    );
+    final movingAlignment = movingIndicator.alignment
+        .resolve(TextDirection.ltr)
+        .x;
     expect(movingAlignment, greaterThan(-1));
     expect(movingAlignment, lessThan(1));
     expect(movingIndicator.thickness, greaterThan(0));
     final movingSelectedClip = tester.widget<ClipPath>(selectedClipFinder);
     final movingClipSize = tester.getSize(selectedClipFinder);
-    final movingClipBounds =
-        movingSelectedClip.clipper!.getClip(movingClipSize).getBounds();
+    final movingClipBounds = movingSelectedClip.clipper!
+        .getClip(movingClipSize)
+        .getBounds();
     expect(movingClipBounds.top, lessThan(0));
     expect(movingClipBounds.bottom, greaterThan(movingClipSize.height));
     await tester.pump(const Duration(milliseconds: 100));
@@ -202,8 +208,9 @@ void main() {
     semantics.dispose();
   });
 
-  testWidgets('supports five home slots without selecting action slots',
-      (tester) async {
+  testWidgets('supports five home slots without selecting action slots', (
+    tester,
+  ) async {
     final semantics = tester.ensureSemantics();
     final weeklyKey = GlobalKey();
     final addKey = GlobalKey();
@@ -244,19 +251,19 @@ void main() {
                         onPressed: () => addPressed = true,
                         builder: (context, selectedLayer, interactive) =>
                             Center(
-                          child: HomeBottomNavigationActionButton(
-                            buttonKey: selectedLayer ? null : addKey,
-                            primaryColor: Colors.green,
-                            interactive: interactive,
-                            onPressed: () => addPressed = true,
-                            semanticsLabel: '新增',
-                            child: Icon(
-                              selectedLayer
-                                  ? Icons.add_circle_rounded
-                                  : Icons.add_rounded,
+                              child: HomeBottomNavigationActionButton(
+                                buttonKey: selectedLayer ? null : addKey,
+                                primaryColor: Colors.green,
+                                interactive: interactive,
+                                onPressed: () => addPressed = true,
+                                semanticsLabel: '新增',
+                                child: Icon(
+                                  selectedLayer
+                                      ? Icons.add_circle_rounded
+                                      : Icons.add_rounded,
+                                ),
+                              ),
                             ),
-                          ),
-                        ),
                       ),
                       FloatingBottomNavigationItem(
                         key: pomodoroKey,
@@ -327,10 +334,7 @@ void main() {
         .getClip(fiveClipSize)
         .getBounds();
     final expectedFirstSlotCenter = 4 + (fiveClipSize.width - 8) / (2 * 5);
-    expect(
-      fiveClipBounds.center.dx,
-      closeTo(expectedFirstSlotCenter, 0.01),
-    );
+    expect(fiveClipBounds.center.dx, closeTo(expectedFirstSlotCenter, 0.01));
 
     await tester.tap(find.byKey(weeklyKey));
     await tester.tap(find.byKey(addKey));
@@ -348,8 +352,9 @@ void main() {
     semantics.dispose();
   });
 
-  testWidgets('supports a wide action-only bar without home or focus tabs',
-      (tester) async {
+  testWidgets('supports a wide action-only bar without home or focus tabs', (
+    tester,
+  ) async {
     final pomodoroKey = GlobalKey();
     var weeklyPressed = false;
     var addPressed = false;
@@ -404,9 +409,7 @@ void main() {
     expect(find.text('首页'), findsNothing);
     expect(find.text('专注'), findsNothing);
     expect(
-      find.byKey(
-        const ValueKey<String>('wide-actions-selection-indicator'),
-      ),
+      find.byKey(const ValueKey<String>('wide-actions-selection-indicator')),
       findsNothing,
     );
     expect(find.bySemanticsLabel('周视图'), findsOneWidget);

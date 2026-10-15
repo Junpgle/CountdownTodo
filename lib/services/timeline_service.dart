@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
+
 import 'database_helper.dart';
 import 'course_service.dart';
 import '../models.dart';
@@ -19,7 +20,9 @@ class TimelineService {
   TimelineService._();
 
   Future<List<TimelineEvent>> getEventsForDay(
-      String username, DateTime date) async {
+    String username,
+    DateTime date,
+  ) async {
     final db = await DatabaseHelper.instance.databaseForUser(username);
     final dayBounds = dayBoundsForDate(date);
     final startOfDay = dayBounds.start;
@@ -38,14 +41,17 @@ class TimelineService {
         whereArgs: [startOfDayMs, endOfDayMs],
       );
       for (var row in searches) {
-        events.add(TimelineEvent(
-          id: 'search_${row['id']}',
-          timestamp:
-              DateTime.fromMillisecondsSinceEpoch(row['timestamp'] as int),
-          type: TimelineEventType.searchQuery,
-          title: '知识检索',
-          subtitle: row['query'] as String? ?? '',
-        ));
+        events.add(
+          TimelineEvent(
+            id: 'search_${row['id']}',
+            timestamp: DateTime.fromMillisecondsSinceEpoch(
+              row['timestamp'] as int,
+            ),
+            type: TimelineEventType.searchQuery,
+            title: '知识检索',
+            subtitle: row['query'] as String? ?? '',
+          ),
+        );
       }
 
       // 2. 待办事项
@@ -56,8 +62,9 @@ class TimelineService {
       );
       for (var row in createdTodos) {
         final uuid = row['uuid']?.toString() ?? '';
-        final recurrenceSeriesId =
-            row['recurrence_series_id']?.toString().trim();
+        final recurrenceSeriesId = row['recurrence_series_id']
+            ?.toString()
+            .trim();
         // A recurrence series is created once. Its generated occurrences are
         // schedule materialization, rather than user-created new todos.
         if (recurrenceSeriesId != null &&
@@ -66,37 +73,42 @@ class TimelineService {
           continue;
         }
         final title = row['content'] as String? ?? '';
-        events.add(TimelineEvent(
-          id: 'todo_create_$uuid',
-          timestamp:
-              DateTime.fromMillisecondsSinceEpoch(row['created_at'] as int),
-          type: TimelineEventType.todoCreated,
-          title: '新增待办',
-          subtitle: title,
-        ));
+        events.add(
+          TimelineEvent(
+            id: 'todo_create_$uuid',
+            timestamp: DateTime.fromMillisecondsSinceEpoch(
+              row['created_at'] as int,
+            ),
+            type: TimelineEventType.todoCreated,
+            title: '新增待办',
+            subtitle: title,
+          ),
+        );
       }
 
       final completedTodos = await db.query(
         'todos',
-        where:
-            'is_deleted = 0 AND is_completed = 1 AND updated_at >= ? AND updated_at < ?',
+        where: 'is_deleted = 0 AND is_completed = 1 AND updated_at >= ? AND updated_at < ?',
         whereArgs: [startOfDayMs, endOfDayMs],
       );
       for (var row in completedTodos) {
         final title = row['content'] as String? ?? '';
         final updatedAt = row['updated_at'] as int;
-        final recurrenceSeriesId =
-            row['recurrence_series_id']?.toString().trim();
-        events.add(TimelineEvent(
-          id: 'todo_complete_${row['uuid']}',
-          timestamp: DateTime.fromMillisecondsSinceEpoch(updatedAt),
-          type: TimelineEventType.todoCompleted,
-          title: '完成待办',
-          subtitle: title,
-          extraData: {
-            'is_recurrence': recurrenceSeriesId?.isNotEmpty == true,
-          },
-        ));
+        final recurrenceSeriesId = row['recurrence_series_id']
+            ?.toString()
+            .trim();
+        events.add(
+          TimelineEvent(
+            id: 'todo_complete_${row['uuid']}',
+            timestamp: DateTime.fromMillisecondsSinceEpoch(updatedAt),
+            type: TimelineEventType.todoCompleted,
+            title: '完成待办',
+            subtitle: title,
+            extraData: {
+              'is_recurrence': recurrenceSeriesId?.isNotEmpty == true,
+            },
+          ),
+        );
       }
 
       // 3. 课程
@@ -106,18 +118,25 @@ class TimelineService {
           // startTime is int (HHMM)
           final hour = course.startTime ~/ 100;
           final minute = course.startTime % 100;
-          final courseStart =
-              DateTime(date.year, date.month, date.day, hour, minute);
+          final courseStart = DateTime(
+            date.year,
+            date.month,
+            date.day,
+            hour,
+            minute,
+          );
 
           if (courseStart.millisecondsSinceEpoch >= startOfDayMs &&
               courseStart.millisecondsSinceEpoch < endOfDayMs) {
-            events.add(TimelineEvent(
-              id: 'course_${course.uuid}_${course.startTime}',
-              timestamp: courseStart,
-              type: TimelineEventType.courseStart,
-              title: '步入课堂',
-              subtitle: course.courseName,
-            ));
+            events.add(
+              TimelineEvent(
+                id: 'course_${course.uuid}_${course.startTime}',
+                timestamp: courseStart,
+                type: TimelineEventType.courseStart,
+                title: '步入课堂',
+                subtitle: course.courseName,
+              ),
+            );
           }
         }
       }
@@ -130,32 +149,37 @@ class TimelineService {
       );
       for (var row in poms) {
         final startTime = row['start_time'] as int;
-        final actualDur = (row['actual_duration'] as num?)?.toInt() ??
+        final actualDur =
+            (row['actual_duration'] as num?)?.toInt() ??
             (row['planned_duration'] as num?)?.toInt() ??
             0;
         final status = row['status'] as String?;
         final title = row['todo_title'] as String? ?? '无题专注';
 
-        events.add(TimelineEvent(
-          id: 'pomo_start_${row['uuid']}',
-          timestamp: DateTime.fromMillisecondsSinceEpoch(startTime),
-          type: TimelineEventType.pomodoroStart,
-          title: '开始专注',
-          subtitle: title,
-        ));
+        events.add(
+          TimelineEvent(
+            id: 'pomo_start_${row['uuid']}',
+            timestamp: DateTime.fromMillisecondsSinceEpoch(startTime),
+            type: TimelineEventType.pomodoroStart,
+            title: '开始专注',
+            subtitle: title,
+          ),
+        );
 
         if (status == 'completed' ||
             (status == 'interrupted' && actualDur > 0)) {
-          events.add(TimelineEvent(
-            id: 'pomo_end_${row['uuid']}',
-            timestamp: DateTime.fromMillisecondsSinceEpoch(
-              (row['end_time'] as num?)?.toInt() ??
-                  startTime + actualDur * 1000,
+          events.add(
+            TimelineEvent(
+              id: 'pomo_end_${row['uuid']}',
+              timestamp: DateTime.fromMillisecondsSinceEpoch(
+                (row['end_time'] as num?)?.toInt() ??
+                    startTime + actualDur * 1000,
+              ),
+              type: TimelineEventType.pomodoroEnd,
+              title: status == 'completed' ? '收获专注果实' : '专注中断',
+              subtitle: '$title (${actualDur ~/ 60}分钟)',
             ),
-            type: TimelineEventType.pomodoroEnd,
-            title: status == 'completed' ? '收获专注果实' : '专注中断',
-            subtitle: '$title (${actualDur ~/ 60}分钟)',
-          ));
+          );
         }
       }
 
@@ -171,14 +195,16 @@ class TimelineService {
         final durationMinutes =
             ((endTime - startTime).clamp(0, 1 << 62) ~/ 60000);
         final title = row['title']?.toString().trim();
-        events.add(TimelineEvent(
-          id: 'time_log_${row['uuid']}',
-          timestamp: DateTime.fromMillisecondsSinceEpoch(startTime),
-          type: TimelineEventType.timeLog,
-          title: '记录实际投入',
-          subtitle:
-              '${title == null || title.isEmpty ? '未命名日志' : title} ($durationMinutes分钟)',
-        ));
+        events.add(
+          TimelineEvent(
+            id: 'time_log_${row['uuid']}',
+            timestamp: DateTime.fromMillisecondsSinceEpoch(startTime),
+            type: TimelineEventType.timeLog,
+            title: '记录实际投入',
+            subtitle:
+                '${title == null || title.isEmpty ? '未命名日志' : title} ($durationMinutes分钟)',
+          ),
+        );
       }
 
       // 6. 任务规划块
@@ -199,14 +225,16 @@ class TimelineService {
         final displayTitle = title?.isNotEmpty == true
             ? title!
             : (todoTitle?.isNotEmpty == true ? todoTitle! : '未命名规划');
-        events.add(TimelineEvent(
-          id: 'plan_block_${row['uuid']}',
-          timestamp: DateTime.fromMillisecondsSinceEpoch(startTime),
-          type: TimelineEventType.planBlock,
-          title: '进入规划时段',
-          subtitle:
-              '$displayTitle ($plannedMinutes分钟 · ${_planStatusLabel(status)})',
-        ));
+        events.add(
+          TimelineEvent(
+            id: 'plan_block_${row['uuid']}',
+            timestamp: DateTime.fromMillisecondsSinceEpoch(startTime),
+            type: TimelineEventType.planBlock,
+            title: '进入规划时段',
+            subtitle:
+                '$displayTitle ($plannedMinutes分钟 · ${_planStatusLabel(status)})',
+          ),
+        );
       }
 
       // 7. 独立打卡型习惯：数量 / 时间点习惯没有对应的待办事件，单独纳入时间轴。
@@ -214,10 +242,12 @@ class TimelineService {
         includeArchived: true,
       );
       final logicalDate = DateFormat('yyyy-MM-dd').format(startOfDay);
-      for (final habit in habitGoals.where((goal) =>
-          goal.sourceType == HabitSourceType.quantityCheckIn ||
-          goal.sourceType == HabitSourceType.timeCheckIn ||
-          goal.sourceType == HabitSourceType.durationCheckIn)) {
+      for (final habit in habitGoals.where(
+        (goal) =>
+            goal.sourceType == HabitSourceType.quantityCheckIn ||
+            goal.sourceType == HabitSourceType.timeCheckIn ||
+            goal.sourceType == HabitSourceType.durationCheckIn,
+      )) {
         final checkIns = await HabitRepository.getCheckIns(
           habitUuid: habit.uuid,
           fromDate: logicalDate,
@@ -236,13 +266,15 @@ class TimelineService {
               ' · ${(checkIn.value / 3600).toStringAsFixed(1)} 小时',
             _ => '',
           };
-          events.add(TimelineEvent(
-            id: 'habit_checkin_${checkIn.uuid}',
-            timestamp: checkIn.localOccurredAt,
-            type: TimelineEventType.habitCheckIn,
-            title: '习惯打卡',
-            subtitle: '${habit.icon} ${habit.name}$detail',
-          ));
+          events.add(
+            TimelineEvent(
+              id: 'habit_checkin_${checkIn.uuid}',
+              timestamp: checkIn.localOccurredAt,
+              type: TimelineEventType.habitCheckIn,
+              title: '习惯打卡',
+              subtitle: '${habit.icon} ${habit.name}$detail',
+            ),
+          );
         }
       }
 
@@ -270,18 +302,20 @@ class TimelineService {
           formatSignedFinanceAmount(transaction.amountMinor, transaction.type),
           if (note?.isNotEmpty == true) note!,
         ].join(' · ');
-        events.add(TimelineEvent(
-          id: 'finance_${transaction.uuid}',
-          timestamp: timestamp,
-          type: TimelineEventType.financeTransaction,
-          title: financeTransactionTitle(transaction),
-          subtitle: detail,
-          extraData: {
-            'transaction_uuid': transaction.uuid,
-            'finance_type': transaction.type.name,
-            'amount_minor': transaction.amountMinor,
-          },
-        ));
+        events.add(
+          TimelineEvent(
+            id: 'finance_${transaction.uuid}',
+            timestamp: timestamp,
+            type: TimelineEventType.financeTransaction,
+            title: financeTransactionTitle(transaction),
+            subtitle: detail,
+            extraData: {
+              'transaction_uuid': transaction.uuid,
+              'finance_type': transaction.type.name,
+              'amount_minor': transaction.amountMinor,
+            },
+          ),
+        );
       }
     } catch (e) {
       debugPrint('❌ getEventsForDay error: $e');
@@ -321,10 +355,7 @@ class TimelineService {
   @visibleForTesting
   static ({DateTime start, DateTime end}) dayBoundsForDate(DateTime date) {
     final start = AppTimeFormats.dayStart(date);
-    return (
-      start: start,
-      end: AppTimeFormats.localDayStartOffset(start, 1),
-    );
+    return (start: start, end: AppTimeFormats.localDayStartOffset(start, 1));
   }
 
   @visibleForTesting
@@ -381,13 +412,18 @@ class TimelineService {
   }
 
   Future<TimelineSummary> getSummaryForDay(
-      String username, DateTime date) async {
+    String username,
+    DateTime date,
+  ) async {
     final dayBounds = dayBoundsForDate(date);
     return getSummaryForRange(username, dayBounds.start, dayBounds.end);
   }
 
   Future<TimelineSummary> getSummaryForRange(
-      String username, DateTime start, DateTime end) async {
+    String username,
+    DateTime start,
+    DateTime end,
+  ) async {
     final db = await DatabaseHelper.instance.databaseForUser(username);
     final startMs = start.millisecondsSinceEpoch;
     final endMs = end.millisecondsSinceEpoch;
@@ -412,8 +448,9 @@ class TimelineService {
         'GROUP BY query ORDER BY freq DESC LIMIT 5',
         [startMs, endMs],
       );
-      final topQuery =
-          topSearch.isNotEmpty ? topSearch.first['query'] as String? : null;
+      final topQuery = topSearch.isNotEmpty
+          ? topSearch.first['query'] as String?
+          : null;
       final topQueries = topSearch
           .map((r) => {'query': r['query'], 'freq': r['freq']})
           .toList();
@@ -443,8 +480,9 @@ class TimelineService {
       final int totalPomos = pomodoroDetailStats.first['total'] as int? ?? 0;
       final int interruptedPomos =
           pomodoroDetailStats.first['interrupted'] as int? ?? 0;
-      final double interruptionRate =
-          totalPomos > 0 ? interruptedPomos / totalPomos : 0.0;
+      final double interruptionRate = totalPomos > 0
+          ? interruptedPomos / totalPomos
+          : 0.0;
       final pomodoroDurationRows = await db.rawQuery(
         'SELECT COALESCE(SUM(COALESCE(actual_duration, planned_duration, 0)), 0) as total '
         'FROM pomodoro_records '
@@ -535,8 +573,11 @@ class TimelineService {
 
       if (trendRows.isNotEmpty) {
         var sortedTrend = List.from(trendRows)
-          ..sort((a, b) => (b['total_dur'] as num? ?? 0)
-              .compareTo(a['total_dur'] as num? ?? 0));
+          ..sort(
+            (a, b) => (b['total_dur'] as num? ?? 0).compareTo(
+              a['total_dur'] as num? ?? 0,
+            ),
+          );
 
         for (var i = 0; i < sortedTrend.length && i < 5; i++) {
           final row = sortedTrend[i];
@@ -553,9 +594,8 @@ class TimelineService {
 
         if (bestDay != null) {
           final productiveDay = bestDay;
-          final dayStart = AppTimeFormats.dayStart(
-            productiveDay,
-          ).millisecondsSinceEpoch;
+          final dayStart = AppTimeFormats.dayStart(productiveDay)
+              .millisecondsSinceEpoch;
           final dayEnd = AppTimeFormats.localDayStartOffset(
             productiveDay,
             1,
@@ -608,8 +648,9 @@ class TimelineService {
         totalSecs += dur;
         if (dur >= 60 * 60) deepWork++;
       }
-      final avgPomo =
-          pomoAll.isNotEmpty ? (totalSecs / pomoAll.length) / 60 : 0.0;
+      final avgPomo = pomoAll.isNotEmpty
+          ? (totalSecs / pomoAll.length) / 60
+          : 0.0;
 
       // 9. Task & Subject Distribution (Combine Todos & Pomodoros for better signal)
       final List<String> allTitles = [];
@@ -617,8 +658,7 @@ class TimelineService {
       final todoRows = await db.query(
         'todos',
         columns: ['content'],
-        where:
-            'is_deleted = 0 AND is_completed = 1 AND updated_at >= ? AND updated_at < ?',
+        where: 'is_deleted = 0 AND is_completed = 1 AND updated_at >= ? AND updated_at < ?',
         whereArgs: [startMs, endMs],
       );
       allTitles.addAll(todoRows.map((r) => (r['content'] as String? ?? '')));
@@ -662,7 +702,7 @@ class TimelineService {
           '单片机',
           '嵌入式',
           'arm',
-          'riscv'
+          'riscv',
         ],
         '代码/算法': [
           '代码',
@@ -679,7 +719,7 @@ class TimelineService {
           '编程',
           '程序员',
           'git',
-          'github'
+          'github',
         ],
         '科研/论文': [
           '科研',
@@ -697,7 +737,7 @@ class TimelineService {
           '笔记',
           '组会',
           '学术',
-          '发表'
+          '发表',
         ],
         '数学/计算': [
           '高数',
@@ -713,7 +753,7 @@ class TimelineService {
           '几何',
           '复变',
           '统计',
-          '逻辑'
+          '逻辑',
         ],
         '物理/信号': [
           '物理',
@@ -727,7 +767,7 @@ class TimelineService {
           '力学',
           '热学',
           '验收',
-          '答辩'
+          '答辩',
         ],
         '外语/考试': [
           '英语',
@@ -744,7 +784,7 @@ class TimelineService {
           '翻译',
           '口语',
           '考研',
-          '考证'
+          '考证',
         ],
         '人文/社科': [
           '思政',
@@ -758,7 +798,7 @@ class TimelineService {
           '心理',
           '法律',
           '经济',
-          '管理'
+          '管理',
         ],
         '体育/健身': [
           '体育',
@@ -773,7 +813,7 @@ class TimelineService {
           '训练',
           '有氧',
           '力量',
-          '减脂'
+          '减脂',
         ],
         '学习/备考': [
           '学习',
@@ -792,7 +832,7 @@ class TimelineService {
           '预习',
           '巩固',
           '默写',
-          '听写'
+          '听写',
         ],
         '阅读/写作': ['阅读', '写作', '作文', '文章', '读后感', '读书', '书目', '书单', '摘抄', '笔记'],
         '设计/创作': [
@@ -808,7 +848,7 @@ class TimelineService {
           'photoshop',
           'pr',
           'ae',
-          '剪映'
+          '剪映',
         ],
         '会议/汇报': [
           '开会',
@@ -956,7 +996,8 @@ class TimelineService {
 
           if (!isExisting && wordEntry.value > 1) {
             final dynamicLabel = wordEntry.key;
-            subjectDist[dynamicLabel] = (subjectDist[dynamicLabel] ?? 0) +
+            subjectDist[dynamicLabel] =
+                (subjectDist[dynamicLabel] ?? 0) +
                 (wordEntry.value / totalItems);
             distributed += wordEntry.value;
             if (subjectDist.length >= 8) break;
@@ -995,15 +1036,20 @@ class TimelineService {
       DateTime? actualEnd;
       if (rangeData.isNotEmpty && rangeData.first['first_ts'] != null) {
         actualStart = DateTime.fromMillisecondsSinceEpoch(
-            rangeData.first['first_ts'] as int);
+          rangeData.first['first_ts'] as int,
+        );
         actualEnd = DateTime.fromMillisecondsSinceEpoch(
-            rangeData.first['last_ts'] as int);
+          rangeData.first['last_ts'] as int,
+        );
       }
 
       // 11. Consecutive activity. Today's daily report uses the current streak;
       // other ranges show the longest active streak inside the selected range.
-      final consecutiveDays =
-          await _calculateConsecutiveActiveDays(db, start, end);
+      final consecutiveDays = await _calculateConsecutiveActiveDays(
+        db,
+        start,
+        end,
+      );
 
       // 11b. Active days in the current calendar month
       final now = DateTime.now();
@@ -1031,11 +1077,12 @@ class TimelineService {
           monthStartMs,
           monthEndMs,
           monthStartMs,
-          monthEndMs
+          monthEndMs,
         ],
       );
-      final monthlyActiveDays =
-          monthRows.isNotEmpty ? (monthRows.first['cnt'] as int? ?? 0) : 0;
+      final monthlyActiveDays = monthRows.isNotEmpty
+          ? (monthRows.first['cnt'] as int? ?? 0)
+          : 0;
 
       // 11c. Weekend focus minutes (Saturday + Sunday)
       final weekendRows = await db.rawQuery(
@@ -1086,16 +1133,18 @@ class TimelineService {
         longestPomodoroMinutes: topPomo != null
             ? (topPomo['actual_duration'] as num? ?? 0).toInt() ~/ 60
             : 0,
-        longestPomodoroTitle:
-            topPomo != null ? (topPomo['todo_title'] as String? ?? '无题') : null,
+        longestPomodoroTitle: topPomo != null
+            ? (topPomo['todo_title'] as String? ?? '无题')
+            : null,
         longestPomodoroDate: topPomo != null && topPomo['start_time'] != null
             ? DateTime.fromMillisecondsSinceEpoch(topPomo['start_time'] as int)
             : null,
         latestTodoCompletionTime:
             hasTodo && latestTodoStats.first['updated_at'] != null
-                ? DateTime.fromMillisecondsSinceEpoch(
-                    latestTodoStats.first['updated_at'] as int)
-                : null,
+            ? DateTime.fromMillisecondsSinceEpoch(
+                latestTodoStats.first['updated_at'] as int,
+              )
+            : null,
         latestTodoTitle: hasTodo
             ? (latestTodoStats.first['content'] as String? ?? '未命名任务')
             : null,
@@ -1231,7 +1280,10 @@ class TimelineService {
   }
 
   Future<int> _calculateConsecutiveActiveDays(
-      dynamic db, DateTime start, DateTime end) async {
+    dynamic db,
+    DateTime start,
+    DateTime end,
+  ) async {
     final today = DateTime.now();
     final todayDay = AppTimeFormats.dayStart(today);
     final startDay = AppTimeFormats.dayStart(start);
@@ -1265,8 +1317,9 @@ class TimelineService {
       return streak;
     }
 
-    final rangeEndDay =
-        reportLastDay.isAfter(todayDay) ? todayDay : reportLastDay;
+    final rangeEndDay = reportLastDay.isAfter(todayDay)
+        ? todayDay
+        : reportLastDay;
     if (rangeEndDay.isBefore(startDay)) return 0;
     final rangeStartMs = startDay.millisecondsSinceEpoch;
     final rangeEndMs = AppTimeFormats.localDayStartOffset(
@@ -1355,12 +1408,12 @@ class TimelineSummary {
   final DateTime? actualStartTime;
   final DateTime? actualEndTime;
   final List<double>
-      dailyTrend; // Duration per day (minutes), normalized or raw
+  dailyTrend; // Duration per day (minutes), normalized or raw
   final List<Map<String, dynamic>> topFocusSessions;
   final List<Map<String, dynamic>> topProductiveDays;
   final List<Map<String, dynamic>> topSearchQueries;
   final List<Map<String, dynamic>>
-      topCompletedTodosDetails; // To distinguish from topCompletedTodos
+  topCompletedTodosDetails; // To distinguish from topCompletedTodos
 
   TimelineSummary({
     required this.searchCount,

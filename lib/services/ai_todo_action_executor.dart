@@ -136,8 +136,9 @@ class AiTodoActionExecutor {
               ? newFixedSchedules
               : updatedFixedSchedules;
           for (final schedule in schedules) {
-            final existingIndex =
-                target.indexWhere((item) => item.id == schedule.id);
+            final existingIndex = target.indexWhere(
+              (item) => item.id == schedule.id,
+            );
             if (existingIndex == -1) {
               target.add(schedule);
             } else {
@@ -189,20 +190,30 @@ class AiTodoActionExecutor {
         var planAction = action;
         final newTitle = action.newTodoTitle;
         if (action.type == AiTodoActionType.createPlanBlock &&
-            newTitle != null && action.todoId?.isNotEmpty != true) {
-          final matches = planningTodos.where((todo) =>
-              todo['title']?.toString().trim() == newTitle &&
-              todo['is_deleted'] != true && todo['isDeleted'] != true).toList();
+            newTitle != null &&
+            action.todoId?.isNotEmpty != true) {
+          final matches = planningTodos
+              .where(
+                (todo) =>
+                    todo['title']?.toString().trim() == newTitle &&
+                    todo['is_deleted'] != true &&
+                    todo['isDeleted'] != true,
+              )
+              .toList();
           if (matches.length > 1) continue;
           if (matches.isEmpty) {
             pendingTodo = TodoItem(
               title: newTitle,
               createdAt: createdAtFallback.millisecondsSinceEpoch,
             );
-            planningTodos.add({'id': pendingTodo.id, 'title': pendingTodo.title});
+            planningTodos.add({
+              'id': pendingTodo.id,
+              'title': pendingTodo.title,
+            });
           }
           planAction = AiTodoAction.fromJson(action.toJson());
-          planAction.todoId = pendingTodo?.id ?? matches.single['id']?.toString();
+          planAction.todoId =
+              pendingTodo?.id ?? matches.single['id']?.toString();
         }
         final block = _buildPlanBlock(
           planAction,
@@ -273,8 +284,9 @@ class AiTodoActionExecutor {
         final updates = _buildUpdatedTodos(action, existingTodos);
         if (updates.isNotEmpty) {
           for (final updated in updates) {
-            final existingIndex =
-                updatedTodos.indexWhere((todo) => todo.id == updated.id);
+            final existingIndex = updatedTodos.indexWhere(
+              (todo) => todo.id == updated.id,
+            );
             if (existingIndex == -1) {
               updatedTodos.add(updated);
             } else {
@@ -351,9 +363,7 @@ class AiTodoActionExecutor {
     return created;
   }
 
-  static _HabitCreationDraft? _buildHabitCreationDraft(
-    AiTodoAction action,
-  ) {
+  static _HabitCreationDraft? _buildHabitCreationDraft(AiTodoAction action) {
     final name = action.title?.trim();
     if (name == null || name.isEmpty) return null;
 
@@ -362,7 +372,8 @@ class AiTodoActionExecutor {
     final periodType = _parseHabitPeriodType(action.habitPeriodType);
     if (periodType == null) return null;
 
-    final weekdaysMask = action.weekdaysMask ??
+    final weekdaysMask =
+        action.weekdaysMask ??
         (periodType == HabitPeriodType.weekdays ? 31 : 127);
     if (weekdaysMask < 1 || weekdaysMask > 127) return null;
     final customIntervalDays = action.customIntervalDays;
@@ -409,9 +420,8 @@ class AiTodoActionExecutor {
             targetTimeMinute >= 1440) {
           return null;
         }
-        timeComparison = _parseHabitTimeComparison(
-              action.habitTimeComparison,
-            ) ??
+        timeComparison =
+            _parseHabitTimeComparison(action.habitTimeComparison) ??
             HabitTimeComparison.before;
       case HabitSourceType.durationCheckIn:
         final durationSeconds = _habitDurationSeconds(action);
@@ -429,8 +439,10 @@ class AiTodoActionExecutor {
 
     final tolerance = action.timeToleranceMinutes ?? 0;
     if (tolerance < 0) return null;
-    final quickValues =
-        action.quickValues.where((value) => value > 0).take(4).toList();
+    final quickValues = action.quickValues
+        .where((value) => value > 0)
+        .take(4)
+        .toList();
     final effectiveFromDate = _habitEffectiveFromDate(dayBoundaryMinute);
     final rule = HabitGoalRuleRevision(
       habitUuid: '',
@@ -456,7 +468,8 @@ class AiTodoActionExecutor {
       sourceType: sourceType,
       sourceIds: sourceIds,
       rule: rule,
-      displayMode: _parseHabitDisplayMode(action.habitDisplayMode) ??
+      displayMode:
+          _parseHabitDisplayMode(action.habitDisplayMode) ??
           HabitDisplayMode.habitOnly,
       defaultFocusMinutes: defaultFocusMinutes,
     );
@@ -609,9 +622,7 @@ class AiTodoActionExecutor {
     }
   }
 
-  static HabitReminderPolicy _parseHabitReminderPolicy(
-    AiTodoAction action,
-  ) {
+  static HabitReminderPolicy _parseHabitReminderPolicy(AiTodoAction action) {
     final raw = action.habitReminderPolicy;
     final fixedTimes = _parseHabitMinuteList(
       raw?['fixedTimes'] ?? raw?['fixed_times'],
@@ -634,8 +645,8 @@ class AiTodoActionExecutor {
     final values = raw is List
         ? raw
         : raw is String && raw.trim().isNotEmpty
-            ? raw.split(RegExp(r'[,，\s]+'))
-            : const <dynamic>[];
+        ? raw.split(RegExp(r'[,，\s]+'))
+        : const <dynamic>[];
     return values
         .map(_parseHabitMinute)
         .whereType<int>()
@@ -698,7 +709,8 @@ class AiTodoActionExecutor {
 
       final startDate = DateTime.tryParse(template.date);
       if (startDate == null) return const [];
-      final recurrenceEnd = _parseExistingDate(action.recurrenceEndDate) ??
+      final recurrenceEnd =
+          _parseExistingDate(action.recurrenceEndDate) ??
           FixedScheduleRecurrenceService.defaultEndDate(
             startDate: startDate,
             recurrence: template.recurrence,
@@ -781,7 +793,8 @@ class AiTodoActionExecutor {
 
     final patchedTarget = _patchFixedSchedule(action, target);
     if (patchedTarget == null) return const [];
-    final rebuildsSeries = action.hasDate ||
+    final rebuildsSeries =
+        action.hasDate ||
         action.hasRecurrence ||
         action.hasCustomIntervalDays ||
         action.hasRecurrenceEndDate;
@@ -797,7 +810,8 @@ class AiTodoActionExecutor {
             (latest, date) =>
                 latest == null || date.isAfter(latest) ? date : latest,
           );
-      final recurrenceEnd = _parseExistingDate(action.recurrenceEndDate) ??
+      final recurrenceEnd =
+          _parseExistingDate(action.recurrenceEndDate) ??
           existingEnd ??
           FixedScheduleRecurrenceService.defaultEndDate(
             startDate: patchedDate,
@@ -824,8 +838,10 @@ class AiTodoActionExecutor {
             ..recurrenceScope = 'occurrence';
           final itemDate = DateTime.parse(item.date);
           if (action.hasStartTime && action.startTime != null) {
-            propagated.startTime =
-                _moveScheduleTimeToDate(action.startTime!, itemDate);
+            propagated.startTime = _moveScheduleTimeToDate(
+              action.startTime!,
+              itemDate,
+            );
           }
           if (action.hasDueDate && action.dueDate != null) {
             propagated.dueDate = _moveScheduleTimeToDate(
@@ -847,7 +863,8 @@ class AiTodoActionExecutor {
     final title = action.title?.trim();
     if (title == null || title.isEmpty) return null;
     final start = _parseExistingDate(action.startTime);
-    final end = _parseExistingDate(action.dueDate) ??
+    final end =
+        _parseExistingDate(action.dueDate) ??
         (start != null && action.durationMinutes != null
             ? start.add(Duration(minutes: action.durationMinutes!))
             : null);
@@ -862,18 +879,19 @@ class AiTodoActionExecutor {
     }
     final reminders = action.hasReminderMinutesList
         ? action.reminderMinutesList
-            .where((value) => value >= 0)
-            .toSet()
-            .toList()
+              .where((value) => value >= 0)
+              .toSet()
+              .toList()
         : action.hasReminderMinutes
-            ? [if (action.reminderMinutes != null) action.reminderMinutes!]
-            : const <int>[15];
+        ? [if (action.reminderMinutes != null) action.reminderMinutes!]
+        : const <int>[15];
     final item = FixedScheduleItem(
       title: title,
       date: _dateKey(date),
       startTime: start?.millisecondsSinceEpoch,
       endTime: end?.millisecondsSinceEpoch,
-      status: _parseFixedScheduleStatus(action.status) ??
+      status:
+          _parseFixedScheduleStatus(action.status) ??
           FixedScheduleStatus.scheduled,
       source: FixedScheduleSource.ai,
       location: _nullableString(action.location),
@@ -928,10 +946,12 @@ class AiTodoActionExecutor {
 
     final oldDate = DateTime.tryParse(existing.date);
     var nextDate = action.hasDate ? _parseScheduleDate(action.date) : oldDate;
-    final suppliedStart =
-        action.hasStartTime ? _parseExistingDate(action.startTime) : null;
-    final suppliedEnd =
-        action.hasDueDate ? _parseExistingDate(action.dueDate) : null;
+    final suppliedStart = action.hasStartTime
+        ? _parseExistingDate(action.startTime)
+        : null;
+    final suppliedEnd = action.hasDueDate
+        ? _parseExistingDate(action.dueDate)
+        : null;
     if (suppliedStart != null) nextDate = _day(suppliedStart);
     if (nextDate == null) return null;
 
@@ -957,9 +977,7 @@ class AiTodoActionExecutor {
           existing.endTime != null) {
         nextEnd = suppliedStart
             .add(
-              Duration(
-                milliseconds: existing.endTime! - existing.startTime!,
-              ),
+              Duration(milliseconds: existing.endTime! - existing.startTime!),
             )
             .millisecondsSinceEpoch;
       }
@@ -1084,7 +1102,9 @@ class AiTodoActionExecutor {
         final originalStart = DateTime.fromMillisecondsSinceEpoch(
           updated.startTime,
         );
-        final originalEnd = DateTime.fromMillisecondsSinceEpoch(updated.endTime);
+        final originalEnd = DateTime.fromMillisecondsSinceEpoch(
+          updated.endTime,
+        );
         final start = action.startTime != null
             ? DateTime.tryParse(action.startTime!)
             : null;
@@ -1094,12 +1114,13 @@ class AiTodoActionExecutor {
             ? DateTime.tryParse(action.dueDate!)
             : null;
         if (action.dueDate != null && suppliedEnd == null) return null;
-        final end = suppliedEnd ??
+        final end =
+            suppliedEnd ??
             (action.durationMinutes != null
                 ? nextStart.add(Duration(minutes: action.durationMinutes!))
                 : start != null
-                    ? nextStart.add(originalEnd.difference(originalStart))
-                    : null);
+                ? nextStart.add(originalEnd.difference(originalStart))
+                : null);
         if (end != null && !end.isAfter(nextStart)) return null;
         if (start != null) updated.startTime = start.millisecondsSinceEpoch;
         if (end != null) updated.endTime = end.millisecondsSinceEpoch;
@@ -1129,8 +1150,8 @@ class AiTodoActionExecutor {
     final end = action.dueDate != null
         ? DateTime.tryParse(action.dueDate!)
         : (start != null && action.durationMinutes != null
-            ? start.add(Duration(minutes: action.durationMinutes!))
-            : null);
+              ? start.add(Duration(minutes: action.durationMinutes!))
+              : null);
     if (start == null || end == null || !end.isAfter(start)) return null;
 
     final match = existingTodos
@@ -1244,8 +1265,8 @@ class AiTodoActionExecutor {
     final target = action.dueDate != null
         ? DateTime.tryParse(action.dueDate!)
         : action.startTime != null
-            ? DateTime.tryParse(action.startTime!)
-            : existing?.targetDate;
+        ? DateTime.tryParse(action.startTime!)
+        : existing?.targetDate;
     if (target == null) return null;
 
     final countdown = CountdownItem(
@@ -1348,29 +1369,30 @@ class AiTodoActionExecutor {
     final start = action.startTime != null
         ? DateTime.tryParse(action.startTime!)
         : (existing != null
-            ? DateTime.fromMillisecondsSinceEpoch(existing.startTime)
-            : null);
+              ? DateTime.fromMillisecondsSinceEpoch(existing.startTime)
+              : null);
     final end = action.dueDate != null
         ? DateTime.tryParse(action.dueDate!)
         : (start != null && action.durationMinutes != null
-            ? start.add(Duration(minutes: action.durationMinutes!))
-            : (existing != null
-                ? action.startTime != null && start != null
-                    ? start.add(
-                        Duration(
-                          milliseconds: existing.endTime - existing.startTime,
-                        ),
-                      )
-                    : DateTime.fromMillisecondsSinceEpoch(existing.endTime)
-                : null));
+              ? start.add(Duration(minutes: action.durationMinutes!))
+              : (existing != null
+                    ? action.startTime != null && start != null
+                          ? start.add(
+                              Duration(
+                                milliseconds:
+                                    existing.endTime - existing.startTime,
+                              ),
+                            )
+                          : DateTime.fromMillisecondsSinceEpoch(
+                              existing.endTime,
+                            )
+                    : null));
     if (start == null || end == null || !end.isAfter(start)) return null;
 
     final log = TimeLogItem(
       id: existing?.id,
       title: action.title ?? existing?.title ?? '专注记录',
-      tagUuids: action.hasTagUuids
-          ? action.tagUuids
-          : existing?.tagUuids ?? [],
+      tagUuids: action.hasTagUuids ? action.tagUuids : existing?.tagUuids ?? [],
       startTime: start.millisecondsSinceEpoch,
       endTime: end.millisecondsSinceEpoch,
       remark: action.hasRemark ? action.remark : existing?.remark,
@@ -1394,7 +1416,8 @@ class AiTodoActionExecutor {
     if (target == null) return const [];
 
     final seriesId = _nullableString(
-        target['recurrenceSeriesId'] ?? target['recurrence_series_id']);
+      target['recurrenceSeriesId'] ?? target['recurrence_series_id'],
+    );
     if (action.recurrenceSeriesId?.trim().isNotEmpty == true &&
         action.recurrenceSeriesId!.trim() != seriesId) {
       return const [];
@@ -1425,7 +1448,8 @@ class AiTodoActionExecutor {
     final updatedDuration = updatedStart == null || targetUpdate.dueDate == null
         ? null
         : targetUpdate.dueDate!.difference(updatedStart);
-    final hasTimePatch = action.hasStartTime ||
+    final hasTimePatch =
+        action.hasStartTime ||
         action.hasDueDate ||
         action.hasTimeMode ||
         action.hasIsAllDay;
@@ -1436,14 +1460,14 @@ class AiTodoActionExecutor {
     final future = existingTodos.where((todo) {
       if (todo['id'] == id || _mapBool(todo, 'isDeleted')) return false;
       final candidateSeries = _nullableString(
-          todo['recurrenceSeriesId'] ?? todo['recurrence_series_id']);
+        todo['recurrenceSeriesId'] ?? todo['recurrence_series_id'],
+      );
       final candidateStart = _todoStart(todo);
       return candidateSeries == seriesId &&
           candidateStart != null &&
           targetStart != null &&
           !candidateStart.isBefore(targetStart);
-    }).toList()
-      ..sort((a, b) => _todoStart(a)!.compareTo(_todoStart(b)!));
+    }).toList()..sort((a, b) => _todoStart(a)!.compareTo(_todoStart(b)!));
 
     for (final candidate in future) {
       final candidateAction = AiTodoAction.fromJson(action.toJson())
@@ -1488,17 +1512,21 @@ class AiTodoActionExecutor {
       }
 
       final shiftedCandidateDay = candidateStart.add(shift);
-      final isPastRecurrenceEnd = recurrenceEnd != null &&
+      final isPastRecurrenceEnd =
+          recurrenceEnd != null &&
           DateTime(
             shiftedCandidateDay.year,
             shiftedCandidateDay.month,
             shiftedCandidateDay.day,
-          ).isAfter(DateTime(
-            recurrenceEnd.year,
-            recurrenceEnd.month,
-            recurrenceEnd.day,
-          ));
-      final shouldDelete = action.type == AiTodoActionType.deleteTodo ||
+          ).isAfter(
+            DateTime(
+              recurrenceEnd.year,
+              recurrenceEnd.month,
+              recurrenceEnd.day,
+            ),
+          );
+      final shouldDelete =
+          action.type == AiTodoActionType.deleteTodo ||
           (action.hasRecurrence && action.recurrence == 'none') ||
           isPastRecurrenceEnd;
       final updated = _buildUpdatedTodo(candidateAction, candidate);
@@ -1522,7 +1550,8 @@ class AiTodoActionExecutor {
 
     final existingStart = _todoStart(existing);
     final existingDue = _todoDue(existing);
-    final hasTimePatch = action.hasStartTime ||
+    final hasTimePatch =
+        action.hasStartTime ||
         action.hasDueDate ||
         action.hasTimeMode ||
         action.hasIsAllDay;
@@ -1542,8 +1571,8 @@ class AiTodoActionExecutor {
     final existingGroupId = _nullableString(existing['groupId']);
     final nextGroupId =
         action.type == AiTodoActionType.categorizeTodo || action.hasGroupId
-            ? _nullableString(action.groupId)
-            : existingGroupId;
+        ? _nullableString(action.groupId)
+        : existingGroupId;
     final existingRecurrence = _existingRecurrence(existing);
     final nextRecurrence = action.hasRecurrence
         ? _parseRecurrenceName(action.recurrence)
@@ -1577,7 +1606,8 @@ class AiTodoActionExecutor {
       return null;
     }
     var recurrenceSeriesId = _nullableString(
-        existing['recurrenceSeriesId'] ?? existing['recurrence_series_id']);
+      existing['recurrenceSeriesId'] ?? existing['recurrence_series_id'],
+    );
     if (nextRecurrence != RecurrenceType.none && recurrenceSeriesId == null) {
       recurrenceSeriesId = id;
     }
@@ -1603,7 +1633,8 @@ class AiTodoActionExecutor {
       customIntervalDays: nextRecurrence == RecurrenceType.customDays
           ? nextCustomInterval
           : null,
-      recurrenceEndDate: nextRecurrence == RecurrenceType.none &&
+      recurrenceEndDate:
+          nextRecurrence == RecurrenceType.none &&
               action.hasRecurrence &&
               action.recurrence == 'none' &&
               !action.hasRecurrenceEndDate
@@ -1652,11 +1683,13 @@ class AiTodoActionExecutor {
           recurrenceEndDate.year,
           recurrenceEndDate.month,
           recurrenceEndDate.day,
-        ).isBefore(DateTime(
-          normalizedTime.start!.year,
-          normalizedTime.start!.month,
-          normalizedTime.start!.day,
-        ))) {
+        ).isBefore(
+          DateTime(
+            normalizedTime.start!.year,
+            normalizedTime.start!.month,
+            normalizedTime.start!.day,
+          ),
+        )) {
       return null;
     }
     final gId = action.groupId;
@@ -1674,7 +1707,8 @@ class AiTodoActionExecutor {
       originalText: action.originalText,
       groupId: (gId == null || gId.isEmpty) ? null : gId,
       isAllDay: normalizedTime.isDateOnly,
-      reminderMinutes: action.reminderMinutes ??
+      reminderMinutes:
+          action.reminderMinutes ??
           (gId != null ? categoryReminderDefaults[gId] : null),
     );
     if (recurrence != RecurrenceType.none) {
@@ -1693,7 +1727,7 @@ class AiTodoActionExecutor {
   }
 
   static ({DateTime? start, DateTime? due, bool isDateOnly})
-      _normalizeActionTime(
+  _normalizeActionTime(
     AiTodoAction action, {
     DateTime? existingStart,
     DateTime? existingDue,
@@ -1710,8 +1744,8 @@ class AiTodoActionExecutor {
           return action.isAllDay
               ? TodoTimeMode.dateOnly
               : (action.hasDueDate || action.hasStartTime
-                  ? TodoTimeMode.deadline
-                  : TodoTimeMode.unscheduled);
+                    ? TodoTimeMode.deadline
+                    : TodoTimeMode.unscheduled);
         }
         if (action.isAllDay) return TodoTimeMode.dateOnly;
         if (action.dueDate != null || action.startTime != null) {
@@ -1727,19 +1761,16 @@ class AiTodoActionExecutor {
     final suppliedStart = action.hasStartTime
         ? _parseExistingDate(action.startTime)
         : existingStart;
-    final suppliedDue =
-        action.hasDueDate ? _parseExistingDate(action.dueDate) : existingDue;
+    final suppliedDue = action.hasDueDate
+        ? _parseExistingDate(action.dueDate)
+        : existingDue;
     if (requestedMode == TodoTimeMode.dateOnly) {
       final normalized = TodoItem.normalizeTimeForWrite(
         selectedDate: suppliedStart ?? suppliedDue,
         dueDate: suppliedDue,
         isDateOnly: true,
       );
-      return (
-        start: normalized.start,
-        due: normalized.due,
-        isDateOnly: true,
-      );
+      return (start: normalized.start, due: normalized.due, isDateOnly: true);
     }
 
     // 新版 TodoItem 不再写入执行时间段。即使兼容输入同时给了
@@ -1749,11 +1780,7 @@ class AiTodoActionExecutor {
       dueDate: deadline,
       isDateOnly: false,
     );
-    return (
-      start: normalized.start,
-      due: normalized.due,
-      isDateOnly: false,
-    );
+    return (start: normalized.start, due: normalized.due, isDateOnly: false);
   }
 
   static RecurrenceType _parseRecurrenceName(String recurrence) {
@@ -1785,18 +1812,16 @@ class AiTodoActionExecutor {
         : TodoTimeMode.deadline;
   }
 
-  static DateTime? _todoStart(Map<String, dynamic> todo) =>
-      _parseExistingDate(todo['startTime'] ??
-          todo['start_time'] ??
-          todo['createdDate'] ??
-          todo['created_date']);
+  static DateTime? _todoStart(Map<String, dynamic> todo) => _parseExistingDate(
+    todo['startTime'] ??
+        todo['start_time'] ??
+        todo['createdDate'] ??
+        todo['created_date'],
+  );
 
   static DateTime? _todoDue(Map<String, dynamic> todo) => _parseExistingDate(
-        todo['endTime'] ??
-            todo['end_time'] ??
-            todo['dueDate'] ??
-            todo['due_date'],
-      );
+    todo['endTime'] ?? todo['end_time'] ?? todo['dueDate'] ?? todo['due_date'],
+  );
 
   static bool _mapBool(Map<String, dynamic> map, String key) {
     final value = map[key];

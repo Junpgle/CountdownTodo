@@ -344,32 +344,34 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
   }
 
   String _recurringRuleSignature(Iterable<FinanceRecurringRule> rules) {
-    final values = rules
-        .map(
-          (rule) => [
-            rule.uuid,
-            rule.name,
-            rule.type.name,
-            rule.amountMinor,
-            rule.currencyCode,
-            rule.categoryUuid,
-            rule.paymentMethodUuid,
-            rule.merchant,
-            rule.note,
-            rule.frequency.name,
-            rule.dayOfMonth,
-            rule.monthOfYear,
-            rule.startDate,
-            rule.endDate,
-            rule.reminderMinutes,
-            rule.autoGenerate,
-            rule.isEnabled,
-          ],
-        )
-        .toList()
-      ..sort(
-        (left, right) => left.first.toString().compareTo(right.first.toString()),
-      );
+    final values =
+        rules
+            .map(
+              (rule) => [
+                rule.uuid,
+                rule.name,
+                rule.type.name,
+                rule.amountMinor,
+                rule.currencyCode,
+                rule.categoryUuid,
+                rule.paymentMethodUuid,
+                rule.merchant,
+                rule.note,
+                rule.frequency.name,
+                rule.dayOfMonth,
+                rule.monthOfYear,
+                rule.startDate,
+                rule.endDate,
+                rule.reminderMinutes,
+                rule.autoGenerate,
+                rule.isEnabled,
+              ],
+            )
+            .toList()
+          ..sort(
+            (left, right) =>
+                left.first.toString().compareTo(right.first.toString()),
+          );
     return jsonEncode(values);
   }
 
@@ -689,15 +691,18 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
     }
 
     return switch (transaction.type) {
-      FinanceTransactionType.expense => hasPaymentMethod
-          ? '删除后，这笔支出不再计入统计，付款方式余额会相应增加。确认继续吗？'
-          : '删除后不会计入统计，确认继续吗？',
-      FinanceTransactionType.income => hasPaymentMethod
-          ? '删除后，这笔收入不再计入统计，到账账户余额会相应减少。确认继续吗？'
-          : '删除后不会计入统计，确认继续吗？',
-      FinanceTransactionType.refund => hasPaymentMethod
-          ? '删除后，这笔退款不再抵扣净支出，也不再增加退款到账账户的余额。确认继续吗？'
-          : '删除后，这笔退款不再抵扣净支出。确认继续吗？',
+      FinanceTransactionType.expense =>
+        hasPaymentMethod
+            ? '删除后，这笔支出不再计入统计，付款方式余额会相应增加。确认继续吗？'
+            : '删除后不会计入统计，确认继续吗？',
+      FinanceTransactionType.income =>
+        hasPaymentMethod
+            ? '删除后，这笔收入不再计入统计，到账账户余额会相应减少。确认继续吗？'
+            : '删除后不会计入统计，确认继续吗？',
+      FinanceTransactionType.refund =>
+        hasPaymentMethod
+            ? '删除后，这笔退款不再抵扣净支出，也不再增加退款到账账户的余额。确认继续吗？'
+            : '删除后，这笔退款不再抵扣净支出。确认继续吗？',
     };
   }
 
@@ -736,19 +741,22 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
       includedInBalanceSnapshot: includedInBalanceSnapshot,
     );
     final installmentDeleteDescription = switch (transaction.type) {
-      FinanceTransactionType.expense => hasPaymentMethod
-          ? '删除后不会计入统计；已发生期次会从账户流水中移除，余额按余额快照和剩余流水重新计算，'
-              '未发生期次会从未来计划中移除。'
-          : '删除后不会计入统计；未发生期次会从未来计划中移除。',
-      FinanceTransactionType.income => hasPaymentMethod
-          ? '删除后不会计入统计；已发生期次会从账户流水中移除，余额按余额快照和剩余流水重新计算，'
-              '未发生期次会从未来计划中移除。'
-          : '删除后不会计入统计；未发生期次会从未来计划中移除。',
-      FinanceTransactionType.refund => hasPaymentMethod
-          ? '删除后不会计入统计，也不再抵扣净支出；已发生期次会从账户流水中移除，'
-              '余额按余额快照和剩余流水重新计算，'
-              '未发生期次会从未来计划中移除。'
-          : '删除后不会计入统计；未发生期次会从未来计划中移除。',
+      FinanceTransactionType.expense =>
+        hasPaymentMethod
+            ? '删除后不会计入统计；已发生期次会从账户流水中移除，余额按余额快照和剩余流水重新计算，'
+                  '未发生期次会从未来计划中移除。'
+            : '删除后不会计入统计；未发生期次会从未来计划中移除。',
+      FinanceTransactionType.income =>
+        hasPaymentMethod
+            ? '删除后不会计入统计；已发生期次会从账户流水中移除，余额按余额快照和剩余流水重新计算，'
+                  '未发生期次会从未来计划中移除。'
+            : '删除后不会计入统计；未发生期次会从未来计划中移除。',
+      FinanceTransactionType.refund =>
+        hasPaymentMethod
+            ? '删除后不会计入统计，也不再抵扣净支出；已发生期次会从账户流水中移除，'
+                  '余额按余额快照和剩余流水重新计算，'
+                  '未发生期次会从未来计划中移除。'
+            : '删除后不会计入统计；未发生期次会从未来计划中移除。',
     };
     final deleteMode = transaction.isInstallment
         ? await showAppDialog<String>(
@@ -891,8 +899,8 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
     final now = widget.clock();
     final today = dateKey(now);
     final storedStartDate = _openingBalanceStartDate;
-    final initialStartDate = storedStartDate != null &&
-            storedStartDate.compareTo(today) <= 0
+    final initialStartDate =
+        storedStartDate != null && storedStartDate.compareTo(today) <= 0
         ? storedStartDate
         : FinanceRepository.defaultCumulativeBalanceStartDate(
             events: _cumulativeBalanceEvents,
@@ -1410,10 +1418,7 @@ class _FinanceOpeningBalanceDialogState
             if (_dateError != null)
               Padding(
                 padding: const EdgeInsets.only(top: 6),
-                child: Text(
-                  _dateError!,
-                  style: TextStyle(color: colors.error),
-                ),
+                child: Text(_dateError!, style: TextStyle(color: colors.error)),
               ),
             const SizedBox(height: 8),
             Text(

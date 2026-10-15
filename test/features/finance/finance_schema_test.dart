@@ -15,21 +15,21 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 Map<String, dynamic> _balanceSyncResponse({bool supportsBalances = false}) => {
-      'sync_capabilities': {
-        'finance_v1': 1,
-        if (supportsBalances) 'finance_account_balances_v1': 1,
-      },
-      'server_finance_categories': <Map<String, dynamic>>[],
-      'server_finance_payment_methods': <Map<String, dynamic>>[],
-      'server_finance_transactions': <Map<String, dynamic>>[],
-      'server_finance_loans': <Map<String, dynamic>>[],
-      'server_finance_loan_installments': <Map<String, dynamic>>[],
-      'server_finance_budgets': <Map<String, dynamic>>[],
-      'server_finance_recurring_rules': <Map<String, dynamic>>[],
-      'server_finance_entry_templates': <Map<String, dynamic>>[],
-      'finance_acknowledged_changes': <Map<String, dynamic>>[],
-      'new_finance_sync_time': DateTime.now().millisecondsSinceEpoch,
-    };
+  'sync_capabilities': {
+    'finance_v1': 1,
+    if (supportsBalances) 'finance_account_balances_v1': 1,
+  },
+  'server_finance_categories': <Map<String, dynamic>>[],
+  'server_finance_payment_methods': <Map<String, dynamic>>[],
+  'server_finance_transactions': <Map<String, dynamic>>[],
+  'server_finance_loans': <Map<String, dynamic>>[],
+  'server_finance_loan_installments': <Map<String, dynamic>>[],
+  'server_finance_budgets': <Map<String, dynamic>>[],
+  'server_finance_recurring_rules': <Map<String, dynamic>>[],
+  'server_finance_entry_templates': <Map<String, dynamic>>[],
+  'finance_acknowledged_changes': <Map<String, dynamic>>[],
+  'new_finance_sync_time': DateTime.now().millisecondsSinceEpoch,
+};
 
 void main() {
   sqfliteFfiInit();
@@ -145,10 +145,10 @@ void main() {
         paymentMethodUuids: trackedMethods,
       );
 
-      expect(
-        transactions.map((transaction) => transaction.uuid).toSet(),
-        {'balance-query-card-a', 'balance-query-card-b'},
-      );
+      expect(transactions.map((transaction) => transaction.uuid).toSet(), {
+        'balance-query-card-a',
+        'balance-query-card-b',
+      });
       final indexes = await db.rawQuery(
         'PRAGMA index_list(finance_transactions)',
       );
@@ -198,9 +198,8 @@ void main() {
         1,
       );
       expect(
-        (await FinanceStorage.getTransaction(
-          'remote-missing-finance-source',
-        ))!.source,
+        (await FinanceStorage.getTransaction('remote-missing-finance-source'))!
+            .source,
         FinanceEntrySource.manual,
       );
     });
@@ -250,10 +249,7 @@ void main() {
         createdAt: snapshotAt - 1000,
         updatedAt: snapshotAt,
       );
-      await FinanceStorage.saveBudget(
-        budget,
-        balanceSnapshotAt: snapshotAt,
-      );
+      await FinanceStorage.saveBudget(budget, balanceSnapshotAt: snapshotAt);
       final saved = (await FinanceStorage.getBudget(budget.uuid))!;
 
       final expenseAt = snapshotAt + const Duration(hours: 1).inMilliseconds;
@@ -265,9 +261,9 @@ void main() {
           DateTime.fromMillisecondsSinceEpoch(expenseAt),
         ),
         occurredAt: expenseAt,
-        timezoneOffsetMinutes: DateTime.fromMillisecondsSinceEpoch(
-          expenseAt,
-        ).timeZoneOffset.inMinutes,
+        timezoneOffsetMinutes: DateTime.fromMillisecondsSinceEpoch(expenseAt)
+            .timeZoneOffset
+            .inMinutes,
         createdAt: expenseAt,
       );
       final oldClientEdit = FinanceBudget.fromMap(saved.toMap())
@@ -330,10 +326,7 @@ void main() {
       const paymentMethodUuid = 'legacy-backup-card';
       await db.insert(
         'finance_payment_methods',
-        FinancePaymentMethod(
-          uuid: paymentMethodUuid,
-          name: '旧备份测试卡',
-        ).toMap(),
+        FinancePaymentMethod(uuid: paymentMethodUuid, name: '旧备份测试卡').toMap(),
       );
       final budget = FinanceBudget(
         monthKey: financeMonthKey(month),
@@ -343,10 +336,7 @@ void main() {
         createdAt: snapshotAt - 1000,
         updatedAt: snapshotAt,
       );
-      await FinanceStorage.saveBudget(
-        budget,
-        balanceSnapshotAt: snapshotAt,
-      );
+      await FinanceStorage.saveBudget(budget, balanceSnapshotAt: snapshotAt);
       final saved = (await FinanceStorage.getBudget(budget.uuid))!;
       final oldBackup = FinanceBudget.fromMap(saved.toMap())
         ..note = '旧备份修改备注'
@@ -442,23 +432,20 @@ void main() {
             name: '小数日期周期',
             amountMinor: 100,
             startDate: '2026-09-01',
-          ).toMap()
-            ..['day_of_month'] = 1.5,
+          ).toMap()..['day_of_month'] = 1.5,
           FinanceRecurringRule(
             uuid: 'fractional-$source-recurring-month',
             name: '小数月份周期',
             amountMinor: 100,
             frequency: FinanceRecurringFrequency.yearly,
             startDate: '2026-09-01',
-          ).toMap()
-            ..['month_of_year'] = 6.5,
+          ).toMap()..['month_of_year'] = 6.5,
           FinanceRecurringRule(
             uuid: 'fractional-$source-recurring-reminder',
             name: '小数提醒周期',
             amountMinor: 100,
             startDate: '2026-09-01',
-          ).toMap()
-            ..['reminder_minutes'] = 60.5,
+          ).toMap()..['reminder_minutes'] = 60.5,
         ];
 
         if (source == 'backup') {
@@ -468,9 +455,7 @@ void main() {
           expect(result['skipped'], 3);
         } else {
           expect(
-            await FinanceStorage.mergeRemoteBundle({
-              'recurring_rules': rules,
-            }),
+            await FinanceStorage.mergeRemoteBundle({'recurring_rules': rules}),
             0,
           );
         }
@@ -549,9 +534,7 @@ void main() {
         ];
 
         if (source == 'backup') {
-          await FinanceStorage.importBundle({
-            'transactions': transactions,
-          });
+          await FinanceStorage.importBundle({'transactions': transactions});
         } else {
           await FinanceStorage.mergeRemoteBundle({
             'transactions': transactions,
@@ -597,10 +580,7 @@ void main() {
           );
         }
 
-        expect(
-          await FinanceStorage.getBudgets(includeDeleted: true),
-          isEmpty,
-        );
+        expect(await FinanceStorage.getBudgets(includeDeleted: true), isEmpty);
       });
 
       test('$source 拒绝负数周期模板贷款金额和超范围利率', () async {
@@ -699,7 +679,9 @@ void main() {
         }
 
         if (source == 'backup') {
-          final result = await FinanceStorage.importBundle({'budgets': budgets});
+          final result = await FinanceStorage.importBundle({
+            'budgets': budgets,
+          });
           expect(result['skipped'], invalidSnapshotTimes.length);
         } else {
           expect(
@@ -707,10 +689,7 @@ void main() {
             0,
           );
         }
-        expect(
-          await FinanceStorage.getBudgets(includeDeleted: true),
-          isEmpty,
-        );
+        expect(await FinanceStorage.getBudgets(includeDeleted: true), isEmpty);
       });
 
       test('$source 拒绝未来或月份不匹配的账户余额快照', () async {
@@ -758,12 +737,12 @@ void main() {
           expect(result['imported'], 0);
           expect(result['skipped'], 2);
         } else {
-          expect(await FinanceStorage.mergeRemoteBundle({'budgets': budgets}), 0);
+          expect(
+            await FinanceStorage.mergeRemoteBundle({'budgets': budgets}),
+            0,
+          );
         }
-        expect(
-          await FinanceStorage.getBudgets(includeDeleted: true),
-          isEmpty,
-        );
+        expect(await FinanceStorage.getBudgets(includeDeleted: true), isEmpty);
       });
     }
 
@@ -855,10 +834,7 @@ void main() {
             0,
           );
         }
-        expect(
-          await FinanceStorage.getBudgets(includeDeleted: true),
-          isEmpty,
-        );
+        expect(await FinanceStorage.getBudgets(includeDeleted: true), isEmpty);
       });
     }
 
@@ -867,13 +843,11 @@ void main() {
         final numericType = FinanceCategory(
           uuid: 'invalid-$source-numeric-category-type',
           name: '数值越界分类',
-        ).toMap()
-          ..['type'] = 99;
+        ).toMap()..['type'] = 99;
         final unknownType = FinanceCategory(
           uuid: 'invalid-$source-string-category-type',
           name: '未知类型分类',
-        ).toMap()
-          ..['type'] = 'unknown';
+        ).toMap()..['type'] = 'unknown';
         final bundle = {
           'categories': [numericType, unknownType],
         };
@@ -904,13 +878,11 @@ void main() {
         final category = FinanceCategory(
           uuid: 'missing-$source-category-uuid',
           name: '无标识分类',
-        ).toMap()
-          ..remove('uuid');
+        ).toMap()..remove('uuid');
         final paymentMethod = FinancePaymentMethod(
           uuid: 'missing-$source-payment-uuid',
           name: '无标识账户',
-        ).toMap()
-          ..remove('uuid');
+        ).toMap()..remove('uuid');
         final bundle = {
           'categories': [category],
           'payment_methods': [paymentMethod],
@@ -938,7 +910,10 @@ void main() {
 
     test('备份导入统计格式错误的财务数据行', () async {
       final result = await FinanceStorage.importBundle({
-        'categories': [null, <dynamic, dynamic>{1: '非字符串键'}],
+        'categories': [
+          null,
+          <dynamic, dynamic>{1: '非字符串键'},
+        ],
         'payment_methods': '错误的数据段',
       });
 
@@ -1000,14 +975,12 @@ void main() {
           uuid: 'unknown-$source-transaction-type',
           amountMinor: 500,
           transactionDate: '2026-09-20',
-        ).toMap()
-          ..['type'] = 'unknown';
+        ).toMap()..['type'] = 'unknown';
         final outOfRangeType = FinanceTransaction(
           uuid: 'out-of-range-$source-transaction-type',
           amountMinor: 500,
           transactionDate: '2026-09-20',
-        ).toMap()
-          ..['type'] = 99;
+        ).toMap()..['type'] = 99;
         final transactions = [unknownType, outOfRangeType];
 
         if (source == 'backup') {
@@ -1028,9 +1001,7 @@ void main() {
           isNull,
         );
         expect(
-          await FinanceStorage.getTransaction(
-            outOfRangeType['uuid'] as String,
-          ),
+          await FinanceStorage.getTransaction(outOfRangeType['uuid'] as String),
           isNull,
         );
       });
@@ -1042,36 +1013,31 @@ void main() {
             name: '错误频率名称',
             amountMinor: 100,
             startDate: '2026-09-01',
-          ).toMap()
-            ..['frequency'] = 'unknown',
+          ).toMap()..['frequency'] = 'unknown',
           FinanceRecurringRule(
             uuid: 'invalid-$source-frequency-number',
             name: '错误频率数字',
             amountMinor: 100,
             startDate: '2026-09-01',
-          ).toMap()
-            ..['frequency'] = 99,
+          ).toMap()..['frequency'] = 99,
           FinanceRecurringRule(
             uuid: 'invalid-$source-recurring-type',
             name: '错误周期类型',
             amountMinor: 100,
             startDate: '2026-09-01',
-          ).toMap()
-            ..['type'] = 'unknown',
+          ).toMap()..['type'] = 'unknown',
         ];
         final templates = [
           FinanceEntryTemplate(
             uuid: 'invalid-$source-template-type-name',
             name: '错误模板类型',
             amountMinor: 100,
-          ).toMap()
-            ..['type'] = 'unknown',
+          ).toMap()..['type'] = 'unknown',
           FinanceEntryTemplate(
             uuid: 'invalid-$source-template-type-number',
             name: '错误模板类型数字',
             amountMinor: 100,
-          ).toMap()
-            ..['type'] = 99,
+          ).toMap()..['type'] = 99,
         ];
         final loans = [
           FinanceLoan(
@@ -1081,8 +1047,7 @@ void main() {
             termMonths: 1,
             startDate: '2026-09-01',
             repaymentDay: 1,
-          ).toMap()
-            ..['repayment_method'] = 'unknown',
+          ).toMap()..['repayment_method'] = 'unknown',
           FinanceLoan(
             uuid: 'invalid-$source-loan-method-number',
             name: '错误还款方式数字',
@@ -1090,8 +1055,7 @@ void main() {
             termMonths: 1,
             startDate: '2026-09-01',
             repaymentDay: 1,
-          ).toMap()
-            ..['repayment_method'] = 99,
+          ).toMap()..['repayment_method'] = 99,
           FinanceLoan(
             uuid: 'invalid-$source-loan-method-string-number',
             name: '错误还款方式数字字符串',
@@ -1099,8 +1063,7 @@ void main() {
             termMonths: 1,
             startDate: '2026-09-01',
             repaymentDay: 1,
-          ).toMap()
-            ..['repayment_method'] = '1',
+          ).toMap()..['repayment_method'] = '1',
         ];
 
         final bundle = {
@@ -1385,7 +1348,9 @@ void main() {
           repaymentDay: 1,
         );
         await FinanceStorage.saveLoan(loan);
-        final installments = await FinanceStorage.getLoanInstallments(loan.uuid);
+        final installments = await FinanceStorage.getLoanInstallments(
+          loan.uuid,
+        );
         final paidInstallment = installments.first;
         await FinanceStorage.setLoanInstallmentPaid(
           paidInstallment.uuid,
@@ -1393,8 +1358,9 @@ void main() {
           paymentMethodUuid: 'finance-system-payment-cash',
         );
         final currentLoan = (await FinanceStorage.getLoan(loan.uuid))!;
-        final currentInstallment =
-            (await FinanceStorage.getLoanInstallment(paidInstallment.uuid))!;
+        final currentInstallment = (await FinanceStorage.getLoanInstallment(
+          paidInstallment.uuid,
+        ))!;
         final changedLoan = FinanceLoan.fromMap(currentLoan.toMap())
           ..annualInterestRateBps = 0
           ..version = currentLoan.version + 1
@@ -1407,15 +1373,15 @@ void main() {
           repaymentDay: changedLoan.repaymentDay,
           repaymentMethod: changedLoan.repaymentMethod,
         ).first;
-        final changedInstallment = FinanceLoanInstallment.fromMap(
-          currentInstallment.toMap(),
-        )
-          ..paymentMinor = changedAllocation.paymentMinor
-          ..principalMinor = changedAllocation.principalMinor
-          ..interestMinor = changedAllocation.interestMinor
-          ..remainingPrincipalMinor = changedAllocation.remainingPrincipalMinor
-          ..version = currentInstallment.version + 1
-          ..updatedAt = currentInstallment.updatedAt + 100;
+        final changedInstallment =
+            FinanceLoanInstallment.fromMap(currentInstallment.toMap())
+              ..paymentMinor = changedAllocation.paymentMinor
+              ..principalMinor = changedAllocation.principalMinor
+              ..interestMinor = changedAllocation.interestMinor
+              ..remainingPrincipalMinor =
+                  changedAllocation.remainingPrincipalMinor
+              ..version = currentInstallment.version + 1
+              ..updatedAt = currentInstallment.updatedAt + 100;
         final bundle = {
           'loans': [changedLoan.toMap()],
           'loan_installments': [changedInstallment.toMap()],
@@ -1429,11 +1395,15 @@ void main() {
           expect(await FinanceStorage.mergeRemoteBundle(bundle), 0);
         }
         final storedLoan = (await FinanceStorage.getLoan(loan.uuid))!;
-        final storedInstallment =
-            (await FinanceStorage.getLoanInstallment(paidInstallment.uuid))!;
+        final storedInstallment = (await FinanceStorage.getLoanInstallment(
+          paidInstallment.uuid,
+        ))!;
         expect(storedLoan.annualInterestRateBps, 1200);
         expect(storedInstallment.paymentMinor, paidInstallment.paymentMinor);
-        expect(storedInstallment.principalMinor, paidInstallment.principalMinor);
+        expect(
+          storedInstallment.principalMinor,
+          paidInstallment.principalMinor,
+        );
         expect(storedInstallment.interestMinor, paidInstallment.interestMinor);
       });
 
@@ -1442,21 +1412,18 @@ void main() {
           uuid: 'missing-transaction-date-$source',
           amountMinor: 100,
           transactionDate: '2026-09-01',
-        ).toMap()
-          ..remove('transaction_date');
+        ).toMap()..remove('transaction_date');
         final budget = FinanceBudget(
           uuid: 'missing-budget-month-$source',
           monthKey: '2026-09',
           amountMinor: 500,
-        ).toMap()
-          ..remove('month_key');
+        ).toMap()..remove('month_key');
         final recurringRule = FinanceRecurringRule(
           uuid: 'missing-recurring-start-$source',
           name: '缺少开始日的周期规则',
           amountMinor: 100,
           startDate: '2026-09-01',
-        ).toMap()
-          ..remove('start_date');
+        ).toMap()..remove('start_date');
         final loans = [
           FinanceLoan(
             uuid: 'missing-loan-start-$source',
@@ -1465,8 +1432,7 @@ void main() {
             termMonths: 1,
             startDate: '2026-09-01',
             repaymentDay: 1,
-          ).toMap()
-            ..remove('start_date'),
+          ).toMap()..remove('start_date'),
           FinanceLoan(
             uuid: 'missing-loan-term-$source',
             name: '缺少期限贷款',
@@ -1474,8 +1440,7 @@ void main() {
             termMonths: 2,
             startDate: '2026-09-01',
             repaymentDay: 1,
-          ).toMap()
-            ..remove('term_months'),
+          ).toMap()..remove('term_months'),
           FinanceLoan(
             uuid: 'missing-loan-repayment-day-$source',
             name: '缺少还款日贷款',
@@ -1483,8 +1448,7 @@ void main() {
             termMonths: 2,
             startDate: '2026-09-01',
             repaymentDay: 1,
-          ).toMap()
-            ..remove('repayment_day'),
+          ).toMap()..remove('repayment_day'),
         ];
         final parentLoan = FinanceLoan(
           uuid: 'valid-parent-loan-$source',
@@ -1504,8 +1468,7 @@ void main() {
             principalMinor: 1000,
             interestMinor: 0,
             remainingPrincipalMinor: 0,
-          ).toMap()
-            ..remove('due_date'),
+          ).toMap()..remove('due_date'),
           FinanceLoanInstallment(
             uuid: 'missing-installment-index-$source',
             loanUuid: parentLoan.uuid,
@@ -1515,8 +1478,7 @@ void main() {
             principalMinor: 500,
             interestMinor: 0,
             remainingPrincipalMinor: 500,
-          ).toMap()
-            ..remove('installment_index'),
+          ).toMap()..remove('installment_index'),
         ];
         final bundle = {
           'transactions': [transaction],
@@ -1535,7 +1497,10 @@ void main() {
         }
         expect(await FinanceStorage.getTransactions(), isEmpty);
         expect(await FinanceStorage.getBudgets(includeDeleted: true), isEmpty);
-        expect(await FinanceStorage.getRecurringRules(includeDeleted: true), isEmpty);
+        expect(
+          await FinanceStorage.getRecurringRules(includeDeleted: true),
+          isEmpty,
+        );
         expect(
           await FinanceStorage.getLoans(includeDeleted: true),
           hasLength(1),
@@ -1553,26 +1518,22 @@ void main() {
         final category = FinanceCategory(
           uuid: 'missing-name-category-$source',
           name: '残缺分类',
-        ).toMap()
-          ..remove('name');
+        ).toMap()..remove('name');
         final paymentMethod = FinancePaymentMethod(
           uuid: 'missing-name-method-$source',
           name: '残缺账户',
-        ).toMap()
-          ..remove('name');
+        ).toMap()..remove('name');
         final recurringRule = FinanceRecurringRule(
           uuid: 'missing-name-rule-$source',
           name: '残缺周期规则',
           amountMinor: 100,
           startDate: '2026-09-01',
-        ).toMap()
-          ..remove('name');
+        ).toMap()..remove('name');
         final template = FinanceEntryTemplate(
           uuid: 'missing-name-template-$source',
           name: '残缺模板',
           amountMinor: 100,
-        ).toMap()
-          ..remove('name');
+        ).toMap()..remove('name');
         final loan = FinanceLoan(
           uuid: 'missing-name-loan-$source',
           name: '残缺贷款',
@@ -1580,8 +1541,7 @@ void main() {
           termMonths: 1,
           startDate: '2026-09-01',
           repaymentDay: 1,
-        ).toMap()
-          ..remove('name');
+        ).toMap()..remove('name');
         final bundle = {
           'categories': [category],
           'payment_methods': [paymentMethod],
@@ -1646,7 +1606,10 @@ void main() {
             0,
           );
         }
-        expect(await FinanceStorage.getTemplates(includeDeleted: true), isEmpty);
+        expect(
+          await FinanceStorage.getTemplates(includeDeleted: true),
+          isEmpty,
+        );
       });
     }
 
@@ -1886,7 +1849,9 @@ void main() {
 
     test('旧服务器返回的账户预算不覆盖本地余额快照', () async {
       final now = DateTime.now();
-      final snapshotAt = now.subtract(const Duration(days: 10)).millisecondsSinceEpoch;
+      final snapshotAt = now
+          .subtract(const Duration(days: 10))
+          .millisecondsSinceEpoch;
       final monthKey = financeMonthKey(
         DateTime.fromMillisecondsSinceEpoch(snapshotAt),
       );
@@ -2367,118 +2332,117 @@ void main() {
   }
 
   test(
-      'finance schema creates transaction, catalog, budget and automation tables',
-      () async {
-    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
-    addTearDown(db.close);
+    'finance schema creates transaction, catalog, budget and automation tables',
+    () async {
+      final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+      addTearDown(db.close);
 
-    await DatabaseHelper.ensureFinanceSchema(db);
+      await DatabaseHelper.ensureFinanceSchema(db);
 
-    final tables = await db.rawQuery(
-      "SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'finance_%'",
-    );
-    final names = tables.map((row) => row['name']).toSet();
+      final tables = await db.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'finance_%'",
+      );
+      final names = tables.map((row) => row['name']).toSet();
 
-    expect(
-      names,
-      containsAll(<Object>{
-        'finance_transactions',
+      expect(
+        names,
+        containsAll(<Object>{
+          'finance_transactions',
+          'finance_categories',
+          'finance_payment_methods',
+          'finance_budgets',
+          'finance_recurring_rules',
+          'finance_entry_templates',
+          'finance_loans',
+          'finance_loan_installments',
+        }),
+      );
+
+      final budgetColumns = await db.rawQuery(
+        'PRAGMA table_info(finance_budgets)',
+      );
+      expect(
+        budgetColumns.map((row) => row['name']),
+        containsAll(<Object>{
+          'month_key',
+          'category_uuid',
+          'payment_method_uuid',
+          'balance_snapshot_at',
+          'amount_minor',
+          'is_deleted',
+          'version',
+          'pending_sync',
+        }),
+      );
+
+      final transactionColumns = await db.rawQuery(
+        'PRAGMA table_info(finance_transactions)',
+      );
+      expect(
+        transactionColumns.map((row) => row['name']),
+        containsAll(<Object>{
+          'installment_group_uuid',
+          'installment_index',
+          'installment_count',
+          'installment_total_minor',
+        }),
+      );
+
+      final loanColumns = await db.rawQuery('PRAGMA table_info(finance_loans)');
+      expect(
+        loanColumns.map((row) => row['name']),
+        containsAll(<Object>{
+          'principal_minor',
+          'annual_interest_rate_bps',
+          'term_months',
+          'repayment_method',
+          'pending_sync',
+        }),
+      );
+
+      final loanInstallmentColumns = await db.rawQuery(
+        'PRAGMA table_info(finance_loan_installments)',
+      );
+      expect(
+        loanInstallmentColumns.map((row) => row['name']),
+        containsAll(<Object>{
+          'loan_uuid',
+          'payment_minor',
+          'principal_minor',
+          'interest_minor',
+          'remaining_principal_minor',
+          'is_paid',
+          'interest_transaction_uuid',
+          'pending_sync',
+        }),
+      );
+
+      for (final table in <String>[
         'finance_categories',
         'finance_payment_methods',
+        'finance_transactions',
         'finance_budgets',
         'finance_recurring_rules',
         'finance_entry_templates',
         'finance_loans',
         'finance_loan_installments',
-      }),
-    );
-
-    final budgetColumns = await db.rawQuery(
-      'PRAGMA table_info(finance_budgets)',
-    );
-    expect(
-      budgetColumns.map((row) => row['name']),
-      containsAll(<Object>{
-        'month_key',
-        'category_uuid',
-        'payment_method_uuid',
-        'balance_snapshot_at',
-        'amount_minor',
-        'is_deleted',
-        'version',
-        'pending_sync',
-      }),
-    );
-
-    final transactionColumns = await db.rawQuery(
-      'PRAGMA table_info(finance_transactions)',
-    );
-    expect(
-      transactionColumns.map((row) => row['name']),
-      containsAll(<Object>{
-        'installment_group_uuid',
-        'installment_index',
-        'installment_count',
-        'installment_total_minor',
-      }),
-    );
-
-    final loanColumns = await db.rawQuery(
-      'PRAGMA table_info(finance_loans)',
-    );
-    expect(
-      loanColumns.map((row) => row['name']),
-      containsAll(<Object>{
-        'principal_minor',
-        'annual_interest_rate_bps',
-        'term_months',
-        'repayment_method',
-        'pending_sync',
-      }),
-    );
-
-    final loanInstallmentColumns = await db.rawQuery(
-      'PRAGMA table_info(finance_loan_installments)',
-    );
-    expect(
-      loanInstallmentColumns.map((row) => row['name']),
-      containsAll(<Object>{
-        'loan_uuid',
-        'payment_minor',
-        'principal_minor',
-        'interest_minor',
-        'remaining_principal_minor',
-        'is_paid',
-        'interest_transaction_uuid',
-        'pending_sync',
-      }),
-    );
-
-    for (final table in <String>[
-      'finance_categories',
-      'finance_payment_methods',
-      'finance_transactions',
-      'finance_budgets',
-      'finance_recurring_rules',
-      'finance_entry_templates',
-      'finance_loans',
-      'finance_loan_installments',
-    ]) {
-      final columns = await db.rawQuery('PRAGMA table_info($table)');
-      expect(columns.map((row) => row['name']), contains('pending_sync'));
-    }
-    final categoryColumns = await db.rawQuery(
-      'PRAGMA table_info(finance_categories)',
-    );
-    expect(
-      categoryColumns.map((row) => row['name']),
-      contains('icon_customized'),
-    );
-    expect(
-      categoryColumns.map((row) => row['name']),
-      contains('name_customized'),
-    );
-  });
+      ]) {
+        final columns = await db.rawQuery('PRAGMA table_info($table)');
+        expect(columns.map((row) => row['name']), contains('pending_sync'));
+      }
+      final categoryColumns = await db.rawQuery(
+        'PRAGMA table_info(finance_categories)',
+      );
+      expect(
+        categoryColumns.map((row) => row['name']),
+        contains('icon_customized'),
+      );
+      expect(
+        categoryColumns.map((row) => row['name']),
+        contains('name_customized'),
+      );
+    },
+  );
 
   test('旧付款方式余额升级时保留原有快照时间', () async {
     final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
@@ -2561,10 +2525,7 @@ void main() {
 
     final recalibrated = (await FinanceStorage.getBudget(balance.uuid))!;
     recalibrated.markAsChanged();
-    await FinanceStorage.saveBudget(
-      recalibrated,
-      resetBalanceSnapshot: true,
-    );
+    await FinanceStorage.saveBudget(recalibrated, resetBalanceSnapshot: true);
     expect(
       (await FinanceStorage.getBudget(balance.uuid))!.balanceSnapshotAt,
       greaterThan(monthStartAt),
@@ -2598,10 +2559,12 @@ void main() {
     SharedPreferences.setMockInitialValues({
       'current_login_user': 'balance-backup-test',
     });
-    final originalDb =
-        await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
-    final restoredDb =
-        await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    final originalDb = await databaseFactoryFfi.openDatabase(
+      inMemoryDatabasePath,
+    );
+    final restoredDb = await databaseFactoryFfi.openDatabase(
+      inMemoryDatabasePath,
+    );
     addTearDown(() async {
       FinanceStorage.databaseOverride = null;
       await originalDb.close();
@@ -2632,21 +2595,24 @@ void main() {
       where: 'uuid = ?',
       whereArgs: [balance.uuid],
     );
-    await FinanceStorage.saveTransaction(FinanceTransaction(
-      uuid: 'backup-income',
-      type: FinanceTransactionType.income,
-      amountMinor: 2500,
-      paymentMethodUuid: 'backup-card',
-      transactionDate: dateKey(now),
-    ));
+    await FinanceStorage.saveTransaction(
+      FinanceTransaction(
+        uuid: 'backup-income',
+        type: FinanceTransactionType.income,
+        amountMinor: 2500,
+        paymentMethodUuid: 'backup-card',
+        transactionDate: dateKey(now),
+      ),
+    );
 
     final backup = await FinanceStorage.getExportBundle();
     FinanceStorage.databaseOverride = restoredDb;
     await FinanceStorage.importBundle(backup);
 
     final restoredBalance = (await FinanceStorage.getBudget(balance.uuid))!;
-    final restoredIncome =
-        (await FinanceStorage.getTransaction('backup-income'))!;
+    final restoredIncome = (await FinanceStorage.getTransaction(
+      'backup-income',
+    ))!;
     expect(restoredBalance.balanceSnapshotAt, snapshotAt);
     expect(restoredBalance.amountMinor, 10000);
     expect(restoredIncome.paymentMethodUuid, 'backup-card');
@@ -2666,10 +2632,7 @@ void main() {
     FinanceStorage.databaseOverride = db;
     await db.insert(
       'finance_payment_methods',
-      FinancePaymentMethod(
-        uuid: 'historical-card',
-        name: '历史银行卡',
-      ).toMap(),
+      FinancePaymentMethod(uuid: 'historical-card', name: '历史银行卡').toMap(),
     );
 
     final now = DateTime.now();
@@ -2686,22 +2649,20 @@ void main() {
       paymentMethodUuid: 'historical-card',
       amountMinor: 10000,
     );
-    await FinanceStorage.saveBudget(
-      balance,
-      balanceSnapshotAt: snapshotAt,
+    await FinanceStorage.saveBudget(balance, balanceSnapshotAt: snapshotAt);
+    expect(
+      (await FinanceStorage.getBudget(balance.uuid))!.balanceSnapshotAt,
+      snapshotAt,
     );
-    expect((await FinanceStorage.getBudget(balance.uuid))!.balanceSnapshotAt,
-        snapshotAt);
 
     final corrected = (await FinanceStorage.getBudget(balance.uuid))!
       ..amountMinor = 12000;
     corrected.markAsChanged();
-    await FinanceStorage.saveBudget(
-      corrected,
-      balanceSnapshotAt: snapshotAt,
+    await FinanceStorage.saveBudget(corrected, balanceSnapshotAt: snapshotAt);
+    expect(
+      (await FinanceStorage.getBudget(balance.uuid))!.balanceSnapshotAt,
+      snapshotAt,
     );
-    expect((await FinanceStorage.getBudget(balance.uuid))!.balanceSnapshotAt,
-        snapshotAt);
 
     await expectLater(
       FinanceStorage.saveBudget(
@@ -2831,12 +2792,13 @@ void main() {
     expect(row['name_customized'], 0);
   });
 
-  test('AI usage schema upgrades existing records with MiMo detail columns',
-      () async {
-    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
-    addTearDown(db.close);
+  test(
+    'AI usage schema upgrades existing records with MiMo detail columns',
+    () async {
+      final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+      addTearDown(db.close);
 
-    await db.execute('''
+      await db.execute('''
       CREATE TABLE ai_usage_records (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         uuid TEXT NOT NULL UNIQUE,
@@ -2854,21 +2816,22 @@ void main() {
       )
     ''');
 
-    await DatabaseHelper.ensureAiUsageSchema(db);
+      await DatabaseHelper.ensureAiUsageSchema(db);
 
-    final columns = await db.rawQuery('PRAGMA table_info(ai_usage_records)');
-    expect(
-      columns.map((row) => row['name']),
-      containsAll(<Object>{
-        'cached_prompt_tokens',
-        'image_tokens',
-        'audio_tokens',
-        'video_tokens',
-        'reasoning_tokens',
-        'audio_seconds',
-      }),
-    );
-  });
+      final columns = await db.rawQuery('PRAGMA table_info(ai_usage_records)');
+      expect(
+        columns.map((row) => row['name']),
+        containsAll(<Object>{
+          'cached_prompt_tokens',
+          'image_tokens',
+          'audio_tokens',
+          'video_tokens',
+          'reasoning_tokens',
+          'audio_seconds',
+        }),
+      );
+    },
+  );
 
   test('默认细分类写入数据库时保留父分类关系', () async {
     SharedPreferences.setMockInitialValues({
@@ -2933,31 +2896,39 @@ void main() {
     await FinanceStorage.saveCategory(parent);
     await FinanceStorage.saveCategory(child);
     expect(
-      (await db.query('finance_categories',
-              where: 'uuid = ?', whereArgs: [child.uuid]))
-          .single['parent_uuid'],
+      (await db.query(
+        'finance_categories',
+        where: 'uuid = ?',
+        whereArgs: [child.uuid],
+      )).single['parent_uuid'],
       parent.uuid,
     );
 
     await expectLater(
-      FinanceStorage.saveCategory(FinanceCategory(
-        uuid: 'wrong-type-child',
-        name: '收入夜宵',
-        type: FinanceCategoryType.income,
-        parentUuid: parent.uuid,
-      )),
+      FinanceStorage.saveCategory(
+        FinanceCategory(
+          uuid: 'wrong-type-child',
+          name: '收入夜宵',
+          type: FinanceCategoryType.income,
+          parentUuid: parent.uuid,
+        ),
+      ),
       throwsArgumentError,
     );
 
     await FinanceStorage.archiveCategory(parent.uuid);
-    var childRow = (await db.query('finance_categories',
-            where: 'uuid = ?', whereArgs: [child.uuid]))
-        .single;
+    var childRow = (await db.query(
+      'finance_categories',
+      where: 'uuid = ?',
+      whereArgs: [child.uuid],
+    )).single;
     expect(childRow['is_archived'], 1);
     await FinanceStorage.unarchiveCategory(parent.uuid);
-    childRow = (await db.query('finance_categories',
-            where: 'uuid = ?', whereArgs: [child.uuid]))
-        .single;
+    childRow = (await db.query(
+      'finance_categories',
+      where: 'uuid = ?',
+      whereArgs: [child.uuid],
+    )).single;
     expect(childRow['is_archived'], 0);
   });
 
@@ -2974,17 +2945,17 @@ void main() {
     FinanceStorage.databaseOverride = db;
     await FinanceStorage.ensureReady();
 
-    final food = FinanceCategory.fromMap(
-      (await db.query(
-        'finance_categories',
-        where: 'uuid = ?',
-        whereArgs: ['finance-system-category-food'],
-      ))
-          .single,
-    )
-      ..icon = '🥗'
-      ..iconCustomized = true
-      ..markAsChanged();
+    final food =
+        FinanceCategory.fromMap(
+            (await db.query(
+              'finance_categories',
+              where: 'uuid = ?',
+              whereArgs: ['finance-system-category-food'],
+            )).single,
+          )
+          ..icon = '🥗'
+          ..iconCustomized = true
+          ..markAsChanged();
     await FinanceStorage.saveCategory(food);
     await FinanceStorage.ensureReady();
 
@@ -2992,8 +2963,7 @@ void main() {
       'finance_categories',
       where: 'uuid = ?',
       whereArgs: ['finance-system-category-food'],
-    ))
-        .single;
+    )).single;
     expect(row['icon'], '🥗');
     expect(row['icon_customized'], 1);
     expect(row['pending_sync'], 1);
@@ -3012,16 +2982,16 @@ void main() {
     FinanceStorage.databaseOverride = db;
     await FinanceStorage.ensureReady();
 
-    final food = FinanceCategory.fromMap(
-      (await db.query(
-        'finance_categories',
-        where: 'uuid = ?',
-        whereArgs: ['finance-system-category-food'],
-      ))
-          .single,
-    )
-      ..name = '日常饮食'
-      ..markAsChanged();
+    final food =
+        FinanceCategory.fromMap(
+            (await db.query(
+              'finance_categories',
+              where: 'uuid = ?',
+              whereArgs: ['finance-system-category-food'],
+            )).single,
+          )
+          ..name = '日常饮食'
+          ..markAsChanged();
     await FinanceStorage.saveCategory(food);
     await FinanceStorage.ensureReady();
 
@@ -3029,8 +2999,7 @@ void main() {
       'finance_categories',
       where: 'uuid = ?',
       whereArgs: ['finance-system-category-food'],
-    ))
-        .single;
+    )).single;
     expect(row['name'], '日常饮食');
     expect(row['name_customized'], 1);
     expect(row['icon_customized'], 0);
@@ -3039,7 +3008,7 @@ void main() {
     final category = FinanceCategory.fromMap(row).toMap();
     final legacyServerChanges = FinanceSyncService.buildChangesForTest(
       {
-        'categories': [category]
+        'categories': [category],
       },
       cursor: 0,
       fullSync: true,
@@ -3048,17 +3017,14 @@ void main() {
 
     final nameCapableServerChanges = FinanceSyncService.buildChangesForTest(
       {
-        'categories': [category]
+        'categories': [category],
       },
       cursor: 0,
       fullSync: true,
       supportsCategoryNames: true,
     );
     expect(nameCapableServerChanges['categories'], hasLength(1));
-    expect(
-      nameCapableServerChanges['categories']!.single['name'],
-      '日常饮食',
-    );
+    expect(nameCapableServerChanges['categories']!.single['name'], '日常饮食');
 
     final firstRequest = await FinanceSyncService.prepare(
       username: 'finance-system-name-test',
@@ -3088,10 +3054,7 @@ void main() {
         'server_finance_entry_templates': <Map<String, dynamic>>[],
         'finance_acknowledged_changes': <Map<String, dynamic>>[],
         'new_finance_sync_time': 100,
-        'sync_capabilities': {
-          'finance_v1': 1,
-          'finance_category_names_v1': 1,
-        },
+        'sync_capabilities': {'finance_v1': 1, 'finance_category_names_v1': 1},
       },
     );
     expect(handshakeResult.supported, isTrue);
@@ -3099,8 +3062,7 @@ void main() {
       'finance_categories',
       where: 'uuid = ?',
       whereArgs: ['finance-system-category-food'],
-    ))
-        .single;
+    )).single;
     expect(afterLegacySnapshot['name'], '日常饮食');
     expect(afterLegacySnapshot['pending_sync'], 1);
     final nextRequest = await FinanceSyncService.prepare(
@@ -3109,8 +3071,9 @@ void main() {
     );
     expect(nextRequest.supportsCategoryNames, isTrue);
     expect(
-      nextRequest.payload['finance_categories_changes']
-          .map((item) => item['name']),
+      nextRequest.payload['finance_categories_changes'].map(
+        (item) => item['name'],
+      ),
       contains('日常饮食'),
     );
 
@@ -3131,8 +3094,7 @@ void main() {
       'finance_categories',
       where: 'uuid = ?',
       whereArgs: ['finance-system-category-food'],
-    ))
-        .single;
+    )).single;
     expect(importedRow['name'], '家庭餐食');
     expect(importedRow['name_customized'], 1);
   });
@@ -3150,16 +3112,17 @@ void main() {
     FinanceStorage.databaseOverride = db;
     await FinanceStorage.ensureReady();
 
-    final food = FinanceCategory.fromMap(
-      (await db.query(
-        'finance_categories',
-        where: 'uuid = ?',
-        whereArgs: ['finance-system-category-food'],
-      )).single,
-    )
-      ..icon = '🥗'
-      ..iconCustomized = true
-      ..markAsChanged();
+    final food =
+        FinanceCategory.fromMap(
+            (await db.query(
+              'finance_categories',
+              where: 'uuid = ?',
+              whereArgs: ['finance-system-category-food'],
+            )).single,
+          )
+          ..icon = '🥗'
+          ..iconCustomized = true
+          ..markAsChanged();
     await FinanceStorage.saveCategory(food);
     await FinanceStorage.ensureReady();
 
@@ -3267,8 +3230,7 @@ void main() {
       'finance_categories',
       where: 'uuid = ?',
       whereArgs: ['finance-system-category-food'],
-    ))
-        .single;
+    )).single;
     expect(changed, 1);
     expect(row['name'], '日常饮食');
     expect(row['name_customized'], 1);
@@ -3299,16 +3261,15 @@ void main() {
       amountMinor: 30000,
     );
     await FinanceStorage.saveBudget(local);
-    expect(
-      local.uuid,
-      FinanceBudget.stableUuid('2026-09', 'category-food'),
-    );
+    expect(local.uuid, FinanceBudget.stableUuid('2026-09', 'category-food'));
     await expectLater(
-      FinanceStorage.saveBudget(FinanceBudget(
-        monthKey: '2026-09',
-        categoryUuid: 'category-food',
-        amountMinor: 40000,
-      )),
+      FinanceStorage.saveBudget(
+        FinanceBudget(
+          monthKey: '2026-09',
+          categoryUuid: 'category-food',
+          amountMinor: 40000,
+        ),
+      ),
       throwsStateError,
     );
 
@@ -3480,10 +3441,7 @@ void main() {
         'loan_installments',
       ])
         key: [
-          <String, dynamic>{
-            'uuid': '$key-1',
-            'device_id': 'private-device',
-          },
+          <String, dynamic>{'uuid': '$key-1', 'device_id': 'private-device'},
         ],
     };
 
@@ -3613,9 +3571,7 @@ void main() {
   });
 
   test('贷款保存还款计划，已还利息进入支出并支持删除恢复', () async {
-    SharedPreferences.setMockInitialValues({
-      'current_login_user': 'loan-test',
-    });
+    SharedPreferences.setMockInitialValues({'current_login_user': 'loan-test'});
     final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
     addTearDown(() async {
       FinanceStorage.databaseOverride = null;
@@ -3647,8 +3603,9 @@ void main() {
     expect(installments.last.remainingPrincipalMinor, 0);
 
     await FinanceStorage.setLoanInstallmentPaid(installments.first.uuid, true);
-    final paid =
-        await FinanceStorage.getLoanInstallment(installments.first.uuid);
+    final paid = await FinanceStorage.getLoanInstallment(
+      installments.first.uuid,
+    );
     expect(paid?.isPaid, isTrue);
     expect(paid?.interestTransactionUuid, isNotNull);
     final interestRows = await db.query(
@@ -3658,7 +3615,9 @@ void main() {
     );
     expect(interestRows, hasLength(1));
     expect(
-        interestRows.single['amount_minor'], installments.first.interestMinor);
+      interestRows.single['amount_minor'],
+      installments.first.interestMinor,
+    );
     expect(
       interestRows.single['category_uuid'],
       'finance-system-category-loan-interest',
@@ -3675,8 +3634,9 @@ void main() {
       isEmpty,
     );
     await FinanceStorage.setLoanInstallmentPaid(installments.first.uuid, true);
-    final repaid =
-        await FinanceStorage.getLoanInstallment(installments.first.uuid);
+    final repaid = await FinanceStorage.getLoanInstallment(
+      installments.first.uuid,
+    );
     expect(repaid?.interestTransactionUuid, stableInterestUuid);
     expect(
       await db.query(
@@ -3689,10 +3649,7 @@ void main() {
 
     await FinanceStorage.deleteLoan('loan-1');
     expect(await FinanceStorage.getLoans(), isEmpty);
-    expect(
-      await FinanceStorage.getLoanInstallments('loan-1'),
-      isEmpty,
-    );
+    expect(await FinanceStorage.getLoanInstallments('loan-1'), isEmpty);
     expect(
       await FinanceStorage.getLoanInstallments('loan-1', includeDeleted: true),
       everyElement(predicate<FinanceLoanInstallment>((item) => item.isDeleted)),
@@ -3731,7 +3688,9 @@ void main() {
     expect(saved.map((item) => item.amountMinor).toList(), [3334, 3333, 3333]);
     expect(saved.every((item) => item.isInstallment), isTrue);
     expect(
-        saved.map((item) => item.installmentGroupUuid).toSet(), hasLength(1));
+      saved.map((item) => item.installmentGroupUuid).toSet(),
+      hasLength(1),
+    );
     expect(
       await FinanceStorage.getTransactions(
         from: DateTime(2026, 1),
@@ -3760,8 +3719,11 @@ void main() {
     expect(edited.map((item) => item.amountMinor).toList(), [6000, 6000]);
     expect(
       await FinanceStorage.getInstallmentGroup(groupUuid, includeDeleted: true),
-      everyElement(predicate<FinanceTransaction>(
-          (item) => item.isDeleted || item.installmentCount == 2)),
+      everyElement(
+        predicate<FinanceTransaction>(
+          (item) => item.isDeleted || item.installmentCount == 2,
+        ),
+      ),
     );
     await expectLater(
       FinanceStorage.restoreTransaction(saved.last.uuid),
@@ -3881,10 +3843,7 @@ void main() {
       throwsA(isA<StateError>()),
     );
 
-    expect(
-      (await FinanceStorage.getInstallmentGroup(groupUuid)).length,
-      4,
-    );
+    expect((await FinanceStorage.getInstallmentGroup(groupUuid)).length, 4);
     expect(
       (await FinanceStorage.getTransaction(saved.first.uuid))!.note,
       isNull,
@@ -4026,169 +3985,175 @@ void main() {
     expect(storedSettings['prices'], hasLength(1));
   });
 
-  test('priced AI usage is aggregated into one personal finance transaction',
-      () async {
-    SharedPreferences.setMockInitialValues({
-      'current_login_user': 'ai-cost-test',
-    });
-    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
-    addTearDown(() async {
-      AiUsageCostService.databaseOverride = null;
-      FinanceStorage.databaseOverride = null;
-      await db.close();
-    });
-    await DatabaseHelper.ensureFinanceSchema(db);
-    await DatabaseHelper.ensureAiUsageSchema(db);
-    AiUsageCostService.databaseOverride = db;
-    FinanceStorage.databaseOverride = db;
-    await AiUsageCostService.savePricing(
-      const AiUsagePricing(
+  test(
+    'priced AI usage is aggregated into one personal finance transaction',
+    () async {
+      SharedPreferences.setMockInitialValues({
+        'current_login_user': 'ai-cost-test',
+      });
+      final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+      addTearDown(() async {
+        AiUsageCostService.databaseOverride = null;
+        FinanceStorage.databaseOverride = null;
+        await db.close();
+      });
+      await DatabaseHelper.ensureFinanceSchema(db);
+      await DatabaseHelper.ensureAiUsageSchema(db);
+      AiUsageCostService.databaseOverride = db;
+      FinanceStorage.databaseOverride = db;
+      await AiUsageCostService.savePricing(
+        const AiUsagePricing(
+          provider: 'zhipu',
+          model: 'glm-test',
+          inputMicrosPerMillion: 1000000,
+          outputMicrosPerMillion: 2000000,
+        ),
+      );
+
+      await AiUsageCostService.recordUsage(
         provider: 'zhipu',
         model: 'glm-test',
-        inputMicrosPerMillion: 1000000,
-        outputMicrosPerMillion: 2000000,
-      ),
-    );
+        operation: 'chat',
+        promptTokens: 1000000,
+        completionTokens: 500000,
+        totalTokens: 1500000,
+        now: DateTime(2026, 8, 30, 10),
+      );
 
-    await AiUsageCostService.recordUsage(
-      provider: 'zhipu',
-      model: 'glm-test',
-      operation: 'chat',
-      promptTokens: 1000000,
-      completionTokens: 500000,
-      totalTokens: 1500000,
-      now: DateTime(2026, 8, 30, 10),
-    );
+      final summary = await AiUsageCostService.getSummary(
+        from: DateTime(2026, 8, 1),
+        to: DateTime(2026, 9, 1),
+      );
+      expect(summary.calls, 1);
+      expect(summary.costMicros, 2000000);
+      final transactions = await db.query('finance_transactions');
+      expect(transactions, hasLength(1));
+      expect(transactions.single['amount_minor'], 200);
+      expect(
+        transactions.single['category_uuid'],
+        'finance-system-category-ai-service',
+      );
+    },
+  );
 
-    final summary = await AiUsageCostService.getSummary(
-      from: DateTime(2026, 8, 1),
-      to: DateTime(2026, 9, 1),
-    );
-    expect(summary.calls, 1);
-    expect(summary.costMicros, 2000000);
-    final transactions = await db.query('finance_transactions');
-    expect(transactions, hasLength(1));
-    expect(transactions.single['amount_minor'], 200);
-    expect(
-      transactions.single['category_uuid'],
-      'finance-system-category-ai-service',
-    );
-  });
+  test(
+    'AI usage ledgers from different devices use distinct transaction UUIDs',
+    () async {
+      const username = 'ai-cost-multi-device-ledger-test';
+      final devicePreferenceKey = 'app_device_uuid_$username';
+      SharedPreferences.setMockInitialValues({
+        'current_login_user': username,
+        devicePreferenceKey: 'device-a',
+      });
+      final tempDirectory = await Directory.systemTemp.createTemp(
+        'countdown_ai_ledger_multi_device_',
+      );
+      final deviceADb = await databaseFactoryFfi.openDatabase(
+        '${tempDirectory.path}/device-a.sqlite',
+      );
+      final deviceBDb = await databaseFactoryFfi.openDatabase(
+        '${tempDirectory.path}/device-b.sqlite',
+      );
+      addTearDown(() async {
+        AiUsageCostService.databaseOverride = null;
+        FinanceStorage.databaseOverride = null;
+        await deviceADb.close();
+        await deviceBDb.close();
+        await tempDirectory.delete(recursive: true);
+      });
+      await DatabaseHelper.ensureFinanceSchema(deviceADb);
+      await DatabaseHelper.ensureAiUsageSchema(deviceADb);
+      await DatabaseHelper.ensureFinanceSchema(deviceBDb);
+      await DatabaseHelper.ensureAiUsageSchema(deviceBDb);
+      await AiUsageCostService.savePricing(
+        const AiUsagePricing(
+          provider: 'custom',
+          model: 'multi-device-ledger-test',
+          inputMicrosPerMillion: 1000000,
+        ),
+      );
 
-  test('AI usage ledgers from different devices use distinct transaction UUIDs',
-      () async {
-    const username = 'ai-cost-multi-device-ledger-test';
-    final devicePreferenceKey = 'app_device_uuid_$username';
-    SharedPreferences.setMockInitialValues({
-      'current_login_user': username,
-      devicePreferenceKey: 'device-a',
-    });
-    final tempDirectory = await Directory.systemTemp.createTemp(
-      'countdown_ai_ledger_multi_device_',
-    );
-    final deviceADb = await databaseFactoryFfi.openDatabase(
-      '${tempDirectory.path}/device-a.sqlite',
-    );
-    final deviceBDb = await databaseFactoryFfi.openDatabase(
-      '${tempDirectory.path}/device-b.sqlite',
-    );
-    addTearDown(() async {
-      AiUsageCostService.databaseOverride = null;
-      FinanceStorage.databaseOverride = null;
-      await deviceADb.close();
-      await deviceBDb.close();
-      await tempDirectory.delete(recursive: true);
-    });
-    await DatabaseHelper.ensureFinanceSchema(deviceADb);
-    await DatabaseHelper.ensureAiUsageSchema(deviceADb);
-    await DatabaseHelper.ensureFinanceSchema(deviceBDb);
-    await DatabaseHelper.ensureAiUsageSchema(deviceBDb);
-    await AiUsageCostService.savePricing(
-      const AiUsagePricing(
+      AiUsageCostService.databaseOverride = deviceADb;
+      FinanceStorage.databaseOverride = deviceADb;
+      await AiUsageCostService.recordUsage(
         provider: 'custom',
         model: 'multi-device-ledger-test',
-        inputMicrosPerMillion: 1000000,
-      ),
-    );
+        operation: 'chat',
+        promptTokens: 1000000,
+        completionTokens: 0,
+        totalTokens: 1000000,
+        now: DateTime(2026, 8, 30, 10),
+      );
+      final deviceATransaction = (await deviceADb.query('finance_transactions'))
+          .single;
 
-    AiUsageCostService.databaseOverride = deviceADb;
-    FinanceStorage.databaseOverride = deviceADb;
-    await AiUsageCostService.recordUsage(
-      provider: 'custom',
-      model: 'multi-device-ledger-test',
-      operation: 'chat',
-      promptTokens: 1000000,
-      completionTokens: 0,
-      totalTokens: 1000000,
-      now: DateTime(2026, 8, 30, 10),
-    );
-    final deviceATransaction =
-        (await deviceADb.query('finance_transactions')).single;
+      final preferences = await SharedPreferences.getInstance();
+      await preferences.setString(devicePreferenceKey, 'device-b');
+      AiUsageCostService.databaseOverride = deviceBDb;
+      FinanceStorage.databaseOverride = deviceBDb;
+      await AiUsageCostService.recordUsage(
+        provider: 'custom',
+        model: 'multi-device-ledger-test',
+        operation: 'chat',
+        promptTokens: 1000000,
+        completionTokens: 0,
+        totalTokens: 1000000,
+        now: DateTime(2026, 8, 30, 10),
+      );
+      final deviceBTransaction = (await deviceBDb.query('finance_transactions'))
+          .single;
 
-    final preferences = await SharedPreferences.getInstance();
-    await preferences.setString(devicePreferenceKey, 'device-b');
-    AiUsageCostService.databaseOverride = deviceBDb;
-    FinanceStorage.databaseOverride = deviceBDb;
-    await AiUsageCostService.recordUsage(
-      provider: 'custom',
-      model: 'multi-device-ledger-test',
-      operation: 'chat',
-      promptTokens: 1000000,
-      completionTokens: 0,
-      totalTokens: 1000000,
-      now: DateTime(2026, 8, 30, 10),
-    );
-    final deviceBTransaction =
-        (await deviceBDb.query('finance_transactions')).single;
+      expect(deviceATransaction['uuid'], isNot(deviceBTransaction['uuid']));
+      expect(deviceATransaction['amount_minor'], 100);
+      expect(deviceBTransaction['amount_minor'], 100);
+      expect(deviceATransaction['device_id'], 'device-a');
+      expect(deviceBTransaction['device_id'], 'device-b');
+      expect(deviceATransaction['pending_sync'], 1);
+      expect(deviceBTransaction['pending_sync'], 1);
+    },
+  );
 
-    expect(deviceATransaction['uuid'], isNot(deviceBTransaction['uuid']));
-    expect(deviceATransaction['amount_minor'], 100);
-    expect(deviceBTransaction['amount_minor'], 100);
-    expect(deviceATransaction['device_id'], 'device-a');
-    expect(deviceBTransaction['device_id'], 'device-b');
-    expect(deviceATransaction['pending_sync'], 1);
-    expect(deviceBTransaction['pending_sync'], 1);
-  });
-
-  test('reenabling AI auto ledger reconciles unposted current-month usage',
-      () async {
-    SharedPreferences.setMockInitialValues({
-      'current_login_user': 'ai-cost-reenable-ledger-test',
-    });
-    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
-    addTearDown(() async {
-      AiUsageCostService.databaseOverride = null;
-      FinanceStorage.databaseOverride = null;
-      await db.close();
-    });
-    await DatabaseHelper.ensureFinanceSchema(db);
-    await DatabaseHelper.ensureAiUsageSchema(db);
-    AiUsageCostService.databaseOverride = db;
-    FinanceStorage.databaseOverride = db;
-    await AiUsageCostService.setAutoLedgerEnabled(false);
-    await AiUsageCostService.savePricing(
-      const AiUsagePricing(
+  test(
+    'reenabling AI auto ledger reconciles unposted current-month usage',
+    () async {
+      SharedPreferences.setMockInitialValues({
+        'current_login_user': 'ai-cost-reenable-ledger-test',
+      });
+      final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+      addTearDown(() async {
+        AiUsageCostService.databaseOverride = null;
+        FinanceStorage.databaseOverride = null;
+        await db.close();
+      });
+      await DatabaseHelper.ensureFinanceSchema(db);
+      await DatabaseHelper.ensureAiUsageSchema(db);
+      AiUsageCostService.databaseOverride = db;
+      FinanceStorage.databaseOverride = db;
+      await AiUsageCostService.setAutoLedgerEnabled(false);
+      await AiUsageCostService.savePricing(
+        const AiUsagePricing(
+          provider: 'custom',
+          model: 'reenable-ledger-test',
+          inputMicrosPerMillion: 1000000,
+        ),
+      );
+      await AiUsageCostService.recordUsage(
         provider: 'custom',
         model: 'reenable-ledger-test',
-        inputMicrosPerMillion: 1000000,
-      ),
-    );
-    await AiUsageCostService.recordUsage(
-      provider: 'custom',
-      model: 'reenable-ledger-test',
-      operation: 'chat',
-      promptTokens: 1000000,
-      completionTokens: 0,
-      totalTokens: 1000000,
-      now: DateTime.now(),
-    );
-    expect(await db.query('finance_transactions'), isEmpty);
+        operation: 'chat',
+        promptTokens: 1000000,
+        completionTokens: 0,
+        totalTokens: 1000000,
+        now: DateTime.now(),
+      );
+      expect(await db.query('finance_transactions'), isEmpty);
 
-    await AiUsageCostService.setAutoLedgerEnabled(true);
-    final transactions = await db.query('finance_transactions');
-    expect(transactions, hasLength(1));
-    expect(transactions.single['amount_minor'], 100);
-  });
+      await AiUsageCostService.setAutoLedgerEnabled(true);
+      final transactions = await db.query('finance_transactions');
+      expect(transactions, hasLength(1));
+      expect(transactions.single['amount_minor'], 100);
+    },
+  );
 
   test('AI ledger keeps working after its monthly bill is deleted', () async {
     SharedPreferences.setMockInitialValues({
@@ -4267,69 +4232,72 @@ void main() {
     expect(restored.tiers.single.maxCompletionTokens, 200000);
   });
 
-  test('MiMo pricing separates cached input and does not add image fees',
-      () async {
-    SharedPreferences.setMockInitialValues({
-      'current_login_user': 'mimo-cost-test',
-    });
-    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
-    addTearDown(() async {
-      AiUsageCostService.databaseOverride = null;
-      FinanceStorage.databaseOverride = null;
-      await db.close();
-    });
-    await DatabaseHelper.ensureFinanceSchema(db);
-    await DatabaseHelper.ensureAiUsageSchema(db);
-    AiUsageCostService.databaseOverride = db;
-    FinanceStorage.databaseOverride = db;
+  test(
+    'MiMo pricing separates cached input and does not add image fees',
+    () async {
+      SharedPreferences.setMockInitialValues({
+        'current_login_user': 'mimo-cost-test',
+      });
+      final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+      addTearDown(() async {
+        AiUsageCostService.databaseOverride = null;
+        FinanceStorage.databaseOverride = null;
+        await db.close();
+      });
+      await DatabaseHelper.ensureFinanceSchema(db);
+      await DatabaseHelper.ensureAiUsageSchema(db);
+      AiUsageCostService.databaseOverride = db;
+      FinanceStorage.databaseOverride = db;
 
-    final mimoPricing = (await AiUsageCostService.getPricing()).firstWhere(
-      (item) => item.provider == 'mimo' && item.model == 'mimo-v2.5',
-    );
-    expect(mimoPricing.cachedInputMicrosPerMillion, 20000);
-    expect(mimoPricing.inputMicrosPerMillion, 1000000);
-    expect(mimoPricing.outputMicrosPerMillion, 2000000);
+      final mimoPricing = (await AiUsageCostService.getPricing()).firstWhere(
+        (item) => item.provider == 'mimo' && item.model == 'mimo-v2.5',
+      );
+      expect(mimoPricing.cachedInputMicrosPerMillion, 20000);
+      expect(mimoPricing.inputMicrosPerMillion, 1000000);
+      expect(mimoPricing.outputMicrosPerMillion, 2000000);
 
-    final ultraSpeedPricing = (await AiUsageCostService.getPricing()).firstWhere(
-      (item) =>
-          item.provider == 'mimo' &&
-          item.model == 'mimo-v2.6-pro-ultraspeed',
-    );
-    expect(ultraSpeedPricing.cachedInputMicrosPerMillion, 250000);
-    expect(ultraSpeedPricing.inputMicrosPerMillion, 30000000);
-    expect(ultraSpeedPricing.outputMicrosPerMillion, 60000000);
-    expect(ultraSpeedPricing.imageTokensIncluded, isTrue);
+      final ultraSpeedPricing = (await AiUsageCostService.getPricing())
+          .firstWhere(
+            (item) =>
+                item.provider == 'mimo' &&
+                item.model == 'mimo-v2.6-pro-ultraspeed',
+          );
+      expect(ultraSpeedPricing.cachedInputMicrosPerMillion, 250000);
+      expect(ultraSpeedPricing.inputMicrosPerMillion, 30000000);
+      expect(ultraSpeedPricing.outputMicrosPerMillion, 60000000);
+      expect(ultraSpeedPricing.imageTokensIncluded, isTrue);
 
-    await AiUsageCostService.recordUsage(
-      provider: 'mimo',
-      model: 'mimo-v2.5',
-      operation: 'vision_todo',
-      promptTokens: 10000,
-      completionTokens: 2000,
-      totalTokens: 12000,
-      cachedPromptTokens: 8000,
-      imageTokens: 500,
-      imageCount: 1,
-      now: DateTime(2026, 8, 30, 10),
-    );
+      await AiUsageCostService.recordUsage(
+        provider: 'mimo',
+        model: 'mimo-v2.5',
+        operation: 'vision_todo',
+        promptTokens: 10000,
+        completionTokens: 2000,
+        totalTokens: 12000,
+        cachedPromptTokens: 8000,
+        imageTokens: 500,
+        imageCount: 1,
+        now: DateTime(2026, 8, 30, 10),
+      );
 
-    final records = await AiUsageCostService.getRecords();
-    expect(records, hasLength(1));
-    expect(records.single.cachedPromptTokens, 8000);
-    expect(records.single.uncachedPromptTokens, 2000);
-    expect(records.single.imageTokens, 500);
-    // 2,000 * ¥1/M + 8,000 * ¥0.02/M + 2,000 * ¥2/M = ¥0.00616.
-    expect(records.single.costMicros, 6160);
-    expect(records.single.isPriced, isTrue);
+      final records = await AiUsageCostService.getRecords();
+      expect(records, hasLength(1));
+      expect(records.single.cachedPromptTokens, 8000);
+      expect(records.single.uncachedPromptTokens, 2000);
+      expect(records.single.imageTokens, 500);
+      // 2,000 * ¥1/M + 8,000 * ¥0.02/M + 2,000 * ¥2/M = ¥0.00616.
+      expect(records.single.costMicros, 6160);
+      expect(records.single.isPriced, isTrue);
 
-    final summary = await AiUsageCostService.getSummary(
-      from: DateTime(2026, 8, 1),
-      to: DateTime(2026, 9, 1),
-    );
-    expect(summary.costMicros, 6160);
-    expect(summary.breakdowns.single.cachedPromptTokens, 8000);
-    expect(summary.breakdowns.single.imageTokens, 500);
-  });
+      final summary = await AiUsageCostService.getSummary(
+        from: DateTime(2026, 8, 1),
+        to: DateTime(2026, 9, 1),
+      );
+      expect(summary.costMicros, 6160);
+      expect(summary.breakdowns.single.cachedPromptTokens, 8000);
+      expect(summary.breakdowns.single.imageTokens, 500);
+    },
+  );
 
   test('MiMo ASR pricing uses seconds instead of token prices', () async {
     SharedPreferences.setMockInitialValues({
@@ -4366,79 +4334,83 @@ void main() {
     expect(records.single.isPriced, isTrue);
   });
 
-  test('same model name from another provider keeps its token pricing',
-      () async {
-    SharedPreferences.setMockInitialValues({
-      'current_login_user': 'custom-asr-model-cost-test',
-    });
-    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
-    addTearDown(() async {
-      AiUsageCostService.databaseOverride = null;
-      FinanceStorage.databaseOverride = null;
-      await db.close();
-    });
-    await DatabaseHelper.ensureFinanceSchema(db);
-    await DatabaseHelper.ensureAiUsageSchema(db);
-    AiUsageCostService.databaseOverride = db;
-    FinanceStorage.databaseOverride = db;
-    await AiUsageCostService.savePricing(
-      const AiUsagePricing(
+  test(
+    'same model name from another provider keeps its token pricing',
+    () async {
+      SharedPreferences.setMockInitialValues({
+        'current_login_user': 'custom-asr-model-cost-test',
+      });
+      final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+      addTearDown(() async {
+        AiUsageCostService.databaseOverride = null;
+        FinanceStorage.databaseOverride = null;
+        await db.close();
+      });
+      await DatabaseHelper.ensureFinanceSchema(db);
+      await DatabaseHelper.ensureAiUsageSchema(db);
+      AiUsageCostService.databaseOverride = db;
+      FinanceStorage.databaseOverride = db;
+      await AiUsageCostService.savePricing(
+        const AiUsagePricing(
+          provider: 'custom',
+          model: 'mimo-v2.5-asr',
+          inputMicrosPerMillion: 1000000,
+          outputMicrosPerMillion: 2000000,
+        ),
+      );
+
+      await AiUsageCostService.recordUsage(
         provider: 'custom',
         model: 'mimo-v2.5-asr',
-        inputMicrosPerMillion: 1000000,
-        outputMicrosPerMillion: 2000000,
-      ),
-    );
+        operation: 'audio_chat',
+        promptTokens: 1000,
+        completionTokens: 500,
+        totalTokens: 1500,
+        audioSeconds: 4,
+        now: DateTime(2026, 8, 30, 10),
+      );
 
-    await AiUsageCostService.recordUsage(
-      provider: 'custom',
-      model: 'mimo-v2.5-asr',
-      operation: 'audio_chat',
-      promptTokens: 1000,
-      completionTokens: 500,
-      totalTokens: 1500,
-      audioSeconds: 4,
-      now: DateTime(2026, 8, 30, 10),
-    );
+      final record = (await AiUsageCostService.getRecords()).single;
+      expect(record.isPriced, isTrue);
+      expect(record.costMicros, 2000);
+    },
+  );
 
-    final record = (await AiUsageCostService.getRecords()).single;
-    expect(record.isPriced, isTrue);
-    expect(record.costMicros, 2000);
-  });
+  test(
+    'MiMo token-priced audio usage keeps token pricing when seconds exist',
+    () async {
+      SharedPreferences.setMockInitialValues({
+        'current_login_user': 'mimo-audio-token-cost-test',
+      });
+      final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+      addTearDown(() async {
+        AiUsageCostService.databaseOverride = null;
+        FinanceStorage.databaseOverride = null;
+        await db.close();
+      });
+      await DatabaseHelper.ensureFinanceSchema(db);
+      await DatabaseHelper.ensureAiUsageSchema(db);
+      AiUsageCostService.databaseOverride = db;
+      FinanceStorage.databaseOverride = db;
 
-  test('MiMo token-priced audio usage keeps token pricing when seconds exist',
-      () async {
-    SharedPreferences.setMockInitialValues({
-      'current_login_user': 'mimo-audio-token-cost-test',
-    });
-    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
-    addTearDown(() async {
-      AiUsageCostService.databaseOverride = null;
-      FinanceStorage.databaseOverride = null;
-      await db.close();
-    });
-    await DatabaseHelper.ensureFinanceSchema(db);
-    await DatabaseHelper.ensureAiUsageSchema(db);
-    AiUsageCostService.databaseOverride = db;
-    FinanceStorage.databaseOverride = db;
+      await AiUsageCostService.recordUsage(
+        provider: 'mimo',
+        model: 'mimo-v2.5',
+        operation: 'audio_chat',
+        promptTokens: 10000,
+        completionTokens: 2000,
+        totalTokens: 12000,
+        cachedPromptTokens: 8000,
+        audioTokens: 100,
+        audioSeconds: 4,
+        now: DateTime(2026, 8, 30, 10),
+      );
 
-    await AiUsageCostService.recordUsage(
-      provider: 'mimo',
-      model: 'mimo-v2.5',
-      operation: 'audio_chat',
-      promptTokens: 10000,
-      completionTokens: 2000,
-      totalTokens: 12000,
-      cachedPromptTokens: 8000,
-      audioTokens: 100,
-      audioSeconds: 4,
-      now: DateTime(2026, 8, 30, 10),
-    );
-
-    final record = (await AiUsageCostService.getRecords()).single;
-    expect(record.isPriced, isTrue);
-    expect(record.costMicros, 6160);
-  });
+      final record = (await AiUsageCostService.getRecords()).single;
+      expect(record.isPriced, isTrue);
+      expect(record.costMicros, 6160);
+    },
+  );
 
   test('Zhipu pricing applies prompt and completion token tiers', () async {
     SharedPreferences.setMockInitialValues({
@@ -4493,12 +4465,9 @@ void main() {
 
     final records = await AiUsageCostService.getRecords();
     expect(
-        records.map((item) => item.costMicros),
-        containsAll(<int?>[
-          816800,
-          1728000,
-          2825200,
-        ]));
+      records.map((item) => item.costMicros),
+      containsAll(<int?>[816800, 1728000, 2825200]),
+    );
     expect(records.every((item) => item.isPriced), isTrue);
   });
 
@@ -4536,130 +4505,134 @@ void main() {
     expect(record.isPriced, isTrue);
   });
 
-  test('DeepSeek pricing switches between Beijing peak and off-peak rates',
-      () async {
-    SharedPreferences.setMockInitialValues({
-      'current_login_user': 'deepseek-peak-cost-test',
-    });
-    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
-    addTearDown(() async {
-      AiUsageCostService.databaseOverride = null;
-      FinanceStorage.databaseOverride = null;
-      await db.close();
-    });
-    await DatabaseHelper.ensureFinanceSchema(db);
-    await DatabaseHelper.ensureAiUsageSchema(db);
-    AiUsageCostService.databaseOverride = db;
-    FinanceStorage.databaseOverride = db;
+  test(
+    'DeepSeek pricing switches between Beijing peak and off-peak rates',
+    () async {
+      SharedPreferences.setMockInitialValues({
+        'current_login_user': 'deepseek-peak-cost-test',
+      });
+      final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+      addTearDown(() async {
+        AiUsageCostService.databaseOverride = null;
+        FinanceStorage.databaseOverride = null;
+        await db.close();
+      });
+      await DatabaseHelper.ensureFinanceSchema(db);
+      await DatabaseHelper.ensureAiUsageSchema(db);
+      AiUsageCostService.databaseOverride = db;
+      FinanceStorage.databaseOverride = db;
 
-    for (final timestamp in <DateTime>[
-      DateTime.utc(2026, 8, 31, 0), // Beijing 08:00, off-peak.
-      DateTime.utc(2026, 8, 31, 2), // Beijing 10:00, peak.
-    ]) {
-      await AiUsageCostService.recordUsage(
-        provider: 'deepseek',
-        model: 'deepseek-v4-flash',
-        operation: 'chat',
-        promptTokens: 1000000,
-        completionTokens: 100000,
-        totalTokens: 1100000,
-        cachedPromptTokens: 400000,
-        now: timestamp,
-      );
-    }
+      for (final timestamp in <DateTime>[
+        DateTime.utc(2026, 8, 31, 0), // Beijing 08:00, off-peak.
+        DateTime.utc(2026, 8, 31, 2), // Beijing 10:00, peak.
+      ]) {
+        await AiUsageCostService.recordUsage(
+          provider: 'deepseek',
+          model: 'deepseek-v4-flash',
+          operation: 'chat',
+          promptTokens: 1000000,
+          completionTokens: 100000,
+          totalTokens: 1100000,
+          cachedPromptTokens: 400000,
+          now: timestamp,
+        );
+      }
 
-    final records = await AiUsageCostService.getRecords();
-    expect(
+      final records = await AiUsageCostService.getRecords();
+      expect(
         records.map((item) => item.costMicros),
-        containsAll(<int?>[
-          1008000,
-          2016000,
-        ]));
-  });
-
-  test('DeepSeek V4.1 Flash IDs use current rates and include image tokens',
-      () async {
-    SharedPreferences.setMockInitialValues({
-      'current_login_user': 'deepseek-v41-flash-cost-test',
-    });
-    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
-    addTearDown(() async {
-      AiUsageCostService.databaseOverride = null;
-      FinanceStorage.databaseOverride = null;
-      await db.close();
-    });
-    await DatabaseHelper.ensureFinanceSchema(db);
-    await DatabaseHelper.ensureAiUsageSchema(db);
-    AiUsageCostService.databaseOverride = db;
-    FinanceStorage.databaseOverride = db;
-
-    final pricing = await AiUsageCostService.getPricing();
-    for (final model in <String>[
-      'deepseek-flash',
-      'deepseek-v4-flash',
-      'deepseek-v4-flash-vision-exp',
-    ]) {
-      final modelPricing = pricing.firstWhere(
-        (item) => item.provider == 'deepseek' && item.model == model,
+        containsAll(<int?>[1008000, 2016000]),
       );
-      expect(modelPricing.cachedInputMicrosPerMillion, 20000);
-      expect(modelPricing.inputMicrosPerMillion, 1000000);
-      expect(modelPricing.outputMicrosPerMillion, 4000000);
-      expect(modelPricing.peakCachedInputMicrosPerMillion, 40000);
-      expect(modelPricing.peakInputMicrosPerMillion, 2000000);
-      expect(modelPricing.peakOutputMicrosPerMillion, 8000000);
-      expect(modelPricing.imageTokensIncluded, isTrue);
+    },
+  );
+
+  test(
+    'DeepSeek V4.1 Flash IDs use current rates and include image tokens',
+    () async {
+      SharedPreferences.setMockInitialValues({
+        'current_login_user': 'deepseek-v41-flash-cost-test',
+      });
+      final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+      addTearDown(() async {
+        AiUsageCostService.databaseOverride = null;
+        FinanceStorage.databaseOverride = null;
+        await db.close();
+      });
+      await DatabaseHelper.ensureFinanceSchema(db);
+      await DatabaseHelper.ensureAiUsageSchema(db);
+      AiUsageCostService.databaseOverride = db;
+      FinanceStorage.databaseOverride = db;
+
+      final pricing = await AiUsageCostService.getPricing();
+      for (final model in <String>[
+        'deepseek-flash',
+        'deepseek-v4-flash',
+        'deepseek-v4-flash-vision-exp',
+      ]) {
+        final modelPricing = pricing.firstWhere(
+          (item) => item.provider == 'deepseek' && item.model == model,
+        );
+        expect(modelPricing.cachedInputMicrosPerMillion, 20000);
+        expect(modelPricing.inputMicrosPerMillion, 1000000);
+        expect(modelPricing.outputMicrosPerMillion, 4000000);
+        expect(modelPricing.peakCachedInputMicrosPerMillion, 40000);
+        expect(modelPricing.peakInputMicrosPerMillion, 2000000);
+        expect(modelPricing.peakOutputMicrosPerMillion, 8000000);
+        expect(modelPricing.imageTokensIncluded, isTrue);
+
+        await AiUsageCostService.recordUsage(
+          provider: 'deepseek',
+          model: model,
+          operation: 'vision_todo',
+          promptTokens: 1000000,
+          completionTokens: 100000,
+          totalTokens: 1100000,
+          cachedPromptTokens: 400000,
+          imageTokens: 50000,
+          imageCount: 1,
+          now: DateTime.utc(2026, 8, 31, 0),
+        );
+      }
+
+      final records = await AiUsageCostService.getRecords();
+      expect(records, hasLength(3));
+      expect(records.every((item) => item.isPriced), isTrue);
+      expect(records.map((item) => item.costMicros), everyElement(1008000));
+    },
+  );
+
+  test(
+    'free provider models are priced at zero when usage is available',
+    () async {
+      SharedPreferences.setMockInitialValues({
+        'current_login_user': 'free-model-cost-test',
+      });
+      final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+      addTearDown(() async {
+        AiUsageCostService.databaseOverride = null;
+        FinanceStorage.databaseOverride = null;
+        await db.close();
+      });
+      await DatabaseHelper.ensureFinanceSchema(db);
+      await DatabaseHelper.ensureAiUsageSchema(db);
+      AiUsageCostService.databaseOverride = db;
+      FinanceStorage.databaseOverride = db;
 
       await AiUsageCostService.recordUsage(
-        provider: 'deepseek',
-        model: model,
-        operation: 'vision_todo',
-        promptTokens: 1000000,
+        provider: 'zhipu',
+        model: 'glm-4.7-flash',
+        operation: 'chat',
+        promptTokens: 100000,
         completionTokens: 100000,
-        totalTokens: 1100000,
-        cachedPromptTokens: 400000,
-        imageTokens: 50000,
-        imageCount: 1,
-        now: DateTime.utc(2026, 8, 31, 0),
+        totalTokens: 200000,
+        now: DateTime.utc(2026, 8, 31, 1),
       );
-    }
 
-    final records = await AiUsageCostService.getRecords();
-    expect(records, hasLength(3));
-    expect(records.every((item) => item.isPriced), isTrue);
-    expect(records.map((item) => item.costMicros), everyElement(1008000));
-  });
-
-  test('free provider models are priced at zero when usage is available',
-      () async {
-    SharedPreferences.setMockInitialValues({
-      'current_login_user': 'free-model-cost-test',
-    });
-    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
-    addTearDown(() async {
-      AiUsageCostService.databaseOverride = null;
-      FinanceStorage.databaseOverride = null;
-      await db.close();
-    });
-    await DatabaseHelper.ensureFinanceSchema(db);
-    await DatabaseHelper.ensureAiUsageSchema(db);
-    AiUsageCostService.databaseOverride = db;
-    FinanceStorage.databaseOverride = db;
-
-    await AiUsageCostService.recordUsage(
-      provider: 'zhipu',
-      model: 'glm-4.7-flash',
-      operation: 'chat',
-      promptTokens: 100000,
-      completionTokens: 100000,
-      totalTokens: 200000,
-      now: DateTime.utc(2026, 8, 31, 1),
-    );
-
-    final record = (await AiUsageCostService.getRecords()).single;
-    expect(record.costMicros, 0);
-    expect(record.isPriced, isTrue);
-  });
+      final record = (await AiUsageCostService.getRecords()).single;
+      expect(record.costMicros, 0);
+      expect(record.isPriced, isTrue);
+    },
+  );
 
   test('NVIDIA NIM has no guessed universal built-in price', () async {
     SharedPreferences.setMockInitialValues({});
@@ -4668,48 +4641,50 @@ void main() {
     expect(pricing.where((item) => item.provider == 'nvidia_nim'), isEmpty);
   });
 
-  test('unpriced AI usage is retained without creating a guessed expense',
-      () async {
-    SharedPreferences.setMockInitialValues({
-      'current_login_user': 'ai-unpriced-test',
-    });
-    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
-    addTearDown(() async {
-      AiUsageCostService.databaseOverride = null;
-      FinanceStorage.databaseOverride = null;
-      await db.close();
-    });
-    await DatabaseHelper.ensureFinanceSchema(db);
-    await DatabaseHelper.ensureAiUsageSchema(db);
-    AiUsageCostService.databaseOverride = db;
-    FinanceStorage.databaseOverride = db;
-    await AiUsageCostService.savePricing(
-      const AiUsagePricing(
+  test(
+    'unpriced AI usage is retained without creating a guessed expense',
+    () async {
+      SharedPreferences.setMockInitialValues({
+        'current_login_user': 'ai-unpriced-test',
+      });
+      final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+      addTearDown(() async {
+        AiUsageCostService.databaseOverride = null;
+        FinanceStorage.databaseOverride = null;
+        await db.close();
+      });
+      await DatabaseHelper.ensureFinanceSchema(db);
+      await DatabaseHelper.ensureAiUsageSchema(db);
+      AiUsageCostService.databaseOverride = db;
+      FinanceStorage.databaseOverride = db;
+      await AiUsageCostService.savePricing(
+        const AiUsagePricing(
+          provider: 'custom',
+          model: 'unknown-model',
+          inputMicrosPerMillion: 1000000,
+          outputMicrosPerMillion: 1000000,
+          imageMicrosPerImage: 1000000,
+        ),
+      );
+
+      await AiUsageCostService.recordUsage(
         provider: 'custom',
         model: 'unknown-model',
-        inputMicrosPerMillion: 1000000,
-        outputMicrosPerMillion: 1000000,
-        imageMicrosPerImage: 1000000,
-      ),
-    );
+        operation: 'vision_todo',
+        promptTokens: 120,
+        completionTokens: 20,
+        totalTokens: 140,
+        imageCount: 1,
+        usageAvailable: false,
+        now: DateTime(2026, 8, 30, 10),
+      );
 
-    await AiUsageCostService.recordUsage(
-      provider: 'custom',
-      model: 'unknown-model',
-      operation: 'vision_todo',
-      promptTokens: 120,
-      completionTokens: 20,
-      totalTokens: 140,
-      imageCount: 1,
-      usageAvailable: false,
-      now: DateTime(2026, 8, 30, 10),
-    );
-
-    final records = await AiUsageCostService.getRecords();
-    expect(records, hasLength(1));
-    expect(records.single.isPriced, isFalse);
-    expect(await db.query('finance_transactions'), isEmpty);
-  });
+      final records = await AiUsageCostService.getRecords();
+      expect(records, hasLength(1));
+      expect(records.single.isPriced, isFalse);
+      expect(await db.query('finance_transactions'), isEmpty);
+    },
+  );
 
   test('备份导入不能覆盖或伪造系统目录', () async {
     SharedPreferences.setMockInitialValues({
@@ -4860,10 +4835,7 @@ void main() {
     });
     expect(result['imported'], 1);
     expect(result['skipped'], 1);
-    expect(
-      await db.query('finance_loan_installments'),
-      isEmpty,
-    );
+    expect(await db.query('finance_loan_installments'), isEmpty);
     expect(
       await FinanceStorage.mergeRemoteBundle({
         'loan_installments': [
@@ -5006,16 +4978,15 @@ void main() {
       amountMinor: 7000,
     );
     await FinanceStorage.saveTransaction(second);
-    expect(
-      await FinanceStorage.getRemainingRefundableMinor(original.uuid),
-      0,
-    );
+    expect(await FinanceStorage.getRemainingRefundableMinor(original.uuid), 0);
     await expectLater(
-      FinanceStorage.saveTransaction(refundTestTransaction(
-        uuid: 'refund-overflow',
-        originalUuid: original.uuid,
-        amountMinor: 1,
-      )),
+      FinanceStorage.saveTransaction(
+        refundTestTransaction(
+          uuid: 'refund-overflow',
+          originalUuid: original.uuid,
+          amountMinor: 1,
+        ),
+      ),
       throwsStateError,
     );
 
@@ -5049,22 +5020,26 @@ void main() {
     FinanceStorage.databaseOverride = db;
 
     await expectLater(
-      FinanceStorage.saveTransaction(refundTestTransaction(
-        uuid: 'missing-original-refund',
-        originalUuid: 'missing-original',
-        amountMinor: 100,
-      )),
+      FinanceStorage.saveTransaction(
+        refundTestTransaction(
+          uuid: 'missing-original-refund',
+          originalUuid: 'missing-original',
+          amountMinor: 100,
+        ),
+      ),
       throwsStateError,
     );
     final income = refundTestExpense(uuid: 'income-original')
       ..type = FinanceTransactionType.income;
     await FinanceStorage.saveTransaction(income);
     await expectLater(
-      FinanceStorage.saveTransaction(refundTestTransaction(
-        uuid: 'income-refund',
-        originalUuid: income.uuid,
-        amountMinor: 100,
-      )),
+      FinanceStorage.saveTransaction(
+        refundTestTransaction(
+          uuid: 'income-refund',
+          originalUuid: income.uuid,
+          amountMinor: 100,
+        ),
+      ),
       throwsStateError,
     );
   });
@@ -5081,10 +5056,7 @@ void main() {
     await DatabaseHelper.ensureFinanceSchema(db);
     FinanceStorage.databaseOverride = db;
 
-    final original = refundTestExpense(
-      uuid: 'remote-original',
-      updatedAt: 10,
-    );
+    final original = refundTestExpense(uuid: 'remote-original', updatedAt: 10);
     final partial = refundTestTransaction(
       uuid: 'remote-refund',
       originalUuid: original.uuid,

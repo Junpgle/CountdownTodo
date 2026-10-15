@@ -2169,12 +2169,19 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
 
   Future<void> _executeMessageActions(ChatMessage msg) async {
     if (msg.todoActions == null) return;
-    final pendingActions = msg.todoActions!.where((action) =>
-        action.isSelected && !action.isAdded && !action.isIgnored).toList();
-    final hasPlanningActions = msg.todoActions!.any((action) => action.isPlanBlockAction);
+    final pendingActions = msg.todoActions!
+        .where(
+          (action) => action.isSelected && !action.isAdded && !action.isIgnored,
+        )
+        .toList();
+    final hasPlanningActions = msg.todoActions!.any(
+      (action) => action.isPlanBlockAction,
+    );
     final existingTodos = hasPlanningActions
-        ? [for (final todo in await StorageService.getTodos(widget.username))
-            {...todo.toJson(), 'title': todo.title}]
+        ? [
+            for (final todo in await StorageService.getTodos(widget.username))
+              {...todo.toJson(), 'title': todo.title},
+          ]
         : widget.todos;
 
     final existingCountdowns = widget.countdowns.isNotEmpty
@@ -2197,8 +2204,12 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
     );
 
     if (result.hasChanges) {
-      final plannedNewTodos = result.newTodos.where((todo) =>
-          result.newPlanBlocks.any((block) => block.todoId == todo.id)).toList();
+      final plannedNewTodos = result.newTodos
+          .where(
+            (todo) =>
+                result.newPlanBlocks.any((block) => block.todoId == todo.id),
+          )
+          .toList();
       if (plannedNewTodos.isNotEmpty) {
         try {
           await AiPlanDraftRepository.save(
