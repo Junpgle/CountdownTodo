@@ -152,7 +152,12 @@ class _AnimatedAiWaterRippleBorderState
           isLight: widget.isLight,
           borderRadius: widget.borderRadius,
         ),
-        child: Padding(padding: const EdgeInsets.all(2), child: widget.child),
+        // The foreground painter repaints on every animation tick. Keep the
+        // card subtree in its own layer so those ticks do not repaint its
+        // static text, icons, and glass surface along with the ripple.
+        child: RepaintBoundary(
+          child: Padding(padding: const EdgeInsets.all(2), child: widget.child),
+        ),
       ),
     );
     if (!widget.visibleOnlyWhenInViewport) return paintedChild;
