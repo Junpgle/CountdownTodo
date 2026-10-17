@@ -30,6 +30,20 @@
           "recommended": true
         },
         {
+          "from_version": "6.7.2",
+          "from_sha256": "20b50d002cd22bb0d0e453f8e5df788a47a3e66d554dbfa043d84fa484153298",
+          "to_version": "7.1.0",
+          "to_sha256": "ef0d3929e08df75d9705a0cd37db46a7cb34c919c3b6b78abd4eb966571723a0",
+          "patch_size": 24726341,
+          "patch_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-arm64-v8a-6.7.2_to_7.1.0.patch",
+          "operation_count": 12,
+          "full_apk_size": 47524129,
+          "copied_bytes": 22797980,
+          "embedded_bytes": 24726149,
+          "algorithm": "apk-zip-local-spans",
+          "recommended": true
+        },
+        {
           "from_version": "6.4.35",
           "from_sha256": "669bcd444782a9823e65f9976e124d7f4e85771453acac4d7e7393c582821391",
           "to_version": "6.7.2",
