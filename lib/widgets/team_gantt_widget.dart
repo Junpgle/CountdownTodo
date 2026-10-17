@@ -20,11 +20,24 @@ class TeamGanttWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final datedTodos = todos
-        .where((t) => t.dueDate != null && !t.isDone)
-        .toList();
-    // 🚀 按截止时间升序排序，确保甘特图从早到晚排列
-    datedTodos.sort((a, b) => a.dueDate!.compareTo(b.dueDate!));
+    const maxDisplayedTodos = 6;
+    final datedTodos = <TodoItem>[];
+    var activeDatedTodoCount = 0;
+    for (final todo in todos) {
+      final dueDate = todo.dueDate;
+      if (dueDate == null || todo.isDone) continue;
+
+      activeDatedTodoCount++;
+      var insertAt = 0;
+      while (insertAt < datedTodos.length &&
+          datedTodos[insertAt].dueDate!.compareTo(dueDate) <= 0) {
+        insertAt++;
+      }
+      if (insertAt >= maxDisplayedTodos) continue;
+
+      datedTodos.insert(insertAt, todo);
+      if (datedTodos.length > maxDisplayedTodos) datedTodos.removeLast();
+    }
 
     if (datedTodos.isEmpty) {
       return const Center(
@@ -45,6 +58,7 @@ class TeamGanttWidget extends StatelessWidget {
     final totalDays = CalendarDateMath.daysBetween(timelineStart, timelineEnd);
     const timelineWidth = 800.0;
     const horizontalPadding = 16.0;
+    late final DateFormat dayLabelFormat = DateFormat('dd');
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -67,7 +81,7 @@ class TeamGanttWidget extends StatelessWidget {
                 ),
               ),
               Text(
-                "${datedTodos.length} 活跃",
+                "$activeDatedTodoCount 活跃",
                 style: const TextStyle(fontSize: 9, color: Colors.grey),
               ),
             ],
@@ -94,7 +108,7 @@ class TeamGanttWidget extends StatelessWidget {
                       width: timelineWidth / totalDays,
                       alignment: Alignment.center,
                       child: Text(
-                        isToday ? "今天" : DateFormat('dd').format(date),
+                        isToday ? "今天" : dayLabelFormat.format(date),
                         style: TextStyle(
                           fontSize: 9,
                           color: isToday
@@ -108,7 +122,7 @@ class TeamGanttWidget extends StatelessWidget {
                 ),
                 const Divider(height: 12),
                 // 2. 任务条
-                ...datedTodos.take(6).map((todo) {
+                ...datedTodos.map((todo) {
                   final start = DateTime.fromMillisecondsSinceEpoch(
                     todo.createdDate ?? todo.createdAt,
                   ).toLocal();

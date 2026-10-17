@@ -31,6 +31,8 @@ class AppBoardScreen extends StatefulWidget {
 class _AppBoardScreenState extends State<AppBoardScreen>
     with TickerProviderStateMixin, WidgetsBindingObserver {
   List<TodoItem> _todos = [];
+  List<TodoItem> _ganttTodos = [];
+  int _completedTodoCount = 0;
   List<CountdownItem> _countdowns = [];
   List<CourseItem> _courses = [];
   DateTime? _semesterStart;
@@ -106,8 +108,7 @@ class _AppBoardScreenState extends State<AppBoardScreen>
         _stopTimers();
         return;
       }
-      _now = DateTime.now();
-      _nowNotifier.value = _now;
+      _refreshCurrentTime();
     });
     if (_shouldRunMarquee) _scheduleMarqueeTick(Duration.zero);
   }
@@ -151,9 +152,22 @@ class _AppBoardScreenState extends State<AppBoardScreen>
 
   void _onPowerSaveModeChanged() {
     _stopTimers();
-    _now = DateTime.now();
-    _nowNotifier.value = _now;
+    _refreshCurrentTime();
     _syncTimersWithVisibility();
+  }
+
+  void _refreshCurrentTime() {
+    final now = DateTime.now();
+    _now = now;
+
+    final displayedTime = _nowNotifier.value;
+    if (displayedTime.year != now.year ||
+        displayedTime.month != now.month ||
+        displayedTime.day != now.day ||
+        displayedTime.hour != now.hour ||
+        displayedTime.minute != now.minute) {
+      _nowNotifier.value = now;
+    }
   }
 
   int _calculateCurrentWeek() {
@@ -186,8 +200,20 @@ class _AppBoardScreenState extends State<AppBoardScreen>
           }
         }
 
+        final activeTodos = <TodoItem>[];
+        final ganttTodos = <TodoItem>[];
+        var completedTodoCount = 0;
+        for (final todo in todos) {
+          if (todo.isDeleted) continue;
+          activeTodos.add(todo);
+          if (todo.isDone) completedTodoCount++;
+          if (todo.dueDate != null) ganttTodos.add(todo);
+        }
+
         setState(() {
-          _todos = todos.where((t) => !t.isDeleted).toList();
+          _todos = activeTodos;
+          _ganttTodos = ganttTodos;
+          _completedTodoCount = completedTodoCount;
           _countdowns = countdowns
               .where((c) => !c.isDeleted && c.targetDate.isAfter(_now))
               .toList();
@@ -483,7 +509,7 @@ class _AppBoardScreenState extends State<AppBoardScreen>
                     ],
                   ),
                   child: GanttChart(
-                    todos: _todos.where((t) => t.dueDate != null).toList(),
+                    todos: _ganttTodos,
                     dayWidth: _dayWidth == 60.0
                         ? (availableWidth * 0.5 / 37)
                         : _dayWidth, // Default fit
@@ -554,7 +580,7 @@ class _AppBoardScreenState extends State<AppBoardScreen>
             'roadmap' => GlassCard(
               title: '战略路线图',
               child: GanttChart(
-                todos: _todos.where((t) => t.dueDate != null).toList(),
+                todos: _ganttTodos,
                 dayWidth: _dayWidth,
                 onTaskClick: (task) => setState(() => _detailTask = task),
               ),
@@ -657,8 +683,7 @@ class _AppBoardScreenState extends State<AppBoardScreen>
 
   int _calculateCompletionRate() {
     if (_todos.isEmpty) return 0;
-    int completed = _todos.where((t) => t.isDone).length;
-    return (completed * 100 ~/ _todos.length);
+    return (_completedTodoCount * 100 ~/ _todos.length);
   }
 }
 
@@ -770,43 +795,50 @@ class _AnimatedBackgroundState extends State<AnimatedBackground>
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, child) {
-        return Stack(
-          children: [
-            Positioned(
-              top: -100 + (50 * _controller.value),
-              left: -100 + (30 * _controller.value),
-              child: Container(
-                width: 400,
-                height: 400,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Theme.of(context).colorScheme.primary
-                      .withValues(alpha: 0.05 + (0.05 * _controller.value)),
-                ),
-              ),
-            ),
-            Positioned(
-              bottom: -50 - (40 * _controller.value),
-              right: -50 - (20 * _controller.value),
-              child: Container(
-                width: 350,
-                height: 350,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.indigo.withValues(
-                    alpha: 0.05 + (0.03 * _controller.value),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        );
-      },
+    return RepaintBoundary(
+      child: CustomPaint(
+        size: Size.infinite,
+        painter: _AnimatedBackgroundPainter(
+          animation: _controller,
+          primaryColor: Theme.of(context).colorScheme.primary,
+        ),
+      ),
     );
   }
+}
+
+class _AnimatedBackgroundPainter extends CustomPainter {
+  final Animation<double> animation;
+  final Color primaryColor;
+  final Paint _paint = Paint()..isAntiAlias = true;
+
+  _AnimatedBackgroundPainter({
+    required this.animation,
+    required this.primaryColor,
+  }) : super(repaint: animation);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final value = animation.value;
+    _paint.color = primaryColor.withValues(alpha: 0.05 + (0.05 * value));
+    canvas.drawCircle(
+      Offset(100 + (30 * value), 100 + (50 * value)),
+      200,
+      _paint,
+    );
+
+    _paint.color = Colors.indigo.withValues(alpha: 0.05 + (0.03 * value));
+    canvas.drawCircle(
+      Offset(size.width - 125 + (20 * value), size.height - 125 + (40 * value)),
+      175,
+      _paint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _AnimatedBackgroundPainter oldDelegate) =>
+      oldDelegate.animation != animation ||
+      oldDelegate.primaryColor != primaryColor;
 }
 
 class TodayHourlyTimeline extends StatelessWidget {
@@ -832,17 +864,28 @@ class TodayHourlyTimeline extends StatelessWidget {
     final now = DateTime.now();
     final todayStart = DateTime(now.year, now.month, now.day);
 
-    // Filter today's items
-    final todayCourses = courses.where((c) {
-      // Check weekday and weekIndex (if available)
-      return c.weekday == now.weekday &&
-          (c.weekIndex == 0 || c.weekIndex == currentWeek);
-    }).toList();
+    final coursesByHour = List<List<CourseItem>?>.filled(24, null);
+    for (final course in courses) {
+      if (course.weekday != now.weekday ||
+          (course.weekIndex != 0 && course.weekIndex != currentWeek)) {
+        continue;
+      }
+      final hour = course.startTime ~/ 100;
+      if (hour >= 0 && hour < coursesByHour.length) {
+        final hourCourses = coursesByHour[hour] ??= <CourseItem>[];
+        hourCourses.add(course);
+      }
+    }
 
-    final todayTasks = todos.where((t) {
-      if (t.dueDate == null) return false;
-      return DateUtils.isSameDay(t.dueDate, todayStart);
-    }).toList();
+    final tasksByHour = List<List<TodoItem>?>.filled(24, null);
+    for (final todo in todos) {
+      final dueDate = todo.dueDate;
+      if (dueDate == null || !DateUtils.isSameDay(dueDate, todayStart)) {
+        continue;
+      }
+      final hourTasks = tasksByHour[dueDate.hour] ??= <TodoItem>[];
+      hourTasks.add(todo);
+    }
 
     return ListView.builder(
       physics: itemHeight != null
@@ -852,12 +895,8 @@ class TodayHourlyTimeline extends StatelessWidget {
       itemCount: 24,
       itemBuilder: (context, hour) {
         final isCurrent = now.hour == hour;
-        final hCourses = todayCourses
-            .where((c) => c.startTime ~/ 100 == hour)
-            .toList();
-        final hTasks = todayTasks
-            .where((t) => t.dueDate!.hour == hour)
-            .toList();
+        final hCourses = coursesByHour[hour] ?? const <CourseItem>[];
+        final hTasks = tasksByHour[hour] ?? const <TodoItem>[];
 
         return Container(
           height: itemHeight ?? 60,
@@ -1008,8 +1047,8 @@ class GanttChart extends StatefulWidget {
 
 class _GanttChartState extends State<GanttChart> {
   final ScrollController _scrollController = ScrollController();
+  final ValueNotifier<double> _horizontalOffset = ValueNotifier<double>(0);
   bool _hasScrolledToToday = false;
-  double _horizontalOffset = 0;
 
   @override
   void initState() {
@@ -1030,14 +1069,13 @@ class _GanttChartState extends State<GanttChart> {
   void dispose() {
     _scrollController.removeListener(_handleHorizontalScroll);
     _scrollController.dispose();
+    _horizontalOffset.dispose();
     super.dispose();
   }
 
   void _handleHorizontalScroll() {
     if (!mounted) return;
-    setState(() {
-      _horizontalOffset = _scrollController.offset;
-    });
+    _horizontalOffset.value = _scrollController.offset;
   }
 
   void _scheduleScrollToToday(DateTime minDate, double dayWidth) {
@@ -1063,6 +1101,7 @@ class _GanttChartState extends State<GanttChart> {
 
   List<List<TodoItem>> _packTasks(
     List<TodoItem> tasks,
+    Map<TodoItem, DateTime> startDates,
     DateTime minDate,
     DateTime maxDate,
   ) {
@@ -1070,36 +1109,72 @@ class _GanttChartState extends State<GanttChart> {
 
     final sorted = List<TodoItem>.from(tasks)
       ..sort((a, b) {
-        final startA = _taskStartDate(a);
-        final startB = _taskStartDate(b);
-        return startA.compareTo(startB);
+        return startDates[a]!.compareTo(startDates[b]!);
       });
 
     final List<List<TodoItem>> rows = [];
+    final rowHasValidIntervals = <bool>[];
+    const overlapPaddingMicroseconds = 2 * 60 * 60 * 1000000;
+
+    bool intervalsOverlap(
+      TodoItem existingTask,
+      int taskStartMicroseconds,
+      int taskEndMicroseconds,
+    ) {
+      final existingStartMicroseconds =
+          startDates[existingTask]!.microsecondsSinceEpoch;
+      final existingEndMicroseconds =
+          existingTask.dueDate!.microsecondsSinceEpoch;
+      return taskEndMicroseconds >
+              existingStartMicroseconds - overlapPaddingMicroseconds &&
+          taskStartMicroseconds <
+              existingEndMicroseconds + overlapPaddingMicroseconds;
+    }
+
     for (final task in sorted) {
-      final start = _taskStartDate(task);
+      final start = startDates[task]!;
       final end = task.dueDate!;
       if (end.isBefore(minDate) || start.isAfter(maxDate)) continue;
+      final startMicroseconds = start.microsecondsSinceEpoch;
+      final endMicroseconds = end.microsecondsSinceEpoch;
+      final hasValidInterval = !end.isBefore(start);
 
       bool placed = false;
-      for (final row in rows) {
-        bool overlaps = false;
-        for (final existingTask in row) {
-          final eStart = _taskStartDate(existingTask);
-          final eEnd = existingTask.dueDate!;
-          if (end.isAfter(eStart.subtract(const Duration(hours: 2))) &&
-              start.isBefore(eEnd.add(const Duration(hours: 2)))) {
-            overlaps = true;
-            break;
+      for (var rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+        final row = rows[rowIndex];
+        bool rowOverlaps = false;
+        // Rows are start-sorted and non-overlapping; for valid intervals only
+        // the latest task can conflict with this later-starting task.
+        if (hasValidInterval && rowHasValidIntervals[rowIndex]) {
+          rowOverlaps = intervalsOverlap(
+            row.last,
+            startMicroseconds,
+            endMicroseconds,
+          );
+        } else {
+          for (final existingTask in row) {
+            if (intervalsOverlap(
+              existingTask,
+              startMicroseconds,
+              endMicroseconds,
+            )) {
+              rowOverlaps = true;
+              break;
+            }
           }
         }
-        if (!overlaps) {
+        if (!rowOverlaps) {
           row.add(task);
+          rowHasValidIntervals[rowIndex] =
+              rowHasValidIntervals[rowIndex] && hasValidInterval;
           placed = true;
           break;
         }
       }
-      if (!placed) rows.add([task]);
+      if (!placed) {
+        rows.add([task]);
+        rowHasValidIntervals.add(hasValidInterval);
+      }
     }
 
     return rows;
@@ -1113,6 +1188,7 @@ class _GanttChartState extends State<GanttChart> {
 
   Widget _buildTaskRow({
     required List<TodoItem> rowTasks,
+    required Map<TodoItem, DateTime> startDates,
     required DateTime minDate,
     required double effectiveDayWidth,
     required double rowHeight,
@@ -1123,7 +1199,7 @@ class _GanttChartState extends State<GanttChart> {
       height: rowHeight,
       child: Stack(
         children: rowTasks.map((task) {
-          final start = _taskStartDate(task);
+          final start = startDates[task]!;
           final end = task.dueDate!;
           final left = math.max(
             0.0,
@@ -1160,13 +1236,8 @@ class _GanttChartState extends State<GanttChart> {
                 clipBehavior: Clip.hardEdge,
                 child: Stack(
                   children: [
-                    Positioned(
-                      left: (_horizontalOffset - left + 4)
-                          .clamp(4.0, math.max(4.0, width - 24))
-                          .toDouble(),
-                      right: 4,
-                      top: 0,
-                      bottom: 0,
+                    ValueListenableBuilder<double>(
+                      valueListenable: _horizontalOffset,
                       child: Align(
                         alignment: Alignment.centerLeft,
                         child: Text(
@@ -1183,6 +1254,17 @@ class _GanttChartState extends State<GanttChart> {
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
+                      builder: (context, horizontalOffset, child) {
+                        return Positioned(
+                          left: (horizontalOffset - left + 4)
+                              .clamp(4.0, math.max(4.0, width - 24))
+                              .toDouble(),
+                          right: 4,
+                          top: 0,
+                          bottom: 0,
+                          child: child!,
+                        );
+                      },
                     ),
                   ],
                 ),
@@ -1196,11 +1278,7 @@ class _GanttChartState extends State<GanttChart> {
 
   @override
   Widget build(BuildContext context) {
-    final activeTodos = widget.todos.where((t) => !t.isDone).toList();
-    final completedTodos = widget.todos.where((t) => t.isDone).toList();
-    final datedTodos = [...activeTodos, ...completedTodos];
-
-    if (datedTodos.isEmpty) {
+    if (widget.todos.isEmpty) {
       return const Center(
         child: Text('暂无带日期的任务', style: TextStyle(color: Colors.white24)),
       );
@@ -1213,9 +1291,19 @@ class _GanttChartState extends State<GanttChart> {
     DateTime minDate = CalendarDateMath.addDays(today, -7);
     DateTime maxDate = CalendarDateMath.addDays(today, 30);
 
-    for (var t in datedTodos) {
-      final start = _taskStartDate(t);
-      final end = t.dueDate!;
+    final activeTodos = <TodoItem>[];
+    final completedTodos = <TodoItem>[];
+    final startDates = Map<TodoItem, DateTime>.identity();
+    for (final todo in widget.todos) {
+      if (todo.isDone) {
+        completedTodos.add(todo);
+      } else {
+        activeTodos.add(todo);
+      }
+
+      final start = _taskStartDate(todo);
+      startDates[todo] = start;
+      final end = todo.dueDate!;
       if (start.isBefore(minDate)) minDate = start;
       if (end.isAfter(maxDate)) maxDate = end;
     }
@@ -1225,8 +1313,13 @@ class _GanttChartState extends State<GanttChart> {
     maxDate = CalendarDateMath.addDays(CalendarDateMath.dateOnly(maxDate), 7);
 
     final totalDays = CalendarDateMath.daysBetween(minDate, maxDate);
-    final activeRows = _packTasks(activeTodos, minDate, maxDate);
-    final completedRows = _packTasks(completedTodos, minDate, maxDate);
+    final activeRows = _packTasks(activeTodos, startDates, minDate, maxDate);
+    final completedRows = _packTasks(
+      completedTodos,
+      startDates,
+      minDate,
+      maxDate,
+    );
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -1277,6 +1370,7 @@ class _GanttChartState extends State<GanttChart> {
           math.min(8.0, completedRowHeight * 0.55),
         );
         _scheduleScrollToToday(minDate, effectiveDayWidth);
+        final weekdayFormatter = DateFormat('E');
 
         return SingleChildScrollView(
           controller: _scrollController,
@@ -1312,7 +1406,7 @@ class _GanttChartState extends State<GanttChart> {
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Text(
-                                DateFormat('E').format(date).toUpperCase(),
+                                weekdayFormatter.format(date).toUpperCase(),
                                 style: TextStyle(
                                   color: isToday
                                       ? Theme.of(context).colorScheme.primary
@@ -1390,6 +1484,7 @@ class _GanttChartState extends State<GanttChart> {
                           ),
                           child: _buildTaskRow(
                             rowTasks: rowTasks,
+                            startDates: startDates,
                             minDate: minDate,
                             effectiveDayWidth: effectiveDayWidth,
                             rowHeight: activeRowHeight,
@@ -1428,6 +1523,7 @@ class _GanttChartState extends State<GanttChart> {
                                   ),
                                   child: _buildTaskRow(
                                     rowTasks: rowTasks,
+                                    startDates: startDates,
                                     minDate: minDate,
                                     effectiveDayWidth: effectiveDayWidth,
                                     rowHeight: completedRowHeight,
@@ -1469,9 +1565,11 @@ class MissionControl extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final activeTasks = todos.where((t) => !t.isDone).toList();
-    final completedTasks = todos.where((t) => t.isDone).toList();
-    final displayTasks = activeTab == 'active' ? activeTasks : completedTasks;
+    final showCompleted = activeTab != 'active';
+    final displayTasks = <TodoItem>[];
+    for (final todo in todos) {
+      if (todo.isDone == showCompleted) displayTasks.add(todo);
+    }
     final now = clock();
 
     return Column(
