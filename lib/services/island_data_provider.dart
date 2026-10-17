@@ -35,6 +35,8 @@ class IslandDataProvider {
   // ── Cached State ───────────────────────────────────────────────────────
 
   _CacheEntry<Map<String, IslandSlotData>>? _slotCache;
+  final Map<String, IslandSlotData> _rightSlotCache = {};
+  int _slotCacheGeneration = 0;
   _CacheEntry<int>? _styleCache;
   _CacheEntry<List<String>>? _priorityCache;
   _CacheEntry<String>? _themeCache;
@@ -92,6 +94,8 @@ class IslandDataProvider {
       return _slotCache!.data;
     }
 
+    _slotCacheGeneration++;
+    _rightSlotCache.clear();
     final priority = await getSlotPriority();
     final Map<String, IslandSlotData> slots = {};
 
@@ -178,9 +182,7 @@ class IslandDataProvider {
       // Assign Right Slot
       if (activeTypes.length > 1) {
         final rightType = activeTypes[1];
-        // Re-fetch/re-format for right position to ensure correct padding/brackets
-        rightSlotData =
-            await IslandSlotProvider.getSlotData(rightType, isLeft: false);
+        rightSlotData = await _getRightSlotData(rightType);
         rightStr = rightSlotData.display;
       }
     }
@@ -402,6 +404,8 @@ class IslandDataProvider {
   /// Invalidate all caches (call when data changes significantly)
   void invalidateCache() {
     _slotCache = null;
+    _slotCacheGeneration++;
+    _rightSlotCache.clear();
     _styleCache = null;
     _priorityCache = null;
     _themeCache = null;
@@ -410,8 +414,22 @@ class IslandDataProvider {
   /// Invalidate only slot cache (call when todos/courses change)
   void invalidateSlotCache() {
     _slotCache = null;
+    _slotCacheGeneration++;
+    _rightSlotCache.clear();
     // 重置追踪状态, 确保下次 buildPayload 不会被"状态未变"跳过
     _lastSentPayload = null;
+  }
+
+  Future<IslandSlotData> _getRightSlotData(String type) async {
+    final cached = _rightSlotCache[type];
+    if (cached != null) return cached;
+
+    final generation = _slotCacheGeneration;
+    final data = await IslandSlotProvider.getSlotData(type, isLeft: false);
+    if (generation == _slotCacheGeneration && data.isNotEmpty) {
+      _rightSlotCache[type] = data;
+    }
+    return data;
   }
 
   /// Reset tracking state (call when switching sessions)
