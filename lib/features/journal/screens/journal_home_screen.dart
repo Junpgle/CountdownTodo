@@ -353,6 +353,12 @@ class _JournalHomeScreenState extends State<JournalHomeScreen> {
   }
 }
 
+typedef _TimelineDisplayItem = ({
+  String? month,
+  JournalEntry? entry,
+  List<JournalEntry>? gridEntries,
+});
+
 class _Timeline extends StatelessWidget {
   final double topPadding;
   final List<JournalEntry> entries;
@@ -375,23 +381,62 @@ class _Timeline extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final grouped = <String, List<JournalEntry>>{};
+    final monthFormat = DateFormat('yyyy年MM月');
     for (final entry in entries) {
-      final key = DateFormat('yyyy年MM月').format(entry.occurredAt);
+      final key = monthFormat.format(entry.occurredAt);
       grouped.putIfAbsent(key, () => []).add(entry);
     }
-    return ListView(
+    final displayItems = <_TimelineDisplayItem>[];
+    for (final group in grouped.entries) {
+      displayItems.add((
+        month: group.key,
+        entry: null,
+        gridEntries: null,
+      ));
+      if (isWide) {
+        displayItems.add((
+          month: null,
+          entry: null,
+          gridEntries: group.value,
+        ));
+      } else {
+        for (final entry in group.value) {
+          displayItems.add((
+            month: null,
+            entry: entry,
+            gridEntries: null,
+          ));
+          displayItems.add((
+            month: null,
+            entry: null,
+            gridEntries: null,
+          ));
+        }
+      }
+    }
+
+    return ListView.builder(
       controller: controller,
       physics: const AlwaysScrollableScrollPhysics(),
       padding: EdgeInsets.fromLTRB(
           isWide ? 40 : 20, topPadding + 12, isWide ? 40 : 20, 120),
-      children: [
-        for (final group in grouped.entries) ...[
-          Padding(
+      itemCount: displayItems.length + (isLoadingMore ? 1 : 0),
+      itemBuilder: (context, index) {
+        if (index == displayItems.length) {
+          return const Padding(
+            padding: EdgeInsets.all(20),
+            child: Center(child: CircularProgressIndicator()),
+          );
+        }
+
+        final item = displayItems[index];
+        if (item.month != null) {
+          return Padding(
             padding: const EdgeInsets.fromLTRB(4, 18, 4, 12),
             child: Row(
               children: [
                 Text(
-                  group.key,
+                  item.month!,
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w800,
                       ),
@@ -404,40 +449,37 @@ class _Timeline extends StatelessWidget {
                 ),
               ],
             ),
-          ),
-          if (isWide)
-            GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: group.value.length,
-              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                maxCrossAxisExtent: 560,
-                mainAxisExtent: 220,
-                crossAxisSpacing: 16,
-                mainAxisSpacing: 16,
-              ),
-              itemBuilder: (_, index) => _JournalCard(
-                entry: group.value[index],
-                accountId: accountId,
-                onTap: () => onTap(group.value[index]),
-              ),
-            )
-          else
-            for (final entry in group.value) ...[
-              _JournalCard(
-                entry: entry,
-                accountId: accountId,
-                onTap: () => onTap(entry),
-              ),
-              const SizedBox(height: 14),
-            ],
-        ],
-        if (isLoadingMore)
-          const Padding(
-            padding: EdgeInsets.all(20),
-            child: Center(child: CircularProgressIndicator()),
-          ),
-      ],
+          );
+        }
+
+        final gridEntries = item.gridEntries;
+        if (gridEntries != null) {
+          return GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: gridEntries.length,
+            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+              maxCrossAxisExtent: 560,
+              mainAxisExtent: 220,
+              crossAxisSpacing: 16,
+              mainAxisSpacing: 16,
+            ),
+            itemBuilder: (_, gridIndex) => _JournalCard(
+              entry: gridEntries[gridIndex],
+              accountId: accountId,
+              onTap: () => onTap(gridEntries[gridIndex]),
+            ),
+          );
+        }
+
+        final entry = item.entry;
+        if (entry == null) return const SizedBox(height: 14);
+        return _JournalCard(
+          entry: entry,
+          accountId: accountId,
+          onTap: () => onTap(entry),
+        );
+      },
     );
   }
 }
@@ -484,6 +526,9 @@ class _PhotoWall extends StatelessWidget {
 }
 
 class _JournalCard extends StatelessWidget {
+  static final DateFormat _entryDateFormat = DateFormat('MM月dd日 · E', 'zh_CN');
+  static final RegExp _previewWhitespace = RegExp(r'\s+');
+
   final JournalEntry entry;
   final String accountId;
   final VoidCallback onTap;
@@ -497,7 +542,7 @@ class _JournalCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final preview = entry.content.trim().replaceAll(RegExp(r'\s+'), ' ');
+    final preview = entry.content.trim().replaceAll(_previewWhitespace, ' ');
     return Card(
       clipBehavior: Clip.antiAlias,
       elevation: 0,
@@ -523,8 +568,7 @@ class _JournalCard extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
-                      DateFormat('MM月dd日 · E', 'zh_CN')
-                          .format(entry.occurredAt),
+                      _entryDateFormat.format(entry.occurredAt),
                       style: Theme.of(context).textTheme.labelMedium?.copyWith(
                             color: scheme.primary,
                             fontWeight: FontWeight.w700,
