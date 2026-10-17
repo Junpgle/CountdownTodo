@@ -791,9 +791,10 @@ class CourseService {
       final courses = await getAllCourses(username);
       if (courses.isEmpty) return {'title': '暂无课表', 'courses': <CourseItem>[]};
 
-      DateTime now = DateTime.now();
-      DateTime todayNormalized = CalendarDateMath.dateOnly(now);
-      String todayStr = DateFormat('yyyy-MM-dd').format(now);
+      final now = DateTime.now();
+      final todayNormalized = CalendarDateMath.dateOnly(now);
+      final dashboardDateFormat = DateFormat('yyyy-MM-dd');
+      final todayStr = dashboardDateFormat.format(now);
       int currentHHMM = now.hour * 100 + now.minute;
       final semesters = await StorageService.getSemesters();
       final semesterMondays = <String, DateTime>{
@@ -810,12 +811,11 @@ class CourseService {
       }
 
       DateTime? semesterMondayFor(CourseItem course) {
-        return semesterMondays[CourseScheduleSemantics.canonicalSemesterId(
-                course.semesterId)] ??
-            (CourseScheduleSemantics.canonicalSemesterId(course.semesterId) ==
-                    'default'
-                ? semesterMondays['default']
-                : null);
+        final semesterId = CourseScheduleSemantics.canonicalSemesterId(
+          course.semesterId,
+        );
+        return semesterMondays[semesterId] ??
+            (semesterId == 'default' ? semesterMondays['default'] : null);
       }
 
       // 1. 尝试按日期精确筛选今天的课程
@@ -846,7 +846,7 @@ class CourseService {
       // 2. 今天的课没排，或者“今天的课都上完了”，找明天的
       DateTime tomorrow = CalendarDateMath.addDays(todayNormalized, 1);
       DateTime tomorrowNormalized = tomorrow;
-      String tomorrowStr = DateFormat('yyyy-MM-dd').format(tomorrow);
+      final tomorrowStr = dashboardDateFormat.format(tomorrow);
       List<CourseItem> tomorrowCourses =
           courses.where((c) => c.date == tomorrowStr).toList();
 
@@ -869,13 +869,14 @@ class CourseService {
         return {'title': '明日课程', 'courses': tomorrowCourses};
       }
 
-      final futureCourses = <MapEntry<DateTime, CourseItem>>[];
+      DateTime? nextDay;
+      final nextCourses = <CourseItem>[];
 
       for (final c in courses) {
         DateTime? courseDay;
         if (c.date.isNotEmpty) {
           try {
-            courseDay = DateFormat('yyyy-MM-dd').parseStrict(c.date);
+            courseDay = dashboardDateFormat.parseStrict(c.date);
           } catch (_) {
             courseDay = null;
           }
@@ -892,22 +893,19 @@ class CourseService {
         final normalizedDay =
             DateTime(courseDay.year, courseDay.month, courseDay.day);
         if (normalizedDay.isAfter(tomorrowNormalized)) {
-          futureCourses.add(MapEntry(normalizedDay, c));
+          if (nextDay == null || normalizedDay.isBefore(nextDay)) {
+            nextDay = normalizedDay;
+            nextCourses
+              ..clear()
+              ..add(c);
+          } else if (normalizedDay.isAtSameMomentAs(nextDay)) {
+            nextCourses.add(c);
+          }
         }
       }
 
-      if (futureCourses.isNotEmpty) {
-        futureCourses.sort((a, b) {
-          final dayCompare = a.key.compareTo(b.key);
-          if (dayCompare != 0) return dayCompare;
-          return a.value.startTime.compareTo(b.value.startTime);
-        });
-        final nextDay = futureCourses.first.key;
-        final nextCourses = futureCourses
-            .where((entry) => entry.key.isAtSameMomentAs(nextDay))
-            .map((entry) => entry.value)
-            .toList()
-          ..sort((a, b) => a.startTime.compareTo(b.startTime));
+      if (nextDay != null) {
+        nextCourses.sort((a, b) => a.startTime.compareTo(b.startTime));
         final days = CalendarDateMath.daysBetween(todayNormalized, nextDay);
         return {'title': '$days天后课程', 'courses': nextCourses};
       }

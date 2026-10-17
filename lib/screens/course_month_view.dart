@@ -7,6 +7,18 @@ import '../services/pomodoro_service.dart';
 import '../utils/app_color_utils.dart';
 import '../utils/calendar_date_math.dart';
 
+class _GanttTodoInterval {
+  final TodoItem todo;
+  final DateTime start;
+  final DateTime end;
+
+  const _GanttTodoInterval({
+    required this.todo,
+    required this.start,
+    required this.end,
+  });
+}
+
 class CourseMonthView extends StatelessWidget {
   final DateTime selectedMonth;
   final Map<String, List<CourseItem>> courseMap;
@@ -54,6 +66,17 @@ class CourseMonthView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
+    final dateKeyFormat = DateFormat('yyyy-MM-dd');
+    final tagIndexByUuid = <String, int>{};
+    if (activeDataViews.contains('timeLogs') ||
+        activeDataViews.contains('pomodoros')) {
+      for (var index = 0; index < pomodoroTags.length; index++) {
+        tagIndexByUuid.putIfAbsent(pomodoroTags[index].uuid, () => index);
+      }
+    }
+    DateFormat? eventTimeFormat;
+    DateFormat getEventTimeFormat() =>
+        eventTimeFormat ??= DateFormat('HH:mm');
 
     // 1. 确定起始日期与天数
     final DateTime startDate;
@@ -84,52 +107,98 @@ class CourseMonthView extends StatelessWidget {
 
     // 2. 预计算所有全局数据 (应用筛选逻辑)
     final Map<String, int> densityMap = {};
-    void addDensity(String? dStr, int weight) {
-      if (dStr != null && dStr.isNotEmpty) {
+    void addDensity(String dStr, int weight) {
+      if (weight != 0) {
         densityMap[dStr] = (densityMap[dStr] ?? 0) + weight;
       }
     }
 
-    if (activeDataViews.contains('courses')) {
-      courseMap.forEach((date, list) => addDensity(date, 3 * list.length));
-    }
-    if (activeDataViews.contains('todos')) {
-      todoMap.forEach((date, list) => addDensity(date, 1 * list.length));
-      crossDayTodoMap.forEach(
-        (date, list) => addDensity(date, 1 * list.length),
-      );
-    }
-    if (activeDataViews.contains('timeLogs')) {
-      logMap.forEach((date, list) => addDensity(date, 2 * list.length));
-    }
-    if (activeDataViews.contains('pomodoros')) {
-      pomMap.forEach((date, list) => addDensity(date, 2 * list.length));
-    }
-    if (activeDataViews.contains('fixedSchedules')) {
-      fixedScheduleMap.forEach(
-        (date, list) => addDensity(date, 3 * list.length),
-      );
-    }
-    if (activeDataViews.contains('deviceCalendar')) {
-      deviceCalendarMap.forEach(
-        (date, list) => addDensity(date, 2 * list.length),
-      );
+    final showCourses = activeDataViews.contains('courses');
+    final showTodos = activeDataViews.contains('todos');
+    final showTimeLogs = activeDataViews.contains('timeLogs');
+    final showPomodoros = activeDataViews.contains('pomodoros');
+    final showFixedSchedules = activeDataViews.contains('fixedSchedules');
+    final showDeviceCalendar = activeDataViews.contains('deviceCalendar');
+    for (final week in weeks) {
+      for (final day in week) {
+        final dateKey = dateKeyFormat.format(day);
+        if (showCourses) {
+          addDensity(dateKey, 3 * (courseMap[dateKey]?.length ?? 0));
+        }
+        if (showTodos) {
+          addDensity(dateKey, todoMap[dateKey]?.length ?? 0);
+          addDensity(dateKey, crossDayTodoMap[dateKey]?.length ?? 0);
+        }
+        if (showTimeLogs) {
+          addDensity(dateKey, 2 * (logMap[dateKey]?.length ?? 0));
+        }
+        if (showPomodoros) {
+          addDensity(dateKey, 2 * (pomMap[dateKey]?.length ?? 0));
+        }
+        if (showFixedSchedules) {
+          addDensity(dateKey, 3 * (fixedScheduleMap[dateKey]?.length ?? 0));
+        }
+        if (showDeviceCalendar) {
+          addDensity(dateKey, 2 * (deviceCalendarMap[dateKey]?.length ?? 0));
+        }
+      }
     }
 
-    final List<TodoItem> ganttTodos = activeDataViews.contains('todos')
-        ? allTodos.where((t) {
-            if (t.isDeleted || t.dueDate == null) return false;
-            final start = DateTime.fromMillisecondsSinceEpoch(
-              t.createdDate ?? t.createdAt,
-            ).toLocal();
-            bool isCrossDay =
-                t.dueDate != null && !DateUtils.isSameDay(start, t.dueDate!);
-            if (isCrossDay && activeDataViews.contains('hideCrossDay')) {
-              return false;
-            }
-            return true;
-          }).toList()
-        : [];
+    final ganttTodos = <_GanttTodoInterval>[];
+    if (activeDataViews.contains('todos')) {
+      final hideCrossDay = activeDataViews.contains('hideCrossDay');
+      for (final todo in allTodos) {
+        final dueDate = todo.dueDate;
+        if (todo.isDeleted || dueDate == null) continue;
+
+        final start = DateTime.fromMillisecondsSinceEpoch(
+          todo.createdDate ?? todo.createdAt,
+        ).toLocal();
+        final isCrossDay = !DateUtils.isSameDay(start, dueDate);
+        if (isCrossDay && hideCrossDay) continue;
+
+        ganttTodos.add(
+          _GanttTodoInterval(todo: todo, start: start, end: dueDate),
+        );
+      }
+    }
+    final ganttTodosByWeek = List<List<_GanttTodoInterval>>.generate(
+      weeks.length,
+      (_) => <_GanttTodoInterval>[],
+    );
+    if (ganttTodos.isNotEmpty) {
+      final weekStarts = [for (final week in weeks) week.first];
+      final weekEnds = [
+        for (final week in weeks)
+          CalendarDateMath.addDays(week.last, 1).subtract(
+            const Duration(microseconds: 1),
+          ),
+      ];
+      for (final interval in ganttTodos) {
+        if (DateUtils.isSameDay(interval.start, interval.end)) continue;
+
+        var low = 0;
+        var high = weekEnds.length;
+        while (low < high) {
+          final middle = (low + high) ~/ 2;
+          if (weekEnds[middle].isBefore(interval.start)) {
+            low = middle + 1;
+          } else {
+            high = middle;
+          }
+        }
+        for (var weekIndex = low;
+            weekIndex < weekStarts.length &&
+                !weekStarts[weekIndex].isAfter(interval.end);
+            weekIndex++) {
+          if (interval.start.isAfter(weekEnds[weekIndex]) ||
+              interval.end.isBefore(weekStarts[weekIndex])) {
+            continue;
+          }
+          ganttTodosByWeek[weekIndex].add(interval);
+        }
+      }
+    }
 
     return Column(
       children: [
@@ -150,10 +219,13 @@ class CourseMonthView extends StatelessWidget {
                   return _buildWeekRow(
                     context,
                     weeks[weekIdx],
-                    ganttTodos,
+                    ganttTodosByWeek[weekIdx],
                     densityMap,
                     isDark,
                     rowHeight,
+                    dateKeyFormat,
+                    getEventTimeFormat,
+                    tagIndexByUuid,
                   );
                 },
               );
@@ -167,10 +239,13 @@ class CourseMonthView extends StatelessWidget {
   Widget _buildWeekRow(
     BuildContext context,
     List<DateTime> weekDays,
-    List<TodoItem> allGanttTodos,
+    List<_GanttTodoInterval> weekGanttTodos,
     Map<String, int> densityMap,
     bool isDark,
     double cellHeight,
+    DateFormat dateKeyFormat,
+    DateFormat Function() getEventTimeFormat,
+    Map<String, int> tagIndexByUuid,
   ) {
     final List<Map<String, dynamic>> weekBars = [];
     final DateTime weekStart = weekDays.first;
@@ -182,7 +257,7 @@ class CourseMonthView extends StatelessWidget {
     // 1. 收集课程和单日待办 (按天遍历)
     for (int i = 0; i < weekDays.length; i++) {
       final day = weekDays[i];
-      final dStr = DateFormat('yyyy-MM-dd').format(day);
+      final dStr = dateKeyFormat.format(day);
 
       if (activeDataViews.contains('courses')) {
         for (var c in (courseMap[dStr] ?? [])) {
@@ -221,22 +296,26 @@ class CourseMonthView extends StatelessWidget {
 
       if (activeDataViews.contains('timeLogs')) {
         for (var l in (logMap[dStr] ?? [])) {
+          final tag = _firstTag(l.tagUuids, tagIndexByUuid);
           weekBars.add({
             'timeLog': l,
             'start': i,
             'end': i,
-            'title': _timeLogTitle(l),
+            'title': l.title.isNotEmpty ? l.title : tag?.name ?? '时间日志',
+            '_tagColor': tag == null ? null : _hexToColor(tag.color),
           });
         }
       }
 
       if (activeDataViews.contains('pomodoros')) {
         for (var p in (pomMap[dStr] ?? [])) {
+          final tag = _firstTag(p.tagUuids, tagIndexByUuid);
           weekBars.add({
             'pomodoro': p,
             'start': i,
             'end': i,
-            'title': _pomodoroTitle(p),
+            'title': tag?.name ?? '番茄钟',
+            '_tagColor': tag == null ? null : _hexToColor(tag.color),
           });
         }
       }
@@ -247,7 +326,7 @@ class CourseMonthView extends StatelessWidget {
             'deviceCalendar': event,
             'start': i,
             'end': i,
-            'title': _deviceCalendarTitle(event),
+            'title': _deviceCalendarTitle(event, getEventTimeFormat),
           });
         }
       }
@@ -255,17 +334,10 @@ class CourseMonthView extends StatelessWidget {
 
     // 2. 收集跨周/跨天待办 (区间判定)
     if (activeDataViews.contains('todos')) {
-      for (var t in allGanttTodos) {
-        DateTime tStart = DateTime.fromMillisecondsSinceEpoch(
-          t.createdDate ?? t.createdAt,
-        ).toLocal();
-        DateTime tEnd = t.dueDate ?? tStart;
-
-        // 如果是单日任务，上面已经处理过了
-        if (DateUtils.isSameDay(tStart, tEnd)) continue;
-
-        // 碰撞检测：任务是否与本周有交集
-        if (tStart.isAfter(weekEnd) || tEnd.isBefore(weekStart)) continue;
+      for (final interval in weekGanttTodos) {
+        final t = interval.todo;
+        final tStart = interval.start;
+        final tEnd = interval.end;
 
         // 计算在本周内的显示范围 (0-6)
         int startIdx = tStart.isBefore(weekStart)
@@ -285,9 +357,19 @@ class CourseMonthView extends StatelessWidget {
     }
 
     // 3. 排序 (未完成待办优先，然后课程、时间日志、番茄钟、已完成待办)
+    final cacheSortPriorities = weekBars.length > 4;
+    if (cacheSortPriorities) {
+      for (final bar in weekBars) {
+        bar['_sortPriority'] = _barPriority(bar);
+      }
+    }
     weekBars.sort((a, b) {
-      final priorityA = _barPriority(a);
-      final priorityB = _barPriority(b);
+      final priorityA = cacheSortPriorities
+          ? a['_sortPriority'] as int
+          : _barPriority(a);
+      final priorityB = cacheSortPriorities
+          ? b['_sortPriority'] as int
+          : _barPriority(b);
       if (priorityA != priorityB) return priorityA.compareTo(priorityB);
 
       int lenA = (a['end'] as int) - (a['start'] as int);
@@ -308,7 +390,7 @@ class CourseMonthView extends StatelessWidget {
               // 背景层：热力图
               Row(
                 children: weekDays.map((day) {
-                  final dStr = DateFormat('yyyy-MM-dd').format(day);
+                  final dStr = dateKeyFormat.format(day);
                   int count = densityMap[dStr] ?? 0;
                   Color? heatColor;
                   if (count > 0) {
@@ -413,8 +495,8 @@ class CourseMonthView extends StatelessWidget {
                                         as DeviceCalendarEvent?;
                                 final int start = bar['start'];
                                 final int end = bar['end'];
-                                final String dateKey = DateFormat('yyyy-MM-dd')
-                                    .format(weekDays[start]);
+                                final String dateKey =
+                                    dateKeyFormat.format(weekDays[start]);
                                 final sourceKey = deviceCalendarEvent == null
                                     ? null
                                     : deviceCalendarCardKeyBuilder?.call(
@@ -531,22 +613,45 @@ class CourseMonthView extends StatelessWidget {
   List<List<Map<String, dynamic>>> _clusterBars(
     List<Map<String, dynamic>> bars,
   ) {
-    List<List<Map<String, dynamic>>> rows = [];
-    for (var bar in bars) {
-      bool placed = false;
-      for (var row in rows) {
-        bool overlap = row.any(
-          (existing) =>
-              !(bar['end'] < existing['start'] ||
-                  bar['start'] > existing['end']),
-        );
+    final rows = <List<Map<String, dynamic>>>[];
+    final occupiedDayMasks = <int>[];
+    final rowsWithNonStandardIntervals = <bool>[];
+
+    for (final bar in bars) {
+      final start = bar['start'] as int;
+      final end = bar['end'] as int;
+      final hasStandardInterval = start >= 0 && start <= end && end <= 6;
+      final barMask = hasStandardInterval
+          ? ((1 << (end - start + 1)) - 1) << start
+          : 0;
+      var placed = false;
+
+      for (var rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+        final row = rows[rowIndex];
+        final overlap =
+            hasStandardInterval && !rowsWithNonStandardIntervals[rowIndex]
+            ? (occupiedDayMasks[rowIndex] & barMask) != 0
+            : row.any(
+                (existing) =>
+                    !(end < existing['start'] || start > existing['end']),
+              );
         if (!overlap) {
           row.add(bar);
+          if (hasStandardInterval && !rowsWithNonStandardIntervals[rowIndex]) {
+            occupiedDayMasks[rowIndex] |= barMask;
+          } else {
+            rowsWithNonStandardIntervals[rowIndex] = true;
+          }
           placed = true;
           break;
         }
       }
-      if (!placed) rows.add([bar]);
+
+      if (!placed) {
+        rows.add([bar]);
+        occupiedDayMasks.add(barMask);
+        rowsWithNonStandardIntervals.add(!hasStandardInterval);
+      }
     }
     return rows;
   }
@@ -589,11 +694,11 @@ class CourseMonthView extends StatelessWidget {
                 : Colors.orange.withValues(alpha: 0.7));
     }
     if (log != null) {
-      final tagColor = _firstTagColor(log.tagUuids);
+      final tagColor = bar['_tagColor'] as Color?;
       return (tagColor ?? const Color(0xFF3B82F6)).withValues(alpha: 0.72);
     }
     if (pomodoro != null) {
-      final tagColor = _firstTagColor(pomodoro.tagUuids);
+      final tagColor = bar['_tagColor'] as Color?;
       return (tagColor ?? Colors.redAccent).withValues(alpha: 0.68);
     }
     if (deviceCalendarEvent != null) {
@@ -613,36 +718,27 @@ class CourseMonthView extends StatelessWidget {
     return Colors.white;
   }
 
-  String _timeLogTitle(TimeLogItem log) {
-    if (log.title.isNotEmpty) return log.title;
-    final tag = _firstTag(log.tagUuids);
-    return tag?.name ?? '时间日志';
-  }
-
-  String _pomodoroTitle(PomodoroRecord record) {
-    final tag = _firstTag(record.tagUuids);
-    return tag?.name ?? '番茄钟';
-  }
-
-  String _deviceCalendarTitle(DeviceCalendarEvent event) {
+  String _deviceCalendarTitle(
+    DeviceCalendarEvent event,
+    DateFormat Function() getEventTimeFormat,
+  ) {
     final timeLabel = event.allDay
         ? '全天'
-        : DateFormat('HH:mm').format(event.start);
+        : getEventTimeFormat().format(event.start);
     return '$timeLabel · ${event.title}';
   }
 
-  PomodoroTag? _firstTag(List<String> tagUuids) {
+  PomodoroTag? _firstTag(
+    List<String> tagUuids,
+    Map<String, int> tagIndexByUuid,
+  ) {
     if (tagUuids.isEmpty) return null;
-    for (final tag in pomodoroTags) {
-      if (tagUuids.contains(tag.uuid)) return tag;
+    var firstIndex = pomodoroTags.length;
+    for (final uuid in tagUuids) {
+      final index = tagIndexByUuid[uuid];
+      if (index != null && index < firstIndex) firstIndex = index;
     }
-    return null;
-  }
-
-  Color? _firstTagColor(List<String> tagUuids) {
-    final tag = _firstTag(tagUuids);
-    if (tag == null) return null;
-    return _hexToColor(tag.color);
+    return firstIndex == pomodoroTags.length ? null : pomodoroTags[firstIndex];
   }
 
   Color _hexToColor(String hex) {
@@ -664,18 +760,26 @@ class CourseMonthView extends StatelessWidget {
     bool isToday = DateUtils.isSameDay(day, DateTime.now());
     bool isCurrentMonth = day.month == selectedMonth.month;
 
-    // 🚀 核心修复：小圆点和时间轴也要响应隐藏跨天设置
-    List<TodoItem> filteredTodos = todos.where((t) {
-      if (activeDataViews.contains('hideCrossDay')) {
-        final start = DateTime.fromMillisecondsSinceEpoch(
-          t.createdDate ?? t.createdAt,
-        ).toLocal();
-        bool isCrossDay =
-            t.dueDate != null && !DateUtils.isSameDay(start, t.dueDate!);
-        if (isCrossDay) return false;
-      }
-      return true;
-    }).toList();
+    // Small dots and the detailed timeline honor the cross-day visibility setting.
+    final showDetailedTodos = viewMode == 1 && height > 150;
+    final showTodoMiniDot = viewMode == 2;
+    final hideCrossDay = activeDataViews.contains('hideCrossDay');
+    bool isVisibleTodo(TodoItem todo) {
+      final dueDate = todo.dueDate;
+      if (dueDate == null) return true;
+      final start = DateTime.fromMillisecondsSinceEpoch(
+        todo.createdDate ?? todo.createdAt,
+      ).toLocal();
+      return DateUtils.isSameDay(start, dueDate);
+    }
+
+    final filteredTodos = !showDetailedTodos
+        ? const <TodoItem>[]
+        : hideCrossDay
+        ? todos.where(isVisibleTodo).toList()
+        : todos;
+    final hasVisibleTodos = showTodoMiniDot &&
+        (hideCrossDay ? todos.any(isVisibleTodo) : todos.isNotEmpty);
 
     return Container(
       decoration: BoxDecoration(
@@ -809,7 +913,7 @@ class CourseMonthView extends StatelessWidget {
                 children: [
                   if (courses.isNotEmpty)
                     _buildMiniDot(Theme.of(context).colorScheme.primary),
-                  if (filteredTodos.isNotEmpty) _buildMiniDot(Colors.amber),
+                  if (hasVisibleTodos) _buildMiniDot(Colors.amber),
                   if (logs.isNotEmpty)
                     _buildMiniDot(Theme.of(context).colorScheme.secondary),
                   if (poms.isNotEmpty) _buildMiniDot(Colors.redAccent),

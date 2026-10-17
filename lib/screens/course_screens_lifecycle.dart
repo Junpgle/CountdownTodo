@@ -971,6 +971,7 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
   }
 
   void _updateWeekTimeLogsPomodorosAndPlans() {
+    _invalidatePlanPomodoroProgressIndex();
     _timeLogsPerDay = {1: [], 2: [], 3: [], 4: [], 5: [], 6: [], 7: []};
     _pomodorosPerDay = {1: [], 2: [], 3: [], 4: [], 5: [], 6: [], 7: []};
     _planBlocksPerDay = {1: [], 2: [], 3: [], 4: [], 5: [], 6: [], 7: []};
@@ -982,41 +983,81 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
       (_currentWeek - 1) * 7,
     );
 
-    for (int i = 1; i <= 7; i++) {
-      DateTime dayStart = CalendarDateMath.addDays(currentWeekMonday, i - 1);
-      DateTime dayStartMs = DateTime(
-        dayStart.year,
-        dayStart.month,
-        dayStart.day,
+    final dayStartEpochs = List<int>.filled(7, 0);
+    final dayEndEpochs = List<int>.filled(7, 0);
+    for (var index = 0; index < 7; index++) {
+      final day = CalendarDateMath.addDays(currentWeekMonday, index);
+      final dayStart = DateTime(day.year, day.month, day.day);
+      dayStartEpochs[index] = dayStart.millisecondsSinceEpoch;
+      dayEndEpochs[index] =
+          CalendarDateMath.addDays(dayStart, 1).millisecondsSinceEpoch;
+    }
+
+    void addToOverlappingDays<T>(
+      int itemStart,
+      int itemEnd,
+      T item,
+      Map<int, List<T>> days,
+    ) {
+      var low = 0;
+      var high = dayEndEpochs.length;
+      while (low < high) {
+        final middle = (low + high) ~/ 2;
+        if (dayEndEpochs[middle] <= itemStart) {
+          low = middle + 1;
+        } else {
+          high = middle;
+        }
+      }
+      for (var index = low;
+          index < dayStartEpochs.length && dayStartEpochs[index] < itemEnd;
+          index++) {
+        if (itemEnd > dayStartEpochs[index] &&
+            itemStart < dayEndEpochs[index]) {
+          days[index + 1]!.add(item);
+        }
+      }
+    }
+
+    for (final log in _allTimeLogs) {
+      addToOverlappingDays(
+        log.startTime,
+        log.endTime,
+        log,
+        _timeLogsPerDay,
       );
-      DateTime dayEndMs = CalendarDateMath.addDays(dayStartMs, 1);
+    }
 
-      int dayStartMsEpoch = dayStartMs.millisecondsSinceEpoch;
-      int dayEndMsEpoch = dayEndMs.millisecondsSinceEpoch;
-
-      for (var log in _allTimeLogs) {
-        if (log.endTime > dayStartMsEpoch && log.startTime < dayEndMsEpoch) {
-          _timeLogsPerDay[i]!.add(log);
-        }
+    final associationLookup = _allPlanBlocks.length > 1 &&
+            _allPlanBlocks.length * _allPomodoroRecords.length > 128
+        ? _PomodoroPlanAssociationLookup(_allPlanBlocks)
+        : null;
+    for (final record in _allPomodoroRecords) {
+      final recordEnd =
+          record.endTime ?? record.startTime + record.effectiveDuration * 1000;
+      if (recordEnd <= dayStartEpochs.first ||
+          record.startTime >= dayEndEpochs.last) {
+        continue;
       }
+      final associated = associationLookup?.isAssociated(record, recordEnd) ??
+          _isPomodoroAssociatedWithPlan(record);
+      if (associated) continue;
 
-      for (var record in _allPomodoroRecords) {
-        int recordEnd =
-            record.endTime ??
-            (record.startTime + record.effectiveDuration * 1000);
-        if (recordEnd > dayStartMsEpoch && record.startTime < dayEndMsEpoch) {
-          // 🚀 跳过与计划块关联的番茄钟，避免重复显示
-          if (!_isPomodoroAssociatedWithPlan(record)) {
-            _pomodorosPerDay[i]!.add(record);
-          }
-        }
-      }
+      addToOverlappingDays(
+        record.startTime,
+        recordEnd,
+        record,
+        _pomodorosPerDay,
+      );
+    }
 
-      for (var plan in _allPlanBlocks) {
-        if (plan.endTime > dayStartMsEpoch && plan.startTime < dayEndMsEpoch) {
-          _planBlocksPerDay[i]!.add(plan);
-        }
-      }
+    for (final plan in _allPlanBlocks) {
+      addToOverlappingDays(
+        plan.startTime,
+        plan.endTime,
+        plan,
+        _planBlocksPerDay,
+      );
     }
   }
 }

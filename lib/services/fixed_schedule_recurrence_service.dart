@@ -20,6 +20,7 @@ class FixedScheduleRecurrenceService {
   FixedScheduleRecurrenceService._();
 
   static const int maxOccurrences = 2000;
+  static final Map<String?, DateFormat> _dateKeyFormatters = {};
 
   /// 快速创建未指定截止日期时使用的可控物化窗口。
   /// 日/周类覆盖常见的 8 周安排，月重复覆盖 1 年，年重复覆盖 5 年。
@@ -224,8 +225,14 @@ class FixedScheduleRecurrenceService {
 
   static DateTime _day(DateTime value) => CalendarDateMath.dateOnly(value);
 
-  static String _dateKey(DateTime value) =>
-      DateFormat('yyyy-MM-dd').format(value);
+  static String _dateKey(DateTime value) {
+    final locale = Intl.defaultLocale;
+    final formatter = _dateKeyFormatters.putIfAbsent(
+      locale,
+      () => DateFormat('yyyy-MM-dd', locale),
+    );
+    return formatter.format(value);
+  }
 
   static DateTime _addMonths(DateTime value, int months, int preferredDay) {
     final monthIndex = value.year * 12 + value.month - 1 + months;

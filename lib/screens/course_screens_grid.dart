@@ -1,7 +1,220 @@
 part of 'course_screens.dart';
 // ignore_for_file: annotate_overrides, unused_element, unused_element_parameter
 
+class _PlanPomodoroProgressIndex {
+  _PlanPomodoroProgressIndex(this.records) {
+    for (var index = 0; index < records.length; index++) {
+      final record = records[index];
+      _recordEnds.add(
+        record.endTime ?? record.startTime + record.effectiveDuration * 1000,
+      );
+      if (record.isDeleted) continue;
+      _recordsByUuid.putIfAbsent(record.uuid, () => []).add(index);
+
+      final planBlockId = record.planBlockId;
+      if (planBlockId != null && planBlockId.isNotEmpty) {
+        _recordsByPlanBlockId
+            .putIfAbsent(planBlockId, () => [])
+            .add(index);
+      }
+      final todoUuid = record.todoUuid;
+      if (todoUuid != null && todoUuid.isNotEmpty) {
+        _recordsByTodoId.putIfAbsent(todoUuid, () => []).add(index);
+      }
+    }
+  }
+
+  final List<PomodoroRecord> records;
+  final _recordEnds = <int>[];
+  final _recordsByUuid = <String, List<int>>{};
+  final _recordsByPlanBlockId = <String, List<int>>{};
+  final _recordsByTodoId = <String, List<int>>{};
+  final _progressByPlan =
+      HashMap<TodoPlanBlock, Map<String, dynamic>>.identity();
+
+  void clearProgressCache() => _progressByPlan.clear();
+
+  Map<String, dynamic> progressFor(TodoPlanBlock plan) =>
+      _progressByPlan.putIfAbsent(plan, () {
+        if (plan.isDeleted) {
+          return {'completed': 0, 'total': 0, 'progress': 0.0};
+        }
+
+        final matchingIndices = <int>{};
+        for (final recordUuid in plan.pomodoroRecordIds) {
+          matchingIndices.addAll(_recordsByUuid[recordUuid] ?? const <int>[]);
+        }
+        if (plan.id.isNotEmpty) {
+          matchingIndices.addAll(
+            _recordsByPlanBlockId[plan.id] ?? const <int>[],
+          );
+        }
+        if (plan.todoId.isNotEmpty) {
+          for (final index
+              in _recordsByTodoId[plan.todoId] ?? const <int>[]) {
+            final record = records[index];
+            if (record.startTime < plan.endTime &&
+                _recordEnds[index] > plan.startTime) {
+              matchingIndices.add(index);
+            }
+          }
+        }
+
+        if (matchingIndices.isEmpty) {
+          return {'completed': 0, 'total': 0, 'progress': 0.0};
+        }
+
+        var totalSeconds = 0;
+        var completedSeconds = 0;
+        for (final index in matchingIndices) {
+          final record = records[index];
+          final effective =
+              record.effectiveDuration > 0 ? record.effectiveDuration : 0;
+          final planned =
+              record.plannedDuration > 0 ? record.plannedDuration : effective;
+          final base = planned > 0 ? planned : 1;
+          totalSeconds += base;
+          completedSeconds += effective.clamp(0, base);
+        }
+        final progress =
+            totalSeconds > 0 ? completedSeconds / totalSeconds : 0.0;
+        return {
+          'completed': completedSeconds,
+          'total': totalSeconds,
+          'progress': progress.clamp(0.0, 1.0),
+          'recordCount': matchingIndices.length,
+        };
+      });
+}
+
+class _PomodoroPlanAssociationLookup {
+  _PomodoroPlanAssociationLookup(Iterable<TodoPlanBlock> plans) {
+    for (final plan in plans) {
+      if (plan.isDeleted) continue;
+      if (plan.id.isNotEmpty) _planIds.add(plan.id);
+      _explicitRecordUuids.addAll(plan.pomodoroRecordIds);
+      if (plan.todoId.isNotEmpty) {
+        _plansByTodoId.putIfAbsent(plan.todoId, () => []).add(plan);
+      }
+    }
+  }
+
+  final _planIds = <String>{};
+  final _explicitRecordUuids = <String>{};
+  final _plansByTodoId = <String, List<TodoPlanBlock>>{};
+
+  bool isAssociated(PomodoroRecord record, int recordEnd) {
+    if (record.isDeleted) return false;
+    if (_explicitRecordUuids.contains(record.uuid)) return true;
+
+    final planBlockId = record.planBlockId;
+    if (planBlockId != null &&
+        planBlockId.isNotEmpty &&
+        _planIds.contains(planBlockId)) {
+      return true;
+    }
+
+    final todoUuid = record.todoUuid;
+    if (todoUuid == null || todoUuid.isEmpty) return false;
+    for (final plan in _plansByTodoId[todoUuid] ?? const <TodoPlanBlock>[]) {
+      if (record.startTime < plan.endTime && recordEnd > plan.startTime) {
+        return true;
+      }
+    }
+    return false;
+  }
+}
+
+class _PomodoroPlanDayAssociationIndex {
+  _PomodoroPlanDayAssociationIndex(this._plans) {
+    for (var index = 0; index < _plans.length; index++) {
+      final plan = _plans[index];
+      if (plan.isDeleted) continue;
+      for (final recordUuid in plan.pomodoroRecordIds) {
+        _planIndicesByRecordUuid.putIfAbsent(recordUuid, () => []).add(index);
+      }
+      if (plan.id.isNotEmpty) {
+        _planIndicesById.putIfAbsent(plan.id, () => []).add(index);
+      }
+      if (plan.todoId.isNotEmpty) {
+        _planIndicesByTodoId.putIfAbsent(plan.todoId, () => []).add(index);
+      }
+    }
+  }
+
+  final List<TodoPlanBlock> _plans;
+  final _planIndicesByRecordUuid = <String, List<int>>{};
+  final _planIndicesById = <String, List<int>>{};
+  final _planIndicesByTodoId = <String, List<int>>{};
+
+  List<TodoPlanBlock> matchingPlans(PomodoroRecord record, int recordEnd) {
+    if (record.isDeleted) return const <TodoPlanBlock>[];
+    Set<int>? matchingIndices;
+    void addMatches(List<int>? indices) {
+      if (indices == null || indices.isEmpty) return;
+      (matchingIndices ??= <int>{}).addAll(indices);
+    }
+
+    addMatches(_planIndicesByRecordUuid[record.uuid]);
+    final planBlockId = record.planBlockId;
+    if (planBlockId != null && planBlockId.isNotEmpty) {
+      addMatches(_planIndicesById[planBlockId]);
+    }
+    final todoUuid = record.todoUuid;
+    if (todoUuid != null && todoUuid.isNotEmpty) {
+      for (final index
+          in _planIndicesByTodoId[todoUuid] ?? const <int>[]) {
+        final plan = _plans[index];
+        if (record.startTime < plan.endTime && recordEnd > plan.startTime) {
+          (matchingIndices ??= <int>{}).add(index);
+        }
+      }
+    }
+    final matches = matchingIndices;
+    if (matches == null || matches.isEmpty) return const <TodoPlanBlock>[];
+
+    final orderedIndices = matches.toList()..sort();
+    return [for (final index in orderedIndices) _plans[index]];
+  }
+}
+
 mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
+  _PlanPomodoroProgressIndex? _cachedPlanPomodoroProgressIndex;
+
+  @override
+  void _invalidatePlanPomodoroProgressIndex() {
+    _cachedPlanPomodoroProgressIndex = null;
+  }
+
+  _PlanPomodoroProgressIndex? _planPomodoroProgressIndexFor(
+    List<TodoPlanBlock> visiblePlans,
+  ) {
+    if (visiblePlans.length <= 1 ||
+        visiblePlans.length * _allPomodoroRecords.length <= 128) {
+      _cachedPlanPomodoroProgressIndex = null;
+      return null;
+    }
+
+    final cached = _cachedPlanPomodoroProgressIndex;
+    if (cached != null && identical(cached.records, _allPomodoroRecords)) {
+      cached.clearProgressCache();
+      return cached;
+    }
+    final index = _PlanPomodoroProgressIndex(_allPomodoroRecords);
+    _cachedPlanPomodoroProgressIndex = index;
+    return index;
+  }
+
+  Map<T, int> _identityIndices<T extends Object>(Iterable<T> items) {
+    final indices = HashMap<T, int>.identity();
+    var index = 0;
+    for (final item in items) {
+      if (!indices.containsKey(item)) indices[item] = index;
+      index++;
+    }
+    return indices;
+  }
+
   double get _totalHiddenMinutes =>
       _hiddenTimeRanges.fold(0.0, (sum, range) => sum + range.duration);
 
@@ -120,7 +333,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                                           ),
                                         ),
                                       Text(
-                                          "开始: ${DateFormat('MM-dd HH:mm').format(DateTime.fromMillisecondsSinceEpoch(todo.createdDate ?? todo.createdAt, isUtc: true).toLocal())}\n截止: ${todo.dueDate != null ? DateFormat('MM-dd HH:mm').format(todo.dueDate!) : '无'}"),
+                                          "开始: ${_cachedDateFormat('MM-dd HH:mm').format(DateTime.fromMillisecondsSinceEpoch(todo.createdDate ?? todo.createdAt, isUtc: true).toLocal())}\n截止: ${todo.dueDate != null ? _cachedDateFormat('MM-dd HH:mm').format(todo.dueDate!) : '无'}"),
                                     ],
                                   ),
                                   onTap: () {
@@ -292,7 +505,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                       : colorScheme.onSecondary));
 
           final currentDay = CalendarDateMath.addDays(monday, index);
-          final dayKey = DateFormat('yyyy-MM-dd').format(currentDay);
+          final dayKey = _cachedDateFormat('yyyy-MM-dd').format(currentDay);
           final allDaySourceKey = deviceEvents.isEmpty
               ? null
               : _getDeviceCalendarCardKey(
@@ -304,7 +517,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
           return Expanded(
             child: GestureDetector(
               onTap: () {
-                String dateStr = DateFormat('MM-dd').format(currentDay);
+                String dateStr = _cachedDateFormat('MM-dd').format(currentDay);
                 if (fixedSchedules.isNotEmpty || dayTodos.isNotEmpty) {
                   _showDayDetailSheet(currentDay);
                 } else if (deviceEvents.isNotEmpty) {
@@ -467,7 +680,9 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
 
   Widget _buildHeader(DateTime? monday) {
     DateTime now = DateTime.now();
-    String todayStr = DateFormat('yyyy-MM-dd').format(now);
+    final dateKeyFormat = _cachedDateFormat('yyyy-MM-dd');
+    final headerDateFormat = _cachedDateFormat('M/dd');
+    String todayStr = dateKeyFormat.format(now);
     bool isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
@@ -481,8 +696,8 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
 
           if (monday != null) {
             currentDate = CalendarDateMath.addDays(monday, index);
-            dateStr = DateFormat('M/dd').format(currentDate);
-            isToday = DateFormat('yyyy-MM-dd').format(currentDate) == todayStr;
+            dateStr = headerDateFormat.format(currentDate);
+            isToday = dateKeyFormat.format(currentDate) == todayStr;
           }
 
           List<String> weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
@@ -546,9 +761,40 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
 
   Widget _buildGrid(double cellWidth, double minuteHeight) {
     List<Widget> children = [];
-    bool isDark = Theme.of(context).brightness == Brightness.dark;
+    final colorScheme = Theme.of(context).colorScheme;
+    final focusColor = colorScheme.cdtFocus;
+    bool isDark = colorScheme.brightness == Brightness.dark;
     Color lineColor = isDark ? Colors.white10 : Colors.black12;
     Color textColor = isDark ? Colors.white70 : Colors.black87;
+    Map<String, int>? tagOrderByUuid;
+    Map<String, int> tagOrder() {
+      final cached = tagOrderByUuid;
+      if (cached != null) return cached;
+      final result = <String, int>{};
+      for (var index = 0; index < _pomodoroTags.length; index++) {
+        result.putIfAbsent(_pomodoroTags[index].uuid, () => index);
+      }
+      tagOrderByUuid = result;
+      return result;
+    }
+
+    PomodoroTag? firstTagFor(Iterable<String> uuids) {
+      var firstIndex = _pomodoroTags.length;
+      final orderByUuid = tagOrder();
+      for (final uuid in uuids) {
+        final index = orderByUuid[uuid];
+        if (index != null && index < firstIndex) firstIndex = index;
+      }
+      return firstIndex == _pomodoroTags.length
+          ? null
+          : _pomodoroTags[firstIndex];
+    }
+
+    final visiblePlans = _activeDataViews.contains('plans')
+        ? _planBlocksPerDay.values.expand((items) => items).toList()
+        : const <TodoPlanBlock>[];
+    final planPomodoroProgressIndex =
+        _planPomodoroProgressIndexFor(visiblePlans);
 
     for (int hour = startHour; hour <= endHour; hour++) {
       // 🚀 自适应时间隐藏：如果该小时正点落于本周的合并收窄区间中，跳过不绘制
@@ -689,6 +935,9 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
     };
 
     if (_activeDataViews.contains('todos')) {
+      final todoIndices = _identityIndices(
+        _intraDayTodosPerDay.values.expand((items) => items),
+      );
       final collisionMap = <String, int>{};
       for (int weekday = 1; weekday <= 7; weekday++) {
         final dayTodos = _intraDayTodosPerDay[weekday] ?? [];
@@ -714,10 +963,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
               (todo.isDone ? colorScheme.cdtSuccess : colorScheme.cdtWarning)
                   .withValues(alpha: todo.isDone ? 0.5 : 0.85);
           final todoCardKey = _getTodoCardKey(todo.id, weekday: weekday);
-          final todoIndex = _intraDayTodosPerDay.values
-              .expand((e) => e)
-              .toList()
-              .indexOf(todo);
+          final todoIndex = todoIndices[todo]!;
 
           eventsPerDay[weekday]!.add(_TimelineEvent(
               top: top,
@@ -737,6 +983,8 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                 int todoMaxLines =
                     (availableForTodo / (titleFontSize + 1.0)).floor();
                 if (todoMaxLines < 1) todoMaxLines = 1;
+                final animationDelay = (todoIndex * 0.06).clamp(0.0, 0.5);
+                final animationProgressScale = 1.0 / (1.0 - animationDelay);
 
                 return Positioned(
                   top: top,
@@ -746,9 +994,9 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                   child: AnimatedBuilder(
                     animation: _courseExpandAnim,
                     builder: (ctx, child) {
-                      final delay = (todoIndex * 0.06).clamp(0.0, 0.5);
                       final t =
-                          ((_courseExpandAnim.value - delay) / (1.0 - delay))
+                          ((_courseExpandAnim.value - animationDelay) *
+                                  animationProgressScale)
                               .clamp(0.0, 1.0);
                       final scale = 0.7 + 0.3 * t;
                       final opacity = t;
@@ -892,6 +1140,9 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
     }
 
     if (_activeDataViews.contains('timeLogs')) {
+      final logIndices = _identityIndices(
+        _timeLogsPerDay.values.expand((items) => items),
+      );
       for (int weekday = 1; weekday <= 7; weekday++) {
         for (var log in _timeLogsPerDay[weekday]!) {
           DateTime start =
@@ -911,9 +1162,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
               Theme.of(context).colorScheme.cdtInfo.withValues(alpha: 0.7);
           String logTitle = log.title.isNotEmpty ? log.title : '时间日志';
           if (log.tagUuids.isNotEmpty) {
-            final tag = _pomodoroTags.cast<PomodoroTag?>().firstWhere(
-                (t) => log.tagUuids.contains(t?.uuid),
-                orElse: () => null);
+            final tag = firstTagFor(log.tagUuids);
             if (tag != null) {
               logColor = AppColorUtils.hexToColor(
                 tag.color,
@@ -925,8 +1174,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
           }
 
           final logCardKey = _getTimeLogCardKey(log.id);
-          final logIndex =
-              _timeLogsPerDay.values.expand((e) => e).toList().indexOf(log);
+          final logIndex = logIndices[log]!;
 
           eventsPerDay[weekday]!.add(_TimelineEvent(
               top: top,
@@ -944,6 +1192,8 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                 int logMaxLines =
                     (availableForLog / (titleFontSize + 1.0)).floor();
                 if (logMaxLines < 1) logMaxLines = 1;
+                final animationDelay = (logIndex * 0.06).clamp(0.0, 0.5);
+                final animationProgressScale = 1.0 / (1.0 - animationDelay);
 
                 return Positioned(
                   top: top,
@@ -953,9 +1203,9 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                   child: AnimatedBuilder(
                     animation: _courseExpandAnim,
                     builder: (ctx, child) {
-                      final delay = (logIndex * 0.06).clamp(0.0, 0.5);
                       final t =
-                          ((_courseExpandAnim.value - delay) / (1.0 - delay))
+                          ((_courseExpandAnim.value - animationDelay) *
+                                  animationProgressScale)
                               .clamp(0.0, 1.0);
                       final scale = 0.7 + 0.3 * t;
                       final opacity = t;
@@ -1041,6 +1291,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
     }
 
     if (_activeDataViews.contains('plans')) {
+      final planIndices = _identityIndices(visiblePlans);
       for (int weekday = 1; weekday <= 7; weekday++) {
         for (var plan in _planBlocksPerDay[weekday] ?? <TodoPlanBlock>[]) {
           final start =
@@ -1058,11 +1309,11 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
               ? colorScheme.cdtSuccess.withValues(alpha: 0.58)
               : colorScheme.secondary.withValues(alpha: 0.58);
           final title = plan.titleSnapshot ?? '规划任务';
-          final planIndex =
-              _planBlocksPerDay.values.expand((e) => e).toList().indexOf(plan);
+          final planIndex = planIndices[plan]!;
 
           // 计算关联的番茄钟完成进度
-          final pomProgress = _calculatePlanPomodoroProgress(plan);
+          final pomProgress = planPomodoroProgressIndex?.progressFor(plan) ??
+              _calculatePlanPomodoroProgress(plan);
           final recordCount = (pomProgress['recordCount'] as int?) ?? 0;
           final hasAssociatedPomodoro = recordCount > 0;
 
@@ -1095,6 +1346,8 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                       (availableForPlan / (titleFontSize + 1.0)).floor();
                   if (planMaxLines < 1) planMaxLines = 1;
                 }
+                final animationDelay = (planIndex * 0.04).clamp(0.0, 0.45);
+                final animationProgressScale = 1.0 / (1.0 - animationDelay);
 
                 return Positioned(
                   top: top,
@@ -1104,9 +1357,9 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                   child: AnimatedBuilder(
                     animation: _courseExpandAnim,
                     builder: (ctx, child) {
-                      final delay = (planIndex * 0.04).clamp(0.0, 0.45);
                       final t =
-                          ((_courseExpandAnim.value - delay) / (1.0 - delay))
+                          ((_courseExpandAnim.value - animationDelay) *
+                                  animationProgressScale)
                               .clamp(0.0, 1.0);
                       return Transform.scale(
                         scale: 0.8 + 0.2 * t,
@@ -1418,8 +1671,17 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
     }
 
     if (_activeDataViews.contains('pomodoros')) {
+      final pomodoroIndices = _identityIndices(
+        _pomodorosPerDay.values.expand((items) => items),
+      );
       for (int weekday = 1; weekday <= 7; weekday++) {
-        for (var record in _pomodorosPerDay[weekday]!) {
+        final dayRecords = _pomodorosPerDay[weekday]!;
+        final dayPlans = _planBlocksPerDay[weekday] ?? const <TodoPlanBlock>[];
+        final planAssociationIndex =
+            dayPlans.length <= 1 || dayPlans.length * dayRecords.length <= 128
+            ? null
+            : _PomodoroPlanDayAssociationIndex(dayPlans);
+        for (var record in dayRecords) {
           DateTime pomStart =
               DateTime.fromMillisecondsSinceEpoch(record.startTime, isUtc: true)
                   .toLocal();
@@ -1428,9 +1690,11 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
           DateTime pomEnd =
               DateTime.fromMillisecondsSinceEpoch(endMs, isUtc: true).toLocal();
 
-          final associatedPlans = (_planBlocksPerDay[weekday] ?? [])
-              .where((plan) => _isRecordAssociatedWithPlan(record, plan))
-              .toList();
+          final associatedPlans =
+              planAssociationIndex?.matchingPlans(record, endMs) ??
+              dayPlans
+                  .where((plan) => _isRecordAssociatedWithPlan(record, plan))
+                  .toList();
 
           List<Map<String, DateTime>> segments = [
             {'start': pomStart, 'end': pomEnd}
@@ -1483,9 +1747,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
             String pomTitle = '专注';
 
             if (record.tagUuids.isNotEmpty) {
-              final tag = _pomodoroTags.cast<PomodoroTag?>().firstWhere(
-                  (t) => record.tagUuids.contains(t?.uuid),
-                  orElse: () => null);
+              final tag = firstTagFor(record.tagUuids);
               if (tag != null) {
                 pomColor = AppColorUtils.hexToColor(
                   tag.color,
@@ -1503,10 +1765,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
 
             final pomCardKey =
                 _getPomodoroCardKey('${record.uuid}_${segmentIndex++}');
-            final pomIndex = _pomodorosPerDay.values
-                .expand((e) => e)
-                .toList()
-                .indexOf(record);
+            final pomIndex = pomodoroIndices[record]!;
 
             eventsPerDay[weekday]!.add(_TimelineEvent(
                 top: top,
@@ -1525,6 +1784,8 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                   int pomMaxLines =
                       (availableForPom / (titleFontSize + 1.0)).floor();
                   if (pomMaxLines < 1) pomMaxLines = 1;
+                  final animationDelay = (pomIndex * 0.06).clamp(0.0, 0.5);
+                  final animationProgressScale = 1.0 / (1.0 - animationDelay);
 
                   return Positioned(
                     top: top,
@@ -1534,9 +1795,9 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                     child: AnimatedBuilder(
                       animation: _courseExpandAnim,
                       builder: (ctx, child) {
-                        final delay = (pomIndex * 0.06).clamp(0.0, 0.5);
                         final t =
-                            ((_courseExpandAnim.value - delay) / (1.0 - delay))
+                            ((_courseExpandAnim.value - animationDelay) *
+                                    animationProgressScale)
                                 .clamp(0.0, 1.0);
                         final scale = 0.7 + 0.3 * t;
                         final opacity = t;
@@ -1664,7 +1925,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                 : Color(event.colorValue!).withValues(alpha: 0.78);
             final calendarCardKey = _getDeviceCalendarCardKey(
               event.id,
-              DateFormat('yyyy-MM-dd').format(dayStart),
+              _cachedDateFormat('yyyy-MM-dd').format(dayStart),
               surface: 'week-timed',
             );
 
@@ -1737,6 +1998,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
     }
 
     if (_activeDataViews.contains('courses')) {
+      final courseIndices = _identityIndices(_weekCourses);
       for (var course in _weekCourses) {
         int sh = course.startTime ~/ 100;
         int sm = course.startTime % 100;
@@ -1749,7 +2011,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
         Color bgColor = _getCourseColor(course.courseName);
         final cardKey = _getCourseCardKey(
             course.courseName, course.weekday, course.startTime);
-        final courseIndex = _weekCourses.indexOf(course);
+        final courseIndex = courseIndices[course]!;
 
         eventsPerDay[course.weekday]!.add(_TimelineEvent(
             top: top,
@@ -1776,6 +2038,8 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                 courseMaxLines = (availableForTitle / titleLineHeight).floor();
                 if (courseMaxLines < 1) courseMaxLines = 1;
               }
+              final animationDelay = (courseIndex * 0.06).clamp(0.0, 0.5);
+              final animationProgressScale = 1.0 / (1.0 - animationDelay);
 
               return Positioned(
                 top: top + 1,
@@ -1785,9 +2049,9 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                 child: AnimatedBuilder(
                   animation: _courseExpandAnim,
                   builder: (ctx, child) {
-                    final delay = (courseIndex * 0.06).clamp(0.0, 0.5);
                     final t =
-                        ((_courseExpandAnim.value - delay) / (1.0 - delay))
+                        ((_courseExpandAnim.value - animationDelay) *
+                                animationProgressScale)
                             .clamp(0.0, 1.0);
                     final scale = 0.7 + 0.3 * t;
                     final opacity = t;
@@ -1957,53 +2221,91 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
           double nowY = _timeToY(now.hour, now.minute, minuteHeight);
           double lineLeft = timeColumnWidth + diffDays * cellWidth;
 
-          children.add(Positioned(
-            top: nowY,
-            left: timeColumnWidth,
-            width: cellWidth * 7,
-            height: 1,
-            child: AnimatedBuilder(
-              animation: _pulseAnimation,
-              builder: (context, child) {
-                return Container(
-                  color: Theme.of(context)
-                      .colorScheme
-                      .cdtFocus
-                      .withValues(alpha: 0.3 + 0.2 * _pulseAnimation.value),
-                );
-              },
+          children.add(
+            Positioned(
+              top: nowY,
+              left: timeColumnWidth,
+              width: cellWidth * 7,
+              height: 1,
+              child: CustomPaint(
+                painter: _CurrentTimeRulePainter(
+                  animation: _pulseAnimation,
+                  color: focusColor,
+                ),
+              ),
             ),
-          ));
-          children.add(Positioned(
-            top: nowY - 1,
-            left: lineLeft,
-            width: cellWidth,
-            height: 2,
-            child: AnimatedBuilder(
-              animation: _pulseAnimation,
-              builder: (context, child) {
-                final focusColor = Theme.of(context).colorScheme.cdtFocus;
-                return Container(
-                  decoration: BoxDecoration(
-                    color: focusColor.withValues(
-                        alpha: 0.7 + 0.3 * _pulseAnimation.value),
-                    boxShadow: [
-                      BoxShadow(
-                        color: focusColor.withValues(
-                            alpha: 0.4 * _pulseAnimation.value),
-                        blurRadius: 6,
-                        spreadRadius: 1,
-                      )
-                    ],
-                  ),
-                );
-              },
+          );
+          children.add(
+            Positioned(
+              top: nowY - 1,
+              left: lineLeft,
+              width: cellWidth,
+              height: 2,
+              child: CustomPaint(
+                painter: _CurrentTimeMarkerPainter(
+                  animation: _pulseAnimation,
+                  color: focusColor,
+                ),
+              ),
             ),
-          ));
+          );
         }
       }
     }
 
     return Stack(children: children);
   }
+}
+
+/// Paint pulse updates directly so the grid avoids rebuilding these lines
+/// on each animation tick.
+class _CurrentTimeRulePainter extends CustomPainter {
+  _CurrentTimeRulePainter({
+    required this.animation,
+    required this.color,
+  }) : super(repaint: animation);
+
+  final Animation<double> animation;
+  final Color color;
+  final Paint _paint = Paint();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    _paint.color = color.withValues(alpha: 0.3 + 0.2 * animation.value);
+    canvas.drawRect(Offset.zero & size, _paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _CurrentTimeRulePainter oldDelegate) =>
+      oldDelegate.animation != animation || oldDelegate.color != color;
+}
+
+class _CurrentTimeMarkerPainter extends CustomPainter {
+  _CurrentTimeMarkerPainter({
+    required this.animation,
+    required this.color,
+  }) : super(repaint: animation);
+
+  final Animation<double> animation;
+  final Color color;
+  final Paint _fillPaint = Paint();
+  late final Paint _shadowPaint = BoxShadow(
+    color: Colors.transparent,
+    blurRadius: 6,
+    spreadRadius: 1,
+  ).toPaint();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    final progress = animation.value;
+    _shadowPaint.color = color.withValues(alpha: 0.4 * progress);
+    canvas.drawRect(rect.inflate(1), _shadowPaint);
+    _fillPaint.color = color.withValues(alpha: 0.7 + 0.3 * progress);
+    canvas.drawRect(rect, _fillPaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _CurrentTimeMarkerPainter oldDelegate) =>
+      oldDelegate.animation != animation || oldDelegate.color != color;
 }

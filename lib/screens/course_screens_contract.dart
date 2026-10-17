@@ -28,6 +28,8 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
 
   int _relativeWeekForDate(DateTime date, SemesterInfo semester);
 
+  void _invalidatePlanPomodoroProgressIndex();
+
   List<TimeLogItem> _allTimeLogs = [];
   List<PomodoroRecord> _allPomodoroRecords = [];
   List<PomodoroTag> _pomodoroTags = [];
@@ -37,6 +39,7 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
   Map<int, List<PomodoroRecord>> _pomodorosPerDay = {};
   Map<int, List<TodoPlanBlock>> _planBlocksPerDay = {};
   Map<int, List<FixedScheduleItem>> _fixedSchedulesPerDay = {};
+  final Map<(String?, String), DateFormat> _dateFormatters = {};
   final Set<String> _activeDataViews = {
     'courses',
     'fixedSchedules',
@@ -47,6 +50,14 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
     'deviceCalendar',
   };
   bool _collapseFreeTime = true;
+
+  DateFormat _cachedDateFormat(String pattern) {
+    final locale = Intl.defaultLocale;
+    return _dateFormatters.putIfAbsent(
+      (locale, pattern),
+      () => DateFormat(pattern, locale),
+    );
+  }
 
   // --- 🚀 视图模式分级 (1周, 2周, 1个月) ---
   int _viewMode = 0; // 0: 1周, 1: 2周, 2: 1个月

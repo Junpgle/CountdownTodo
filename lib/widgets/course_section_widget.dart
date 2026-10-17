@@ -32,6 +32,16 @@ String _lessonTypeLabel(String? type) {
   return type?.trim() ?? '';
 }
 
+final Map<(String?, String), DateFormat> _courseSectionDateFormats = {};
+
+DateFormat _courseSectionDateFormat(String pattern) {
+  final locale = Intl.defaultLocale;
+  return _courseSectionDateFormats.putIfAbsent(
+    (locale, pattern),
+    () => DateFormat(pattern, locale),
+  );
+}
+
 // ─────────────────────────────────────────────
 // 主组件
 // ─────────────────────────────────────────────
@@ -333,8 +343,9 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
     final tomorrowFixedSchedules = results[3] as List<FixedScheduleItem>;
     final allCourses = results[4] as List<CourseItem>;
     final deviceCalendarEvents = results[5] as List<DeviceCalendarEvent>;
-    final today = DateFormat('yyyy-MM-dd').format(now);
-    final tomorrow = DateFormat('yyyy-MM-dd').format(tomorrowStart);
+    final dateFormat = _courseSectionDateFormat('yyyy-MM-dd');
+    final today = dateFormat.format(now);
+    final tomorrow = dateFormat.format(tomorrowStart);
 
     final missed = <TodoPlanBlock>[];
     for (final block in blocks) {
@@ -443,35 +454,32 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
   Widget build(BuildContext context) {
     final now = DateTime.now();
     final nowMs = now.millisecondsSinceEpoch;
-    final fallbackToday = DateFormat('yyyy-MM-dd').format(now);
+    final fallbackToday = _courseSectionDateFormat('yyyy-MM-dd').format(now);
     final fallbackCourses = widget.courses
         .where((course) => course.date == fallbackToday)
         .toList();
     final todayCourses = _todayCourses.isNotEmpty
         ? _todayCourses
         : (_loading ? fallbackCourses : <CourseItem>[]);
-    final todayPlannedTodoIds = _blocks
-        .where((block) => !block.isDeleted && block.todoId.isNotEmpty)
-        .map((block) => block.todoId)
-        .toSet();
-    final tomorrowPlannedTodoIds = _tomorrowBlocks
-        .where((block) => !block.isDeleted && block.todoId.isNotEmpty)
-        .map((block) => block.todoId)
-        .toSet();
-    final allPlannedTodoIds = <String>{
-      ...todayPlannedTodoIds,
-      ...tomorrowPlannedTodoIds,
-    };
-    final todayTimedTodos = _todayTimedTodos(
+    final allPlannedTodoIds = <String>{};
+    for (final block in _blocks) {
+      if (!block.isDeleted && block.todoId.isNotEmpty) {
+        allPlannedTodoIds.add(block.todoId);
+      }
+    }
+    for (final block in _tomorrowBlocks) {
+      if (!block.isDeleted && block.todoId.isNotEmpty) {
+        allPlannedTodoIds.add(block.todoId);
+      }
+    }
+    final timedTodosByDay = _timedTodosForTodayAndTomorrow(
       widget.todos,
       DateTime.now(),
-      excludeTodoIds: allPlannedTodoIds,
-    );
-    final tomorrowTimedTodos = _todayTimedTodos(
-      widget.todos,
       AppTimeFormats.localDayStartOffset(now, 1),
       excludeTodoIds: allPlannedTodoIds,
     );
+    final todayTimedTodos = timedTodosByDay.today;
+    final tomorrowTimedTodos = timedTodosByDay.tomorrow;
     final todayItems = <_TodayScheduleItem>[
       ...todayCourses.map(_TodayScheduleItem.course),
       ..._todayFixedSchedules.map(_TodayScheduleItem.fixedSchedule),
@@ -624,37 +632,41 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
     );
   }
 
-  List<TodoItem> _todayTimedTodos(
+  ({List<TodoItem> today, List<TodoItem> tomorrow})
+  _timedTodosForTodayAndTomorrow(
     List<TodoItem> todos,
-    DateTime day, {
+    DateTime today,
+    DateTime tomorrow, {
     required Set<String> excludeTodoIds,
   }) {
-    return todos.where((todo) {
-      if (todo.isDeleted || todo.dueDate == null) return false;
-      if (excludeTodoIds.contains(todo.id)) return false;
-      if (todo.isAllDayTask) return false;
+    final todayTodos = <TodoItem>[];
+    final tomorrowTodos = <TodoItem>[];
+    for (final todo in todos) {
+      if (todo.isDeleted || todo.dueDate == null) continue;
+      if (excludeTodoIds.contains(todo.id)) continue;
+      if (todo.isAllDayTask) continue;
 
       final startMs = todo.createdDate ?? todo.createdAt;
-      if (startMs <= 0) return false;
+      if (startMs <= 0) continue;
 
-      final start = DateTime.fromMillisecondsSinceEpoch(startMs).toLocal();
+      final start = DateTime.fromMillisecondsSinceEpoch(startMs);
       final end = todo.dueDate!.toLocal();
-      if (!end.isAfter(start)) return false;
-      if (!_isSameLocalDay(start, end)) return false;
-      return _isSameLocalDay(start, day);
-    }).toList()..sort(
-      (a, b) =>
-          _TodayScheduleItem._todoStartMs(a)
-              .compareTo(_TodayScheduleItem._todoStartMs(b)),
-    );
+      if (!end.isAfter(start)) continue;
+      if (!_isSameLocalDay(start, end)) continue;
+      if (_isSameLocalDay(start, today)) todayTodos.add(todo);
+      if (_isSameLocalDay(start, tomorrow)) tomorrowTodos.add(todo);
+    }
+
+    int compareTodoStart(TodoItem a, TodoItem b) =>
+        _TodayScheduleItem._todoStartMs(a)
+            .compareTo(_TodayScheduleItem._todoStartMs(b));
+    todayTodos.sort(compareTodoStart);
+    tomorrowTodos.sort(compareTodoStart);
+    return (today: todayTodos, tomorrow: tomorrowTodos);
   }
 
   bool _isSameLocalDay(DateTime a, DateTime b) {
-    final left = a.toLocal();
-    final right = b.toLocal();
-    return left.year == right.year &&
-        left.month == right.month &&
-        left.day == right.day;
+    return a.year == b.year && a.month == b.month && a.day == b.day;
   }
 }
 
@@ -815,8 +827,9 @@ class _DeviceCalendarCompactCardState
     final accent = widget.event.colorValue == null
         ? colors.tertiary
         : Color(widget.event.colorValue!);
-    final timeStart = DateFormat('HH:mm').format(widget.event.start);
-    final timeEnd = DateFormat('HH:mm').format(widget.event.end);
+    final timeFormat = _courseSectionDateFormat('HH:mm');
+    final timeStart = timeFormat.format(widget.event.start);
+    final timeEnd = timeFormat.format(widget.event.end);
     return OptionalLiquidGlassCard(
       key: _cardKey,
       margin: const EdgeInsets.only(bottom: 6),
@@ -952,14 +965,14 @@ class _FixedScheduleCompactCard extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
     final startLabel = item.startTime == null
         ? '时间待定'
-        : DateFormat('HH:mm').format(
+        : _courseSectionDateFormat('HH:mm').format(
             DateTime.fromMillisecondsSinceEpoch(item.startTime!).toLocal(),
           );
     final endLabel = item.startTime == null
         ? null
         : item.endTime == null
         ? '结束待定'
-        : DateFormat('HH:mm').format(
+        : _courseSectionDateFormat('HH:mm').format(
             DateTime.fromMillisecondsSinceEpoch(item.endTime!).toLocal(),
           );
     final supportingText = [
@@ -1278,10 +1291,13 @@ class _PlanCompactCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final start = DateFormat('HH:mm')
-        .format(DateTime.fromMillisecondsSinceEpoch(block.startTime));
-    final end = DateFormat('HH:mm')
-        .format(DateTime.fromMillisecondsSinceEpoch(block.endTime));
+    final timeFormat = _courseSectionDateFormat('HH:mm');
+    final start = timeFormat.format(
+      DateTime.fromMillisecondsSinceEpoch(block.startTime),
+    );
+    final end = timeFormat.format(
+      DateTime.fromMillisecondsSinceEpoch(block.endTime),
+    );
     final statusColor = _statusColor(block.status);
 
     return OptionalLiquidGlassCard(
@@ -1543,7 +1559,7 @@ class _TodoCompactCardState extends State<_TodoCompactCard> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        DateFormat('HH:mm').format(start),
+                        _courseSectionDateFormat('HH:mm').format(start),
                         style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.bold,
@@ -1552,7 +1568,7 @@ class _TodoCompactCardState extends State<_TodoCompactCard> {
                         ),
                       ),
                       Text(
-                        DateFormat('HH:mm').format(end),
+                        _courseSectionDateFormat('HH:mm').format(end),
                         style: TextStyle(
                           fontSize: 10.5,
                           color: statusColor.withValues(alpha: 0.58),
