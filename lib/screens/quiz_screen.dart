@@ -477,6 +477,10 @@ class _QuizScreenState extends State<QuizScreen>
       );
     }
 
+    final progressValueColor = AlwaysStoppedAnimation<Color>(
+      Theme.of(context).colorScheme.primary,
+    );
+
     return Scaffold(
       appBar: FloatingGlassAppBar(
         flexibleSpace: const FloatingGlassTopBarBackground(),
@@ -530,19 +534,18 @@ class _QuizScreenState extends State<QuizScreen>
                     LinearProgressIndicator(
                       value: value,
                       backgroundColor: Colors.grey[200],
-                      valueColor: AlwaysStoppedAnimation<Color>(
-                        Theme.of(context).colorScheme.primary,
-                      ),
+                      valueColor: progressValueColor,
                       minHeight: 8,
                     ),
                     const SizedBox(height: 4),
-                    Text(
-                      "进度: ${currentIndex + 1} / ${questions.length}",
-                      style: const TextStyle(fontSize: 12, color: Colors.grey),
-                    ),
+                    child!,
                   ],
                 );
               },
+              child: Text(
+                "进度: ${currentIndex + 1} / ${questions.length}",
+                style: const TextStyle(fontSize: 12, color: Colors.grey),
+              ),
             ),
             const SizedBox(height: 20),
             // PageView 题目区域

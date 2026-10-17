@@ -15,7 +15,12 @@ class MathMenuScreen extends StatefulWidget {
 
 class _MathMenuScreenState extends State<MathMenuScreen>
     with SingleTickerProviderStateMixin {
-  late AnimationController _animationController;
+  static const _menuCardCount = 4;
+  static const _menuCardStagger = Duration(milliseconds: 150);
+  static const _menuCardEntranceDuration = Duration(milliseconds: 600);
+
+  late final AnimationController _animationController;
+  late final List<Animation<double>> _menuCardAnimations;
   final GlobalKey _quizCardKey = GlobalKey();
   final GlobalKey _settingsCardKey = GlobalKey();
   final GlobalKey _leaderboardCardKey = GlobalKey();
@@ -24,10 +29,28 @@ class _MathMenuScreenState extends State<MathMenuScreen>
   @override
   void initState() {
     super.initState();
+    final totalDurationMs =
+        _menuCardEntranceDuration.inMilliseconds +
+        _menuCardStagger.inMilliseconds * (_menuCardCount - 1);
     _animationController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 800),
+      duration: Duration(milliseconds: totalDurationMs),
     );
+    _menuCardAnimations = List<Animation<double>>.generate(_menuCardCount, (
+      index,
+    ) {
+      final startMs = _menuCardStagger.inMilliseconds * index;
+      final endMs = startMs + _menuCardEntranceDuration.inMilliseconds;
+      return _animationController.drive(
+        CurveTween(
+          curve: Interval(
+            startMs / totalDurationMs,
+            endMs / totalDurationMs,
+            curve: Curves.easeOutCubic,
+          ),
+        ),
+      );
+    });
     _animationController.forward();
   }
 
@@ -120,8 +143,7 @@ class _MathMenuScreenState extends State<MathMenuScreen>
                         childAspectRatio: isWideScreen ? 1.0 : 1.1,
                         children: [
                           _AnimatedMenuCard(
-                            index: 0,
-                            animationController: _animationController,
+                            animation: _menuCardAnimations[0],
                             child: _MenuCard(
                               key: _quizCardKey,
                               title: "开始答题",
@@ -137,8 +159,7 @@ class _MathMenuScreenState extends State<MathMenuScreen>
                             ),
                           ),
                           _AnimatedMenuCard(
-                            index: 1,
-                            animationController: _animationController,
+                            animation: _menuCardAnimations[1],
                             child: _MenuCard(
                               key: _settingsCardKey,
                               title: "题目设置",
@@ -154,8 +175,7 @@ class _MathMenuScreenState extends State<MathMenuScreen>
                             ),
                           ),
                           _AnimatedMenuCard(
-                            index: 2,
-                            animationController: _animationController,
+                            animation: _menuCardAnimations[2],
                             child: _MenuCard(
                               key: _leaderboardCardKey,
                               title: "排行榜",
@@ -171,8 +191,7 @@ class _MathMenuScreenState extends State<MathMenuScreen>
                             ),
                           ),
                           _AnimatedMenuCard(
-                            index: 3,
-                            animationController: _animationController,
+                            animation: _menuCardAnimations[3],
                             child: _MenuCard(
                               key: _historyCardKey,
                               title: "历史记录",
@@ -279,39 +298,25 @@ class _MenuCard extends StatelessWidget {
 }
 
 class _AnimatedMenuCard extends StatelessWidget {
-  final int index;
-  final AnimationController animationController;
+  final Animation<double> animation;
   final Widget child;
 
-  const _AnimatedMenuCard({
-    required this.index,
-    required this.animationController,
-    required this.child,
-  });
+  const _AnimatedMenuCard({required this.animation, required this.child});
 
   @override
   Widget build(BuildContext context) {
-    final delay = index * 0.15;
-    return FutureBuilder<void>(
-      future: Future.delayed(Duration(milliseconds: (delay * 1000).round())),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState != ConnectionState.done) {
-          return const SizedBox.shrink();
-        }
-        return TweenAnimationBuilder<double>(
-          tween: Tween(begin: 0.0, end: 1.0),
-          duration: const Duration(milliseconds: 600),
-          curve: Curves.easeOutCubic,
-          builder: (context, value, child) {
-            return Transform.translate(
-              offset: Offset(0, 30 * (1 - value)),
-              child: Opacity(
-                opacity: value,
-                child: child,
-              ),
-            );
-          },
-          child: child,
+    return AnimatedBuilder(
+      animation: animation,
+      child: child,
+      builder: (context, child) {
+        final value = animation.value;
+        if (value == 0) return const SizedBox.shrink();
+        return Transform.translate(
+          offset: Offset(0, 30 * (1 - value)),
+          child: Opacity(
+            opacity: value,
+            child: child,
+          ),
         );
       },
     );
