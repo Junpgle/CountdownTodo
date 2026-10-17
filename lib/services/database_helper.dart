@@ -2451,6 +2451,99 @@ class DatabaseHelper {
     return finalResults;
   }
 
+  Future<List<Map<String, dynamic>>> searchTodosByTerms(
+    List<String> terms,
+  ) async {
+    final uniqueTerms = <String>[];
+    final seenTerms = <String>{};
+    for (final term in terms) {
+      if (seenTerms.add(term)) uniqueTerms.add(term);
+    }
+    if (uniqueTerms.isEmpty) return [];
+
+    final db = await instance.database;
+    final useFts = await _canUseTodoFts(db);
+    const termsPerBatch = 300;
+    final rowsByUuid = <String, Map<String, dynamic>>{};
+
+    try {
+      for (var offset = 0; offset < uniqueTerms.length; offset += termsPerBatch) {
+        final nextOffset = offset + termsPerBatch;
+        final end = nextOffset < uniqueTerms.length
+            ? nextOffset
+            : uniqueTerms.length;
+        final chunk = uniqueTerms.sublist(offset, end);
+        final termRows = List.filled(chunk.length, '(?)').join(', ');
+        final ctes = <String>['search_terms(term) AS (VALUES $termRows)'];
+        final queryArgs = <Object?>[...chunk];
+        var ftsCondition = '';
+        if (useFts) {
+          final ftsQueries = chunk
+              .map(
+                (term) => term
+                    .split(' ')
+                    .where((part) => part.isNotEmpty)
+                    .map((part) => '$part*')
+                    .join(' '),
+              )
+              .where((query) => query.isNotEmpty)
+              .toList(growable: false);
+          if (ftsQueries.isNotEmpty) {
+            final ftsBranches = List.filled(
+              ftsQueries.length,
+              'SELECT uuid FROM todos_fts WHERE todos_fts MATCH ?',
+            ).join(' UNION ALL ');
+            ctes.add('fts_matches(uuid) AS ($ftsBranches)');
+            queryArgs.addAll(ftsQueries);
+            ftsCondition = ' OR t.uuid IN (SELECT uuid FROM fts_matches)';
+          }
+        }
+
+        final rows = await db.rawQuery(
+          '''
+          WITH ${ctes.join(', ')}
+          SELECT t.*
+          FROM todos AS t
+          WHERE t.is_deleted = 0
+            AND (
+              EXISTS (
+                SELECT 1
+                FROM search_terms AS s
+                WHERE t.content LIKE '%' || s.term || '%'
+                  OR t.remark LIKE '%' || s.term || '%'
+                  OR t.team_name LIKE '%' || s.term || '%'
+              )$ftsCondition
+            )
+          ORDER BY t.updated_at DESC
+          ''',
+          queryArgs,
+        );
+        for (final row in rows) {
+          rowsByUuid[row['uuid'].toString()] = row;
+        }
+      }
+      final results = rowsByUuid.values.toList(growable: false);
+      if (uniqueTerms.length > termsPerBatch) {
+        results.sort(
+          (a, b) => ((b['updated_at'] as int?) ?? 0).compareTo(
+            (a['updated_at'] as int?) ?? 0,
+          ),
+        );
+      }
+      return results;
+    } catch (_) {
+      // A batched FTS statement can reject an individual user term. Retain the
+      // per-term parser fallback used by searchTodos for those queries.
+      final fallbackRowsByUuid = <String, Map<String, dynamic>>{};
+      for (final term in uniqueTerms) {
+        for (final row in await searchTodos(term)) {
+          fallbackRowsByUuid[row['uuid'].toString()] = row;
+        }
+      }
+      return fallbackRowsByUuid.values.toList(growable: false);
+    }
+  }
+
   Future<void> warmSearchIndex() async {
     final db = await instance.database;
     await _canUseTodoFts(db);
@@ -2589,6 +2682,95 @@ class DatabaseHelper {
           ),
         ) ??
         0;
+  }
+
+  Future<List<Map<String, dynamic>>> searchTodoGroupsByTerms(
+    List<String> terms,
+  ) =>
+      _searchRowsByTerms(
+        table: 'todo_groups',
+        matchColumns: const ['name'],
+        orderColumn: 'updated_at',
+        terms: terms,
+      );
+
+  Future<List<Map<String, dynamic>>> searchCoursesByTerms(
+    List<String> terms,
+  ) =>
+      _searchRowsByTerms(
+        table: 'courses',
+        matchColumns: const ['course_name', 'teacher_name', 'room_name'],
+        orderColumn: 'updated_at',
+        terms: terms,
+      );
+
+  Future<List<Map<String, dynamic>>> searchCountdownsByTerms(
+    List<String> terms,
+  ) =>
+      _searchRowsByTerms(
+        table: 'countdowns',
+        matchColumns: const ['title', 'team_name'],
+        orderColumn: 'updated_at',
+        terms: terms,
+      );
+
+  Future<List<Map<String, dynamic>>> searchTimeLogsByTerms(
+    List<String> terms,
+  ) =>
+      _searchRowsByTerms(
+        table: 'time_logs',
+        matchColumns: const ['title', 'remark'],
+        orderColumn: 'start_time',
+        terms: terms,
+      );
+
+  Future<List<Map<String, dynamic>>> _searchRowsByTerms({
+    required String table,
+    required List<String> matchColumns,
+    required String orderColumn,
+    required List<String> terms,
+  }) async {
+    final uniqueTerms = <String>[];
+    final seenTerms = <String>{};
+    for (final term in terms) {
+      if (seenTerms.add(term)) uniqueTerms.add(term);
+    }
+    if (uniqueTerms.isEmpty) return [];
+
+    final db = await instance.database;
+    const chunkSize = 900;
+    final rowsByUuid = <String, Map<String, dynamic>>{};
+    final matchExpression = matchColumns
+        .map((column) => "t.$column LIKE '%' || s.term || '%'")
+        .join(' OR ');
+
+    for (var offset = 0; offset < uniqueTerms.length; offset += chunkSize) {
+      final end = offset + chunkSize < uniqueTerms.length
+          ? offset + chunkSize
+          : uniqueTerms.length;
+      final chunk = uniqueTerms.sublist(offset, end);
+      final termRows = List.generate(
+        chunk.length,
+        (index) => '(?, $index)',
+      ).join(', ');
+      final rows = await db.rawQuery(
+        '''
+        WITH search_terms(term, term_order) AS (VALUES $termRows)
+        SELECT t.*
+        FROM $table AS t
+        JOIN search_terms AS s ON ($matchExpression)
+        WHERE t.is_deleted = 0
+        GROUP BY t.uuid
+        ORDER BY MIN(s.term_order), t.$orderColumn DESC
+        ''',
+        chunk,
+      );
+      for (final row in rows) {
+        rowsByUuid[row['uuid'].toString()] = row;
+      }
+    }
+
+    return rowsByUuid.values.toList(growable: false);
   }
 
   Future<List<Map<String, dynamic>>> searchTodoGroups(String query) async {

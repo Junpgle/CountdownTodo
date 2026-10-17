@@ -154,8 +154,24 @@ abstract final class GlobalSearchExtraService {
       ]);
       final categories = values[0] as List<FinanceCategory>;
       final payments = values[1] as List<FinancePaymentMethod>;
+      final loans = values[6] as List<FinanceLoan>;
       final categoryById = {for (final item in categories) item.uuid: item};
       final paymentById = {for (final item in payments) item.uuid: item};
+      var installmentsByLoan = <String, List<FinanceLoanInstallment>>{};
+      if (loans.isNotEmpty) {
+        try {
+          installmentsByLoan =
+              await FinanceRepository.getLoanInstallmentsForActiveLoans();
+        } catch (error) {
+          debugPrint('Finance loan installment batch search failed: $error');
+          for (final loan in loans) {
+            installmentsByLoan[loan.uuid] = await _safeList(
+              FinanceRepository.getLoanInstallments(loan.uuid),
+              'Finance loan installments',
+            );
+          }
+        }
+      }
 
       for (final item in values[2] as List<FinanceTransaction>) {
         final category = categoryById[item.categoryUuid];
@@ -325,7 +341,7 @@ abstract final class GlobalSearchExtraService {
           },
         ));
       }
-      for (final loan in values[6] as List<FinanceLoan>) {
+      for (final loan in loans) {
         final amount = _money(loan.principalMinor, loan.currencyCode);
         if (_matches(terms, [loan.name, loan.lender, loan.note, amount, '借款'],
             targetDate: date, recordDate: DateTime.tryParse(loan.startDate))) {
@@ -345,9 +361,8 @@ abstract final class GlobalSearchExtraService {
             },
           ));
         }
-        for (final installment in await _safeList(
-            FinanceRepository.getLoanInstallments(loan.uuid),
-            'Finance loan installments')) {
+        for (final installment in installmentsByLoan[loan.uuid] ??
+            const <FinanceLoanInstallment>[]) {
           if (!_matches(
               terms,
               [
@@ -396,6 +411,7 @@ abstract final class GlobalSearchExtraService {
           limit: pageSize,
           offset: offset,
           searchQuery: date == null ? contentTerm : null,
+          occurredOn: date,
         );
         for (final item in page) {
           if (!_matches(terms, [item.title, item.content, '日记 私密日记'],

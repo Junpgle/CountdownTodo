@@ -43,17 +43,38 @@ class JournalStorage {
     int limit = 40,
     int offset = 0,
     String? searchQuery,
+    DateTime? occurredOn,
   }) async {
     final db = await databaseLoader(accountId);
     if (reconcileMedia) await _reconcileMediaIfNeeded(db, accountId);
     final query = searchQuery?.trim() ?? '';
     final hasQuery = query.isNotEmpty;
+    final where = <String>['is_deleted = 0'];
+    final whereArgs = <Object?>[];
+    if (hasQuery) {
+      where.add('(title LIKE ? OR content LIKE ?)');
+      whereArgs.addAll(['%$query%', '%$query%']);
+    }
+    if (occurredOn != null) {
+      final start = DateTime(
+        occurredOn.year,
+        occurredOn.month,
+        occurredOn.day,
+      );
+      final end = DateTime(
+        occurredOn.year,
+        occurredOn.month,
+        occurredOn.day + 1,
+      );
+      where.add('occurred_at >= ? AND occurred_at < ?');
+      whereArgs
+        ..add(start.millisecondsSinceEpoch)
+        ..add(end.millisecondsSinceEpoch);
+    }
     final entryRows = await db.query(
       'journal_entries',
-      where: hasQuery
-          ? 'is_deleted = 0 AND (title LIKE ? OR content LIKE ?)'
-          : 'is_deleted = 0',
-      whereArgs: hasQuery ? ['%$query%', '%$query%'] : null,
+      where: where.join(' AND '),
+      whereArgs: whereArgs.isEmpty ? null : whereArgs,
       orderBy: 'occurred_at DESC, created_at DESC',
       limit: limit,
       offset: offset,

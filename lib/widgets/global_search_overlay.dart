@@ -134,6 +134,8 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
   late Animation<double> _fadeAnimation;
 
   List<SearchResult> _results = [];
+  List<SearchResult>? _groupedResultsSource;
+  Map<SearchResultType, List<SearchResult>>? _groupedResultsCache;
   bool _isSearching = false;
   String _currentQuery = '';
   SearchScope _scope = SearchScope.all;
@@ -222,13 +224,19 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
 
   // ────────────────────────────────── 搜索 ──────────────────────────────────
 
+  void _replaceResults(List<SearchResult> results) {
+    _results = results;
+    _groupedResultsSource = null;
+    _groupedResultsCache = null;
+  }
+
   void _onQueryChanged(String query) {
     _debounce?.cancel();
     // Invalidate immediately, including the 300ms debounce window.
     ++_requestSequence;
     setState(() {
       _currentQuery = query;
-      _results = [];
+      _replaceResults([]);
       _expanded.clear();
       _searchFailed = false;
       _isSearching = query.trim().isNotEmpty;
@@ -250,7 +258,7 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
     ++_requestSequence;
     setState(() {
       _scope = scope;
-      _results = [];
+      _replaceResults([]);
       _expanded.clear();
       _searchFailed = false;
     });
@@ -270,7 +278,7 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
 
     if (normalized.isEmpty && scope != SearchScope.all) {
       setState(() {
-        _results = [];
+        _replaceResults([]);
         _isSearching = false;
         _searchFailed = false;
       });
@@ -301,7 +309,9 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
               ));
       if (!isCurrent()) return;
       setState(() {
-        _results = results.where((item) => scope.includes(item.type)).toList();
+        _replaceResults(
+          results.where((item) => scope.includes(item.type)).toList(),
+        );
         _isSearching = false;
         _expanded.clear();
         final ids = _results.map((result) => result.id).toSet();
@@ -310,7 +320,7 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
     } catch (error) {
       if (!isCurrent()) return;
       setState(() {
-        _results = [];
+        _replaceResults([]);
         _isSearching = false;
         _searchFailed = true;
       });
@@ -383,6 +393,11 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
 
   /// 将扁平结果按 type 分组，保留 _groupOrder 顺序
   Map<SearchResultType, List<SearchResult>> _groupResults() {
+    final cached = _groupedResultsCache;
+    if (cached != null && identical(_groupedResultsSource, _results)) {
+      return cached;
+    }
+
     final map = <SearchResultType, List<SearchResult>>{};
     for (var r in _results) {
       map.putIfAbsent(r.type, () => []).add(r);
@@ -396,7 +411,8 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
     for (var entry in map.entries) {
       if (!ordered.containsKey(entry.key)) ordered[entry.key] = entry.value;
     }
-    return ordered;
+    _groupedResultsSource = _results;
+    return _groupedResultsCache = ordered;
   }
 
   // ──────────────────────────────────────────────────────────────────────────

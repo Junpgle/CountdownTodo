@@ -48,6 +48,16 @@ import 'app_settings_catalog.dart';
 import '../utils/ai_settings_navigation.dart';
 import '../utils/app_dialogs.dart';
 
+final Map<(String?, String), DateFormat> _searchDateFormats = {};
+
+DateFormat _searchDateFormat(String pattern) {
+  final locale = Intl.defaultLocale;
+  return _searchDateFormats.putIfAbsent(
+    (locale, pattern),
+    () => DateFormat(pattern, locale),
+  );
+}
+
 class SearchResultWithScore {
   final SearchResult result;
   final int score;
@@ -612,7 +622,7 @@ class SearchService {
         targetDateValue.month == now.month &&
         targetDateValue.day == now.day;
     final dateQueryHint = isDateQuery && startOfDay != null
-        ? '搜索到${DateFormat('yyyy年M月d日').format(startOfDay)}的结果'
+        ? '搜索到${_searchDateFormat('yyyy年M月d日').format(startOfDay)}的结果'
         : null;
 
     if (scope.includes(SearchResultType.todo)) {
@@ -657,13 +667,8 @@ class SearchService {
               )
               .toList();
         } else {
-          final todoMap = <String, Map<String, dynamic>>{};
-          for (final term in searchTerms) {
-            for (final row in await db.searchTodos(term)) {
-              todoMap[row['uuid'].toString()] = row;
-            }
-          }
-          todos = todoMap.values.where((t) {
+          final candidates = await db.searchTodosByTerms(searchTerms);
+          todos = candidates.where((t) {
             final haystack = [
               t['content']?.toString(),
               t['remark']?.toString(),
@@ -676,21 +681,28 @@ class SearchService {
         // debugPrint('Todo search error: $e');
       }
 
+      final todoDateFormat = _searchDateFormat('MM/dd');
       for (var t in todos) {
         // 构建副标题：备注（优先）+ 截止时间 + 归属团队
         // 🚀 修复：备注始终显示在副标题第一行，而非仅作兜底
         final metaParts = <String>[];
         final dueDateMs = t['due_date'];
         if (dueDateMs != null && dueDateMs != 0) {
-          metaParts.add(
-            '截止 ${DateFormat('MM/dd').format(DateTime.fromMillisecondsSinceEpoch(dueDateMs is int ? dueDateMs : int.tryParse(dueDateMs.toString()) ?? 0))}',
+          final dueDate = DateTime.fromMillisecondsSinceEpoch(
+            dueDateMs is int
+                ? dueDateMs
+                : int.tryParse(dueDateMs.toString()) ?? 0,
           );
+          metaParts.add('截止 ${todoDateFormat.format(dueDate)}');
         }
         final createdDateMs = t['created_date'];
         if (createdDateMs != null && createdDateMs != 0) {
-          metaParts.add(
-            '开始 ${DateFormat('MM/dd').format(DateTime.fromMillisecondsSinceEpoch(createdDateMs is int ? createdDateMs : int.tryParse(createdDateMs.toString()) ?? 0))}',
+          final createdDate = DateTime.fromMillisecondsSinceEpoch(
+            createdDateMs is int
+                ? createdDateMs
+                : int.tryParse(createdDateMs.toString()) ?? 0,
           );
+          metaParts.add('开始 ${todoDateFormat.format(createdDate)}');
         }
         if (t['team_name'] != null && (t['team_name'] as String).isNotEmpty) {
           metaParts.add('团队: ${t['team_name']}');
@@ -731,7 +743,7 @@ class SearchService {
       try {
         final courseMap = <String, Map<String, dynamic>>{};
         if (isDateQuery) {
-          final day = DateFormat('yyyy-MM-dd').format(startOfDay!);
+          final day = _searchDateFormat('yyyy-MM-dd').format(startOfDay!);
           for (final course in await CourseService.getAllCourses(username)) {
             if (course.date != day) continue;
             courseMap[course.uuid] = {
@@ -747,10 +759,8 @@ class SearchService {
             };
           }
         } else {
-          for (final term in searchTerms) {
-            for (final row in await db.searchCourses(term)) {
-              courseMap[row['uuid'].toString()] = row;
-            }
+          for (final row in await db.searchCoursesByTerms(searchTerms)) {
+            courseMap[row['uuid'].toString()] = row;
           }
         }
         final courses = courseMap.values.where((c) {
@@ -826,10 +836,8 @@ class SearchService {
             countdownMap[item.id] = item.toJson();
           }
         } else {
-          for (final term in searchTerms) {
-            for (final row in await db.searchCountdowns(term)) {
-              countdownMap[row['uuid'].toString()] = row;
-            }
+          for (final row in await db.searchCountdownsByTerms(searchTerms)) {
+            countdownMap[row['uuid'].toString()] = row;
           }
         }
         final countdowns = countdownMap.values.where((cd) {
@@ -851,7 +859,7 @@ class SearchService {
                   : int.tryParse(targetMs.toString()) ?? 0,
             );
             final diff = CalendarDateMath.daysBetween(now, target);
-            final dateStr = DateFormat('yyyy/MM/dd').format(target);
+            final dateStr = _searchDateFormat('yyyy/MM/dd').format(target);
             subtitle = diff >= 0
                 ? '还有 $diff 天 · $dateStr'
                 : '已过 ${-diff} 天 · $dateStr';
@@ -896,10 +904,8 @@ class SearchService {
           );
         } else {
           final logMap = <String, Map<String, dynamic>>{};
-          for (final term in searchTerms) {
-            for (final row in await db.searchTimeLogs(term)) {
-              logMap[row['uuid'].toString()] = row;
-            }
+          for (final row in await db.searchTimeLogsByTerms(searchTerms)) {
+            logMap[row['uuid'].toString()] = row;
           }
           matchedLogs = logMap.values.where((log) {
             final haystack = [
@@ -910,6 +916,7 @@ class SearchService {
           }).toList();
         }
 
+        final logDateFormat = _searchDateFormat('MM/dd HH:mm');
         for (final log in matchedLogs) {
           final startMs = (log['start_time'] as num?)?.toInt() ?? 0;
           final endMs = (log['end_time'] as num?)?.toInt() ?? startMs;
@@ -923,7 +930,7 @@ class SearchService {
               id: 'db_log_${log['uuid']}',
               title: title.isNotEmpty ? title : '未命名专注',
               subtitle:
-                  '$mins 分钟 · ${DateFormat('MM/dd HH:mm').format(start)}'
+                  '$mins 分钟 · ${logDateFormat.format(start)}'
                   '${remark?.isNotEmpty == true ? ' · $remark' : ''}',
               icon: Icons.history_edu_rounded,
               type: SearchResultType.log,
@@ -1017,7 +1024,9 @@ class SearchService {
           }
 
           final history = await StorageService.getScreenTimeHistory();
-          final targetDateKey = DateFormat('yyyy-MM-dd').format(startOfDay!);
+          final targetDateKey = _searchDateFormat('yyyy-MM-dd').format(
+            startOfDay!,
+          );
           final targetDayStats = history[targetDateKey];
 
           if (targetDayStats != null && targetDayStats.isNotEmpty) {
@@ -1081,28 +1090,30 @@ class SearchService {
       // ── 番茄钟 ──────────────────────────────────────────────────────────
       {
         try {
-          final allPoms = await PomodoroService.getRecords();
-          final tagNames = {
-            for (final tag in await PomodoroService.getTags())
-              tag.uuid: tag.name,
-          };
-          final matchedPoms = allPoms.where((p) {
-            if (isDateQuery) {
-              final start = DateTime.fromMillisecondsSinceEpoch(p.startTime);
-              return start.isAfter(
-                    startOfDay!.subtract(const Duration(milliseconds: 1)),
-                  ) &&
-                  start.isBefore(endOfDay!);
-            }
-            return _matchesAllTerms(
-              [
-                p.todoTitle,
-                p.note,
-                ...p.tagUuids.map((id) => tagNames[id]),
-              ].whereType<String>().join(' '),
-              searchTerms,
-            );
-          }).toList();
+          final matchingRange = isDateQuery
+              ? await PomodoroService.getRecordsInRange(startOfDay!, endOfDay!)
+              : await PomodoroService.getRecords();
+          final tagNames = isDateQuery
+              ? const <String, String>{}
+              : {
+                  for (final tag in await PomodoroService.getTags())
+                    tag.uuid: tag.name,
+                };
+          final matchedPoms = isDateQuery
+              ? matchingRange
+              : matchingRange
+                    .where(
+                      (p) => _matchesAllTerms(
+                        [
+                          p.todoTitle,
+                          p.note,
+                          ...p.tagUuids.map((id) => tagNames[id]),
+                        ].whereType<String>().join(' '),
+                        searchTerms,
+                      ),
+                    )
+                    .toList();
+          final pomodoroTimeFormat = _searchDateFormat('HH:mm');
           for (var p in matchedPoms) {
             final start = DateTime.fromMillisecondsSinceEpoch(p.startTime);
             final end = p.endTime != null
@@ -1114,7 +1125,8 @@ class SearchService {
                 id: 'db_pom_${p.uuid}',
                 title: p.todoTitle?.isNotEmpty == true ? p.todoTitle! : '专注记录',
                 subtitle:
-                    '$mins 分钟 · ${DateFormat('HH:mm').format(start)} - ${DateFormat('HH:mm').format(end)} · ${p.isCompleted ? "完成" : "中断"}',
+                    '$mins 分钟 · ${pomodoroTimeFormat.format(start)}'
+                    ' - ${pomodoroTimeFormat.format(end)} · ${p.isCompleted ? "完成" : "中断"}',
                 icon: Icons.timer_outlined,
                 type: SearchResultType.log, // 与时间日志归在一组
                 extraData: {
@@ -1136,10 +1148,8 @@ class SearchService {
       // ── 待办文件夹 ────────────────────────────────────────────────────────
       try {
         final groupMap = <String, Map<String, dynamic>>{};
-        for (final term in searchTerms) {
-          for (final row in await db.searchTodoGroups(term)) {
-            groupMap[row['uuid'].toString()] = row;
-          }
+        for (final row in await db.searchTodoGroupsByTerms(searchTerms)) {
+          groupMap[row['uuid'].toString()] = row;
         }
         final groups = groupMap.values.where((g) {
           final haystack = [g['name'], g['team_name']]
@@ -1206,8 +1216,8 @@ class SearchService {
     final recentHistoryFuture = db
         .getRecentSearches(limit: 5, currentHour: now.hour)
         .catchError((_) => <Map<String, dynamic>>[]);
-    final pomodoroFuture = PomodoroService.getRecords().catchError(
-      (_) => <PomodoroRecord>[],
+    final pomodoroFuture = PomodoroService.getLatestRecord().catchError(
+      (_) => null,
     );
 
     // 1. 时间维度：根据时刻推荐
@@ -1363,9 +1373,8 @@ class SearchService {
 
     // 4. 活动维度：近期专注活动
     try {
-      final poms = await pomodoroFuture;
-      if (poms.isNotEmpty) {
-        final lastPom = poms.first;
+      final lastPom = await pomodoroFuture;
+      if (lastPom != null) {
         if (lastPom.todoTitle != null && lastPom.todoTitle!.isNotEmpty) {
           suggestions.add(
             SearchResult(
@@ -1781,7 +1790,7 @@ class SearchNavigationHandler {
       final appName = data['app_name'];
       if (appName != null) {
         final history = await StorageService.getScreenTimeHistory();
-        final todayKey = DateFormat('yyyy-MM-dd').format(DateTime.now());
+        final todayKey = _searchDateFormat('yyyy-MM-dd').format(DateTime.now());
         if (history[todayKey] == null || history[todayKey]!.isEmpty) {
           final cachedToday = await StorageService.getScreenTimeCache();
           if (cachedToday.isNotEmpty) {
