@@ -666,7 +666,7 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen>
-    with TickerProviderStateMixin {
+    with SingleTickerProviderStateMixin {
   final _userCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
   final _passCtrl = TextEditingController();
@@ -683,16 +683,15 @@ class _LoginScreenState extends State<LoginScreen>
   final _resetCodeCtrl = TextEditingController();
   final _newPassCtrl = TextEditingController();
   final _confirmPassCtrl = TextEditingController();
-  int _resetCodeCooldown = 0;
+  final ValueNotifier<int> _resetCodeCooldown = ValueNotifier<int>(0);
   Timer? _cooldownTimer;
 
   // 🔐 Turnstile 人机验证相关状态
   String? _turnstileToken;
   GlobalKey<State> _turnstileKey = GlobalKey();
 
-  late final AnimationController _fadeCtrl;
+  late final AnimationController _contentTransitionController;
   late final Animation<double> _fadeAnim;
-  late final AnimationController _slideCtrl;
   late final Animation<Offset> _slideAnim;
 
   // ── Lifecycle ────────────────────────────────
@@ -700,17 +699,22 @@ class _LoginScreenState extends State<LoginScreen>
   @override
   void initState() {
     super.initState();
-    _fadeCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 480));
-    _fadeAnim = CurvedAnimation(parent: _fadeCtrl, curve: Curves.easeOut);
-    _slideCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 480));
-    _slideAnim = Tween<Offset>(
-      begin: const Offset(0.15, 0.0),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(parent: _slideCtrl, curve: Curves.easeOutCubic));
-    _fadeCtrl.forward();
-    _slideCtrl.forward();
+    _contentTransitionController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 480),
+    );
+    _fadeAnim = CurvedAnimation(
+      parent: _contentTransitionController,
+      curve: Curves.easeOut,
+    );
+    _slideAnim = Tween<Offset>(begin: const Offset(0.15, 0.0), end: Offset.zero)
+        .animate(
+          CurvedAnimation(
+            parent: _contentTransitionController,
+            curve: Curves.easeOutCubic,
+          ),
+        );
+    _contentTransitionController.forward();
     _checkLocalLegacyAccount();
     _loadServerChoice();
   }
@@ -718,8 +722,8 @@ class _LoginScreenState extends State<LoginScreen>
   @override
   void dispose() {
     _cooldownTimer?.cancel();
-    _fadeCtrl.dispose();
-    _slideCtrl.dispose();
+    _resetCodeCooldown.dispose();
+    _contentTransitionController.dispose();
     _userCtrl.dispose();
     _emailCtrl.dispose();
     _passCtrl.dispose();
@@ -997,10 +1001,7 @@ class _LoginScreenState extends State<LoginScreen>
   }
 
   void _toggleMode() {
-    _fadeCtrl
-      ..reset()
-      ..forward();
-    _slideCtrl
+    _contentTransitionController
       ..reset()
       ..forward();
     setState(() {
@@ -1055,7 +1056,7 @@ class _LoginScreenState extends State<LoginScreen>
   }
 
   void _handleSendResetCode() async {
-    if (_resetCodeCooldown > 0) return;
+    if (_resetCodeCooldown.value > 0) return;
     final email = _resetEmailCtrl.text.trim();
     if (email.isEmpty) {
       _snack('请输入邮箱地址');
@@ -1063,7 +1064,7 @@ class _LoginScreenState extends State<LoginScreen>
     }
     setState(() {
       _isLoading = true;
-      _resetCodeCooldown = 60;
+      _resetCodeCooldown.value = 60;
     });
     final result = await ApiService.forgotPassword(email);
     if (!mounted) return;
@@ -1073,15 +1074,15 @@ class _LoginScreenState extends State<LoginScreen>
       setState(() => _forgotPasswordStep = 2);
       _cooldownTimer?.cancel();
       _cooldownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-        if (_resetCodeCooldown <= 0) {
+        if (_resetCodeCooldown.value <= 0) {
           timer.cancel();
           return;
         }
-        setState(() => _resetCodeCooldown--);
+        _resetCodeCooldown.value--;
       });
     } else {
       _snack(result['message']);
-      setState(() => _resetCodeCooldown = 0);
+      _resetCodeCooldown.value = 0;
     }
   }
 
@@ -1430,31 +1431,37 @@ class _LoginScreenState extends State<LoginScreen>
           const SizedBox(height: 28),
           if (_isLoading)
             const _Spinner()
-          else if (_resetCodeCooldown > 0)
-            SizedBox(
-              width: double.infinity,
-              height: 52,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: t.textHint.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Center(
-                  child: Text(
-                    '$_resetCodeCooldown 秒后可重新发送',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: t.textHint,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ),
-              ),
-            )
           else
-            _PrimaryBtn(
-              label: '发送验证码',
-              onPressed: _handleSendResetCode,
+            ValueListenableBuilder<int>(
+              valueListenable: _resetCodeCooldown,
+              builder: (context, cooldown, child) {
+                if (cooldown > 0) {
+                  return SizedBox(
+                    width: double.infinity,
+                    height: 52,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: t.textHint.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Center(
+                        child: Text(
+                          '$cooldown 秒后可重新发送',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: t.textHint,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                }
+                return _PrimaryBtn(
+                  label: '发送验证码',
+                  onPressed: _handleSendResetCode,
+                );
+              },
             ),
         ] else ...[
           _Field(
