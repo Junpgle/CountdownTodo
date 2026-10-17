@@ -82,7 +82,8 @@ mixin _StorageConflict on _StorageServiceBase {
     var changed = false;
     for (final todo in todos) {
       final existing = todo.serverVersionData;
-      final isLocalScheduleConflict = _isLocalScheduleConflict(existing);
+      final isLocalScheduleConflict =
+          ConflictVisibilityService.isLocalScheduleConflictData(existing);
       if (todo.isDeleted) {
         if (isLocalScheduleConflict || todo.hasConflict) {
           todo.hasConflict = false;
@@ -100,25 +101,12 @@ mixin _StorageConflict on _StorageServiceBase {
       }
 
       if (peers != null && peers.isNotEmpty) {
-        if (!_hasVersionConflict(existing)) {
-          final bool isTeamTodo =
-              todo.teamUuid != null && todo.teamUuid!.isNotEmpty;
-          final relationType = _classifyScheduleRelation(
-              todo, peers.cast<Map<String, dynamic>>());
-          final data = {
-            'uuid': todo.id,
-            'id': todo.id,
-            'content': todo.title,
-            'team_uuid': todo.teamUuid,
-            'schedule_scope': isTeamTodo ? 'team' : 'personal',
-            'relation_type': relationType,
-            'conflict_kind': 'logic',
-            'conflict_type': 'local_schedule_conflict',
-            'source': 'local_detector',
-            'start_time': todo.createdDate ?? todo.createdAt,
-            'end_time': todo.dueDate?.millisecondsSinceEpoch,
-            'conflict_with': peers,
-          };
+        if (!ConflictVisibilityService.isVersionConflictData(existing)) {
+          final data = ConflictVisibilityService.scheduleConflictData(
+            todo: todo,
+            peers: peers,
+            source: 'local_detector',
+          );
           if (!todo.hasConflict || jsonEncode(existing) != jsonEncode(data)) {
             todo.hasConflict = true;
             todo.serverVersionData = data;
@@ -141,7 +129,11 @@ mixin _StorageConflict on _StorageServiceBase {
   bool _clearLocalTodoScheduleConflicts(List<TodoItem> todos) {
     var changed = false;
     for (final todo in todos) {
-      if (!_isLocalScheduleConflict(todo.serverVersionData)) continue;
+      if (!ConflictVisibilityService.isLocalScheduleConflictData(
+        todo.serverVersionData,
+      )) {
+        continue;
+      }
       todo.hasConflict = false;
       todo.serverVersionData = null;
       changed = true;
@@ -224,16 +216,6 @@ mixin _StorageConflict on _StorageServiceBase {
         itemSeries == peerSeries;
   }
 
-  bool _hasVersionConflict(Map<String, dynamic>? data) {
-    if (data == null || data.isEmpty) return false;
-    final type = data['conflict_type']?.toString();
-    final kind = data['conflict_kind']?.toString();
-    final source = data['source']?.toString();
-    return type == 'version_conflict' ||
-        kind == 'version' ||
-        (type != 'local_schedule_conflict' && source != 'local_detector');
-  }
-
   List<TodoItem> clearResolvedRecurrenceMigrationConflictsForTest(
     List<TodoItem> todos,
   ) =>
@@ -245,8 +227,12 @@ mixin _StorageConflict on _StorageServiceBase {
     for (final todo in todos) {
       if (!todo.hasConflict ||
           todo.recurrenceSeriesId?.isNotEmpty != true ||
-          !_hasVersionConflict(todo.serverVersionData) ||
-          _isLocalScheduleConflict(todo.serverVersionData)) {
+          !ConflictVisibilityService.isVersionConflictData(
+            todo.serverVersionData,
+          ) ||
+          ConflictVisibilityService.isLocalScheduleConflictData(
+            todo.serverVersionData,
+          )) {
         continue;
       }
       final server = todo.serverVersionData!;
@@ -317,13 +303,7 @@ mixin _StorageConflict on _StorageServiceBase {
     } else if (rawConflictData is Map) {
       conflictData = Map<String, dynamic>.from(rawConflictData);
     }
-    return _hasVersionConflict(conflictData);
-  }
-
-  bool _isLocalScheduleConflict(Map<String, dynamic>? data) {
-    if (data == null || data.isEmpty) return false;
-    return data['conflict_type'] == 'local_schedule_conflict' ||
-        data['source'] == 'local_detector';
+    return ConflictVisibilityService.isVersionConflictData(conflictData);
   }
 
   Map<String, dynamic> _stripClientOnlyConflictForSync(
@@ -345,7 +325,7 @@ mixin _StorageConflict on _StorageServiceBase {
       conflictData = Map<String, dynamic>.from(rawConflictData);
     }
 
-    if (_isLocalScheduleConflict(conflictData)) {
+    if (ConflictVisibilityService.isLocalScheduleConflictData(conflictData)) {
       result['has_conflict'] = 0;
       result.remove('conflict_data');
       result.remove('serverVersionData');
@@ -428,6 +408,24 @@ mixin _StorageConflict on _StorageServiceBase {
       activeBySignature.putIfAbsent(signature, () => []).add(todo);
     }
 
+    final uniqueActiveSignatures = <String>{
+      for (final entry in activeBySignature.entries)
+        if (entry.value.length == 1) entry.key,
+    };
+    Map<String, List<TodoItem>>? candidatesByActiveSignature;
+    if (uniqueActiveSignatures.length > 1) {
+      final index = <String, List<TodoItem>>{};
+      for (final candidate in candidates) {
+        if (candidate.isDeleted) continue;
+        final signature = _remoteRecurrencePlanSignature(candidate);
+        if (signature == null || !uniqueActiveSignatures.contains(signature)) {
+          continue;
+        }
+        index.putIfAbsent(signature, () => []).add(candidate);
+      }
+      candidatesByActiveSignature = index;
+    }
+
     for (final entry in activeBySignature.entries) {
       // 两个配置完全相同的活动循环无法从旧云端数据可靠区分。
       if (entry.value.length != 1) {
@@ -441,9 +439,13 @@ mixin _StorageConflict on _StorageServiceBase {
       }
 
       final anchor = entry.value.single;
-      final matching = candidates.where((candidate) {
+      final matchingCandidates = candidatesByActiveSignature == null
+          ? candidates
+          : candidatesByActiveSignature[entry.key] ?? const <TodoItem>[];
+      final matching = matchingCandidates.where((candidate) {
         if (candidate.isDeleted ||
-            _remoteRecurrencePlanSignature(candidate) != entry.key) {
+            (candidatesByActiveSignature == null &&
+                _remoteRecurrencePlanSignature(candidate) != entry.key)) {
           return false;
         }
         final candidateSeriesId = candidate.recurrenceSeriesId;
@@ -729,26 +731,6 @@ mixin _StorageConflict on _StorageServiceBase {
       'start_time': interval.startMs,
       'end_time': interval.endMs,
     };
-  }
-
-  String _classifyScheduleRelation(
-      TodoItem current, List<Map<String, dynamic>> peers) {
-    final currentIsTeam =
-        current.teamUuid != null && current.teamUuid!.isNotEmpty;
-    final hasTeamPeer = peers.any((peer) {
-      final teamUuid = peer['team_uuid']?.toString();
-      return teamUuid != null && teamUuid.isNotEmpty;
-    });
-    final hasPersonalPeer = peers.any((peer) {
-      final teamUuid = peer['team_uuid']?.toString();
-      return teamUuid == null || teamUuid.isEmpty;
-    });
-
-    if ((currentIsTeam && hasPersonalPeer) || (!currentIsTeam && hasTeamPeer)) {
-      return 'personal_team';
-    }
-    if (currentIsTeam) return 'team_team';
-    return 'personal_personal';
   }
 
   String _localDayKey(int ms) {

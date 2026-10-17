@@ -297,7 +297,7 @@ mixin _StorageTodos on _StorageServiceBase {
               'version': item.version,
               'due_date': item.dueDate?.millisecondsSinceEpoch ?? 0,
               'group_id': item.groupId,
-              'created_date': item.createdDate ?? item.createdAt,
+              'created_date': item.createdDate, // 业务开始时间可空，不回退到物理创建时间
               'created_at': item.createdAt,
               'updated_at': item.updatedAt,
               'collab_type': item.collabType,
@@ -635,7 +635,9 @@ mixin _StorageTodos on _StorageServiceBase {
       if (todo.isDeleted) continue;
       if (!todo.hasConflict) continue;
       final data = todo.serverVersionData;
-      if (!_isLocalScheduleConflict(data)) continue;
+      if (!ConflictVisibilityService.isLocalScheduleConflictData(data)) {
+        continue;
+      }
       total++;
       switch (data?['relation_type']) {
         case 'personal_personal':
@@ -673,7 +675,7 @@ mixin _StorageTodos on _StorageServiceBase {
   Future<void> ignoreLocalScheduleConflict(
       String username, TodoItem item) async {
     final data = item.serverVersionData;
-    if (!_isLocalScheduleConflict(data)) return;
+    if (!ConflictVisibilityService.isLocalScheduleConflictData(data)) return;
 
     final ignoredKeys = await _getIgnoredScheduleConflictKeys(username);
     final startMs =
@@ -711,7 +713,11 @@ mixin _StorageTodos on _StorageServiceBase {
     var changed = false;
     for (final todo in allTodos) {
       final conflictData = todo.serverVersionData;
-      if (!_isLocalScheduleConflict(conflictData)) continue;
+      if (!ConflictVisibilityService.isLocalScheduleConflictData(
+        conflictData,
+      )) {
+        continue;
+      }
 
       if (todo.id == item.id) {
         todo.hasConflict = false;
@@ -1410,6 +1416,20 @@ mixin _StorageTodos on _StorageServiceBase {
               .toList();
         }
         final handledTodos = await _handleRecurrenceLogic(username, todos);
+        final clearedScheduleConflicts = handledTodos
+            .where(
+              ConflictVisibilityService.clearImpossibleTodoScheduleConflict,
+            )
+            .toList();
+        if (clearedScheduleConflicts.isNotEmpty) {
+          await saveTodos(
+            username,
+            clearedScheduleConflicts,
+            sync: false,
+            isSyncSource: true,
+            recomputeScheduleConflicts: false,
+          );
+        }
         //debugPrint(
         //    "📦 getTodos(SQL) 完成: count=${handledTodos.length}, includeDeleted=$includeDeleted, limit=$limit, cost=${DateTime.now().difference(startedAt).inMilliseconds}ms");
         if (!includeDeleted) {
@@ -1440,6 +1460,15 @@ mixin _StorageTodos on _StorageServiceBase {
     }
     final handledLegacyTodos =
         await _handleRecurrenceLogic(username, legacyTodos);
+    final clearedLegacyScheduleConflicts = handledLegacyTodos
+        .where(ConflictVisibilityService.clearImpossibleTodoScheduleConflict)
+        .toList();
+    if (clearedLegacyScheduleConflicts.isNotEmpty) {
+      await prefs.setStringList(
+        _scopedKey(keyTodos, username),
+        handledLegacyTodos.map((todo) => jsonEncode(todo.toJson())).toList(),
+      );
+    }
     Iterable<TodoItem> filtered = handledLegacyTodos;
     if (!includeDeleted) {
       filtered = filtered.where((todo) => !todo.isDeleted);

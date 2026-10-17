@@ -149,7 +149,7 @@ mixin _StorageCore on _StorageServiceBase {
   }
 
   List<TodoItem> _cloneTodoItems(List<TodoItem> items) {
-    return items.map((item) => TodoItem.fromJson(item.toJson())).toList();
+    return items.map((item) => item.detachedCopy()).toList();
   }
 
   Future<void> _clearTodoPrefsMirror(String username) async {

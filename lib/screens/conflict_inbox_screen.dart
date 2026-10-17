@@ -202,14 +202,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
 
     final persisted = _conflictData(item);
     if (persisted != null && persisted.isNotEmpty) {
-      final conflictType = persisted['conflict_type']?.toString();
-      final conflictKind = persisted['conflict_kind']?.toString();
-      final source = persisted['source']?.toString();
-      final isPersistedVersionConflict = conflictType == 'version_conflict' ||
-          conflictKind == 'version' ||
-          (conflictType != 'local_schedule_conflict' &&
-              source != 'local_detector');
-      if (isPersistedVersionConflict) {
+      if (ConflictVisibilityService.isVersionConflictData(persisted)) {
         return persisted;
       }
     }
@@ -267,10 +260,9 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
   }
 
   bool _isLocalScheduleConflict(dynamic item) {
-    final data = _conflictData(item);
-    if (data == null) return false;
-    return data['conflict_type'] == 'local_schedule_conflict' ||
-        data['source'] == 'local_detector';
+    return ConflictVisibilityService.isLocalScheduleConflictData(
+      _conflictData(item),
+    );
   }
 
   String _conflictLabel(dynamic item) {
@@ -1405,7 +1397,9 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
       if (item is! TodoItem) return false;
       final data = _findServerVersion(item);
       return (data == null || data.isEmpty) &&
-          !(_conflictData(item)?['type'] == 'schedule');
+          !ConflictVisibilityService.isLocalScheduleConflictData(
+            _conflictData(item),
+          );
     }).toList();
 
     if (ghostItems.isEmpty) return const SizedBox.shrink();
@@ -1486,36 +1480,40 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
       bool groupsChanged = false;
       bool countdownsChanged = false;
 
-      // 2. 在内存中批量处理
+      final todoIds = <String>{};
+      final groupIds = <String>{};
+      final countdownIds = <String>{};
       for (final ghost in items) {
         final id = _itemId(ghost);
         if (id == null) continue;
 
         if (ghost is TodoItem) {
-          final idx = allTodos.indexWhere((t) => t.id == id);
-          if (idx != -1) {
-            final item = allTodos[idx];
-            item.hasConflict = false;
-            item.serverVersionData = null;
-            todosChanged = true;
-          }
+          todoIds.add(id);
         } else if (ghost is TodoGroup) {
-          final idx = allGroups.indexWhere((g) => g.id == id);
-          if (idx != -1) {
-            final item = allGroups[idx];
-            item.hasConflict = false;
-            item.conflictData = null;
-            groupsChanged = true;
-          }
+          groupIds.add(id);
         } else if (ghost is CountdownItem) {
-          final idx = allCountdowns.indexWhere((c) => c.id == id);
-          if (idx != -1) {
-            final item = allCountdowns[idx];
-            item.hasConflict = false;
-            item.conflictData = null;
-            countdownsChanged = true;
-          }
+          countdownIds.add(id);
         }
+      }
+
+      // 2. 在内存中批量处理，每种数据表只扫描一次。
+      for (final todo in allTodos) {
+        if (!todoIds.remove(todo.id)) continue;
+        todo.hasConflict = false;
+        todo.serverVersionData = null;
+        todosChanged = true;
+      }
+      for (final group in allGroups) {
+        if (!groupIds.remove(group.id)) continue;
+        group.hasConflict = false;
+        group.conflictData = null;
+        groupsChanged = true;
+      }
+      for (final countdown in allCountdowns) {
+        if (!countdownIds.remove(countdown.id)) continue;
+        countdown.hasConflict = false;
+        countdown.conflictData = null;
+        countdownsChanged = true;
       }
 
       // 3. 批量持久化（每种类型仅写入一次）

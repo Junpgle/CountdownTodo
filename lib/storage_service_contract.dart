@@ -512,7 +512,6 @@ abstract class _StorageServiceBase {
     TodoItem item,
     Map<String, dynamic> peer,
   );
-  bool _hasVersionConflict(Map<String, dynamic>? data);
   List<TodoItem> clearResolvedRecurrenceMigrationConflictsForTest(
     List<TodoItem> todos,
   );
@@ -521,7 +520,6 @@ abstract class _StorageServiceBase {
   );
   bool _payloadHasConflict(Map<String, dynamic> data);
   bool _payloadHasVersionConflict(Map<String, dynamic> data);
-  bool _isLocalScheduleConflict(Map<String, dynamic>? data);
   Map<String, dynamic> _stripClientOnlyConflictForSync(
       Map<String, dynamic> data);
   void _preserveLocalTodoSourceFields(TodoItem local, TodoItem incoming);
@@ -556,8 +554,6 @@ abstract class _StorageServiceBase {
     TodoItem candidate,
   );
   Map<String, dynamic> _conflictPeerSummary(_TodoInterval interval);
-  String _classifyScheduleRelation(
-      TodoItem current, List<Map<String, dynamic>> peers);
   String _localDayKey(int ms);
   Future<bool> syncScreenTimeAlone(String username, String deviceName,
       {int? expectedUserId});

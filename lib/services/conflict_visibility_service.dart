@@ -2,18 +2,133 @@ import '../models.dart';
 import '../features/habits/models/habit_goal.dart';
 import '../features/habits/models/habit_goal_rule.dart';
 
-/// 统一同步冲突的可见性规则。
+enum TodoConflictKind { none, localSchedule, syncVersion, unresolved }
+
+/// Todo 冲突的统一分类、可见性、自动清理和规划拦截规则。
 ///
-/// 冲突收件箱、首页角标和团队页计数必须使用同一套过滤口径，
-/// 但是否要求团队归属由调用方通过 [isTeamVisibleConflict] 决定。
+/// 时间重叠是可重新安排的本地状态；同步版本冲突需要先核对；缺失快照
+/// 的冲突保守地作为待核对状态处理。全天待办不产生本地时间冲突。
 class ConflictVisibilityService {
   const ConflictVisibilityService._();
 
-  /// 判断一个待办是否应该出现在冲突相关入口中。
+  static TodoConflictKind todoConflictKind(TodoItem todo) {
+    if (todo.isDeleted || !todo.hasConflict) return TodoConflictKind.none;
+    final data = todo.serverVersionData;
+    if (data == null || data.isEmpty) return TodoConflictKind.unresolved;
+    if (isVersionConflictData(data)) return TodoConflictKind.syncVersion;
+    if (isLocalScheduleConflictData(data)) {
+      return TodoConflictKind.localSchedule;
+    }
+    return TodoConflictKind.unresolved;
+  }
+
+  static bool blocksTodoPlanning(TodoItem todo) {
+    final kind = todoConflictKind(todo);
+    return kind == TodoConflictKind.syncVersion ||
+        kind == TodoConflictKind.unresolved;
+  }
+
+  static bool clearImpossibleTodoScheduleConflict(TodoItem todo) {
+    if (!shouldClearImpossibleTodoScheduleConflict(todo)) return false;
+    todo.hasConflict = false;
+    todo.serverVersionData = null;
+    return true;
+  }
+
+  static bool isLocalScheduleConflictData(Map<String, dynamic>? data) {
+    if (data == null || data.isEmpty) return false;
+    final conflictType = data['conflict_type']?.toString();
+    if (conflictType == 'version_conflict' ||
+        data['conflict_kind'] == 'version') {
+      return false;
+    }
+    final source = data['source']?.toString();
+    return conflictType == 'local_schedule_conflict' ||
+        conflictType == 'schedule_conflict' ||
+        source == 'local_detector' ||
+        source == 'server_detector' ||
+        data['type'] == 'schedule';
+  }
+
+  static Map<String, dynamic> scheduleConflictData({
+    required TodoItem todo,
+    required List<Map<String, dynamic>> peers,
+    required String source,
+  }) {
+    final isTeamTodo = hasTeamUuid(todo.teamUuid);
+    return {
+      'uuid': todo.id,
+      'id': todo.id,
+      'content': todo.title,
+      'team_uuid': todo.teamUuid,
+      'schedule_scope': isTeamTodo ? 'team' : 'personal',
+      'relation_type': classifyScheduleRelation(todo, peers),
+      'conflict_kind': 'logic',
+      'conflict_type': 'local_schedule_conflict',
+      'source': source,
+      'start_time': todo.createdDate ?? todo.createdAt,
+      'end_time': todo.dueDate?.millisecondsSinceEpoch,
+      'conflict_with': peers,
+    };
+  }
+
+  static String classifyScheduleRelation(
+    TodoItem todo,
+    List<Map<String, dynamic>> peers,
+  ) {
+    final isTeamTodo = hasTeamUuid(todo.teamUuid);
+    for (final peer in peers) {
+      final peerIsTeam = hasTeamUuid(
+        peer['team_uuid']?.toString() ?? peer['teamUuid']?.toString(),
+      );
+      if (peerIsTeam != isTeamTodo) return 'personal_team';
+    }
+    return isTeamTodo ? 'team_team' : 'personal_personal';
+  }
+
+  /// Unknown non-empty server snapshots retain the historical version-conflict
+  /// behavior; empty snapshots are handled as unresolved instead.
+  static bool isVersionConflictData(Map<String, dynamic>? data) {
+    if (data == null || data.isEmpty) return false;
+    if (data['conflict_type'] == 'version_conflict' ||
+        data['conflict_kind'] == 'version') {
+      return true;
+    }
+    return !isLocalScheduleConflictData(data);
+  }
+
+  /// Clears schedule markers that cannot describe a real timed overlap.
+  /// A missing peer list is retained for review because its source is unknown.
+  static bool shouldClearImpossibleTodoScheduleConflict(TodoItem todo) {
+    if (!todo.hasConflict ||
+        isVersionConflictData(todo.serverVersionData) ||
+        !isLocalScheduleConflictData(todo.serverVersionData)) {
+      return false;
+    }
+    if (isAllDayTodo(todo)) return true;
+    final peers = todo.serverVersionData?['conflict_with'];
+    if (peers is! List) return false;
+    return peers.isEmpty ||
+        peers.every(
+          (peer) =>
+              peer is Map &&
+              isAllDayTodoData(Map<String, dynamic>.from(peer)),
+        );
+  }
+
+  /// A Todo conflict belongs in the inbox when it is actionable or needs
+  /// review. Date-only schedule conflicts are stale and are normalized away.
   static bool isVisibleTodoConflict(TodoItem todo) {
-    if (todo.isDeleted || !todo.hasConflict) return false;
-    if (isAllDayTodo(todo)) return false;
-    return hasVisibleConflictPeer(todo.serverVersionData);
+    switch (todoConflictKind(todo)) {
+      case TodoConflictKind.none:
+        return false;
+      case TodoConflictKind.localSchedule:
+        return !isAllDayTodo(todo) &&
+            hasVisibleConflictPeer(todo.serverVersionData);
+      case TodoConflictKind.syncVersion:
+      case TodoConflictKind.unresolved:
+        return true;
+    }
   }
 
   static bool isVisibleTodoGroupConflict(TodoGroup group) =>
@@ -97,20 +212,17 @@ class ConflictVisibilityService {
   }
 
   /// 判断冲突快照是否至少包含一个非全天对等项。
-  /// 非日程冲突或没有冲突列表时，沿用原有逻辑视为有效冲突。
+  /// 缺少对等项列表时保留冲突以供核对。
   static bool hasVisibleConflictPeer(Map<String, dynamic>? data) {
-    if (data == null ||
-        (data['type'] != 'schedule' && data['conflict_with'] == null)) {
-      return true;
-    }
+    if (data == null || !isLocalScheduleConflictData(data)) return true;
 
     final peers = data['conflict_with'];
     if (peers is! List) return true;
 
-    return peers.any(
-      (peer) =>
-          peer is Map && !isAllDayTodoData(Map<String, dynamic>.from(peer)),
-    );
+    return peers.any((peer) {
+      if (peer is! Map) return true;
+      return !isAllDayTodoData(Map<String, dynamic>.from(peer));
+    });
   }
 
   static int _parseMillis(dynamic value) {

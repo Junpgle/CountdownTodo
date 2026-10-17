@@ -642,15 +642,25 @@ mixin _StorageSync on _StorageServiceBase {
       final List<HabitCheckIn> allLocalHabitCheckIns = localSnapshots[8];
       final List<HabitSleepCoachingPlan> allLocalHabitSleepCoachingPlans =
           localSnapshots[9];
+      final conflictedHabitGoalIds = syncHabits
+          ? <String>{}
+          : const <String>{};
       // 有些历史冲突只保存在本地 conflict_data，服务端后续同步不一定
       // 再把它放进 conflicts 或 server_habit_goals，因此这里也要登记快照。
       for (final goal in allLocalHabitGoals) {
-        if (!goal.hasConflict || goal.conflictData == null) continue;
+        if (!goal.hasConflict) continue;
+        conflictedHabitGoalIds.add(goal.uuid);
+        if (goal.conflictData == null) continue;
         staleHabitConflictSnapshots['habit_goals:${goal.uuid}'] =
             Map<String, dynamic>.from(goal.conflictData!);
       }
+      final conflictedHabitRuleIds = syncHabits
+          ? <String>{}
+          : const <String>{};
       for (final rule in allLocalHabitRules) {
-        if (!rule.hasConflict || rule.conflictData == null) continue;
+        if (!rule.hasConflict) continue;
+        conflictedHabitRuleIds.add(rule.uuid);
+        if (rule.conflictData == null) continue;
         staleHabitConflictSnapshots['habit_goal_rule_revisions:${rule.uuid}'] =
             Map<String, dynamic>.from(rule.conflictData!);
       }
@@ -771,7 +781,9 @@ mixin _StorageSync on _StorageServiceBase {
           final localTodo = localTodosById[uuid];
           final hasLocalVersionConflict = localTodo != null &&
               localTodo.hasConflict &&
-              _hasVersionConflict(localTodo.serverVersionData);
+              ConflictVisibilityService.isVersionConflictData(
+                localTodo.serverVersionData,
+              );
           if (_payloadHasVersionConflict(data) || hasLocalVersionConflict) {
             if (opId != null) consumedConflictOpIds.add(opId);
             continue;
@@ -809,8 +821,7 @@ mixin _StorageSync on _StorageServiceBase {
             continue;
           }
           if (_payloadHasConflict(data) ||
-              (allLocalHabitGoals
-                  .any((g) => g.uuid == uuid && g.hasConflict))) {
+              conflictedHabitGoalIds.contains(uuid)) {
             if (opId != null) consumedConflictOpIds.add(opId);
             continue;
           }
@@ -821,8 +832,7 @@ mixin _StorageSync on _StorageServiceBase {
             continue;
           }
           if (_payloadHasConflict(data) ||
-              (allLocalHabitRules
-                  .any((r) => r.uuid == uuid && r.hasConflict))) {
+              conflictedHabitRuleIds.contains(uuid)) {
             if (opId != null) consumedConflictOpIds.add(opId);
             continue;
           }
@@ -871,7 +881,9 @@ mixin _StorageSync on _StorageServiceBase {
         for (final item in allLocalTodos) {
           if (item.updatedAt > lastSyncTime) {
             if (item.hasConflict &&
-                _hasVersionConflict(item.serverVersionData)) {
+                ConflictVisibilityService.isVersionConflictData(
+                  item.serverVersionData,
+                )) {
               continue;
             }
             final data = item.toJson();
@@ -961,7 +973,9 @@ mixin _StorageSync on _StorageServiceBase {
         if (syncTodos) {
           for (final item in allLocalTodos) {
             if (item.hasConflict &&
-                _hasVersionConflict(item.serverVersionData)) {
+                ConflictVisibilityService.isVersionConflictData(
+                  item.serverVersionData,
+                )) {
               continue;
             }
             final data = _stripClientOnlyConflictForSync(item.toJson());
@@ -1430,7 +1444,10 @@ mixin _StorageSync on _StorageServiceBase {
           };
           for (var i = 0; i < allLocalTodos.length; i++) {
             final latest = latestById[allLocalTodos[i].id];
-            if (latest != null) allLocalTodos[i] = latest;
+            if (latest != null) {
+              allLocalTodos[i] = latest;
+              localTodosById[latest.id] = latest;
+            }
           }
         }
 
@@ -1440,6 +1457,52 @@ mixin _StorageSync on _StorageServiceBase {
         //debugPrint(
         //    '🧪 [SyncDiag][IndepCompletion] indCompletions=${indCompletions?.length ?? "null"}');
         if (indCompletions != null) {
+          final completionTodoUuids = <String>{};
+          for (final ic in indCompletions) {
+            if (ic is! Map) continue;
+            final todoUuid = ic['todo_uuid']?.toString();
+            if (todoUuid == null || todoUuid.isEmpty) continue;
+            if (SyncOplogPolicy.shouldProtectTodoMerge(
+              todoUuid,
+              forceFlushUuids: _forceFlushProtectedUuids,
+              inFlightMutationUuids: inFlightTodoMutationUuids,
+            )) {
+              continue;
+            }
+            completionTodoUuids.add(todoUuid);
+          }
+
+          final completionTodoUuidList =
+              completionTodoUuids.toList(growable: false);
+          final localCompletionsByTodoUuid =
+              <String, Map<String, Object?>>{};
+          const queryChunkSize = 500;
+          for (
+            var start = 0;
+            start < completionTodoUuidList.length;
+            start += queryChunkSize
+          ) {
+            final end = start + queryChunkSize < completionTodoUuidList.length
+                ? start + queryChunkSize
+                : completionTodoUuidList.length;
+            final chunk = completionTodoUuidList.sublist(start, end);
+            final placeholders = List.filled(chunk.length, '?').join(', ');
+            final completionRows = await db.query(
+              'todo_completions',
+              where: 'todo_uuid IN ($placeholders) AND user_id = ?',
+              whereArgs: [...chunk, userId],
+            );
+            for (final row in completionRows) {
+              final todoUuid = row['todo_uuid']?.toString();
+              if (todoUuid != null) {
+                localCompletionsByTodoUuid.putIfAbsent(
+                  todoUuid,
+                  () => row,
+                );
+              }
+            }
+          }
+
           final batch = db.batch();
           var independentCompletionChanged = false;
           for (var ic in indCompletions) {
@@ -1453,6 +1516,20 @@ mixin _StorageSync on _StorageServiceBase {
             )) {
               continue;
             }
+            if (!completionTodoUuids.contains(todoUuid)) {
+              // Protection may have been lifted while the batched read was
+              // awaiting SQLite; fetch this newly eligible row before merge.
+              final rows = await db.query(
+                'todo_completions',
+                where: 'todo_uuid = ? AND user_id = ?',
+                whereArgs: [todoUuid, userId],
+                limit: 1,
+              );
+              if (rows.isNotEmpty) {
+                localCompletionsByTodoUuid[todoUuid] = rows.first;
+              }
+              completionTodoUuids.add(todoUuid);
+            }
             final rawCompleted = ic['is_completed'];
             final isCompleted = rawCompleted == 1 ||
                 rawCompleted == true ||
@@ -1460,15 +1537,9 @@ mixin _StorageSync on _StorageServiceBase {
                 rawCompleted?.toString().toLowerCase() == 'true';
             final serverUpdatedAt =
                 int.tryParse(ic['updated_at']?.toString() ?? '') ?? 0;
-            final existing = await db.query(
-              'todo_completions',
-              where: 'todo_uuid = ? AND user_id = ?',
-              whereArgs: [todoUuid, userId],
-              limit: 1,
-            );
-            final localUpdatedAt = existing.isNotEmpty
-                ? (existing.first['updated_at'] as num?)?.toInt() ?? 0
-                : 0;
+            final existing = localCompletionsByTodoUuid[todoUuid];
+            final localUpdatedAt =
+                (existing?['updated_at'] as num?)?.toInt() ?? 0;
             // 🚀 时间戳比较修复：如果本地没有完成状态记录，判定为从未修改（localUpdatedAt=0），此时应接受服务端更新
             // 仅当本地有明确的更新时间且晚于服务端时，才跳过 DB 写入
             final hasLocalModification = localUpdatedAt > 0;
@@ -1476,16 +1547,14 @@ mixin _StorageSync on _StorageServiceBase {
                 serverUpdatedAt > 0 &&
                 serverUpdatedAt < localUpdatedAt) {
               // 本地有更新且晚于服务端，跳过 DB 写入，但仍需从 DB 读取正确值更新内存
-              final localIsCompleted = existing.isNotEmpty
-                  ? (existing.first['is_completed'] as int?) ?? 0
-                  : 0;
-              final localIdx =
-                  allLocalTodos.indexWhere((todo) => todo.id == todoUuid);
-              if (localIdx != -1 && allLocalTodos[localIdx].collabType == 1) {
-                if (allLocalTodos[localIdx].isDone != (localIsCompleted == 1)) {
-                  allLocalTodos[localIdx].isDone = localIsCompleted == 1;
+              final localIsCompleted =
+                  (existing?['is_completed'] as int?) ?? 0;
+              final localTodo = localTodosById[todoUuid];
+              if (localTodo != null && localTodo.collabType == 1) {
+                if (localTodo.isDone != (localIsCompleted == 1)) {
+                  localTodo.isDone = localIsCompleted == 1;
                   independentCompletionChanged = true;
-                  if (!allLocalTodos[localIdx].isDeleted) {
+                  if (!localTodo.isDeleted) {
                     updatedTodoIds.add(todoUuid);
                   }
                 }
@@ -1507,13 +1576,12 @@ mixin _StorageSync on _StorageServiceBase {
                       : DateTime.now().millisecondsSinceEpoch,
                 },
                 conflictAlgorithm: ConflictAlgorithm.replace);
-            final localIdx =
-                allLocalTodos.indexWhere((todo) => todo.id == todoUuid);
-            if (localIdx != -1 && allLocalTodos[localIdx].collabType == 1) {
-              if (allLocalTodos[localIdx].isDone != isCompleted) {
-                allLocalTodos[localIdx].isDone = isCompleted;
+            final localTodo = localTodosById[todoUuid];
+            if (localTodo != null && localTodo.collabType == 1) {
+              if (localTodo.isDone != isCompleted) {
+                localTodo.isDone = isCompleted;
                 independentCompletionChanged = true;
-                if (!allLocalTodos[localIdx].isDeleted) {
+                if (!localTodo.isDeleted) {
                   updatedTodoIds.add(todoUuid);
                 }
               }
@@ -2281,6 +2349,13 @@ mixin _StorageSync on _StorageServiceBase {
               todosIndexMap.containsKey(itemId)) {
             if (!conflictDetectionEnabled) continue;
             final todo = allLocalTodos[todosIndexMap[itemId]!];
+            if (ConflictVisibilityService.isAllDayTodo(todo)) {
+              if (ConflictVisibilityService
+                  .clearImpossibleTodoScheduleConflict(todo)) {
+                hasChanges = true;
+              }
+              continue;
+            }
             final peer = Map<String, dynamic>.from(serverVersion);
             if (_isSameRecurrenceSeriesPayload(todo, peer)) continue;
             final conflictKey = _scheduleConflictKeyFromPayload(todo, peer);
@@ -2288,21 +2363,11 @@ mixin _StorageSync on _StorageServiceBase {
                 ignoredScheduleConflictKeys.contains(conflictKey)) {
               continue;
             }
-            final data = {
-              'uuid': todo.id,
-              'id': todo.id,
-              'content': todo.title,
-              'team_uuid': todo.teamUuid,
-              'schedule_scope':
-                  (todo.teamUuid?.isNotEmpty ?? false) ? 'team' : 'personal',
-              'relation_type': 'personal_personal',
-              'conflict_kind': 'logic',
-              'conflict_type': 'local_schedule_conflict',
-              'source': 'server_detector',
-              'start_time': todo.createdDate ?? todo.createdAt,
-              'end_time': todo.dueDate?.millisecondsSinceEpoch,
-              'conflict_with': [peer],
-            };
+            final data = ConflictVisibilityService.scheduleConflictData(
+              todo: todo,
+              peers: [peer],
+              source: 'server_detector',
+            );
             if (!todo.hasConflict ||
                 jsonEncode(todo.serverVersionData) != jsonEncode(data)) {
               todo.hasConflict = true;
@@ -2484,10 +2549,16 @@ mixin _StorageSync on _StorageServiceBase {
       // 将从旧云端响应中恢复出的系列关系作为一次真实本地修复重新上传。
       // 先完成同步源落库，再提升版本，确保 saveTodos 能生成待上传 oplog。
       if (repairedRemoteTodoIds.isNotEmpty) {
-        final repairIdsToUpload = repairedRemoteTodoIds.where((id) =>
-            recurrenceDedupeChangedIds.contains(id) ||
-            recurrenceBoundaryChangedIds.contains(id) ||
-            !_attemptedRecurrenceSeriesRepairUploads.contains('$username|$id'));
+        final repairIdsToUpload = repairedRemoteTodoIds
+            .where(
+              (id) =>
+                  recurrenceDedupeChangedIds.contains(id) ||
+                  recurrenceBoundaryChangedIds.contains(id) ||
+                  !_attemptedRecurrenceSeriesRepairUploads.contains(
+                    '$username|$id',
+                  ),
+            )
+            .toSet();
         final repairedItems = allLocalTodos
             .where((todo) => repairIdsToUpload.contains(todo.id))
             .toList();
