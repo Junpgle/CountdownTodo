@@ -31,6 +31,7 @@ class ClipboardService {
 
   Timer? _pollTimer;
   String? _lastClipboardContent;
+  int? _lastClipboardSequenceNumber;
   final _urlController = StreamController<String>.broadcast();
   bool _initialized = false;
 
@@ -93,8 +94,8 @@ class ClipboardService {
   }
 
   /// Get text from Windows clipboard using Win32 API
-  String? _getClipboardText() {
-    if (!IsClipboardFormatAvailable(CF_UNICODETEXT).value) {
+  String? _getClipboardText({bool formatAvailable = false}) {
+    if (!formatAvailable && !IsClipboardFormatAvailable(CF_UNICODETEXT).value) {
       return null;
     }
     if (!OpenClipboard(null).value) {
@@ -123,6 +124,7 @@ class ClipboardService {
     if (_initialized) return;
     _initialized = true;
     try {
+      _lastClipboardSequenceNumber = GetClipboardSequenceNumber();
       _lastClipboardContent = _getClipboardText()?.trim();
 //       debugPrint('[ClipboardService] Initialized');
     } catch (e) {
@@ -141,8 +143,21 @@ class ClipboardService {
     _pollTimer?.cancel();
     _pollTimer = Timer.periodic(ClipboardConfig.pollInterval, (_) {
       try {
-        final content = _getClipboardText()?.trim();
-        if (content == null || content.isEmpty) return;
+        final sequenceNumber = GetClipboardSequenceNumber();
+        // Zero means the sequence API cannot observe this window station.
+        if (sequenceNumber != 0 &&
+            sequenceNumber == _lastClipboardSequenceNumber) {
+          return;
+        }
+        if (!IsClipboardFormatAvailable(CF_UNICODETEXT).value) {
+          _lastClipboardSequenceNumber = sequenceNumber;
+          return;
+        }
+
+        final content = _getClipboardText(formatAvailable: true)?.trim();
+        if (content == null) return;
+        _lastClipboardSequenceNumber = sequenceNumber;
+        if (content.isEmpty) return;
 
         final isNew = content != _lastClipboardContent;
         if (!isNew) return;
@@ -171,6 +186,7 @@ class ClipboardService {
 
   /// Reset the last known clipboard content (useful after URL is processed)
   void resetLastContent() {
+    _lastClipboardSequenceNumber = GetClipboardSequenceNumber();
     _lastClipboardContent = _getClipboardText()?.trim();
   }
 
