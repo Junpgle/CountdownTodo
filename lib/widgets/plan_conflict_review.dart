@@ -42,6 +42,8 @@ class PlanConflictIndicator extends StatefulWidget {
     this.date,
     this.refreshTrigger = 0,
     this.compact = false,
+    this.enabled = true,
+    this.retainResultOnRefresh = false,
     this.onSaved,
     this.service = const PlanConflictReviewService(),
     this.loader,
@@ -50,6 +52,8 @@ class PlanConflictIndicator extends StatefulWidget {
   final DateTime? date;
   final int refreshTrigger;
   final bool compact;
+  final bool enabled;
+  final bool retainResultOnRefresh;
   final VoidCallback? onSaved;
   final PlanConflictReviewService service;
   final PlanConflictReviewLoader? loader;
@@ -63,6 +67,7 @@ class _PlanConflictIndicatorState extends State<PlanConflictIndicator>
   PlanAvailabilityException? _error;
   int _sequence = 0;
   bool _opening = false;
+  bool _reading = false;
   Timer? _wake;
   bool _foreground = true;
   DateTime get _date => _day(widget.date ?? widget.service.now);
@@ -78,7 +83,14 @@ class _PlanConflictIndicatorState extends State<PlanConflictIndicator>
   @override
   void didUpdateWidget(covariant PlanConflictIndicator old) {
     super.didUpdateWidget(old);
-    if (old.username != widget.username ||
+    if (!widget.enabled) {
+      ++_sequence;
+      _wake?.cancel();
+      _reading = false;
+      return;
+    }
+    if (old.enabled != widget.enabled ||
+        old.username != widget.username ||
         old.date != widget.date ||
         old.refreshTrigger != widget.refreshTrigger ||
         old.loader != widget.loader ||
@@ -108,13 +120,18 @@ class _PlanConflictIndicatorState extends State<PlanConflictIndicator>
   }
 
   Future<void> _reload() async {
-    if (!mounted || !_foreground) return;
+    if (!mounted || !_foreground || !widget.enabled) return;
     final sequence = ++_sequence;
     final date = _date;
     final username = widget.username;
     _wake?.cancel();
     setState(() {
-      _result = null;
+      if (!widget.retainResultOnRefresh ||
+          _result?.username != username ||
+          _result?.start != date) {
+        _result = null;
+      }
+      _reading = true;
       _error = null;
     });
     try {
@@ -131,7 +148,10 @@ class _PlanConflictIndicatorState extends State<PlanConflictIndicator>
         unawaited(_reload());
         return;
       }
-      setState(() => _result = result);
+      setState(() {
+        _result = result;
+        _reading = false;
+      });
       final now = widget.service.now;
       var next = DateTime(now.year, now.month, now.day + 1);
       for (final entry in result.entries) {
@@ -143,16 +163,17 @@ class _PlanConflictIndicatorState extends State<PlanConflictIndicator>
       }
     } catch (error) {
       if (!mounted || sequence != _sequence) return;
-      setState(
-        () => _error = error is PlanAvailabilityException
+      setState(() {
+        _reading = false;
+        _error = error is PlanAvailabilityException
             ? error
-            : const PlanAvailabilityException('安排读取失败，请重试'),
-      );
+            : const PlanAvailabilityException('安排读取失败，请重试');
+      });
     }
   }
 
   Future<void> _open() async {
-    if (_opening) return;
+    if (_opening || _reading || !widget.enabled) return;
     setState(() => _opening = true);
     try {
       await showPlanConflictReview(
@@ -207,7 +228,7 @@ class _PlanConflictIndicatorState extends State<PlanConflictIndicator>
       return IconButton(
         key: const ValueKey('plan-conflict-indicator'),
         tooltip: label,
-        onPressed: _opening ? null : _open,
+        onPressed: _opening || _reading || !widget.enabled ? null : _open,
         icon: Badge(
           label: Text(incomplete ? '!' : '$count'),
           child: Icon(Icons.event_busy_outlined, color: color),
@@ -216,7 +237,7 @@ class _PlanConflictIndicatorState extends State<PlanConflictIndicator>
     }
     return TextButton.icon(
       key: const ValueKey('plan-conflict-indicator'),
-      onPressed: _opening ? null : _open,
+      onPressed: _opening || _reading || !widget.enabled ? null : _open,
       icon: Icon(Icons.event_busy_outlined, size: 18, color: color),
       label: Text(label, style: TextStyle(color: color)),
     );

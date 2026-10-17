@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
 
 import '../models.dart';
+import 'conflict_visibility_service.dart';
 import '../models/plan_availability.dart';
 import '../models/plan_cleanup.dart';
 import '../storage_service.dart';
@@ -333,7 +334,7 @@ class PlanCleanupRepository {
 
   static String _blocked(TodoItem todo, _CleanupSql rules) {
     if (todo.isDeleted || !todo.isDone) return '待办已删除或不再是已完成状态，请查看最新待办';
-    if (todo.hasConflict ||
+    if (ConflictVisibilityService.blocksTodoPlanning(todo) ||
         todo.id.trim().isEmpty ||
         todo.title.trim().isEmpty) {
       return '待办存在冲突或内容无效，请先核对';
@@ -566,7 +567,7 @@ class _CleanupSql {
         .map((id) => "'${id.replaceAll("'", "''")}'")
         .join(',');
     return '''CASE
-      WHEN COALESCE(t.is_deleted,0)<>0 OR COALESCE(t.has_conflict,0)<>0 THEN '待办需核对'
+      WHEN COALESCE(t.is_deleted,0)<>0 THEN '待办需核对'
       WHEN LENGTH(TRIM(COALESCE(t.team_uuid,'')))>0 OR COALESCE(t.collab_type,0)<>0 THEN '团队规划请逐条核对'
       WHEN ${focusReason.isNotEmpty ? '1' : '0'} ${focus.isEmpty ? '' : 'OR t.uuid IN ($focus)'} THEN '专注状态需核对，请查看当前专注'
       WHEN COALESCE(p.is_deleted,0)<>0 ${planConflict ? 'OR COALESCE(p.has_conflict,0)<>0' : ''} THEN '规划删除或冲突待核对'

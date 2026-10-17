@@ -16,6 +16,21 @@ import '../widgets/floating_glass_control.dart';
 import '../widgets/missed_plan_recovery_flow.dart';
 import 'course_screens.dart';
 
+String? _reviewDateLocale;
+final _reviewDateFormats = <String, DateFormat>{};
+
+DateFormat _reviewDateFormat(String pattern) {
+  final locale = Intl.defaultLocale;
+  if (_reviewDateLocale != locale) {
+    _reviewDateLocale = locale;
+    _reviewDateFormats.clear();
+  }
+  return _reviewDateFormats.putIfAbsent(
+    pattern,
+    () => DateFormat(pattern, locale),
+  );
+}
+
 String reviewDuration(int seconds) {
   if (seconds == 0) return '0分钟';
   final hours = seconds ~/ 3600, minutes = seconds % 3600 ~/ 60;
@@ -29,7 +44,7 @@ String reviewDuration(int seconds) {
 
 String _date(int ms) {
   if (ms <= 0 || ms > 8640000000000000) return '时间待核对';
-  return DateFormat('M/d HH:mm')
+  return _reviewDateFormat('M/d HH:mm')
       .format(DateTime.fromMillisecondsSinceEpoch(ms));
 }
 
@@ -166,10 +181,11 @@ class _PlanBlockStatsScreenState
   }
 
   String get _rangeLabel => _dimension == 2
-      ? DateFormat('yyyy年M月').format(_current)
+      ? _reviewDateFormat('yyyy年M月').format(_current)
       : _dimension == 0
-      ? DateFormat('yyyy年M月d日').format(_current)
-      : '${DateFormat('M/d').format(_range.start)} — ${DateFormat('M/d').format(DateTime(_range.end.year, _range.end.month, _range.end.day - 1))}';
+      ? _reviewDateFormat('yyyy年M月d日').format(_current)
+      : '${_reviewDateFormat('M/d').format(_range.start)} — '
+            '${_reviewDateFormat('M/d').format(DateTime(_range.end.year, _range.end.month, _range.end.day - 1))}';
   @override
   void initState() {
     _current = widget.initialDate ?? _now;
@@ -346,7 +362,7 @@ class _PlanBlockStatsScreenState
                               message: _rangeLabel,
                               child: Text(
                                 compactDate && _dimension == 0
-                                    ? DateFormat('M月d日').format(_current)
+                                    ? _reviewDateFormat('M月d日').format(_current)
                                     : _rangeLabel,
                                 textAlign: TextAlign.center,
                                 style: theme.textTheme.titleMedium,
@@ -638,6 +654,7 @@ class _PlanBlockStatsScreenState
   );
   Widget _trend(PlanReviewSummary s) {
     final colors = Theme.of(context).colorScheme;
+    final dateFormat = _reviewDateFormat('M/d');
     final maxSeconds = s.days.fold<int>(
       1,
       (m, d) => math.max(
@@ -661,18 +678,19 @@ class _PlanBlockStatsScreenState
           children: s.days.indexed.map((pair) {
             final (i, d) = pair;
             final date = DateTime.fromMillisecondsSinceEpoch(d['start'] as int);
+            final dateLabel = dateFormat.format(date);
             final planned = (d['planned'] as num).toInt(),
                 actual = (d['actual'] as num).toInt();
             return Expanded(
               child: Tooltip(
                 message:
-                    '${DateFormat('M/d').format(date)}\n规划 ${reviewDuration(planned)}\n专注 ${reviewDuration(actual)}',
+                    '$dateLabel\n规划 ${reviewDuration(planned)}\n专注 ${reviewDuration(actual)}',
                 child: InkWell(
                   onTap: () => _open(
                     PlanReviewFilter.focus,
                     start: date,
                     end: DateTime(date.year, date.month, date.day + 1),
-                    title: '${DateFormat('M/d').format(date)}专注明细',
+                    title: '$dateLabel专注明细',
                   ),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.end,
@@ -1029,7 +1047,8 @@ class _PlanReviewDetailScreenState
                     Text(
                       widget.cumulative
                           ? '累计有效记录 · 按唯一规划关联'
-                          : '${DateFormat('yyyy/M/d').format(widget.start)} — ${DateFormat('yyyy/M/d').format(DateTime(widget.end.year, widget.end.month, widget.end.day - 1))}',
+                          : '${_reviewDateFormat('yyyy/M/d').format(widget.start)} — '
+                                '${_reviewDateFormat('yyyy/M/d').format(DateTime(widget.end.year, widget.end.month, widget.end.day - 1))}',
                     ),
                     if (focusFilters.contains(widget.filter))
                       Padding(

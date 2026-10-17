@@ -542,15 +542,14 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
             fixedSchedulesChanged ||
             noCourseLayoutChanged;
 
+        if (todosChanged || groupsChanged) _todoDataRevision++;
         if (todosChanged) {
           _todos = allTodos;
           _todosNotifier.value = allTodos;
-          _todoUpdateSignalNotifier.value++;
         }
         if (groupsChanged) {
           _todoGroups = allGroups;
           _groupsNotifier.value = allGroups;
-          _todoUpdateSignalNotifier.value++;
         }
         if (countdownsChanged) {
           _countdowns = allCountdowns;

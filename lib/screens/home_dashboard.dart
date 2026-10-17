@@ -5,7 +5,9 @@ import 'package:cached_network_image/cached_network_image.dart';
 
 import 'dart:async';
 
+import '../widgets/home_dashboard_banner_layout.dart';
 import '../widgets/home_drawer_menu.dart';
+import '../widgets/ai_water_border.dart';
 
 import 'package:intl/intl.dart';
 
@@ -19,6 +21,7 @@ import 'package:palette_generator/palette_generator.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../services/search_service.dart';
+import '../utils/home_banner_todo_iterator.dart';
 import '../utils/page_transitions.dart';
 
 // 引入服务和模型
@@ -92,10 +95,11 @@ import '../widgets/home_sections.dart';
 import '../widgets/home_app_bar.dart';
 import '../widgets/home_dashboard_scroll_section.dart';
 import '../widgets/countdown_section_widget.dart';
-import '../widgets/course_section_widget.dart';
 import '../widgets/todo_section_widget.dart';
 import '../widgets/pomodoro_today_section.dart';
 import '../widgets/plan_block_today_section.dart';
+import '../services/plan_review_repository.dart';
+import '../services/home_agenda_repository.dart';
 import '../features/habits/screens/habit_center_screen.dart';
 import '../features/finance/screens/finance_home_screen.dart';
 import '../features/finance/screens/finance_entry_screen.dart';
@@ -143,7 +147,9 @@ const _homeFocusTabIndex = 4;
 
 class HomeDashboard extends StatefulWidget {
   final String username;
-  const HomeDashboard({super.key, required this.username});
+  final PlanReviewRepository? planReviewRepository;
+  final HomeAgendaRepository? agendaRepository;
+  const HomeDashboard({super.key, required this.username, this.planReviewRepository, this.agendaRepository});
 
   @override
   State<HomeDashboard> createState() => _HomeDashboardState();
@@ -165,7 +171,6 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
     'courses': <CourseItem>[],
   };
 
-  String _noCourseBehavior = 'keep';
   bool _hasUsagePermission = true;
   bool _isSyncing = false;
   String? _wallpaperUrl;
@@ -187,14 +192,8 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
   int? _currentSemesterWeek;
   Map<String, dynamic> _homeTextConfig = {};
 
-  List<String> _leftSections = ['courses', 'todos', 'math'];
-  List<String> _rightSections = [
-    'countdowns',
-    'screenTime',
-    'timeline',
-    'pomodoro',
-    'finance',
-  ];
+  List<String> _leftSections = HomeLayoutService.defaultOrder(HomeLayoutTarget.wideLeft);
+  List<String> _rightSections = HomeLayoutService.defaultOrder(HomeLayoutTarget.wideRight);
   List<String> _mobileHomeSections = HomeLayoutService.defaultOrder(
     HomeLayoutTarget.mobileHome,
   );
@@ -204,10 +203,11 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
   int _habitDisplayLimit = HomeLayoutService.defaultHabitDisplayLimit;
 
   Map<String, bool> _sectionVisibility = {
-    'courses': true,
+    'agenda': true,
+    'agendaSchedules': true,
+    'agendaPlans': true,
     'countdowns': true,
     'todos': true,
-    'planBlocks': true,
     'screenTime': true,
     'math': true,
     'pomodoro': true,
@@ -252,6 +252,7 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
   final ValueNotifier<int> _timelineRevision = ValueNotifier<int>(0);
   final ValueNotifier<int> _pomodoroRevision = ValueNotifier<int>(0);
   final ValueNotifier<int> _habitsRevision = ValueNotifier<int>(0);
+  int _todoDataRevision = 0;
 
   Future<void> _extractColorFromProvider(
     ImageProvider provider,
@@ -300,6 +301,7 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
   CrossDevicePomodoroState? _remotePomodoro; // 其他设备正在进行的专注
   Timer? _remotePomodoroTicker;
   bool _isDashboardInForeground = true;
+  bool get _canRunDashboardPomodoroTickers;
   int _remotePomodoroRemaining = 0;
   StreamSubscription? _remotePomodoroSub;
   StreamSubscription? _connStateSub; // 🚀 兼容性修复：改为通配订阅类型
@@ -346,6 +348,7 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
   Timer? _todoWidgetDebouncer;
   Timer? _reminderScheduleDebouncer;
   final ValueNotifier<int> _pomodoroTickNotifier = ValueNotifier<int>(0);
+  final ValueNotifier<int> _pomodoroDisplayTickNotifier = ValueNotifier<int>(0);
 
   // 🚀 Granular Refresh Notifiers
   late final ValueNotifier<List<TodoItem>> _todosNotifier;
@@ -358,7 +361,6 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
     false,
   );
   bool _isDashboardLoadInProgress = false;
-  final ValueNotifier<int> _todoUpdateSignalNotifier = ValueNotifier<int>(0);
 
   // 🚀 GlobalKeys for Zoom Animations
   final GlobalKey _searchButtonKey = GlobalKey();

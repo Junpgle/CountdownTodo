@@ -15,6 +15,21 @@ double homeDashboardPhoneScrollTailExtent({
 }) => headerExtent.clamp(0.0, 2000.0).toDouble() + 100.0 + bottomInset;
 
 mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
+  late final Listenable _todoSectionListenable = Listenable.merge([
+    _todosNotifier,
+    _groupsNotifier,
+  ]);
+  late final Listenable _agendaSectionListenable = Listenable.merge([
+    _scheduleRevision,
+    _todosNotifier,
+  ]);
+  late final Listenable _bannerSectionListenable = Listenable.merge([
+    _pomodoroTickNotifier,
+    _todosNotifier,
+    _courseDataNotifier,
+    _scheduleRevision,
+  ]);
+
   Widget build(BuildContext context) {
     bool isDarkMode = Theme.of(context).brightness == Brightness.dark;
     bool showWallpaper = !isDarkMode && _wallpaperShow && _wallpaperUrl != null;
@@ -223,30 +238,6 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                               : LayoutBuilder(
                                   builder: (context, constraints) {
                                     // ... (rest of section definitions)
-                                    Widget courseSection = AnimatedBuilder(
-                                      animation: Listenable.merge([
-                                        _todosNotifier,
-                                        _courseDataNotifier,
-                                        _scheduleRevision,
-                                      ]),
-                                      builder: (context, _) {
-                                        return CourseSectionWidget(
-                                          dashboardCourseData:
-                                              _dashboardCourseData,
-                                          todos: _todos,
-                                          isLight: isLight,
-                                          username: widget.username,
-                                          refreshTrigger:
-                                              _scheduleRevision.value,
-                                          actionKey: _todayPlanChartKey,
-                                          onTodoAdded: (todo) =>
-                                              _handleTodosChanged([
-                                                ..._todos,
-                                                todo,
-                                              ]),
-                                        );
-                                      },
-                                    );
                                     Widget countdownSection =
                                         ValueListenableBuilder<
                                           List<CountdownItem>
@@ -272,16 +263,13 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                               ),
                                         );
                                     Widget todoSection = AnimatedBuilder(
-                                      animation: Listenable.merge([
-                                        _todosNotifier,
-                                        _groupsNotifier,
-                                        _todoUpdateSignalNotifier,
-                                      ]),
+                                      animation: _todoSectionListenable,
                                       builder: (context, _) {
                                         return TodoSectionWidget(
                                           folderKey: _todoFolderKey,
                                           historyKey: _todoHistoryKey,
                                           todos: _todos,
+                                          dataRevision: _todoDataRevision,
                                           highlightedTodoIds:
                                               _updatedByOthersTodoIds,
                                           remoteUpdateHighlightSignal:
@@ -299,11 +287,12 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                             });
                                           },
                                           onGroupsChanged: (newGroups) async {
-                                            setState(
-                                              () => _todoGroups = newGroups
+                                            setState(() {
+                                              _todoGroups = newGroups
                                                   .where((g) => !g.isDeleted)
-                                                  .toList(),
-                                            );
+                                                  .toList();
+                                              _todoDataRevision++;
+                                            });
                                             final allGroups =
                                                 await StorageService.getTodoGroups(
                                                   widget.username,
@@ -491,25 +480,73 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                       ),
                                     );
 
-                                    Widget planBlockSection = RepaintBoundary(
-                                      child: ValueListenableBuilder<int>(
-                                        valueListenable: _scheduleRevision,
-                                        builder: (context, trigger, _) {
+                                    Widget agendaSection = RepaintBoundary(
+                                      child: AnimatedBuilder(
+                                        animation: _agendaSectionListenable,
+                                        builder: (context, _) {
                                           return PlanBlockTodaySection(
+                                            unifiedAgenda: true,
+                                            includeSchedules:
+                                                _sectionVisibility['agendaSchedules'] ??
+                                                true,
+                                            includePlans:
+                                                _sectionVisibility['agendaPlans'] ??
+                                                true,
+                                            todos: _todos,
                                             chartKey: _todayPlanChartKey,
                                             username: widget.username,
                                             isLight: isLight,
-                                            refreshTrigger: trigger,
-                                            onTap: () async {
-                                              await Navigator.of(context).push(
-                                                PageTransitions.material(
-                                                  builder: (_) =>
-                                                      TodoPlanScreen(
-                                                        username:
-                                                            widget.username,
-                                                      ),
-                                                ),
+                                            refreshTrigger:
+                                                _scheduleRevision.value,
+                                            repository:
+                                                widget.planReviewRepository,
+                                            agendaRepository:
+                                                widget.agendaRepository,
+                                            clock:
+                                                widget
+                                                    .planReviewRepository
+                                                    ?.clock ??
+                                                widget
+                                                    .agendaRepository
+                                                    ?.plans
+                                                    .clock,
+                                            enabled:
+                                                (_sectionVisibility['agenda'] ??
+                                                    true) &&
+                                                (isTablet ||
+                                                    (_selectedTabIndex ==
+                                                                _homeFocusTabIndex
+                                                            ? _mobileFocusSections
+                                                            : _mobileHomeSections)
+                                                        .contains('agenda')),
+                                            onTodoAdded: (todo) =>
+                                                _handleTodosChanged([
+                                                  ..._todos,
+                                                  todo,
+                                                ]),
+                                            onTap: ([sourceKey]) async {
+                                              final page = TodoPlanScreen(
+                                                username: widget.username,
+                                                initialDate: widget
+                                                    .planReviewRepository
+                                                    ?.now,
                                               );
+                                              if (sourceKey != null) {
+                                                await PageTransitions.pushFromRect(
+                                                  context: context,
+                                                  page: page,
+                                                  sourceKey: sourceKey,
+                                                  placeholderIcon: Icons
+                                                      .calendar_month_rounded,
+                                                );
+                                              } else {
+                                                await Navigator.of(context)
+                                                    .push(
+                                                      PageTransitions.material(
+                                                        builder: (_) => page,
+                                                      ),
+                                                    );
+                                              }
                                               _scheduleRevision.value++;
                                               _loadAllData(
                                                 domains: const {
@@ -550,19 +587,13 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
 
                                     Map<String, Widget> sectionsMap = {
                                       'banners': AnimatedBuilder(
-                                        animation: Listenable.merge([
-                                          _pomodoroTickNotifier,
-                                          _todosNotifier,
-                                          _courseDataNotifier,
-                                          _scheduleRevision,
-                                        ]),
+                                        animation: _bannerSectionListenable,
                                         builder: (_, _) =>
                                             _buildUniversalBanner(isLight),
                                       ),
-                                      'courses': courseSection,
+                                      'agenda': agendaSection,
                                       'countdowns': countdownSection,
                                       'todos': todoSection,
-                                      'planBlocks': planBlockSection,
                                       'screenTime': screenTimeSection,
                                       'math': mathSection,
                                       'pomodoro': pomodoroSection,
@@ -604,68 +635,11 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                       ),
                                     };
 
-                                    bool isCourseEmpty =
-                                        (_dashboardCourseData['courses'] ==
-                                                null ||
-                                            (_dashboardCourseData['courses']
-                                                    as List)
-                                                .isEmpty) ||
-                                        (_dashboardCourseData['title']
-                                                ?.toString()
-                                                .contains('天后') ??
-                                            false) ||
-                                        _dashboardCourseData['title'] ==
-                                            '最近无课' ||
-                                        _dashboardCourseData['title'] == '暂无课表';
-
-                                    bool hasNoCourse = isCourseEmpty;
-                                    if (isCourseEmpty) {
-                                      final nowMs =
-                                          DateTime.now().millisecondsSinceEpoch;
-                                      final tomorrowEndMs = DateTime(
-                                        DateTime.now().year,
-                                        DateTime.now().month,
-                                        DateTime.now().day + 2,
-                                      ).millisecondsSinceEpoch;
-                                      bool hasActivePlans = _planBlocks.any(
-                                        (b) =>
-                                            !b.isDeleted &&
-                                            b.endTime > nowMs &&
-                                            b.startTime < tomorrowEndMs,
-                                      );
-                                      bool hasActiveTodos = _todos.any((t) {
-                                        if (t.isDeleted ||
-                                            t.dueDate == null ||
-                                            t.isAllDayTask) {
-                                          return false;
-                                        }
-                                        final startMs =
-                                            t.createdDate ?? t.createdAt;
-                                        return startMs > 0 &&
-                                            t.dueDate!.millisecondsSinceEpoch >
-                                                nowMs &&
-                                            startMs < tomorrowEndMs;
-                                      });
-                                      if (hasActivePlans || hasActiveTodos) {
-                                        hasNoCourse = false;
-                                      }
-                                    }
-
                                     if (!isTablet) {
                                       List<String> tab1Order =
                                           List<String>.from(
                                             _mobileHomeSections,
                                           );
-                                      if (hasNoCourse) {
-                                        if (_noCourseBehavior == 'hide') {
-                                          tab1Order.remove('courses');
-                                        } else if (_noCourseBehavior ==
-                                            'bottom') {
-                                          tab1Order.remove('courses');
-                                          tab1Order.add('courses');
-                                        }
-                                      }
-
                                       Widget buildScrollableSection(
                                         String key,
                                       ) {
@@ -878,24 +852,6 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                       _rightSections,
                                     );
 
-                                    void applyNoCourseBehavior(
-                                      List<String> targetList,
-                                    ) {
-                                      if (hasNoCourse &&
-                                          targetList.contains('courses')) {
-                                        if (_noCourseBehavior == 'hide') {
-                                          targetList.remove('courses');
-                                        } else if (_noCourseBehavior ==
-                                            'bottom') {
-                                          targetList.remove('courses');
-                                          targetList.add('courses');
-                                        }
-                                      }
-                                    }
-
-                                    applyNoCourseBehavior(currentLeft);
-                                    applyNoCourseBehavior(currentRight);
-
                                     List<Widget> buildColumnWidgets(
                                       List<String> keys,
                                     ) {
@@ -911,7 +867,7 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                             final isolateTabletSection =
                                                 isTablet &&
                                                 const <String>{
-                                                  'courses',
+                                                  'agenda',
                                                   'countdowns',
                                                   'todos',
                                                   'timeline',
@@ -1820,17 +1776,21 @@ class _HomeDashboardBottomBar extends StatelessWidget {
         onLongPressEnd: onAddLongPressEnd,
         onLongPressCancel: onAddLongPressCancel,
         builder: (context, selectedLayer, interactive) => Center(
-          child: HomeBottomNavigationActionButton(
-            buttonKey: selectedLayer ? null : addButtonKey,
-            primaryColor: primaryColor,
-            interactive: interactive,
-            onPressed: onAddPressed,
-            onLongPress: onAddLongPress,
-            semanticsLabel: '新增',
-            child: Icon(
-              selectedLayer ? Icons.add_circle_rounded : Icons.add_rounded,
-              color: Theme.of(context).colorScheme.onPrimary,
-              size: 28,
+          child: AiWaterRippleBorder(
+            isLight: Theme.of(context).brightness == Brightness.light,
+            borderRadius: BorderRadius.circular(28),
+            child: HomeBottomNavigationActionButton(
+              buttonKey: selectedLayer ? null : addButtonKey,
+              primaryColor: primaryColor,
+              interactive: interactive,
+              onPressed: onAddPressed,
+              onLongPress: onAddLongPress,
+              semanticsLabel: '新增',
+              child: Icon(
+                selectedLayer ? Icons.add_circle_rounded : Icons.add_rounded,
+                color: Theme.of(context).colorScheme.onPrimary,
+                size: 28,
+              ),
             ),
           ),
         ),

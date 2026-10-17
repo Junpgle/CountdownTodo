@@ -52,23 +52,22 @@ class _ShimmerWidgetState extends State<ShimmerWidget>
     final highlightColor = widget.isLight
         ? Colors.white.withValues(alpha: 0.6)
         : Colors.grey[700]!;
+    final width = widget.width == double.infinity ? null : widget.width;
+    final borderRadius = BorderRadius.circular(widget.borderRadius);
+    final gradientColors = [baseColor, highlightColor, baseColor];
 
     return AnimatedBuilder(
       animation: _animation,
       builder: (context, child) {
         return Container(
-          width: widget.width == double.infinity ? null : widget.width,
+          width: width,
           height: widget.height,
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(widget.borderRadius),
+            borderRadius: borderRadius,
             gradient: LinearGradient(
               begin: Alignment(_animation.value, 0),
               end: Alignment(_animation.value + 0.5, 0),
-              colors: [
-                baseColor,
-                highlightColor,
-                baseColor,
-              ],
+              colors: gradientColors,
               stops: const [0.0, 0.5, 1.0],
             ),
           ),
@@ -158,6 +157,8 @@ class HomeAppBar extends StatefulWidget implements PreferredSizeWidget {
 class _HomeAppBarState extends State<HomeAppBar>
     with SingleTickerProviderStateMixin {
   late final AnimationController _syncRotationController;
+  String? _cachedDateFormatPattern;
+  DateFormat? _cachedDateFormat;
 
   @override
   void initState() {
@@ -188,6 +189,14 @@ class _HomeAppBarState extends State<HomeAppBar>
   String _formatUsername(String username, String? format) {
     if (format == null || format.isEmpty) return username;
     return format.replaceAll('{name}', username);
+  }
+
+  String _formatDate(DateTime date, String pattern) {
+    if (_cachedDateFormatPattern != pattern) {
+      _cachedDateFormatPattern = pattern;
+      _cachedDateFormat = DateFormat(pattern, 'zh_CN');
+    }
+    return _cachedDateFormat!.format(date);
   }
 
   Widget _buildActionButton(BuildContext context,
@@ -419,7 +428,7 @@ class _HomeAppBarState extends State<HomeAppBar>
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               Text(
-                DateFormat(displayDateFormat, 'zh_CN').format(DateTime.now()),
+                _formatDate(DateTime.now(), displayDateFormat),
                 style: TextStyle(
                   fontSize: dateSize,
                   fontWeight: FontWeight.w500,

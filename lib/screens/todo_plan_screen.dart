@@ -1,3 +1,5 @@
+import '../widgets/plan_manual_completion_host.dart';
+import '../services/plan_manual_completion_service.dart';
 import 'plan_weekly_availability_screen.dart';
 
 import 'dart:async';
@@ -30,6 +32,7 @@ import '../widgets/plan_block_editor_sheet.dart';
 import '../widgets/missed_plan_recovery_flow.dart';
 import '../widgets/plan_conflict_review.dart';
 import '../services/plan_drag_service.dart';
+import '../services/conflict_visibility_service.dart';
 
 // 复用 TimeLog 的颜色和基础常量
 const double kTimeAxisW = 46.0;
@@ -229,8 +232,9 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
       if (!mounted ||
           check != _undoCheck ||
           _lastDrag != change ||
-          !_dragForeground)
+          !_dragForeground) {
         return;
+      }
       _undoExpiry?.cancel();
       final now = _dragService.now;
       final midnight = DateTime(now.year, now.month, now.day + 1);
@@ -298,8 +302,9 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
       }
     } catch (error) {
       if (mounted && generation == _dragGeneration) {
-        if (error is PlanDragException && error.stale)
+        if (error is PlanDragException && error.stale) {
           setState(_clearDragHistory);
+        }
         _notice(error is PlanDragException ? error.message : '撤销失败，请重试');
       }
     } finally {
@@ -826,6 +831,8 @@ class _PlanGridView extends StatefulWidget {
 
 class _PlanGridViewState extends State<_PlanGridView>
     with WidgetsBindingObserver {
+  final _manualHostKey = GlobalKey<PlanManualCompletionHostState>();
+  late final _manualCompletion = PlanManualCompletionService(clock: () => widget.dragService.now);
   int? _dragStartBlock;
   int? _dragEndBlock;
   int _minutesPerBlock = 15;
@@ -1052,149 +1059,153 @@ class _PlanGridViewState extends State<_PlanGridView>
       executionEntries,
     );
 
-    return Column(
-      children: [
-        _buildGranularityBar(),
-        Expanded(
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final totalH = constraints.maxHeight;
-              final hourH = totalH / 24;
-              final gridW = constraints.maxWidth - kTimeAxisW;
+    return PlanManualCompletionHost(
+      key: _manualHostKey,
+      onRefresh: widget.onRefresh,
+      child: Column(
+        children: [
+          _buildGranularityBar(),
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final totalH = constraints.maxHeight;
+                final hourH = totalH / 24;
+                final gridW = constraints.maxWidth - kTimeAxisW;
 
-              return Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // 时间轴
-                  SizedBox(
-                    width: kTimeAxisW,
-                    height: totalH,
-                    child: Stack(
-                      children: List.generate(
-                        24,
-                        (h) => Positioned(
-                          top: h * hourH + 1,
-                          right: 6,
-                          height: max(1.0, hourH - 1),
-                          child: FittedBox(
-                            fit: BoxFit.scaleDown,
-                            alignment: Alignment.centerRight,
-                            child: Text(
-                              '${h.toString().padLeft(2, '0')}:00',
-                              style: TextStyle(
-                                fontSize: 9,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.grey.withValues(alpha: 0.66),
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 时间轴
+                    SizedBox(
+                      width: kTimeAxisW,
+                      height: totalH,
+                      child: Stack(
+                        children: List.generate(
+                          24,
+                          (h) => Positioned(
+                            top: h * hourH + 1,
+                            right: 6,
+                            height: max(1.0, hourH - 1),
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerRight,
+                              child: Text(
+                                '${h.toString().padLeft(2, '0')}:00',
+                                style: TextStyle(
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.grey.withValues(alpha: 0.66),
+                                ),
                               ),
                             ),
                           ),
                         ),
                       ),
                     ),
-                  ),
-                  // 网格
-                  Expanded(
-                    child: GestureDetector(
-                      onPanStart: (d) =>
-                          _handleDragStart(d.localPosition, gridW, hourH),
-                      onPanUpdate: (d) =>
-                          _handleDragUpdate(d.localPosition, gridW, hourH),
-                      onPanEnd: (d) =>
-                          _handleDragEnd(autoFillEstimateOnTodoChange: false),
-                      onPanCancel: _cancelGesture,
-                      onTapDown: (d) =>
-                          _handleDragStart(d.localPosition, gridW, hourH),
-                      onTapUp: (d) =>
-                          _handleDragEnd(autoFillEstimateOnTodoChange: true),
-                      onTapCancel: _clearRecordSelection,
-                      child: Container(
-                        height: totalH,
-                        decoration: BoxDecoration(
-                          border: Border(
-                            left: BorderSide(
-                              color: Colors.grey.withValues(alpha: 0.1),
+                    // 网格
+                    Expanded(
+                      child: GestureDetector(
+                        onPanStart: (d) =>
+                            _handleDragStart(d.localPosition, gridW, hourH),
+                        onPanUpdate: (d) =>
+                            _handleDragUpdate(d.localPosition, gridW, hourH),
+                        onPanEnd: (d) =>
+                            _handleDragEnd(autoFillEstimateOnTodoChange: false),
+                        onPanCancel: _cancelGesture,
+                        onTapDown: (d) =>
+                            _handleDragStart(d.localPosition, gridW, hourH),
+                        onTapUp: (d) =>
+                            _handleDragEnd(autoFillEstimateOnTodoChange: true),
+                        onTapCancel: _clearRecordSelection,
+                        child: Container(
+                          height: totalH,
+                          decoration: BoxDecoration(
+                            border: Border(
+                              left: BorderSide(
+                                color: Colors.grey.withValues(alpha: 0.1),
+                              ),
                             ),
                           ),
-                        ),
-                        child: Stack(
-                          children: [
-                            ..._buildGridLines(gridW, hourH),
-                            ...widget.blocks.expand(
-                              (block) => _buildBlockItems(
-                                block,
-                                gridW,
-                                hourH,
-                                executionLaneCount,
-                              ),
-                            ),
-                            if (_gesture != null && _preview != null)
-                              ..._buildBlockItems(
-                                _gesture!.block
-                                  ..startTime =
-                                      _preview!.start.millisecondsSinceEpoch
-                                  ..endTime =
-                                      _preview!.end.millisecondsSinceEpoch
-                                  ..plannedMinutes = _preview!.minutes,
-                                gridW,
-                                hourH,
-                                executionLaneCount,
-                                previewOnly: true,
-                              ),
-                            if (executionEntries.isNotEmpty)
-                              Positioned.fill(
-                                child: PlanExecutionTimelineLayer(
-                                  date: widget.date,
-                                  entries: executionEntries,
-                                  tags: widget.tags,
-                                  hourHeight: hourH,
-                                  onRecordInteraction: _clearRecordSelection,
+                          child: Stack(
+                            children: [
+                              ..._buildGridLines(gridW, hourH),
+                              ...widget.blocks.expand(
+                                (block) => _buildBlockItems(
+                                  block,
+                                  gridW,
+                                  hourH,
+                                  executionLaneCount,
                                 ),
                               ),
-                            if (_dragStartBlock != null &&
-                                _dragEndBlock != null)
-                              ..._buildDraggingBlocks(gridW, hourH),
-                            _buildNowLine(gridW, hourH),
-                            if (_preview != null)
-                              Positioned(
-                                left: 8,
-                                right: 8,
-                                top: _preview!.start.hour >= 12 ? 8 : null,
-                                bottom: _preview!.start.hour < 12 ? 8 : null,
-                                child: IgnorePointer(
-                                  child: Material(
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .secondaryContainer,
-                                    borderRadius: BorderRadius.circular(12),
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(8),
-                                      child: Text(
-                                        _saving
-                                            ? '正在保存调整…'
-                                            : '${DateFormat('HH:mm').format(_preview!.start)} → '
-                                                  '${DateFormat('HH:mm').format(_preview!.end)} · ${_preview!.minutes}分钟',
-                                        textAlign: TextAlign.center,
-                                        style: TextStyle(
-                                          color: Theme.of(context)
-                                              .colorScheme
-                                              .onSecondaryContainer,
+                              if (_gesture != null && _preview != null)
+                                ..._buildBlockItems(
+                                  _gesture!.block
+                                    ..startTime =
+                                        _preview!.start.millisecondsSinceEpoch
+                                    ..endTime =
+                                        _preview!.end.millisecondsSinceEpoch
+                                    ..plannedMinutes = _preview!.minutes,
+                                  gridW,
+                                  hourH,
+                                  executionLaneCount,
+                                  previewOnly: true,
+                                ),
+                              if (executionEntries.isNotEmpty)
+                                Positioned.fill(
+                                  child: PlanExecutionTimelineLayer(
+                                    date: widget.date,
+                                    entries: executionEntries,
+                                    tags: widget.tags,
+                                    hourHeight: hourH,
+                                    onRecordInteraction: _clearRecordSelection,
+                                  ),
+                                ),
+                              if (_dragStartBlock != null &&
+                                  _dragEndBlock != null)
+                                ..._buildDraggingBlocks(gridW, hourH),
+                              _buildNowLine(gridW, hourH),
+                              if (_preview != null)
+                                Positioned(
+                                  left: 8,
+                                  right: 8,
+                                  top: _preview!.start.hour >= 12 ? 8 : null,
+                                  bottom: _preview!.start.hour < 12 ? 8 : null,
+                                  child: IgnorePointer(
+                                    child: Material(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .secondaryContainer,
+                                      borderRadius: BorderRadius.circular(12),
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(8),
+                                        child: Text(
+                                          _saving
+                                              ? '正在保存调整…'
+                                              : '${DateFormat('HH:mm').format(_preview!.start)} → '
+                                                    '${DateFormat('HH:mm').format(_preview!.end)} · ${_preview!.minutes}分钟',
+                                          textAlign: TextAlign.center,
+                                          style: TextStyle(
+                                            color: Theme.of(context)
+                                                .colorScheme
+                                                .onSecondaryContainer,
+                                          ),
                                         ),
                                       ),
                                     ),
                                   ),
                                 ),
-                              ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                ],
-              );
-            },
+                  ],
+                );
+              },
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -1333,7 +1344,7 @@ class _PlanGridViewState extends State<_PlanGridView>
         todo != null &&
         !todo.isDone &&
         !todo.isDeleted &&
-        !todo.hasConflict;
+        !ConflictVisibilityService.blocksTodoPlanning(todo);
     final hiddenAnchor = !previewOnly && _gesture?.block.id == block.id;
     final isMappedCourse = block.id.startsWith('mapped_course_');
     final color = isMappedCourse
@@ -1688,6 +1699,8 @@ class _PlanGridViewState extends State<_PlanGridView>
         username: widget.username,
         initialTodoId: block.todoId,
         onSaved: widget.onRefresh,
+        manualCompletionService: _manualCompletion,
+        onManualCompleted: (receipt) => _manualHostKey.currentState?.present(receipt),
       ),
     );
   }

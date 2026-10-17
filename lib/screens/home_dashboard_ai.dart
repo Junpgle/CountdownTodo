@@ -194,9 +194,7 @@ mixin _HomeDashboardAiMixin on _HomeDashboardStateBase {
         onTodoGroupsChanged: (groups) {
           unawaited(_handleAiTodoGroupsChanged(groups));
         },
-        onTodosBatchAction: (inserted, updated) {
-          unawaited(_handleAiTodosBatchAction(inserted, updated));
-        },
+        onTodosBatchAction: _handleAiTodosBatchAction,
         onFixedSchedulesChanged: (schedules) {
           if (!mounted) return;
           setState(() {
@@ -216,7 +214,10 @@ mixin _HomeDashboardAiMixin on _HomeDashboardStateBase {
 
   Future<void> _handleAiTodoGroupsChanged(List<TodoGroup> groups) async {
     if (!mounted) return;
-    setState(() => _todoGroups = groups.where((g) => !g.isDeleted).toList());
+    setState(() {
+      _todoGroups = groups.where((g) => !g.isDeleted).toList();
+      _todoDataRevision++;
+    });
     await StorageService.saveTodoGroups(widget.username, groups, sync: true);
   }
 
@@ -230,11 +231,13 @@ mixin _HomeDashboardAiMixin on _HomeDashboardStateBase {
       updated,
     );
     if (!mounted) return;
-    setState(() => _todos = nextTodos);
+    setState(() {
+      _todos = nextTodos;
+      _todoDataRevision++;
+    });
     await StorageService.saveTodos(widget.username, nextTodos);
     await _saveTodosToSharedFile(nextTodos);
     _timelineRevision.value++;
-    _todoUpdateSignalNotifier.value++;
     FloatWindowService.triggerReminderCheck();
     FloatWindowService.invalidateSlotCache();
     FloatWindowService.update();

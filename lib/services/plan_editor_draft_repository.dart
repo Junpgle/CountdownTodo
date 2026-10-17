@@ -397,20 +397,33 @@ class PlanEditorDraftRepository {
     final db = await _db(identity);
     final f = draft.fields;
     final ids = f.split?.ids ?? [draft.targetId];
-    final saved = <TodoPlanBlock>[];
-    for (var i = 0; i < ids.length; i++) {
+    final rowsById = <String, Map<String, Object?>>{};
+    const queryChunkSize = 500;
+    for (var start = 0; start < ids.length; start += queryChunkSize) {
+      final end = start + queryChunkSize < ids.length
+          ? start + queryChunkSize
+          : ids.length;
+      final chunk = ids.sublist(start, end);
       final rows = await db.query(
         'todo_plan_blocks',
-        where: 'uuid=?',
-        whereArgs: [ids[i]],
-        limit: 1,
+        where: 'uuid IN (${List.filled(chunk.length, '?').join(', ')})',
+        whereArgs: chunk,
       );
+      for (final row in rows) {
+        final id = row['uuid']?.toString();
+        if (id != null) rowsById.putIfAbsent(id, () => row);
+      }
+    }
+
+    final saved = <TodoPlanBlock>[];
+    for (var i = 0; i < ids.length; i++) {
       await identity.check();
-      if (rows.isEmpty) continue;
-      final b = TodoPlanBlock.fromJson(rows.single);
+      final row = rowsById[ids[i]];
+      if (row == null) continue;
+      final b = TodoPlanBlock.fromJson(row);
       final start = f.split?.slots[i].start.millisecondsSinceEpoch ?? f.start;
       final end = f.split?.slots[i].end.millisecondsSinceEpoch ?? f.end;
-      if (rows.single['has_conflict'] == 1 ||
+      if (row['has_conflict'] == 1 ||
           b.isDeleted ||
           b.todoId != f.todoId ||
           b.startTime != start ||

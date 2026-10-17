@@ -6,26 +6,47 @@ import 'package:sqflite/sqflite.dart';
 
 import '../models.dart';
 import '../models/plan_availability.dart';
+import 'conflict_visibility_service.dart';
 import 'database_helper.dart';
 import 'plan_todo_guard.dart';
 
 class PlanBacklogRow {
-  PlanBacklogRow(Map<String, Object?> row, this.paused)
-    : todo = (TodoItem.fromSql(row)..id = row['uuid'] as String),
-      planCount = (row['plan_count'] as num).toInt(),
-      nextStart = row['next_start'] as int?,
-      nextEnd = row['next_end'] as int?,
-      needsReview = row['bad'] == 1 || row['has_conflict'] == 1,
-      focusing = row['focused'] == 1,
-      legacy = row['legacy'] == 1,
-      sortGroup = row['sort_group'] as int,
-      sortDue = row['sort_due'] as int;
+  factory PlanBacklogRow(Map<String, Object?> row, bool paused) {
+    final todo = TodoItem.fromSql(row)..id = row['uuid'] as String;
+    return PlanBacklogRow._(
+      todo: todo,
+      planCount: (row['plan_count'] as num).toInt(),
+      nextStart: row['next_start'] as int?,
+      nextEnd: row['next_end'] as int?,
+      needsReview: row['bad'] == 1 ||
+          ConflictVisibilityService.blocksTodoPlanning(todo),
+      focusing: row['focused'] == 1,
+      legacy: row['legacy'] == 1,
+      sortGroup: row['sort_group'] as int,
+      sortDue: row['sort_due'] as int,
+      paused: paused,
+    );
+  }
+
+  const PlanBacklogRow._({
+    required this.todo,
+    required this.planCount,
+    required this.nextStart,
+    required this.nextEnd,
+    required this.needsReview,
+    required this.focusing,
+    required this.legacy,
+    required this.sortGroup,
+    required this.sortDue,
+    required this.paused,
+  });
+
   final TodoItem todo;
   String get id => todo.id;
   final int planCount, sortGroup, sortDue;
   final int? nextStart, nextEnd;
   final bool needsReview, focusing, paused, legacy;
-  bool get arranged => planCount > 0 || focusing || legacy || needsReview;
+  bool get arranged => planCount > 0 || focusing || legacy;
 }
 
 class PlanBacklogCursor {
@@ -132,6 +153,7 @@ class PlanBacklogRepository {
             ELSE CAST(ROUND((julianday(t.due_date)-2440587.5)*86400000) AS INTEGER) END AS due_date,
           t.created_date,t.created_at,
           t.recurrence,t.recurrence_series_id,t.is_all_day,t.has_conflict,
+          t.conflict_data,
           COALESCE(t.created_date,t.created_at,0) AS business_start,
           CASE WHEN COALESCE(t.created_date,t.created_at,0)>=? AND COALESCE(t.created_date,t.created_at,0)<?
             THEN CASE WHEN COALESCE(t.recurrence,0)<>0 THEN 0 ELSE 1 END
@@ -178,7 +200,7 @@ class PlanBacklogRepository {
           COALESCE(r.due_date,0) AS sort_due
         FROM representatives r LEFT JOIN plans p ON p.todo_uuid=r.uuid
       ), filtered AS (SELECT * FROM classified WHERE
-        (plan_count>0 OR focused=1 OR bad=1 OR legacy=1 OR COALESCE(has_conflict,0)=1)=?
+        (plan_count>0 OR focused=1 OR bad=1 OR legacy=1)=?
         AND content LIKE ? ESCAPE '\\' ${folder == null ? '' : 'AND COALESCE(group_id,\'\')=?'})''';
       final args = <Object?>[
         day.millisecondsSinceEpoch,

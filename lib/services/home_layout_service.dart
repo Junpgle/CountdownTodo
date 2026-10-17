@@ -35,7 +35,7 @@ class HomeLayoutService {
     HomeLayoutTarget.mobileHome: [
       'banners',
       'countdowns',
-      'courses',
+      'agenda',
       'todos',
     ],
     HomeLayoutTarget.mobileFocus: [
@@ -52,7 +52,7 @@ class HomeLayoutService {
       'todos',
     ],
     HomeLayoutTarget.wideRight: [
-      'courses',
+      'agenda',
       'timeline',
       'pomodoro',
       'finance',
@@ -84,6 +84,8 @@ class HomeLayoutService {
   ) {
     return {
       for (final key in sectionKeys(firstTarget, secondTarget)) key: true,
+      'agendaSchedules': true,
+      'agendaPlans': true,
     };
   }
 
@@ -108,14 +110,35 @@ class HomeLayoutService {
     required HomeLayoutTarget secondTarget,
     required Iterable<dynamic> firstOrder,
     required Iterable<dynamic> secondOrder,
+    Map<String, dynamic> visibility = const {},
   }) {
+    var firstRaw = firstOrder.toList(), secondRaw = secondOrder.toList();
+    if (![...firstRaw, ...secondRaw].contains('agenda')) {
+      final all = [...firstRaw, ...secondRaw];
+      final anchor = (visibility['courses'] != false && all.contains('courses'))
+          ? 'courses'
+          : (visibility['planBlocks'] != false && all.contains('planBlocks'))
+          ? 'planBlocks'
+          : all.contains('courses')
+          ? 'courses'
+          : 'planBlocks';
+      List<dynamic> merge(List<dynamic> raw) => [
+        for (final key in raw)
+          if (key == anchor)
+            'agenda'
+          else if (key != 'courses' && key != 'planBlocks')
+            key,
+      ];
+      firstRaw = merge(firstRaw);
+      secondRaw = merge(secondRaw);
+    }
     final allowed = <String>{
       ..._defaults[firstTarget]!,
       ..._defaults[secondTarget]!,
     };
-    final first = _sanitizeOrder(firstOrder, allowed);
+    final first = _sanitizeOrder(firstRaw, allowed);
     final second = _sanitizeOrder(
-      secondOrder,
+      secondRaw,
       allowed.difference(first.toSet()),
     );
 
@@ -135,9 +158,17 @@ class HomeLayoutService {
     required HomeLayoutTarget secondTarget,
     required Map<String, dynamic> raw,
   }) {
+    bool flag(String key, bool fallback) =>
+        raw[key] is bool ? raw[key] as bool : fallback;
     return {
       for (final key in sectionKeys(firstTarget, secondTarget))
-        key: raw[key] is bool ? raw[key] as bool : true,
+        key: raw[key] is bool
+            ? raw[key] as bool
+            : key == 'agenda'
+            ? (raw['courses'] != false || raw['planBlocks'] != false)
+            : true,
+      'agendaSchedules': flag('agendaSchedules', flag('courses', true)),
+      'agendaPlans': flag('agendaPlans', flag('planBlocks', true)),
     };
   }
 
@@ -185,11 +216,13 @@ class HomeLayoutService {
     final prefs = await StorageService.prefs;
     final firstRaw = prefs.getString(await _key(firstTarget));
     final secondRaw = prefs.getString(await _key(secondTarget));
+    final visibility = await _readVisibility(firstTarget);
     return normalizePair(
       firstTarget: firstTarget,
       secondTarget: secondTarget,
       firstOrder: _decodeList(firstRaw),
       secondOrder: _decodeList(secondRaw),
+      visibility: visibility,
     );
   }
 
@@ -197,8 +230,18 @@ class HomeLayoutService {
     HomeLayoutTarget firstTarget,
     HomeLayoutTarget secondTarget,
   ) async {
+    return normalizeVisibility(
+      firstTarget: firstTarget,
+      secondTarget: secondTarget,
+      raw: await _readVisibility(firstTarget),
+    );
+  }
+
+  static Future<Map<String, dynamic>> _readVisibility(
+    HomeLayoutTarget target,
+  ) async {
     final prefs = await StorageService.prefs;
-    final raw = prefs.getString(await _visibilityKey(firstTarget));
+    final raw = prefs.getString(await _visibilityKey(target));
     Map<String, dynamic> decoded = const {};
     if (raw != null && raw.isNotEmpty) {
       try {
@@ -210,11 +253,7 @@ class HomeLayoutService {
         decoded = const {};
       }
     }
-    return normalizeVisibility(
-      firstTarget: firstTarget,
-      secondTarget: secondTarget,
-      raw: decoded,
-    );
+    return decoded;
   }
 
   static Future<void> save(

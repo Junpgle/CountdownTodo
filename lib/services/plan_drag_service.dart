@@ -4,6 +4,7 @@ import 'package:sqflite/sqflite.dart';
 
 import '../models.dart';
 import '../storage_service.dart';
+import 'conflict_visibility_service.dart';
 import 'database_helper.dart';
 import 'pomodoro_service.dart';
 
@@ -184,7 +185,9 @@ class PlanDragService {
       throw const PlanDragException('关联待办已失效', stale: true);
     }
     final todo = TodoItem.fromSql(todos.single)..id = latest.todoId;
-    if (todo.isDone || todo.isDeleted || todo.hasConflict) {
+    if (todo.isDone ||
+        todo.isDeleted ||
+        ConflictVisibilityService.blocksTodoPlanning(todo)) {
       throw const PlanDragException('待办已完成、删除或存在冲突，不能调整', stale: true);
     }
     final run = await PomodoroService.loadRunState();

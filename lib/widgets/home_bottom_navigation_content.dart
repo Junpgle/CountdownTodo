@@ -187,6 +187,7 @@ class _FloatingBottomNavigationContentState
   late final SingleSpringController _positionSpring;
   late final SingleSpringController _interactionSpring;
   late final SingleSpringController _stretchSpring;
+  late final Listenable _selectionAnimation;
   bool _draggingSelection = false;
   double _directDragVelocity = 0;
   double? _lastDragAlignment;
@@ -247,6 +248,10 @@ class _FloatingBottomNavigationContentState
       lowerBound: 0,
       upperBound: 1,
     )..addListener(_handleSpringTick);
+    _selectionAnimation = Listenable.merge([
+      _positionSpring,
+      _interactionSpring,
+    ]);
     _stretchSpring = SingleSpringController(
       vsync: this,
       spring: GlassSpring.interactive(
@@ -294,7 +299,6 @@ class _FloatingBottomNavigationContentState
 
   void _handleSpringTick() {
     if (!mounted) return;
-    setState(() {});
     _completeMotionIfSettled();
   }
 
@@ -623,12 +627,10 @@ class _FloatingBottomNavigationContentState
 
   Widget _buildNavigationContent(
     BuildContext context,
-    LiquidGlassEffectConfiguration configuration,
-  ) {
-    if (!widget.showSelectionLens) {
-      return _buildActionOnlyNavigationContent(context);
-    }
-
+    LiquidGlassEffectConfiguration configuration, {
+    required Widget interactiveRow,
+    required Widget selectedRow,
+  }) {
     final quality = _qualityFor(configuration);
     final alignment = Alignment(_positionSpring.value, 0);
     final thickness = _interactionSpring.value.clamp(0.0, 1.0).toDouble();
@@ -756,10 +758,7 @@ class _FloatingBottomNavigationContentState
                                 verticalScale: _indicatorVerticalScale,
                                 inverse: true,
                               ),
-                              child: _buildNavigationRow(
-                                context,
-                                selectedLayer: false,
-                              ),
+                              child: interactiveRow,
                             ),
                             ExcludeSemantics(
                               child: IgnorePointer(
@@ -777,10 +776,7 @@ class _FloatingBottomNavigationContentState
                                   ),
                                   child: Transform.scale(
                                     scale: 1 + thickness * 0.035,
-                                    child: _buildNavigationRow(
-                                      context,
-                                      selectedLayer: true,
-                                    ),
+                                    child: selectedRow,
                                   ),
                                 ),
                               ),
@@ -839,8 +835,26 @@ class _FloatingBottomNavigationContentState
   Widget build(BuildContext context) {
     return ValueListenableBuilder<LiquidGlassEffectConfiguration>(
       valueListenable: LiquidGlassEffectService.configurationListenable,
-      builder: (context, configuration, _) =>
-          _buildNavigationContent(context, configuration),
+      builder: (context, configuration, _) {
+        if (!widget.showSelectionLens) {
+          return _buildActionOnlyNavigationContent(context);
+        }
+
+        final interactiveRow = _buildNavigationRow(
+          context,
+          selectedLayer: false,
+        );
+        final selectedRow = _buildNavigationRow(context, selectedLayer: true);
+        return AnimatedBuilder(
+          animation: _selectionAnimation,
+          builder: (context, _) => _buildNavigationContent(
+            context,
+            configuration,
+            interactiveRow: interactiveRow,
+            selectedRow: selectedRow,
+          ),
+        );
+      },
     );
   }
 }

@@ -14,6 +14,7 @@ import '../models.dart';
 import '../services/database_helper.dart';
 import '../services/plan_todo_guard.dart';
 import '../services/plan_reuse_repository.dart';
+import '../services/plan_manual_completion_service.dart';
 import '../services/plan_editor_draft_repository.dart';
 import '../services/plan_availability_preferences.dart';
 import '../models/plan_availability.dart';
@@ -114,6 +115,8 @@ class PlanBlockEditorSheet extends StatefulWidget {
   final VoidCallback? onManageDrafts;
   final PlanReuseSeed? reuse;
   final PlanReuseRepository? reuseRepository;
+  final PlanManualCompletionService? manualCompletionService;
+  final ValueChanged<PlanManualCompletionReceipt>? onManualCompleted;
 
   const PlanBlockEditorSheet({
     super.key,
@@ -149,6 +152,8 @@ class PlanBlockEditorSheet extends StatefulWidget {
     this.onManageDrafts,
     this.reuse,
     this.reuseRepository,
+    this.manualCompletionService,
+    this.onManualCompleted,
   });
 
   @override
@@ -168,6 +173,8 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
   TimeEstimationResult? _estimateResult;
   (String?, String?) _selectedTodoMetadata = (null, null);
   int _estimateSequence = 0, _draftRevision = 0, _savedDraftRevision = -1;
+  late final PlanManualCompletionService _manualCompletion =
+      widget.manualCompletionService ?? PlanManualCompletionService(clock: widget.clock);
   bool _busy = false, _recommendationStale = false, _focusStarted = false;
   PlanAvailabilitySelection? _recommendation;
   TodoPlanBlock? _persistedBlock;
@@ -267,8 +274,9 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
 
   Future<void> _readDraftOffer() async {
     if (!_supportsDraft ||
-        (widget.saver != null && widget.draftRepository == null))
+        (widget.saver != null && widget.draftRepository == null)) {
       return;
+    }
     final sequence = ++_draftReadSequence;
     final todoId = _selectedTodoId;
     if (_draftOffer != null || _draftLoadError != null) {
@@ -284,8 +292,9 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
       final offers = await _drafts.list(_saveIdentity!, todoId: todoId);
       if (!mounted ||
           sequence != _draftReadSequence ||
-          todoId != _selectedTodoId)
+          todoId != _selectedTodoId) {
         return;
+      }
       setState(() {
         _draftOffer = offers.where((d) => d.id != _localDraft?.id).firstOrNull;
         _draftLoadError = null;
@@ -391,8 +400,9 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
     if (_busy ||
         _draftRestoreFailed ||
         !_supportsDraft ||
-        _persistedBlock != null)
+        _persistedBlock != null) {
       return false;
+    }
     if (_offsetChanged) {
       _reportError(StateError('时区已变化，请先确认当前显示的日期与时间'));
       return false;
@@ -774,8 +784,9 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
 
   Future<void> _confirmNewArrangements(String todoId) async {
     if ((_backlog == null && _split == null && !_isReuse) ||
-        widget.saver != null)
+        widget.saver != null) {
       return;
+    }
     await _identityReady;
     if (_identityError != null) throw _identityError!;
     final db = await DatabaseHelper.instance.databaseForUser(widget.username);
@@ -1108,7 +1119,15 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
     List<TodoItem> todos,
     List<TodoGroup> groups,
   ) {
-    final groupNameById = {for (final group in groups) group.id: group.name};
+    final groupNameById = <String, String>{};
+    final groupIndices = <String, int>{};
+    for (var index = 0; index < groups.length; index++) {
+      final group = groups[index];
+      groupNameById[group.id] = group.name;
+      if (!groupIndices.containsKey(group.id)) {
+        groupIndices[group.id] = index;
+      }
+    }
     int urgencyMs(TodoItem todo) {
       return todo.effectiveDueAt?.millisecondsSinceEpoch ?? (1 << 62);
     }
@@ -1122,8 +1141,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
     int groupRank(TodoItem todo) {
       final groupId = todo.groupId;
       if (groupId == null || groupId.isEmpty) return 1 << 30;
-      final idx = groups.indexWhere((group) => group.id == groupId);
-      return idx == -1 ? (1 << 30) - 1 : idx;
+      return groupIndices[groupId] ?? (1 << 30) - 1;
     }
 
     final sorted = List<TodoItem>.from(todos)
@@ -2026,6 +2044,91 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
     }
   }
 
+  bool get _canManualComplete =>
+      widget.block != null &&
+      widget.onManualCompleted != null &&
+      PlanManualCompletionService.supports(
+        widget.block!,
+        _manualCompletion.now,
+      );
+
+  Future<void> _manualComplete() async {
+    if (!_canManualComplete || _busy || _openingReuse || _draftLoading) return;
+    final route = ModalRoute.of(context);
+    if (route?.isCurrent == false) return;
+    if (_dirty) {
+      _reportError(StateError('请先保存修改，或放弃修改后重新打开'));
+      return;
+    }
+    setState(() => _busy = true);
+    try {
+      await _identityReady;
+      if (_identityError != null) throw _identityError!;
+      await _saveIdentity!.check();
+      final request = await _manualCompletion.prepare(
+        widget.username,
+        widget.block!.id,
+        expected: widget.block,
+      );
+      if (!mounted || route?.isCurrent == false) return;
+      if (_dirty) throw StateError('请先保存修改，或放弃修改后重新打开');
+      final block = request.block;
+      final format = DateFormat('M月d日 HH:mm');
+      final confirmed = await showAppDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('确认这次规划已完成？'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  block.titleSnapshot?.trim().isNotEmpty == true
+                      ? block.titleSnapshot!
+                      : '这次规划',
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '${format.format(DateTime.fromMillisecondsSinceEpoch(block.startTime))} — ${format.format(DateTime.fromMillisecondsSinceEpoch(block.endTime))}',
+                ),
+                const SizedBox(height: 16),
+                const Text('仅将这次规划标为已完成。不会改变待办完成状态，也不会新增专注记录。'),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('返回核对'),
+            ),
+            FilledButton(
+              key: const ValueKey('plan-manual-confirm'),
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('确认完成'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted || route?.isCurrent == false) return;
+      if (_dirty) throw StateError('请先保存修改，或放弃修改后重新打开');
+      final receipt = await _manualCompletion.confirm(request);
+      await receipt.identity.check();
+      if (!mounted || route?.isCurrent == false) {
+        receipt.invalidate();
+        return;
+      }
+      _allowExit = true;
+      widget.onSaved();
+      Navigator.pop(context);
+      widget.onManualCompleted!(receipt);
+    } catch (error) {
+      if (mounted) _reportError(error);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _skip() async {
     if (widget.block == null || _busy || _openingReuse) return;
     final block = widget.block!;
@@ -2165,21 +2268,27 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
           if (widget.block != null)
             PopupMenuButton<String>(
               tooltip: '更多操作',
+              enabled: !_busy && !_draftLoading,
               onSelected: (value) {
+                if (value == 'manual-complete') unawaited(_manualComplete());
                 if (value == 'reuse') unawaited(_reusePlan());
                 if (value == 'skip') _skip();
                 if (value == 'delete') _delete();
               },
               itemBuilder: (_) => [
+                if (_canManualComplete)
+                  PopupMenuItem(enabled: !_openingReuse, value: 'manual-complete',
+                    child: Text('确认规划已完成')),
                 if (_canReuse)
                   PopupMenuItem(
                     value: 'reuse',
                     enabled: !_busy && !_openingReuse && !_draftLoading,
                     child: Text(_openingReuse ? '正在读取设置…' : '照此新建'),
                   ),
-                const PopupMenuItem(value: 'skip', child: Text('跳过规划')),
+                PopupMenuItem(enabled: !_openingReuse, value: 'skip', child: const Text('跳过规划')),
                 PopupMenuItem(
                   value: 'delete',
+                  enabled: !_openingReuse,
                   child: Text(
                     '删除规划',
                     style: TextStyle(color: theme.colorScheme.error),
@@ -2214,8 +2323,9 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
   }
 
   Widget _form(double width, double scale, EdgeInsets padding) {
-    if (_draftRestoreFailed)
+    if (_draftRestoreFailed) {
       return Padding(padding: padding, child: _draftNotice());
+    }
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
     final horizontalTimes = width >= 360 && scale < 1.7;

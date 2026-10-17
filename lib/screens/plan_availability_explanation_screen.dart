@@ -8,6 +8,7 @@ import '../services/plan_availability_preferences.dart';
 import '../services/plan_availability_repository.dart';
 import '../services/plan_availability_service.dart';
 import '../services/plan_continuous_range_service.dart';
+import '../services/conflict_visibility_service.dart';
 import '../services/plan_todo_guard.dart';
 import '../services/plan_weekly_availability_preferences.dart';
 import '../storage_service.dart';
@@ -237,7 +238,7 @@ class _PlanAvailabilityExplanationScreenState
             selected.query,
             requireCalendar: selected.snapshot.deviceCalendarIncluded,
           );
-      if (fresh.todo.hasConflict ||
+      if (ConflictVisibilityService.blocksTodoPlanning(fresh.todo) ||
           !PlanAvailabilityService.accepts(selected, fresh, now: _now)) {
         throw const PlanAvailabilityException('该时段已变化，请重新查找后采用');
       }

@@ -196,18 +196,26 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
 
     // 更新局部卡片，避免为批量添加待办重建整个首页。
     _todos = [...newTodos, ..._todos];
+    _todoDataRevision++;
     _todosNotifier.value = List<TodoItem>.from(_todos);
-    _todoUpdateSignalNotifier.value++;
     _timelineRevision.value++;
     _pomodoroTickNotifier.value++;
 
     // 保存到数据库
     final allTodos = await StorageService.getTodos(widget.username);
+    final todoIndicesById = <String, int>{};
+    for (var index = 0; index < allTodos.length; index++) {
+      final id = allTodos[index].id;
+      if (!todoIndicesById.containsKey(id)) {
+        todoIndicesById[id] = index;
+      }
+    }
     for (var newT in newTodos) {
-      int idx = allTodos.indexWhere((x) => x.id == newT.id);
-      if (idx != -1) {
-        allTodos[idx] = newT;
+      final index = todoIndicesById[newT.id];
+      if (index != null) {
+        allTodos[index] = newT;
       } else {
+        todoIndicesById[newT.id] = allTodos.length;
         allTodos.add(newT);
       }
     }
@@ -515,8 +523,8 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
     if (!mounted) return;
     todo.isDone = true;
     _todos.sort((a, b) => a.isDone == b.isDone ? 0 : (a.isDone ? 1 : -1));
+    _todoDataRevision++;
     _todosNotifier.value = List<TodoItem>.from(_todos);
-    _todoUpdateSignalNotifier.value++;
     _timelineRevision.value++;
     _pomodoroRevision.value++;
     _pomodoroTickNotifier.value++;

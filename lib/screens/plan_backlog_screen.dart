@@ -351,7 +351,12 @@ class _PlanBacklogScreenState extends State<PlanBacklogScreen>
       ],
     );
     final buttons = <Widget>[
-      if (row.focusing && !row.needsReview)
+      if (row.needsReview)
+        OutlinedButton(
+          onPressed: () => _view(row),
+          child: const Text('核对待办'),
+        )
+      else if (row.focusing)
         FilledButton.tonal(
           onPressed: () => _viewFocus(row),
           child: const Text('查看专注'),
@@ -433,10 +438,11 @@ class _PlanBacklogScreenState extends State<PlanBacklogScreen>
                   ),
                 );
               } catch (error) {
-                if (mounted)
+                if (mounted) {
                   messenger.showSnackBar(
                     SnackBar(content: Text(_message(error))),
                   );
+                }
               } finally {
                 _opening = false;
                 if (mounted) await _load();

@@ -3,9 +3,40 @@ part of 'home_dashboard.dart';
 
 mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
   bool _didEnterBackground = false;
+  bool _dashboardTickerModeEnabled = true;
   bool _isCompletingTodoFromNotification = false;
   DateTime? _semesterWeekLoadedDate;
   bool _semesterWeekRefreshPending = false;
+
+  @override
+  bool get _canRunDashboardPomodoroTickers =>
+      _isDashboardInForeground && _dashboardTickerModeEnabled;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final tickerModeEnabled = TickerMode.valuesOf(context).enabled;
+    if (_dashboardTickerModeEnabled == tickerModeEnabled) return;
+
+    _dashboardTickerModeEnabled = tickerModeEnabled;
+    if (!_canRunDashboardPomodoroTickers) {
+      _stopLocalTicker();
+      _stopRemotePomodoroTicker();
+      return;
+    }
+
+    final localPomodoro = _localPomodoro;
+    if (localPomodoro != null) {
+      _startLocalTicker(localPomodoro.mode == TimerMode.countUp);
+    }
+    final remotePomodoro = _remotePomodoro;
+    if (remotePomodoro != null) {
+      _startRemotePomodoroTicker(
+        remotePomodoro.targetEndMs ?? 0,
+        remotePomodoro.mode == 1,
+      );
+    }
+  }
 
   @override
   void initState() {
@@ -308,8 +339,8 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
     _pomodoroRevision.dispose();
     _habitsRevision.dispose();
     _isGlobalLoadingNotifier.dispose();
-    _todoUpdateSignalNotifier.dispose();
     _pomodoroTickNotifier.dispose();
+    _pomodoroDisplayTickNotifier.dispose();
     _githubResourceService.dispose();
     MacPomodoroStatusBarService.dispose();
     WidgetsBinding.instance.removeObserver(this);
@@ -652,7 +683,6 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
 
   Future<void> _loadSectionPreferences() async {
     final isWide = MediaQuery.of(context).size.width >= 768;
-    final prefs = await SharedPreferences.getInstance();
 
     final mobileLayoutFuture = HomeLayoutService.loadPair(
       HomeLayoutTarget.mobileHome,
@@ -685,9 +715,8 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
       secondTarget:
           isWide ? HomeLayoutTarget.wideRight : HomeLayoutTarget.mobileFocus,
       raw: Map<String, dynamic>.from(selectedVisibility),
-    )..['planBlocks'] = true;
+    );
 
-    String? noCourseBehav = prefs.getString('no_course_behavior');
     if (mounted) {
       setState(() {
         _sectionVisibility = normalizedVisibility;
@@ -696,7 +725,6 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
         _habitDisplayLimit = habitDisplayLimit;
         _leftSections = layouts[1].first;
         _rightSections = layouts[1].second;
-        if (noCourseBehav != null) _noCourseBehavior = noCourseBehav;
       });
     }
   }
@@ -959,6 +987,7 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
       if (mounted) {
         setState(() {
           _todos.sort((a, b) => a.isDone == b.isDone ? 0 : (a.isDone ? 1 : -1));
+          _todoDataRevision++;
         });
       }
 

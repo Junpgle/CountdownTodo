@@ -118,8 +118,9 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
       final saved = await PlanWeeklyAvailabilityPreferences.load(username);
       if (!mounted ||
           sequence != _weeklySequence ||
-          username != widget.username)
+          username != widget.username) {
         return;
+      }
       setState(() {
         _weeklyRules = saved.rules;
         _weeklyError = saved.error;
@@ -127,8 +128,9 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
     } catch (_) {
       if (!mounted ||
           sequence != _weeklySequence ||
-          username != widget.username)
+          username != widget.username) {
         return;
+      }
       setState(() {
         _weeklyRules = null;
         _weeklyError = '每周可安排时间读取失败，请重试或明确选择本次不使用';
@@ -136,8 +138,9 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
     }
     if (invalidate &&
         (previousKey != _weeklyRules?.fingerprint ||
-            previousError != _weeklyError))
+            previousError != _weeklyError)) {
       _invalidate();
+    }
   }
 
   void _weeklyChanged() {

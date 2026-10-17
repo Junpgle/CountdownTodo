@@ -135,7 +135,9 @@ mixin _HomeDashboardContract {
 
   Widget _buildBannerCard(HomeBannerEvent event, bool isLight);
 
-  List<HomeBannerEvent> _collectBannerEvents();
+  List<HomeBannerEvent> _collectBannerEvents({
+    required bool hasActivePlanBlock,
+  });
 
   void _openTodoEditor(TodoItem todo);
 
@@ -148,8 +150,6 @@ mixin _HomeDashboardContract {
   String _specialTodoBannerTimeInfo(TodoItem todo, DateTime now);
 
   DateTime? _resolveCourseStartTime(CourseItem course, DateTime now);
-
-  DateTime? _resolveCourseEndTime(CourseItem course, DateTime now);
 
   Future<void> _checkUpcomingEvents();
 

@@ -84,6 +84,7 @@ void main() {
     PlanConflictReviewLoader? loader,
     DateTime? date,
     bool followToday = false,
+    bool enabled = true,
     Size size = const Size(1000, 900),
     double scale = 1,
     double keyboard = 0,
@@ -118,6 +119,8 @@ void main() {
         home: Scaffold(
           body: PlanConflictIndicator(
             username: username,
+            enabled: enabled,
+            retainResultOnRefresh: true,
             date: followToday ? null : date ?? day,
             service: service,
             loader: loader,
@@ -162,6 +165,36 @@ void main() {
     unknownTimes: unknown ? ['会议时间待定'] : [],
     appOnly: appOnly,
   );
+
+  testWidgets('首页隐藏冲突提示暂停读取，恢复后才刷新', (tester) async {
+    var reads = 0;
+    Future<PlanConflictReviewResult> loader(
+      String user,
+      DateTime date, {
+      int days = 1,
+      bool appOnly = false,
+    }) async {
+      reads++;
+      return synthetic(date);
+    }
+
+    await host(tester, loader: loader, enabled: false);
+    expect(reads, 0);
+    await host(tester, loader: loader);
+    expect(reads, 1);
+    expect(find.text('1条规划时间重叠'), findsOneWidget);
+    await host(tester, loader: loader, enabled: false);
+    StorageService.triggerRefresh({DataRefreshDomain.planBlocks});
+    await tester.pump(const Duration(milliseconds: 101));
+    await settle(tester);
+    expect(reads, 1);
+    expect(
+      tester.widget<TextButton>(key('plan-conflict-indicator')).onPressed,
+      isNull,
+    );
+    await host(tester, loader: loader);
+    expect(reads, 2);
+  });
 
   testWidgets('入口和列表按规划计数，展开显示精确来源，查看固定日程进入既有详情', (tester) async {
     await host(tester);

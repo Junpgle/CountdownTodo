@@ -4,6 +4,7 @@ import 'package:sqflite/sqflite.dart';
 
 import '../models.dart';
 import '../models/plan_availability.dart';
+import 'conflict_visibility_service.dart';
 import '../storage_service.dart';
 import 'database_helper.dart';
 import 'plan_todo_guard.dart';
@@ -28,7 +29,7 @@ class PlanConflictEntry {
       todo != null &&
       !todo!.isDone &&
       !todo!.isDeleted &&
-      !todo!.hasConflict;
+      !ConflictVisibilityService.blocksTodoPlanning(todo!);
 }
 
 class PlanConflictReviewResult {
@@ -229,7 +230,9 @@ class PlanConflictReviewService {
       ...todoRows.single,
       'is_completed': todoRows.single['member_completed'],
     })..id = block.todoId;
-    if (todo.isDone || todo.isDeleted || todo.hasConflict) {
+    if (todo.isDone ||
+        todo.isDeleted ||
+        ConflictVisibilityService.blocksTodoPlanning(todo)) {
       throw const PlanAvailabilityException('关联待办已完成、删除或存在冲突，不能改期');
     }
     final due = todo.dueDate?.toLocal();

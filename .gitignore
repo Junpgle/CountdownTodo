@@ -330,4 +330,17 @@ todo.md
 !/test/services/plan_reuse_repository_test.dart
 !/test/widgets/plan_reuse_flow_test.dart
 !/test/widgets/plan_reuse_acceptance_test.dart
+!/test/services/plan_today_card_test.dart
+!/test/widgets/plan_today_card_test.dart
+!/test/services/home_plan_layout_test.dart
 !/test/widgets/course_day_detail_test.dart
+!/test/widgets/todo_section_view_model_cache_test.dart
+!/test/widgets/home_dashboard_banner_test.dart
+
+!/test/services/plan_manual_completion_service_test.dart
+!/test/widgets/screen_time_pie_animation_test.dart
+!/test/widgets/plan_manual_completion_test.dart
+!/test/services/home_agenda_repository_test.dart
+!/test/services/home_agenda_layout_test.dart
+!/test/widgets/home_agenda_section_test.dart
+!/test/widgets/home_layout_settings_page_test.dart

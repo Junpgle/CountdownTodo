@@ -39,6 +39,7 @@ class PlanAvailabilityRepository {
   }
 
   Future<String> _settingsFingerprint(String username) async {
+    final dateFormat = DateFormat('yyyy-MM-dd');
     final prefs = await SharedPreferences.getInstance();
     await prefs.reload();
     final keys =
@@ -73,18 +74,16 @@ class PlanAvailabilityRepository {
                   transfer['to_date'] is! String) {
                 throw const FormatException();
               }
-              DateFormat('yyyy-MM-dd')
-                  .parseStrict(transfer['from_date'] as String);
-              DateFormat('yyyy-MM-dd')
-                  .parseStrict(transfer['to_date'] as String);
+              dateFormat.parseStrict(transfer['from_date'] as String);
+              dateFormat.parseStrict(transfer['to_date'] as String);
             }
           }
           for (final date in rules.holidayDates) {
-            DateFormat('yyyy-MM-dd').parseStrict(date);
+            dateFormat.parseStrict(date);
           }
           for (final transfer in rules.transfers) {
-            DateFormat('yyyy-MM-dd').parseStrict(transfer.fromDate);
-            DateFormat('yyyy-MM-dd').parseStrict(transfer.toDate);
+            dateFormat.parseStrict(transfer.fromDate);
+            dateFormat.parseStrict(transfer.toDate);
           }
         } catch (_) {
           throw const PlanAvailabilityException('课程日期规则无法解析，请检查设置后重试');
@@ -204,7 +203,8 @@ class PlanAvailabilityRepository {
   }) {
     final busy = <PlanBusyInterval>[...external];
     final unknown = <String>[];
-    final day = DateFormat('yyyy-MM-dd').format(query.dayStart);
+    final dateFormat = DateFormat('yyyy-MM-dd');
+    final day = dateFormat.format(query.dayStart);
     void add(
       DateTime start,
       DateTime end,
@@ -234,7 +234,7 @@ class PlanAvailabilityRepository {
       if (course.isDeleted || !courseIds.add(course.uuid)) continue;
       DateTime date;
       try {
-        date = DateFormat('yyyy-MM-dd').parseStrict(course.date);
+        date = dateFormat.parseStrict(course.date);
       } catch (_) {
         unknown.add('课程“${course.courseName}”：日期待定');
         continue;
@@ -306,9 +306,10 @@ class PlanAvailabilityRepository {
         continue;
       }
       if (item.endTime <= item.startTime) {
-        if (DateFormat('yyyy-MM-dd')
-                .format(DateTime.fromMillisecondsSinceEpoch(item.startTime)) ==
-            day) {
+        final blockDay = dateFormat.format(
+          DateTime.fromMillisecondsSinceEpoch(item.startTime),
+        );
+        if (blockDay == day) {
           unknown.add('规划“${item.titleSnapshot ?? '未命名'}”：时间无效');
         }
         continue;
