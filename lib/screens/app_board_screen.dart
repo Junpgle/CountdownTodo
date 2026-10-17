@@ -103,14 +103,34 @@ class _AppBoardScreenState extends State<AppBoardScreen>
   }
 
   void _startTimers() {
-    _timer ??= Timer.periodic(AndroidEnergyPolicy.visibleClockInterval, (_) {
+    if (_timer == null) {
+      _refreshCurrentTime();
+      _scheduleClockRefresh();
+    }
+    if (_shouldRunMarquee) _scheduleMarqueeTick(Duration.zero);
+  }
+
+  void _scheduleClockRefresh() {
+    if (!_shouldRunTimers) return;
+
+    final now = DateTime.now();
+    final nextMinute = DateTime(
+      now.year,
+      now.month,
+      now.day,
+      now.hour,
+      now.minute,
+    ).add(const Duration(minutes: 1));
+    final delay = nextMinute.difference(now);
+    _timer = Timer(delay, () {
+      _timer = null;
       if (!_shouldRunTimers) {
         _stopTimers();
         return;
       }
       _refreshCurrentTime();
+      _scheduleClockRefresh();
     });
-    if (_shouldRunMarquee) _scheduleMarqueeTick(Duration.zero);
   }
 
   void _stopTimers() {
