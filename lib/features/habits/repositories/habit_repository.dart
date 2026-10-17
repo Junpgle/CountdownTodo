@@ -58,6 +58,11 @@ abstract final class HabitRepository {
   static Future<List<HabitGoalRuleRevision>> getRules({String? habitUuid}) =>
       HabitStorage.getRuleRevisions(habitUuid: habitUuid);
 
+  static Future<List<HabitGoalRuleRevision>> getRulesForHabits(
+    Iterable<String> habitUuids,
+  ) =>
+      HabitStorage.getRuleRevisionsForHabits(habitUuids);
+
   static Future<List<HabitCheckIn>> getCheckIns({
     String? habitUuid,
     String? fromDate,
@@ -68,6 +73,18 @@ abstract final class HabitRepository {
         fromDate: fromDate,
         toDate: toDate,
       );
+
+  static Future<List<HabitCheckIn>> getCheckInsForHabits(
+    Iterable<String> habitUuids, {
+    String? fromDate,
+    String? toDate,
+    bool includeDeleted = false,
+  }) => HabitStorage.getCheckInsForHabits(
+    habitUuids,
+    fromDate: fromDate,
+    toDate: toDate,
+    includeDeleted: includeDeleted,
+  );
 
   /// 创建习惯（含首个规则版本）。
   ///
@@ -484,6 +501,20 @@ abstract final class HabitRepository {
     await _requestSync();
     StorageService.triggerRefresh(const {DataRefreshDomain.habits});
     _rescheduleReminders(checkIn.habitUuid);
+  }
+
+  /// Persist already-versioned check-in changes together, then publish one
+  /// sync request, refresh signal, and reminder reschedule per affected habit.
+  static Future<void> saveCheckInsBatch(
+    List<HabitCheckIn> checkIns,
+  ) async {
+    if (checkIns.isEmpty) return;
+    await HabitStorage.saveCheckIns(checkIns);
+    await _requestSync();
+    StorageService.triggerRefresh(const {DataRefreshDomain.habits});
+    for (final habitUuid in checkIns.map((item) => item.habitUuid).toSet()) {
+      _rescheduleReminders(habitUuid);
+    }
   }
 
   /// 早睡 / 早起是一个「节点结果」，同一晚重复打卡时以后一次为准。

@@ -710,19 +710,32 @@ abstract final class HabitSleepLogMigrationService {
     HabitSleepLogMigrationProposal proposal,
     HabitSleepLogMigrationOptions options,
   ) {
+    final proposalGridOnlyIdSet =
+        options.kind == HabitSleepLogKind.nap &&
+            proposal.gridOnlyLogIds.isNotEmpty
+        ? proposal.gridOnlyLogIds.toSet()
+        : const <String>{};
     final logs = proposal.matchedLogs
         .where(
           (log) =>
               options.kind == HabitSleepLogKind.fullSleep ||
-              !proposal.isGridOnlyLog(log),
+              !proposalGridOnlyIdSet.contains(log.id),
         )
         .toList(growable: false);
     if (logs.isEmpty) return null;
 
+    final logIdSet = proposal.gridOnlyLogIds.isEmpty
+        ? const <String>{}
+        : logs.map((log) => log.id).toSet();
     final gridOnlyIds = proposal.gridOnlyLogIds
-        .where((id) => logs.any((log) => log.id == id))
+        .where(logIdSet.contains)
         .toList(growable: false);
-    final reliableLogs = logs.where((log) => !gridOnlyIds.contains(log.id));
+    final selectedGridOnlyIdSet = gridOnlyIds.isEmpty
+        ? const <String>{}
+        : gridOnlyIds.toSet();
+    final reliableLogs = logs.where(
+      (log) => !selectedGridOnlyIdSet.contains(log.id),
+    );
     final bedtime = _median(
       logs.map((log) {
         final start =
@@ -730,7 +743,7 @@ abstract final class HabitSleepLogMigrationService {
         return _bedtimeMinute(
           start,
           end: DateTime.fromMillisecondsSinceEpoch(log.endTime).toLocal(),
-          gridOnly: gridOnlyIds.contains(log.id),
+          gridOnly: selectedGridOnlyIdSet.contains(log.id),
           selection: options.timeSelection,
         );
       }).toList(),

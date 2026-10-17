@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../widgets/floating_bottom_bar.dart';
+import '../models/habit_checkin.dart';
 import '../models/habit_goal.dart';
 import '../models/habit_goal_rule.dart';
 import '../models/habit_progress.dart';
@@ -8,6 +9,7 @@ import '../repositories/habit_repository.dart';
 import '../services/habit_sleep_duration_service.dart';
 import '../services/habit_progress_calculator.dart';
 import '../services/habit_rule_resolver.dart';
+import '../services/habit_source_resolver.dart';
 import '../services/habit_sleep_goal_resolver.dart';
 import '../widgets/habit_format.dart';
 
@@ -35,7 +37,7 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
   DateTime _selectedDay = DateTime.now();
   List<HabitGoal> _goals = [];
   Map<String, List<HabitGoalRuleRevision>> _rulesByHabit = {};
-  Map<String, List<HabitDayProgress>> _daysByHabit = {};
+  Map<String, Map<String, HabitDayProgress>> _dayByHabitAndLogicalDate = {};
   bool _loading = true;
 
   @override
@@ -60,41 +62,97 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
     final goals = HabitSleepGoalResolver.forDisplay(
       await HabitRepository.getGoals(),
     );
-    final allRules = await HabitRepository.getRules();
+    final goalUuids = goals.map((goal) => goal.uuid).toSet();
+    final allRules = goalUuids.isEmpty
+        ? const <HabitGoalRuleRevision>[]
+        : await HabitRepository.getRulesForHabits(goalUuids);
     final rulesByHabit = <String, List<HabitGoalRuleRevision>>{};
     final daysByHabit = <String, List<HabitDayProgress>>{};
+    final calculationGoals = <HabitGoal>[];
 
     final monthStart = DateTime(_month.year, _month.month, 1);
     final monthEnd = DateTime(_month.year, _month.month + 1, 0);
 
-    for (final goal in goals) {
-      final rules = allRules.where((r) => r.habitUuid == goal.uuid).toList()
-        ..sort((a, b) =>
-            (a.effectiveFromDate ?? '').compareTo(b.effectiveFromDate ?? ''));
-      rulesByHabit[goal.uuid] = rules;
+    if (goalUuids.isNotEmpty) {
+      for (final rule in allRules) {
+        if (!goalUuids.contains(rule.habitUuid)) continue;
+        rulesByHabit.putIfAbsent(rule.habitUuid, () => []).add(rule);
+      }
     }
+    for (final goal in goals) {
+      final rules = rulesByHabit.putIfAbsent(
+        goal.uuid,
+        () => <HabitGoalRuleRevision>[],
+      );
+      rules.sort((a, b) =>
+          (a.effectiveFromDate ?? '').compareTo(b.effectiveFromDate ?? ''));
+      if (rules.isNotEmpty) calculationGoals.add(goal);
+    }
+
+    final checkIns = calculationGoals.isEmpty
+        ? const <HabitCheckIn>[]
+        : await HabitRepository.getCheckInsForHabits(
+            calculationGoals.map((goal) => goal.uuid),
+            fromDate: HabitRuleResolver.dayKey(monthStart),
+            toDate: HabitRuleResolver.dayKey(monthEnd),
+          );
+    final checkInsByHabit = <String, List<HabitCheckIn>>{};
+    for (final checkIn in checkIns) {
+      (checkInsByHabit[checkIn.habitUuid] ??= <HabitCheckIn>[]).add(checkIn);
+    }
+    final recordsByHabit = await HabitSourceResolver.recordsForRange(
+      calculationGoals
+          .where((goal) => goal.sourceType == HabitSourceType.pomodoroTag)
+          .map((goal) => (habitUuid: goal.uuid, tagUuids: goal.sourceIds)),
+      from: monthStart,
+      to: monthEnd,
+    );
+    final todosByHabit = await HabitSourceResolver.todosForHabitSources(
+      calculationGoals
+          .where((goal) => goal.sourceType == HabitSourceType.recurringTodo)
+          .map((goal) => (habitUuid: goal.uuid, seriesIds: goal.sourceIds)),
+    );
 
     // 并行计算各习惯的月进度，避免 N 个习惯串行读库拖慢月视图。
     final futures = <Future<void>>[];
-    for (final goal in goals) {
+    for (final goal in calculationGoals) {
       final rules = rulesByHabit[goal.uuid] ?? const [];
-      if (rules.isEmpty) continue;
       futures.add(() async {
+        final todos = todosByHabit?[goal.uuid];
         daysByHabit[goal.uuid] = await HabitProgressCalculator.computeRange(
           habit: goal,
           rules: rules,
           from: monthStart,
           to: monthEnd,
+          todos: goal.sourceType == HabitSourceType.recurringTodo
+              ? todos
+              : const [],
+          records: goal.sourceType == HabitSourceType.pomodoroTag
+              ? recordsByHabit[goal.uuid] ?? const []
+              : const [],
+          checkIns: checkInsByHabit[goal.uuid] ?? const [],
         );
       }());
     }
     await Future.wait(futures);
 
+    final dayByHabitAndLogicalDate = <String, Map<String, HabitDayProgress>>{};
+    for (final entry in daysByHabit.entries) {
+      final dayByLogicalDate = <String, HabitDayProgress>{};
+      for (final day in entry.value) {
+        dayByLogicalDate.putIfAbsent(
+          HabitRuleResolver.dayKey(day.logicalDate),
+          () => day,
+        );
+      }
+      dayByHabitAndLogicalDate[entry.key] = dayByLogicalDate;
+    }
+
     if (mounted) {
       setState(() {
         _goals = goals;
         _rulesByHabit = rulesByHabit;
-        _daysByHabit = daysByHabit;
+        _dayByHabitAndLogicalDate = dayByHabitAndLogicalDate;
         _loading = false;
       });
     }
@@ -130,14 +188,8 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
     int skipped = 0;
     double totalRatio = 0.0;
     for (final goal in _goals) {
-      final days = _daysByHabit[goal.uuid];
-      if (days == null) continue;
-      final match = days.where((d) {
-        final k = HabitRuleResolver.dayKey(d.logicalDate);
-        return k == key;
-      });
-      if (match.isEmpty) continue;
-      final day = match.first;
+      final day = _dayByHabitAndLogicalDate[goal.uuid]?[key];
+      if (day == null) continue;
       // 归档代表停止后续执行。归档后的空计划日不应继续污染日历，
       // 但归档前已经产生过记录的日期仍要保留。
       if (goal.isArchived && !_hasHistoricalRecord(day)) continue;
@@ -449,16 +501,11 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
     final dayLabel = '${_selectedDay.month} 月 ${_selectedDay.day} 日'
         ' · 周${'一二三四五六日'[_selectedDay.weekday - 1]}';
     final rows = <Widget>[];
+    final key = HabitRuleResolver.dayKey(_selectedDay);
 
     for (final goal in _goals) {
-      final days = _daysByHabit[goal.uuid];
-      if (days == null) continue;
-      final key = HabitRuleResolver.dayKey(_selectedDay);
-      final day = days.where(
-        (d) => HabitRuleResolver.dayKey(d.logicalDate) == key,
-      );
-      if (day.isEmpty) continue;
-      final dayProgress = day.first;
+      final dayProgress = _dayByHabitAndLogicalDate[goal.uuid]?[key];
+      if (dayProgress == null) continue;
       if (goal.isArchived && !_hasHistoricalRecord(dayProgress)) continue;
       rows.add(_buildDayRow(goal, dayProgress));
     }

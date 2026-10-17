@@ -310,15 +310,37 @@ abstract final class HabitSleepCoachingService {
       List<HabitCheckIn> checkIns,
       {HabitSleepCoachingPlan? plan}) {
     final result = <HabitAdaptationKind, _MetricInput>{};
-    for (final kind in const [
+    const kinds = [
       HabitAdaptationKind.earlySleep,
       HabitAdaptationKind.earlyWake,
       HabitAdaptationKind.sleepDuration,
-    ]) {
+    ];
+    final goalsByKind = <HabitAdaptationKind, HabitGoal>{};
+    for (final kind in kinds) {
       final goal = HabitSleepGoalResolver.canonical(goals, kind);
+      if (goal != null) goalsByKind[kind] = goal;
+    }
+    if (goalsByKind.isEmpty) return result;
+    final sleepGoalUuids = goalsByKind.values.map((goal) => goal.uuid).toSet();
+    final rulesByHabit = <String, List<HabitGoalRuleRevision>>{};
+    for (final rule in rules) {
+      if (!sleepGoalUuids.contains(rule.habitUuid)) continue;
+      rulesByHabit.putIfAbsent(rule.habitUuid, () => []).add(rule);
+    }
+    final checkInsByHabit = <String, List<HabitCheckIn>>{};
+    for (final checkIn in checkIns) {
+      if (!sleepGoalUuids.contains(checkIn.habitUuid) ||
+          checkIn.isDeleted ||
+          checkIn.source == HabitCheckInSource.skip) {
+        continue;
+      }
+      checkInsByHabit.putIfAbsent(checkIn.habitUuid, () => []).add(checkIn);
+    }
+
+    for (final kind in kinds) {
+      final goal = goalsByKind[kind];
       if (goal == null) continue;
-      final goalRules =
-          rules.where((rule) => rule.habitUuid == goal.uuid).toList();
+      final goalRules = rulesByHabit[goal.uuid] ?? const [];
       final referenceNow =
           plan == null ? DateTime.now() : _nowInPlanTimezone(plan);
       final finalRule = HabitRuleResolver.currentRule(
@@ -337,13 +359,9 @@ abstract final class HabitSleepCoachingService {
           : finalRule?.targetTimeMinute == null
               ? null
               : _minuteFor(kind, finalRule!.targetTimeMinute!);
-      final records = checkIns
-          .where((checkIn) =>
-              checkIn.habitUuid == goal.uuid &&
-              !checkIn.isDeleted &&
-              checkIn.source != HabitCheckInSource.skip)
-          .toList()
-        ..sort((a, b) => a.occurredAt.compareTo(b.occurredAt));
+      final records = List<HabitCheckIn>.of(
+        checkInsByHabit[goal.uuid] ?? const [],
+      )..sort((a, b) => a.occurredAt.compareTo(b.occurredAt));
       final recentCutoff = DateTime.now()
           .subtract(const Duration(days: 14))
           .millisecondsSinceEpoch;
@@ -464,17 +482,37 @@ abstract final class HabitSleepCoachingService {
         progressDays: progressDays.clamp(0, plan.stageDays).toInt(),
       );
     }
+    if (stage >= maxStage) {
+      return _Progression(
+        stageIndex: stage.clamp(0, maxStage).toInt(),
+        progressDays: progressDays,
+      );
+    }
+    final recordsByLogicalDate =
+        <HabitAdaptationKind, Map<String, HabitCheckIn>>{};
+    final firstDayKey = HabitRuleResolver.dayKey(firstDay);
+    final todayKey = HabitRuleResolver.dayKey(today);
+    // records 已按 occurredAt 升序；重复日期后写覆盖，保留原 lastOrNull 语义。
+    for (final input in inputs.values) {
+      final recordsForMetric = <String, HabitCheckIn>{};
+      for (final record in input.records) {
+        final logicalDate = _recordLogicalDateForPlan(record, input, plan);
+        if (logicalDate.compareTo(firstDayKey) < 0 ||
+            logicalDate.compareTo(todayKey) > 0) {
+          continue;
+        }
+        recordsForMetric[logicalDate] = record;
+      }
+      recordsByLogicalDate[input.kind] = recordsForMetric;
+    }
     for (var day = firstDay;
         !day.isAfter(today);
         day = HabitRuleResolver.addCalendarDays(day, 1)) {
       if (stage >= maxStage) break;
       final actuals = <HabitAdaptationKind, int>{};
+      final dayKey = HabitRuleResolver.dayKey(day);
       for (final input in inputs.values) {
-        final record = input.records
-            .where((candidate) =>
-                _recordLogicalDateForPlan(candidate, input, plan) ==
-                HabitRuleResolver.dayKey(day))
-            .lastOrNull;
+        final record = recordsByLogicalDate[input.kind]?[dayKey];
         if (record != null) {
           actuals[input.kind] = _recordValue(input.kind, record);
         }
@@ -661,8 +699,4 @@ class _Progression {
   final int progressDays;
 
   const _Progression({required this.stageIndex, required this.progressDays});
-}
-
-extension<T> on Iterable<T> {
-  T? get lastOrNull => isEmpty ? null : last;
 }

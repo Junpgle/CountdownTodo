@@ -1,6 +1,7 @@
 import '../../../services/notification_service.dart';
 import '../../../services/scheduled_reminder_registry.dart';
 import '../../../services/storage/habit_storage.dart';
+import '../models/habit_checkin.dart';
 import '../models/habit_goal.dart';
 import '../models/habit_goal_rule.dart';
 import '../models/habit_progress.dart';
@@ -8,6 +9,13 @@ import '../widgets/habit_format.dart';
 import 'habit_adaptation_service.dart';
 import 'habit_progress_calculator.dart';
 import 'habit_rule_resolver.dart';
+import 'habit_source_resolver.dart';
+
+typedef _HabitReminderWork = ({
+  HabitGoal goal,
+  List<HabitGoalRuleRevision> rules,
+  HabitGoalRuleRevision rule,
+});
 
 /// 习惯提醒调度服务（设计文档 §18，PR4）。
 ///
@@ -62,13 +70,18 @@ abstract final class HabitReminderService {
   /// 应用启动 / 规则编辑后调用，覆盖跨天后的固定时刻提醒。
   static Future<void> rescheduleAll() async {
     final goals = await HabitStorage.getHabitGoals(includeArchived: false);
-    final rules = await HabitStorage.getRuleRevisions(includeDeleted: false);
+    final allRules = await HabitStorage.getRuleRevisions(includeDeleted: false);
+    final goalUuids = goals.map((goal) => goal.uuid).toSet();
     final rulesByHabit = <String, List<HabitGoalRuleRevision>>{};
-    for (final goal in goals) {
-      final list = rules.where((r) => r.habitUuid == goal.uuid).toList()
-        ..sort((a, b) =>
-            (a.effectiveFromDate ?? '').compareTo(b.effectiveFromDate ?? ''));
-      if (list.isNotEmpty) rulesByHabit[goal.uuid] = list;
+    for (final rule in allRules) {
+      if (!goalUuids.contains(rule.habitUuid)) continue;
+      (rulesByHabit[rule.habitUuid] ??= <HabitGoalRuleRevision>[]).add(rule);
+    }
+    for (final rules in rulesByHabit.values) {
+      rules.sort(
+        (a, b) =>
+            (a.effectiveFromDate ?? '').compareTo(b.effectiveFromDate ?? ''),
+      );
     }
     await _reschedule(goals, rulesByHabit);
   }
@@ -92,6 +105,7 @@ abstract final class HabitReminderService {
     final today = DateTime(now.year, now.month, now.day);
     final logicalKey = HabitRuleResolver.dayKey(today);
     final reminders = <Map<String, dynamic>>[];
+    final prepared = <_HabitReminderWork>[];
 
     for (final goal in goals) {
       final rules = rulesByHabit[goal.uuid];
@@ -101,11 +115,44 @@ abstract final class HabitReminderService {
       // 完成型：复用循环待办现有提醒（设计文档 18.1）。
       if (goal.sourceType == HabitSourceType.recurringTodo) continue;
       if (!HabitRuleResolver.isPlannedDay(rule, today)) continue;
+      prepared.add((goal: goal, rules: rules, rule: rule));
+    }
 
+    final checkIns = prepared.isEmpty
+        ? const <HabitCheckIn>[]
+        : await HabitStorage.getCheckInsForHabits(
+            prepared.map((work) => work.goal.uuid),
+            fromDate: logicalKey,
+            toDate: logicalKey,
+          );
+    final checkInsByHabit = <String, List<HabitCheckIn>>{};
+    for (final checkIn in checkIns) {
+      (checkInsByHabit[checkIn.habitUuid] ??= <HabitCheckIn>[]).add(checkIn);
+    }
+    final recordsByHabit = await HabitSourceResolver.recordsForPeriods(
+      prepared
+          .where((work) => work.goal.sourceType == HabitSourceType.pomodoroTag)
+          .map(
+            (work) => (
+              habitUuid: work.goal.uuid,
+              tagUuids: work.goal.sourceIds,
+              logicalDate: today,
+            ),
+          ),
+    );
+
+    for (final work in prepared) {
+      final goal = work.goal;
+      final rules = work.rules;
+      final rule = work.rule;
       final progress = await HabitProgressCalculator.computePeriod(
         habit: goal,
         rules: rules,
         logicalDate: today,
+        records: goal.sourceType == HabitSourceType.pomodoroTag
+            ? recordsByHabit[goal.uuid] ?? const []
+            : null,
+        checkIns: checkInsByHabit[goal.uuid] ?? const [],
       );
       // 跳过日与已达标日：当天不再注册提醒（达标取消，设计文档 18.3）。
       if (progress.isSkipped || progress.goalMet) continue;

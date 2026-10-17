@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 
+import '../../../models.dart';
+import '../../../services/pomodoro_service.dart';
 import '../../../utils/page_transitions.dart';
 import '../../../widgets/floating_bottom_bar.dart';
+import '../models/habit_checkin.dart';
 import '../models/habit_goal.dart';
 import '../models/habit_goal_rule.dart';
 import '../models/habit_progress.dart';
@@ -10,9 +13,22 @@ import '../services/habit_day_loader.dart';
 import '../services/habit_progress_calculator.dart';
 import '../services/habit_rule_resolver.dart';
 import '../services/habit_sleep_goal_resolver.dart';
+import '../services/habit_source_resolver.dart';
 import '../services/habit_streak_service.dart';
 import '../widgets/habit_format.dart';
 import 'habit_detail_screen.dart';
+
+typedef _HabitAnalysisInputs = ({
+  Map<String, List<HabitCheckIn>> checkInsByHabit,
+  Map<String, List<PomodoroRecord>> recordsByHabit,
+  Map<String, List<TodoItem>>? todosByHabit,
+});
+
+typedef _HabitAnalysisStatistics = ({
+  int weekPlanned,
+  int weekMet,
+  List<int> monthTrend,
+});
 
 /// 习惯中心「分析」标签页：各习惯的连续与完成率统计。
 class HabitAnalysisTab extends StatefulWidget {
@@ -68,16 +84,34 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
     final goals = HabitSleepGoalResolver.forDisplay(
       await HabitRepository.getActiveGoals(),
     );
-    final allRules = await HabitRepository.getRules();
+    final goalUuids = goals.map((goal) => goal.uuid).toSet();
+    final allRules = goalUuids.isEmpty
+        ? const <HabitGoalRuleRevision>[]
+        : await HabitRepository.getRulesForHabits(goalUuids);
     final rulesByHabit = <String, List<HabitGoalRuleRevision>>{};
     final summaries = <String, HabitStreakSummary>{};
 
-    for (final goal in goals) {
-      final rules = allRules.where((r) => r.habitUuid == goal.uuid).toList()
-        ..sort((a, b) =>
-            (a.effectiveFromDate ?? '').compareTo(b.effectiveFromDate ?? ''));
-      rulesByHabit[goal.uuid] = rules;
+    if (goalUuids.isNotEmpty) {
+      for (final rule in allRules) {
+        if (!goalUuids.contains(rule.habitUuid)) continue;
+        rulesByHabit.putIfAbsent(rule.habitUuid, () => []).add(rule);
+      }
     }
+    for (final goal in goals) {
+      final rules = rulesByHabit.putIfAbsent(
+        goal.uuid,
+        () => <HabitGoalRuleRevision>[],
+      );
+      rules.sort((a, b) =>
+          (a.effectiveFromDate ?? '').compareTo(b.effectiveFromDate ?? ''));
+    }
+
+    final analysisNow = DateTime.now();
+    final analysisStatisticsFuture = _computeAnalysisStatistics(
+      goals,
+      rulesByHabit,
+      now: analysisNow,
+    );
 
     // 并行统计各习惯，避免串行拖慢分析页加载。
     final futures = <Future<void>>[];
@@ -91,14 +125,12 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
         );
       }());
     }
-    // 本周进度 + 近 30 天趋势（并行计算）。
+    // 本周进度与近 30 天趋势共享数据读取和逐日进度计算。
     futures.add(() async {
-      final result = await _computeWeekProgress(goals, rulesByHabit);
-      _weekPlanned = result.$1;
-      _weekMet = result.$2;
-    }());
-    futures.add(() async {
-      _monthTrend = await _computeMonthTrend(goals, rulesByHabit);
+      final statistics = await analysisStatisticsFuture;
+      _weekPlanned = statistics.weekPlanned;
+      _weekMet = statistics.weekMet;
+      _monthTrend = statistics.monthTrend;
     }());
     await Future.wait(futures);
 
@@ -112,16 +144,18 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
     }
   }
 
-  /// 本周进度：日粒度习惯按周一至今逐日统计；周粒度习惯整周达标计入一次；
-  /// 月粒度习惯不计入本周。
-  Future<(int, int)> _computeWeekProgress(
+  /// 周进度和月趋势共享 30 天的进度结果，避免重叠日期重复计算。
+  Future<_HabitAnalysisStatistics> _computeAnalysisStatistics(
     List<HabitGoal> goals,
-    Map<String, List<HabitGoalRuleRevision>> rulesByHabit,
-  ) async {
-    final now = DateTime.now();
-    var planned = 0;
-    var met = 0;
-
+    Map<String, List<HabitGoalRuleRevision>> rulesByHabit, {
+    required DateTime now,
+  }) async {
+    final inputs = await _loadAnalysisInputs(goals, rulesByHabit, now: now);
+    final today = DateTime(now.year, now.month, now.day);
+    final from = HabitRuleResolver.addCalendarDays(today, -29);
+    final trend = List<int>.filled(30, 0);
+    final weekPlans =
+        <String, ({DateTime logicalToday, DateTime from, bool weekly})>{};
     for (final goal in goals) {
       final rules = rulesByHabit[goal.uuid] ?? const [];
       if (rules.isEmpty) continue;
@@ -138,13 +172,11 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
       if (rule.periodType == HabitPeriodType.weekly) {
         // 周周期：仅在本周结束时判定达标。
         if (logicalToday.weekday == DateTime.sunday) {
-          final progress = await HabitProgressCalculator.computePeriod(
-            habit: goal,
-            rules: rules,
-            logicalDate: logicalToday,
+          weekPlans[goal.uuid] = (
+            logicalToday: logicalToday,
+            from: logicalToday,
+            weekly: true,
           );
-          planned++;
-          if (progress.goalMet) met++;
         }
         continue;
       }
@@ -153,59 +185,122 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
         logicalToday,
         1 - logicalToday.weekday,
       );
-      final range = await HabitProgressCalculator.computeRange(
-        habit: goal,
-        rules: rules,
+      weekPlans[goal.uuid] = (
+        logicalToday: logicalToday,
         from: monday,
-        to: logicalToday,
+        weekly: false,
       );
-      for (final day in range) {
-        if (!day.progress.isPlanned) continue;
-        planned++;
-        if (day.progress.goalMet) met++;
-      }
     }
-    return (planned, met);
-  }
 
-  /// 近 30 天每日达标习惯数（从 29 天前到今天）。
-  Future<List<int>> _computeMonthTrend(
-    List<HabitGoal> goals,
-    Map<String, List<HabitGoalRuleRevision>> rulesByHabit,
-  ) async {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final from = HabitRuleResolver.addCalendarDays(today, -29);
-    final trend = List<int>.filled(30, 0);
-
+    var weekPlanned = 0;
+    var weekMet = 0;
     for (final goal in goals) {
       final rules = rulesByHabit[goal.uuid] ?? const [];
       if (rules.isEmpty) continue;
+      final todos = inputs.todosByHabit?[goal.uuid];
+      final records = inputs.recordsByHabit[goal.uuid] ?? const [];
+      final habitCheckIns = inputs.checkInsByHabit[goal.uuid] ?? const [];
       final range = await HabitProgressCalculator.computeRange(
         habit: goal,
         rules: rules,
         from: from,
         to: today,
+        now: now,
+        todos: goal.sourceType == HabitSourceType.recurringTodo
+            ? todos
+            : const [],
+        records: goal.sourceType == HabitSourceType.pomodoroTag
+            ? records
+            : const [],
+        checkIns: habitCheckIns,
       );
+      final weekPlan = weekPlans[goal.uuid];
+      final weekEndOffset = weekPlan == null
+          ? -1
+          : HabitRuleResolver.calendarDayDifference(
+              weekPlan.logicalToday,
+              weekPlan.from,
+            );
       for (final day in range) {
-        if (!day.progress.isPlanned || !day.progress.goalMet) continue;
-        final rule = HabitRuleResolver.effectiveRule(
-          rules,
-          day.logicalDate,
-        );
-        if (rule == null ||
-            !HabitRuleResolver.isDailyHeatmapCompletionDay(
-              rule,
+        if (day.progress.isPlanned && day.progress.goalMet) {
+          final rule = HabitRuleResolver.effectiveRule(rules, day.logicalDate);
+          if (rule != null &&
+              HabitRuleResolver.isDailyHeatmapCompletionDay(
+                rule,
+                day.logicalDate,
+              )) {
+            final index = HabitRuleResolver.calendarDayDifference(
               day.logicalDate,
-            )) {
-          continue;
+              from,
+            );
+            if (index >= 0 && index < 30) trend[index]++;
+          }
         }
-        final index =
-            HabitRuleResolver.calendarDayDifference(day.logicalDate, from);
-        if (index >= 0 && index < 30) trend[index]++;
+
+        if (weekPlan == null) continue;
+        final offset = HabitRuleResolver.calendarDayDifference(
+          day.logicalDate,
+          weekPlan.from,
+        );
+        if (offset < 0 || offset > weekEndOffset) continue;
+        if (weekPlan.weekly) {
+          // 周习惯仅在周日计入一次，与周周期计算口径一致。
+          if (day.logicalDate != weekPlan.logicalToday) continue;
+          weekPlanned++;
+          if (day.progress.goalMet) weekMet++;
+        } else if (day.progress.isPlanned) {
+          weekPlanned++;
+          if (day.progress.goalMet) weekMet++;
+        }
       }
     }
-    return trend;
+    return (weekPlanned: weekPlanned, weekMet: weekMet, monthTrend: trend);
+  }
+
+  /// 周进度与月趋势共用近 30 天数据快照，避免重复读取相同来源。
+  Future<_HabitAnalysisInputs> _loadAnalysisInputs(
+    List<HabitGoal> goals,
+    Map<String, List<HabitGoalRuleRevision>> rulesByHabit, {
+    required DateTime now,
+  }) async {
+    final today = DateTime(now.year, now.month, now.day);
+    final from = HabitRuleResolver.addCalendarDays(today, -29);
+    final calculationGoals = goals
+        .where((goal) => rulesByHabit[goal.uuid]?.isNotEmpty == true)
+        .toList(growable: false);
+
+    // 各来源查询彼此独立，启动后共同等待，且不创建额外 CPU worker。
+    final checkInsFuture = calculationGoals.isEmpty
+        ? Future.value(const <HabitCheckIn>[])
+        : HabitRepository.getCheckInsForHabits(
+            calculationGoals.map((goal) => goal.uuid),
+            fromDate: HabitRuleResolver.dayKey(from),
+            toDate: HabitRuleResolver.dayKey(today),
+          );
+    final recordsFuture = HabitSourceResolver.recordsForRange(
+      calculationGoals
+          .where((goal) => goal.sourceType == HabitSourceType.pomodoroTag)
+          .map((goal) => (habitUuid: goal.uuid, tagUuids: goal.sourceIds)),
+      from: from,
+      to: today,
+    );
+    final todosFuture = HabitSourceResolver.todosForHabitSources(
+      calculationGoals
+          .where((goal) => goal.sourceType == HabitSourceType.recurringTodo)
+          .map((goal) => (habitUuid: goal.uuid, seriesIds: goal.sourceIds)),
+    );
+    final checkIns = await checkInsFuture;
+    final recordsByHabit = await recordsFuture;
+    final todosByHabit = await todosFuture;
+    final checkInsByHabit = <String, List<HabitCheckIn>>{};
+    for (final checkIn in checkIns) {
+      (checkInsByHabit[checkIn.habitUuid] ??= <HabitCheckIn>[]).add(checkIn);
+    }
+    return (
+      checkInsByHabit: checkInsByHabit,
+      recordsByHabit: recordsByHabit,
+      todosByHabit: todosByHabit,
+    );
   }
 
   @override
