@@ -130,8 +130,9 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final period = _currentPeriod;
-    final topCategories = _topExpenseCategories(period);
-    final categoryExpenseShares = _categoryExpenseShares(period);
+    final analytics = _overviewAnalytics(period);
+    final topCategories = analytics.topExpenseCategories;
+    final categoryExpenseShares = analytics.categoryExpenseShares;
     final maxCategory = topCategories.isEmpty ? 1 : topCategories.first.value;
     final bottomPadding = financeBottomContentPaddingFor(context);
 
@@ -190,7 +191,12 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
                 ),
               ),
             ),
-          _buildInsightCard(context, colorScheme, period),
+          _buildInsightCard(
+            context,
+            colorScheme,
+            period,
+            analytics.outflowTransactionCount,
+          ),
           const SizedBox(height: 24),
           Text(
             _spendingChartTitle(period),
@@ -201,7 +207,12 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
           Card(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(12, 16, 12, 12),
-              child: _buildSpendingChart(context, colorScheme, period),
+              child: _buildSpendingChart(
+                context,
+                colorScheme,
+                period,
+                analytics,
+              ),
             ),
           ),
           const SizedBox(height: 24),
@@ -226,18 +237,13 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
 
   _FinanceOverviewPeriod get _currentPeriod {
     final range = _periodRange;
-    final transactionsInRange = _transactionsInRange(range);
     final now = clock();
     final includesNow = !now.isBefore(range.from) && now.isBefore(range.to);
     final isPlanned = range.from.isAfter(now);
-    final periodTransactions = includesNow
-        ? transactionsInRange
-              .where(
-                (transaction) =>
-                    transaction.balanceEventAt() <= now.millisecondsSinceEpoch,
-              )
-              .toList(growable: false)
-        : transactionsInRange;
+    final periodTransactions = _transactionsInRange(
+      range,
+      includedThrough: includesNow ? now.millisecondsSinceEpoch : null,
+    );
     final periodSummary = _view == _FinanceOverviewView.month && !includesNow
         ? summary
         : FinanceRepository.summarizeTransactions(periodTransactions);
@@ -324,16 +330,22 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
     return financeCalendarDayOffset(day, DateTime.monday - day.weekday);
   }
 
-  List<FinanceTransaction> _transactionsInRange(_FinanceDateRange range) {
+  List<FinanceTransaction> _transactionsInRange(
+    _FinanceDateRange range, {
+    int? includedThrough,
+  }) {
     final fromKey = dateKey(range.from);
     final toKey = dateKey(range.to);
     return transactions
-        .where(
-          (transaction) =>
-              transaction.transactionDate.compareTo(fromKey) >= 0 &&
-              transaction.transactionDate.compareTo(toKey) < 0,
-        )
-        .toList();
+        .where((transaction) {
+          if (transaction.transactionDate.compareTo(fromKey) < 0 ||
+              transaction.transactionDate.compareTo(toKey) >= 0) {
+            return false;
+          }
+          return includedThrough == null ||
+              transaction.balanceEventAt() <= includedThrough;
+        })
+        .toList(growable: includedThrough == null);
   }
 
   Widget _buildViewSelector(BuildContext context) {
@@ -963,65 +975,78 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
         .toColor();
   }
 
-  List<_FinanceCategoryTotal> _topExpenseCategories(
-    _FinanceOverviewPeriod period,
-  ) {
-    final totals = <String, int>{};
+  _FinanceOverviewAnalytics _overviewAnalytics(_FinanceOverviewPeriod period) {
+    final topTotals = <String, int>{};
+    final shareTotals = <String, int>{};
+    final categoryRoots = <String, String>{};
+    final hourlyNetExpenseMinor = _view == _FinanceOverviewView.day
+        ? List<int>.filled(25, 0)
+        : null;
+    var outflowTransactionCount = 0;
+
     for (final transaction in period.transactions) {
-      final amount = switch (transaction.type) {
+      if (transaction.isExpenseLike) outflowTransactionCount++;
+      if (hourlyNetExpenseMinor != null &&
+          transaction.type != FinanceTransactionType.income) {
+        final hour = _financeTransactionHour(transaction) ?? 24;
+        hourlyNetExpenseMinor[hour] +=
+            transaction.type == FinanceTransactionType.refund
+            ? -transaction.amountMinor
+            : transaction.amountMinor;
+      }
+
+      final topAmount = switch (transaction.type) {
         FinanceTransactionType.expense => transaction.amountMinor,
         FinanceTransactionType.refund => -transaction.amountMinor,
         FinanceTransactionType.income => 0,
       };
-      if (amount == 0) continue;
+      final includeInShares =
+          transaction.type == FinanceTransactionType.expense &&
+          transaction.amountMinor > 0;
+      if (topAmount == 0 && !includeInShares) continue;
+
       final categoryUuid = transaction.categoryUuid?.trim();
       final category = categoryUuid == null || categoryUuid.isEmpty
           ? null
           : categories[categoryUuid];
       final rootUuid = category == null
           ? categoryUuid ?? ''
-          : _rootCategory(category).uuid;
-      totals[rootUuid] = (totals[rootUuid] ?? 0) + amount;
+          : categoryRoots.putIfAbsent(
+              category.uuid,
+              () => _rootCategory(category).uuid,
+            );
+
+      if (topAmount != 0) {
+        topTotals[rootUuid] = (topTotals[rootUuid] ?? 0) + topAmount;
+      }
+      if (includeInShares) {
+        shareTotals[rootUuid] =
+            (shareTotals[rootUuid] ?? 0) + transaction.amountMinor;
+      }
     }
-    final result = [
-      for (final entry in totals.entries)
+
+    final topExpenseCategories = [
+      for (final entry in topTotals.entries)
         if (entry.value > 0)
           _FinanceCategoryTotal(
             categoryUuid: entry.key.isEmpty ? null : entry.key,
             value: entry.value,
           ),
-    ];
-    result.sort((a, b) => b.value.compareTo(a.value));
-    return result;
-  }
-
-  List<_FinanceCategoryTotal> _categoryExpenseShares(
-    _FinanceOverviewPeriod period,
-  ) {
-    final totals = <String, int>{};
-    for (final transaction in period.transactions) {
-      if (transaction.type != FinanceTransactionType.expense ||
-          transaction.amountMinor <= 0) {
-        continue;
-      }
-      final categoryUuid = transaction.categoryUuid?.trim();
-      final category = categoryUuid == null || categoryUuid.isEmpty
-          ? null
-          : categories[categoryUuid];
-      final rootUuid = category == null
-          ? categoryUuid ?? ''
-          : _rootCategory(category).uuid;
-      totals[rootUuid] = (totals[rootUuid] ?? 0) + transaction.amountMinor;
-    }
-    final result = [
-      for (final entry in totals.entries)
+    ]..sort((a, b) => b.value.compareTo(a.value));
+    final categoryExpenseShares = [
+      for (final entry in shareTotals.entries)
         _FinanceCategoryTotal(
           categoryUuid: entry.key.isEmpty ? null : entry.key,
           value: entry.value,
         ),
-    ];
-    result.sort((a, b) => b.value.compareTo(a.value));
-    return result;
+    ]..sort((a, b) => b.value.compareTo(a.value));
+
+    return _FinanceOverviewAnalytics(
+      topExpenseCategories: topExpenseCategories,
+      categoryExpenseShares: categoryExpenseShares,
+      outflowTransactionCount: outflowTransactionCount,
+      hourlyNetExpenseMinor: hourlyNetExpenseMinor,
+    );
   }
 
   FinanceCategory _rootCategory(FinanceCategory category) {
@@ -1083,12 +1108,10 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
     BuildContext context,
     ColorScheme colorScheme,
     _FinanceOverviewPeriod period,
+    _FinanceOverviewAnalytics analytics,
   ) {
     final spendingLabel = period.isPlanned ? '计划净支出' : '净支出';
-    final hasOutflowTransactions = period.transactions.any(
-      (transaction) => transaction.isExpenseLike,
-    );
-    final emptyMessage = hasOutflowTransactions
+    final emptyMessage = analytics.hasOutflowTransactions
         ? period.isPlanned
               ? '计划支出与退款相抵，计划净支出为 ${formatFinanceAmount(0)}'
               : '支出与退款相抵，净支出为 ${formatFinanceAmount(0)}'
@@ -1097,14 +1120,7 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
         : '${period.shortTitle}还没有净支出记录';
     if (_view == _FinanceOverviewView.day) {
       const unknownHourIndex = 24;
-      final values = List<int>.filled(unknownHourIndex + 1, 0);
-      for (final transaction in period.transactions) {
-        if (transaction.type == FinanceTransactionType.income) continue;
-        final hour = _financeTransactionHour(transaction) ?? unknownHourIndex;
-        values[hour] += transaction.type == FinanceTransactionType.refund
-            ? -transaction.amountMinor
-            : transaction.amountMinor;
-      }
+      final values = analytics.hourlyNetExpenseMinor!;
       return _buildBarChart(
         context,
         colorScheme,
@@ -1289,11 +1305,9 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
     BuildContext context,
     ColorScheme colorScheme,
     _FinanceOverviewPeriod period,
+    int outflowTransactionCount,
   ) {
     if (period.summary.transactionCount == 0) return const SizedBox.shrink();
-    final outflowTransactionCount = period.transactions
-        .where((transaction) => transaction.isExpenseLike)
-        .length;
     final average = outflowTransactionCount == 0
         ? 0
         : period.summary.netExpenseMinor ~/ outflowTransactionCount;
@@ -1844,6 +1858,22 @@ class _FinanceOverviewPeriod {
     required this.transactions,
     required this.isPlanned,
   });
+}
+
+class _FinanceOverviewAnalytics {
+  final List<_FinanceCategoryTotal> topExpenseCategories;
+  final List<_FinanceCategoryTotal> categoryExpenseShares;
+  final int outflowTransactionCount;
+  final List<int>? hourlyNetExpenseMinor;
+
+  const _FinanceOverviewAnalytics({
+    required this.topExpenseCategories,
+    required this.categoryExpenseShares,
+    required this.outflowTransactionCount,
+    required this.hourlyNetExpenseMinor,
+  });
+
+  bool get hasOutflowTransactions => outflowTransactionCount > 0;
 }
 
 class _FinanceCategoryTotal {

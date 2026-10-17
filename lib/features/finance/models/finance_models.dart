@@ -2635,6 +2635,61 @@ class FinanceSummary {
     }
     return math.max(0, total);
   }
+
+  /// Calculates several overall and category budget totals in one pass.
+  /// Category budgets share one category index and one ancestor traversal per
+  /// ledger category instead of rescanning the summary for every budget.
+  Map<String, int> spendingForBudgets(
+    Iterable<FinanceBudget> budgets,
+    Iterable<FinanceCategory> categories,
+  ) {
+    final spendingByBudget = <String, int>{};
+    final budgetUuidsByCategory = <String, Set<String>>{};
+    for (final budget in budgets) {
+      if (budget.isPaymentMethod) {
+        throw ArgumentError('账户余额应按余额快照计算');
+      }
+      if (budget.isOverall) {
+        spendingByBudget[budget.uuid] = math.max(0, netExpenseMinor);
+        continue;
+      }
+      spendingByBudget[budget.uuid] = 0;
+      final categoryUuid = budget.categoryUuid;
+      if (categoryUuid == null) continue;
+      (budgetUuidsByCategory[categoryUuid] ??= <String>{}).add(budget.uuid);
+    }
+    if (budgetUuidsByCategory.isEmpty) return spendingByBudget;
+
+    final categoryMap = {
+      for (final category in categories) category.uuid: category,
+    };
+    final totalsByBudget = <String, int>{};
+    for (final entry in expenseByCategory.entries) {
+      String? uuid = entry.key;
+      final visited = <String>{};
+      while (uuid != null && visited.add(uuid)) {
+        final matchingBudgets = budgetUuidsByCategory[uuid];
+        if (matchingBudgets != null) {
+          for (final budgetUuid in matchingBudgets) {
+            totalsByBudget[budgetUuid] =
+                (totalsByBudget[budgetUuid] ?? 0) + entry.value;
+          }
+        }
+        final category = categoryMap[uuid];
+        if (category == null || category.type != FinanceCategoryType.expense) {
+          break;
+        }
+        uuid = category.parentUuid;
+      }
+    }
+    for (final budgetUuids in budgetUuidsByCategory.values) {
+      for (final budgetUuid in budgetUuids) {
+        spendingByBudget[budgetUuid] =
+            math.max(0, totalsByBudget[budgetUuid] ?? 0);
+      }
+    }
+    return spendingByBudget;
+  }
 }
 
 String dateKey(DateTime date) =>

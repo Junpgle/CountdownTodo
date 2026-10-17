@@ -50,8 +50,9 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
   @override
   void initState() {
     super.initState();
-    if (widget.initialPreferences)
+    if (widget.initialPreferences) {
       _section = _FinanceSettingsSection.preferences;
+    }
     FinanceStorage.revision.addListener(_onFinanceChanged);
     _load();
   }

@@ -543,10 +543,14 @@ abstract final class FinanceAutomationService {
     final prefs = await SharedPreferences.getInstance();
     final accountKey =
         prefs.getString(StorageService.keyCurrentUser) ?? 'default';
+    final spendingByBudget = summary.spendingForBudgets(
+      budgets.where((budget) => !budget.isPaymentMethod),
+      categories,
+    );
 
     for (final budget in budgets) {
       if (budget.isPaymentMethod) continue;
-      final used = summary.spendingForBudget(budget, categories);
+      final used = spendingByBudget[budget.uuid] ?? 0;
       if (used <= 0 || budget.amountMinor <= 0) continue;
       final ratio = used / budget.amountMinor;
       final threshold = ratio >= 1

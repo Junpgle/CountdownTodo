@@ -269,41 +269,83 @@ abstract final class FinanceRepository {
     if (paymentMethodUuid == null || paymentMethodUuid.isEmpty) {
       throw ArgumentError.value(snapshot, 'snapshot', '必须是付款方式余额快照');
     }
-    final snapshotAt = snapshot.effectiveBalanceSnapshotAt;
-    final transactionsAfterSnapshot = transactions.where((transaction) {
-      if (transaction.paymentMethodUuid != paymentMethodUuid ||
-          loanInterestTransactionUuids.contains(transaction.uuid)) {
-        return false;
+    return paymentMethodBalancesAt(
+      snapshots: [snapshot],
+      transactions: transactions,
+      loanRepayments: loanRepayments,
+      loanInterestTransactionUuids: loanInterestTransactionUuids,
+      asOfAt: asOfAt,
+    )[paymentMethodUuid]!;
+  }
+
+  /// Reconstructs multiple account balances while visiting each transaction
+  /// and repayment only once. Callers should pass the latest snapshot for
+  /// each payment method; if duplicates are present, the last one wins.
+  static Map<String, int> paymentMethodBalancesAt({
+    required Iterable<FinanceBudget> snapshots,
+    required Iterable<FinanceTransaction> transactions,
+    required Iterable<FinanceLoanInstallment> loanRepayments,
+    required Set<String> loanInterestTransactionUuids,
+    required int asOfAt,
+  }) {
+    final snapshotsByMethod = <String, FinanceBudget>{};
+    for (final snapshot in snapshots) {
+      final paymentMethodUuid = snapshot.paymentMethodUuid;
+      if (paymentMethodUuid == null || paymentMethodUuid.isEmpty) {
+        throw ArgumentError.value(snapshot, 'snapshot', '必须是付款方式余额快照');
       }
+      snapshotsByMethod[paymentMethodUuid] = snapshot;
+    }
+    if (snapshotsByMethod.isEmpty) return const <String, int>{};
+
+    final balanceChanges = <String, int>{};
+    for (final transaction in transactions) {
+      final paymentMethodUuid = transaction.paymentMethodUuid;
+      final snapshot = snapshotsByMethod[paymentMethodUuid];
+      if (snapshot == null ||
+          loanInterestTransactionUuids.contains(transaction.uuid)) {
+        continue;
+      }
+      final snapshotAt = snapshot.effectiveBalanceSnapshotAt;
       final eventAt = transaction.balanceEventAt(snapshotAt: snapshotAt);
-      return eventAt > snapshotAt && eventAt <= asOfAt;
-    });
-    final balanceChange =
-        summarizePaymentMethodBalanceChanges(
-          transactionsAfterSnapshot,
-        )[paymentMethodUuid] ??
-        0;
-    final repayments = loanRepayments
-        .where((item) {
-          final paidAt = item.paidAt;
-          if (paidAt == null || item.paymentMethodUuid != paymentMethodUuid) {
-            return false;
-          }
-          // Match transaction.balanceEventAt: when a repayment is recorded
-          // after a balance snapshot in the same minute, its paidAt can equal
-          // the snapshot time because the picker stores minute precision.
-          // Use the repayment edit time so the new cash movement is applied
-          // only from when the record became available.
-          final eventAt =
-              paidAt <= snapshotAt &&
-                  paidAt ~/ 60000 == snapshotAt ~/ 60000 &&
-                  item.updatedAt > snapshotAt
-              ? item.updatedAt
-              : paidAt;
-          return eventAt > snapshotAt && eventAt <= asOfAt;
-        })
-        .fold<int>(0, (sum, item) => sum + item.paymentMinor);
-    return snapshot.amountMinor + balanceChange - repayments;
+      if (eventAt <= snapshotAt || eventAt > asOfAt) continue;
+      final amount = transaction.type == FinanceTransactionType.expense
+          ? -transaction.amountMinor
+          : transaction.amountMinor;
+      balanceChanges[paymentMethodUuid!] =
+          (balanceChanges[paymentMethodUuid] ?? 0) + amount;
+    }
+
+    final repaymentChanges = <String, int>{};
+    for (final repayment in loanRepayments) {
+      final paymentMethodUuid = repayment.paymentMethodUuid;
+      final snapshot = snapshotsByMethod[paymentMethodUuid];
+      final paidAt = repayment.paidAt;
+      if (snapshot == null || paidAt == null) continue;
+      final snapshotAt = snapshot.effectiveBalanceSnapshotAt;
+      // Match transaction.balanceEventAt: when a repayment is recorded after
+      // a balance snapshot in the same minute, its paidAt can equal the
+      // snapshot time because the picker stores minute precision. Use the
+      // repayment edit time so it applies only from when it became available.
+      final eventAt =
+          paidAt <= snapshotAt &&
+              paidAt ~/ 60000 == snapshotAt ~/ 60000 &&
+              repayment.updatedAt > snapshotAt
+          ? repayment.updatedAt
+          : paidAt;
+      if (eventAt <= snapshotAt || eventAt > asOfAt) continue;
+      repaymentChanges[paymentMethodUuid!] =
+          (repaymentChanges[paymentMethodUuid] ?? 0) +
+          repayment.paymentMinor;
+    }
+
+    return {
+      for (final entry in snapshotsByMethod.entries)
+        entry.key:
+            entry.value.amountMinor +
+            (balanceChanges[entry.key] ?? 0) -
+            (repaymentChanges[entry.key] ?? 0),
+    };
   }
 
   /// Returns net monthly spending grouped by payment method; linked refunds
@@ -423,6 +465,11 @@ abstract final class FinanceRepository {
       loanUuid,
       includeDeleted: includeDeleted,
     );
+  }
+
+  static Future<Map<String, List<FinanceLoanInstallment>>>
+  getLoanInstallmentsForActiveLoans() {
+    return FinanceStorage.getLoanInstallmentsForActiveLoans();
   }
 
   static Future<void> saveLoan(FinanceLoan loan, {FinanceLoan? original}) {
