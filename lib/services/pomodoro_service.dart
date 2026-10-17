@@ -1081,6 +1081,29 @@ class PomodoroService {
     return all.where((r) => !r.isDeleted).toList();
   }
 
+  /// Reads only the newest active record for summary surfaces.
+  /// Falls back to the full reader when SQL has no active row so legacy
+  /// preference data can still be migrated exactly as before.
+  static Future<PomodoroRecord?> getLatestRecord() async {
+    try {
+      final db = await DatabaseHelper.instance.database;
+      final rows = await db.query(
+        'pomodoro_records',
+        where: 'is_deleted = 0',
+        orderBy: 'start_time DESC',
+        limit: 1,
+      );
+      if (rows.isNotEmpty) {
+        unawaited(_clearRecordPrefsMirror());
+        return PomodoroRecord.fromJson(rows.first);
+      }
+    } catch (_) {
+      // Preserve the legacy migration and recovery path below.
+    }
+    final records = await getRecords();
+    return records.isEmpty ? null : records.first;
+  }
+
   static Future<void> _saveRecordsToSql(List<PomodoroRecord> records) async {
     final db = await DatabaseHelper.instance.database;
     final batch = db.batch();
@@ -1236,10 +1259,27 @@ class PomodoroService {
     final username =
         prefs.getString(StorageService.keyCurrentUser) ?? 'default';
     try {
-      final blocks = await StorageService.getPlanBlocks(
-        username,
-        includeDeleted: true,
+      final db = await DatabaseHelper.instance.databaseForUser(username);
+      final where = <String>[];
+      final whereArgs = <Object?>[];
+      if (affectedBlockIds.isNotEmpty) {
+        where.add(
+          'uuid IN (${List.filled(affectedBlockIds.length, '?').join(', ')})',
+        );
+        whereArgs.addAll(affectedBlockIds);
+      }
+      // Legacy records may only be linked through the block's CSV UUID list.
+      where.add(
+        "INSTR(',' || COALESCE(pomodoro_record_ids, '') || ',', ',' || ? || ',') > 0",
       );
+      whereArgs.add(record.uuid);
+      final rows = await db.query(
+        'todo_plan_blocks',
+        where: '(${where.join(' OR ')})',
+        whereArgs: whereArgs,
+        orderBy: 'rowid ASC',
+      );
+      final blocks = rows.map(TodoPlanBlock.fromJson).toList();
       for (final block in blocks) {
         final containsLegacyLink = block.pomodoroRecordIds.contains(
           record.uuid,
@@ -1316,14 +1356,41 @@ class PomodoroService {
         where: 'is_deleted = 0',
       );
       final records = recordRows.map(PomodoroRecord.fromJson).toList();
+      final recordsByPlanBlock = <String, List<PomodoroRecord>>{};
+      final legacyRecordsByUuid = <String, PomodoroRecord>{};
+      final recordOrderByUuid = <String, int>{};
+      for (var index = 0; index < records.length; index++) {
+        final record = records[index];
+        final planBlockId = record.planBlockId;
+        if (planBlockId != null) {
+          (recordsByPlanBlock[planBlockId] ??= <PomodoroRecord>[]).add(
+            record,
+          );
+        }
+        if (planBlockId == null || planBlockId.isEmpty) {
+          legacyRecordsByUuid[record.uuid] = record;
+        }
+        recordOrderByUuid[record.uuid] = index;
+      }
 
       for (final block in blocks) {
         if (block.isDeleted) continue;
-        final linkedRecords = records.where((record) {
-          if (record.planBlockId == block.uuid) return true;
-          return (record.planBlockId?.isEmpty ?? true) &&
-              block.pomodoroRecordIds.contains(record.uuid);
-        }).toList();
+        final linkedRecordsByUuid = <String, PomodoroRecord>{
+          for (final record in recordsByPlanBlock[block.uuid] ?? const [])
+            record.uuid: record,
+        };
+        for (final recordUuid in block.pomodoroRecordIds.toSet()) {
+          final legacyRecord = legacyRecordsByUuid[recordUuid];
+          if (legacyRecord != null) {
+            linkedRecordsByUuid.putIfAbsent(recordUuid, () => legacyRecord);
+          }
+        }
+        final linkedRecords = linkedRecordsByUuid.values.toList()
+          ..sort(
+            (left, right) => recordOrderByUuid[left.uuid]!.compareTo(
+              recordOrderByUuid[right.uuid]!,
+            ),
+          );
         final actualFocusSeconds = linkedRecords.fold<int>(
           0,
           (total, record) => total + record.effectiveDuration,
@@ -1385,6 +1452,13 @@ class PomodoroService {
       );
       if (maps.isNotEmpty) {
         return maps.map((m) => PomodoroRecord.fromJson(m)).toList();
+      }
+      final hasSqlRecords = await db.rawQuery(
+        'SELECT 1 FROM pomodoro_records LIMIT 1',
+      );
+      if (hasSqlRecords.isNotEmpty) {
+        unawaited(_clearRecordPrefsMirror());
+        return [];
       }
     } catch (e) {
       // debugPrint("⚠️ Pomodoro SQL 范围查询异常: $e");

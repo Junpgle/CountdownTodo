@@ -324,7 +324,7 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
   }
 
   void _startRemotePomodoroTicker(int targetEndMs, bool isCountUp) {
-    if (!_isDashboardInForeground) {
+    if (!_canRunDashboardPomodoroTickers) {
       _stopRemotePomodoroTicker();
       return;
     }
@@ -335,21 +335,18 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
         return;
       }
       if (isCountUp) {
-        final previousTimeInfo = _formatDashboardPomodoroTimeInfo(
-          _remotePomodoroRemaining,
-          countUp: true,
-        );
+        final previousSeconds = _remotePomodoroRemaining;
         final startedAt = _remotePomodoro?.timestamp;
         _remotePomodoroRemaining = startedAt == null
             ? _remotePomodoroRemaining + 1
             : ((DateTime.now().millisecondsSinceEpoch - startedAt) / 1000)
-                .floor();
-        if (_formatDashboardPomodoroTimeInfo(
-              _remotePomodoroRemaining,
-              countUp: true,
-            ) !=
-            previousTimeInfo) {
-          _pomodoroTickNotifier.value++;
+                  .floor();
+        if (_didDashboardPomodoroDisplayChange(
+          previousSeconds,
+          _remotePomodoroRemaining,
+          countUp: true,
+        )) {
+          _pomodoroDisplayTickNotifier.value++;
         }
       } else {
         final rem =
@@ -363,17 +360,14 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
           _remotePomodoroTicker?.cancel();
           if (mounted) setState(() => _remotePomodoro = null);
         } else {
-          final previousTimeInfo = _formatDashboardPomodoroTimeInfo(
-            _remotePomodoroRemaining,
-            countUp: false,
-          );
+          final previousSeconds = _remotePomodoroRemaining;
           _remotePomodoroRemaining = rem;
-          if (_formatDashboardPomodoroTimeInfo(
-                rem,
-                countUp: false,
-              ) !=
-              previousTimeInfo) {
-            _pomodoroTickNotifier.value++;
+          if (_didDashboardPomodoroDisplayChange(
+            previousSeconds,
+            rem,
+            countUp: false,
+          )) {
+            _pomodoroDisplayTickNotifier.value++;
           }
         }
       }
@@ -469,7 +463,7 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
   }
 
   void _startLocalTicker(bool isCountUp) {
-    if (!_isDashboardInForeground) {
+    if (!_canRunDashboardPomodoroTickers) {
       _stopLocalTicker();
       return;
     }
@@ -487,21 +481,18 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
           ? ((now - _localPomodoro!.sessionStartMs) / 1000).floor()
           : ((_localPomodoro!.targetEndMs - now) / 1000).ceil();
 
-      final previousTimeInfo = _formatDashboardPomodoroTimeInfo(
-        _localPomodoroRemaining,
-        countUp: isActuallyCountUp,
-      );
+      final previousSeconds = _localPomodoroRemaining;
       _localPomodoroRemaining = rem;
       if (!isActuallyCountUp && _localPomodoroRemaining <= 0) {
         _localPomodoroRemaining = 0;
         _stopLocalTicker();
       }
-      if (_formatDashboardPomodoroTimeInfo(
-            _localPomodoroRemaining,
-            countUp: isActuallyCountUp,
-          ) !=
-          previousTimeInfo) {
-        _pomodoroTickNotifier.value++;
+      if (_didDashboardPomodoroDisplayChange(
+        previousSeconds,
+        _localPomodoroRemaining,
+        countUp: isActuallyCountUp,
+      )) {
+        _pomodoroDisplayTickNotifier.value++;
       }
     });
   }

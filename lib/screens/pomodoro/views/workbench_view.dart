@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
@@ -100,6 +101,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       StrictFocusSensorState.waitingForFaceUp;
   bool _strictWaitingForFlip = false;
   bool _strictStartInFlight = false;
+  bool _normalFocusStartInFlight = false;
   bool _strictUnavailableNoticeShown = false;
 
   // ── Todos ──
@@ -1910,12 +1912,18 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       await _beginStrictWaiting();
       return;
     }
-    await _startFocusNow();
+    if (_normalFocusStartInFlight) return;
+    _normalFocusStartInFlight = true;
+    try {
+      await _startFocusNow();
+    } finally {
+      _normalFocusStartInFlight = false;
+    }
   }
 
   Future<void> _startFocusNow() async {
-    // 所有正式开始计时的入口统一先给出震动确认。
-    await StrictFocusHapticService.notifyFocusStarted();
+    final startupStopwatch = Stopwatch()..start();
+    unawaited(_notifyFocusStartHaptic());
 
     if (_phase == PomodoroPhase.remoteWatching) {
       _stopRemoteTicker();
@@ -1960,10 +1968,13 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         currentCycle: _currentCycle,
         deviceId: _deviceId,
         note: _currentNote.isNotEmpty ? _currentNote : null,
+        updateFloat: false,
+        deferSideEffects: true,
       );
     } finally {
       _suppressRunStateEvents = false;
     }
+    if (!mounted) return;
     final started = startResult.state;
     _currentSessionUuid = started.sessionUuid;
     setState(() {
@@ -1973,6 +1984,13 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       _sessionStartMs = started.sessionStartMs;
       _remoteState = null;
     });
+    startupStopwatch.stop();
+    if (kDebugMode) {
+      debugPrint(
+        '[PomodoroStart] tap_to_active_state '
+        '${startupStopwatch.elapsedMilliseconds}ms',
+      );
+    }
     _stopRemoteTicker();
     widget.onPhaseChanged(_phase);
     if (_isStrictFreeFocus) {
@@ -1983,6 +2001,15 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     _showLocalFloat();
 
     _persistIdleBoundTodo(null);
+  }
+
+  Future<void> _notifyFocusStartHaptic() async {
+    final stopwatch = Stopwatch()..start();
+    await StrictFocusHapticService.notifyFocusStarted();
+    stopwatch.stop();
+    if (kDebugMode) {
+      debugPrint('[PomodoroStart] haptic ${stopwatch.elapsedMilliseconds}ms');
+    }
   }
 
   Future<void> _switchTask(TodoItem? newTodo) async {

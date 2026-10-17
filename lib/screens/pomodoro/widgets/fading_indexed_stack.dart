@@ -27,6 +27,7 @@ class _FadingIndexedStackState extends State<FadingIndexedStack>
   late Animation<Offset> _slideAnim;
   int _displayIndex = 0;
   int _prevIndex = 0;
+  bool _showPrevious = false;
 
   @override
   void initState() {
@@ -47,9 +48,13 @@ class _FadingIndexedStackState extends State<FadingIndexedStack>
     super.didUpdateWidget(old);
     if (old.index != widget.index) {
       _prevIndex = _displayIndex;
+      _showPrevious = true;
       _ctrl.reverse().then((_) {
         if (mounted) {
-          setState(() => _displayIndex = widget.index);
+          setState(() {
+            _displayIndex = widget.index;
+            _showPrevious = false;
+          });
           _ctrl.forward();
         }
       });
@@ -81,25 +86,19 @@ class _FadingIndexedStackState extends State<FadingIndexedStack>
           );
         }
 
-        return AnimatedBuilder(
-          animation: _ctrl,
-          builder: (context, child) {
-            final showPrev = _ctrl.status == AnimationStatus.reverse ||
-                _ctrl.status == AnimationStatus.dismissed;
-            return FadeTransition(
-              opacity: _fadeAnim,
-              child: SlideTransition(
-                position: _slideAnim,
-                child: IndexedStack(
-                  index: showPrev ? _prevIndex : _displayIndex,
-                  children: _tickerScopedChildren(
-                    activeIndex: showPrev ? _prevIndex : _displayIndex,
-                    parentTickerEnabled: parentTickerEnabled,
-                  ),
-                ),
+        final activeIndex = _showPrevious ? _prevIndex : _displayIndex;
+        return FadeTransition(
+          opacity: _fadeAnim,
+          child: SlideTransition(
+            position: _slideAnim,
+            child: IndexedStack(
+              index: activeIndex,
+              children: _tickerScopedChildren(
+                activeIndex: activeIndex,
+                parentTickerEnabled: parentTickerEnabled,
               ),
-            );
-          },
+            ),
+          ),
         );
       },
     );

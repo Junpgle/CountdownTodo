@@ -48,8 +48,13 @@ class PomodoroStatsState extends State<PomodoroStats> {
   DateTime _selected = DateTime.now();
   List<PomodoroSession> _sessions = [];
   List<PomodoroTag> _tags = [];
+  Map<String, PomodoroTag> _tagsByUuid = {};
+  int _sessionTotalSeconds = 0;
+  Map<String, int> _sessionFocusByTag = {};
+  int _completedSessionCount = 0;
   List<TodoItem> _todos = [];
   List<TodoGroup> _todoGroups = [];
+  Map<String, String> _todoGroupNamesById = {};
   List<_MonthlyPomodoroSummary> _yearlyMonthlySummaries = [];
   Map<int, int> _yearlyFocusSeconds = {};
   Map<String, int> _yearlyTagSeconds = {};
@@ -218,11 +223,53 @@ class PomodoroStatsState extends State<PomodoroStats> {
             session.startTime < detailRange.end.millisecondsSinceEpoch;
       }).toList();
     }
+    sessions.sort((a, b) => b.startTime.compareTo(a.startTime));
+
+    final tagsByUuid = <String, PomodoroTag>{};
+    for (final tag in tags) {
+      tagsByUuid.putIfAbsent(tag.uuid, () => tag);
+    }
+    var sessionTotalSeconds = 0;
+    var completedSessionCount = 0;
+    final sessionFocusByTag = <String, int>{};
+    for (final session in sessions) {
+      final duration = session.effectiveDuration;
+      sessionTotalSeconds += duration;
+      if (session.isCompleted) completedSessionCount++;
+      if (session.tagUuids.isEmpty) {
+        sessionFocusByTag.update(
+          '__none__',
+          (seconds) => seconds + duration,
+          ifAbsent: () => duration,
+        );
+      } else {
+        for (final uuid in session.tagUuids) {
+          sessionFocusByTag.update(
+            uuid,
+            (seconds) => seconds + duration,
+            ifAbsent: () => duration,
+          );
+        }
+      }
+    }
+
+    final todoGroups = groups.where((g) => !g.isDeleted).toList();
+    final todoGroupNamesById = <String, String>{};
+    for (final group in todoGroups) {
+      if (!todoGroupNamesById.containsKey(group.id)) {
+        todoGroupNamesById[group.id] = group.name;
+      }
+    }
 
     setState(() {
       _tags = tags;
+      _tagsByUuid = tagsByUuid;
+      _sessionTotalSeconds = sessionTotalSeconds;
+      _sessionFocusByTag = sessionFocusByTag;
+      _completedSessionCount = completedSessionCount;
       _todos = allTodos.where((t) => !t.isDeleted).toList();
-      _todoGroups = groups.where((g) => !g.isDeleted).toList();
+      _todoGroups = todoGroups;
+      _todoGroupNamesById = todoGroupNamesById;
       _chartSessions = chartSessions;
       _sessions = sessions;
       _yearlyMonthlySummaries = monthlySummaries;
@@ -329,13 +376,11 @@ class PomodoroStatsState extends State<PomodoroStats> {
 
     final totalSecs = _dimension == 3
         ? _yearlyTotalSeconds
-        : PomodoroService.totalFocusSeconds(_sessions);
-    final byTag = _dimension == 3
-        ? _yearlyTagSeconds
-        : PomodoroService.focusByTag(_sessions);
+        : _sessionTotalSeconds;
+    final byTag = _dimension == 3 ? _yearlyTagSeconds : _sessionFocusByTag;
     final completedCount = _dimension == 3
         ? _yearlyCompletedCount
-        : _sessions.where((s) => s.isCompleted).length;
+        : _completedSessionCount;
 
     return MediaQuery.removePadding(
       context: context,
@@ -717,10 +762,7 @@ class PomodoroStatsState extends State<PomodoroStats> {
 
     return Column(
       children: sorted.map((e) {
-        final tag = _tags.cast<PomodoroTag?>().firstWhere(
-          (t) => t?.uuid == e.key,
-          orElse: () => null,
-        );
+        final tag = _tagsByUuid[e.key];
         final name = tag?.name ?? '未知';
         final color = AppColorUtils.parseHex(tag?.color ?? '#9E9E9E');
         final pct = totalSecs > 0 ? e.value / totalSecs : 0.0;
@@ -761,46 +803,60 @@ class PomodoroStatsState extends State<PomodoroStats> {
   }
 
   List<Widget> _buildSessionList() {
-    final sorted = List<PomodoroSession>.from(_sessions)
-      ..sort((a, b) => b.startTime.compareTo(a.startTime));
+    final timeFormatter = DateFormat('HH:mm');
 
     if (_dimension == 0) {
-      return sorted.map((s) => _buildSessionCard(s, showDate: false)).toList();
+      return _sessions.map((session) {
+        final localStart = DateTime.fromMillisecondsSinceEpoch(
+          session.startTime,
+          isUtc: true,
+        ).toLocal();
+        return _buildSessionCard(
+          session,
+          startLocal: localStart,
+          timeFormatter: timeFormatter,
+        );
+      }).toList();
     }
 
-    final Map<String, List<PomodoroSession>> groups = {};
-    for (final s in sorted) {
-      final local = DateTime.fromMillisecondsSinceEpoch(
-        s.startTime,
+    final dayLabelFormatter = (_dimension == 1 || _dimension == 2)
+        ? DateFormat('MM月dd日')
+        : DateFormat('yyyy年MM月dd日');
+    final widgets = <Widget>[];
+    DateTime? previousDay;
+    for (final session in _sessions) {
+      final localStart = DateTime.fromMillisecondsSinceEpoch(
+        session.startTime,
         isUtc: true,
       ).toLocal();
-      final key = DateFormat('yyyy-MM-dd').format(local);
-      groups.putIfAbsent(key, () => []).add(s);
-    }
-    final sortedKeys = groups.keys.toList()..sort((a, b) => b.compareTo(a));
-
-    final widgets = <Widget>[];
-    for (final key in sortedKeys) {
-      final dayDate = DateTime.parse(key);
-      final dayLabel = (_dimension == 1 || _dimension == 2)
-          ? DateFormat('MM月dd日').format(dayDate)
-          : DateFormat('yyyy年MM月dd日').format(dayDate);
-      widgets.add(
-        Padding(
-          padding: const EdgeInsets.only(top: 16, bottom: 8),
-          child: Text(
-            dayLabel,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
+      final isNewDay =
+          previousDay == null ||
+          previousDay.year != localStart.year ||
+          previousDay.month != localStart.month ||
+          previousDay.day != localStart.day;
+      if (isNewDay) {
+        widgets.add(
+          Padding(
+            padding: const EdgeInsets.only(top: 16, bottom: 8),
+            child: Text(
+              dayLabelFormatter.format(localStart),
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
           ),
+        );
+      }
+      widgets.add(
+        _buildSessionCard(
+          session,
+          startLocal: localStart,
+          timeFormatter: timeFormatter,
         ),
       );
-      for (final s in groups[key]!) {
-        widgets.add(_buildSessionCard(s, showDate: false));
-      }
+      previousDay = localStart;
     }
     return widgets;
   }
@@ -909,26 +965,15 @@ class PomodoroStatsState extends State<PomodoroStats> {
     _loadLocal();
   }
 
-  Widget _buildSessionCard(PomodoroSession s, {required bool showDate}) {
-    final startLocal = DateTime.fromMillisecondsSinceEpoch(
-      s.startTime,
-      isUtc: true,
-    ).toLocal();
+  Widget _buildSessionCard(
+    PomodoroSession s, {
+    required DateTime startLocal,
+    required DateFormat timeFormatter,
+  }) {
     final tagNames = s.tagUuids.isNotEmpty
-        ? s.tagUuids
-              .map(
-                (uuid) =>
-                    _tags
-                        .cast<PomodoroTag?>()
-                        .firstWhere((t) => t?.uuid == uuid, orElse: () => null)
-                        ?.name ??
-                    uuid,
-              )
-              .join(', ')
+        ? s.tagUuids.map((uuid) => _tagsByUuid[uuid]?.name ?? uuid).join(', ')
         : null;
-    final timeLabel = showDate
-        ? DateFormat('MM-dd HH:mm').format(startLocal)
-        : DateFormat('HH:mm').format(startLocal);
+    final timeLabel = timeFormatter.format(startLocal);
     final cardKey = GlobalKey();
 
     final content = widget.isCompact
@@ -1223,11 +1268,18 @@ class PomodoroStatsState extends State<PomodoroStats> {
     List<TodoItem> todos,
     List<TodoGroup> groups,
   ) {
+    final groupIndices = <String, int>{};
+    for (var index = 0; index < groups.length; index++) {
+      final groupId = groups[index].id;
+      if (!groupIndices.containsKey(groupId)) {
+        groupIndices[groupId] = index;
+      }
+    }
+
     int groupRank(TodoItem todo) {
       final groupId = todo.groupId;
       if (groupId == null || groupId.isEmpty) return 1 << 30;
-      final idx = groups.indexWhere((group) => group.id == groupId);
-      return idx == -1 ? (1 << 30) - 1 : idx;
+      return groupIndices[groupId] ?? (1 << 30) - 1;
     }
 
     int urgencyMs(TodoItem todo) {
@@ -1251,11 +1303,7 @@ class PomodoroStatsState extends State<PomodoroStats> {
   String _todoGroupName(TodoItem todo) {
     final groupId = todo.groupId;
     if (groupId == null || groupId.isEmpty) return '未分类';
-    return _todoGroups
-            .cast<TodoGroup?>()
-            .firstWhere((group) => group?.id == groupId, orElse: () => null)
-            ?.name ??
-        '未知分类';
+    return _todoGroupNamesById[groupId] ?? '未知分类';
   }
 
   Future<void> _editSession(PomodoroSession session) async {
