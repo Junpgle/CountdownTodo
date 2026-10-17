@@ -559,9 +559,11 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
         : isFailed
         ? '识别失败'
         : '识别完成';
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
+    return AiWaterRippleBorder(
+      isLight: !isDark,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
         Row(
           children: [
             Icon(
@@ -679,7 +681,8 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
             }).toList(),
           ),
         ],
-      ],
+        ],
+      ),
     );
   }
 

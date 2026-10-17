@@ -118,7 +118,11 @@ abstract class _TodoChatScreenStateBase extends State<TodoChatScreen> {
   Future<void> _loadDeepThinking();
   Future<void> _openTutorialPage();
   void _scrollToBottom();
-  String _buildSystemPrompt({bool nativeToolCalls = false, bool? queryTools});
+  String _buildSystemPrompt({
+    bool nativeToolCalls = false,
+    bool? queryTools,
+    bool settingsNavigation = true,
+  });
   List<Map<String, dynamic>> _buildApiMessages({
     String? pendingUserText,
     bool trackSmartContext = true,

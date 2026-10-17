@@ -77,31 +77,49 @@ class TodoClassificationService {
     List<TodoItem> history = const [],
     Map<String, int> categoryReminderDefaults = const {},
     DateTime? dueDate,
+  }) =>
+      _recommendForText(
+        title: title,
+        remark: remark,
+        groups: groups,
+        history: history,
+        categoryReminderDefaults: categoryReminderDefaults,
+        dueDate: dueDate,
+      );
+
+  static Future<TodoClassificationSuggestion> _recommendForText({
+    required String title,
+    required String remark,
+    required List<TodoGroup> groups,
+    required List<TodoItem> history,
+    required Map<String, int> categoryReminderDefaults,
+    Map<String, List<TodoItem>>? historyByGroup,
+    Map<String, Map<String, double>>? suppliedFeedbackByType,
+    DateTime? dueDate,
   }) async {
     final text = '${title.trim()} ${remark.trim()}'.trim();
     final textTokens = _tokenList(text);
 
-    // Load feedback weights in parallel
-    final groupFeedbackFuture = SuggestionFeedbackService.getAllPosteriors(
-      keywords: textTokens,
-      suggestionType: 'group',
-    );
-    final tagFeedbackFuture = SuggestionFeedbackService.getAllPosteriors(
-      keywords: textTokens,
-      suggestionType: 'tag',
-    );
-    final priorityFeedbackFuture = SuggestionFeedbackService.getAllPosteriors(
-      keywords: textTokens,
-      suggestionType: 'priority',
-    );
-
-    final groupFeedback = await groupFeedbackFuture;
-    final tagFeedback = await tagFeedbackFuture;
-    final priorityFeedback = await priorityFeedbackFuture;
+    // Load feedback weights for all score types with one grouped query.
+    final feedbackByType = suppliedFeedbackByType ??
+        await SuggestionFeedbackService.getAllPosteriorsByTypes(
+          keywords: textTokens,
+          suggestionTypes: const ['group', 'tag', 'priority'],
+        );
+    final groupFeedback = feedbackByType['group'] ?? const <String, double>{};
+    final tagFeedback = feedbackByType['tag'] ?? const <String, double>{};
+    final priorityFeedback =
+        feedbackByType['priority'] ?? const <String, double>{};
 
     final priority = _classifyPriority(text, dueDate, priorityFeedback);
     final tags = _classifyTags(text, tagFeedback);
-    final groupScore = _scoreGroups(text, groups, history, groupFeedback);
+    final groupScore = _scoreGroups(
+      text,
+      groups,
+      history,
+      groupFeedback,
+      historyByGroup: historyByGroup,
+    );
     final group = groupScore.group;
     final confidence = groupScore.confidence;
     final reminderMinutes =
@@ -137,45 +155,75 @@ class TodoClassificationService {
         return aEmpty.compareTo(bEmpty);
       });
     final actions = <AiTodoAction>[];
-    for (final todo in sortedTodos) {
-      if (todo.isDeleted || todo.isDone) continue;
-      final suggestion = await recommendForText(
-        title: todo.title,
-        remark: todo.remark ?? '',
-        groups: groups,
-        history: todos,
-        categoryReminderDefaults: categoryReminderDefaults,
-        dueDate: todo.dueDate,
+    final eligibleTodos = sortedTodos
+        .where((todo) => !todo.isDeleted && !todo.isDone)
+        .toList(growable: false);
+    Map<String, List<TodoItem>>? historyByGroup;
+    for (var offset = 0; offset < eligibleTodos.length;) {
+      final remainingLimit = limit - actions.length;
+      final batchSize = remainingLimit <= 0
+          ? 1
+          : remainingLimit < 6
+              ? remainingLimit
+              : 6;
+      var batchEnd = offset + batchSize;
+      if (batchEnd > eligibleTodos.length) batchEnd = eligibleTodos.length;
+      final batch = eligibleTodos.sublist(offset, batchEnd);
+      final feedbackByQuery =
+          await SuggestionFeedbackService.getAllPosteriorsForQueries(
+        keywordSets: [
+          for (final todo in batch)
+            _tokenList(
+              '${todo.title.trim()} ${(todo.remark ?? '').trim()}'.trim(),
+            ),
+        ],
+        suggestionTypes: const ['group', 'tag', 'priority'],
       );
-      final isUnclassified = todo.groupId == null || todo.groupId!.isEmpty;
-      final minConfidence = isUnclassified ? 0.20 : 0.34;
-      if (!suggestion.hasGroup ||
-          suggestion.groupId == todo.groupId ||
-          suggestion.confidence < minConfidence) {
-        continue;
-      }
-      actions.add(
-        AiTodoAction(
-          type: AiTodoActionType.categorizeTodo,
-          todoId: todo.id,
+
+      final groupedHistory = historyByGroup ??= _indexHistoryByGroup(todos);
+      for (var index = 0; index < batch.length; index++) {
+        final todo = batch[index];
+        final suggestion = await _recommendForText(
           title: todo.title,
-          groupId: suggestion.groupId,
-          reminderMinutes: suggestion.reminderMinutes,
-          recurrenceSeriesId: todo.recurrenceSeriesId,
-          recurrenceScope: todo.recurrenceSeriesId?.isNotEmpty == true
-              ? 'future'
-              : 'occurrence',
-          metadata: {
-            'groupName': suggestion.groupName,
-            'classificationConfidence': suggestion.confidence,
-            'priority': suggestion.priority,
-            'priorityLabel': suggestion.priorityLabel,
-            'tags': suggestion.tags,
-            'reason': suggestion.reason,
-          },
-        ),
-      );
-      if (actions.length >= limit) break;
+          remark: todo.remark ?? '',
+          groups: groups,
+          history: todos,
+          categoryReminderDefaults: categoryReminderDefaults,
+          historyByGroup: groupedHistory,
+          suppliedFeedbackByType: feedbackByQuery[index],
+          dueDate: todo.dueDate,
+        );
+        final isUnclassified = todo.groupId == null || todo.groupId!.isEmpty;
+        final minConfidence = isUnclassified ? 0.20 : 0.34;
+        if (!suggestion.hasGroup ||
+            suggestion.groupId == todo.groupId ||
+            suggestion.confidence < minConfidence) {
+          continue;
+        }
+        actions.add(
+          AiTodoAction(
+            type: AiTodoActionType.categorizeTodo,
+            todoId: todo.id,
+            title: todo.title,
+            groupId: suggestion.groupId,
+            reminderMinutes: suggestion.reminderMinutes,
+            recurrenceSeriesId: todo.recurrenceSeriesId,
+            recurrenceScope: todo.recurrenceSeriesId?.isNotEmpty == true
+                ? 'future'
+                : 'occurrence',
+            metadata: {
+              'groupName': suggestion.groupName,
+              'classificationConfidence': suggestion.confidence,
+              'priority': suggestion.priority,
+              'priorityLabel': suggestion.priorityLabel,
+              'tags': suggestion.tags,
+              'reason': suggestion.reason,
+            },
+          ),
+        );
+        if (actions.length >= limit) return actions;
+      }
+      offset = batchEnd;
     }
     return actions;
   }
@@ -200,6 +248,18 @@ class TodoClassificationService {
     return representativeByKey.values.toList();
   }
 
+  static Map<String, List<TodoItem>> _indexHistoryByGroup(
+    List<TodoItem> history,
+  ) {
+    final historyByGroup = <String, List<TodoItem>>{};
+    for (final todo in history) {
+      if (todo.isDeleted || todo.groupId == null) continue;
+      final related = historyByGroup.putIfAbsent(todo.groupId!, () => []);
+      if (related.length < 24) related.add(todo);
+    }
+    return historyByGroup;
+  }
+
   @visibleForTesting
   static List<TodoItem> seriesRepresentativesForTest(List<TodoItem> todos) =>
       _seriesRepresentatives(todos);
@@ -216,8 +276,9 @@ class TodoClassificationService {
     if (activeTags.isEmpty || limit <= 0) return const [];
 
     final scores = <String, double>{};
+    final activeTagUuids = {for (final tag in activeTags) tag.uuid};
     void addScore(String uuid, double score) {
-      if (uuid.isEmpty || !activeTags.any((t) => t.uuid == uuid)) return;
+      if (uuid.isEmpty || !activeTagUuids.contains(uuid)) return;
       scores[uuid] = (scores[uuid] ?? 0) + score;
     }
 
@@ -245,8 +306,18 @@ class TodoClassificationService {
       history: todoHistory,
       dueDate: todo.dueDate,
     );
-    final suggestedTagNames =
-        suggestion.tags.map(_normalizeTagName).where((e) => e.isNotEmpty);
+    final suggestedTagNames = suggestion.tags
+        .map(_normalizeTagName)
+        .where((e) => e.isNotEmpty)
+        .toList(growable: false);
+    final group = groups.cast<TodoGroup?>().firstWhere(
+      (g) => g?.id == todo.groupId,
+      orElse: () => null,
+    );
+    final groupName = group?.name.trim();
+    final normalizedGroupName = groupName == null || groupName.isEmpty
+        ? null
+        : _normalizeTagName(groupName);
 
     for (final tag in activeTags) {
       final tagName = tag.name.trim();
@@ -268,14 +339,9 @@ class TodoClassificationService {
         addScore(tag.uuid, _keywordHits(text, profile) * 3.0);
       }
 
-      final group = groups.cast<TodoGroup?>().firstWhere(
-            (g) => g?.id == todo.groupId,
-            orElse: () => null,
-          );
-      final groupName = group?.name.trim();
-      if (groupName != null &&
-          groupName.isNotEmpty &&
-          _tagNameMatches(normalizedTag, _normalizeTagName(groupName))) {
+      if (normalizedGroupName != null &&
+          normalizedGroupName.isNotEmpty &&
+          _tagNameMatches(normalizedTag, normalizedGroupName)) {
         addScore(tag.uuid, 3.0);
       }
     }
@@ -294,8 +360,9 @@ class TodoClassificationService {
     String text,
     List<TodoGroup> groups,
     List<TodoItem> history,
-    Map<String, double> groupFeedback,
-  ) {
+    Map<String, double> groupFeedback, {
+    Map<String, List<TodoItem>>? historyByGroup,
+  }) {
     final availableGroups = groups.where((g) => !g.isDeleted).toList();
     if (availableGroups.isEmpty || text.trim().isEmpty) {
       return const _GroupScore(null, 0);
@@ -313,8 +380,9 @@ class TodoClassificationService {
           score += _keywordHits(text, entry.value) * 0.42;
         }
       }
-      final relatedHistory =
-          history.where((t) => t.groupId == group.id && !t.isDeleted).take(24);
+      final relatedHistory = historyByGroup == null
+          ? history.where((t) => t.groupId == group.id && !t.isDeleted).take(24)
+          : historyByGroup[group.id] ?? const <TodoItem>[];
       for (final todo in relatedHistory) {
         score += _similarity(textTokens, _tokens(todo.title)) * 0.32;
       }

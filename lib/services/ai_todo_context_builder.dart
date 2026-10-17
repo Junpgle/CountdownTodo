@@ -145,6 +145,7 @@ class AiTodoContextBuilder {
     required bool promptEnabled,
     bool nativeToolCalls = false,
     bool queryTools = false,
+    bool settingsNavigation = true,
     DateTime? now,
   }) {
     final nowValue = now ?? DateTime.now();
@@ -170,7 +171,7 @@ class AiTodoContextBuilder {
 所有时间按本地时间理解，并以当前基准时间和括号中的时区判断相对日期。
 待办表示待完成的结果；规划块是可调整的执行时段；课程、会议、预约等外部约束是固定日程。没有日期和具体时间时不要默认今天全天。
 重复是周期机制，不等于习惯；周期事项未明确选择习惯或循环待办时先询问。循环修改默认只作用于本期，只有用户明确要求才作用于本期及以后。
-仅对用户明确提出的数据变更调用propose_*工具。这些调用只生成待确认草案，不直接保存、删除或声称操作已完成；query_*工具用于只读查询，可按需调用。不确定对象或缺少关键信息时先追问。
+当本轮提供了与用户明确写入请求匹配的propose_*工具且信息完整时，必须调用对应工具生成待确认草案；不得只用自然语言声称已完成。工具调用只生成待确认草案，不直接保存或删除。query_*工具用于只读查询，可按需调用。不确定对象或缺少关键信息时先查询或追问，不得伪造参数。
 用户已要求生成规划或已同意方案时，必须调用propose_cdt_actions生成实际确认卡，Markdown表格不等于草案。只要时间范围和任务已明确，时长、顺序等偏好可给出可编辑建议，不必反复要求用户确认后才生成草案。保存只能由用户点击App确认卡完成，聊天回复“确认/要的/可以”只表达方案意图，绝不保存，也不要要求用户继续回复确认以保存。'''
         : '''【时间规则】
 所有上下文时间均为本地时间，格式为yyyy-MM-dd HH:mm。判断今天、昨天、明天时必须以当前基准时间和括号中的时区为准，不要按UTC重新换算。
@@ -179,8 +180,8 @@ class AiTodoContextBuilder {
 当用户明确要求管理数据时，按本轮动作协议输出对应操作块；只按用户明确意图生成，信息不足时先追问。具体动作、字段和确认要求按本轮协议执行。''';
     return '$resolvedBasePrompt\n\n$sharedRules\n\n'
         '历史消息中的READ_ONLY_TOOL_HISTORY等上下文块只供参考，不要在回复中复述其标记或JSON。'
-        '只有实际输出操作调用或操作块后才能说已生成待确认草案。\n\n'
-        '${AiSettingsNavigationService.buildPrompt(nativeToolCalls: nativeToolCalls)}';
+        '只有实际输出操作调用或操作块后才能说已生成待确认草案。'
+        '${settingsNavigation ? '\n\n${AiSettingsNavigationService.buildPrompt(nativeToolCalls: nativeToolCalls)}' : ''}';
   }
 
   static String _compactCapabilitySection(String text) {
@@ -192,6 +193,7 @@ class AiTodoContextBuilder {
   static String buildActionProtocolPrompt(
     String userMessage, {
     String previousUserMessage = '',
+    String previousAssistantMessage = '',
   }) {
     final actions = <String>[];
     void add(String line) {
@@ -201,18 +203,27 @@ class AiTodoContextBuilder {
     final isPlanningRequest =
         _matchesAny(userMessage, _planKeywords) ||
         _matchesAny(userMessage, _planningKeywords);
-    final explicitlyCreatesTodo = _matchesAny(userMessage, _createTodoKeywords);
+    final explicitlyCreatesTodo =
+        _matchesAny(userMessage, _createTodoKeywords) ||
+        isExplicitTodoCreationRequest(userMessage);
+    final habitCreationFollowUp = _isHabitCreationFollowUp(
+      userMessage,
+      previousAssistantMessage,
+    );
     final mentionsHabit =
         _matchesAny(userMessage, _habitKeywords) ||
-        userMessage.toLowerCase().contains('habit');
+        userMessage.toLowerCase().contains('habit') ||
+        habitCreationFollowUp;
     final explicitlyTargetsHabit =
         _matchesAny(userMessage, _habitTypeKeywords) ||
-        userMessage.toLowerCase().contains('habit');
+        userMessage.toLowerCase().contains('habit') ||
+        habitCreationFollowUp;
     final explicitlyTargetsTodo = _matchesAny(userMessage, _todoTypeKeywords);
     final requestsHabitAction =
-        mentionsHabit &&
-        (_matchesAny(userMessage, _createTodoKeywords) ||
-            _matchesAny(userMessage, _habitCreationKeywords));
+        habitCreationFollowUp ||
+        (mentionsHabit &&
+            (explicitlyCreatesTodo ||
+                _matchesAny(userMessage, _habitCreationKeywords)));
     final unresolvedHabitTodoChoice =
         !isPlanningRequest &&
         _matchesAny(userMessage, _recurrenceKeywords) &&
@@ -233,11 +244,15 @@ class AiTodoContextBuilder {
     final readOnlyRequest = _isReadOnlyRequest(userMessage);
     final requestsTodoAction =
         !readOnlyRequest &&
-        (!requestsHabitAction || explicitlyTargetsTodo) &&
+        (!requestsHabitAction ||
+            (habitCreationFollowUp
+                ? _matchesAny(userMessage, const ['待办', '任务', 'todo'])
+                : explicitlyTargetsTodo)) &&
         !unresolvedHabitTodoChoice &&
         (contextualTodoMutation ||
             _shouldInjectTodoContext(userMessage) ||
             _matchesAny(userMessage, _createTodoKeywords) ||
+            isExplicitTodoCreationRequest(userMessage) ||
             _matchesAny(userMessage, _recurrenceKeywords) ||
             userMessage.contains('待办') ||
             userMessage.contains('任务'));
@@ -252,7 +267,7 @@ class AiTodoContextBuilder {
         RegExp(r'\d+(?:\.\d+)?\s*(?:元|块(?:钱)?|人民币|¥|￥)').hasMatch(userMessage);
     if (requestsTodoAction && (!isPlanningRequest || explicitlyCreatesTodo)) {
       add(
-        '- create_todo: {"action":"create_todo","todos":[{"title":"标题","remark":"备注","timeMode":"unscheduled|dateOnly|deadline","dueDate":null,"groupId":null,"reminderMinutes":5,"recurrence":"none|daily|weekly|monthly|yearly|weekdays|customDays","customIntervalDays":null,"recurrenceEndDate":null}]}',
+        '- create_todo: {"action":"create_todo","todos":[{"title":"标题","remark":"备注","timeMode":"unscheduled|dateOnly|deadline","dueDate":null,"groupId":null,"reminderMinutes":5,"recurrence":"none|daily|weekly|monthly|yearly|weekdays|customDays","customIntervalDays":null,"recurrenceEndDate":null}]}；多个事项分别作为数组条目，每条独立填写标题和备注。用户明确说“备注是六月”等内容时，remark原样写“六月”，不得改写成“截止时间：六月”或把它当dueDate；只有明确要求截止日期/时间时才设置dueDate，否则timeMode="unscheduled"且dueDate=null',
       );
     }
     if (requestsTodoAction && !isPlanningRequest) {
@@ -273,6 +288,11 @@ class AiTodoContextBuilder {
       add(
         '- 习惯创建规则：明确创建习惯时必须使用create_habit，不能用普通待办动作代替。数量目标使用quantityCheckIn并填写targetValue/unit；时间点目标使用timeCheckIn并填写targetTimeMinute（分钟数）和timeComparison；时长目标使用durationCheckIn并填写durationMinutes；只有上下文提供真实番茄标签UUID时才使用pomodoroTag并填写sourceIds，否则使用durationCheckIn；完成一次型目标使用recurringTodo，sourceIds为空时由应用创建并绑定循环待办。periodType为weekdays时用weekdaysMask（周一bit0至周日bit6），custom时必须填写customIntervalDays。',
       );
+      if (habitCreationFollowUp) {
+        add(
+          '- 习惯草案续答：上一条助手正在收集创建习惯的参数，本轮是该习惯的补充信息；不要转成一次性的专注记录或普通待办。',
+        );
+      }
     }
     if (ambiguousHabitTodoChoice) {
       add(
@@ -330,7 +350,9 @@ class AiTodoContextBuilder {
       );
     }
     if (!readOnlyRequest &&
-        (_matchesAny(userMessage, _timeLogKeywords) ||
+        (!habitCreationFollowUp ||
+            isExplicitFocusMutationRequest(userMessage)) &&
+        (_matchesAny(userMessage, _timeLogActionKeywords) ||
             _looksLikeFocusQuery(userMessage))) {
       add(
         '- create_time_log: {"action":"create_time_log","logs":[{"title":"专注内容","startTime":"YYYY-MM-DD HH:mm","dueDate":"YYYY-MM-DD HH:mm","durationMinutes":60,"remark":"备注","tagUuids":[]}]}',
@@ -362,7 +384,8 @@ class AiTodoContextBuilder {
         '- delete_countdown: {"action":"delete_countdown","updates":[{"countdownId":"倒计时ID"}]}',
       );
     }
-    if (!readOnlyRequest && _matchesAny(userMessage, _groupKeywords)) {
+    if (!readOnlyRequest &&
+        _matchesAny(userMessage, _groupManagementKeywords)) {
       add(
         '- create_todo_group: {"action":"create_todo_group","groups":[{"name":"分类名"}]}',
       );
@@ -373,7 +396,12 @@ class AiTodoContextBuilder {
         '- delete_todo_group: {"action":"delete_todo_group","updates":[{"groupId":"分类ID"}]}',
       );
     }
-    if (!readOnlyRequest && _matchesAny(userMessage, _tagKeywords)) {
+    final targetsTodoTag =
+        _matchesAny(userMessage, const ['待办', '任务', 'todo']) &&
+        !_matchesAny(userMessage, const ['番茄', '专注']);
+    if (!readOnlyRequest &&
+        !targetsTodoTag &&
+        _matchesAny(userMessage, _tagManagementKeywords)) {
       add(
         '- create_pomodoro_tag: {"action":"create_pomodoro_tag","tags":[{"name":"标签名","color":"#607D8B"}]}',
       );
@@ -954,7 +982,10 @@ ${sections.join('\n')}
   }
 
   static bool _isReadOnlyRequest(String text) {
+    if (isExplicitTodoCreationRequest(text)) return false;
     if (hasExplicitFinanceUpdateIntent(text)) return false;
+    if (isExplicitFinanceDraftRequest(text)) return false;
+    if (isExplicitFocusMutationRequest(text)) return false;
     final asksInformation =
         _matchesAny(text, _readOnlyRequestKeywords) ||
         _looksLikeInformationQuestion(text) ||
@@ -966,6 +997,185 @@ ${sections.join('\n')}
     return !_writeIntentKeywords.any(
       (trigger) => isExplicitlyRequested(text, trigger),
     );
+  }
+
+  static bool _isHabitCreationFollowUp(
+    String userMessage,
+    String previousAssistantMessage,
+  ) {
+    final message = userMessage.trim();
+    final previous = previousAssistantMessage.trim();
+    if (message.isEmpty || previous.isEmpty) return false;
+
+    final answersHabitTypeChoice = RegExp(
+      r'^(?:那就|就|选择|选|创建成|按|我要|我选)?\s*习惯(?:打卡)?(?:吧|就行|也行|即可)?[。！!\s]*$',
+    ).hasMatch(message);
+    final assistantOfferedHabitOrTodo =
+        previous.contains('习惯') &&
+        _matchesAny(previous, const ['待办', '任务']) &&
+        RegExp(r'还是|或者|或').hasMatch(previous);
+    if (answersHabitTypeChoice && assistantOfferedHabitOrTodo) return true;
+
+    final offeredHabitDraft =
+        previous.contains('习惯') &&
+        RegExp(
+          r'(?:习惯.{0,24}(?:草案|生成|创建|追踪)|(?:生成|创建|新增|建立).{0,24}习惯)',
+        ).hasMatch(previous);
+    final requestedHabitDetails =
+        RegExp(r'告诉我|回答|补充|这些细节|还差|请提供|请告诉|请问')
+            .hasMatch(previous) ||
+        (RegExp(r'[？?]').hasMatch(previous) &&
+            RegExp(r'频率|每周|每天|每次|类型|时长|提醒|哪天|星期')
+                .hasMatch(previous));
+    if (!offeredHabitDraft || !requestedHabitDetails) return false;
+
+    final explicitlyTargetsOtherWrite =
+        isExplicitTodoCreationRequest(message) ||
+        (_matchesAny(message, const ['待办', '任务', 'todo']) &&
+            (_matchesAny(message, _createTodoKeywords) ||
+                _matchesAny(message, _recurrenceKeywords) ||
+                _matchesAny(message, _existingTodoKeywords))) ||
+        (_matchesAny(message, _fixedScheduleKeywords) &&
+            _matchesAny(message, _createTodoKeywords)) ||
+        isExplicitFocusMutationRequest(message) ||
+        isExplicitFinanceDraftRequest(message) ||
+        hasExplicitFinanceUpdateIntent(message);
+    return !explicitlyTargetsOtherWrite && !_isReadOnlyRequest(message);
+  }
+
+  /// Recognizes common spoken commands such as "帮我记两个待办" and
+  /// "我要写两条任务" without treating how-to questions as write requests.
+  static bool isExplicitTodoCreationRequest(String text) {
+    if (!_matchesAny(text, const ['待办', '任务'])) return false;
+    if (RegExp(r'(?:怎么|如何|怎样).{0,12}(?:记|写|记录|登记|录入).{0,12}(?:待办|任务)')
+        .hasMatch(text)) {
+      return false;
+    }
+    return RegExp(
+      r'^(?:(?:请|帮我|帮忙|麻烦(?:你)?|给我|替我|我想|我要|直接)\s*)*'
+      r'(?:分开|分别|单独|各自)?\s*'
+      r'(?:记(?:下|一下|上)?|记录|登记|录入|写(?:一下|一份|一个)?)',
+    ).hasMatch(text.trim());
+  }
+
+  /// Disambiguates duration-bearing focus writes from the generic read words
+  /// "记录" and "分钟" without turning focus questions into mutations.
+  static bool isExplicitFocusMutationRequest(String text) {
+    const mutationVerbs = ['记录', '补记', '补录', '新增', '创建', '添加'];
+    const readOnlyWords = [
+      '查看',
+      '看看',
+      '查询',
+      '查',
+      '检索',
+      '统计',
+      '分析',
+      '汇总',
+      '明细',
+      '列表',
+      '情况',
+      '趋势',
+      '结果',
+      '效率',
+      '为什么',
+      '怎么',
+      '如何',
+      '怎样',
+      '能不能',
+      '可不可以',
+      '方法',
+      '步骤',
+      '指南',
+      '多少',
+      '多久',
+      '什么',
+      '哪些',
+      '最近',
+      '是否',
+      '没有',
+      '知道',
+      '是不是',
+      '哪个',
+      '吗',
+      '呢',
+      '？',
+      '?',
+    ];
+    final durationPattern = RegExp(r'(?:\d+|[一二两三四五六七八九十]+)\s*(?:分钟|小时)');
+    for (final clause in text.split(RegExp(r'[，。；,;]|然后|并且|并|同时|再'))) {
+      final hasExplicitVerb = mutationVerbs.any(
+        (verb) => isExplicitlyRequested(clause, verb),
+      );
+      if (hasExplicitVerb &&
+          _matchesAny(clause, const ['专注', '番茄']) &&
+          durationPattern.hasMatch(clause) &&
+          !_matchesAny(clause, readOnlyWords)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /// Disambiguates an amount-bearing transaction record from finance queries
+  /// that also contain broad words such as "记录" or "支出".
+  static bool isExplicitFinanceDraftRequest(String text) {
+    const mutationVerbs = [
+      '记一笔',
+      '记录一笔',
+      '新增一笔',
+      '添加一笔',
+      '消费了',
+      '花了',
+      '买了',
+      '购买了',
+      '进账',
+      '收款',
+      '记录',
+    ];
+    const readOnlyWords = [
+      '查看',
+      '看看',
+      '查询',
+      '查',
+      '检索',
+      '统计',
+      '汇总',
+      '分析',
+      '明细',
+      '列表',
+      '情况',
+      '趋势',
+      '结果',
+      '为什么',
+      '怎么',
+      '如何',
+      '怎样',
+      '能不能',
+      '可不可以',
+      '方法',
+      '步骤',
+      '指南',
+      '多少',
+      '是否',
+      '没有',
+      '知道',
+      '是不是',
+      '哪个',
+      '有没有',
+      '吗',
+      '呢',
+      '？',
+      '?',
+    ];
+    final amountPattern = RegExp(r'\d+(?:\.\d+)?\s*(?:元|块(?:钱)?|人民币|¥|￥)');
+    for (final clause in text.split(RegExp(r'[，。；！？,;]|然后|并且|并|同时|再'))) {
+      if (amountPattern.hasMatch(clause) &&
+          mutationVerbs.any((verb) => isExplicitlyRequested(clause, verb)) &&
+          !_matchesAny(clause, readOnlyWords)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   static bool hasExplicitFinanceUpdateIntent(String text) {
@@ -1048,9 +1258,33 @@ ${sections.join('\n')}
       final prefix = text
           .substring(clauseStart, index)
           .replaceAll(RegExp(r'(?:别|不要)忘(?:了|记)?'), '');
-      final completedStatus =
-          trigger == '完成' &&
-          RegExp(r'(?:已|已经|已被|已经被|需要|应该|尚未|未|待)\s*$').hasMatch(prefix);
+      final suffixBoundary = text.indexOf(
+        RegExp(r'[，。；！？,;]'),
+        index + trigger.length,
+      );
+      final suffix = text.substring(
+        index + trigger.length,
+        suffixBoundary == -1 ? text.length : suffixBoundary,
+      );
+      final mutationStatus = RegExp(r'(?:已|已经|已被|已经被|需要|应该|尚未|未|待|没|没有|被)\s*$')
+          .hasMatch(prefix);
+      final mutationQuestion =
+          RegExp(r'(?:哪些|什么|多少|哪几|几个|几项|几条|几件|是否|有没有|有无)[^，。；！？,;]*$')
+              .hasMatch(prefix) ||
+          RegExp(
+            r'^(?:(?:了|过|的|得)?)(?:哪些|什么|多少|哪几|几个|几项|几条|几件|吗|呢|情况|状态|明细|详情|得怎么样|得如何|是否|有没有|有无)',
+          ).hasMatch(suffix) ||
+          RegExp(r'^[^，。；！？,;]{1,10}(?:有哪些|有多少|是什么|什么情况|什么状态|吗|呢)$')
+              .hasMatch(suffix);
+      final hasExplicitCommandPrefix = RegExp(
+        r'(?:请|麻烦|帮我|帮忙|把|将|给我|替我)[^，。；！？,;]*$',
+      ).hasMatch(prefix);
+      final firstPersonReport = RegExp(r'^(?:我|本人)(?!想|要|希望|需要|请|麻烦|让你|帮我)')
+          .hasMatch(prefix);
+      final reportedMutation =
+          RegExp(r'^的').hasMatch(suffix) ||
+          (RegExp(r'^(?:了|过)').hasMatch(suffix) &&
+              (!hasExplicitCommandPrefix || firstPersonReport));
       final completionMetric =
           trigger == '完成' &&
           RegExp(r'^(?:率|情况|数量|进度|状态)')
@@ -1059,14 +1293,16 @@ ${sections.join('\n')}
           .hasMatch(prefix);
       final howToQuestion = RegExp(r'(?:为什么|怎么|如何|怎样|是否|能不能|可不可以)[^，。；！？,;]*$')
           .hasMatch(prefix);
-      if (completedStatus ||
+      if (mutationStatus ||
+          mutationQuestion ||
+          reportedMutation ||
           completionMetric ||
           descriptiveStatus ||
           howToQuestion) {
         searchFrom = index + trigger.length;
         continue;
       }
-      final negations = RegExp(r'不|别|无需|禁止|避免').allMatches(prefix).toList();
+      final negations = RegExp(r'不|别|没|无需|禁止|避免').allMatches(prefix).toList();
       final contrasts = RegExp(r'但是|不过|但|而是').allMatches(prefix).toList();
       final isNegated =
           negations.isNotEmpty &&
@@ -1304,12 +1540,37 @@ ${sections.join('\n')}
     '以后所有周期',
     '结束循环',
   ];
+  static const todoCompletionMutationKeywords = [
+    '完成',
+    '做完',
+    '办完',
+    '勾选',
+    '打钩',
+    '勾掉',
+    '勾上',
+    '勾一下',
+    '打上勾',
+    '打个勾',
+    '标记完成',
+    '标为完成',
+    '标记为完成',
+  ];
   static const _existingTodoKeywords = [
     '修改',
     '更新',
-    '完成',
+    '编辑',
+    '更改',
+    '改成',
+    '改为',
+    '调成',
+    '调为',
+    ...todoCompletionMutationKeywords,
     '删掉',
     '删除',
+    '清空',
+    '清掉',
+    '清除',
+    '去掉',
     '延期',
     '改期',
     '改到',
@@ -1387,7 +1648,7 @@ ${sections.join('\n')}
     '余额',
     '预算',
   ];
-  static const _todoListMutationKeywords = [
+  static const todoListMutationKeywords = [
     '新建',
     '新增',
     '创建',
@@ -1396,11 +1657,18 @@ ${sections.join('\n')}
     '移除',
     '修改',
     '更新',
+    '编辑',
+    '更改',
+    '改成',
+    '改为',
+    '调成',
+    '调为',
     '删除',
     '删除掉',
     '删掉',
     '删掉了',
     '删了',
+    '清掉',
     '去掉',
     '清除',
     '撤销',
@@ -1419,12 +1687,13 @@ ${sections.join('\n')}
     '拆分',
     '合并',
     '重排',
-    '完成',
+    ...todoCompletionMutationKeywords,
     '把第',
   ];
-  static const _focusMutationKeywords = [
+  static const focusMutationKeywords = [
     '补记',
     '记录专注',
+    '记录一次专注',
     '记录这次专注',
     '记录一下专注',
     '记录我今天专注',
@@ -1446,10 +1715,8 @@ ${sections.join('\n')}
     '新增',
     '创建',
     '添加',
-    ..._todoListMutationKeywords,
-    ..._focusMutationKeywords,
-    '改成',
-    '改为',
+    ...todoListMutationKeywords,
+    ...focusMutationKeywords,
     '清空',
     '加入',
     '安排到',
@@ -1481,8 +1748,53 @@ ${sections.join('\n')}
     '添加一笔',
   ];
   static const _groupKeywords = ['分类', '文件夹', '归类', '分组'];
-  static const _countdownKeywords = ['倒计时', '倒数日', '倒數日', '截止', 'ddl'];
+  static const _groupManagementKeywords = [
+    '新增分类',
+    '新建分类',
+    '创建分类',
+    '修改分类',
+    '更新分类',
+    '删除分类',
+    '重命名分类',
+    '新增文件夹',
+    '新建文件夹',
+    '创建文件夹',
+    '修改文件夹',
+    '更新文件夹',
+    '删除文件夹',
+    '重命名文件夹',
+    '新增分组',
+    '新建分组',
+    '创建分组',
+    '修改分组',
+    '更新分组',
+    '删除分组',
+  ];
+  static const _countdownKeywords = ['倒计时', '倒数日', '倒數日', 'ddl'];
   static const _tagKeywords = ['标签', '番茄标签', 'tag'];
+  static const _tagManagementKeywords = [
+    '新增标签',
+    '新建标签',
+    '创建标签',
+    '修改标签',
+    '更新标签',
+    '删除标签',
+    '重命名标签',
+    '新增番茄标签',
+    '新建番茄标签',
+    '创建番茄标签',
+    '修改番茄标签',
+    '更新番茄标签',
+    '删除番茄标签',
+    '重命名番茄标签',
+    '新增专注标签',
+    '新建专注标签',
+    '创建专注标签',
+    '修改专注标签',
+    '更新专注标签',
+    '删除专注标签',
+    '重命名专注标签',
+  ];
   static const _financeKeywords = [
     '记账',
     '账单',
@@ -1541,6 +1853,14 @@ ${sections.join('\n')}
     '分钟',
     '效率',
     '集中',
+  ];
+  static const _timeLogActionKeywords = [
+    '专注',
+    '番茄',
+    '时间记录',
+    '专注记录',
+    '专注日志',
+    '时间日志',
   ];
   static const _conflictKeywords = ['冲突', '同步', '版本', '覆盖', '合并冲突', '冲突解决'];
   static const _teamKeywords = ['团队', '协作', '成员', '管理员', '邀请', '队友', '小组'];

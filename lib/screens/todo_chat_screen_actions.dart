@@ -584,23 +584,59 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
 
     String? categoryUuid = existing.categoryUuid;
     if (action.hasCategory) {
-      final resolvedCategory = _findFinanceCategoryUuid(
+      final requestedCategoryUuid = action.categoryUuid?.trim();
+      final categoryType = type == FinanceTransactionType.income
+          ? FinanceCategoryType.income
+          : FinanceCategoryType.expense;
+      final categoryById = categories
+          .where(
+            (item) =>
+                item.uuid == requestedCategoryUuid &&
+                item.type == categoryType &&
+                !item.isDeleted,
+          )
+          .map((item) => item.uuid)
+          .firstOrNull;
+      final categoryByName = _findFinanceCategoryUuid(
         categories,
         action.categoryName,
         type,
       );
-      categoryUuid =
-          action.categoryUuid ??
-          resolvedCategory ??
-          (action.categoryName?.trim().isNotEmpty == true
-              ? existing.categoryUuid
-              : null);
+      if (categoryById != null) {
+        categoryUuid = categoryById;
+      } else if (requestedCategoryUuid?.isNotEmpty == true) {
+        // A stale or mismatched UUID must not be persisted. A unique local
+        // name match is a safe recovery; otherwise leave the current value.
+        categoryUuid = categoryByName ?? existing.categoryUuid;
+      } else if (action.categoryName?.trim().isNotEmpty == true) {
+        categoryUuid = categoryByName ?? existing.categoryUuid;
+      } else {
+        categoryUuid = null;
+      }
     }
     String? paymentMethodUuid = existing.paymentMethodUuid;
     if (action.hasPaymentMethod) {
-      paymentMethodUuid =
-          action.paymentMethodUuid ??
-          _findFinancePaymentUuid(paymentMethods, action.paymentMethodName);
+      final requestedPaymentMethodUuid = action.paymentMethodUuid?.trim();
+      final paymentMethodById = paymentMethods
+          .where(
+            (item) =>
+                item.uuid == requestedPaymentMethodUuid && !item.isDeleted,
+          )
+          .map((item) => item.uuid)
+          .firstOrNull;
+      final paymentMethodByName = _findFinancePaymentUuid(
+        paymentMethods,
+        action.paymentMethodName,
+      );
+      if (paymentMethodById != null) {
+        paymentMethodUuid = paymentMethodById;
+      } else if (requestedPaymentMethodUuid?.isNotEmpty == true) {
+        paymentMethodUuid = paymentMethodByName ?? existing.paymentMethodUuid;
+      } else if (action.paymentMethodName?.trim().isNotEmpty == true) {
+        paymentMethodUuid = paymentMethodByName ?? existing.paymentMethodUuid;
+      } else {
+        paymentMethodUuid = null;
+      }
     }
     final requestedDate = action.transactionDate?.trim();
     final transactionDate =
@@ -651,7 +687,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
     final categoryType = type == FinanceTransactionType.income
         ? FinanceCategoryType.income
         : FinanceCategoryType.expense;
-    return categories
+    final matches = categories
         .where((item) => item.type == categoryType && !item.isDeleted)
         .where(
           (item) =>
@@ -662,7 +698,8 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
                   wanted,
         )
         .map((item) => item.uuid)
-        .firstOrNull;
+        .toSet();
+    return matches.length == 1 ? matches.single : null;
   }
 
   String? _findFinancePaymentUuid(
@@ -671,11 +708,12 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
   ) {
     final wanted = _normalizeFinanceOption(name);
     if (wanted.isEmpty) return null;
-    return methods
+    final matches = methods
         .where((item) => !item.isDeleted)
         .where((item) => _normalizeFinanceOption(item.name) == wanted)
         .map((item) => item.uuid)
-        .firstOrNull;
+        .toSet();
+    return matches.length == 1 ? matches.single : null;
   }
 
   String _normalizeFinanceOption(String? value) {
@@ -688,11 +726,41 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
   Future<void> _deleteFinanceAction(FinanceAiAction action) async {
     final id = action.transactionId;
     if (id == null || id.isEmpty) return;
+    final existing = await FinanceRepository.getTransaction(id);
+    if (!mounted) return;
+    if (existing == null || existing.isDeleted) {
+      AppSnackBars.showSnackBar(
+        context,
+        const SnackBar(content: Text('这笔账单已不存在或已被删除，请重新查询后再操作')),
+      );
+      return;
+    }
+
+    final typeLabel = switch (existing.type) {
+      FinanceTransactionType.expense => '支出',
+      FinanceTransactionType.income => '收入',
+      FinanceTransactionType.refund => '退款',
+    };
+    final merchant = existing.merchant?.trim();
+    final note = existing.note?.trim();
+    final details = [
+      '${existing.transactionDate} · $typeLabel · ${formatFinanceAmount(existing.amountMinor)}',
+      if (merchant?.isNotEmpty == true) '商家：$merchant',
+      if (note?.isNotEmpty == true) '备注：$note',
+    ].join('\n');
     final confirmed = await showAppDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('删除这笔账单？'),
-        content: const Text('账单会移入记账回收站，之后仍可恢复。'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(details),
+            const SizedBox(height: 12),
+            const Text('账单会移入记账回收站，之后仍可恢复。'),
+          ],
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -1098,6 +1166,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
                                       onChanged: (val) {
                                         setState(() {
                                           todo.groupId = val;
+                                          todo.hasGroupId = true;
                                         });
                                         _saveHistorySilently();
                                       },
@@ -2174,6 +2243,47 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
           (action) => action.isSelected && !action.isAdded && !action.isIgnored,
         )
         .toList();
+    final hasUntitledCreation = pendingActions.any(
+      (action) =>
+          (action.type == AiTodoActionType.createTodo ||
+              action.type == AiTodoActionType.splitTodo ||
+              action.type == AiTodoActionType.mergeTodos) &&
+          action.title?.trim().isNotEmpty != true,
+    );
+    if (hasUntitledCreation) {
+      AppSnackBars.showSnackBar(
+        context,
+        const SnackBar(content: Text('待办标题为空，请先编辑确认卡再执行')),
+      );
+      return;
+    }
+    final hasUnspecifiedCategory = pendingActions.any(
+      (action) =>
+          action.type == AiTodoActionType.categorizeTodo && !action.hasGroupId,
+    );
+    final hasUnknownCategory = pendingActions.any((action) {
+      final groupId = action.groupId?.trim();
+      return action.isTodoAction &&
+          action.mutatesExistingItem &&
+          action.hasGroupId &&
+          groupId?.isNotEmpty == true &&
+          !widget.todoGroups.any(
+            (group) => group.id == groupId && !group.isDeleted,
+          );
+    });
+    if (hasUnspecifiedCategory || hasUnknownCategory) {
+      AppSnackBars.showSnackBar(
+        context,
+        SnackBar(
+          content: Text(
+            hasUnspecifiedCategory
+                ? '请先在确认卡中选择目标分类；移入默认分类时也请明确选择“默认分类”'
+                : '目标分类已不存在，请在确认卡中重新选择',
+          ),
+        ),
+      );
+      return;
+    }
     final hasPlanningActions = msg.todoActions!.any(
       (action) => action.isPlanBlockAction,
     );
@@ -2236,20 +2346,20 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
         actions: result.newHabitActions,
       );
       if (widget.onTodosBatchAction != null) {
-        widget.onTodosBatchAction!(result.newTodos, result.updatedTodos);
+        await widget.onTodosBatchAction!(result.newTodos, result.updatedTodos);
       } else {
         // Fallback to separate calls
         if (result.newTodos.isNotEmpty) {
           if (widget.onTodosBatchInserted != null) {
-            widget.onTodosBatchInserted!(result.newTodos);
+            await widget.onTodosBatchInserted!(result.newTodos);
           } else if (widget.onTodoInserted != null) {
             for (final t in result.newTodos) {
-              widget.onTodoInserted!(t);
+              await widget.onTodoInserted!(t);
             }
           }
         }
         if (result.updatedTodos.isNotEmpty && widget.onTodosUpdated != null) {
-          widget.onTodosUpdated!(result.updatedTodos);
+          await widget.onTodosUpdated!(result.updatedTodos);
         }
       }
 

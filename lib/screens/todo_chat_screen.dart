@@ -5,7 +5,7 @@ import 'dart:math' as math;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:intl/intl.dart';
+import 'package:intl/intl.dart' hide TextDirection;
 
 import '../models.dart';
 import '../models/ai_todo_action.dart';
@@ -15,6 +15,7 @@ import '../models/ai_context_mode.dart';
 import '../widgets/ai_chat_markdown.dart';
 import '../widgets/ai_chat_thinking_panel.dart';
 import '../widgets/ai_chat_composer.dart';
+import '../widgets/ai_water_border.dart';
 import '../services/ai_query_tool_service.dart';
 import '../services/ai_tool_result_context.dart';
 import '../services/ai_tool_chat_runner.dart';
@@ -94,10 +95,13 @@ class TodoChatScreen extends StatefulWidget {
   final List<PomodoroTag> pomodoroTags;
   final List<FixedScheduleItem> fixedSchedules;
   final List<AiTodoAction> initialCategorizationActions;
-  final Function(TodoItem)? onTodoInserted;
-  final Function(List<TodoItem>)? onTodosBatchInserted;
-  final Function(List<TodoItem>)? onTodosUpdated;
-  final Function(List<TodoItem> inserted, List<TodoItem> updated)?
+  final FutureOr<void> Function(TodoItem)? onTodoInserted;
+  final FutureOr<void> Function(List<TodoItem>)? onTodosBatchInserted;
+  final FutureOr<void> Function(List<TodoItem>)? onTodosUpdated;
+  final FutureOr<void> Function(
+    List<TodoItem> inserted,
+    List<TodoItem> updated,
+  )?
   onTodosBatchAction;
   final Function(List<TodoGroup> groups)? onTodoGroupsChanged;
   final Function(List<FixedScheduleItem> schedules)? onFixedSchedulesChanged;

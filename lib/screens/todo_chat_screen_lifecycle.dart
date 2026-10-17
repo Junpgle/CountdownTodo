@@ -250,6 +250,12 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
     final prompt = AiTodoContextBuilder.buildActionProtocolPrompt(
       userText,
       previousUserMessage: _latestUserTextFromHistory(),
+      previousAssistantMessage:
+          _messages.reversed
+              .where((message) => message.role == ChatRole.assistant)
+              .firstOrNull
+              ?.content ??
+          '',
     );
     final categories = <String>[];
     void addIf(bool cond, String label) {
@@ -569,7 +575,11 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
     });
   }
 
-  String _buildSystemPrompt({bool nativeToolCalls = false, bool? queryTools}) {
+  String _buildSystemPrompt({
+    bool nativeToolCalls = false,
+    bool? queryTools,
+    bool settingsNavigation = true,
+  }) {
     return AiTodoContextBuilder.buildLeanSystemPrompt(
       customPrompt: _customPrompt,
       promptEnabled: _promptEnabled,
@@ -579,6 +589,7 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
           (nativeToolCalls &&
               _smartContext &&
               _contextMode == AiContextMode.functionCalling),
+      settingsNavigation: settingsNavigation,
     );
   }
 
@@ -600,6 +611,11 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
         'content': _buildSystemPrompt(
           nativeToolCalls: nativeToolCalls,
           queryTools: queryTools,
+          settingsNavigation: AiSettingsNavigationService.shouldOfferForRequest(
+            pendingUserText?.trim().isNotEmpty == true
+                ? pendingUserText!.trim()
+                : _latestUserTextFromHistory(),
+          ),
         ),
       },
     ];
@@ -624,6 +640,12 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
     final previousUserMessage = _latestUserTextFromHistory(
       excludingMessageId: currentUserMessageId,
     );
+    final previousAssistantMessage =
+        _messages.reversed
+            .where((message) => message.role == ChatRole.assistant)
+            .firstOrNull
+            ?.content ??
+        '';
     if (protocolSourceText.isNotEmpty && !nativeToolCalls) {
       apiMessages.add({
         'role': 'system',
@@ -631,14 +653,10 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
           AiNativeToolDefinitionBuilder.resolvePlanningRequest(
             protocolSourceText,
             previousUserMessage: previousUserMessage,
-            previousAssistantMessage:
-                _messages.reversed
-                    .where((message) => message.role == ChatRole.assistant)
-                    .firstOrNull
-                    ?.content ??
-                '',
+            previousAssistantMessage: previousAssistantMessage,
           ),
           previousUserMessage: previousUserMessage,
+          previousAssistantMessage: previousAssistantMessage,
         ),
       });
     }

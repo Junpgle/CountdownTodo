@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../utils/page_transitions.dart';
+import 'ai_water_border.dart';
 import 'floating_glass_control.dart';
 
 enum _ComposerAction { copy, paste, retry, model, settings, clear }
@@ -260,14 +261,19 @@ class _AiChatComposerState extends State<AiChatComposer> {
                             : const Icon(Icons.attach_file_rounded, size: 20),
                       ),
                       if (widget.onVoice != null)
-                        IconButton(
-                          key: const ValueKey('ai-chat-voice'),
-                          onPressed: widget.isLoading || widget.hasAttachment
-                              ? null
-                              : widget.onVoice,
-                          tooltip: '语音对话',
-                          style: plainStyle,
-                          icon: const Icon(Icons.mic_rounded, size: 20),
+                        AiWaterRippleBorder(
+                          isLight:
+                              Theme.of(context).brightness == Brightness.light,
+                          borderRadius: BorderRadius.circular(16),
+                          child: IconButton(
+                            key: const ValueKey('ai-chat-voice'),
+                            onPressed: widget.isLoading || widget.hasAttachment
+                                ? null
+                                : widget.onVoice,
+                            tooltip: '语音对话',
+                            style: plainStyle,
+                            icon: const Icon(Icons.mic_rounded, size: 20),
+                          ),
                         ),
                       option(
                         Icons.psychology_rounded,

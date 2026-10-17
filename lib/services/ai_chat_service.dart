@@ -211,6 +211,11 @@ class AiChatService {
               'glm-5.1',
               'glm-5.2',
               'glm-5.3',
+              'glm-5.3-flash',
+              'glm-5.3-flashx',
+              'glm-5-turbo',
+              'glm-4.6v',
+              'glm-4.6v-flash',
             }.contains(normalizedModel),
       'deepseek' =>
         host == 'api.deepseek.com' &&
@@ -233,6 +238,12 @@ class AiChatService {
       mimoTokenPlanProvider =>
         host == 'token-plan-cn.xiaomimimo.com' &&
             const {'mimo-v2.5', 'mimo-v2.5-pro'}.contains(normalizedModel),
+      'nvidia_nim' =>
+        host == 'integrate.api.nvidia.com' &&
+            const {
+              'deepseek-ai/deepseek-v4-flash',
+              'deepseek-ai/deepseek-v4-pro',
+            }.contains(normalizedModel),
       _ => false,
     };
   }

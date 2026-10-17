@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -9,6 +10,7 @@ import '../services/mimo_asr_service.dart';
 import '../models/chat_message.dart';
 import '../services/quick_voice_recorder.dart';
 import '../utils/page_transitions.dart';
+import 'ai_water_border.dart';
 import 'quick_voice_container_transition.dart';
 import 'quick_voice_gesture.dart';
 
@@ -143,6 +145,8 @@ class _QuickVoiceChatSheetState extends State<QuickVoiceChatSheet>
   bool _closing = false;
   Uint8List? _audio;
   late final AnimationController _pulse;
+  late final ValueListenable<double>? _waveLevelListenable;
+  late final Listenable _waveRepaintListenable;
   bool _reduceMotion = false;
   QuickVoiceTarget _target = QuickVoiceTarget.send;
 
@@ -156,6 +160,11 @@ class _QuickVoiceChatSheetState extends State<QuickVoiceChatSheet>
       vsync: this,
       duration: const Duration(milliseconds: 950),
     );
+    final levelListenable = _recorder is QuickVoiceLevelSource
+        ? (_recorder as QuickVoiceLevelSource).level
+        : null;
+    _waveLevelListenable = levelListenable;
+    _waveRepaintListenable = Listenable.merge([_pulse, ?levelListenable]);
     _target = widget.gesture?.target ?? QuickVoiceTarget.send;
     widget.gesture?.addListener(_handleGesture);
     _operation = Future<void>.value();
@@ -443,12 +452,15 @@ class _QuickVoiceChatSheetState extends State<QuickVoiceChatSheet>
             QuickVoiceTarget.cancel => '松手取消',
             QuickVoiceTarget.openAi => '松手进入 AI · 保留草稿',
           };
-    return Container(
-      constraints: const BoxConstraints(maxWidth: 520),
-      child: Material(
-        color: colors.surfaceContainerHigh,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
-        child: SafeArea(
+    return AiWaterRippleBorder(
+      isLight: Theme.of(context).brightness == Brightness.light,
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 520),
+        child: Material(
+          color: colors.surfaceContainerHigh,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+          child: SafeArea(
           top: false,
           child: SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(24, 24, 24, 28),
@@ -493,21 +505,7 @@ class _QuickVoiceChatSheetState extends State<QuickVoiceChatSheet>
                 ),
                 const SizedBox(height: 18),
                 if (recording)
-                  AnimatedBuilder(
-                    animation: _pulse,
-                    builder: (context, _) {
-                      final source = _recorder;
-                      if (source is QuickVoiceLevelSource) {
-                        return ValueListenableBuilder<double>(
-                          valueListenable:
-                              (source as QuickVoiceLevelSource).level,
-                          builder: (context, level, _) =>
-                              _buildWave(color, level),
-                        );
-                      }
-                      return _buildWave(color, 0);
-                    },
-                  )
+                  _buildWave(color)
                 else
                   const SizedBox(
                     width: 32,
@@ -524,6 +522,7 @@ class _QuickVoiceChatSheetState extends State<QuickVoiceChatSheet>
                   TextButton(onPressed: _cancel, child: const Text('取消等待')),
               ],
             ),
+          ),
           ),
         ),
       ),
@@ -584,27 +583,81 @@ class _QuickVoiceChatSheetState extends State<QuickVoiceChatSheet>
     );
   }
 
-  Widget _buildWave(Color color, double level) {
+  Widget _buildWave(Color color) {
     return SizedBox(
       height: 46,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: List.generate(19, (index) {
-          final motion = _reduceMotion
-              ? 0.5
-              : (math.sin(_pulse.value * math.pi * 2 + index * 0.7) + 1) / 2;
-          final envelope = 1 - (index - 9).abs() / 12;
-          return Container(
-            width: 4,
-            height: 6 + envelope * (8 * motion + level * 30),
-            margin: const EdgeInsets.symmetric(horizontal: 3),
-            decoration: BoxDecoration(
-              color: color,
-              borderRadius: BorderRadius.circular(4),
-            ),
-          );
-        }),
+      child: RepaintBoundary(
+        child: CustomPaint(
+          painter: _QuickVoiceWavePainter(
+            animation: _pulse,
+            levelListenable: _waveLevelListenable,
+            repaintListenable: _waveRepaintListenable,
+            color: color,
+            reduceMotion: _reduceMotion,
+          ),
+          child: const SizedBox.expand(),
+        ),
       ),
     );
   }
+}
+
+class _QuickVoiceWavePainter extends CustomPainter {
+  static const int _barCount = 19;
+  static const double _barWidth = 4;
+  static const double _barMargin = 3;
+  static const double _barStride = _barWidth + _barMargin * 2;
+  static const double _totalWidth = _barCount * _barStride;
+  static final List<double> _envelopes = List.generate(
+    _barCount,
+    (index) => 1 - (index - 9).abs() / 12,
+    growable: false,
+  );
+
+  final Animation<double> animation;
+  final ValueListenable<double>? levelListenable;
+  final Listenable repaintListenable;
+  final Color color;
+  final bool reduceMotion;
+  final Paint _paint = Paint()..style = PaintingStyle.fill;
+
+  _QuickVoiceWavePainter({
+    required this.animation,
+    required this.levelListenable,
+    required this.repaintListenable,
+    required this.color,
+    required this.reduceMotion,
+  }) : super(repaint: repaintListenable);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final level = levelListenable?.value ?? 0.0;
+    final firstBarX = (size.width - _totalWidth) / 2 + _barMargin;
+    final pulseValue = animation.value;
+    _paint.color = color;
+
+    for (var index = 0; index < _barCount; index++) {
+      final motion = reduceMotion
+          ? 0.5
+          : (math.sin(pulseValue * math.pi * 2 + index * 0.7) + 1) / 2;
+      final height = 6 + _envelopes[index] * (8 * motion + level * 30);
+      final left = firstBarX + index * _barStride;
+      final top = (size.height - height) / 2;
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(left, top, _barWidth, height),
+          const Radius.circular(4),
+        ),
+        _paint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _QuickVoiceWavePainter oldDelegate) =>
+      oldDelegate.animation != animation ||
+      oldDelegate.levelListenable != levelListenable ||
+      oldDelegate.repaintListenable != repaintListenable ||
+      oldDelegate.color != color ||
+      oldDelegate.reduceMotion != reduceMotion;
 }

@@ -20,6 +20,7 @@ import '../utils/local_image_provider.dart';
 import '../services/time_estimation_service.dart';
 import '../services/time_estimation_repository.dart';
 import '../widgets/time_estimation_hint.dart';
+import '../widgets/ai_water_border.dart';
 import '../services/suggestion_feedback_service.dart';
 import '../services/feature_tip_service.dart';
 import '../services/fixed_schedule_recurrence_service.dart';
@@ -110,6 +111,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
   bool _isParsing = false;
   bool _isSaving = false;
   List<ParsedTodoResult> _parsedResults = [];
+  bool _parsedWithAi = false;
   int _currentParseIndex = 0;
   String? _currentOriginalText;
   String? _selectedImagePath;
@@ -658,6 +660,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     }
     setState(() {
       _parsedResults = results;
+      _parsedWithAi = false;
       _currentParseIndex = 0;
       _isParsing = false;
       _currentOriginalText = input;
@@ -818,6 +821,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
 
       setState(() {
         _parsedResults = parsedResultsList;
+        _parsedWithAi = true;
         _currentParseIndex = 0;
         _isParsing = false;
         _currentOriginalText = input;
@@ -1874,10 +1878,15 @@ class _AddTodoScreenState extends State<AddTodoScreen>
           width: 200,
           child: KeyedSubtree(
             key: _aiTabSwitchKey,
-            child: _buildCustomSegmentedControl(
-              labels: const ["手动创建", "AI 识别"],
-              selectedIndex: _selectedTabIndex,
-              onChanged: (idx) => setState(() => _selectedTabIndex = idx),
+            child: AiWaterRippleBorder(
+              enabled: _selectedTabIndex == 1,
+              isLight: Theme.of(context).brightness == Brightness.light,
+              borderRadius: BorderRadius.circular(18),
+              child: _buildCustomSegmentedControl(
+                labels: const ["手动创建", "AI 识别"],
+                selectedIndex: _selectedTabIndex,
+                onChanged: (idx) => setState(() => _selectedTabIndex = idx),
+              ),
             ),
           ),
         ),
@@ -2725,9 +2734,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     final todoCount = results?.length ?? 0;
     if (todoCount == 0) return const SizedBox.shrink();
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: Material(
+    return Material(
         color: Theme.of(context).colorScheme.primaryContainer
             .withValues(alpha: 0.3),
         borderRadius: BorderRadius.circular(16),
@@ -2812,7 +2819,6 @@ class _AddTodoScreenState extends State<AddTodoScreen>
             ),
           ),
         ),
-      ),
     );
   }
 
@@ -2824,7 +2830,14 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       child: Column(
         children: [
           // 🚀 待确认的图片识别事项入口
-          if (_pendingTodoConfirm != null) _buildPendingTodoCard(),
+          if (_pendingTodoConfirm != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: AiWaterRippleBorder(
+                isLight: Theme.of(context).brightness == Brightness.light,
+                child: _buildPendingTodoCard(),
+              ),
+            ),
           OptionalLiquidGlassCard(
             padding: const EdgeInsets.all(16),
             borderRadius: 16,
@@ -2889,12 +2902,16 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                     ),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: FilledButton.icon(
-                        onPressed: _isParsing ? null : _doLLMParse,
-                        icon: const Icon(Icons.memory, size: 18),
-                        label: _isParsing
-                            ? _buildBouncingDots()
-                            : const Text("大模型深思"),
+                      child: AiWaterRippleBorder(
+                        isLight:
+                            Theme.of(context).brightness == Brightness.light,
+                        child: FilledButton.icon(
+                          onPressed: _isParsing ? null : _doLLMParse,
+                          icon: const Icon(Icons.memory, size: 18),
+                          label: _isParsing
+                              ? _buildBouncingDots()
+                              : const Text("大模型深思"),
+                        ),
                       ),
                     ),
                   ],
@@ -2904,23 +2921,27 @@ class _AddTodoScreenState extends State<AddTodoScreen>
           ),
 
           if (_parsedResults.isNotEmpty)
-            OptionalLiquidGlassCard(
-              margin: const EdgeInsets.only(top: 16),
-              padding: const EdgeInsets.all(16),
-              borderRadius: 16,
-              highContrast: true,
-              fallbackDecoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surface,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.02),
-                    blurRadius: 10,
-                  ),
-                ],
-              ),
-              child: Column(
-                children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 16),
+              child: AiWaterRippleBorder(
+                enabled: _parsedWithAi,
+                isLight: Theme.of(context).brightness == Brightness.light,
+                child: OptionalLiquidGlassCard(
+                padding: const EdgeInsets.all(16),
+                borderRadius: 16,
+                highContrast: true,
+                fallbackDecoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surface,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.02),
+                      blurRadius: 10,
+                    ),
+                  ],
+                ),
+                child: Column(
+                  children: [
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -2979,7 +3000,9 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                       _parsedResults[_currentParseIndex].recurrence,
                     ),
                   ),
-                ],
+                  ],
+                ),
+                ),
               ),
             ),
         ],
@@ -3009,33 +3032,32 @@ class _AddTodoScreenState extends State<AddTodoScreen>
   }
 
   Widget _buildBouncingDots() {
+    final dotColor = Theme.of(context).colorScheme.primary;
     return Row(
       mainAxisSize: MainAxisSize.min,
       mainAxisAlignment: MainAxisAlignment.center,
       children: List.generate(3, (index) {
-        return AnimatedBuilder(
-          animation: _dotsController,
-          builder: (context, child) {
-            final double value = _dotsController.value;
-            final double delay = index * 0.2;
-            final double animationValue = (value + delay) % 1.0;
-            final double scale =
-                0.5 + 0.5 * (1.0 - (animationValue - 0.5).abs() * 2.0);
-            return Container(
-              margin: const EdgeInsets.symmetric(horizontal: 3),
-              child: Transform.scale(
-                scale: scale,
-                child: Container(
-                  width: 6,
-                  height: 6,
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.primary,
-                    shape: BoxShape.circle,
-                  ),
-                ),
+        return Container(
+          margin: const EdgeInsets.symmetric(horizontal: 3),
+          child: AnimatedBuilder(
+            animation: _dotsController,
+            child: Container(
+              width: 6,
+              height: 6,
+              decoration: BoxDecoration(
+                color: dotColor,
+                shape: BoxShape.circle,
               ),
-            );
-          },
+            ),
+            builder: (context, child) {
+              final double value = _dotsController.value;
+              final double delay = index * 0.2;
+              final double animationValue = (value + delay) % 1.0;
+              final double scale =
+                  0.5 + 0.5 * (1.0 - (animationValue - 0.5).abs() * 2.0);
+              return Transform.scale(scale: scale, child: child);
+            },
+          ),
         );
       }),
     );

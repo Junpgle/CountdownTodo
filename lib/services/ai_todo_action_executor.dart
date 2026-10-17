@@ -281,6 +281,21 @@ class AiTodoActionExecutor {
       }
 
       if (action.mutatesExistingItem) {
+        if (action.type == AiTodoActionType.deleteTodo &&
+            !_hasSuccessfulReplacementForDelete(action, actions)) {
+          continue;
+        }
+        if (action.type == AiTodoActionType.categorizeTodo &&
+            !action.hasGroupId) {
+          continue;
+        }
+        final requestedGroupId = action.groupId?.trim();
+        if (action.hasGroupId && requestedGroupId?.isNotEmpty == true) {
+          final groupExists = existingTodoGroups.any(
+            (group) => group.id == requestedGroupId && !group.isDeleted,
+          );
+          if (!groupExists) continue;
+        }
         final updates = _buildUpdatedTodos(action, existingTodos);
         if (updates.isNotEmpty) {
           for (final updated in updates) {
@@ -1541,6 +1556,29 @@ class AiTodoActionExecutor {
     return updates;
   }
 
+  static bool _hasSuccessfulReplacementForDelete(
+    AiTodoAction deletion,
+    List<AiTodoAction> actions,
+  ) {
+    final generatedBy = deletion.metadata['generatedBy'];
+    if (generatedBy != 'split_todo' && generatedBy != 'merge_todos') {
+      return true;
+    }
+
+    final sourceId = deletion.todoId?.trim();
+    if (sourceId == null || sourceId.isEmpty) return false;
+    final replacements = actions.where((action) {
+      if (!action.sourceTodoIds.contains(sourceId)) return false;
+      return generatedBy == 'split_todo'
+          ? action.type == AiTodoActionType.splitTodo
+          : action.type == AiTodoActionType.mergeTodos;
+    }).toList();
+    return replacements.isNotEmpty &&
+        replacements.every(
+          (action) => action.isSelected && !action.isIgnored && action.isAdded,
+        );
+  }
+
   static TodoItem? _buildUpdatedTodo(
     AiTodoAction action,
     Map<String, dynamic> existing,
@@ -1666,6 +1704,9 @@ class AiTodoActionExecutor {
     Map<String, int> categoryReminderDefaults,
     DateTime now,
   ) {
+    final title = action.title?.trim();
+    if (title == null || title.isEmpty) return null;
+
     final normalizedTime = _normalizeActionTime(action);
     final recurrence = _parseRecurrenceName(action.recurrence);
     final recurrenceEndDate = _parseExistingDate(action.recurrenceEndDate);
@@ -1694,7 +1735,7 @@ class AiTodoActionExecutor {
     }
     final gId = action.groupId;
     final todo = TodoItem(
-      title: action.title ?? '未命名待办',
+      title: title,
       remark: _buildRemark(action),
       dueDate: normalizedTime.due,
       createdDate: normalizedTime.start?.toUtc().millisecondsSinceEpoch,

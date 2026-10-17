@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -34,8 +36,8 @@ class AiTodoChatLauncher {
     String? initialMessage,
     bool sendInitialMessage = true,
     ChatUsageSummary? initialVoiceUsageSummary,
-    void Function(List<TodoItem> inserted, List<TodoItem> updated)?
-        onTodosBatchAction,
+    FutureOr<void> Function(List<TodoItem> inserted, List<TodoItem> updated)?
+    onTodosBatchAction,
     void Function(List<TodoGroup> groups)? onTodoGroupsChanged,
     void Function(List<FixedScheduleItem> schedules)? onFixedSchedulesChanged,
   }) async {

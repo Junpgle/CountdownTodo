@@ -344,13 +344,11 @@ class AiActionParser {
               final action = AiTodoAction.fromJson({
                 ...update,
                 'todoId': todoId,
-                'title': update['title'] ?? update['titleSnapshot'],
+                // Categorization must never rename the todo. Use the local
+                // title for the confirmation card instead of model text.
+                'title': todoId == null ? null : existingTodoTitles[todoId],
                 'action': actionData['action'],
               });
-              if ((action.title == null || action.title!.isEmpty) &&
-                  action.todoId != null) {
-                action.title = existingTodoTitles[action.todoId!];
-              }
               return action;
             })
             .where(
@@ -365,17 +363,28 @@ class AiActionParser {
       case 'reschedule_todo':
       case 'bulk_reschedule':
       case 'bulk_reschedule_todo':
-        return _listFromOrSelf(actionData, actionData['updates']).map((update) {
+        final actionName = actionData['action']?.toString() ?? '';
+        final actions = <AiTodoAction>[];
+        for (final update in _listFromOrSelf(
+          actionData,
+          actionData['updates'],
+        )) {
+          final todoId = _resolveExistingTodoId(update, existingTodoTitles);
+          if (todoId == null) continue;
           final action = AiTodoAction.fromJson({
             ...update,
-            'action': actionData['action'],
+            'todoId': todoId,
+            'action': actionName,
           });
-          if ((action.title == null || action.title!.isEmpty) &&
-              action.todoId != null) {
-            action.title = existingTodoTitles[action.todoId!];
+          final proposedTitle = action.title?.trim();
+          if (action.type != AiTodoActionType.updateTodo ||
+              proposedTitle == null ||
+              proposedTitle.isEmpty) {
+            action.title = existingTodoTitles[todoId];
           }
-          return action;
-        }).toList();
+          actions.add(action);
+        }
+        return actions;
       case 'split_todo':
         return _processSplitTodo(actionData, existingTodoTitles);
       case 'merge_todos':
@@ -500,7 +509,10 @@ class AiActionParser {
       });
     }).toList();
 
-    if (data['deleteSource'] == true && sourceTodoId != null) {
+    if (data['deleteSource'] == true &&
+        sourceTodoId != null &&
+        existingTodoTitles.containsKey(sourceTodoId) &&
+        actions.isNotEmpty) {
       actions.add(
         AiTodoAction(
           type: AiTodoActionType.deleteTodo,
@@ -517,7 +529,11 @@ class AiActionParser {
     Map<String, dynamic> data,
     Map<String, String> existingTodoTitles,
   ) {
-    final sourceTodoIds = _stringList(data['sourceTodoIds'] ?? data['todoIds']);
+    final sourceTodoIds = _stringList(data['sourceTodoIds'] ?? data['todoIds'])
+        .map((id) => id.trim())
+        .where(existingTodoTitles.containsKey)
+        .toSet()
+        .toList();
     final todo = data['todo'];
     final actions = <AiTodoAction>[];
     if (todo is Map) {
@@ -531,7 +547,7 @@ class AiActionParser {
       );
     }
 
-    if (data['deleteSources'] == true) {
+    if (data['deleteSources'] == true && todo is Map) {
       for (final id in sourceTodoIds) {
         actions.add(
           AiTodoAction(
@@ -616,17 +632,23 @@ class AiActionParser {
     Map<String, String> existingTodoTitles,
   ) {
     // Providers sometimes return a generic `id` instead of `todoId`. Accept
-    // any explicit alias only when it resolves to a real local todo.
-    for (final value in [
-      todo['todoId'],
-      todo['todo_id'],
-      todo['todoUuid'],
-      todo['id'],
-    ]) {
-      final candidate = value?.toString().trim() ?? '';
-      if (candidate.isNotEmpty && existingTodoTitles.containsKey(candidate)) {
-        return candidate;
-      }
+    // an explicit alias only when all supplied aliases agree and resolve to a
+    // real local todo. Never turn a stale or conflicting ID into a title-based
+    // guess, which could make the confirmation card target a different item.
+    final suppliedIds = {
+      for (final value in [
+        todo['todoId'],
+        todo['todo_id'],
+        todo['todoUuid'],
+        todo['id'],
+      ])
+        if (value?.toString().trim().isNotEmpty == true)
+          value.toString().trim(),
+    };
+    if (suppliedIds.isNotEmpty) {
+      if (suppliedIds.length != 1) return null;
+      final candidate = suppliedIds.single;
+      return existingTodoTitles.containsKey(candidate) ? candidate : null;
     }
 
     final title = (todo['title'] ?? todo['titleSnapshot'] ?? todo['name'])

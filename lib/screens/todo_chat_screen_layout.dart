@@ -1347,18 +1347,19 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
 
     // 3. 基于待办状态
     if (widget.todos.isNotEmpty) {
-      final highPriority = widget.todos
-          .where((t) => (t['priority'] ?? 0) >= 2)
-          .length;
-      if (highPriority > 0) suggestions.add('列出所有高优先级任务');
+      var hasHighPriority = false;
+      var hasOverdue = false;
+      final now = DateTime.now();
+      for (final todo in widget.todos) {
+        if ((todo['priority'] ?? 0) >= 2) hasHighPriority = true;
 
-      final overdue = widget.todos.where((t) {
-        final dueDate = t['dueDate'] as String?;
-        if (dueDate == null || dueDate.isEmpty) return false;
+        final dueDate = todo['dueDate'] as String?;
+        if (dueDate == null || dueDate.isEmpty) continue;
         final date = DateTime.tryParse(dueDate);
-        return date != null && date.isBefore(DateTime.now());
-      }).length;
-      if (overdue > 0) suggestions.add('有哪些任务已经逾期了？');
+        if (date != null && date.isBefore(now)) hasOverdue = true;
+      }
+      if (hasHighPriority) suggestions.add('列出所有高优先级任务');
+      if (hasOverdue) suggestions.add('有哪些任务已经逾期了？');
 
       suggestions.add('帮我给这些待办分个类');
       suggestions.add('预测一下我完成所有任务需要多久');
@@ -1392,6 +1393,6 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
       '创建每天喝水',
     ]);
 
-    return suggestions.toSet().toList();
+    return suggestions;
   }
 }

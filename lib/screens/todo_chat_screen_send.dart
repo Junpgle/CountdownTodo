@@ -205,19 +205,24 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
       apiUrl: apiUrl,
       model: model,
     );
-    final useQueryTools =
-        _smartContext && _contextMode == AiContextMode.functionCalling;
-    final useContextInjection = _usesContextInjection;
-    if (useQueryTools && !nativeToolMode) {
+    final fallbackFromFunctionCallingContext =
+        _smartContext &&
+        _contextMode == AiContextMode.functionCalling &&
+        !nativeToolMode;
+    final useContextInjection =
+        _usesContextInjection || fallbackFromFunctionCallingContext;
+    if (fallbackFromFunctionCallingContext) {
       if (mounted) {
         AppSnackBars.showSnackBar(
           context,
           const SnackBar(
-            content: Text('当前模型尚未接入原生工具查询。请更换支持的模型，或在AI助手设置中切换为“智能注入”。'),
+            content: Text(
+              '当前模型或 API 接口尚未接入原生 Function Calling；'
+              '本轮将使用智能注入与兼容操作协议，写操作仍需在确认卡中确认。',
+            ),
           ),
         );
       }
-      return;
     }
     final sessionId = _activeSessionId;
     if (sessionId == null) return;
@@ -264,6 +269,15 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
             .firstOrNull
             ?.content ??
         '';
+    final useQueryTools =
+        _smartContext &&
+        _contextMode == AiContextMode.functionCalling &&
+        nativeToolMode &&
+        AiNativeToolDefinitionBuilder.shouldExposeQueryTools(
+          requestText,
+          previousUserMessage: previousUserMessage,
+          previousAssistantMessage: previousAssistantMessage,
+        );
 
     setState(() {
       _messages.add(userMsg);
@@ -305,8 +319,11 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
       final nativeTools = nativeToolMode
           ? <Map<String, dynamic>>[
               if (!AiNativeToolDefinitionBuilder.isMissingActionCardReport(
-                requestText,
-              ))
+                    requestText,
+                  ) &&
+                  AiSettingsNavigationService.shouldOfferForRequest(
+                    requestText,
+                  ))
                 AiSettingsNavigationService.buildDefinition(),
               if (useQueryTools) ...AiQueryToolService.buildDefinitions(),
               ...AiNativeToolDefinitionBuilder.buildNativeToolDefinitions(
@@ -316,6 +333,33 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
               ),
             ]
           : null;
+      final fallbackWriteTools = nativeToolMode
+          ? const <Map<String, dynamic>>[]
+          : AiNativeToolDefinitionBuilder.buildNativeToolDefinitions(
+                  requestText,
+                  previousUserMessage: previousUserMessage,
+                  previousAssistantMessage: previousAssistantMessage,
+                )
+                .where((tool) {
+                  final name =
+                      (tool['function'] as Map)['name']?.toString() ?? '';
+                  return name.startsWith('propose_') &&
+                      name != AiSettingsNavigationService.toolName;
+                })
+                .toList(growable: false);
+      if (fallbackWriteTools.isNotEmpty &&
+          !fallbackFromFunctionCallingContext &&
+          mounted) {
+        AppSnackBars.showSnackBar(
+          context,
+          const SnackBar(
+            content: Text(
+              '当前模型或 API 接口未接入原生 Function Calling，'
+              '本轮将尝试兼容操作协议；只有出现确认卡并点击操作按钮后才会写入。',
+            ),
+          ),
+        );
+      }
       final allowedNativeToolNames =
           AiNativeToolDefinitionBuilder.allowedToolNames(nativeTools);
       final allowedNativeCdtActions =
@@ -362,11 +406,46 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
               messages: apiMessages,
               tools: nativeTools!,
               streamRound: streamRound,
-              streamProposalRound: (messages, tools) => streamRound(
-                messages,
-                tools,
-                toolChoiceName: 'propose_cdt_actions',
-              ),
+              streamProposalRound: (messages, tools) {
+                final proposalTools = tools.where((tool) {
+                  final function = tool['function'];
+                  return function is Map &&
+                      (function['name'] as String? ?? '').startsWith(
+                        'propose_',
+                      );
+                }).toList();
+                final planningToolAvailable = proposalTools.any((tool) {
+                  final function = tool['function'] as Map;
+                  return function['name'] == 'propose_cdt_actions' &&
+                      jsonEncode(function['parameters'])
+                          .contains('create_plan_block');
+                });
+                final hasReadTools = tools.any((tool) {
+                  final function = tool['function'];
+                  return function is Map &&
+                      AiQueryToolService.toolNames.contains(function['name']);
+                });
+                final proposalToolChoice = planningToolAvailable
+                    ? 'propose_cdt_actions'
+                    : proposalTools.length == 1 && !hasReadTools
+                    ? (proposalTools.single['function'] as Map)['name']
+                          as String
+                    : null;
+                final effectiveProvider = AiChatService.effectiveProvider(
+                  provider,
+                  apiUrl,
+                );
+                final supportsNamedToolChoice =
+                    (effectiveProvider == 'deepseek' && !_deepThinking) ||
+                    effectiveProvider == 'nvidia_nim';
+                return streamRound(
+                  messages,
+                  tools,
+                  toolChoiceName: supportsNamedToolChoice
+                      ? proposalToolChoice
+                      : null,
+                );
+              },
               executeRead: _createQueryToolService().execute,
               cancelToken: _cancelGeneration,
               includeReasoningContent: includeReasoningContent,
@@ -457,7 +536,10 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
         allowedFinanceActionNames: allowedNativeFinanceActions,
       );
       final settingsTargets =
-          AiNativeToolDefinitionBuilder.isMissingActionCardReport(requestText)
+          AiNativeToolDefinitionBuilder.isMissingActionCardReport(
+                requestText,
+              ) ||
+              !AiSettingsNavigationService.shouldOfferForRequest(requestText)
           ? <String>[]
           : AiSettingsNavigationService.extractTargets(actionContent);
       final rawModelReply = AiNativeToolCallParser.formatRawReply(
@@ -1391,9 +1473,10 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
       existingTodoTitles: existingTodoTitles,
       existingScheduleTitles: existingScheduleTitles,
     );
-    final settingsTargets = AiSettingsNavigationService.extractTargets(
-      fullContent,
-    );
+    final settingsTargets =
+        AiSettingsNavigationService.shouldOfferForRequest(originalText)
+        ? AiSettingsNavigationService.extractTargets(fullContent)
+        : const <String>[];
     final inlineSuggestions = AiActionParser.extractSuggestions(fullContent);
     final financeDrafts = FinanceTextParser.extractAssistantDrafts(fullContent);
     final financeActions = FinanceTextParser.extractAssistantActions(
