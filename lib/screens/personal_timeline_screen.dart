@@ -82,8 +82,7 @@ class PersonalTimelineScreen extends StatefulWidget {
   State<PersonalTimelineScreen> createState() => _PersonalTimelineScreenState();
 }
 
-class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
-    with SingleTickerProviderStateMixin {
+class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
   static const MethodChannel _nativeChannel = MethodChannel(
     'com.math_quiz.junpgle.com.math_quiz_app/notifications',
   );
@@ -95,7 +94,6 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
   bool _isLoadingAllTimeMedals = false;
   int _loadGeneration = 0;
   Timer? _financeOccurrenceRefreshTimer;
-  late AnimationController _animationController;
   late final ScrollController _timelineScrollController;
   final ValueNotifier<double> _timelineTitleProgress = ValueNotifier<double>(
     0.0,
@@ -157,10 +155,6 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
     super.initState();
     _dimension = widget.initialDimension;
     _selectedDate = widget.initialDate ?? DateTime.now();
-    _animationController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1000),
-    );
     _timelineScrollController = ScrollController()
       ..addListener(_handleTimelineScroll);
     FinanceStorage.revision.addListener(_onFinanceChanged);
@@ -173,7 +167,6 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
     _financeOccurrenceRefreshTimer?.cancel();
     _timelineScrollController.dispose();
     _timelineTitleProgress.dispose();
-    _animationController.dispose();
     super.dispose();
   }
 
@@ -247,14 +240,16 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
       final appMappings = await StorageService.getAppMappings();
       Map<String, int> catUsage = {};
       Map<String, int> appUsage = {};
+      final categoryCache = <(String, String, String?), String>{};
       int screenTotal = 0;
       int productiveScreen = 0;
       int distractionScreen = 0;
 
       // Iterate through days in range
       DateTime cursor = start;
+      final screenTimeDateFormat = DateFormat('yyyy-MM-dd');
       while (cursor.isBefore(end)) {
-        final dateStr = DateFormat('yyyy-MM-dd').format(cursor);
+        final dateStr = screenTimeDateFormat.format(cursor);
         final stats = screenStats[dateStr] ?? [];
         for (var item in stats) {
           final appName =
@@ -262,12 +257,16 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
               item['package_name']?.toString() ??
               '未知应用';
           final packageName = item['package_name']?.toString() ?? '';
+          final backendCategory = item['category']?.toString();
           final duration = (item['duration'] as num?)?.toInt() ?? 0;
-          final cat = _getScreenCategoryForApp(
-            appName: appName,
-            packageName: packageName,
-            backendCategory: item['category']?.toString(),
-            mappings: appMappings,
+          final cat = categoryCache.putIfAbsent(
+            (appName, packageName, backendCategory),
+            () => _getScreenCategoryForApp(
+              appName: appName,
+              packageName: packageName,
+              backendCategory: backendCategory,
+              mappings: appMappings,
+            ),
           );
           catUsage[cat] = (catUsage[cat] ?? 0) + duration;
           appUsage[appName] = (appUsage[appName] ?? 0) + duration;
@@ -281,48 +280,47 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
       final todos = await StorageService.getTodos(widget.username);
       final habitOnlyRecurringSeriesIds =
           await HabitRepository.getHabitOnlyRecurringTodoSeriesIds();
-      final completedTodos = todos.where((todo) {
-        return !todo.isDeleted &&
-            todo.isDone &&
-            todo.updatedAt >= start.millisecondsSinceEpoch &&
-            todo.updatedAt < end.millisecondsSinceEpoch;
-      }).toList();
-      final plannedTodos = todos.where((todo) {
-        if (todo.isDeleted) return false;
+      final startMs = start.millisecondsSinceEpoch;
+      final endMs = end.millisecondsSinceEpoch;
+      var regularCompletedCount = 0;
+      var regularPlannedCount = 0;
+      var sprintCount = 0;
+      var earlyCount = 0;
+      for (final todo in todos) {
+        if (todo.isDeleted) continue;
+        final completedInRange =
+            todo.isDone && todo.updatedAt >= startMs && todo.updatedAt < endMs;
         final createdInRange =
-            todo.createdAt >= start.millisecondsSinceEpoch &&
-            todo.createdAt < end.millisecondsSinceEpoch;
-        final dueEnd = _effectiveTodoDueEnd(todo);
+            todo.createdAt >= startMs && todo.createdAt < endMs;
+        DateTime? dueEnd;
+        if (todo.dueDate != null) {
+          dueEnd = _effectiveTodoDueEnd(todo);
+        }
         final dueInRange =
             todo.dueDate != null &&
             dueEnd != null &&
             !dueEnd.isBefore(start) &&
             dueEnd.isBefore(end);
-        final completedInRange =
-            todo.isDone &&
-            todo.updatedAt >= start.millisecondsSinceEpoch &&
-            todo.updatedAt < end.millisecondsSinceEpoch;
-        return createdInRange || dueInRange || completedInRange;
-      }).toList();
-      final regularCompletedTodos = completedTodos
-          .where((todo) => !_isRecurringTodo(todo))
-          .toList();
-      final regularPlannedTodos = plannedTodos
-          .where((todo) => !_isRecurringTodo(todo))
-          .toList();
-      final sprintCount = regularCompletedTodos.where((todo) {
-        final due = _effectiveTodoDueEnd(todo);
-        if (due == null) return false;
-        final doneAt = DateTime.fromMillisecondsSinceEpoch(todo.updatedAt);
-        final diff = due.difference(doneAt);
-        return !diff.isNegative && diff.inHours <= 24;
-      }).length;
-      final earlyCount = regularCompletedTodos.where((todo) {
-        final due = _effectiveTodoDueEnd(todo);
-        if (due == null) return false;
-        final doneAt = DateTime.fromMillisecondsSinceEpoch(todo.updatedAt);
-        return due.difference(doneAt).inHours >= 24;
-      }).length;
+        final plannedInRange =
+            createdInRange || dueInRange || completedInRange;
+        if (!plannedInRange || _isRecurringTodo(todo)) continue;
+
+        regularPlannedCount++;
+        if (completedInRange) {
+          regularCompletedCount++;
+          final completionDue = todo.dueDate == null
+              ? _effectiveTodoDueEnd(todo)
+              : dueEnd;
+          if (completionDue != null) {
+            final doneAt = DateTime.fromMillisecondsSinceEpoch(
+              todo.updatedAt,
+            );
+            final diff = completionDue.difference(doneAt);
+            if (!diff.isNegative && diff.inHours <= 24) sprintCount++;
+            if (diff.inHours >= 24) earlyCount++;
+          }
+        }
+      }
 
       final rangeStatistics = TimelineStatisticsService.calculate(
         start: start,
@@ -335,21 +333,24 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
         excludedRecurrenceSeriesIds: habitOnlyRecurringSeriesIds,
       );
       final totalSecs = rangeStatistics.totalFocusSeconds;
-      final regularTotalCount = regularPlannedTodos.isEmpty
-          ? regularCompletedTodos.length
-          : regularPlannedTodos.length;
+      final regularTotalCount = regularPlannedCount == 0
+          ? regularCompletedCount
+          : regularPlannedCount;
       final medalCompletedCount =
-          regularCompletedTodos.length +
+          regularCompletedCount +
           rangeStatistics.recurringCompletedCount;
       final medalTotalCount =
           regularTotalCount + rangeStatistics.recurringScheduledCount;
 
       final courses = await CourseService.getAllCourses(widget.username);
       final Map<String, int> coursesByDay = {};
+      var courseCount = 0;
+      var maxDailyCourseCount = 0;
+      final courseDateFormat = DateFormat('yyyy-MM-dd');
       for (final course in courses) {
         DateTime? courseDay;
         try {
-          courseDay = DateFormat('yyyy-MM-dd').parseStrict(course.date);
+          courseDay = courseDateFormat.parseStrict(course.date);
         } catch (_) {
           courseDay = null;
         }
@@ -358,7 +359,12 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
             !courseDay.isBefore(end)) {
           continue;
         }
-        coursesByDay[course.date] = (coursesByDay[course.date] ?? 0) + 1;
+        final dayCount = (coursesByDay[course.date] ?? 0) + 1;
+        coursesByDay[course.date] = dayCount;
+        courseCount++;
+        if (dayCount > maxDailyCourseCount) {
+          maxDailyCourseCount = dayCount;
+        }
       }
 
       String? topCat;
@@ -386,17 +392,15 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
             }
           }
           _topAppCategory = displayCat ?? '学习';
-          _completedCount = regularCompletedTodos.length;
+          _completedCount = regularCompletedCount;
           _totalCount = regularTotalCount;
           _screenTimeSeconds = screenTotal;
           _productiveScreenSeconds = productiveScreen;
           _distractionScreenSeconds = distractionScreen;
           _deadlineSprintCount = sprintCount;
           _earlyCompletionCount = earlyCount;
-          _courseCount = coursesByDay.values.fold(0, (sum, v) => sum + v);
-          _maxDailyCourseCount = coursesByDay.values.isEmpty
-              ? 0
-              : coursesByDay.values.reduce(math.max);
+          _courseCount = courseCount;
+          _maxDailyCourseCount = maxDailyCourseCount;
           _topScreenApps = appUsage.entries.toList()
             ..sort((a, b) => b.value.compareTo(a.value));
           _topScreenApps = _topScreenApps.take(5).toList();
@@ -432,10 +436,8 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
             medalTotalCount,
             earlyCount,
             sprintCount,
-            coursesByDay.values.fold(0, (sum, v) => sum + v),
-            coursesByDay.values.isEmpty
-                ? 0
-                : coursesByDay.values.reduce(math.max),
+            courseCount,
+            maxDailyCourseCount,
             screenTotal,
             productiveScreen,
             distractionScreen,
@@ -461,10 +463,10 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
               username: widget.username,
               summary: summary,
               totalFocusMinutes: totalSecs ~/ 60,
-              completedCount: regularCompletedTodos.length,
-              totalCount: regularPlannedTodos.isEmpty
-                  ? regularCompletedTodos.length
-                  : regularPlannedTodos.length,
+              completedCount: regularCompletedCount,
+              totalCount: regularPlannedCount == 0
+                  ? regularCompletedCount
+                  : regularPlannedCount,
               screenTimeSeconds: screenTotal,
               productiveScreenSeconds: productiveScreen,
               distractionScreenSeconds: distractionScreen,
@@ -490,10 +492,10 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
             allMedals,
             summary,
             totalSecs ~/ 60,
-            regularCompletedTodos.length,
-            regularPlannedTodos.isEmpty
-                ? regularCompletedTodos.length
-                : regularPlannedTodos.length,
+            regularCompletedCount,
+            regularPlannedCount == 0
+                ? regularCompletedCount
+                : regularPlannedCount,
             earlyCount,
             sprintCount,
             screenTotal,
@@ -514,8 +516,6 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
         if (_allTimeRecommendation == null) {
           _loadAllTimeMedalData();
         }
-
-        _animationController.forward(from: 0.0);
       }
     } catch (e) {
       // debugPrint('Error loading insight data: $e');
@@ -600,6 +600,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
       // 3. Screen Time
       final screenStats = await StorageService.getScreenTimeHistory();
       final appMappings = await StorageService.getAppMappings();
+      final categoryCache = <(String, String, String?), String>{};
       int screenTotal = 0;
       int productiveScreen = 0;
       int distractionScreen = 0;
@@ -609,11 +610,15 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
           final appName = item['app_name']?.toString() ?? '未知应用';
           final packageName = item['package_name']?.toString() ?? '';
           final duration = (item['duration'] as num?)?.toInt() ?? 0;
-          final cat = _getScreenCategoryForApp(
-            appName: appName,
-            packageName: packageName,
-            backendCategory: item['category']?.toString(),
-            mappings: appMappings,
+          final backendCategory = item['category']?.toString();
+          final cat = categoryCache.putIfAbsent(
+            (appName, packageName, backendCategory),
+            () => _getScreenCategoryForApp(
+              appName: appName,
+              packageName: packageName,
+              backendCategory: backendCategory,
+              mappings: appMappings,
+            ),
           );
           screenTotal += duration;
           if (_isProductiveScreenCategory(cat)) productiveScreen += duration;
@@ -623,40 +628,45 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
 
       // 4. Todos
       final todos = await StorageService.getTodos(widget.username);
-      final completedTodos = todos
-          .where((t) => !t.isDeleted && t.isDone)
-          .toList();
-      final plannedTodos = todos.where((t) => !t.isDeleted).toList();
-      final sprintCount = completedTodos.where((todo) {
+      var completedTodoCount = 0;
+      var plannedTodoCount = 0;
+      var sprintCount = 0;
+      var earlyCount = 0;
+      for (final todo in todos) {
+        if (todo.isDeleted) continue;
+        plannedTodoCount++;
+        if (!todo.isDone) continue;
+        completedTodoCount++;
+
         final due = _effectiveTodoDueEnd(todo);
-        if (due == null) return false;
+        if (due == null) continue;
         final doneAt = DateTime.fromMillisecondsSinceEpoch(todo.updatedAt);
         final diff = due.difference(doneAt);
-        return !diff.isNegative && diff.inHours <= 24;
-      }).length;
-      final earlyCount = completedTodos.where((todo) {
-        final due = _effectiveTodoDueEnd(todo);
-        if (due == null) return false;
-        final doneAt = DateTime.fromMillisecondsSinceEpoch(todo.updatedAt);
-        return due.difference(doneAt).inHours >= 24;
-      }).length;
+        if (!diff.isNegative && diff.inHours <= 24) sprintCount++;
+        if (diff.inHours >= 24) earlyCount++;
+      }
 
       // 5. Courses
       final courses = await CourseService.getAllCourses(widget.username);
       final Map<String, int> coursesByDay = {};
+      var maxDailyCourseCount = 0;
       for (final course in courses) {
-        coursesByDay[course.date] = (coursesByDay[course.date] ?? 0) + 1;
+        final dayCount = (coursesByDay[course.date] ?? 0) + 1;
+        coursesByDay[course.date] = dayCount;
+        if (dayCount > maxDailyCourseCount) {
+          maxDailyCourseCount = dayCount;
+        }
       }
 
       final recommendation = MedalRecommendationService.getRecommendations(
         summary,
         totalSecs ~/ 60,
-        completedTodos.length,
-        plannedTodos.length,
+        completedTodoCount,
+        plannedTodoCount,
         earlyCount,
         sprintCount,
         courses.length,
-        coursesByDay.values.isEmpty ? 0 : coursesByDay.values.reduce(math.max),
+        maxDailyCourseCount,
         screenTotal,
         productiveScreen,
         distractionScreen,
@@ -674,8 +684,8 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
         recommendation.allMedals,
         summary,
         totalSecs ~/ 60,
-        completedTodos.length,
-        plannedTodos.length,
+        completedTodoCount,
+        plannedTodoCount,
         earlyCount,
         sprintCount,
         screenTotal,

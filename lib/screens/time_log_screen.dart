@@ -1143,29 +1143,26 @@ class _WeekViewState extends State<_WeekView>
     return LayoutBuilder(
       builder: (ctx, outer) {
         final isWide = outer.maxWidth >= 720;
-        return AnimatedBuilder(
-          animation: _heatAnim,
-          builder: (ctx, child) => Column(
-            children: [
-              _buildTopBar(ctx, todayMin),
-              Expanded(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: _buildGrid(
-                        ctx,
-                        days,
-                        outer.maxWidth - (isWide ? 160.0 : 0),
-                      ),
+        return Column(
+          children: [
+            _buildTopBar(ctx, todayMin),
+            Expanded(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: _buildGrid(
+                      ctx,
+                      days,
+                      outer.maxWidth - (isWide ? 160.0 : 0),
                     ),
-                    if (isWide) _buildTagSidebar(ctx, wStart0, wEnd0),
-                  ],
-                ),
+                  ),
+                  if (isWide) _buildTagSidebar(ctx, wStart0, wEnd0),
+                ],
               ),
-              if (!isWide) _buildTagChips(ctx, wStart0, wEnd0),
-            ],
-          ),
+            ),
+            if (!isWide) _buildTagChips(ctx, wStart0, wEnd0),
+          ],
         );
       },
     );
@@ -1266,12 +1263,61 @@ class _WeekViewState extends State<_WeekView>
     final accent = colorScheme.primary;
     final isDark = Theme.of(ctx).brightness == Brightness.dark;
 
-    int dayMin(DateTime d) {
-      final range = CalendarDateMath.dayRange(d);
-      return _rangeMin(
-        range.start.millisecondsSinceEpoch,
-        range.endExclusive.millisecondsSinceEpoch,
-      );
+    final dayStartMs = <int>[];
+    final dayEndMs = <int>[];
+    for (final day in days) {
+      final range = CalendarDateMath.dayRange(day);
+      dayStartMs.add(range.start.millisecondsSinceEpoch);
+      dayEndMs.add(range.endExclusive.millisecondsSinceEpoch);
+    }
+    final logsByDay = List.generate(days.length, (_) => <TimeLogItem>[]);
+    final pomodorosByDay = List.generate(
+      days.length,
+      (_) => <PomodoroRecord>[],
+    );
+    final minutesByDay = List<int>.filled(days.length, 0);
+
+    int firstDayEndingAfter(int instantMs) {
+      var low = 0;
+      var high = dayEndMs.length;
+      while (low < high) {
+        final middle = (low + high) ~/ 2;
+        if (dayEndMs[middle] <= instantMs) {
+          low = middle + 1;
+        } else {
+          high = middle;
+        }
+      }
+      return low;
+    }
+
+    for (final log in widget.logs) {
+      for (
+        var dayIndex = firstDayEndingAfter(log.startTime);
+        dayIndex < days.length && dayStartMs[dayIndex] < log.endTime;
+        dayIndex++
+      ) {
+        logsByDay[dayIndex].add(log);
+        minutesByDay[dayIndex] += TimeLogRangeMath.overlapMinutes(
+          intervalStartMs: log.startTime,
+          intervalEndMs: log.endTime,
+          rangeStartMs: dayStartMs[dayIndex],
+          rangeEndMs: dayEndMs[dayIndex],
+        );
+      }
+    }
+    for (final pomodoro in widget.pomodoros) {
+      final endMs =
+          pomodoro.endTime ??
+          (pomodoro.startTime + pomodoro.effectiveDuration * 1000);
+      for (
+        var dayIndex = firstDayEndingAfter(pomodoro.startTime);
+        dayIndex < days.length && dayStartMs[dayIndex] < endMs;
+        dayIndex++
+      ) {
+        pomodorosByDay[dayIndex].add(pomodoro);
+        minutesByDay[dayIndex] += pomodoro.effectiveDuration ~/ 60;
+      }
     }
 
     return Column(
@@ -1285,7 +1331,7 @@ class _WeekViewState extends State<_WeekView>
               ...List.generate(7, (i) {
                 final d = days[i];
                 final isToday = AppTimeFormats.isSameDay(d, DateTime.now());
-                final dm = dayMin(d);
+                final dm = minutesByDay[i];
                 return GestureDetector(
                   onTap: () => widget.onDayTap(d),
                   child: Container(
@@ -1374,24 +1420,27 @@ class _WeekViewState extends State<_WeekView>
                         ),
                       ),
                     ),
-                    ...days.map((d) {
-                      final range = CalendarDateMath.dayRange(d);
-                      final ds = range.start.millisecondsSinceEpoch;
-                      final de = range.endExclusive.millisecondsSinceEpoch;
-                      final dLogs = widget.logs
-                          .where((l) => l.endTime > ds && l.startTime < de)
-                          .toList();
-                      final dPoms = widget.pomodoros.where((p) {
-                        final pe =
-                            p.endTime ??
-                            (p.startTime + p.effectiveDuration * 1000);
-                        return pe > ds && p.startTime < de;
-                      }).toList();
+                    ...List.generate(days.length, (dayIndex) {
+                      final ds = dayStartMs[dayIndex];
+                      final de = dayEndMs[dayIndex];
+                      final dLogs = logsByDay[dayIndex];
+                      final dPoms = pomodorosByDay[dayIndex];
                       return SizedBox(
                         width: dW,
                         height: totalH,
                         child: Stack(
                           children: [
+                            RepaintBoundary(
+                              child: CustomPaint(
+                                size: Size(dW, totalH),
+                                painter: _WeekGridPainter(
+                                  hourH: hourH,
+                                  majorLineColor: colorScheme.outlineVariant,
+                                  minorLineColor: colorScheme.outlineVariant
+                                      .withValues(alpha: isDark ? 0.28 : 0.45),
+                                ),
+                              ),
+                            ),
                             CustomPaint(
                               size: Size(dW, totalH),
                               painter: _WeekColPainter(
@@ -1399,14 +1448,12 @@ class _WeekViewState extends State<_WeekView>
                                 dayPoms: dPoms,
                                 tags: widget.tags,
                                 dayStartMs: ds,
+                                dayEndMs: de,
                                 isDark: isDark,
                                 hourH: hourH,
+                                animation: _heatAnim,
                                 focusColor: colorScheme.cdtFocus,
                                 logColor: colorScheme.cdtInfo,
-                                majorLineColor: colorScheme.outlineVariant,
-                                minorLineColor: colorScheme.outlineVariant
-                                    .withValues(alpha: isDark ? 0.28 : 0.45),
-                                animationProgress: _heatAnim.value,
                               ),
                             ),
                             ...dPoms.map((pom) {
@@ -1657,76 +1704,175 @@ class _WeekViewState extends State<_WeekView>
 }
 
 // ══════════════════════════════════════════════════════════
-// 周视图列 Painter
+// 周视图静态网格 Painter
 // ══════════════════════════════════════════════════════════
-class _WeekColPainter extends CustomPainter {
-  final List<TimeLogItem> dayLogs;
-  final List<PomodoroRecord> dayPoms;
-  final List<PomodoroTag> tags;
-  final int dayStartMs;
-  final bool isDark;
+class _WeekGridPainter extends CustomPainter {
   final double hourH;
-  final double animationProgress;
-  final Color focusColor;
-  final Color logColor;
   final Color majorLineColor;
   final Color minorLineColor;
+  final Paint _gridPaint = Paint()..strokeWidth = 0.5;
 
-  const _WeekColPainter({
-    required this.dayLogs,
-    this.dayPoms = const [],
-    required this.tags,
-    required this.dayStartMs,
-    required this.isDark,
+  _WeekGridPainter({
     required this.hourH,
-    required this.focusColor,
-    required this.logColor,
     required this.majorLineColor,
     required this.minorLineColor,
-    this.animationProgress = 1.0,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
-    final de = _dayEndMs(DateTime.fromMillisecondsSinceEpoch(dayStartMs));
-    for (int h = 0; h <= 24; h++) {
-      final y = h * hourH;
+    for (int hour = 0; hour <= 24; hour++) {
+      final y = hour * hourH;
       canvas.drawLine(
         Offset(0, y),
         Offset(size.width, y),
-        Paint()
-          ..color = h % 6 == 0 ? majorLineColor : minorLineColor
-          ..strokeWidth = 0.5,
+        _gridPaint..color = hour % 6 == 0 ? majorLineColor : minorLineColor,
       );
     }
     canvas.drawLine(
       Offset(size.width - 0.5, 0),
       Offset(size.width - 0.5, size.height),
-      Paint()
-        ..color = majorLineColor
-        ..strokeWidth = 0.5,
+      _gridPaint..color = majorLineColor,
     );
+  }
 
-    final totalBlocks = dayPoms.length + dayLogs.length;
-    int blockIndex = 0;
+  @override
+  bool shouldRepaint(covariant _WeekGridPainter oldDelegate) =>
+      oldDelegate.hourH != hourH ||
+      oldDelegate.majorLineColor != majorLineColor ||
+      oldDelegate.minorLineColor != minorLineColor;
+}
 
-    void block(int start, int end, Color c, bool isPom, String title) {
-      final rs = max(start, dayStartMs);
-      final re = min(end, de);
-      final top = (rs - dayStartMs) / 3600000 * hourH;
-      final bot = (re - dayStartMs) / 3600000 * hourH;
+// ══════════════════════════════════════════════════════════
+// 周视图区块 Painter
+// ══════════════════════════════════════════════════════════
+class _WeekColBlockVisual {
+  final Color color;
+  final String title;
+  final double top;
+  final double bottom;
+  final double staggerDelay;
+  final double staggerProgressScale;
+
+  const _WeekColBlockVisual({
+    required this.color,
+    required this.title,
+    required this.top,
+    required this.bottom,
+    required this.staggerDelay,
+    required this.staggerProgressScale,
+  });
+}
+
+class _WeekColPainter extends CustomPainter {
+  final List<TimeLogItem> dayLogs;
+  final List<PomodoroRecord> dayPoms;
+  final List<PomodoroTag> tags;
+  final int dayStartMs;
+  final int dayEndMs;
+  final bool isDark;
+  final double hourH;
+  final Animation<double> animation;
+  final Color focusColor;
+  final Color logColor;
+  final Paint _blockPaint = Paint();
+  TextPainter? _titlePainter;
+  int _staggerBlockIndex = 0;
+  late final int _totalBlockCount = dayPoms.length + dayLogs.length;
+
+  double _staggerDelayFor(double top, double bottom) {
+    if (bottom <= top + 1) return 0.0;
+    final delay = _totalBlockCount > 0
+        ? _staggerBlockIndex / _totalBlockCount
+        : 0.0;
+    _staggerBlockIndex++;
+    return delay;
+  }
+
+  TextPainter get _reusableTitlePainter => _titlePainter ??= TextPainter(
+    textDirection: ui.TextDirection.ltr,
+    maxLines: 1,
+    ellipsis: '…',
+  );
+  late final List<_WeekColBlockVisual> _pomodoroVisuals = dayPoms
+      .map((pomodoro) {
+        final tag = _matchingTag(pomodoro.tagUuids);
+        final end =
+            pomodoro.endTime ??
+            (pomodoro.startTime + pomodoro.effectiveDuration * 1000);
+        final rangeStart = max(pomodoro.startTime, dayStartMs);
+        final rangeEnd = min(end, dayEndMs);
+        final top = (rangeStart - dayStartMs) / 3600000 * hourH;
+        final bottom = (rangeEnd - dayStartMs) / 3600000 * hourH;
+        final staggerDelay = _staggerDelayFor(top, bottom);
+        return _WeekColBlockVisual(
+          color: tag == null
+              ? focusColor.withValues(alpha: 0.45)
+              : hexColor(tag.color, opacity: 0.45),
+          title: tag?.name ?? '专注',
+          top: top,
+          bottom: bottom,
+          staggerDelay: staggerDelay,
+          staggerProgressScale: 1.0 / (1.0 - staggerDelay),
+        );
+      })
+      .toList(growable: false);
+  late final List<_WeekColBlockVisual> _logVisuals = dayLogs
+      .map((log) {
+        final tag = _matchingTag(log.tagUuids);
+        final title = log.title.isNotEmpty ? log.title : '补录';
+        final rangeStart = max(log.startTime, dayStartMs);
+        final rangeEnd = min(log.endTime, dayEndMs);
+        final top = (rangeStart - dayStartMs) / 3600000 * hourH;
+        final bottom = (rangeEnd - dayStartMs) / 3600000 * hourH;
+        final staggerDelay = _staggerDelayFor(top, bottom);
+        return _WeekColBlockVisual(
+          color: tag == null
+              ? logColor.withValues(alpha: 0.45)
+              : hexColor(tag.color, opacity: 0.45),
+          title: tag != null && title == '补录' ? tag.name : title,
+          top: top,
+          bottom: bottom,
+          staggerDelay: staggerDelay,
+          staggerProgressScale: 1.0 / (1.0 - staggerDelay),
+        );
+      })
+      .toList(growable: false);
+
+  _WeekColPainter({
+    required this.dayLogs,
+    this.dayPoms = const [],
+    required this.tags,
+    required this.dayStartMs,
+    required this.dayEndMs,
+    required this.isDark,
+    required this.hourH,
+    required this.animation,
+    required this.focusColor,
+    required this.logColor,
+  }) : super(repaint: animation);
+
+  PomodoroTag? _matchingTag(List<String> tagUuids) {
+    if (tagUuids.isEmpty) return null;
+    for (final tag in tags) {
+      if (tagUuids.contains(tag.uuid)) return tag;
+    }
+    return null;
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final animationProgress = animation.value;
+
+    void block(_WeekColBlockVisual visual, bool isPom) {
+      final top = visual.top;
+      final bot = visual.bottom;
       if (bot <= top + 1) return;
 
-      final staggerDelay = totalBlocks > 0 ? blockIndex / totalBlocks : 0.0;
       final blockProgress =
-          ((animationProgress - staggerDelay) / (1.0 - staggerDelay)).clamp(
-            0.0,
-            1.0,
-          );
-      if (blockProgress <= 0.0) {
-        blockIndex++;
-        return;
-      }
+          ((animationProgress - visual.staggerDelay) *
+                  visual.staggerProgressScale)
+              .clamp(0.0, 1.0);
+      if (blockProgress <= 0.0) return;
 
       final animatedBot = top + (bot - top) * blockProgress;
 
@@ -1735,7 +1881,8 @@ class _WeekColPainter extends CustomPainter {
           Rect.fromLTRB(0, top + 0.5, 3, animatedBot - 0.5),
           const Radius.circular(2),
         ),
-        Paint()..color = c.withValues(alpha: 0.9 * blockProgress),
+        _blockPaint
+          ..color = visual.color.withValues(alpha: 0.9 * blockProgress),
       );
 
       canvas.drawRRect(
@@ -1743,8 +1890,10 @@ class _WeekColPainter extends CustomPainter {
           Rect.fromLTRB(3, top + 0.5, size.width - 1, animatedBot - 0.5),
           const Radius.circular(3),
         ),
-        Paint()
-          ..color = c.withValues(alpha: (isPom ? 0.22 : 0.35) * blockProgress),
+        _blockPaint
+          ..color = visual.color.withValues(
+            alpha: (isPom ? 0.22 : 0.35) * blockProgress,
+          ),
       );
 
       final blockH = animatedBot - top;
@@ -1752,34 +1901,28 @@ class _WeekColPainter extends CustomPainter {
 
       if (blockH >= 10 && blockW >= 8 && blockProgress > 0.5) {
         if (blockH >= 18) {
-          final tp = TextPainter(
-            text: TextSpan(
-              text: title,
+          final tp = _reusableTitlePainter
+            ..text = TextSpan(
+              text: visual.title,
               style: TextStyle(
                 fontSize: (blockH * 0.28).clamp(7.0, 10.0),
-                color: c.withValues(alpha: 0.95 * blockProgress),
+                color: visual.color.withValues(alpha: 0.95 * blockProgress),
                 fontWeight: FontWeight.w700,
               ),
-            ),
-            textDirection: ui.TextDirection.ltr,
-            maxLines: 1,
-            ellipsis: '…',
-          )..layout(maxWidth: blockW - 4);
+            )
+            ..layout(maxWidth: blockW - 4);
           tp.paint(canvas, Offset(5, top + (blockH - tp.height) / 2));
         } else {
-          final tp = TextPainter(
-            text: TextSpan(
-              text: title,
+          final tp = _reusableTitlePainter
+            ..text = TextSpan(
+              text: visual.title,
               style: TextStyle(
                 fontSize: 7.0,
-                color: c.withValues(alpha: 0.85 * blockProgress),
+                color: visual.color.withValues(alpha: 0.85 * blockProgress),
                 fontWeight: FontWeight.w700,
               ),
-            ),
-            textDirection: ui.TextDirection.ltr,
-            maxLines: 1,
-            ellipsis: '…',
-          )..layout(maxWidth: blockH - 2);
+            )
+            ..layout(maxWidth: blockH - 2);
 
           canvas.save();
           canvas.translate(5 + tp.height, top + 1);
@@ -1788,42 +1931,18 @@ class _WeekColPainter extends CustomPainter {
           canvas.restore();
         }
       }
-      blockIndex++;
     }
 
     // 画番茄钟（★ 传入 title）
-    for (final p in dayPoms) {
-      final pe = p.endTime ?? (p.startTime + p.effectiveDuration * 1000);
-      Color c = focusColor.withValues(alpha: 0.45);
-      String title = '专注';
-      if (p.tagUuids.isNotEmpty) {
-        final t = tags.cast<PomodoroTag?>().firstWhere(
-          (t) => p.tagUuids.contains(t?.uuid),
-          orElse: () => null,
-        );
-        if (t != null) {
-          c = hexColor(t.color, opacity: 0.45);
-          title = t.name;
-        }
-      }
-      block(p.startTime, pe, c, true, title);
+    for (var i = 0; i < dayPoms.length; i++) {
+      final visual = _pomodoroVisuals[i];
+      block(visual, true);
     }
 
     // 画补录日志（★ 传入 title）
-    for (final l in dayLogs) {
-      Color c = logColor.withValues(alpha: 0.45);
-      String title = l.title.isNotEmpty ? l.title : '补录';
-      if (l.tagUuids.isNotEmpty) {
-        final t = tags.cast<PomodoroTag?>().firstWhere(
-          (t) => l.tagUuids.contains(t?.uuid),
-          orElse: () => null,
-        );
-        if (t != null) {
-          c = hexColor(t.color, opacity: 0.45);
-          if (title == '补录') title = t.name;
-        }
-      }
-      block(l.startTime, l.endTime, c, false, title);
+    for (var i = 0; i < dayLogs.length; i++) {
+      final visual = _logVisuals[i];
+      block(visual, false);
     }
   }
 
@@ -1831,13 +1950,14 @@ class _WeekColPainter extends CustomPainter {
   bool shouldRepaint(covariant _WeekColPainter o) =>
       o.isDark != isDark ||
       o.hourH != hourH ||
-      o.dayLogs.length != dayLogs.length ||
-      o.dayPoms.length != dayPoms.length ||
-      o.animationProgress != animationProgress ||
+      o.dayLogs != dayLogs ||
+      o.dayPoms != dayPoms ||
+      o.tags != tags ||
+      o.dayStartMs != dayStartMs ||
+      o.dayEndMs != dayEndMs ||
+      o.animation != animation ||
       o.focusColor != focusColor ||
-      o.logColor != logColor ||
-      o.majorLineColor != majorLineColor ||
-      o.minorLineColor != minorLineColor;
+      o.logColor != logColor;
 }
 
 // ══════════════════════════════════════════════════════════

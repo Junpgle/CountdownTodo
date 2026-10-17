@@ -11,6 +11,16 @@ import '../utils/page_transitions.dart';
 import '../widgets/floating_bottom_bar.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
 
+final Map<(String?, String), DateFormat> _screenTimeDateFormats = {};
+
+DateFormat _screenTimeDateFormat(String pattern) {
+  final locale = Intl.defaultLocale;
+  return _screenTimeDateFormats.putIfAbsent(
+    (locale, pattern),
+    () => DateFormat(pattern, locale),
+  );
+}
+
 // ─────────────────────────────────────────────
 // 设备过滤枚举
 // ─────────────────────────────────────────────
@@ -88,7 +98,8 @@ class ScreenTimeDetailScreen extends StatefulWidget {
   State<ScreenTimeDetailScreen> createState() => _ScreenTimeDetailScreenState();
 
   static bool matchesFilter(String deviceName, DeviceFilter filter) {
-    String lower = deviceName.toLowerCase();
+    if (filter == DeviceFilter.all) return true;
+    final lower = deviceName.toLowerCase();
     switch (filter) {
       case DeviceFilter.all:
         return true;
@@ -122,14 +133,41 @@ class ScreenTimeDetailScreen extends StatefulWidget {
     List<dynamic> rawStats,
     DeviceFilter filter,
   ) {
-    return rawStats
-        .where((item) => matchesFilter(item['device_name'] ?? "", filter))
-        .toList();
+    if (filter == DeviceFilter.all) return List<dynamic>.of(rawStats);
+
+    final matchesByDevice = <String, bool>{};
+    final filtered = <dynamic>[];
+    for (final item in rawStats) {
+      final deviceName = item['device_name'] ?? "";
+      final matches = matchesByDevice.putIfAbsent(
+        deviceName,
+        () => matchesFilter(deviceName, filter),
+      );
+      if (matches) filtered.add(item);
+    }
+    return filtered;
   }
 
   static int getTotalDuration(List<dynamic> rawStats, DeviceFilter filter) {
-    final filtered = getFilteredStats(rawStats, filter);
-    return filtered.fold(0, (sum, item) => sum + (item['duration'] as int));
+    var total = 0;
+    if (filter == DeviceFilter.all) {
+      for (final item in rawStats) {
+        total += item['duration'] as int;
+      }
+      return total;
+    }
+
+    final matchesByDevice = <String, bool>{};
+    for (final item in rawStats) {
+      final deviceName = item['device_name'] ?? "";
+      final matches = matchesByDevice.putIfAbsent(
+        deviceName,
+        () => matchesFilter(deviceName, filter),
+      );
+      if (!matches) continue;
+      total += item['duration'] as int;
+    }
+    return total;
   }
 }
 
@@ -167,7 +205,9 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
   Future<void> _loadHistory() async {
     final history = await StorageService.getScreenTimeHistory();
     final mappings = await StorageService.getAppMappings();
-    String todayStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    final todayStr = _screenTimeDateFormat('yyyy-MM-dd').format(
+      DateTime.now(),
+    );
     history[todayStr] = widget.todayStats;
     if (mounted) {
       setState(() {
@@ -418,7 +458,7 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
   }
 
   static String _historyKey(DateTime date) =>
-      DateFormat('yyyy-MM-dd').format(date);
+      _screenTimeDateFormat('yyyy-MM-dd').format(date);
 
   static Iterable<DateTime> _daysInPeriod(
     DateTime periodStart,
@@ -439,18 +479,19 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
       case ScreenTimeRange.day:
         return periodStart == today
             ? "今日"
-            : DateFormat('MM/dd').format(periodStart);
+            : _screenTimeDateFormat('MM/dd').format(periodStart);
       case ScreenTimeRange.week:
         final thisWeek = _startOfWeek(today);
         final end = _periodEnd(periodStart, range);
         if (periodStart == thisWeek) return "本周";
-        return "${DateFormat('MM/dd').format(periodStart)}-${DateFormat('MM/dd').format(end)}";
+        final dateFormat = _screenTimeDateFormat('MM/dd');
+        return "${dateFormat.format(periodStart)}-${dateFormat.format(end)}";
       case ScreenTimeRange.month:
         if (periodStart.year == today.year &&
             periodStart.month == today.month) {
           return "本月";
         }
-        return DateFormat('yyyy/MM').format(periodStart);
+        return _screenTimeDateFormat('yyyy/MM').format(periodStart);
     }
   }
 
@@ -649,16 +690,16 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
 
     // 分类
     Map<String, List<dynamic>> catGroups = {};
+    Map<String, int> catTotals = {};
     for (var item in filteredStats) {
       String appName = item['app_name'] ?? '未知应用';
       String cat = getCategoryForApp(appName, item['category'], _cloudMappings);
       item['category'] = cat;
       catGroups.putIfAbsent(cat, () => []).add(item);
+      catTotals[cat] = (catTotals[cat] ?? 0) + (item['duration'] as int);
     }
-    var catDurs = catGroups.entries.map((e) {
-      int dur = e.value.fold(0, (sum, item) => sum + (item['duration'] as int));
-      return MapEntry(e.key, dur);
-    }).toList()..sort((a, b) => b.value.compareTo(a.value));
+    final catDurs = catTotals.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
 
     List<Map<String, dynamic>> finalCategories = [];
     if (catDurs.length <= 6) {
@@ -1181,11 +1222,17 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
   String _chartLabel(DateTime periodStart, bool isCurrent) {
     switch (_currentRange) {
       case ScreenTimeRange.day:
-        return isCurrent ? "今日" : DateFormat('MM/dd').format(periodStart);
+        return isCurrent
+            ? "今日"
+            : _screenTimeDateFormat('MM/dd').format(periodStart);
       case ScreenTimeRange.week:
-        return isCurrent ? "本周" : DateFormat('MM/dd').format(periodStart);
+        return isCurrent
+            ? "本周"
+            : _screenTimeDateFormat('MM/dd').format(periodStart);
       case ScreenTimeRange.month:
-        return isCurrent ? "本月" : DateFormat('MM月').format(periodStart);
+        return isCurrent
+            ? "本月"
+            : _screenTimeDateFormat('MM月').format(periodStart);
     }
   }
 
@@ -1833,13 +1880,17 @@ class AppDetailScreen extends StatelessWidget {
     int totalAcrossSlots = 0;
     Map<String, List<int>> deviceTrends = {};
     Map<String, int> deviceCurrent = {};
+    Map<String, int> deviceTotals = {};
+    final deviceMatchesByName = filter == DeviceFilter.all
+        ? null
+        : <String, bool>{};
 
     String chartLabel(DateTime periodStart, bool isCurrentSlot) {
       switch (range) {
         case ScreenTimeRange.day:
           return isCurrentSlot && periodStart == today
               ? "今日"
-              : DateFormat('MM/dd').format(periodStart);
+              : _screenTimeDateFormat('MM/dd').format(periodStart);
         case ScreenTimeRange.week:
           return isCurrentSlot
               ? _ScreenTimeDetailScreenState._periodLabel(
@@ -1847,7 +1898,7 @@ class AppDetailScreen extends StatelessWidget {
                   range,
                   today,
                 )
-              : DateFormat('MM/dd').format(periodStart);
+              : _screenTimeDateFormat('MM/dd').format(periodStart);
         case ScreenTimeRange.month:
           return isCurrentSlot
               ? _ScreenTimeDetailScreenState._periodLabel(
@@ -1855,7 +1906,7 @@ class AppDetailScreen extends StatelessWidget {
                   range,
                   today,
                 )
-              : DateFormat('MM月').format(periodStart);
+              : _screenTimeDateFormat('MM月').format(periodStart);
       }
     }
 
@@ -1876,39 +1927,25 @@ class AppDetailScreen extends StatelessWidget {
                 []) {
           String name = item['app_name'] ?? "";
           String device = item['device_name'] ?? "";
-          if (name == appName &&
-              ScreenTimeDetailScreen.matchesFilter(device, filter)) {
-            deviceTrends.putIfAbsent(device, () => List.filled(slotCount, 0));
-          }
-        }
-      }
-    }
+          if (name != appName) continue;
+          final matches = filter == DeviceFilter.all ||
+              deviceMatchesByName!.putIfAbsent(
+                device,
+                () => ScreenTimeDetailScreen.matchesFilter(device, filter),
+              );
+          if (!matches) continue;
 
-    for (int slot = 0; slot < slotCount; slot++) {
-      final periodStart = _ScreenTimeDetailScreenState._shiftPeriod(
-        currentPeriodStart,
-        range,
-        slot - slotCount + 1,
-      );
-      for (final d in _ScreenTimeDetailScreenState._daysInPeriod(
-        periodStart,
-        range,
-        today,
-      )) {
-        for (var item
-            in historyStats[_ScreenTimeDetailScreenState._historyKey(d)] ??
-                []) {
-          String name = item['app_name'] ?? "";
-          String device = item['device_name'] ?? "";
-          if (name == appName && deviceTrends.containsKey(device)) {
-            int duration = (item['duration'] is num)
-                ? (item['duration'] as num).toInt()
-                : 0;
-            deviceTrends[device]![slot] += duration;
-            totalAcrossSlots += duration;
-            if (slot == slotCount - 1) {
-              deviceCurrent[device] = (deviceCurrent[device] ?? 0) + duration;
-            }
+          final trend = deviceTrends.putIfAbsent(
+            device,
+            () => List.filled(slotCount, 0),
+          );
+          final durationValue = item['duration'];
+          final duration = durationValue is num ? durationValue.toInt() : 0;
+          trend[slot] += duration;
+          deviceTotals[device] = (deviceTotals[device] ?? 0) + duration;
+          totalAcrossSlots += duration;
+          if (slot == slotCount - 1) {
+            deviceCurrent[device] = (deviceCurrent[device] ?? 0) + duration;
           }
         }
       }
@@ -1934,9 +1971,7 @@ class AppDetailScreen extends StatelessWidget {
     sortedDevices.sort((a, b) {
       int at = deviceCurrent[a] ?? 0, bt = deviceCurrent[b] ?? 0;
       if (at != bt) return bt.compareTo(at);
-      return deviceTrends[b]!
-          .fold(0, (s, v) => s + v)
-          .compareTo(deviceTrends[a]!.fold(0, (s, v) => s + v));
+      return deviceTotals[b]!.compareTo(deviceTotals[a]!);
     });
 
     BoxDecoration cardDec = BoxDecoration(
@@ -2274,13 +2309,17 @@ class LineChartPainter extends CustomPainter {
         horizontalPadding = 20.0;
     final double chartHeight = size.height - bottomPadding - topPadding;
     final double drawWidth = size.width - horizontalPadding * 2;
-    int maxVal = data.reduce(math.max);
+    var maxVal = data.first;
+    var totalVal = 0;
+    for (final value in data) {
+      if (value > maxVal) maxVal = value;
+      totalVal += value;
+    }
     if (maxVal == 0) maxVal = 1;
 
-    double yAvg =
-        size.height -
-        bottomPadding -
-        ((data.reduce((a, b) => a + b) / data.length) / maxVal) * chartHeight;
+    final average = totalVal / data.length;
+    final double yAvg =
+        size.height - bottomPadding - (average / maxVal) * chartHeight;
     if (maxVal > 1) {
       _drawDashedLine(
         canvas,
@@ -2340,31 +2379,39 @@ class LineChartPainter extends CustomPainter {
     final dotInner = Paint()
       ..color = primaryColor
       ..style = PaintingStyle.fill;
-    for (int i = 0; i < points.length; i++) {
-      canvas.drawCircle(points[i], 4.5, dotOuter);
-      canvas.drawCircle(points[i], 3.0, dotInner);
-      if (data[i] == maxVal && maxVal > 1) {
+    final textPainter = TextPainter(textDirection: TextDirection.ltr);
+    try {
+      for (int i = 0; i < points.length; i++) {
+        canvas.drawCircle(points[i], 4.5, dotOuter);
+        canvas.drawCircle(points[i], 3.0, dotInner);
+        if (data[i] == maxVal && maxVal > 1) {
+          _drawText(
+            textPainter,
+            canvas,
+            _ScreenTimeDetailScreenState.formatShortHM(data[i]),
+            Offset(points[i].dx, points[i].dy - 16),
+            fontSize: 10,
+            color: primaryColor,
+            bold: true,
+          );
+        }
         _drawText(
+          textPainter,
           canvas,
-          _ScreenTimeDetailScreenState.formatShortHM(data[i]),
-          Offset(points[i].dx, points[i].dy - 16),
-          fontSize: 10,
-          color: primaryColor,
-          bold: true,
+          labels[i],
+          Offset(points[i].dx, size.height - 12),
+          fontSize: 11,
+          color: textColor,
+          bold: i == data.length - 1,
         );
       }
-      _drawText(
-        canvas,
-        labels[i],
-        Offset(points[i].dx, size.height - 12),
-        fontSize: 11,
-        color: textColor,
-        bold: i == data.length - 1,
-      );
+    } finally {
+      textPainter.dispose();
     }
   }
 
   void _drawText(
+    TextPainter textPainter,
     Canvas canvas,
     String text,
     Offset center, {
@@ -2372,20 +2419,22 @@ class LineChartPainter extends CustomPainter {
     Color color = Colors.black,
     bool bold = false,
   }) {
-    final tp = TextPainter(
-      text: TextSpan(
+    textPainter
+      ..text = TextSpan(
         text: text,
         style: TextStyle(
           color: color,
           fontSize: fontSize,
           fontWeight: bold ? FontWeight.w700 : FontWeight.normal,
         ),
-      ),
-      textDirection: TextDirection.ltr,
-    )..layout();
-    tp.paint(
+      )
+      ..layout();
+    textPainter.paint(
       canvas,
-      Offset(center.dx - tp.width / 2, center.dy - tp.height / 2),
+      Offset(
+        center.dx - textPainter.width / 2,
+        center.dy - textPainter.height / 2,
+      ),
     );
   }
 
@@ -2439,74 +2488,88 @@ class BarChartPainter extends CustomPainter {
     if (data.isEmpty || size.width == 0) return;
     const double bottomPadding = 30.0, topPadding = 25.0;
     final double chartHeight = size.height - bottomPadding - topPadding;
-    int maxVal = data.reduce(math.max);
+    var maxVal = data.first;
+    var totalVal = 0;
+    for (final value in data) {
+      if (value > maxVal) maxVal = value;
+      totalVal += value;
+    }
     if (maxVal == 0) maxVal = 1;
-    double avgVal = data.reduce((a, b) => a + b) / data.length;
+    final avgVal = totalVal / data.length;
     final double barWidth = (size.width / data.length) * 0.35;
     final double spacing = size.width / data.length;
     final barPaint = Paint()..style = PaintingStyle.fill;
 
-    for (int i = 0; i < data.length; i++) {
-      double xc = i * spacing + spacing / 2;
-      double barH = (data[i] / maxVal) * chartHeight;
-      barPaint.color = (i == selectedIndex)
-          ? primaryColor
-          : primaryColor.withValues(alpha: 0.22);
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(
-          Rect.fromLTWH(
-            xc - barWidth / 2,
-            size.height - bottomPadding - barH,
-            barWidth,
-            barH,
+    final textPainter = TextPainter(textDirection: TextDirection.ltr);
+    try {
+      for (int i = 0; i < data.length; i++) {
+        double xc = i * spacing + spacing / 2;
+        double barH = (data[i] / maxVal) * chartHeight;
+        barPaint.color = (i == selectedIndex)
+            ? primaryColor
+            : primaryColor.withValues(alpha: 0.22);
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromLTWH(
+              xc - barWidth / 2,
+              size.height - bottomPadding - barH,
+              barWidth,
+              barH,
+            ),
+            const Radius.circular(6),
           ),
-          const Radius.circular(6),
-        ),
-        barPaint,
-      );
-      if (data[i] == maxVal && maxVal > 1) {
+          barPaint,
+        );
+        if (data[i] == maxVal && maxVal > 1) {
+          _drawText(
+            textPainter,
+            canvas,
+            _ScreenTimeDetailScreenState.formatShortHM(data[i]),
+            Offset(xc, size.height - bottomPadding - barH - 12),
+            fontSize: 10,
+            color: primaryColor,
+            bold: true,
+          );
+        }
         _drawText(
+          textPainter,
           canvas,
-          _ScreenTimeDetailScreenState.formatShortHM(data[i]),
-          Offset(xc, size.height - bottomPadding - barH - 12),
+          labels[i],
+          Offset(xc, size.height - 12),
+          fontSize: 11,
+          color: textColor,
+          bold: i == selectedIndex,
+        );
+      }
+      if (avgVal > 0) {
+        double avgY =
+            size.height - bottomPadding - (avgVal / maxVal) * chartHeight;
+        _drawDashedLine(
+          canvas,
+          Offset(0, avgY),
+          Offset(size.width, avgY),
+          Paint()
+            ..color = Colors.orangeAccent.shade400
+            ..strokeWidth = 1.5
+            ..style = PaintingStyle.stroke,
+        );
+        _drawText(
+          textPainter,
+          canvas,
+          "平均 ${_ScreenTimeDetailScreenState.formatShortHM(avgVal.toInt())}",
+          Offset(size.width - 25, avgY - 10),
           fontSize: 10,
-          color: primaryColor,
+          color: Colors.orange.shade800,
           bold: true,
         );
       }
-      _drawText(
-        canvas,
-        labels[i],
-        Offset(xc, size.height - 12),
-        fontSize: 11,
-        color: textColor,
-        bold: i == selectedIndex,
-      );
-    }
-    if (avgVal > 0) {
-      double avgY =
-          size.height - bottomPadding - (avgVal / maxVal) * chartHeight;
-      _drawDashedLine(
-        canvas,
-        Offset(0, avgY),
-        Offset(size.width, avgY),
-        Paint()
-          ..color = Colors.orangeAccent.shade400
-          ..strokeWidth = 1.5
-          ..style = PaintingStyle.stroke,
-      );
-      _drawText(
-        canvas,
-        "平均 ${_ScreenTimeDetailScreenState.formatShortHM(avgVal.toInt())}",
-        Offset(size.width - 25, avgY - 10),
-        fontSize: 10,
-        color: Colors.orange.shade800,
-        bold: true,
-      );
+    } finally {
+      textPainter.dispose();
     }
   }
 
   void _drawText(
+    TextPainter textPainter,
     Canvas canvas,
     String text,
     Offset center, {
@@ -2514,20 +2577,22 @@ class BarChartPainter extends CustomPainter {
     Color color = Colors.black,
     bool bold = false,
   }) {
-    final tp = TextPainter(
-      text: TextSpan(
+    textPainter
+      ..text = TextSpan(
         text: text,
         style: TextStyle(
           color: color,
           fontSize: fontSize,
           fontWeight: bold ? FontWeight.w700 : FontWeight.normal,
         ),
-      ),
-      textDirection: TextDirection.ltr,
-    )..layout();
-    tp.paint(
+      )
+      ..layout();
+    textPainter.paint(
       canvas,
-      Offset(center.dx - tp.width / 2, center.dy - tp.height / 2),
+      Offset(
+        center.dx - textPainter.width / 2,
+        center.dy - textPainter.height / 2,
+      ),
     );
   }
 

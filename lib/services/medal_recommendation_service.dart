@@ -1991,6 +1991,9 @@ class MedalRecommendationService {
 
       // 4. Update outcomes from previous recommendations
       await banditService.updateOutcomes(allProgresses);
+      final observationCounts = await banditService.getObservationCounts(
+        unearned.map((p) => p.medal.id).toList(growable: false),
+      );
 
       // 5. Score each medal and generate reasons
       final scored = <_ScoredEntry>[];
@@ -2001,9 +2004,7 @@ class MedalRecommendationService {
           earnedPerCategory,
         );
         final banditSample = banditSamples[progress.medal.id] ?? 0.5;
-        final totalObs = await banditService.getObservationCount(
-          progress.medal.id,
-        );
+        final totalObs = observationCounts[progress.medal.id] ?? 0;
         final combined = _combinedScore(
           breakdown.total,
           banditSample,

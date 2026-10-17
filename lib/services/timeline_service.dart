@@ -6,9 +6,12 @@ import 'course_service.dart';
 import '../models.dart';
 import '../features/habits/models/habit_checkin.dart';
 import '../features/habits/models/habit_goal.dart';
+import '../features/habits/models/habit_goal_rule.dart';
 import '../features/habits/models/habit_progress.dart';
 import '../features/habits/repositories/habit_repository.dart';
 import '../features/habits/services/habit_progress_calculator.dart';
+import '../features/habits/services/habit_rule_resolver.dart';
+import '../features/habits/services/habit_source_resolver.dart';
 import '../features/finance/models/finance_models.dart';
 import '../features/finance/services/finance_repository.dart';
 import '../features/finance/services/finance_storage.dart';
@@ -242,18 +245,28 @@ class TimelineService {
         includeArchived: true,
       );
       final logicalDate = DateFormat('yyyy-MM-dd').format(startOfDay);
-      for (final habit in habitGoals.where(
-        (goal) =>
-            goal.sourceType == HabitSourceType.quantityCheckIn ||
-            goal.sourceType == HabitSourceType.timeCheckIn ||
-            goal.sourceType == HabitSourceType.durationCheckIn,
-      )) {
-        final checkIns = await HabitRepository.getCheckIns(
-          habitUuid: habit.uuid,
-          fromDate: logicalDate,
-          toDate: logicalDate,
-        );
-        for (final checkIn in checkIns) {
+      final independentHabitGoals = habitGoals
+          .where(
+            (goal) =>
+                goal.sourceType == HabitSourceType.quantityCheckIn ||
+                goal.sourceType == HabitSourceType.timeCheckIn ||
+                goal.sourceType == HabitSourceType.durationCheckIn,
+          )
+          .toList(growable: false);
+      final checkIns = independentHabitGoals.isEmpty
+          ? const <HabitCheckIn>[]
+          : await HabitRepository.getCheckInsForHabits(
+              independentHabitGoals.map((goal) => goal.uuid),
+              fromDate: logicalDate,
+              toDate: logicalDate,
+            );
+      final checkInsByHabit = <String, List<HabitCheckIn>>{};
+      for (final checkIn in checkIns) {
+        checkInsByHabit.putIfAbsent(checkIn.habitUuid, () => []).add(checkIn);
+      }
+      for (final habit in independentHabitGoals) {
+        final habitCheckIns = checkInsByHabit[habit.uuid] ?? const [];
+        for (final checkIn in habitCheckIns) {
           if (checkIn.isDeleted || checkIn.source == HabitCheckInSource.skip) {
             continue;
           }
@@ -1255,17 +1268,58 @@ class TimelineService {
     final endDay = AppTimeFormats.localDayStartOffset(end, -1);
     if (endDay.isBefore(startDay)) return const TimelineHabitSummary();
 
+    final rules = await HabitRepository.getRulesForHabits(
+      goals.map((habit) => habit.uuid),
+    );
+    final rulesByHabit = <String, List<HabitGoalRuleRevision>>{};
+    for (final rule in rules) {
+      (rulesByHabit[rule.habitUuid] ??= <HabitGoalRuleRevision>[]).add(rule);
+    }
+    final calculationGoals = goals
+        .where((habit) => rulesByHabit[habit.uuid]?.isNotEmpty == true)
+        .toList(growable: false);
+    final checkIns = calculationGoals.isEmpty
+        ? const <HabitCheckIn>[]
+        : await HabitStorage.getCheckInsForHabits(
+            calculationGoals.map((habit) => habit.uuid),
+            fromDate: HabitRuleResolver.dayKey(startDay),
+            toDate: HabitRuleResolver.dayKey(endDay),
+          );
+    final checkInsByHabit = <String, List<HabitCheckIn>>{};
+    for (final checkIn in checkIns) {
+      (checkInsByHabit[checkIn.habitUuid] ??= <HabitCheckIn>[]).add(checkIn);
+    }
+    final recordsByHabit = await HabitSourceResolver.recordsForRange(
+      calculationGoals
+          .where((habit) => habit.sourceType == HabitSourceType.pomodoroTag)
+          .map((habit) => (habitUuid: habit.uuid, tagUuids: habit.sourceIds)),
+      from: startDay,
+      to: endDay,
+    );
+    final todosByHabit = await HabitSourceResolver.todosForHabitSources(
+      calculationGoals
+          .where((habit) => habit.sourceType == HabitSourceType.recurringTodo)
+          .map((habit) => (habitUuid: habit.uuid, seriesIds: habit.sourceIds)),
+    );
+
     final progressByHabit = <HabitGoal, List<HabitDayProgress>>{};
-    for (final habit in goals) {
+    for (final habit in calculationGoals) {
+      final todos = todosByHabit?[habit.uuid];
       try {
-        final rules = await HabitRepository.getRules(habitUuid: habit.uuid);
-        if (rules.isEmpty) continue;
+        final habitRules = rulesByHabit[habit.uuid]!;
         final progress = await HabitProgressCalculator.computeRange(
           habit: habit,
-          rules: rules,
+          rules: habitRules,
           from: startDay,
           to: endDay,
           now: now,
+          todos: habit.sourceType == HabitSourceType.recurringTodo
+              ? todos
+              : const [],
+          records: habit.sourceType == HabitSourceType.pomodoroTag
+              ? recordsByHabit[habit.uuid] ?? const []
+              : const [],
+          checkIns: checkInsByHabit[habit.uuid] ?? const [],
           periodLevel: true,
         );
         if (progress.isNotEmpty) {
@@ -1308,9 +1362,10 @@ class TimelineService {
       );
 
       final activeDays = rows.map((r) => r['day']?.toString()).toSet();
+      final dayKeyFormat = DateFormat('yyyy-MM-dd');
       var cursor = anchor;
       var streak = 0;
-      while (activeDays.contains(DateFormat('yyyy-MM-dd').format(cursor))) {
+      while (activeDays.contains(dayKeyFormat.format(cursor))) {
         streak++;
         cursor = AppTimeFormats.localDayStartOffset(cursor, -1);
       }
@@ -1350,11 +1405,12 @@ class TimelineService {
     );
 
     final activeDays = rows.map((r) => r['day']?.toString()).toSet();
+    final dayKeyFormat = DateFormat('yyyy-MM-dd');
     var cursor = startDay;
     var current = 0;
     var longest = 0;
     while (!cursor.isAfter(rangeEndDay)) {
-      if (activeDays.contains(DateFormat('yyyy-MM-dd').format(cursor))) {
+      if (activeDays.contains(dayKeyFormat.format(cursor))) {
         current++;
         if (current > longest) longest = current;
       } else {

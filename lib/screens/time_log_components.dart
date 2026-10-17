@@ -122,6 +122,7 @@ class _DayViewState extends State<_DayView> {
   void _showDayLogList() {
     final gsMs = _gridStart.millisecondsSinceEpoch;
     final geMs = _dayEndMs(_gridStart);
+    final tagIndicesByUuid = _DayGridPainter._buildTagIndices(widget.tags);
     showAppModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -129,6 +130,7 @@ class _DayViewState extends State<_DayView> {
       builder: (_) => StatefulBuilder(
         builder: (ctx, setModal) {
           final colorScheme = Theme.of(ctx).colorScheme;
+          final timeFormat = DateFormat('HH:mm');
           final dayLogs =
               widget.logs
                   .where((l) => l.endTime > gsMs && l.startTime < geMs)
@@ -216,12 +218,17 @@ class _DayViewState extends State<_DayView> {
                         separatorBuilder: (_, _) => const SizedBox(height: 8),
                         itemBuilder: (ctx2, i) {
                           final log = dayLogs[i];
-                          final tag = log.tagUuids.isNotEmpty
-                              ? widget.tags.cast<PomodoroTag?>().firstWhere(
-                                  (t) => log.tagUuids.contains(t?.uuid),
-                                  orElse: () => null,
-                                )
-                              : null;
+                          PomodoroTag? tag;
+                          var firstTagIndex = widget.tags.length;
+                          for (final uuid in log.tagUuids) {
+                            final index = tagIndicesByUuid[uuid];
+                            if (index != null && index < firstTagIndex) {
+                              firstTagIndex = index;
+                            }
+                          }
+                          if (firstTagIndex < widget.tags.length) {
+                            tag = widget.tags[firstTagIndex];
+                          }
                           final c = tag != null
                               ? hexColor(tag.color)
                               : colorScheme.cdtInfo;
@@ -285,7 +292,7 @@ class _DayViewState extends State<_DayView> {
                                             const SizedBox(width: 6),
                                           ],
                                           Text(
-                                            '${DateFormat('HH:mm').format(s)} → ${DateFormat('HH:mm').format(e)}',
+                                            '${timeFormat.format(s)} → ${timeFormat.format(e)}',
                                             style: TextStyle(
                                               fontSize: 10,
                                               color: _TC.textHint(ctx2),
@@ -808,6 +815,7 @@ class _DayViewState extends State<_DayView> {
     final gs = _gridStart;
     final st = gs.add(Duration(minutes: _ss * _minutesPerBlock));
     final en = gs.add(Duration(minutes: (_se + 1) * _minutesPerBlock));
+    final timeFormat = DateFormat('HH:mm');
     return OptionalLiquidGlassSheet(
       topRadius: 20,
       padding: EdgeInsets.fromLTRB(
@@ -844,7 +852,7 @@ class _DayViewState extends State<_DayView> {
                   ),
                 ),
                 Text(
-                  '${DateFormat('HH:mm').format(st)} → ${DateFormat('HH:mm').format(en)}',
+                  '${timeFormat.format(st)} → ${timeFormat.format(en)}',
                   style: TextStyle(fontSize: 11, color: _TC.textSub(context)),
                 ),
               ],
@@ -899,6 +907,7 @@ class _DayGridPainter extends CustomPainter {
   final Color nowColor;
   final bool isDark;
   final double hourH;
+  final Map<String, int> _tagIndicesByUuid;
 
   _DayGridPainter({
     required this.minutesPerBlock,
@@ -917,7 +926,27 @@ class _DayGridPainter extends CustomPainter {
     required this.nowColor,
     required this.isDark,
     required this.hourH,
-  });
+  }) : _tagIndicesByUuid = _buildTagIndices(tags);
+
+  static Map<String, int> _buildTagIndices(List<PomodoroTag> tags) {
+    final indices = <String, int>{};
+    for (var index = 0; index < tags.length; index++) {
+      final uuid = tags[index].uuid;
+      if (!indices.containsKey(uuid)) indices[uuid] = index;
+    }
+    return indices;
+  }
+
+  PomodoroTag? _firstTagForUuids(List<String> uuids) {
+    int? firstIndex;
+    for (final uuid in uuids) {
+      final index = _tagIndicesByUuid[uuid];
+      if (index != null && (firstIndex == null || index < firstIndex)) {
+        firstIndex = index;
+      }
+    }
+    return firstIndex == null ? null : tags[firstIndex];
+  }
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -932,6 +961,9 @@ class _DayGridPainter extends CustomPainter {
     final mn = Paint()
       ..color = gridMinorColor
       ..strokeWidth = 0.5;
+    final eventFillPaint = Paint();
+    final eventBarPaint = Paint();
+    final selectionPaint = Paint()..color = selColor;
 
     for (int h = 0; h <= 24; h++) {
       canvas.drawLine(
@@ -959,10 +991,7 @@ class _DayGridPainter extends CustomPainter {
       );
       PomodoroTag? tag;
       if (log.tagUuids.isNotEmpty) {
-        tag = tags.cast<PomodoroTag?>().firstWhere(
-          (t) => log.tagUuids.contains(t?.uuid),
-          orElse: () => null,
-        );
+        tag = _firstTagForUuids(log.tagUuids);
       }
       final fill = tag != null
           ? hexColor(tag.color, opacity: isDark ? 0.14 : 0.10)
@@ -970,6 +999,8 @@ class _DayGridPainter extends CustomPainter {
       final bar = tag != null
           ? hexColor(tag.color, opacity: 0.5)
           : (isDark ? const Color(0x44888888) : const Color(0x44000000));
+      eventFillPaint.color = fill;
+      eventBarPaint.color = bar;
       for (int i = sIdx; i <= eIdx; i++) {
         final rowStartMs = gsMs + i * 60 * minutesPerBlock * 1000;
         final rowEndMs = rowStartMs + 60 * minutesPerBlock * 1000;
@@ -985,11 +1016,11 @@ class _DayGridPainter extends CustomPainter {
             Rect.fromLTWH(left, i ~/ bpr * hourH + 1, width, hourH - 2),
             const Radius.circular(3),
           ),
-          Paint()..color = fill,
+          eventFillPaint,
         );
         canvas.drawRect(
           Rect.fromLTWH(left, i ~/ bpr * hourH + 1, 3, hourH - 2),
-          Paint()..color = bar,
+          eventBarPaint,
         );
       }
     }
@@ -1009,6 +1040,8 @@ class _DayGridPainter extends CustomPainter {
             : planColor;
         final fill = base.withValues(alpha: isDark ? 0.18 : 0.12);
         final bar = base.withValues(alpha: 0.58);
+        eventFillPaint.color = fill;
+        eventBarPaint.color = bar;
         for (int i = sIdx; i <= eIdx; i++) {
           final rowStartMs = gsMs + i * 60 * minutesPerBlock * 1000;
           final rowEndMs = rowStartMs + 60 * minutesPerBlock * 1000;
@@ -1025,11 +1058,11 @@ class _DayGridPainter extends CustomPainter {
               Rect.fromLTWH(left, i ~/ bpr * hourH + 1, width, hourH - 2),
               const Radius.circular(3),
             ),
-            Paint()..color = fill,
+            eventFillPaint,
           );
           canvas.drawRect(
             Rect.fromLTWH(left, i ~/ bpr * hourH + 1, 3, hourH - 2),
-            Paint()..color = bar,
+            eventBarPaint,
           );
         }
       }
@@ -1051,7 +1084,7 @@ class _DayGridPainter extends CustomPainter {
             Rect.fromLTWH(left, i ~/ bpr * hourH + 1, width, hourH - 2),
             const Radius.circular(3),
           ),
-          Paint()..color = selColor,
+          selectionPaint,
         );
       }
     }
@@ -1203,11 +1236,18 @@ class _PlanEntrySheetState extends State<_PlanEntrySheet> {
     List<TodoItem> todos,
     List<TodoGroup> groups,
   ) {
+    final groupIndices = <String, int>{};
+    for (var index = 0; index < groups.length; index++) {
+      final groupId = groups[index].id;
+      if (!groupIndices.containsKey(groupId)) {
+        groupIndices[groupId] = index;
+      }
+    }
+
     int groupRank(TodoItem todo) {
       final groupId = todo.groupId;
       if (groupId == null || groupId.isEmpty) return 1 << 30;
-      final idx = groups.indexWhere((group) => group.id == groupId);
-      return idx == -1 ? (1 << 30) - 1 : idx;
+      return groupIndices[groupId] ?? (1 << 30) - 1;
     }
 
     int urgencyMs(TodoItem todo) {
@@ -2425,6 +2465,155 @@ class _TagDetailSheetState extends State<_TagDetailSheet> {
   }
 }
 
+class _LineChartGeometry {
+  final List<int> data;
+  final List<int> dataSnapshot;
+  final double width;
+  final double height;
+  final double itemW;
+  final Color color;
+  final String Function(int) formatLabel;
+  final List<Offset> points;
+  final List<TextPainter?> tooltipPainters;
+  final Path fillPath;
+  final Path linePath;
+  final Paint fillPaint;
+  final Paint linePaint;
+  final Paint pointPaint;
+  final Paint hoverGlowPaint;
+  final Paint hoverLinePaint;
+  final Paint bubblePaint;
+
+  _LineChartGeometry._({
+    required this.data,
+    required this.dataSnapshot,
+    required this.width,
+    required this.height,
+    required this.itemW,
+    required this.color,
+    required this.formatLabel,
+    required this.points,
+    required this.tooltipPainters,
+    required this.fillPath,
+    required this.linePath,
+    required this.fillPaint,
+    required this.linePaint,
+    required this.pointPaint,
+    required this.hoverGlowPaint,
+    required this.hoverLinePaint,
+    required this.bubblePaint,
+  });
+
+  factory _LineChartGeometry.create({
+    required List<int> data,
+    required double width,
+    required double height,
+    required double itemW,
+    required Color color,
+    required String Function(int) formatLabel,
+  }) {
+    var minValue = data.isEmpty ? 0 : data.first;
+    var maxValue = minValue;
+    for (var i = 1; i < data.length; i++) {
+      final value = data[i];
+      if (value < minValue) minValue = value;
+      if (value > maxValue) maxValue = value;
+    }
+    final minV = minValue.toDouble();
+    final maxV = maxValue.toDouble();
+    final valueRange = maxV - minV;
+    final range = valueRange < 1 ? 10.0 : valueRange;
+    final totalPointsW = (data.length - 1) * itemW;
+    final startX = max(20.0, width - 20 - totalPointsW);
+    final points = <Offset>[];
+    for (var i = 0; i < data.length; i++) {
+      final y = height - 30 - ((data[i] - minV) / range) * (height - 60);
+      points.add(Offset(startX + i * itemW, y));
+    }
+
+    final fillPath = Path();
+    final linePath = Path();
+    final fillPaint = Paint();
+    final linePaint = Paint()
+      ..color = color
+      ..strokeWidth = 3.0
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+    if (points.length >= 2) {
+      fillPath
+        ..moveTo(points.first.dx, height - 30)
+        ..lineTo(points.first.dx, points.first.dy);
+      linePath.moveTo(points.first.dx, points.first.dy);
+      for (var i = 0; i < points.length - 1; i++) {
+        final p1 = points[i];
+        final p2 = points[i + 1];
+        final midpointX = p1.dx + (p2.dx - p1.dx) / 2;
+        fillPath.cubicTo(midpointX, p1.dy, midpointX, p2.dy, p2.dx, p2.dy);
+        linePath.cubicTo(midpointX, p1.dy, midpointX, p2.dy, p2.dx, p2.dy);
+      }
+      fillPath
+        ..lineTo(points.last.dx, height - 30)
+        ..close();
+      fillPaint.shader = LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [color.withValues(alpha: 0.3), color.withValues(alpha: 0.0)],
+      ).createShader(Rect.fromLTWH(0, 0, width, height));
+    }
+
+    final tooltipPainters = List<TextPainter?>.filled(
+      data.length >= 2 ? data.length : 0,
+      null,
+    );
+
+    return _LineChartGeometry._(
+      data: data,
+      dataSnapshot: List<int>.unmodifiable(data),
+      width: width,
+      height: height,
+      itemW: itemW,
+      color: color,
+      formatLabel: formatLabel,
+      points: points,
+      tooltipPainters: tooltipPainters,
+      fillPath: fillPath,
+      linePath: linePath,
+      fillPaint: fillPaint,
+      linePaint: linePaint,
+      pointPaint: Paint()..color = color,
+      hoverGlowPaint: Paint()..color = color.withValues(alpha: 0.2),
+      hoverLinePaint: Paint()
+        ..color = color.withValues(alpha: 0.5)
+        ..strokeWidth = 1.0,
+      bubblePaint: Paint()..color = color,
+    );
+  }
+
+  void dispose() {
+    for (final painter in tooltipPainters) {
+      painter?.dispose();
+    }
+  }
+
+  TextPainter tooltipPainterAt(int index) {
+    final cached = tooltipPainters[index];
+    if (cached != null) return cached;
+    final painter = TextPainter(
+      text: TextSpan(
+        text: formatLabel(data[index]),
+        style: const TextStyle(
+          fontSize: 11,
+          color: Colors.white,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+      textDirection: ui.TextDirection.ltr,
+    )..layout();
+    tooltipPainters[index] = painter;
+    return painter;
+  }
+}
+
 class _MiniLineChart extends StatefulWidget {
   final List<int> data;
   final List<String> xLabels;
@@ -2447,6 +2636,82 @@ class _MiniLineChart extends StatefulWidget {
 class _MiniLineChartState extends State<_MiniLineChart> {
   late ScrollController _sc;
   Offset? _touchPos;
+  _LineChartGeometry? _lineChartGeometry;
+  List<TextPainter?> _xLabelPainters = [];
+  List<String> _cachedXLabels = [];
+  Color? _cachedLabelColor;
+  int _cachedLabelStride = 0;
+
+  bool _xLabelPaintersNeedUpdate() {
+    final stride = widget.data.length > 10 ? 2 : 1;
+    if (_cachedLabelColor != widget.color ||
+        _cachedLabelStride != stride ||
+        _cachedXLabels.length != widget.xLabels.length) {
+      return true;
+    }
+    for (var i = 0; i < widget.xLabels.length; i++) {
+      if (_cachedXLabels[i] != widget.xLabels[i]) return true;
+    }
+    return false;
+  }
+
+  void _rebuildXLabelPainters() {
+    final stride = widget.data.length > 10 ? 2 : 1;
+    final painters = List<TextPainter?>.filled(widget.xLabels.length, null);
+    final labelCount = widget.xLabels.length < widget.data.length
+        ? widget.xLabels.length
+        : widget.data.length;
+    for (var i = 0; i < labelCount; i += stride) {
+      final painter = TextPainter(
+        text: TextSpan(
+          text: widget.xLabels[i],
+          style: TextStyle(
+            fontSize: 9,
+            color: widget.color.withValues(alpha: 0.6),
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        textDirection: ui.TextDirection.ltr,
+      )..layout();
+      painters[i] = painter;
+    }
+
+    for (final painter in _xLabelPainters) {
+      painter?.dispose();
+    }
+    _xLabelPainters = painters;
+    _cachedXLabels = List<String>.of(widget.xLabels);
+    _cachedLabelColor = widget.color;
+    _cachedLabelStride = stride;
+  }
+
+  _LineChartGeometry _geometryFor(Size size, double itemW) {
+    final cached = _lineChartGeometry;
+    if (cached != null &&
+        cached.width == size.width &&
+        cached.height == size.height &&
+        cached.itemW == itemW &&
+        cached.color == widget.color &&
+        cached.formatLabel == widget.formatLabel &&
+        identical(cached.data, widget.data)) {
+      return cached;
+    }
+
+    cached?.dispose();
+    return _lineChartGeometry = _LineChartGeometry.create(
+      data: widget.data,
+      width: size.width,
+      height: size.height,
+      itemW: itemW,
+      color: widget.color,
+      formatLabel: widget.formatLabel,
+    );
+  }
+
+  void _invalidateLineChartGeometry() {
+    _lineChartGeometry?.dispose();
+    _lineChartGeometry = null;
+  }
 
   void _updateTouch(Offset? position) {
     if (_touchPos == position) return;
@@ -2457,6 +2722,7 @@ class _MiniLineChartState extends State<_MiniLineChart> {
   void initState() {
     super.initState();
     _sc = ScrollController();
+    _rebuildXLabelPainters();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_sc.hasClients) {
         _sc.jumpTo(_sc.position.maxScrollExtent);
@@ -2467,6 +2733,27 @@ class _MiniLineChartState extends State<_MiniLineChart> {
   @override
   void didUpdateWidget(_MiniLineChart oldWidget) {
     super.didUpdateWidget(oldWidget);
+    final geometry = _lineChartGeometry;
+    if (geometry != null) {
+      var dataChanged =
+          !identical(geometry.data, widget.data) ||
+          geometry.dataSnapshot.length != widget.data.length;
+      if (!dataChanged) {
+        for (var i = 0; i < widget.data.length; i++) {
+          if (geometry.dataSnapshot[i] != widget.data[i]) {
+            dataChanged = true;
+            break;
+          }
+        }
+      }
+      if (dataChanged ||
+          oldWidget.color != widget.color ||
+          oldWidget.height != widget.height ||
+          oldWidget.formatLabel != widget.formatLabel) {
+        _invalidateLineChartGeometry();
+      }
+    }
+    if (_xLabelPaintersNeedUpdate()) _rebuildXLabelPainters();
     if (oldWidget.data.length != widget.data.length) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (_sc.hasClients) {
@@ -2482,6 +2769,10 @@ class _MiniLineChartState extends State<_MiniLineChart> {
 
   @override
   void dispose() {
+    _invalidateLineChartGeometry();
+    for (final painter in _xLabelPainters) {
+      painter?.dispose();
+    }
     _sc.dispose();
     super.dispose();
   }
@@ -2492,6 +2783,8 @@ class _MiniLineChartState extends State<_MiniLineChart> {
     const double itemW = 55.0; // 固定间距
     final double chartContentW = (widget.data.length - 1) * itemW + 40;
     final double scrollWidth = max(screenWidth, chartContentW);
+    final size = Size(scrollWidth, widget.height);
+    final geometry = _geometryFor(size, itemW);
 
     return SizedBox(
       height: widget.height,
@@ -2510,15 +2803,23 @@ class _MiniLineChartState extends State<_MiniLineChart> {
           child: SizedBox(
             width: scrollWidth,
             height: widget.height,
-            child: CustomPaint(
-              painter: _LineChartPainter(
-                data: widget.data,
-                xLabels: widget.xLabels,
-                color: widget.color,
-                formatLabel: widget.formatLabel,
-                touchPos: _touchPos,
-                itemW: itemW,
-              ),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                RepaintBoundary(
+                  child: CustomPaint(
+                    painter: _LineChartPathPainter(geometry: geometry),
+                  ),
+                ),
+                CustomPaint(
+                  painter: _LineChartPainter(
+                    geometry: geometry,
+                    xLabels: widget.xLabels,
+                    xLabelPainters: _xLabelPainters,
+                    touchPos: _touchPos,
+                  ),
+                ),
+              ],
             ),
           ),
         ),
@@ -2528,119 +2829,41 @@ class _MiniLineChartState extends State<_MiniLineChart> {
 }
 
 class _LineChartPainter extends CustomPainter {
-  final List<int> data;
+  final _LineChartGeometry geometry;
   final List<String> xLabels;
-  final Color color;
-  final String Function(int) formatLabel;
+  final List<TextPainter?> xLabelPainters;
   final Offset? touchPos;
-  final double itemW;
 
   _LineChartPainter({
-    required this.data,
+    required this.geometry,
     required this.xLabels,
-    required this.color,
-    required this.formatLabel,
+    required this.xLabelPainters,
     this.touchPos,
-    required this.itemW,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
+    final data = geometry.data;
     if (data.isEmpty) return;
-    final minV = data.reduce(min).toDouble();
-    final maxV = data.reduce(max).toDouble();
-    final range = (maxV - minV) < 1 ? 10.0 : maxV - minV;
-
-    double calcY(double v) {
-      return size.height - 30 - ((v - minV) / range) * (size.height - 60);
-    }
-
-    // 计算起始位置，如果数据点较少，则靠右排列，保持固定间距
-    final double totalPointsW = (data.length - 1) * itemW;
-    final double startX = max(20.0, size.width - 20 - totalPointsW);
-
-    final pts = List.generate(
-      data.length,
-      (i) => Offset(startX + i * itemW, calcY(data[i].toDouble())),
-    );
+    final pts = geometry.points;
 
     if (data.length < 2) {
       // 只有一个点的情况
       final p = pts[0];
-      canvas.drawCircle(p, 6, Paint()..color = color);
+      canvas.drawCircle(p, 6, geometry.pointPaint);
       return;
     }
 
-    // 1. 绘制面积渐变
-    final fillPath = Path();
-    fillPath.moveTo(pts[0].dx, size.height - 30);
-    fillPath.lineTo(pts[0].dx, pts[0].dy);
-    for (int i = 0; i < pts.length - 1; i++) {
-      final p1 = pts[i];
-      final p2 = pts[i + 1];
-      final control1 = Offset(p1.dx + (p2.dx - p1.dx) / 2, p1.dy);
-      final control2 = Offset(p1.dx + (p2.dx - p1.dx) / 2, p2.dy);
-      fillPath.cubicTo(
-        control1.dx,
-        control1.dy,
-        control2.dx,
-        control2.dy,
-        p2.dx,
-        p2.dy,
-      );
-    }
-    fillPath.lineTo(pts.last.dx, size.height - 30);
-    fillPath.close();
-
-    final gradient = LinearGradient(
-      begin: Alignment.topCenter,
-      end: Alignment.bottomCenter,
-      colors: [color.withValues(alpha: 0.3), color.withValues(alpha: 0.0)],
-    );
-    canvas.drawPath(
-      fillPath,
-      Paint()
-        ..shader = gradient.createShader(
-          Rect.fromLTWH(0, 0, size.width, size.height),
-        ),
-    );
-
-    // 2. 绘制平滑曲线
-    final path = Path();
-    path.moveTo(pts[0].dx, pts[0].dy);
-    for (int i = 0; i < pts.length - 1; i++) {
-      final p1 = pts[i];
-      final p2 = pts[i + 1];
-      final control1 = Offset(p1.dx + (p2.dx - p1.dx) / 2, p1.dy);
-      final control2 = Offset(p1.dx + (p2.dx - p1.dx) / 2, p2.dy);
-      path.cubicTo(
-        control1.dx,
-        control1.dy,
-        control2.dx,
-        control2.dy,
-        p2.dx,
-        p2.dy,
-      );
-    }
-    canvas.drawPath(
-      path,
-      Paint()
-        ..color = color
-        ..strokeWidth = 3.0
-        ..style = PaintingStyle.stroke
-        ..strokeCap = StrokeCap.round,
-    );
-
-    // 3. 绘制坐标轴与点
     int? activeIdx;
     if (touchPos != null) {
-      double minD = 9999;
-      for (int i = 0; i < pts.length; i++) {
-        final d = (pts[i].dx - touchPos!.dx).abs();
-        if (d < minD) {
-          minD = d;
-          activeIdx = i;
-        }
+      if (geometry.itemW > 0) {
+        final relativeIndex = (touchPos!.dx - pts.first.dx) / geometry.itemW;
+        final lowerIndex = relativeIndex.floor();
+        final fraction = relativeIndex - lowerIndex;
+        final nearestIndex = fraction <= 0.5 ? lowerIndex : lowerIndex + 1;
+        activeIdx = nearestIndex.clamp(0, pts.length - 1).toInt();
+      } else {
+        activeIdx = 0;
       }
     }
 
@@ -2649,46 +2872,26 @@ class _LineChartPainter extends CustomPainter {
       final isHover = i == activeIdx;
 
       // 节点点
-      canvas.drawCircle(p, isHover ? 6 : 4, Paint()..color = color);
+      canvas.drawCircle(p, isHover ? 6 : 4, geometry.pointPaint);
       if (isHover) {
-        canvas.drawCircle(p, 10, Paint()..color = color.withValues(alpha: 0.2));
+        canvas.drawCircle(p, 10, geometry.hoverGlowPaint);
       }
 
       // X轴标签
       if (i % (data.length > 10 ? 2 : 1) == 0) {
-        final dateTp = TextPainter(
-          text: TextSpan(
-            text: xLabels[i],
-            style: TextStyle(
-              fontSize: 9,
-              color: color.withValues(alpha: 0.6),
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          textDirection: ui.TextDirection.ltr,
-        )..layout();
+        final dateTp = xLabelPainters[i]!;
         dateTp.paint(canvas, Offset(p.dx - dateTp.width / 2, size.height - 18));
       }
 
       // 活跃点的指示线和数值
       if (isHover) {
-        final lineP = Paint()
-          ..color = color.withValues(alpha: 0.5)
-          ..strokeWidth = 1.0;
-        canvas.drawLine(Offset(p.dx, 0), Offset(p.dx, size.height - 30), lineP);
+        canvas.drawLine(
+          Offset(p.dx, 0),
+          Offset(p.dx, size.height - 30),
+          geometry.hoverLinePaint,
+        );
 
-        final valText = formatLabel(data[i]);
-        final valTp = TextPainter(
-          text: TextSpan(
-            text: valText,
-            style: const TextStyle(
-              fontSize: 11,
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          textDirection: ui.TextDirection.ltr,
-        )..layout();
+        final valTp = geometry.tooltipPainterAt(i);
 
         // 绘制气泡背景
         final bgR = Rect.fromCenter(
@@ -2698,7 +2901,7 @@ class _LineChartPainter extends CustomPainter {
         );
         canvas.drawRRect(
           RRect.fromRectAndRadius(bgR, const Radius.circular(8)),
-          Paint()..color = color,
+          geometry.bubblePaint,
         );
         valTp.paint(
           canvas,
@@ -2710,11 +2913,27 @@ class _LineChartPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _LineChartPainter o) =>
-      !identical(o.data, data) ||
+      !identical(o.geometry, geometry) ||
       !identical(o.xLabels, xLabels) ||
-      o.color != color ||
-      o.touchPos != touchPos ||
-      o.itemW != itemW;
+      !identical(o.xLabelPainters, xLabelPainters) ||
+      o.touchPos != touchPos;
+}
+
+class _LineChartPathPainter extends CustomPainter {
+  final _LineChartGeometry geometry;
+
+  const _LineChartPathPainter({required this.geometry});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (geometry.data.length < 2) return;
+    canvas.drawPath(geometry.fillPath, geometry.fillPaint);
+    canvas.drawPath(geometry.linePath, geometry.linePaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _LineChartPathPainter oldDelegate) =>
+      !identical(oldDelegate.geometry, geometry);
 }
 
 // ══════════════════════════════════════════════════════════
