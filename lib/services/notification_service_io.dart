@@ -97,6 +97,15 @@ class NotificationService {
 
   // Dedupe keys for Windows all-day todo notifications: "todoId@yyyy-MM-dd"
   static final Set<String> _windowsTodoNotificationKeys = <String>{};
+  static final Map<(String?, String), DateFormat>
+  _todoNotificationDateFormatters = {};
+
+  static DateFormat _todoNotificationDateFormat(String pattern) {
+    final locale = Intl.defaultLocale;
+    return _todoNotificationDateFormatters.putIfAbsent((locale, pattern), () {
+      return DateFormat(pattern, locale);
+    });
+  }
 
   static const NotificationDetails _desktopNotificationDetails =
       NotificationDetails(
@@ -408,34 +417,43 @@ class NotificationService {
     await ensureInitialized();
 
     final DateTime now = DateTime.now();
-    final List<TodoItem> todayAllDayTodos = todos.where((t) {
-      if (t.dueDate == null) return false;
-      final todoType = ItemSemanticsService.specialTodoTypeForTitle(t.title);
-      if (todoType != 'default') return false;
-      DateTime localDueDate = t.dueDate!.toLocal();
-      if (!AppTimeFormats.isSameDay(localDueDate, now)) return false;
-      DateTime startDate = DateTime.fromMillisecondsSinceEpoch(
-        t.createdDate ?? t.createdAt,
+    var totalCount = 0;
+    var completedCount = 0;
+    final pendingItems = <TodoItem>[];
+    for (final todo in todos) {
+      final dueDate = todo.dueDate;
+      if (dueDate == null) continue;
+      final localDueDate = dueDate.toLocal();
+      if (!AppTimeFormats.isSameDay(localDueDate, now)) continue;
+      final todoType = ItemSemanticsService.specialTodoTypeForTitle(
+        todo.title,
+      );
+      if (todoType != 'default') continue;
+      final startDate = DateTime.fromMillisecondsSinceEpoch(
+        todo.createdDate ?? todo.createdAt,
         isUtc: true,
       ).toLocal();
-      return startDate.hour == 0 &&
-          startDate.minute == 0 &&
-          localDueDate.hour == 23 &&
-          localDueDate.minute == 59;
-    }).toList();
+      if (startDate.hour != 0 ||
+          startDate.minute != 0 ||
+          localDueDate.hour != 23 ||
+          localDueDate.minute != 59) {
+        continue;
+      }
 
-    final int totalCount = todayAllDayTodos.length;
-    if (totalCount == 0 || todayAllDayTodos.every((t) => t.isDone)) {
+      totalCount++;
+      if (todo.isDone) {
+        completedCount++;
+      } else if (pendingItems.length < 5) {
+        pendingItems.add(todo);
+      }
+    }
+
+    if (totalCount == 0 || totalCount == completedCount) {
       await cancelSpecialTodoNotification(12345);
       return;
     }
 
-    final int completedCount = todayAllDayTodos.where((t) => t.isDone).length;
     final int pendingCount = totalCount - completedCount;
-    final List<TodoItem> pendingItems = todayAllDayTodos
-        .where((t) => !t.isDone)
-        .take(5)
-        .toList();
 
     try {
       await _channel.invokeMethod('showOngoingNotification', {
@@ -462,7 +480,8 @@ class NotificationService {
     required bool isSpecialTodo,
   }) {
     if (isSpecialTodo) return '${todo.id}@pickup-v${todo.version}';
-    final dayStr = DateFormat('yyyy-MM-dd').format(todo.dueDate!.toLocal());
+    final dayStr = _todoNotificationDateFormat('yyyy-MM-dd')
+        .format(todo.dueDate!.toLocal());
     return '${todo.id}@$dayStr';
   }
 
@@ -524,7 +543,7 @@ class NotificationService {
     } else if (isAllDayTodo) {
       timeStr = '当天内完成';
     } else {
-      timeStr = '${DateFormat('HH:mm').format(dueDate!)}前完成';
+      timeStr = '${_todoNotificationDateFormat('HH:mm').format(dueDate!)}前完成';
     }
     final notifId = todo.id.hashCode;
 
@@ -534,7 +553,7 @@ class NotificationService {
     if (_isDesktopSupported) {
       if (isAllDayTodo) {
         final todaySuffix =
-            '@${DateFormat('yyyy-MM-dd').format(DateTime.now())}';
+            '@${_todoNotificationDateFormat('yyyy-MM-dd').format(DateTime.now())}';
         _windowsTodoNotificationKeys.removeWhere(
           (key) => !key.contains('@pickup-v') && !key.endsWith(todaySuffix),
         );

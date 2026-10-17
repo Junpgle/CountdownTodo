@@ -69,19 +69,21 @@ abstract final class ScheduledReminderRegistry {
     DateTime? now,
   }) {
     final current = now ?? DateTime.now();
+    final currentMilliseconds = current.millisecondsSinceEpoch;
     return reminders
         .where((reminder) {
           final triggerValue = reminder['triggerAtMs'];
           final startValue = reminder['startAtMs'] ?? reminder['courseStartMs'];
-          if (_isInvalidTimestamp(triggerValue) ||
-              _isInvalidTimestamp(startValue)) {
+          final triggerMilliseconds = timestampMilliseconds(triggerValue);
+          final startMilliseconds = timestampMilliseconds(startValue);
+          if ((triggerValue != null && triggerMilliseconds == null) ||
+              (startValue != null && startMilliseconds == null)) {
             return false;
           }
-          final triggerAt = _dateTimeOf(triggerValue);
-          final startAt = _dateTimeOf(startValue);
-          if (triggerAt == null) return true;
-          return triggerAt.isAfter(current) ||
-              (startAt != null && startAt.isAfter(current));
+          if (triggerMilliseconds == null) return true;
+          return triggerMilliseconds > currentMilliseconds ||
+              (startMilliseconds != null &&
+                  startMilliseconds > currentMilliseconds);
         })
         .map(Map<String, dynamic>.from)
         .toList(growable: false);
@@ -93,8 +95,7 @@ abstract final class ScheduledReminderRegistry {
     String? replaceSource,
     bool replaceAll = false,
   }) {
-    final merged = <Map<String, dynamic>>[];
-    final existingById = <int, Map<String, dynamic>>{};
+    final merged = <Object, Map<String, dynamic>>{};
 
     for (final reminder in existing) {
       final copy = Map<String, dynamic>.from(reminder);
@@ -103,39 +104,18 @@ abstract final class ScheduledReminderRegistry {
         continue;
       }
       final id = notifIdOf(copy);
-      if (id != null) {
-        if (existingById.containsKey(id)) {
-          final old = existingById[id]!;
-          final oldIndex = merged.indexOf(old);
-          if (oldIndex >= 0) merged.removeAt(oldIndex);
-        }
-        existingById[id] = copy;
-      }
-      merged.add(copy);
+      if (id != null) merged.remove(id);
+      merged[id ?? Object()] = copy;
     }
 
     for (final reminder in incoming) {
       final copy = Map<String, dynamic>.from(reminder);
       final id = notifIdOf(copy);
-      if (id != null) {
-        final old = existingById.remove(id);
-        if (old != null) {
-          final oldIndex = merged.indexOf(old);
-          if (oldIndex >= 0) merged.removeAt(oldIndex);
-        }
-      }
-      merged.add(copy);
-      if (id != null) existingById[id] = copy;
+      if (id != null) merged.remove(id);
+      merged[id ?? Object()] = copy;
     }
 
-    return merged;
-  }
-
-  static DateTime? _dateTimeOf(dynamic value) {
-    final milliseconds = timestampMilliseconds(value);
-    return milliseconds == null
-        ? null
-        : DateTime.fromMillisecondsSinceEpoch(milliseconds);
+    return merged.values.toList(growable: false);
   }
 
   static int? timestampMilliseconds(dynamic value) {
@@ -161,7 +141,4 @@ abstract final class ScheduledReminderRegistry {
     return milliseconds;
   }
 
-  static bool _isInvalidTimestamp(dynamic value) {
-    return value != null && timestampMilliseconds(value) == null;
-  }
 }
