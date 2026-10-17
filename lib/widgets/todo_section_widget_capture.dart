@@ -567,8 +567,11 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
                     minLines: 2,
                   ),
                   const SizedBox(height: 12),
-                  Row(
-                    children: [
+                  AiWaterRippleBorder(
+                    isLight:
+                        Theme.of(context).brightness == Brightness.light,
+                    child: Row(
+                      children: [
                       Expanded(
                         child: FilledButton(
                           onPressed: isParsing
@@ -997,9 +1000,15 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
                               : const Text("大模型识别"),
                         ),
                       ),
-                    ],
+                      ],
+                    ),
                   ),
-                  if (parsedResults.isNotEmpty) ...[
+                  if (parsedResults.isNotEmpty)
+                    AiWaterRippleBorder(
+                      isLight:
+                          Theme.of(context).brightness == Brightness.light,
+                      child: Column(
+                        children: [
                     const SizedBox(height: 16),
                     const Divider(),
                     const SizedBox(height: 8),
@@ -1112,8 +1121,10 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
                           ),
                         ],
                       ),
-                    ],
-                  ],
+                        ],
+                      ],
+                    ),
+                  ),
                 ],
               ),
             );
@@ -1129,21 +1140,27 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  SegmentedButton<int>(
-                    segments: const [
-                      ButtonSegment(value: 0, label: Text("手动输入")),
-                      ButtonSegment(
-                        value: 1,
-                        icon: Icon(Icons.auto_awesome),
-                        label: Text("AI识别"),
-                      ),
-                    ],
-                    selected: {selectedTabIndex},
-                    onSelectionChanged: (Set<int> selection) {
-                      setDialogState(() {
-                        selectedTabIndex = selection.first;
-                      });
-                    },
+                  AiWaterRippleBorder(
+                    enabled: selectedTabIndex == 1,
+                    isLight:
+                        Theme.of(context).brightness == Brightness.light,
+                    borderRadius: BorderRadius.circular(16),
+                    child: SegmentedButton<int>(
+                      segments: const [
+                        ButtonSegment(value: 0, label: Text("手动输入")),
+                        ButtonSegment(
+                          value: 1,
+                          icon: Icon(Icons.auto_awesome),
+                          label: Text("AI识别"),
+                        ),
+                      ],
+                      selected: {selectedTabIndex},
+                      onSelectionChanged: (Set<int> selection) {
+                        setDialogState(() {
+                          selectedTabIndex = selection.first;
+                        });
+                      },
+                    ),
                   ),
                   const SizedBox(height: 16),
                   SizedBox(

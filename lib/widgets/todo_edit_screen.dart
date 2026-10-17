@@ -91,6 +91,8 @@ class TodoEditScreenState extends State<TodoEditScreen> {
   List<TodoPlanBlock> _relatedPlanBlocks = [];
   bool _isLoadingPlans = true;
   List<PomodoroRecord> _focusRecords = [];
+  int _totalFocusSeconds = 0;
+  int _focusedPeriodCount = 0;
   bool _isLoadingRecords = true;
 
   @override
@@ -150,8 +152,16 @@ class TodoEditScreenState extends State<TodoEditScreen> {
     final todoIds = _focusRecordTodoIds(_editingTodo, widget.todos);
     final records = await PomodoroService.getRecordsByTodoUuids(todoIds);
     if (!mounted || _editingTodo.id != editingTodoId) return;
+    final focusedPeriodCount = _focusedRecurrencePeriodCount(
+      _editingTodo,
+      widget.todos,
+      records,
+    );
+    final totalFocusSeconds = PomodoroService.totalFocusSeconds(records);
     setState(() {
       _focusRecords = records;
+      _totalFocusSeconds = totalFocusSeconds;
+      _focusedPeriodCount = focusedPeriodCount;
       _isLoadingRecords = false;
     });
   }
@@ -1393,6 +1403,8 @@ class TodoEditScreenState extends State<TodoEditScreen> {
       _syncFolderToTeam = false;
       _relatedPlanBlocks = [];
       _focusRecords = [];
+      _totalFocusSeconds = 0;
+      _focusedPeriodCount = 0;
       _isLoadingPlans = true;
       _isLoadingRecords = true;
     });
@@ -1598,12 +1610,8 @@ class TodoEditScreenState extends State<TodoEditScreen> {
 
     if (_focusRecords.isEmpty) return const SizedBox.shrink();
 
-    final totalFocusSeconds = PomodoroService.totalFocusSeconds(_focusRecords);
-    final focusedOccurrenceCount = _focusedRecurrencePeriodCount(
-      _editingTodo,
-      widget.todos,
-      _focusRecords,
-    );
+    final totalFocusSeconds = _totalFocusSeconds;
+    final focusedOccurrenceCount = _focusedPeriodCount;
     final isRecurrenceSeries =
         _editingTodo.recurrenceSeriesId?.isNotEmpty == true;
 

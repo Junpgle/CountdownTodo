@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../models.dart';
+import '../../../services/conflict_visibility_service.dart';
 import '../../../storage_service.dart';
 import '../../../widgets/floating_bottom_bar.dart';
 import '../../../utils/app_dialogs.dart';
@@ -94,7 +95,9 @@ class _RecurrenceSeriesMergePageState extends State<RecurrenceSeriesMergePage> {
           lastStart: visible.last.createdDate ?? visible.last.createdAt,
           occurrenceCount: visible.length,
           completedCount: visible.where((todo) => todo.isDone).length,
-          conflictCount: visible.where((todo) => todo.hasConflict).length,
+          conflictCount: visible
+              .where(ConflictVisibilityService.isVisibleTodoConflict)
+              .length,
           hasActiveRule:
               visible.any((todo) => todo.recurrence != RecurrenceType.none),
         ),

@@ -1,6 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+final Map<String?, DateFormat> _recurrenceDateFormats = {};
+
+DateFormat _recurrenceDateFormat() {
+  final locale = Intl.defaultLocale;
+  return _recurrenceDateFormats.putIfAbsent(
+    locale,
+    () => DateFormat('M/d', locale),
+  );
+}
+
 enum TodoRecurrenceNodeState {
   completed,
   overdue,
@@ -146,12 +156,14 @@ class _TodoRecurrenceProgressState extends State<TodoRecurrenceProgress> {
   }
 
   Widget _buildTimeline(ColorScheme colorScheme) {
+    late final DateTime now = DateTime.now();
+    late final DateTime today = DateTime(now.year, now.month, now.day);
     if (widget.nodes.length <= 7) {
       return Row(
         children: [
           for (var i = 0; i < widget.nodes.length; i++) ...[
             if (i > 0) Expanded(child: _buildDottedConnector(colorScheme)),
-            _buildNode(widget.nodes[i], colorScheme),
+            _buildNode(widget.nodes[i], colorScheme, today),
           ],
         ],
       );
@@ -167,7 +179,7 @@ class _TodoRecurrenceProgressState extends State<TodoRecurrenceProgress> {
                 width: 22,
                 child: _buildDottedConnector(colorScheme),
               ),
-            _buildNode(widget.nodes[i], colorScheme),
+            _buildNode(widget.nodes[i], colorScheme, today),
           ],
         ],
       ),
@@ -194,6 +206,7 @@ class _TodoRecurrenceProgressState extends State<TodoRecurrenceProgress> {
   Widget _buildNode(
     TodoRecurrenceProgressNode node,
     ColorScheme colorScheme,
+    DateTime today,
   ) {
     final (Color background, Color foreground, IconData? icon, bool outlined) =
         switch (node.state) {
@@ -234,11 +247,9 @@ class _TodoRecurrenceProgressState extends State<TodoRecurrenceProgress> {
           true,
         ),
     };
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
     final nodeDay = DateTime(node.date.year, node.date.month, node.date.day);
     final label = node.label ??
-        (nodeDay == today ? '今天' : DateFormat('M/d').format(node.date));
+        (nodeDay == today ? '今天' : _recurrenceDateFormat().format(node.date));
 
     return Semantics(
       button: widget.onNodeTap != null,

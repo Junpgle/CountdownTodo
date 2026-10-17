@@ -29,13 +29,9 @@ List<WidgetRecurrenceSeriesItem> buildWidgetRecurrenceSeries(
   for (final entry in occurrencesBySeries.entries) {
     final occurrences = entry.value
       ..sort((a, b) => _startOf(a).compareTo(_startOf(b)));
-    final activeRules = occurrences
-        .where((todo) => todo.recurrence != RecurrenceType.none)
-        .toList();
-    final ruleAnchor =
-        _selectRuleAnchor(activeRules, current) ??
-        _selectRepresentative(occurrences, current);
-    final representative = _selectRepresentative(occurrences, current);
+    final analysis = _analyzeSeriesOccurrences(occurrences, current);
+    final ruleAnchor = analysis.ruleAnchor ?? analysis.representative;
+    final representative = analysis.representative;
     final recurrenceEnd = ruleAnchor.recurrenceEndDate?.toLocal();
     final recurrenceEndDay = recurrenceEnd == null
         ? null
@@ -53,24 +49,6 @@ List<WidgetRecurrenceSeriesItem> buildWidgetRecurrenceSeries(
             null &&
         (recurrenceEndDay == null || !recurrenceEndDay.isBefore(current));
 
-    var completedCount = 0;
-    var overdueCount = 0;
-    var elapsedCount = 0;
-    for (final occurrence in occurrences) {
-      final start = _startOf(occurrence);
-      if (occurrence.isDone) {
-        completedCount++;
-        elapsedCount++;
-        continue;
-      }
-      if (start.isAfter(current)) continue;
-      elapsedCount++;
-      final effectiveEnd =
-          occurrence.dueDate?.toLocal() ??
-          DateTime(start.year, start.month, start.day + 1);
-      if (effectiveEnd.isBefore(current)) overdueCount++;
-    }
-
     result.add(
       WidgetRecurrenceSeriesItem(
         seriesId: entry.key,
@@ -83,9 +61,9 @@ List<WidgetRecurrenceSeriesItem> buildWidgetRecurrenceSeries(
         recurrenceEndMs: recurrenceEnd?.millisecondsSinceEpoch,
         isActive: isActive,
         contextText: _contextText(representative),
-        completedCount: completedCount,
-        overdueCount: overdueCount,
-        elapsedCount: elapsedCount,
+        completedCount: analysis.completedCount,
+        overdueCount: analysis.overdueCount,
+        elapsedCount: analysis.elapsedCount,
         totalCount: recurrenceEnd == null ? null : occurrences.length,
         occurrences: _buildOccurrenceWindow(
           occurrences,
@@ -107,38 +85,60 @@ List<WidgetRecurrenceSeriesItem> buildWidgetRecurrenceSeries(
   return result;
 }
 
-TodoItem? _selectRuleAnchor(List<TodoItem> activeRules, DateTime now) {
-  if (activeRules.isEmpty) return null;
-  final pastOrCurrent = activeRules
-      .where((todo) => !_startOf(todo).isAfter(now))
-      .toList();
-  if (pastOrCurrent.isNotEmpty) return pastOrCurrent.last;
-  return activeRules.first;
-}
-
-TodoItem _selectRepresentative(List<TodoItem> occurrences, DateTime now) {
+_WidgetRecurrenceSeriesAnalysis _analyzeSeriesOccurrences(
+  List<TodoItem> occurrences,
+  DateTime now,
+) {
   final today = DateTime(now.year, now.month, now.day);
-  final todayOccurrences = occurrences.where((todo) {
+  TodoItem? firstToday;
+  TodoItem? firstUndoneToday;
+  TodoItem? firstRule;
+  TodoItem? lastStartedRule;
+  TodoItem? lastPast;
+  var completedCount = 0;
+  var overdueCount = 0;
+  var elapsedCount = 0;
+
+  for (final todo in occurrences) {
     final start = _startOf(todo);
-    return DateTime(start.year, start.month, start.day) == today;
-  }).toList();
-  if (todayOccurrences.isNotEmpty) {
-    return todayOccurrences.firstWhere(
-      (todo) => !todo.isDone,
-      orElse: () => todayOccurrences.first,
-    );
+    if (start.year == today.year &&
+        start.month == today.month &&
+        start.day == today.day) {
+      firstToday ??= todo;
+      if (!todo.isDone) firstUndoneToday ??= todo;
+    }
+    if (todo.recurrence != RecurrenceType.none) {
+      firstRule ??= todo;
+      if (!start.isAfter(now)) lastStartedRule = todo;
+    }
+    if (!start.isAfter(now)) lastPast = todo;
+
+    if (todo.isDone) {
+      completedCount++;
+      elapsedCount++;
+      continue;
+    }
+    if (start.isAfter(now)) continue;
+    elapsedCount++;
+    final effectiveEnd =
+        todo.dueDate?.toLocal() ??
+        DateTime(start.year, start.month, start.day + 1);
+    if (effectiveEnd.isBefore(now)) overdueCount++;
   }
 
-  final active = occurrences
-      .where((todo) => todo.recurrence != RecurrenceType.none)
-      .toList();
-  if (active.isNotEmpty) return _selectRuleAnchor(active, now)!;
-
-  final past = occurrences
-      .where((todo) => !_startOf(todo).isAfter(now))
-      .toList();
-  if (past.isNotEmpty) return past.last;
-  return occurrences.first;
+  return _WidgetRecurrenceSeriesAnalysis(
+    ruleAnchor: lastStartedRule ?? firstRule,
+    representative:
+        firstUndoneToday ??
+        firstToday ??
+        lastStartedRule ??
+        firstRule ??
+        lastPast ??
+        occurrences.first,
+    completedCount: completedCount,
+    overdueCount: overdueCount,
+    elapsedCount: elapsedCount,
+  );
 }
 
 List<WidgetRecurrenceOccurrenceItem> _buildOccurrenceWindow(
@@ -190,12 +190,22 @@ List<WidgetRecurrenceOccurrenceItem> _buildOccurrenceWindow(
   final sorted = byStartMs.values.toList()
     ..sort((a, b) => a.startAtMs.compareTo(b.startAtMs));
   final nowMs = now.millisecondsSinceEpoch;
-  final past = sorted.where((item) => item.startAtMs < nowMs).toList();
-  final future = sorted.where((item) => item.startAtMs >= nowMs).toList();
-  return [
-    ...past.skip((past.length - _pastOccurrenceLimit).clamp(0, past.length)),
-    ...future.take(_futureOccurrenceLimit),
-  ];
+  var low = 0;
+  var high = sorted.length;
+  while (low < high) {
+    final middle = (low + high) >> 1;
+    if (sorted[middle].startAtMs < nowMs) {
+      low = middle + 1;
+    } else {
+      high = middle;
+    }
+  }
+
+  final firstPast = low > _pastOccurrenceLimit ? low - _pastOccurrenceLimit : 0;
+  final afterFuture = low + _futureOccurrenceLimit < sorted.length
+      ? low + _futureOccurrenceLimit
+      : sorted.length;
+  return sorted.sublist(firstPast, afterFuture);
 }
 
 DateTime _startOf(TodoItem todo) => todo.effectiveStartTime;
@@ -228,4 +238,20 @@ int _nextOccurrenceMs(WidgetRecurrenceSeriesItem series, DateTime now) {
     if (occurrence.startAtMs >= nowMs) return occurrence.startAtMs;
   }
   return 1 << 62;
+}
+
+class _WidgetRecurrenceSeriesAnalysis {
+  final TodoItem? ruleAnchor;
+  final TodoItem representative;
+  final int completedCount;
+  final int overdueCount;
+  final int elapsedCount;
+
+  const _WidgetRecurrenceSeriesAnalysis({
+    required this.ruleAnchor,
+    required this.representative,
+    required this.completedCount,
+    required this.overdueCount,
+    required this.elapsedCount,
+  });
 }

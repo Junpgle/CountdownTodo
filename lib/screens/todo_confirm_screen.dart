@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import '../widgets/floating_glass_control.dart';
+import '../widgets/ai_water_border.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models.dart';
@@ -1079,17 +1080,25 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
               ),
             )
           else if (hasMoreTodos)
-            IconButton(
-              icon: const Icon(Icons.refresh),
-              tooltip: '重新识别',
-              onPressed: _retryRecognition,
+            AiWaterRippleBorder(
+              isLight: Theme.of(context).brightness == Brightness.light,
+              child: IconButton(
+                icon: const Icon(Icons.refresh),
+                tooltip: '重新识别',
+                onPressed: _retryRecognition,
+              ),
             ),
         ],
       ),
       body: Padding(
         padding: EdgeInsets.only(top: topBarHeight),
         child: _isRetrying
-            ? _buildSkeleton(Theme.of(context).brightness == Brightness.dark)
+            ? AiWaterRippleBorder(
+                isLight: Theme.of(context).brightness == Brightness.light,
+                child: _buildSkeleton(
+                  Theme.of(context).brightness == Brightness.dark,
+                ),
+              )
             : Column(
                 children: [
                   // 图片预览（可折叠）
@@ -1114,18 +1123,22 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                   if (_retryStatus != null)
                     Padding(
                       padding: const EdgeInsets.all(16),
-                      child: Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: _isRetrying
-                              ? Theme.of(context).colorScheme.primary
-                              : (_retryStatus!.contains('失败')
-                                  ? Colors.red
-                                  : Colors.orange),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Row(
-                          children: [
+                      child: AiWaterRippleBorder(
+                        isLight:
+                            Theme.of(context).brightness == Brightness.light,
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: _isRetrying
+                                ? Theme.of(context).colorScheme.primary
+                                : (_retryStatus!.contains('失败')
+                                    ? Colors.red
+                                    : Colors.orange),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            children: [
                             if (_isRetrying)
                               const SizedBox(
                                 width: 16,
@@ -1155,7 +1168,8 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                                 ),
                               ),
                             ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -1230,7 +1244,9 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
     return SingleChildScrollView(
       key: ValueKey(_currentIndex),
       padding: const EdgeInsets.all(16),
-      child: Card(
+      child: AiWaterRippleBorder(
+        isLight: Theme.of(context).brightness == Brightness.light,
+        child: Card(
         elevation: 2,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         child: Padding(
@@ -1338,6 +1354,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
             ],
           ),
         ),
+        ),
       ),
     );
   }
@@ -1436,12 +1453,15 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
         // 添加按钮
         SizedBox(
           width: double.infinity,
-          child: FilledButton.icon(
-            onPressed: _isRetrying || _isSaving ? null : _confirmCurrentTodo,
-            icon: const Icon(Icons.add),
-            label: const Text('确认并添加'),
-            style: FilledButton.styleFrom(
-              padding: const EdgeInsets.symmetric(vertical: 14),
+          child: AiWaterRippleBorder(
+            isLight: Theme.of(context).brightness == Brightness.light,
+            child: FilledButton.icon(
+              onPressed: _isRetrying || _isSaving ? null : _confirmCurrentTodo,
+              icon: const Icon(Icons.add),
+              label: const Text('确认并添加'),
+              style: FilledButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
             ),
           ),
         ),

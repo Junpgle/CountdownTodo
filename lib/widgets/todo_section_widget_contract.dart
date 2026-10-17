@@ -21,7 +21,7 @@ mixin _TodoSectionContract {
     ChatUsageSummary? initialVoiceUsageSummary,
   });
 
-  bool _isHistoricalTodo(TodoItem t);
+  bool _isHistoricalTodoAt(TodoItem t, DateTime today);
 
   void showAddTodoDialog();
 
@@ -122,6 +122,7 @@ mixin _TodoSectionContract {
     TodoItem todo, {
     required bool isPast,
     required bool isFuture,
+    required DateTime now,
     Key? key,
   });
 

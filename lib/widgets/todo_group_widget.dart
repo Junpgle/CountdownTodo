@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 
 import '../models.dart';
+import '../services/conflict_visibility_service.dart';
 import '../utils/app_dialogs.dart';
 import '../utils/calendar_date_math.dart';
 import 'ai_water_border.dart';
@@ -46,12 +47,34 @@ class TodoGroupWidget extends StatefulWidget {
   State<TodoGroupWidget> createState() => _TodoGroupWidgetState();
 }
 
+class _TodoGroupMetrics {
+  const _TodoGroupMetrics({
+    required this.todos,
+    required this.day,
+    required this.doneCount,
+    required this.hasOverdue,
+    required this.nearestDeadline,
+    required this.progressIntervals,
+  });
+
+  final List<TodoItem> todos;
+  final DateTime day;
+  final int doneCount;
+  final bool hasOverdue;
+  final DateTime? nearestDeadline;
+  final List<(int, int)> progressIntervals;
+}
+
 class _TodoGroupWidgetState extends State<TodoGroupWidget>
     with TickerProviderStateMixin {
   late AnimationController _progressController;
   bool _hasAnimated = false;
   bool _suppressTodoItemTap = false;
   bool _showAllTodos = false;
+  List<TodoItem>? _sortedTodosInput;
+  List<TodoItem>? _sortedTodosCache;
+  _TodoGroupMetrics? _cachedMetrics;
+  final Map<(String?, String), DateFormat> _dateFormatters = {};
 
   @override
   void initState() {
@@ -68,68 +91,11 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
     super.dispose();
   }
 
-  // Dynamic color based on group urgency (most urgent task wins)
-  Color _getGroupUrgencyColor(List<TodoItem> todos) {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    bool hasOverdue = false;
-    double maxProgress = 0.0;
+  List<TodoItem> _sortedTodosFor(List<TodoItem> groupTodos) {
+    if (identical(_sortedTodosInput, groupTodos)) return _sortedTodosCache!;
 
-    for (final t in todos) {
-      if (t.isDone || t.effectiveDueAt == null) continue;
-      final cDate = DateTime.fromMillisecondsSinceEpoch(
-        t.createdDate ?? t.createdAt,
-        isUtc: true,
-      ).toLocal();
-      final end = t.effectiveDueAt!;
-      final dueDay = DateTime(end.year, end.month, end.day);
-      if (dueDay.isBefore(today)) {
-        hasOverdue = true;
-        break;
-      }
-      final totalMin = end.difference(cDate).inMinutes;
-      if (totalMin > 0 && now.isAfter(cDate)) {
-        final p = (now.difference(cDate).inMinutes / totalMin).clamp(0.0, 1.0);
-        if (p > maxProgress) maxProgress = p;
-      }
-    }
-
-    if (hasOverdue || maxProgress >= 1.0) {
-      return const Color(0xFFE57373); // red
-    } else if (maxProgress >= 0.5) {
-      return const Color(0xFFFFB74D); // orange
-    } else {
-      return const Color(0xFF66BB6A); // green
-    }
-  }
-
-  // Compute the overall group progress (max progress of any undone task)
-  double _getGroupProgress(List<TodoItem> todos) {
-    final now = DateTime.now();
-    double maxProgress = 0.0;
-    for (final t in todos) {
-      if (t.isDone || t.effectiveDueAt == null) continue;
-      final cDate = DateTime.fromMillisecondsSinceEpoch(
-        t.createdDate ?? t.createdAt,
-        isUtc: true,
-      ).toLocal();
-      final end = t.effectiveDueAt!;
-      final totalMin = end.difference(cDate).inMinutes;
-      if (totalMin > 0 && now.isAfter(cDate)) {
-        final p = (now.difference(cDate).inMinutes / totalMin).clamp(0.0, 1.0);
-        if (p > maxProgress) maxProgress = p;
-      }
-    }
-    return maxProgress;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final group = widget.group;
-    final groupTodos = widget.groupTodos;
-    final isExpanded = group.isExpanded;
-    // Sort by deadline
-    final sortedTodos = List<TodoItem>.from(groupTodos)
+    _sortedTodosInput = groupTodos;
+    return _sortedTodosCache = List<TodoItem>.of(groupTodos)
       ..sort((a, b) {
         if (a.isDone != b.isDone) return a.isDone ? 1 : -1;
         if (a.dueDate == null && b.dueDate == null) return 0;
@@ -137,6 +103,78 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
         if (b.dueDate == null) return -1;
         return a.dueDate!.compareTo(b.dueDate!);
       });
+  }
+
+  // TodoSection replaces grouped lists when versioned inputs change. The day
+  // key keeps overdue status fresh across midnight while intervals reuse the
+  // stable portions of the progress calculation.
+  _TodoGroupMetrics _metricsFor(List<TodoItem> groupTodos, DateTime today) {
+    final cached = _cachedMetrics;
+    if (cached != null &&
+        identical(cached.todos, groupTodos) &&
+        cached.day == today) {
+      return cached;
+    }
+
+    var doneCount = 0;
+    var hasOverdue = false;
+    DateTime? nearestDeadline;
+    final progressIntervals = <(int, int)>[];
+    for (final todo in groupTodos) {
+      if (todo.isDone) {
+        doneCount++;
+        continue;
+      }
+
+      final deadline = todo.dueDate;
+      if (deadline != null &&
+          (nearestDeadline == null || deadline.isBefore(nearestDeadline))) {
+        nearestDeadline = deadline;
+      }
+
+      final end = todo.effectiveDueAt;
+      if (end == null) continue;
+
+      final isDueDayBeforeToday =
+          end.year < today.year ||
+          (end.year == today.year &&
+              (end.month < today.month ||
+                  (end.month == today.month && end.day < today.day)));
+      if (isDueDayBeforeToday) hasOverdue = true;
+
+      final startMicros = (todo.createdDate ?? todo.createdAt) * 1000;
+      final totalMinutes =
+          (end.microsecondsSinceEpoch - startMicros) ~/
+          Duration.microsecondsPerMinute;
+      if (totalMinutes > 0) {
+        progressIntervals.add((startMicros, totalMinutes));
+      }
+    }
+
+    return _cachedMetrics = _TodoGroupMetrics(
+      todos: groupTodos,
+      day: today,
+      doneCount: doneCount,
+      hasOverdue: hasOverdue,
+      nearestDeadline: nearestDeadline,
+      progressIntervals: progressIntervals,
+    );
+  }
+
+  DateFormat _cachedDateFormat(String pattern) {
+    final locale = Intl.defaultLocale;
+    return _dateFormatters.putIfAbsent(
+      (locale, pattern),
+      () => DateFormat(pattern, locale),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final group = widget.group;
+    final groupTodos = widget.groupTodos;
+    final isExpanded = group.isExpanded;
+    final sortedTodos = _sortedTodosFor(groupTodos);
     final foldedTodoCount =
         widget.onlyShowMostUrgentTodo &&
             !_showAllTodos &&
@@ -144,29 +182,42 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
         ? sortedTodos.length - 1
         : 0;
     final visibleTodos = foldedTodoCount > 0
-        ? sortedTodos.take(1).toList()
+        ? sortedTodos.take(1)
         : sortedTodos;
 
-    final doneCount = groupTodos.where((t) => t.isDone).length;
     final totalCount = groupTodos.length;
-    final progress = totalCount == 0 ? 0.0 : doneCount / totalCount;
-    final allDone = totalCount > 0 && doneCount == totalCount;
+    final now = DateTime.now();
+    final nowMicros = now.microsecondsSinceEpoch;
+    final today = DateTime(now.year, now.month, now.day);
+    final metrics = _metricsFor(groupTodos, today);
+    final doneCount = metrics.doneCount;
+    final hasOverdue = metrics.hasOverdue;
+    var groupFillProgress = 0.0;
+    final nearestDeadline = metrics.nearestDeadline;
 
-    // Nearest deadline
-    DateTime? nearestDeadline;
-    final upcomingTodos = groupTodos
-        .where((t) => !t.isDone && t.dueDate != null)
-        .toList();
-    if (upcomingTodos.isNotEmpty) {
-      upcomingTodos.sort((a, b) => a.dueDate!.compareTo(b.dueDate!));
-      nearestDeadline = upcomingTodos.first.dueDate;
+    for (final interval in metrics.progressIntervals) {
+      final startMicros = interval.$1;
+      final totalMin = interval.$2;
+      if (nowMicros > startMicros) {
+        final elapsedMin =
+            (nowMicros - startMicros) ~/ Duration.microsecondsPerMinute;
+        final taskProgress = (elapsedMin / totalMin).clamp(0.0, 1.0);
+        if (taskProgress > groupFillProgress) {
+          groupFillProgress = taskProgress;
+        }
+      }
     }
 
-    // Urgency metrics for background fill
+    final progress = totalCount == 0 ? 0.0 : doneCount / totalCount;
+    final allDone = totalCount > 0 && doneCount == totalCount;
     final urgencyColor = allDone
         ? Colors.green
-        : _getGroupUrgencyColor(groupTodos);
-    final groupFillProgress = allDone ? 1.0 : _getGroupProgress(groupTodos);
+        : hasOverdue || groupFillProgress >= 1.0
+        ? const Color(0xFFE57373)
+        : groupFillProgress >= 0.5
+        ? const Color(0xFFFFB74D)
+        : const Color(0xFF66BB6A);
+    if (allDone) groupFillProgress = 1.0;
     final statusColor = allDone ? Colors.green : urgencyColor;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
@@ -265,6 +316,7 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
                         doneCount,
                         totalCount,
                         nearestDeadline,
+                        today,
                         allDone,
                         isHovering,
                         urgencyColor,
@@ -282,7 +334,11 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
                           child: Column(
                             children: [
                               ...visibleTodos.map(
-                                (todo) => _buildTodoItem(context, todo),
+                                (todo) => _buildTodoItem(
+                                  context,
+                                  todo,
+                                  now: now,
+                                ),
                               ),
                               if (widget.onlyShowMostUrgentTodo &&
                                   sortedTodos.length > 1)
@@ -310,6 +366,7 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
     int doneCount,
     int totalCount,
     DateTime? nearestDeadline,
+    DateTime today,
     bool allDone,
     bool isHovering,
     Color urgencyColor,
@@ -461,7 +518,7 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
                   ),
                 ),
                 if (nearestDeadline != null && !isExpanded && !allDone) ...[
-                  _buildDeadlineTag(context, nearestDeadline),
+                  _buildDeadlineTag(context, nearestDeadline, today),
                   const SizedBox(width: 8),
                 ],
                 GestureDetector(
@@ -553,9 +610,11 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
     );
   }
 
-  Widget _buildDeadlineTag(BuildContext context, DateTime deadline) {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
+  Widget _buildDeadlineTag(
+    BuildContext context,
+    DateTime deadline,
+    DateTime today,
+  ) {
     final target = DateTime(deadline.year, deadline.month, deadline.day);
     final diff = CalendarDateMath.daysBetween(today, target);
 
@@ -571,7 +630,7 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
       label = "逾期";
       color = Colors.red;
     } else {
-      label = DateFormat('MM-dd').format(deadline);
+      label = _cachedDateFormat('MM-dd').format(deadline);
       color = Colors.grey;
     }
 
@@ -593,27 +652,33 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
     );
   }
 
-  Widget _buildTodoItem(BuildContext context, TodoItem todo) {
-    DateTime start = DateTime.fromMillisecondsSinceEpoch(
+  Widget _buildTodoItem(
+    BuildContext context,
+    TodoItem todo, {
+    required DateTime now,
+  }) {
+    final start = DateTime.fromMillisecondsSinceEpoch(
       todo.createdDate ?? todo.createdAt,
       isUtc: true,
     ).toLocal();
-    final isDateOnly = todo.isDateOnly;
+    final timeMode = todo.timeModeForStartTime(start);
+    final isDateOnly = timeMode == TodoTimeMode.dateOnly;
+    final end = todo.effectiveDueAtForTimeMode(timeMode);
 
     // Build time string: "MM/dd HH:mm → MM/dd HH:mm" or "MM/dd → MM/dd" for all-day
     String timeStr = "";
     if (todo.dueDate != null) {
       if (isDateOnly) {
-        timeStr = '${DateFormat('MM/dd').format(todo.dueDate!)}内完成';
+        timeStr = '${_cachedDateFormat('MM/dd').format(todo.dueDate!)}内完成';
       } else {
-        timeStr = '${DateFormat('MM/dd HH:mm').format(todo.dueDate!)}前完成';
+        timeStr =
+            '${_cachedDateFormat('MM/dd HH:mm').format(todo.dueDate!)}前完成';
       }
     } else {
       timeStr = '未安排';
     }
 
-    final now = DateTime.now();
-    final isPast = todo.isOverdueAt(now);
+    final isPast = end != null && end.isBefore(now);
 
     // ── 徽章计算 (与主列表同步) ──
     String badge = "";
@@ -643,7 +708,7 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
         badgeBg = colorScheme.secondaryContainer.withValues(alpha: 0.5);
       }
     } else {
-      badge = DateFormat('MM/dd').format(start);
+      badge = _cachedDateFormat('MM/dd').format(start);
       badgeColor = colorScheme.onSurface.withValues(alpha: 0.45);
       badgeBg = colorScheme.onSurface.withValues(alpha: 0.06);
     }
@@ -666,11 +731,7 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
 
     // Progress calculation logic (Sync with TodoSectionWidget)
     double progress = 0.0;
-    final cDate = DateTime.fromMillisecondsSinceEpoch(
-      todo.createdDate ?? todo.createdAt,
-      isUtc: true,
-    ).toLocal();
-    final end = todo.effectiveDueAt;
+    final cDate = start;
     if (end != null) {
       final totalMin = end.difference(cDate).inMinutes;
       if (totalMin > 0 && now.isAfter(cDate)) {
@@ -851,7 +912,8 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
                                     ),
                                   ),
                                 ),
-                                if (todo.hasConflict) ...[
+                                if (ConflictVisibilityService
+                                    .isVisibleTodoConflict(todo)) ...[
                                   const SizedBox(width: 4),
                                   Icon(
                                     Icons.warning_amber_rounded,
