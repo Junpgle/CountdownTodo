@@ -2725,6 +2725,7 @@ class _ShuffleCardStackState extends State<_ShuffleCardStack>
   late final List<ThirtyDayChallengeTask> _sequence;
   late final AnimationController _controller;
   late final Animation<int> _stepAnimation;
+  late final ValueNotifier<int> _stepNotifier;
   bool _hasNotified = false;
 
   @override
@@ -2741,6 +2742,8 @@ class _ShuffleCardStackState extends State<_ShuffleCardStack>
     ).animate(
       CurvedAnimation(parent: _controller, curve: Curves.easeInOutCubic),
     );
+    _stepNotifier = ValueNotifier<int>(_stepAnimation.value);
+    _controller.addListener(_updateStepNotifier);
     _controller.addStatusListener((status) {
       if (status == AnimationStatus.completed && !_hasNotified) {
         _hasNotified = true;
@@ -2752,8 +2755,15 @@ class _ShuffleCardStackState extends State<_ShuffleCardStack>
 
   @override
   void dispose() {
+    _controller.removeListener(_updateStepNotifier);
+    _stepNotifier.dispose();
     _controller.dispose();
     super.dispose();
+  }
+
+  void _updateStepNotifier() {
+    final step = _stepAnimation.value;
+    if (_stepNotifier.value != step) _stepNotifier.value = step;
   }
 
   List<ThirtyDayChallengeTask> _buildSequence(
@@ -2787,10 +2797,9 @@ class _ShuffleCardStackState extends State<_ShuffleCardStack>
           child: SizedBox(
             height: height,
             width: double.infinity,
-            child: AnimatedBuilder(
-              animation: _stepAnimation,
-              builder: (context, _) {
-                final step = _stepAnimation.value;
+            child: ValueListenableBuilder<int>(
+              valueListenable: _stepNotifier,
+              builder: (context, step, _) {
                 final current = _sequence[step];
                 return Stack(
                   fit: StackFit.expand,
