@@ -30,6 +30,15 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
   String? _loadError;
   int _loadGeneration = 0;
   Timer? _financeChangeRefreshTimer;
+  final Map<(String?, String), DateFormat> _dateFormatters = {};
+
+  DateFormat _cachedDateFormat(String pattern) {
+    final locale = Intl.defaultLocale;
+    return _dateFormatters.putIfAbsent(
+      (locale, pattern),
+      () => DateFormat(pattern, locale),
+    );
+  }
 
   @override
   void initState() {
@@ -203,6 +212,8 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
   }
 
   List<FinanceTrashEntry> get _entries {
+    final balanceSnapshotDateFormat =
+        _cachedDateFormat('yyyy年M月d日 HH:mm');
     final categories = {
       for (final category in _categories) category.uuid: category
     };
@@ -258,7 +269,7 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
           details: [
             item.monthKey,
             if (item.isPaymentMethod)
-              '余额对应时间 ${DateFormat('yyyy年M月d日 HH:mm').format(DateTime.fromMillisecondsSinceEpoch(item.effectiveBalanceSnapshotAt))}',
+              '余额对应时间 ${balanceSnapshotDateFormat.format(DateTime.fromMillisecondsSinceEpoch(item.effectiveBalanceSnapshotAt))}',
             if (item.note?.isNotEmpty == true) item.note!
           ].join(' · '),
           amountLabel: item.isPaymentMethod ? '录入时余额' : '预算额度',
