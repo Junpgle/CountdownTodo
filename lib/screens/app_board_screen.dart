@@ -468,7 +468,7 @@ class _AppBoardScreenState extends State<AppBoardScreen>
             ValueListenableBuilder<DateTime>(
               valueListenable: _nowNotifier,
               builder: (context, now, _) => Text(
-                DateFormat('HH:mm').format(now),
+                _appBoardDateFormat('HH:mm').format(now),
                 style: TextStyle(
                   color: Colors.white.withValues(alpha: 0.8),
                   fontSize: 48,
@@ -1556,7 +1556,7 @@ class _GanttChartState extends State<GanttChart> {
           math.min(8.0, completedRowHeight * 0.55),
         );
         _scheduleScrollToToday(minDate, effectiveDayWidth);
-        final weekdayFormatter = DateFormat('E');
+        final weekdayFormatter = _appBoardDateFormat('E');
 
         return SingleChildScrollView(
           controller: _scrollController,
@@ -1977,15 +1977,17 @@ class TaskDetailModal extends StatelessWidget {
                 _buildInfoRow(
                   Icons.access_time,
                   '开始时间',
-                  DateFormat(
-                    'yyyy-MM-dd HH:mm',
-                  ).format(DateTime.fromMillisecondsSinceEpoch(task.createdAt)),
+                  _appBoardDateFormat('yyyy-MM-dd HH:mm').format(
+                    DateTime.fromMillisecondsSinceEpoch(task.createdAt),
+                  ),
                 ),
                 _buildInfoRow(
                   Icons.calendar_today,
                   '截止时间',
                   task.dueDate != null
-                      ? DateFormat('yyyy-MM-dd HH:mm').format(task.dueDate!)
+                      ? _appBoardDateFormat('yyyy-MM-dd HH:mm').format(
+                          task.dueDate!,
+                        )
                       : '无截止日期',
                 ),
                 _buildInfoRow(
