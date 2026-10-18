@@ -39,6 +39,13 @@ class FinanceEntryScreen extends StatefulWidget {
 }
 
 class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
+  static final RegExp _optionNameLeadingDecorationPattern = RegExp(
+    r'^[^\u4e00-\u9fffA-Za-z0-9]+',
+  );
+  static final RegExp _optionNameWhitespacePattern = RegExp(r'\s+');
+  static final RegExp _expressionOperatorPattern = RegExp(r'[+\-*/()]');
+  static final RegExp _expressionLineBreakPattern = RegExp(r'\r?\n');
+
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _amountController;
   late final TextEditingController _merchantController;
@@ -509,8 +516,8 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
 
   String _normalizeOptionName(String value) {
     return value
-        .replaceAll(RegExp(r'^[^\u4e00-\u9fffA-Za-z0-9]+'), '')
-        .replaceAll(RegExp(r'\s+'), '')
+        .replaceAll(_optionNameLeadingDecorationPattern, '')
+        .replaceAll(_optionNameWhitespacePattern, '')
         .trim()
         .toLowerCase();
   }
@@ -1223,7 +1230,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
     if (expression == null ||
         trimmedExpression == null ||
         trimmedExpression.isEmpty ||
-        !RegExp(r'[+\-*/()]').hasMatch(trimmedExpression)) {
+        !_expressionOperatorPattern.hasMatch(trimmedExpression)) {
       return note;
     }
 
@@ -1232,7 +1239,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
     final calculationLine = '计算：$trimmedExpression = $trimmedAmount';
     if (note == null) return calculationLine;
     final hasSameLine = note
-        .split(RegExp(r'\r?\n'))
+        .split(_expressionLineBreakPattern)
         .any((line) => line.trim() == calculationLine);
     return hasSameLine ? note : '$note\n$calculationLine';
   }
