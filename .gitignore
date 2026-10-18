@@ -100,6 +100,9 @@ todo.md
 /test/
 !/test/
 /test/*
+!/test/screens/
+/test/screens/*
+!/test/screens/fixed_schedule_detail_screen_test.dart
 !/test/app_performance_monitor_test.dart
 !/test/android_delta_service_test.dart
 !/test/coach_mark_overlay_test.dart
