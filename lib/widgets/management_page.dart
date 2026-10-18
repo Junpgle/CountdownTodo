@@ -170,30 +170,63 @@ class ManagementLoadError extends StatelessWidget {
 /// Keeps app bars, data loading, navigation and persistence in the caller.
 /// See docs/ui/management_components.md for composition examples.
 class ManagementPage extends StatelessWidget {
-  const ManagementPage(
-      {super.key,
-      required this.children,
-      this.maxWidth = 960,
-      this.topPadding = 0});
+  const ManagementPage({
+    super.key,
+    required this.children,
+    this.maxWidth = 960,
+    this.topPadding = 0,
+  }) : itemCount = null,
+       itemBuilder = null,
+       findChildIndexCallback = null;
+
+  const ManagementPage.builder({
+    super.key,
+    required this.itemCount,
+    required this.itemBuilder,
+    this.findChildIndexCallback,
+    this.maxWidth = 960,
+    this.topPadding = 0,
+  }) : children = const [],
+       assert(itemCount != null),
+       assert(itemBuilder != null);
 
   final List<Widget> children;
+  final int? itemCount;
+  final IndexedWidgetBuilder? itemBuilder;
+  final ChildIndexGetter? findChildIndexCallback;
   final double maxWidth;
   final double topPadding;
 
   @override
   Widget build(BuildContext context) => SafeArea(
-        top: false,
-        child: LayoutBuilder(builder: (context, constraints) {
-          final inset = ((constraints.maxWidth - maxWidth) / 2)
-              .clamp(16.0, double.infinity);
-          return ListView(
+    top: false,
+    child: LayoutBuilder(
+      builder: (context, constraints) {
+        final inset = ((constraints.maxWidth - maxWidth) / 2).clamp(
+          16.0,
+          double.infinity,
+        );
+        final padding = EdgeInsets.fromLTRB(inset, topPadding + 16, inset, 32);
+        final builder = itemBuilder;
+        if (builder != null) {
+          return ListView.builder(
             keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
             physics: const AlwaysScrollableScrollPhysics(),
-            padding: EdgeInsets.fromLTRB(inset, topPadding + 16, inset, 32),
-            children: children,
+            padding: padding,
+            itemCount: itemCount!,
+            itemBuilder: builder,
+            findChildIndexCallback: findChildIndexCallback,
           );
-        }),
-      );
+        }
+        return ListView(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: padding,
+          children: children,
+        );
+      },
+    ),
+  );
 }
 
 class ManagementIntro extends StatelessWidget {

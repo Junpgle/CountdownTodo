@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import '../services/api_service.dart';
@@ -152,6 +153,7 @@ class _Field extends StatelessWidget {
     this.obscure = false,
     this.enabled = true,
     this.keyboardType,
+    this.autofillHints,
   });
 
   final TextEditingController controller;
@@ -161,6 +163,7 @@ class _Field extends StatelessWidget {
   final bool obscure;
   final bool enabled;
   final TextInputType? keyboardType;
+  final Iterable<String>? autofillHints;
 
   @override
   Widget build(BuildContext context) {
@@ -183,6 +186,7 @@ class _Field extends StatelessWidget {
           obscureText: obscure,
           enabled: enabled,
           keyboardType: keyboardType,
+          autofillHints: autofillHints,
           style: TextStyle(
             fontSize: 15,
             color: t.textPri,
@@ -895,6 +899,7 @@ class _LoginScreenState extends State<LoginScreen>
         await _syncLocalDataToCloud(
             user['id'] as int, user['username'] as String);
       }
+      TextInput.finishAutofillContext(shouldSave: true);
       _finalizeLoginAndNavigate(user['username'] as String);
     } else {
       setState(() => _isLoading = false);
@@ -977,6 +982,7 @@ class _LoginScreenState extends State<LoginScreen>
         apiBaseUrl: ApiService.effectiveBaseUrl,
       );
       await _syncLocalDataToCloud(userInfo['id'] as int, username);
+      TextInput.finishAutofillContext(shouldSave: true);
       _finalizeLoginAndNavigate(username);
     } else {
       setState(() {
@@ -1001,6 +1007,7 @@ class _LoginScreenState extends State<LoginScreen>
   }
 
   void _toggleMode() {
+    TextInput.finishAutofillContext(shouldSave: false);
     _contentTransitionController
       ..reset()
       ..forward();
@@ -1048,6 +1055,7 @@ class _LoginScreenState extends State<LoginScreen>
   }
 
   void _openForgotPassword() {
+    TextInput.finishAutofillContext(shouldSave: false);
     _resetEmailCtrl.text = _emailCtrl.text.trim();
     _resetCodeCtrl.clear();
     _newPassCtrl.clear();
@@ -1070,6 +1078,7 @@ class _LoginScreenState extends State<LoginScreen>
     if (!mounted) return;
     setState(() => _isLoading = false);
     if (result['success'] == true) {
+      TextInput.finishAutofillContext(shouldSave: true);
       _snack(result['message']);
       setState(() => _forgotPasswordStep = 2);
       _cooldownTimer?.cancel();
@@ -1197,8 +1206,18 @@ class _LoginScreenState extends State<LoginScreen>
   }
 
   Widget _buildFormContent() {
-    if (_forgotPasswordStep > 0) return _buildForgotPasswordView();
-    return _awaitingVerification ? _buildVerifyView() : _buildMainForm();
+    final Widget child;
+    if (_forgotPasswordStep > 0) {
+      child = _buildForgotPasswordView();
+    } else if (_awaitingVerification) {
+      child = _buildVerifyView();
+    } else {
+      child = _buildMainForm();
+    }
+    return AutofillGroup(
+      onDisposeAction: AutofillContextAction.cancel,
+      child: child,
+    );
   }
 
   // ── Main form ────────────────────────────────
@@ -1231,6 +1250,7 @@ class _LoginScreenState extends State<LoginScreen>
             label: '用户名',
             hint: '设置你的用户名',
             icon: Icons.person_outline_rounded,
+            autofillHints: const [AutofillHints.newUsername],
           ),
           const SizedBox(height: 16),
         ],
@@ -1240,6 +1260,7 @@ class _LoginScreenState extends State<LoginScreen>
           hint: '输入邮箱地址',
           icon: Icons.mail_outline_rounded,
           keyboardType: TextInputType.emailAddress,
+          autofillHints: const [AutofillHints.email],
         ),
         const SizedBox(height: 16),
         _Field(
@@ -1248,6 +1269,9 @@ class _LoginScreenState extends State<LoginScreen>
           hint: _isRegisterMode ? '设置密码' : '输入密码',
           icon: Icons.lock_outline_rounded,
           obscure: true,
+          autofillHints: _isRegisterMode
+              ? const [AutofillHints.newPassword]
+              : const [AutofillHints.password],
         ),
         if (!_isRegisterMode)
           Align(
@@ -1427,6 +1451,7 @@ class _LoginScreenState extends State<LoginScreen>
             hint: '输入注册邮箱',
             icon: Icons.mail_outline_rounded,
             keyboardType: TextInputType.emailAddress,
+            autofillHints: const [AutofillHints.email],
           ),
           const SizedBox(height: 28),
           if (_isLoading)
@@ -1481,6 +1506,7 @@ class _LoginScreenState extends State<LoginScreen>
             hint: '设置新密码（至少6位）',
             icon: Icons.lock_outline_rounded,
             obscure: true,
+            autofillHints: const [AutofillHints.newPassword],
           ),
           const SizedBox(height: 16),
           _Field(
@@ -1489,6 +1515,7 @@ class _LoginScreenState extends State<LoginScreen>
             hint: '再次输入新密码',
             icon: Icons.lock_outline_rounded,
             obscure: true,
+            autofillHints: const [AutofillHints.newPassword],
           ),
           const SizedBox(height: 28),
           if (_isLoading)

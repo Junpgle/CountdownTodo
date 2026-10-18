@@ -165,9 +165,30 @@ class _LeaderboardListState extends State<_LeaderboardList> {
 }
 
 // --- 历史记录页面 ---
-class HistoryScreen extends StatelessWidget {
+class HistoryScreen extends StatefulWidget {
   final String username;
   const HistoryScreen({super.key, required this.username});
+
+  @override
+  State<HistoryScreen> createState() => _HistoryScreenState();
+}
+
+class _HistoryScreenState extends State<HistoryScreen> {
+  late Future<List<String>> _historyFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _historyFuture = StorageService.getHistory(widget.username);
+  }
+
+  @override
+  void didUpdateWidget(HistoryScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.username != widget.username) {
+      _historyFuture = StorageService.getHistory(widget.username);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -176,11 +197,11 @@ class HistoryScreen extends StatelessWidget {
       extendBodyBehindAppBar: true,
       appBar: FloatingGlassAppBar(
           flexibleSpace: const FloatingGlassTopBarBackground(),
-          title: Text("$username 的答题记录")),
+          title: Text("${widget.username} 的答题记录")),
       body: FloatingGlassTopBarContentFade(
         topBarHeight: topBarHeight,
         child: FutureBuilder<List<String>>(
-          future: StorageService.getHistory(username),
+          future: _historyFuture,
           builder: (context, snapshot) {
             if (!snapshot.hasData) {
               return const Center(child: CircularProgressIndicator());
