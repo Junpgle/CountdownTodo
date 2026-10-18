@@ -8,6 +8,16 @@ import '../widgets/floating_glass_control.dart';
 import '../widgets/management_page.dart';
 import '../utils/app_dialogs.dart';
 
+final Map<String?, DateFormat> _historicalCountdownDateFormats = {};
+
+DateFormat _historicalCountdownDateFormat() {
+  final locale = Intl.defaultLocale;
+  return _historicalCountdownDateFormats.putIfAbsent(
+    locale,
+    () => DateFormat('yyyy-MM-dd', locale),
+  );
+}
+
 class HistoricalCountdownsScreen extends StatefulWidget {
   final String username;
   final Future<List<CountdownItem>> Function()? loadCountdowns;
@@ -247,6 +257,7 @@ class _HistoricalCountdownsScreenState
     final scheme = theme.colorScheme;
     final days = CalendarDateMath.daysBetween(item.targetDate, _now());
     final busy = _deletingId == item.id;
+    final targetDateFormat = _historicalCountdownDateFormat();
     return ManagementCard(
       key: ValueKey(item.id),
       child: Column(
@@ -280,7 +291,7 @@ class _HistoricalCountdownsScreenState
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      '目标日 · ${DateFormat('yyyy-MM-dd').format(item.targetDate)}',
+                      '目标日 · ${targetDateFormat.format(item.targetDate)}',
                       style: TextStyle(color: scheme.onSurfaceVariant),
                     ),
                   ],

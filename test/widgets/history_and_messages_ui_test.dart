@@ -211,6 +211,7 @@ void main() {
         loadCountdowns: () async => historyCountdowns(),
       ),
     );
+    expect(find.text('目标日 · 2025-07-20'), findsOneWidget);
     expect(find.text('未来的计划'), findsNothing);
     expect(
       tester.getTopLeft(find.text('期待已久的夏日旅行')).dy,
