@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models.dart';
-import 'package:intl/intl.dart';
 import '../utils/app_dialogs.dart';
+import '../utils/time_utils.dart';
 
 class ConflictAlertDialog extends StatelessWidget {
   final List<ConflictInfo> conflicts;
@@ -106,16 +106,16 @@ class ConflictAlertDialog extends StatelessWidget {
             '${startHH.toString().padLeft(2, '0')}:${startMM.toString().padLeft(2, '0')} ~ ${endHH.toString().padLeft(2, '0')}:${endMM.toString().padLeft(2, '0')}';
       } else {
         timeStr =
-            '${DateFormat('MM-dd HH:mm').format(startTime)} ~ ${DateFormat('HH:mm').format(endTime)}';
+            '${AppTimeFormats.format(startTime, 'MM-dd HH:mm')} ~ ${AppTimeFormats.clock(endTime)}';
       }
     } else if (startMs > 0) {
       final startTime =
           DateTime.fromMillisecondsSinceEpoch(startMs, isUtc: true).toLocal();
-      timeStr = DateFormat('MM-dd HH:mm').format(startTime);
+      timeStr = AppTimeFormats.format(startTime, 'MM-dd HH:mm');
     } else if (endMs > 0) {
       final endTime =
           DateTime.fromMillisecondsSinceEpoch(endMs, isUtc: true).toLocal();
-      timeStr = DateFormat('MM-dd HH:mm').format(endTime);
+      timeStr = AppTimeFormats.format(endTime, 'MM-dd HH:mm');
     }
 
     return Container(

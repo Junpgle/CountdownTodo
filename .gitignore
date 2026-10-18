@@ -349,3 +349,4 @@ todo.md
 !/test/services/home_agenda_layout_test.dart
 !/test/widgets/home_agenda_section_test.dart
 !/test/widgets/home_layout_settings_page_test.dart
+!/test/widgets/conflict_alert_dialog_test.dart
