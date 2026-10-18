@@ -5,6 +5,7 @@ import 'dart:ui';
 import 'island_config.dart';
 import 'island_state_stack.dart';
 import 'island_win32.dart';
+import '../utils/app_image_filters.dart';
 import '../services/system_control_service.dart';
 import '../utils/time_utils.dart';
 
@@ -829,7 +830,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                 borderRadius: BorderRadius.circular(borderRadius),
                 child: RepaintBoundary(
                   child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                    filter: AppImageFilters.blur12,
                     child: Container(
                       decoration: BoxDecoration(
                         color: isTransparent

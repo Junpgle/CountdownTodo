@@ -1,9 +1,8 @@
-import 'dart:ui' as ui;
-
 import 'package:flutter/material.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 import '../services/liquid_glass_effect_service.dart';
+import '../utils/app_image_filters.dart';
 import '../utils/app_platform.dart';
 
 @visibleForTesting
@@ -363,11 +362,7 @@ class OptionalLiquidGlassPanel extends StatelessWidget {
             ),
           );
           final filtered = BackdropFilter.grouped(
-            filter: ui.ImageFilter.blur(
-              sigmaX: 9,
-              sigmaY: 9,
-              tileMode: TileMode.clamp,
-            ),
+            filter: AppImageFilters.blur9Clamped,
             child: Container(
               key: const ValueKey<String>(
                 'optional-liquid-glass-grouped-panel',
@@ -816,11 +811,7 @@ class _FrostedGlassSurface extends StatelessWidget {
       borderRadius: BorderRadius.circular(borderRadius),
       clipBehavior: Clip.antiAlias,
       child: BackdropFilter.grouped(
-        filter: ui.ImageFilter.blur(
-          sigmaX: 16,
-          sigmaY: 16,
-          tileMode: TileMode.clamp,
-        ),
+        filter: AppImageFilters.blur16Clamped,
         child: DecoratedBox(
           decoration: BoxDecoration(
             gradient: LinearGradient(

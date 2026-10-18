@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'dart:ui';
 import 'dart:math' as math;
 import 'package:intl/intl.dart' hide TextDirection;
 import '../services/liquid_glass_effect_service.dart';
+import '../utils/app_image_filters.dart';
 import '../utils/time_utils.dart';
 import '../utils/app_platform.dart';
 import 'floating_glass_control.dart';
@@ -821,7 +821,7 @@ class EmptyState extends StatelessWidget {
       child: AppPlatform.isAndroid
           ? content
           : BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+              filter: AppImageFilters.blur10,
               child: content,
             ),
     );

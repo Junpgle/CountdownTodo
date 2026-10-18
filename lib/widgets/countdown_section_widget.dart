@@ -12,6 +12,7 @@ import 'package:countdown_todo/screens/app_board_screen.dart';
 
 import '../services/pomodoro_sync_service.dart';
 import '../services/power_save_mode_service.dart';
+import '../utils/app_image_filters.dart';
 import '../widgets/home_sections.dart';
 import '../widgets/floating_glass_control.dart';
 import '../utils/android_energy_policy.dart';
@@ -782,7 +783,7 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(20),
                   child: PlatformBackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                    filter: AppImageFilters.blur10,
                     bypassWhenLiquidGlassEnabled: true,
                     child: OptionalLiquidGlassCard(
                       width: 130,

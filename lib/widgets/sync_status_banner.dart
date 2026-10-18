@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
-import 'dart:ui';
 import '../services/api_service.dart';
 import '../services/pomodoro_sync_service.dart';
 import '../services/power_save_mode_service.dart';
 import '../utils/android_energy_policy.dart';
+import '../utils/app_image_filters.dart';
 import 'platform_backdrop_filter.dart';
 import '../utils/app_dialogs.dart';
 
@@ -340,7 +340,7 @@ class _SyncStatusBannerState extends State<SyncStatusBanner>
                 ),
                 child: ClipRRect(
                   child: PlatformBackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                    filter: AppImageFilters.blur12,
                     child: Container(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 16, vertical: 8),

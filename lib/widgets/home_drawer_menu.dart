@@ -1,5 +1,3 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -8,6 +6,7 @@ import '../services/api_service.dart';
 import '../services/sidebar_menu_service.dart';
 import '../update_service.dart';
 import '../utils/calendar_date_math.dart';
+import '../utils/app_image_filters.dart';
 import 'optional_liquid_glass_surface.dart';
 import 'platform_backdrop_filter.dart';
 
@@ -363,7 +362,7 @@ class _HomeDrawerMenuState extends State<HomeDrawerMenu> {
                 colorScheme.surface,
               ).withValues(alpha: isDark ? 0.3 : 0.38),
               fallback: PlatformBackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
+                filter: AppImageFilters.blur40,
                 child: Container(color: Colors.transparent),
               ),
               child: const SizedBox.expand(),

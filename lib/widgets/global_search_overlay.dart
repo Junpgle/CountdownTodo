@@ -1,5 +1,3 @@
-import 'dart:ui';
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -11,6 +9,7 @@ import '../services/search_service.dart';
 import '../services/global_search_extra_service.dart';
 import '../services/liquid_glass_effect_service.dart';
 import '../storage_service.dart';
+import '../utils/app_image_filters.dart';
 import '../utils/app_platform.dart';
 import '../utils/theme_color_tokens.dart';
 import 'app_state_views.dart';
@@ -479,7 +478,7 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
               child: isDesktop
                   ? Container(color: desktopOverlayColor)
                   : PlatformBackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+                      filter: AppImageFilters.blur15,
                       child: Container(color: mobileBackdropColor),
                     ),
             ),

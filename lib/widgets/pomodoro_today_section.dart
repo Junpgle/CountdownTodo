@@ -1,10 +1,10 @@
-import 'dart:ui';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../screens/course_screens.dart';
 import '../services/pomodoro_service.dart';
+import '../utils/app_image_filters.dart';
 import '../utils/page_transitions.dart';
 import '../utils/theme_color_tokens.dart';
 import 'optional_liquid_glass_surface.dart';
@@ -143,7 +143,7 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
     return ClipRRect(
       borderRadius: BorderRadius.circular(borderRadius),
       child: PlatformBackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        filter: AppImageFilters.blur10,
         bypassWhenLiquidGlassEnabled: true,
         child: card,
       ),

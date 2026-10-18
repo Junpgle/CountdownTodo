@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'dart:ui';
 import '../services/timeline_service.dart';
 import '../screens/personal_timeline_screen.dart';
+import '../utils/app_image_filters.dart';
 import '../utils/page_transitions.dart';
 import '../utils/time_utils.dart';
 import 'optional_liquid_glass_surface.dart';
@@ -127,7 +127,7 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
           child: ClipRRect(
             borderRadius: BorderRadius.circular(24),
             child: PlatformBackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+              filter: AppImageFilters.blur10,
               bypassWhenLiquidGlassEnabled: true,
               child: OptionalLiquidGlassCard(
                 padding: const EdgeInsets.all(20),

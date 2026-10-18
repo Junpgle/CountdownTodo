@@ -1,7 +1,7 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 
 import '../../../utils/page_transitions.dart';
+import '../../../utils/app_image_filters.dart';
 import '../../../widgets/floating_bottom_bar.dart';
 import '../../../widgets/platform_backdrop_filter.dart';
 import '../models/habit_goal.dart';
@@ -407,7 +407,7 @@ class _HabitTodayTabState extends State<HabitTodayTab> {
     return ClipRRect(
       borderRadius: BorderRadius.circular(28),
       child: PlatformBackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+        filter: AppImageFilters.blur30,
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
           decoration: BoxDecoration(

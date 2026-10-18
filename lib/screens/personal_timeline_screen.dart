@@ -22,6 +22,7 @@ import '../services/medal_recommendation_service.dart';
 import '../services/timeline_ml_service.dart';
 import '../services/timeline_statistics_service.dart';
 import '../utils/app_platform.dart';
+import '../utils/app_image_filters.dart';
 import '../utils/page_transitions.dart';
 import '../widgets/floating_bottom_bar.dart';
 import '../widgets/floating_glass_control.dart';
@@ -1893,7 +1894,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
       child: AppPlatform.isAndroid
           ? const SizedBox.shrink()
           : BackdropFilter(
-              filter: ui.ImageFilter.blur(sigmaX: 80, sigmaY: 80),
+              filter: AppImageFilters.blur80,
               child: Container(color: Colors.transparent),
             ),
     );

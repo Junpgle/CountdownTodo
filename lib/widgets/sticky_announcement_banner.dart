@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import '../models.dart';
-import 'dart:ui';
 import '../utils/android_energy_policy.dart';
 import '../utils/app_platform.dart';
+import '../utils/app_image_filters.dart';
 import '../services/power_save_mode_service.dart';
 import '../utils/time_utils.dart';
 
@@ -257,7 +257,7 @@ class _StickyAnnouncementBannerState extends State<StickyAnnouncementBanner>
         child: AppPlatform.isAndroid
             ? bannerContent
             : BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                filter: AppImageFilters.blur10,
                 child: bannerContent,
               ),
       ),

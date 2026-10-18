@@ -1,10 +1,9 @@
-import 'dart:ui' show ImageFilter;
-
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../services/home_agenda_repository.dart';
 import '../services/plan_review_repository.dart';
+import '../utils/app_image_filters.dart';
 import 'floating_glass_control.dart';
 import 'optional_liquid_glass_surface.dart';
 import 'plan_day_overview.dart' show planOverviewDuration;
@@ -441,7 +440,7 @@ class _HomeAgendaCardState extends State<HomeAgendaCard> {
     return ClipRRect(
       borderRadius: BorderRadius.circular(24),
       child: PlatformBackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        filter: AppImageFilters.blur10,
         bypassWhenLiquidGlassEnabled: true,
         child: OptionalLiquidGlassCard(
           padding: const EdgeInsets.all(12),

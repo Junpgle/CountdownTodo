@@ -13,6 +13,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../../services/browser_file_service.dart';
 import '../../../utils/app_platform.dart';
+import '../../../utils/app_image_filters.dart';
 import '../../../../widgets/optional_liquid_glass_surface.dart';
 import '../../../widgets/floating_glass_control.dart';
 import '../models/thirty_day_challenge.dart';
@@ -912,7 +913,7 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                   child: AppPlatform.isAndroid
                       ? const SizedBox.shrink()
                       : BackdropFilter(
-                          filter: ui.ImageFilter.blur(sigmaX: 60, sigmaY: 60),
+                          filter: AppImageFilters.blur60,
                           child: const SizedBox(),
                         ),
                 ),
@@ -1390,7 +1391,7 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
             child: AppPlatform.isAndroid
                 ? const SizedBox.shrink()
                 : BackdropFilter(
-                    filter: ui.ImageFilter.blur(sigmaX: 48, sigmaY: 48),
+                    filter: AppImageFilters.blur48,
                     child: const SizedBox(),
                   ),
           ),
@@ -3283,7 +3284,7 @@ class _ChallengeTaskCardState extends State<_ChallengeTaskCard> {
                         ),
                       )
                     : BackdropFilter(
-                        filter: ui.ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+                        filter: AppImageFilters.blur5,
                         child: DecoratedBox(
                           decoration: BoxDecoration(
                             gradient: LinearGradient(
