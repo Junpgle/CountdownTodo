@@ -38,6 +38,15 @@ import '../services/conflict_visibility_service.dart';
 const double kTimeAxisW = 46.0;
 
 final GlobalKey planDragKey = GlobalKey();
+final Map<(String?, String), DateFormat> _todoPlanDateFormatters = {};
+
+DateFormat _todoPlanDateFormat(String pattern) {
+  final locale = Intl.defaultLocale;
+  return _todoPlanDateFormatters.putIfAbsent(
+    (locale, pattern),
+    () => DateFormat(pattern, locale),
+  );
+}
 
 class TodoPlanScreen extends StatefulWidget {
   final String username;
@@ -229,7 +238,8 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
   }
 
   String _dragTime(int value) =>
-      DateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(value));
+      _todoPlanDateFormat('HH:mm')
+          .format(DateTime.fromMillisecondsSinceEpoch(value));
 
   Future<void> _checkUndo() async {
     final change = _lastDrag;
@@ -620,11 +630,11 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
               ),
             Flexible(
               child: Tooltip(
-                message: DateFormat('yyyy年M月d日').format(_focusedDate),
+                message: _todoPlanDateFormat('yyyy年M月d日').format(_focusedDate),
                 child: GestureDetector(
                   onTap: _pickDate,
                   child: Text(
-                    DateFormat(shortDate ? 'M/d' : 'MM月dd日')
+                    _todoPlanDateFormat(shortDate ? 'M/d' : 'MM月dd日')
                         .format(_focusedDate),
                     style: const TextStyle(
                       fontWeight: FontWeight.bold,
@@ -1256,8 +1266,8 @@ class _PlanGridViewState extends State<_PlanGridView>
                                         child: Text(
                                           _saving
                                               ? '正在保存调整…'
-                                              : '${DateFormat('HH:mm').format(_preview!.start)} → '
-                                                    '${DateFormat('HH:mm').format(_preview!.end)} · ${_preview!.minutes}分钟',
+                                              : '${_todoPlanDateFormat('HH:mm').format(_preview!.start)} → '
+                                                    '${_todoPlanDateFormat('HH:mm').format(_preview!.end)} · ${_preview!.minutes}分钟',
                                           textAlign: TextAlign.center,
                                           style: TextStyle(
                                             color: Theme.of(context)
@@ -1599,7 +1609,7 @@ class _PlanGridViewState extends State<_PlanGridView>
                                         MediaQuery.textScalerOf(context)
                                             .scale(1))
                                   Text(
-                                    '${DateFormat('HH:mm').format(start)}-${DateFormat('HH:mm').format(end)}',
+                                    '${_todoPlanDateFormat('HH:mm').format(start)}-${_todoPlanDateFormat('HH:mm').format(end)}',
                                     style: TextStyle(
                                       fontSize: min(8.0, contentFontSize),
                                       color: color.withValues(alpha: 0.72),
