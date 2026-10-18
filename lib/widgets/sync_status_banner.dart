@@ -240,10 +240,13 @@ class _SyncStatusBannerState extends State<SyncStatusBanner>
       // 如果已经显示了非在线状态，直接更新
       if (_status != SyncPathStatus.online &&
           _status != SyncPathStatus.success) {
-        setState(() {
-          _status = status;
-          if (message != null) _detailMessage = message;
-        });
+        if (_status != status ||
+            (message != null && _detailMessage != message)) {
+          setState(() {
+            _status = status;
+            if (message != null) _detailMessage = message;
+          });
+        }
       } else if (!_isWaitingToShow) {
         // 首次断线，启动延迟计时器
         _isWaitingToShow = true;
@@ -265,10 +268,12 @@ class _SyncStatusBannerState extends State<SyncStatusBanner>
     _showDelayTimer?.cancel();
     _isWaitingToShow = false;
 
-    setState(() {
-      _status = status;
-      if (message != null) _detailMessage = message;
-    });
+    if (_status != status || (message != null && _detailMessage != message)) {
+      setState(() {
+        _status = status;
+        if (message != null) _detailMessage = message;
+      });
+    }
   }
 
   Color _getStatusColor() {

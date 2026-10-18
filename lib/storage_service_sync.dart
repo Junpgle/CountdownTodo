@@ -2,6 +2,8 @@ part of 'storage_service.dart';
 // ignore_for_file: annotate_overrides, unused_element, unused_element_parameter
 
 mixin _StorageSync on _StorageServiceBase {
+  static const int _screenTimeHistoryWriteBatchSize = 30;
+
   Future<void> saveTimeLogs(String username, List<TimeLogItem> items,
           {bool sync = true}) async {
     await PomodoroStorage.saveTimeLogs(
@@ -12,10 +14,17 @@ mixin _StorageSync on _StorageServiceBase {
     );
     triggerRefresh({DataRefreshDomain.timeLogs});
   }
-  Future<List<TimeLogItem>> getTimeLogs(String username, {int? limit}) =>
+  Future<List<TimeLogItem>> getTimeLogs(
+    String username, {
+    int? limit,
+    DateTime? from,
+    DateTime? to,
+  }) =>
       PomodoroStorage.getTimeLogs(
         username,
         limit: limit,
+        from: from,
+        to: to,
         saveMigratedTimeLogs: saveTimeLogs,
       );
   Future<bool> deleteTimeLogGlobally(String username, String idToDelete) async {
@@ -157,7 +166,15 @@ mixin _StorageSync on _StorageServiceBase {
     String date,
     List<dynamic> stats, {
     String? username,
+  }) =>
+      _saveScreenTimeHistoryBatchToSql({date: stats}, username: username);
+
+  Future<void> _saveScreenTimeHistoryBatchToSql(
+    Map<String, List<dynamic>> history, {
+    String? username,
   }) async {
+    if (history.isEmpty) return;
+
     final dbHelper = DatabaseHelper.instance;
     if (username != null) {
       await UserSessionStorage.ensureCurrentUsername(username);
@@ -165,24 +182,41 @@ mixin _StorageSync on _StorageServiceBase {
     final db = username == null
         ? await dbHelper.database
         : await dbHelper.databaseForUser(username);
-    final batch = db.batch();
 
-    // 覆盖写：先删除该日期的旧记录
-    batch.delete('screen_time', where: 'record_date = ?', whereArgs: [date]);
+    // History migration and cloud repair may cover many dates. Commit a
+    // bounded group together so each date does not open its own transaction.
+    final dates = history.keys.toList(growable: false);
+    for (var start = 0;
+        start < dates.length;
+        start += _screenTimeHistoryWriteBatchSize) {
+      final batch = db.batch();
+      final nextStart = start + _screenTimeHistoryWriteBatchSize;
+      final end = nextStart < dates.length ? nextStart : dates.length;
+      for (var index = start; index < end; index++) {
+        final date = dates[index];
+        // 覆盖写：先删除该日期的旧记录。
+        batch.delete(
+          'screen_time',
+          where: 'record_date = ?',
+          whereArgs: [date],
+        );
 
-    for (var stat in stats) {
-      batch.insert('screen_time', {
-        'record_date': date,
-        'package_name': stat['package_name']?.toString() ?? '',
-        'app_name': stat['app_name']?.toString() ?? '',
-        'device_name': stat['device_name']?.toString() ?? '',
-        'category': stat['category']?.toString() ?? '未分类',
-        'duration':
-            (stat['duration'] is num) ? (stat['duration'] as num).toInt() : 0,
-        'updated_at': DateTime.now().millisecondsSinceEpoch,
-      });
+        for (final stat in history[date]!) {
+          batch.insert('screen_time', {
+            'record_date': date,
+            'package_name': stat['package_name']?.toString() ?? '',
+            'app_name': stat['app_name']?.toString() ?? '',
+            'device_name': stat['device_name']?.toString() ?? '',
+            'category': stat['category']?.toString() ?? '未分类',
+            'duration': (stat['duration'] is num)
+                ? (stat['duration'] as num).toInt()
+                : 0,
+            'updated_at': DateTime.now().millisecondsSinceEpoch,
+          });
+        }
+      }
+      await batch.commit(noResult: true);
     }
-    await batch.commit(noResult: true);
   }
 
   Future<List<dynamic>> getScreenTimeCache() async {
@@ -227,6 +261,8 @@ mixin _StorageSync on _StorageServiceBase {
 
   Future<Map<String, List<dynamic>>> getScreenTimeHistory({
     String? username,
+    String? fromDate,
+    String? toDate,
   }) async {
     final prefs = await SharedPreferences.getInstance();
     final requestedUsername = username?.trim();
@@ -254,11 +290,24 @@ mixin _StorageSync on _StorageServiceBase {
           debugPrint("🚀 发现 ScreenTime 历史记录，正在执行 SQL 迁移...");
           try {
             Map<String, dynamic> history = jsonDecode(jsonStr);
+            final historiesToMigrate = <String, List<dynamic>>{};
             for (var entry in history.entries) {
               if (entry.value is List) {
+                historiesToMigrate[entry.key] = entry.value as List<dynamic>;
+              }
+            }
+            try {
+              await _saveScreenTimeHistoryBatchToSql(
+                historiesToMigrate,
+                username: effectiveUsername,
+              );
+            } catch (e) {
+              // Keep the old per-date recovery path if one batch cannot commit.
+              debugPrint("⚠️ ScreenTime 批量迁移失败，改为逐日期保存: $e");
+              for (final entry in historiesToMigrate.entries) {
                 await saveScreenTimeHistoryToSql(
                   entry.key,
-                  entry.value as List,
+                  entry.value,
                   username: effectiveUsername,
                 );
               }
@@ -276,9 +325,21 @@ mixin _StorageSync on _StorageServiceBase {
       final db = effectiveUsername == null || effectiveUsername.isEmpty
           ? await dbHelper.database
           : await dbHelper.databaseForUser(effectiveUsername);
-      // 2. 从 SQL 读取所有记录并按日期分组
+      final where = <String>[];
+      final whereArgs = <Object?>[];
+      if (fromDate != null) {
+        where.add('record_date >= ?');
+        whereArgs.add(fromDate);
+      }
+      if (toDate != null) {
+        where.add('record_date < ?');
+        whereArgs.add(toDate);
+      }
+      // 2. 按日期范围从 SQL 读取并分组
       final List<Map<String, dynamic>> maps = await db.query(
         'screen_time',
+        where: where.isEmpty ? null : where.join(' AND '),
+        whereArgs: whereArgs.isEmpty ? null : whereArgs,
         orderBy: 'record_date DESC',
       );
 
@@ -305,19 +366,50 @@ mixin _StorageSync on _StorageServiceBase {
             .map((entry) => entry.key)
             .toList();
 
-        for (final date in datesNeedingDeviceNames) {
-          try {
-            final cloudStats = await ApiService.fetchScreenTime(userId, date);
-            if (cloudStats.isNotEmpty) {
-              await saveScreenTimeHistoryToSql(
-                date,
-                cloudStats,
+        for (var start = 0;
+            start < datesNeedingDeviceNames.length;
+            start += _screenTimeHistoryWriteBatchSize) {
+          final nextStart = start + _screenTimeHistoryWriteBatchSize;
+          final end = nextStart < datesNeedingDeviceNames.length
+              ? nextStart
+              : datesNeedingDeviceNames.length;
+          final cloudHistoryToSave = <String, List<dynamic>>{};
+          for (var index = start; index < end; index++) {
+            final date = datesNeedingDeviceNames[index];
+            try {
+              final cloudStats = await ApiService.fetchScreenTime(userId, date);
+              if (cloudStats.isNotEmpty) {
+                cloudHistoryToSave[date] = cloudStats;
+              }
+            } catch (e) {
+              debugPrint("⚠️ ScreenTime History 云端补齐失败($date): $e");
+            }
+          }
+          if (cloudHistoryToSave.isNotEmpty) {
+            try {
+              await _saveScreenTimeHistoryBatchToSql(
+                cloudHistoryToSave,
                 username: effectiveUsername,
               );
-              result[date] = cloudStats;
+              result.addAll(cloudHistoryToSave);
+            } catch (e) {
+              // Retain per-date recovery so one malformed date cannot block others.
+              debugPrint("⚠️ ScreenTime 批量补齐失败，改为逐日期保存: $e");
+              for (final entry in cloudHistoryToSave.entries) {
+                try {
+                  await saveScreenTimeHistoryToSql(
+                    entry.key,
+                    entry.value,
+                    username: effectiveUsername,
+                  );
+                  result[entry.key] = entry.value;
+                } catch (saveError) {
+                  debugPrint(
+                    "⚠️ ScreenTime History 云端补齐保存失败(${entry.key}): $saveError",
+                  );
+                }
+              }
             }
-          } catch (e) {
-            debugPrint("⚠️ ScreenTime History 云端补齐失败($date): $e");
           }
         }
       }
@@ -332,8 +424,20 @@ mixin _StorageSync on _StorageServiceBase {
       if (jsonStr != null && jsonStr.isNotEmpty) {
         try {
           Map<String, dynamic> raw = jsonDecode(jsonStr);
-          return raw
-              .map((key, value) => MapEntry(key, List<dynamic>.from(value)));
+          return Map<String, List<dynamic>>.fromEntries(
+            raw.entries
+                .where(
+                  (entry) =>
+                      (fromDate == null || entry.key.compareTo(fromDate) >= 0) &&
+                      (toDate == null || entry.key.compareTo(toDate) < 0),
+                )
+                .map(
+                  (entry) => MapEntry(
+                    entry.key,
+                    List<dynamic>.from(entry.value),
+                  ),
+                ),
+          );
         } catch (_) {}
       }
     }
@@ -2636,27 +2740,96 @@ mixin _StorageSync on _StorageServiceBase {
         triggerRefresh(scopedRefreshDomains);
       }
 
+      final shouldIndexConflictItems =
+          conflicts.length > 1 &&
+          allLocalTodos.length +
+                  allLocalHabitGoals.length +
+                  allLocalHabitRules.length >
+              64;
+      Map<String, TodoItem>? localTodosByConflictId;
+      Map<String, HabitGoal>? localHabitGoalsByConflictId;
+      Map<String, HabitGoalRuleRevision>? localHabitRulesByConflictId;
+      if (shouldIndexConflictItems) {
+        final conflictIds = <String>{};
+        var unresolvedConflictCount = 0;
+        for (final conflict in conflicts) {
+          final itemId =
+              (conflict.item['uuid'] ?? conflict.item['id'])?.toString();
+          if (itemId == null ||
+              itemId.isEmpty ||
+              autoResolvedHabitConflictIds.contains(itemId)) {
+            continue;
+          }
+          unresolvedConflictCount++;
+          conflictIds.add(itemId);
+        }
+        if (unresolvedConflictCount > 1) {
+          final todosById = <String, TodoItem>{};
+          for (final todo in allLocalTodos) {
+            if (conflictIds.contains(todo.id)) {
+              todosById.putIfAbsent(todo.id, () => todo);
+            }
+          }
+          localTodosByConflictId = todosById;
+
+          final goalsById = <String, HabitGoal>{};
+          for (final goal in allLocalHabitGoals) {
+            if (conflictIds.contains(goal.uuid)) {
+              goalsById.putIfAbsent(goal.uuid, () => goal);
+            }
+          }
+          localHabitGoalsByConflictId = goalsById;
+
+          final rulesById = <String, HabitGoalRuleRevision>{};
+          for (final rule in allLocalHabitRules) {
+            if (conflictIds.contains(rule.uuid)) {
+              rulesById.putIfAbsent(rule.uuid, () => rule);
+            }
+          }
+          localHabitRulesByConflictId = rulesById;
+        }
+      }
+
+      TodoItem? findLocalTodo(String id) {
+        final indexed = localTodosByConflictId;
+        if (indexed != null) return indexed[id];
+        for (final todo in allLocalTodos) {
+          if (todo.id == id) return todo;
+        }
+        return null;
+      }
+
+      HabitGoal? findLocalHabitGoal(String id) {
+        final indexed = localHabitGoalsByConflictId;
+        if (indexed != null) return indexed[id];
+        for (final goal in allLocalHabitGoals) {
+          if (goal.uuid == id) return goal;
+        }
+        return null;
+      }
+
+      HabitGoalRuleRevision? findLocalHabitRule(String id) {
+        final indexed = localHabitRulesByConflictId;
+        if (indexed != null) return indexed[id];
+        for (final rule in allLocalHabitRules) {
+          if (rule.uuid == id) return rule;
+        }
+        return null;
+      }
+
       conflicts.removeWhere((conflict) {
         final itemId =
             (conflict.item['uuid'] ?? conflict.item['id'])?.toString();
         if (itemId == null || itemId.isEmpty) return false;
         if (autoResolvedHabitConflictIds.contains(itemId)) return true;
-        TodoItem? local;
-        for (final todo in allLocalTodos) {
-          if (todo.id == itemId) {
-            local = todo;
-            break;
-          }
-        }
+        final local = findLocalTodo(itemId);
         if (local != null && (local.isDeleted || !local.hasConflict)) {
           return true;
         }
-        for (final goal in allLocalHabitGoals) {
-          if (goal.uuid == itemId) return goal.isDeleted || !goal.hasConflict;
-        }
-        for (final rule in allLocalHabitRules) {
-          if (rule.uuid == itemId) return rule.isDeleted || !rule.hasConflict;
-        }
+        final goal = findLocalHabitGoal(itemId);
+        if (goal != null) return goal.isDeleted || !goal.hasConflict;
+        final rule = findLocalHabitRule(itemId);
+        if (rule != null) return rule.isDeleted || !rule.hasConflict;
         return false;
       });
 
@@ -2805,21 +2978,25 @@ mixin _StorageSync on _StorageServiceBase {
     }));
 
     final resolvedIds = <String>{};
+    _SyncListIndex<HabitGoal>? goalIndex;
+    _SyncListIndex<HabitGoalRuleRevision>? ruleIndex;
     for (final result in results) {
       if (!result.resolved) continue;
       if (result.resolvedData != null) {
         if (result.candidate.table == 'habit_goals') {
-          final index = goals.indexWhere(
-            (goal) => goal.uuid == result.candidate.uuid,
-          );
-          if (index >= 0) {
+          final index = (goalIndex ??= _SyncListIndex(
+            goals,
+            (goal) => goal.uuid,
+          )).indexOf(result.candidate.uuid);
+          if (index != null) {
             goals[index] = HabitGoal.fromJson(result.resolvedData!);
           }
         } else {
-          final index = rules.indexWhere(
-            (rule) => rule.uuid == result.candidate.uuid,
-          );
-          if (index >= 0) {
+          final index = (ruleIndex ??= _SyncListIndex(
+            rules,
+            (rule) => rule.uuid,
+          )).indexOf(result.candidate.uuid);
+          if (index != null) {
             rules[index] = HabitGoalRuleRevision.fromJson(result.resolvedData!);
           }
         }
@@ -2837,5 +3014,39 @@ mixin _StorageSync on _StorageServiceBase {
       resolvedIds.add(result.candidate.uuid);
     }
     return resolvedIds;
+  }
+}
+
+final class _SyncListIndex<T> {
+  static const int _linearSearchLimit = 64;
+
+  _SyncListIndex(this._items, this._idOf);
+
+  final List<T> _items;
+  final String Function(T) _idOf;
+  Map<String, int>? _firstIndexById;
+  var _largeListLinearSearches = 0;
+
+  int? indexOf(String id) {
+    if (_items.length <= _linearSearchLimit) return _linearIndexOf(id);
+    if (_firstIndexById == null && _largeListLinearSearches == 0) {
+      _largeListLinearSearches++;
+      return _linearIndexOf(id);
+    }
+    final indexes = _firstIndexById ??= _buildFirstIndex();
+    return indexes[id];
+  }
+
+  int? _linearIndexOf(String id) {
+    final index = _items.indexWhere((item) => _idOf(item) == id);
+    return index < 0 ? null : index;
+  }
+
+  Map<String, int> _buildFirstIndex() {
+    final indexes = <String, int>{};
+    for (var index = 0; index < _items.length; index++) {
+      indexes.putIfAbsent(_idOf(_items[index]), () => index);
+    }
+    return indexes;
   }
 }
