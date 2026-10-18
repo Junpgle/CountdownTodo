@@ -141,6 +141,7 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
   String _currentQuery = '';
   String? _cachedHighlightQuery;
   List<String> _cachedHighlightTerms = const <String>[];
+  final Map<String, List<_TextMatch>> _highlightMatchesCache = {};
   SearchScope _scope = SearchScope.all;
   int _requestSequence = 0;
   String? _lastRecordedQuery;
@@ -231,6 +232,7 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
     _results = results;
     _groupedResultsSource = null;
     _groupedResultsCache = null;
+    _highlightMatchesCache.clear();
   }
 
   void _onQueryChanged(String query) {
@@ -1236,6 +1238,41 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
     return _cachedHighlightTerms;
   }
 
+  List<_TextMatch> _highlightMatchesFor(String text, List<String> terms) {
+    final cached = _highlightMatchesCache[text];
+    if (cached != null) return cached;
+
+    final lower = text.toLowerCase();
+    final matches = <_TextMatch>[];
+    for (final term in terms) {
+      var start = 0;
+      while (true) {
+        final index = lower.indexOf(term, start);
+        if (index == -1) break;
+        matches.add(_TextMatch(index, index + term.length));
+        start = index + term.length;
+      }
+    }
+
+    if (matches.isEmpty) {
+      return _highlightMatchesCache[text] = const <_TextMatch>[];
+    }
+
+    matches.sort((a, b) => a.start.compareTo(b.start));
+    final merged = <_TextMatch>[];
+    for (final match in matches) {
+      if (merged.isEmpty || match.start > merged.last.end) {
+        merged.add(match);
+      } else if (match.end > merged.last.end) {
+        merged[merged.length - 1] = _TextMatch(
+          merged.last.start,
+          match.end,
+        );
+      }
+    }
+    return _highlightMatchesCache[text] = merged;
+  }
+
   Widget _highlightText(
     String text,
     String query,
@@ -1253,35 +1290,14 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
       );
     }
 
-    final lower = text.toLowerCase();
-    final matches = <_TextMatch>[];
-    for (final term in terms) {
-      var start = 0;
-      while (true) {
-        final idx = lower.indexOf(term, start);
-        if (idx == -1) break;
-        matches.add(_TextMatch(idx, idx + term.length));
-        start = idx + term.length;
-      }
-    }
-
-    if (matches.isEmpty) {
+    final merged = _highlightMatchesFor(text, terms);
+    if (merged.isEmpty) {
       return Text(
         text,
         style: style,
         maxLines: 2,
         overflow: TextOverflow.ellipsis,
       );
-    }
-
-    matches.sort((a, b) => a.start.compareTo(b.start));
-    final merged = <_TextMatch>[];
-    for (final m in matches) {
-      if (merged.isEmpty || m.start > merged.last.end) {
-        merged.add(m);
-      } else if (m.end > merged.last.end) {
-        merged[merged.length - 1] = _TextMatch(merged.last.start, m.end);
-      }
     }
 
     final highlightStyle = style.copyWith(
