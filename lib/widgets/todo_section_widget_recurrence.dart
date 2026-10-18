@@ -443,7 +443,7 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
       context,
       SnackBar(
         content: Text(
-          '${DateFormat('M月d日').format(node.date)}的待办实例尚未生成',
+          '${_cachedDateFormat('M月d日').format(node.date)}的待办实例尚未生成',
         ),
         behavior: SnackBarBehavior.floating,
       ),
@@ -467,7 +467,9 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
                 Icons.event_repeat_rounded,
                 color: colorScheme.primary,
               ),
-              title: Text(DateFormat('yyyy年M月d日').format(occurrenceDate)),
+              title: Text(
+                _cachedDateFormat('yyyy年M月d日').format(occurrenceDate),
+              ),
               subtitle: Text(occurrence.title),
             ),
             const Divider(height: 1),
