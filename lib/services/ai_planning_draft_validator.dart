@@ -1,4 +1,14 @@
 abstract final class AiPlanningDraftValidator {
+  static final RegExp _fromNowRequestPattern = RegExp(
+    r'从现在|现在开始|现在起|剩下的时间|剩余时间|余下的时间|今天剩余|今晚剩下',
+  );
+  static final RegExp _deadlinePattern = RegExp(
+    r'(?:截止|截至|到|不晚于)\s*(?:(今天|今晚|明天)\s*)?'
+    r'(?:(晚上|夜里|下午|早上|上午|中午)\s*)?'
+    r'((?:\d{1,2}|[零〇一二两三四五六七八九十]{1,3}))'
+    r'\s*(?::|：|点)\s*(\d{1,2}|半|一刻|三刻)?\s*分?',
+  );
+
   static String? validateFromNow({
     required String requestText,
     required List<Map<String, dynamic>> actions,
@@ -56,15 +66,10 @@ abstract final class AiPlanningDraftValidator {
   }
 
   static bool _isFromNowRequest(String text) =>
-      RegExp(r'从现在|现在开始|现在起|剩下的时间|剩余时间|余下的时间|今天剩余|今晚剩下').hasMatch(text);
+      _fromNowRequestPattern.hasMatch(text);
 
   static DateTime? _resolveDeadline(String text, DateTime now) {
-    final matches = RegExp(
-      r'(?:截止|截至|到|不晚于)\s*(?:(今天|今晚|明天)\s*)?'
-      r'(?:(晚上|夜里|下午|早上|上午|中午)\s*)?'
-      r'((?:\d{1,2}|[零〇一二两三四五六七八九十]{1,3}))'
-      r'\s*(?::|：|点)\s*(\d{1,2}|半|一刻|三刻)?\s*分?',
-    ).allMatches(text).toList();
+    final matches = _deadlinePattern.allMatches(text).toList();
     if (matches.isEmpty) return null;
 
     final match = matches.last;
