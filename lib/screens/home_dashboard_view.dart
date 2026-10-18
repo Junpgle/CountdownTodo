@@ -14,7 +14,8 @@ double homeDashboardPhoneScrollTailExtent({
   required double bottomInset,
 }) => headerExtent.clamp(0.0, 2000.0).toDouble() + 100.0 + bottomInset;
 
-mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
+mixin _HomeDashboardViewMixin
+    on _HomeDashboardStateBase, _HomeDashboardWallpaperMixin {
   late final Listenable _todoSectionListenable = Listenable.merge([
     _todosNotifier,
     _groupsNotifier,
