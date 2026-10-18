@@ -18,6 +18,15 @@ class TeamAnnouncementScreen extends StatefulWidget {
 class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
   bool _isLoading = true;
   List<TeamAnnouncement> _announcements = [];
+  final Map<(String?, String), DateFormat> _dateFormatters = {};
+
+  DateFormat _cachedDateFormat(String pattern) {
+    final locale = Intl.defaultLocale;
+    return _dateFormatters.putIfAbsent(
+      (locale, pattern),
+      () => DateFormat(pattern, locale),
+    );
+  }
 
   @override
   void initState() {
@@ -345,7 +354,7 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
                             member['read_at'],
                             fallback: DateTime.now().millisecondsSinceEpoch,
                           );
-                          final time = DateFormat('MM-dd HH:mm').format(
+                          final time = _cachedDateFormat('MM-dd HH:mm').format(
                               DateTime.fromMillisecondsSinceEpoch(readAt));
                           return ListTile(
                             leading: const CircleAvatar(
@@ -446,10 +455,10 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
 
   Widget _buildAnnouncementCard(
       TeamAnnouncement ann, bool isDark, bool isAdmin) {
-    final timeStr = DateFormat('yyyy-MM-dd HH:mm')
+    final timeStr = _cachedDateFormat('yyyy-MM-dd HH:mm')
         .format(DateTime.fromMillisecondsSinceEpoch(ann.createdAt));
     final expiryStr = ann.expiresAt != null
-        ? DateFormat('MM-dd HH:mm')
+        ? _cachedDateFormat('MM-dd HH:mm')
             .format(DateTime.fromMillisecondsSinceEpoch(ann.expiresAt!))
         : '永久';
 
