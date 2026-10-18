@@ -12,6 +12,12 @@ typedef _DashboardTodoCandidate = ({
   bool isDateOnly,
 });
 
+typedef _DashboardCourseBannerCandidate = ({
+  CourseItem course,
+  DateTime startTime,
+  DateTime endTime,
+});
+
 String _formatDashboardPomodoroTimeInfo(
   int secondsRemaining, {
   required bool countUp,
@@ -64,6 +70,12 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
   int? _dashboardBannerTodoTimeZoneOffsetSeconds;
   String? _dashboardBannerTodoTimeZoneName;
   List<_DashboardTodoCandidate> _dashboardBannerTodoCache = const [];
+  Map<String, dynamic>? _dashboardBannerCourseSource;
+  int? _dashboardBannerCourseRevision;
+  DateTime? _dashboardBannerCourseDay;
+  int? _dashboardBannerCourseTimeZoneOffsetSeconds;
+  String? _dashboardBannerCourseTimeZoneName;
+  List<_DashboardCourseBannerCandidate> _dashboardBannerCourseCache = const [];
   Map<String, dynamic>? _upcomingCourseDataSource;
   List<CourseItem>? _upcomingCourseCache;
   DateTime? _upcomingCourseCacheDate;
@@ -154,6 +166,55 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
     _dashboardBannerTodoTimeZoneOffsetSeconds = timeZoneOffsetSeconds;
     _dashboardBannerTodoTimeZoneName = timeZoneName;
     return _dashboardBannerTodoCache = candidates;
+  }
+
+  List<_DashboardCourseBannerCandidate> _dashboardBannerCoursesForDay(
+    DateTime now,
+  ) {
+    final today = DateUtils.dateOnly(now);
+    final timeZoneOffsetSeconds = now.timeZoneOffset.inSeconds;
+    final timeZoneName = now.timeZoneName;
+    if (identical(_dashboardBannerCourseSource, _dashboardCourseData) &&
+        _dashboardBannerCourseRevision == _dashboardCourseDataRefreshRevision &&
+        _dashboardBannerCourseDay == today &&
+        timeZoneOffsetSeconds ==
+            _dashboardBannerCourseTimeZoneOffsetSeconds &&
+        timeZoneName == _dashboardBannerCourseTimeZoneName) {
+      return _dashboardBannerCourseCache;
+    }
+
+    final candidates = <_DashboardCourseBannerCandidate>[];
+    final courses =
+        (_dashboardCourseData['courses'] as List?)?.cast<CourseItem>() ?? [];
+    for (final course in courses) {
+      final startTime = _resolveCourseStartTime(course, now);
+      if (startTime == null) continue;
+
+      final endTime = DateTime(
+        startTime.year,
+        startTime.month,
+        startTime.day,
+        course.endTime ~/ 100,
+        course.endTime % 100,
+      );
+      final startsToday = DateUtils.isSameDay(startTime, today);
+      final continuesIntoToday =
+          startTime.isBefore(today) && endTime.isAfter(today);
+      if (!startsToday && !continuesIntoToday) continue;
+
+      candidates.add((
+        course: course,
+        startTime: startTime,
+        endTime: endTime,
+      ));
+    }
+
+    _dashboardBannerCourseSource = _dashboardCourseData;
+    _dashboardBannerCourseRevision = _dashboardCourseDataRefreshRevision;
+    _dashboardBannerCourseDay = today;
+    _dashboardBannerCourseTimeZoneOffsetSeconds = timeZoneOffsetSeconds;
+    _dashboardBannerCourseTimeZoneName = timeZoneName;
+    return _dashboardBannerCourseCache = candidates;
   }
 
   Future<List<CourseItem>> _coursesForUpcomingNotifications(DateTime now) async {
@@ -918,21 +979,10 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
     }
 
     // 2. 课程
-    final List<CourseItem> courses =
-        (_dashboardCourseData['courses'] as List?)?.cast<CourseItem>() ?? [];
-    for (final course in courses) {
-      final startTime = _resolveCourseStartTime(course, now);
-      if (startTime == null) continue;
-
-      final endHour = course.endTime ~/ 100;
-      final endMin = course.endTime % 100;
-      final endTime = DateTime(
-        startTime.year,
-        startTime.month,
-        startTime.day,
-        endHour,
-        endMin,
-      );
+    for (final candidate in _dashboardBannerCoursesForDay(now)) {
+      final course = candidate.course;
+      final startTime = candidate.startTime;
+      final endTime = candidate.endTime;
 
       final diffStart = startTime.difference(now).inMinutes;
       final isOngoing = now.isAfter(startTime) && now.isBefore(endTime);
