@@ -28,6 +28,7 @@ import '../../../services/window_focus_service.dart';
 import '../../../update_service.dart';
 import '../../../utils/app_color_utils.dart';
 import '../../../utils/app_platform.dart';
+import '../../../utils/page_transitions.dart';
 import '../../../utils/todo_recurrence_picker.dart';
 import '../unified_tag_manager_screen.dart';
 import '../widgets/immersive_timer.dart';
@@ -2690,36 +2691,37 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
   }
 
   void _showTagsDialog() async {
-    await Navigator.push<List<PomodoroTag>>(
-      context,
-      MaterialPageRoute(
-        builder: (_) => UnifiedTagManagerScreen(
-          allTags: _allTags,
-          selectedUuids: _selectedTagUuids,
-          showSelection: true,
-          showArchive: true,
-          onChanged: (tags, selected) async {
-            await PomodoroService.saveTags(tags);
-            if (!mounted) return;
-            PomodoroService.syncTagsToCloud().catchError((_) => null);
-            setState(() {
-              _allTags = tags;
-              _tags = tags.where((t) => !t.isArchived).toList();
-              _selectedTagUuids = selected;
-            });
-            await _persistIdleBoundTodo(_boundTodo);
-            await _saveCurrentRunState();
-            _showLocalFloat();
-            if (_phase == PomodoroPhase.focusing) {
-              final tagNames = tags
-                  .where((t) => selected.contains(t.uuid) && !t.isArchived)
-                  .map((t) => t.name)
-                  .toList();
-              _syncService.sendUpdateTagsSignal(tagNames);
-            }
-          },
-        ),
+    await PageTransitions.pushFromRect<List<PomodoroTag>>(
+      context: context,
+      page: UnifiedTagManagerScreen(
+        allTags: _allTags,
+        selectedUuids: _selectedTagUuids,
+        showSelection: true,
+        showArchive: true,
+        onChanged: (tags, selected) async {
+          await PomodoroService.saveTags(tags);
+          if (!mounted) return;
+          PomodoroService.syncTagsToCloud().catchError((_) => null);
+          setState(() {
+            _allTags = tags;
+            _tags = tags.where((t) => !t.isArchived).toList();
+            _selectedTagUuids = selected;
+          });
+          await _persistIdleBoundTodo(_boundTodo);
+          await _saveCurrentRunState();
+          _showLocalFloat();
+          if (_phase == PomodoroPhase.focusing) {
+            final tagNames = tags
+                .where((t) => selected.contains(t.uuid) && !t.isArchived)
+                .map((t) => t.name)
+                .toList();
+            _syncService.sendUpdateTagsSignal(tagNames);
+          }
+        },
       ),
+      sourceKey: tagsManagerKey,
+      sourceBorderRadius: BorderRadius.circular(24),
+      placeholderIcon: Icons.label_outline,
     );
   }
 

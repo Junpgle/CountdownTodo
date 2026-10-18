@@ -25,6 +25,21 @@ class ChallengeCenterScreen extends StatefulWidget {
 }
 
 class _ChallengeCenterScreenState extends State<ChallengeCenterScreen> {
+  final GlobalKey _heroLibraryButtonKey =
+      GlobalKey(debugLabel: 'challenge-center-hero-library');
+  final GlobalKey _heroCustomButtonKey =
+      GlobalKey(debugLabel: 'challenge-center-hero-custom');
+  final GlobalKey _activeChallengeCardKey =
+      GlobalKey(debugLabel: 'challenge-center-active-card');
+  final GlobalKey _activeChallengeActionKey =
+      GlobalKey(debugLabel: 'challenge-center-active-action');
+  final GlobalKey _classicChallengeCardKey =
+      GlobalKey(debugLabel: 'challenge-center-classic-card');
+  final GlobalKey _libraryOptionKey =
+      GlobalKey(debugLabel: 'challenge-center-library-option');
+  final GlobalKey _customOptionKey =
+      GlobalKey(debugLabel: 'challenge-center-custom-option');
+
   ThirtyDayChallengeState? _currentChallenge;
   bool _hasStarted = false;
   bool _isLoading = true;
@@ -77,56 +92,98 @@ class _ChallengeCenterScreenState extends State<ChallengeCenterScreen> {
     }
   }
 
-  Future<void> _openCurrentChallenge() async {
-    await Navigator.of(context).push(
-      PageTransitions.slideHorizontal(const ThirtyDayChallengeScreen()),
+  Future<void> _openCurrentChallenge({
+    required GlobalKey sourceKey,
+    BorderRadius sourceBorderRadius =
+        const BorderRadius.all(Radius.circular(18)),
+  }) async {
+    await PageTransitions.pushFromRect<void>(
+      context: context,
+      page: const ThirtyDayChallengeScreen(),
+      sourceKey: sourceKey,
+      sourceBorderRadius: sourceBorderRadius,
     );
     if (mounted) await _load(showLoading: false);
   }
 
-  Future<void> _openClassicChallenge() async {
-    await Navigator.of(context).push(
-      PageTransitions.slideHorizontal(
-        const ThirtyDayChallengeScreen(showBuiltInIntroduction: true),
-      ),
+  Future<void> _openClassicChallenge({required GlobalKey sourceKey}) async {
+    await PageTransitions.pushFromRect<void>(
+      context: context,
+      page: const ThirtyDayChallengeScreen(showBuiltInIntroduction: true),
+      sourceKey: sourceKey,
+      sourceBorderRadius: BorderRadius.circular(26),
     );
     if (mounted) await _load(showLoading: false);
   }
 
-  Future<void> _openChallengeLibrary() async {
-    final result = await Navigator.of(context).push<CloudChallengePickerResult>(
-      PageTransitions.material(
-        builder: (_) => const CloudChallengePickerScreen(),
-      ),
+  Future<void> _openChallengeLibrary({
+    required GlobalKey sourceKey,
+    BorderRadius sourceBorderRadius =
+        const BorderRadius.all(Radius.circular(18)),
+  }) async {
+    final result =
+        await PageTransitions.pushFromRect<CloudChallengePickerResult>(
+      context: context,
+      page: const CloudChallengePickerScreen(),
+      sourceKey: sourceKey,
+      sourceBorderRadius: sourceBorderRadius,
     );
     if (result == null || !mounted) return;
 
     if (result.action == CloudChallengePickerAction.start) {
       final challenge = result.challenge;
-      if (challenge != null) await _startChallenge(challenge.toDraft());
+      if (challenge != null) {
+        await _startChallenge(
+          challenge.toDraft(),
+          sourceKey: sourceKey,
+          sourceBorderRadius: sourceBorderRadius,
+        );
+      }
       return;
     }
 
-    final draft = await Navigator.of(context).push<ChallengeDraft>(
-      PageTransitions.material(
-        builder: (_) => NewChallengeScreen(
-          initialDraft: result.challenge?.toDraft(),
-        ),
+    final draft = await PageTransitions.pushFromRect<ChallengeDraft>(
+      context: context,
+      page: NewChallengeScreen(
+        initialDraft: result.challenge?.toDraft(),
       ),
+      sourceKey: sourceKey,
+      sourceBorderRadius: sourceBorderRadius,
     );
-    if (draft != null && mounted) await _startChallenge(draft);
+    if (draft != null && mounted) {
+      await _startChallenge(
+        draft,
+        sourceKey: sourceKey,
+        sourceBorderRadius: sourceBorderRadius,
+      );
+    }
   }
 
-  Future<void> _openCustomChallenge() async {
-    final draft = await Navigator.of(context).push<ChallengeDraft>(
-      PageTransitions.material(
-        builder: (_) => const NewChallengeScreen(),
-      ),
+  Future<void> _openCustomChallenge({
+    required GlobalKey sourceKey,
+    BorderRadius sourceBorderRadius =
+        const BorderRadius.all(Radius.circular(18)),
+  }) async {
+    final draft = await PageTransitions.pushFromRect<ChallengeDraft>(
+      context: context,
+      page: const NewChallengeScreen(),
+      sourceKey: sourceKey,
+      sourceBorderRadius: sourceBorderRadius,
     );
-    if (draft != null && mounted) await _startChallenge(draft);
+    if (draft != null && mounted) {
+      await _startChallenge(
+        draft,
+        sourceKey: sourceKey,
+        sourceBorderRadius: sourceBorderRadius,
+      );
+    }
   }
 
-  Future<void> _startChallenge(ChallengeDraft draft) async {
+  Future<void> _startChallenge(
+    ChallengeDraft draft, {
+    required GlobalKey sourceKey,
+    required BorderRadius sourceBorderRadius,
+  }) async {
     if (_isStarting || !mounted) return;
 
     if (_hasStarted && _currentChallenge != null) {
@@ -166,7 +223,10 @@ class _ChallengeCenterScreenState extends State<ChallengeCenterScreen> {
         _hasStarted = true;
         _currentChallenge = state;
       });
-      await _openCurrentChallenge();
+      await _openCurrentChallenge(
+        sourceKey: sourceKey,
+        sourceBorderRadius: sourceBorderRadius,
+      );
     } catch (_) {
       if (!mounted) return;
       AppSnackBars.showSnackBar(
@@ -322,17 +382,25 @@ class _ChallengeCenterScreenState extends State<ChallengeCenterScreen> {
           runSpacing: 10,
           children: [
             FilledButton.icon(
-              onPressed: _isStarting ? null : _openChallengeLibrary,
+              key: _heroLibraryButtonKey,
+              onPressed: _isStarting
+                  ? null
+                  : () => _openChallengeLibrary(
+                        sourceKey: _heroLibraryButtonKey,
+                      ),
               icon: const Icon(Icons.explore_rounded),
               label: const Text('探索挑战库'),
               style: FilledButton.styleFrom(
-                backgroundColor: scheme.primary,
-                foregroundColor: scheme.onPrimary,
                 minimumSize: const Size(0, 48),
               ),
             ),
             OutlinedButton.icon(
-              onPressed: _isStarting ? null : _openCustomChallenge,
+              key: _heroCustomButtonKey,
+              onPressed: _isStarting
+                  ? null
+                  : () => _openCustomChallenge(
+                        sourceKey: _heroCustomButtonKey,
+                      ),
               icon: const Icon(Icons.edit_note_rounded),
               label: const Text('创建自定义'),
               style: OutlinedButton.styleFrom(
@@ -600,7 +668,13 @@ class _ChallengeCenterScreenState extends State<ChallengeCenterScreen> {
           ),
         ),
         child: InkWell(
-          onTap: _isStarting ? null : _openCurrentChallenge,
+          key: _activeChallengeCardKey,
+          onTap: _isStarting
+              ? null
+              : () => _openCurrentChallenge(
+                    sourceKey: _activeChallengeCardKey,
+                    sourceBorderRadius: BorderRadius.circular(28),
+                  ),
           borderRadius: BorderRadius.circular(28),
           child: Padding(
             padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
@@ -706,7 +780,12 @@ class _ChallengeCenterScreenState extends State<ChallengeCenterScreen> {
                     Align(
                       alignment: Alignment.centerRight,
                       child: FilledButton.tonalIcon(
-                        onPressed: _isStarting ? null : _openCurrentChallenge,
+                        key: _activeChallengeActionKey,
+                        onPressed: _isStarting
+                            ? null
+                            : () => _openCurrentChallenge(
+                                  sourceKey: _activeChallengeActionKey,
+                                ),
                         icon: Icon(
                           isCompleted
                               ? Icons.auto_stories_rounded
@@ -767,19 +846,31 @@ class _ChallengeCenterScreenState extends State<ChallengeCenterScreen> {
   Widget _buildStartSection(ColorScheme scheme, {required bool isWide}) {
     final libraryCard = _buildStartOption(
       scheme: scheme,
+      sourceKey: _libraryOptionKey,
       icon: Icons.explore_rounded,
       accent: scheme.primary,
       title: '探索挑战库',
       description: '从现成主题开始，挑一场现在就想做的挑战。',
-      onTap: _isStarting ? null : _openChallengeLibrary,
+      onTap: _isStarting
+          ? null
+          : () => _openChallengeLibrary(
+                sourceKey: _libraryOptionKey,
+                sourceBorderRadius: BorderRadius.circular(24),
+              ),
     );
     final customCard = _buildStartOption(
       scheme: scheme,
+      sourceKey: _customOptionKey,
       icon: Icons.edit_note_rounded,
       accent: scheme.tertiary,
       title: '创建自定义挑战',
       description: '把自己的愿望、计划或任务清单，变成专属挑战。',
-      onTap: _isStarting ? null : _openCustomChallenge,
+      onTap: _isStarting
+          ? null
+          : () => _openCustomChallenge(
+                sourceKey: _customOptionKey,
+                sourceBorderRadius: BorderRadius.circular(24),
+              ),
     );
 
     return Column(
@@ -815,7 +906,12 @@ class _ChallengeCenterScreenState extends State<ChallengeCenterScreen> {
       color: scheme.tertiaryContainer,
       borderRadius: BorderRadius.circular(26),
       child: InkWell(
-        onTap: _isStarting ? null : _openClassicChallenge,
+        key: _classicChallengeCardKey,
+        onTap: _isStarting
+            ? null
+            : () => _openClassicChallenge(
+                  sourceKey: _classicChallengeCardKey,
+                ),
         borderRadius: BorderRadius.circular(26),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
@@ -931,6 +1027,7 @@ class _ChallengeCenterScreenState extends State<ChallengeCenterScreen> {
 
   Widget _buildStartOption({
     required ColorScheme scheme,
+    required GlobalKey sourceKey,
     required IconData icon,
     required Color accent,
     required String title,
@@ -941,6 +1038,7 @@ class _ChallengeCenterScreenState extends State<ChallengeCenterScreen> {
       color: scheme.surfaceContainerLow,
       borderRadius: BorderRadius.circular(24),
       child: InkWell(
+        key: sourceKey,
         onTap: onTap,
         borderRadius: BorderRadius.circular(24),
         child: Padding(

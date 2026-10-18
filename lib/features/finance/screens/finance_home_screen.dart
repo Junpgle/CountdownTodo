@@ -673,9 +673,19 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
   }
 
   Future<void> _openBudgets() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => FinanceBudgetScreen(initialMonth: _month),
+    final colorScheme = Theme.of(context).colorScheme;
+    await PageTransitions.pushFromRect<void>(
+      context: context,
+      page: FinanceBudgetScreen(initialMonth: _month),
+      sourceKey: _budgetActionKey,
+      sourceColor: colorScheme.brightness == Brightness.dark
+          ? Colors.black
+          : Colors.white,
+      sourceBorderRadius: BorderRadius.circular(24),
+      placeholderBuilder: (_) => Icon(
+        Icons.track_changes_outlined,
+        color: colorScheme.primary,
+        size: 30,
       ),
     );
     if (mounted) await _load();

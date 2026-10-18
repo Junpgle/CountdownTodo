@@ -73,6 +73,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
   String? _activeCacheOwnerKey;
   final GlobalKey _panoramaActionKey = GlobalKey();
   final GlobalKey _conflictActionKey = GlobalKey();
+  final GlobalKey _messageCenterActionKey = GlobalKey();
 
   @override
   void initState() {
@@ -742,17 +743,10 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
         alignment: Alignment.center,
         children: [
           IconButton(
+            key: _messageCenterActionKey,
             icon: const Icon(Icons.notifications_none_rounded),
             tooltip: '消息中心',
-            onPressed: () {
-              final managedTeams =
-                  _teams.where((t) => t.userRole == TeamRole.admin).toList();
-              Navigator.push(
-                  context,
-                  PageTransitions.material(
-                      builder: (_) =>
-                          TeamMessageCenterScreen(managedTeams: managedTeams)));
-            },
+            onPressed: _openMessageCenter,
           ),
           if (totalPending > 0)
             Positioned(
@@ -775,6 +769,19 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
             ),
         ],
       ),
+    );
+  }
+
+  Future<void> _openMessageCenter() async {
+    final managedTeams =
+        _teams.where((t) => t.userRole == TeamRole.admin).toList();
+    await PageTransitions.pushFromRect<void>(
+      context: context,
+      page: TeamMessageCenterScreen(managedTeams: managedTeams),
+      sourceKey: _messageCenterActionKey,
+      sourceColor: Theme.of(context).colorScheme.surface,
+      sourceBorderRadius: BorderRadius.circular(24),
+      placeholderIcon: Icons.notifications_none_rounded,
     );
   }
 
@@ -2407,6 +2414,12 @@ class _TeamDetailViewState extends State<_TeamDetailView>
 
   Widget _buildHeaderActions() {
     final isAdmin = widget.team.userRole == TeamRole.admin;
+    final colorScheme = Theme.of(context).colorScheme;
+    final actionShape =
+        RoundedRectangleBorder(borderRadius: BorderRadius.circular(16));
+    const actionPadding = EdgeInsets.symmetric(horizontal: 16, vertical: 10);
+    const actionMinimumSize = Size(0, 48);
+
     return Row(
       children: [
         IconButton(
@@ -2418,15 +2431,13 @@ class _TeamDetailViewState extends State<_TeamDetailView>
         if (isAdmin)
           OutlinedButton.icon(
             style: OutlinedButton.styleFrom(
-              foregroundColor: Theme.of(context).colorScheme.primary,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
+              foregroundColor: colorScheme.primary,
+              padding: actionPadding,
+              minimumSize: actionMinimumSize,
+              shape: actionShape,
               side: BorderSide(
-                  color: Theme.of(context)
-                      .colorScheme
-                      .primary
-                      .withValues(alpha: 0.3)),
+                color: colorScheme.primary.withValues(alpha: 0.3),
+              ),
             ),
             onPressed: () => Navigator.push(
               context,
@@ -2438,14 +2449,11 @@ class _TeamDetailViewState extends State<_TeamDetailView>
             label: const Text('分享'),
           ),
         const SizedBox(width: 8),
-        ElevatedButton.icon(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Theme.of(context).colorScheme.secondary,
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            elevation: 0,
+        FilledButton.icon(
+          style: FilledButton.styleFrom(
+            padding: actionPadding,
+            minimumSize: actionMinimumSize,
+            shape: actionShape,
           ),
           onPressed: () => unawaited(widget.copyInviteText(widget.team)),
           icon: const Icon(Icons.person_add_rounded, size: 20),
