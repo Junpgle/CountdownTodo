@@ -43,6 +43,11 @@ class FinanceAutomationEditor extends StatefulWidget {
 }
 
 class _FinanceAutomationEditorState extends State<FinanceAutomationEditor> {
+  static final List<TextInputFormatter> _digitsOnlyInputFormatters =
+      List<TextInputFormatter>.unmodifiable([
+        FilteringTextInputFormatter.digitsOnly,
+      ]);
+
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _name;
   late final TextEditingController _amount;
@@ -426,7 +431,7 @@ class _FinanceAutomationEditorState extends State<FinanceAutomationEditor> {
               key: const ValueKey('finance-automation-month'),
               controller: _month,
               keyboardType: TextInputType.number,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              inputFormatters: _digitsOnlyInputFormatters,
               decoration:
                   financeFieldDecoration(context, label: '月份', suffix: '月'),
               validator: (value) {
@@ -438,7 +443,7 @@ class _FinanceAutomationEditorState extends State<FinanceAutomationEditor> {
             key: const ValueKey('finance-automation-day'),
             controller: _day,
             keyboardType: TextInputType.number,
-            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            inputFormatters: _digitsOnlyInputFormatters,
             decoration:
                 financeFieldDecoration(context, label: '日期', suffix: '日'),
             validator: (value) {
