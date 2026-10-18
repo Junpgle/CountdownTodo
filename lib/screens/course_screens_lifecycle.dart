@@ -170,8 +170,9 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
         ..sort((a, b) => a.weekIndex.compareTo(b.weekIndex));
       final firstCourse = sortedCourses.first;
       if (firstCourse.date.isNotEmpty) {
-        DateTime firstCourseDate = DateFormat('yyyy-MM-dd')
-            .parse(firstCourse.date);
+        DateTime firstCourseDate = _cachedDateFormat('yyyy-MM-dd').parse(
+          firstCourse.date,
+        );
         _semesterMonday = CalendarDateMath.addDays(
           firstCourseDate,
           -(firstCourse.weekday - 1) -
@@ -478,7 +479,7 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
 
   void _updateMonthDeviceCalendarEvents() {
     final grouped = <String, List<DeviceCalendarEvent>>{};
-    final df = DateFormat('yyyy-MM-dd');
+    final df = _cachedDateFormat('yyyy-MM-dd');
 
     for (final event in _deviceCalendarEvents) {
       final firstDay = DateTime(
@@ -583,7 +584,7 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
     _monthFixedScheduleMap = {};
     _monthDeviceCalendarMap = {};
 
-    final df = DateFormat('yyyy-MM-dd');
+    final df = _cachedDateFormat('yyyy-MM-dd');
 
     final semesterMondays = <String, DateTime>{
       for (final semester in _semesters)
