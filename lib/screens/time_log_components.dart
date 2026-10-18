@@ -15,6 +15,31 @@ DateFormat _timeLogComponentDateFormat(String pattern) {
   );
 }
 
+ButtonStyle _timeLogPrimaryActionStyle({
+  required Color backgroundColor,
+  required Color foregroundColor,
+  EdgeInsetsGeometry? padding,
+  MaterialTapTargetSize? tapTargetSize,
+}) =>
+    ButtonStyle(
+      backgroundColor: WidgetStatePropertyAll(backgroundColor),
+      backgroundBuilder: (context, states, child) =>
+          child ?? const SizedBox.shrink(),
+      foregroundColor: WidgetStatePropertyAll(foregroundColor),
+      overlayColor: WidgetStatePropertyAll(
+        foregroundColor.withValues(alpha: 0.12),
+      ),
+      side: const WidgetStatePropertyAll(BorderSide.none),
+      surfaceTintColor: const WidgetStatePropertyAll(Colors.transparent),
+      shadowColor: const WidgetStatePropertyAll(Colors.transparent),
+      elevation: const WidgetStatePropertyAll(0),
+      padding: padding == null ? null : WidgetStatePropertyAll(padding),
+      tapTargetSize: tapTargetSize,
+      shape: WidgetStatePropertyAll(
+        RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    );
+
 // ══════════════════════════════════════════════════════════
 // 日视图 — 补录模式（网格拖拽选时间段）
 // ══════════════════════════════════════════════════════════
@@ -497,7 +522,7 @@ class _DayViewState extends State<_DayView> {
 
     return Column(
       children: [
-        _buildCrossDayBar(_dayLogs.length, _dayPlanBlocks.length),
+        _buildCrossDayBar(_dayLogs.length),
         Expanded(
           child: Row(
             children: [
@@ -540,7 +565,10 @@ class _DayViewState extends State<_DayView> {
                   },
                 ),
               ),
-              if (widget.entryMode == _EntryMode.log) _buildTagSidebar(),
+              if (widget.entryMode == _EntryMode.log)
+                _buildTagSidebar()
+              else
+                const SizedBox(width: _timeLogTagSidebarWidth),
             ],
           ),
         ),
@@ -549,9 +577,14 @@ class _DayViewState extends State<_DayView> {
     );
   }
 
-  Widget _buildCrossDayBar(int dLogN, int dPlanN) {
+  Widget _buildCrossDayBar(int dLogN) {
     final colorScheme = Theme.of(context).colorScheme;
     final useFloating = floatingBottomBarShouldFloat(context);
+    const actionControlHeight = 40.0;
+    Widget actionControl(Widget child) => SizedBox(
+      height: actionControlHeight,
+      child: child,
+    );
     final child = Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
       decoration: useFloating
@@ -560,9 +593,11 @@ class _DayViewState extends State<_DayView> {
       child: Row(
         children: [
           const SizedBox(width: 8),
-          _EntryModeToggle(
-            mode: widget.entryMode,
-            onChanged: widget.onEntryModeChanged,
+          actionControl(
+            _EntryModeToggle(
+              mode: widget.entryMode,
+              onChanged: widget.onEntryModeChanged,
+            ),
           ),
           const SizedBox(width: 8),
           // 已补录数量
@@ -570,6 +605,8 @@ class _DayViewState extends State<_DayView> {
             GestureDetector(
               onTap: _showDayLogList,
               child: Container(
+                height: actionControlHeight,
+                alignment: Alignment.center,
                 padding: const EdgeInsets.symmetric(
                   horizontal: 10,
                   vertical: 5,
@@ -602,77 +639,57 @@ class _DayViewState extends State<_DayView> {
                 ),
               ),
             ),
-          if (widget.entryMode == _EntryMode.plan && dPlanN > 0)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-              decoration: BoxDecoration(
-                color: colorScheme.secondary.withValues(alpha: 0.1),
-                border: Border.all(
-                  color: colorScheme.secondary.withValues(alpha: 0.35),
-                ),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.event_note,
-                    size: 12,
-                    color: colorScheme.secondary,
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    '已规划 $dPlanN',
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: colorScheme.secondary,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
           // 退出补录
-          GestureDetector(
-            onTap: widget.onBack,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-              decoration: BoxDecoration(
-                color: colorScheme.error.withValues(alpha: 0.08),
-                border: Border.all(
-                  color: colorScheme.error.withValues(alpha: 0.30),
+          actionControl(
+            GestureDetector(
+              onTap: widget.onBack,
+              child: Container(
+                height: actionControlHeight,
+                alignment: Alignment.center,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 5,
                 ),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.close,
-                    size: 12,
-                    color: colorScheme.error.withValues(alpha: 0.8),
+                decoration: BoxDecoration(
+                  color: colorScheme.error.withValues(alpha: 0.08),
+                  border: Border.all(
+                    color: colorScheme.error.withValues(alpha: 0.30),
                   ),
-                  const SizedBox(width: 4),
-                  Text(
-                    widget.entryMode == _EntryMode.plan ? '退出规划' : '退出补录',
-                    style: TextStyle(
-                      fontSize: 11,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.close,
+                      size: 12,
                       color: colorScheme.error.withValues(alpha: 0.8),
-                      fontWeight: FontWeight.w600,
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 4),
+                    Text(
+                      widget.entryMode == _EntryMode.plan ? '退出规划' : '退出补录',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: colorScheme.error.withValues(alpha: 0.8),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
           const Spacer(),
           // 分钟下拉选择器
-          _MinuteDropdown(
-            value: _minutesPerBlock,
-            onChanged: (m) => setState(() {
-              _minutesPerBlock = m;
-              _dragStart = null;
-            }),
+          actionControl(
+            _MinuteDropdown(
+              value: _minutesPerBlock,
+              onChanged: (m) => setState(() {
+                _minutesPerBlock = m;
+                _dragStart = null;
+              }),
+            ),
           ),
         ],
       ),
@@ -845,7 +862,7 @@ class _DayViewState extends State<_DayView> {
   }
 
   Widget _buildTagSidebar() => Container(
-    width: 78,
+    width: _timeLogTagSidebarWidth,
     color: _TC.topBar(context),
     child: Column(
       children: [
@@ -928,6 +945,7 @@ class _DayViewState extends State<_DayView> {
     final st = gs.add(Duration(minutes: _ss * _minutesPerBlock));
     final en = gs.add(Duration(minutes: (_se + 1) * _minutesPerBlock));
     final timeFormat = _timeLogComponentDateFormat('HH:mm');
+    final colorScheme = Theme.of(context).colorScheme;
     return OptionalLiquidGlassSheet(
       topRadius: 20,
       padding: EdgeInsets.fromLTRB(
@@ -980,14 +998,14 @@ class _DayViewState extends State<_DayView> {
           const SizedBox(width: 8),
           ElevatedButton(
             onPressed: _openEntry,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.primary,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+            style: _timeLogPrimaryActionStyle(
+              backgroundColor: colorScheme.primary,
+              foregroundColor: colorScheme.onPrimary,
+              padding: const EdgeInsets.symmetric(
+                horizontal: 20,
+                vertical: 12,
               ),
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              elevation: 0,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),
             child: Text(
               widget.entryMode == _EntryMode.plan ? '添加规划' : '详情录入',
@@ -1286,59 +1304,70 @@ class _EntryModeToggle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    Widget item(_EntryMode value, String label, IconData icon) {
-      final selected = mode == value;
-      final color = value == _EntryMode.plan
-          ? Theme.of(context).colorScheme.secondary
-          : Theme.of(context).colorScheme.primary;
-      return GestureDetector(
-        onTap: () => onChanged(value),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact =
+            constraints.maxWidth.isFinite && constraints.maxWidth < 118;
+
+        Widget item(_EntryMode value, String label, IconData icon) {
+          final selected = mode == value;
+          final color = value == _EntryMode.plan
+              ? Theme.of(context).colorScheme.secondary
+              : Theme.of(context).colorScheme.primary;
+          return GestureDetector(
+            onTap: () => onChanged(value),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              padding: EdgeInsets.symmetric(
+                horizontal: compact ? 1 : 9,
+                vertical: 5,
+              ),
+              decoration: BoxDecoration(
+                color: selected
+                    ? color.withValues(alpha: 0.14)
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    icon,
+                    size: compact ? 10 : 12,
+                    color: selected ? color : _TC.textHint(context),
+                  ),
+                  SizedBox(width: compact ? 2 : 4),
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: compact ? 10 : 11,
+                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                      color: selected ? color : _TC.textSub(context),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
+        return Container(
+          alignment: Alignment.center,
+          padding: const EdgeInsets.all(2),
           decoration: BoxDecoration(
-            color: selected
-                ? color.withValues(alpha: 0.14)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(8),
+            color: _TC.inputFill(context),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: _TC.divider(context)),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                icon,
-                size: 12,
-                color: selected ? color : _TC.textHint(context),
-              ),
-              const SizedBox(width: 4),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                  color: selected ? color : _TC.textSub(context),
-                ),
-              ),
+              item(_EntryMode.log, '补录', Icons.edit_calendar),
+              item(_EntryMode.plan, '规划', Icons.event_note),
             ],
           ),
-        ),
-      );
-    }
-
-    return Container(
-      padding: const EdgeInsets.all(2),
-      decoration: BoxDecoration(
-        color: _TC.inputFill(context),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: _TC.divider(context)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          item(_EntryMode.log, '补录', Icons.edit_calendar),
-          item(_EntryMode.plan, '规划', Icons.event_note),
-        ],
-      ),
+        );
+      },
     );
   }
 }
@@ -1519,7 +1548,8 @@ class _PlanEntrySheetState extends State<_PlanEntrySheet> {
 
   @override
   Widget build(BuildContext context) {
-    final accent = Theme.of(context).colorScheme.secondary;
+    final colorScheme = Theme.of(context).colorScheme;
+    final accent = colorScheme.secondary;
     final duration = _end.difference(_start).inMinutes;
     return OptionalLiquidGlassSheet(
       topRadius: 20,
@@ -1677,13 +1707,9 @@ class _PlanEntrySheetState extends State<_PlanEntrySheet> {
                 Expanded(
                   child: ElevatedButton(
                     onPressed: _save,
-                    style: ElevatedButton.styleFrom(
+                    style: _timeLogPrimaryActionStyle(
                       backgroundColor: accent,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      elevation: 0,
+                      foregroundColor: colorScheme.onSecondary,
                     ),
                     child: const Text(
                       '保存规划',
@@ -1807,7 +1833,7 @@ class _LogEntrySheetState extends State<_LogEntrySheet> {
     });
   }
 
-  void _save() {
+  Future<void> _save() async {
     if (!_end.isAfter(_start)) {
       AppSnackBars.showSnackBar(
         context,
@@ -1816,11 +1842,31 @@ class _LogEntrySheetState extends State<_LogEntrySheet> {
       return;
     }
     if (_end.isAfter(DateTime.now())) {
-      AppSnackBars.showSnackBar(
-        context,
-        const SnackBar(content: Text('结束时间不能晚于现在')),
+      final format = _timeLogComponentDateFormat('MM-dd HH:mm');
+      final isEditing = widget.existingLog != null;
+      final confirmed = await showAppDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          backgroundColor: _TC.card(dialogContext),
+          title: Text(isEditing ? '确认保存未来时间' : '确认补录未来时间'),
+          content: Text(
+            '所选时间段：${format.format(_start)} → ${format.format(_end)}\n'
+            '结束时间晚于当前时间，确定仍要${isEditing ? '保存这条时间日志' : '补录这段时间'}吗？',
+            style: TextStyle(color: _TC.textSub(dialogContext)),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('返回修改'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: Text(isEditing ? '确认保存' : '确认补录'),
+            ),
+          ],
+        ),
       );
-      return;
+      if (confirmed != true || !mounted) return;
     }
 
     final tag = widget.tags.cast<PomodoroTag?>().firstWhere(
@@ -1849,7 +1895,8 @@ class _LogEntrySheetState extends State<_LogEntrySheet> {
 
   @override
   Widget build(BuildContext context) {
-    final accent = Theme.of(context).colorScheme.primary;
+    final colorScheme = Theme.of(context).colorScheme;
+    final accent = colorScheme.primary;
     return OptionalLiquidGlassSheet(
       topRadius: 20,
       padding: EdgeInsets.only(
@@ -2015,13 +2062,9 @@ class _LogEntrySheetState extends State<_LogEntrySheet> {
             height: 48,
             child: ElevatedButton(
               onPressed: _save,
-              style: ElevatedButton.styleFrom(
+              style: _timeLogPrimaryActionStyle(
                 backgroundColor: accent,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                elevation: 0,
+                foregroundColor: colorScheme.onPrimary,
               ),
               child: const Text(
                 '保存记录',
@@ -3236,6 +3279,7 @@ class _MinuteDropdown extends StatelessWidget {
     final accent = Theme.of(context).colorScheme.primary;
 
     return Container(
+      alignment: Alignment.center,
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
         color: accent.withValues(alpha: 0.10),

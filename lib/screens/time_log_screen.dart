@@ -52,6 +52,8 @@ const double kWeekDayW = 100.0;
 // 叠在一起后产生割裂感。
 const double _timeLogActionBarRadius = 20.0;
 const double _timeLogActionChipRadius = 12.0;
+const double _timeLogSummaryChipHeight = 30.0;
+const double _timeLogTagSidebarWidth = 78.0;
 
 const List<String> kPalette = [
   '#EF4444',
@@ -131,6 +133,7 @@ class TimeLogScreen extends StatefulWidget {
 }
 
 class _TimeLogScreenState extends State<TimeLogScreen> {
+  final GlobalKey _aiAssistantActionKey = GlobalKey();
   bool _isLoading = true;
   _ViewMode _view = _ViewMode.week;
   _DayMode _dayMode = _DayMode.view;
@@ -468,6 +471,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
       if (_dayMode == _DayMode.edit) {
         acts.add(
           IconButton(
+            key: timeLogTagKey,
             icon: const Icon(Icons.label_outline, size: 20),
             onPressed: _showTagManager,
             tooltip: '标签管理',
@@ -478,6 +482,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
     if (showAiAssistant) {
       acts.add(
         IconButton(
+          key: _aiAssistantActionKey,
           icon: const Icon(Icons.smart_toy_outlined, size: 20),
           tooltip: 'AI专注助手',
           onPressed: _openAiAssistant,
@@ -520,6 +525,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
         pomodoroTags: _tags,
         timeLogs: _allLogs,
         pomodoroRecords: _allPomodoros,
+        sourceKey: _aiAssistantActionKey,
         onTodosBatchAction: (inserted, updated) async {
           final allTodos = await StorageService.getTodos(widget.username);
           final merged = AiTodoActionExecutor.mergeTodoUpdates(
@@ -941,22 +947,23 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
   }
 
   void _showTagManager() async {
-    final updated = await Navigator.push<List<PomodoroTag>>(
-      context,
-      MaterialPageRoute(
-        builder: (_) => UnifiedTagManagerScreen(
-          allTags: _allTags,
-          showSelection: false,
-          showArchive: true,
-          onChanged: (tags, selected) async {
-            await PomodoroService.saveTags(tags);
-            setState(() {
-              _allTags = tags;
-              _tags = tags.where((t) => !t.isArchived).toList();
-            });
-          },
-        ),
+    final updated = await PageTransitions.pushFromRect<List<PomodoroTag>>(
+      context: context,
+      page: UnifiedTagManagerScreen(
+        allTags: _allTags,
+        showSelection: false,
+        showArchive: true,
+        onChanged: (tags, selected) async {
+          await PomodoroService.saveTags(tags);
+          setState(() {
+            _allTags = tags;
+            _tags = tags.where((t) => !t.isArchived).toList();
+          });
+        },
       ),
+      sourceKey: timeLogTagKey,
+      sourceBorderRadius: BorderRadius.circular(_timeLogActionChipRadius),
+      placeholderIcon: Icons.label_outline,
     );
     if (updated != null) {
       await PomodoroService.saveTags(updated);
@@ -2236,21 +2243,20 @@ class _DayGridViewState extends State<_DayGridView> {
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 4,
-                ),
+                height: _timeLogSummaryChipHeight,
+                alignment: Alignment.center,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
                 decoration: BoxDecoration(
                   color: accent.withValues(alpha: 0.1),
                   border: Border.all(color: accent.withValues(alpha: 0.3)),
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: BorderRadius.circular(_timeLogActionChipRadius),
                 ),
                 child: Text(
                   '${(total / 60).toStringAsFixed(1)}h  今日合计',
                   style: TextStyle(
                     fontSize: 11,
                     color: accent,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ),
@@ -2273,14 +2279,15 @@ class _DayGridViewState extends State<_DayGridView> {
               GestureDetector(
                 onTap: widget.onSwitchEdit,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 5,
-                  ),
+                  height: _timeLogSummaryChipHeight,
+                  alignment: Alignment.center,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
                   decoration: BoxDecoration(
                     color: accent.withValues(alpha: 0.1),
                     border: Border.all(color: accent.withValues(alpha: 0.3)),
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(
+                      _timeLogActionChipRadius,
+                    ),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -2292,7 +2299,7 @@ class _DayGridViewState extends State<_DayGridView> {
                         style: TextStyle(
                           fontSize: 11,
                           color: accent,
-                          fontWeight: FontWeight.w700,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ],
@@ -2315,15 +2322,17 @@ class _DayGridViewState extends State<_DayGridView> {
   }
 
   Widget _miniPill(BuildContext ctx, String text, Color c) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+    height: _timeLogSummaryChipHeight,
+    alignment: Alignment.center,
+    padding: const EdgeInsets.symmetric(horizontal: 12),
     decoration: BoxDecoration(
       color: c.withValues(alpha: 0.08),
       border: Border.all(color: c.withValues(alpha: 0.3)),
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(_timeLogActionChipRadius),
     ),
     child: Text(
       text,
-      style: TextStyle(fontSize: 10, color: c, fontWeight: FontWeight.w600),
+      style: TextStyle(fontSize: 11, color: c, fontWeight: FontWeight.w600),
     ),
   );
 }
