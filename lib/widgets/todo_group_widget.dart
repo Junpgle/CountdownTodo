@@ -719,15 +719,22 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
     final timeMode = todo.timeModeForStartTime(start);
     final isDateOnly = timeMode == TodoTimeMode.dateOnly;
     final end = todo.effectiveDueAtForTimeMode(timeMode);
+    final dueDate = todo.dueDate;
+    final normalizedDueDate = dueDate == null
+        ? null
+        : DateTime(dueDate.year, dueDate.month, dueDate.day);
+    final normalizedToday = normalizedDueDate == null
+        ? null
+        : DateTime(now.year, now.month, now.day);
 
     // Build time string: "MM/dd HH:mm → MM/dd HH:mm" or "MM/dd → MM/dd" for all-day
     String timeStr = "";
-    if (todo.dueDate != null) {
+    if (dueDate != null) {
       if (isDateOnly) {
-        timeStr = '${_cachedDateFormat('MM/dd').format(todo.dueDate!)}内完成';
+        timeStr = '${_cachedDateFormat('MM/dd').format(dueDate)}内完成';
       } else {
         timeStr =
-            '${_cachedDateFormat('MM/dd HH:mm').format(todo.dueDate!)}前完成';
+            '${_cachedDateFormat('MM/dd HH:mm').format(dueDate)}前完成';
       }
     } else {
       timeStr = '未安排';
@@ -741,23 +748,18 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
     Color? badgeBg;
     final colorScheme = Theme.of(context).colorScheme;
 
-    if (todo.dueDate != null) {
-      final DateTime d = DateTime(
-        todo.dueDate!.year,
-        todo.dueDate!.month,
-        todo.dueDate!.day,
-      );
-      final DateTime today = DateTime(now.year, now.month, now.day);
+    if (normalizedDueDate != null) {
+      final today = normalizedToday!;
       if (isPast) {
         badge = "已逾期";
         badgeColor = Colors.redAccent.shade200;
         badgeBg = Colors.redAccent.withValues(alpha: 0.12);
-      } else if (d.isAtSameMomentAs(today)) {
+      } else if (normalizedDueDate.isAtSameMomentAs(today)) {
         badge = "今天截止";
         badgeColor = Colors.orange.shade700;
         badgeBg = Colors.orange.withValues(alpha: 0.12);
       } else {
-        int days = CalendarDateMath.daysBetween(today, d);
+        int days = CalendarDateMath.daysBetween(today, normalizedDueDate);
         badge = "$days天后";
         badgeColor = colorScheme.secondary;
         badgeBg = colorScheme.secondaryContainer.withValues(alpha: 0.5);
@@ -770,16 +772,11 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
 
     // Deadline urgency color
     Color? deadlineColor;
-    if (todo.dueDate != null && !todo.isDone) {
-      final DateTime today = DateTime(now.year, now.month, now.day);
-      final dueDay = DateTime(
-        todo.dueDate!.year,
-        todo.dueDate!.month,
-        todo.dueDate!.day,
-      );
-      if (dueDay.isBefore(today)) {
+    if (normalizedDueDate != null && !todo.isDone) {
+      final today = normalizedToday!;
+      if (normalizedDueDate.isBefore(today)) {
         deadlineColor = Colors.redAccent;
-      } else if (dueDay.isAtSameMomentAs(today)) {
+      } else if (normalizedDueDate.isAtSameMomentAs(today)) {
         deadlineColor = Colors.orange;
       }
     }
