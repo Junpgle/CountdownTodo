@@ -1,5 +1,8 @@
 part of 'todo_chat_screen.dart';
 
+final RegExp _actionFeedbackLatinTokenPattern = RegExp(r'[a-z0-9]+');
+final RegExp _actionFeedbackCjkTokenPattern = RegExp(r'[一-鿿]+');
+
 // ignore_for_file: annotate_overrides, unused_element, unused_element_parameter
 
 mixin _TodoChatActions on _TodoChatScreenStateBase {
@@ -1686,10 +1689,10 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
   List<String> _extractActionKeywords(String text) {
     final lower = text.toLowerCase();
     final tokens = <String>[];
-    for (final m in RegExp(r'[a-z0-9]+').allMatches(lower)) {
+    for (final m in _actionFeedbackLatinTokenPattern.allMatches(lower)) {
       if (m.group(0)!.length >= 2) tokens.add(m.group(0)!);
     }
-    for (final m in RegExp(r'[一-鿿]+').allMatches(lower)) {
+    for (final m in _actionFeedbackCjkTokenPattern.allMatches(lower)) {
       final seg = m.group(0)!;
       for (int i = 0; i < seg.length; i++) {
         tokens.add(seg[i]);
