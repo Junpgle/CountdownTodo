@@ -128,6 +128,7 @@ class _AiToolCallTileState extends State<AiToolCallTile> {
         'countdowns' => '倒计时',
         'teams' => '团队',
         'conflicts' => '冲突',
+        'screen_time' => '屏幕时间',
         _ => '业务数据',
       },
     };
