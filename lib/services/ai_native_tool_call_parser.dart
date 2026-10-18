@@ -10,6 +10,29 @@ import 'ai_tool_result_context.dart';
 /// available as a compatibility path when the matching native tool was not
 /// called; both paths still produce drafts that require user confirmation.
 abstract final class AiNativeToolCallParser {
+  static final RegExp _actionBlockPattern = RegExp(
+    r'\[ACTION_START\][\s\S]*?\[ACTION_END\]',
+    dotAll: true,
+  );
+  static final RegExp _financeDraftBlockPattern = RegExp(
+    r'\[FINANCE_START\][\s\S]*?\[FINANCE_END\]',
+    dotAll: true,
+  );
+  static final RegExp _financeActionBlockPattern = RegExp(
+    r'\[FINANCE_ACTION_START\][\s\S]*?\[FINANCE_ACTION_END\]',
+    dotAll: true,
+  );
+  static final RegExp _settingsBlockPattern = RegExp(
+    r'\[SETTINGS_START\][\s\S]*?\[SETTINGS_END\]',
+    dotAll: true,
+  );
+  static final RegExp _unfinishedFinanceDraftBlockPattern = RegExp(
+    r'\[FINANCE_START\][\s\S]*?(?:\[FINANCE_END\]|$)',
+  );
+  static final RegExp _unfinishedFinanceActionBlockPattern = RegExp(
+    r'\[FINANCE_ACTION_START\][\s\S]*?(?:\[FINANCE_ACTION_END\]|$)',
+  );
+
   static String formatRawReply(
     String assistantText,
     List<AiChatFunctionCall> calls,
@@ -42,52 +65,43 @@ abstract final class AiNativeToolCallParser {
     final fallbackTextBlocks = <String>[];
 
     void retainFallbackTextBlock(
-      String pattern, {
+      RegExp pattern, {
       required bool nativeToolWasCalled,
     }) {
       if (nativeToolWasCalled) return;
-      final blockPattern = RegExp(pattern, dotAll: true);
       fallbackTextBlocks.addAll(
-        blockPattern.allMatches(assistantText).map((match) => match.group(0)!),
+        pattern.allMatches(assistantText).map((match) => match.group(0)!),
       );
-      assistantText = assistantText.replaceAll(blockPattern, '');
+      assistantText = assistantText.replaceAll(pattern, '');
     }
 
     retainFallbackTextBlock(
-      r'\[ACTION_START\][\s\S]*?\[ACTION_END\]',
+      _actionBlockPattern,
       nativeToolWasCalled: calls.any(
         (call) => call.name == 'propose_cdt_actions',
       ),
     );
     retainFallbackTextBlock(
-      r'\[FINANCE_START\][\s\S]*?\[FINANCE_END\]',
+      _financeDraftBlockPattern,
       nativeToolWasCalled: calls.any(
         (call) => call.name == 'propose_finance_drafts',
       ),
     );
     retainFallbackTextBlock(
-      r'\[FINANCE_ACTION_START\][\s\S]*?\[FINANCE_ACTION_END\]',
+      _financeActionBlockPattern,
       nativeToolWasCalled: calls.any(
         (call) => call.name == 'propose_finance_actions',
       ),
     );
     retainFallbackTextBlock(
-      r'\[SETTINGS_START\][\s\S]*?\[SETTINGS_END\]',
+      _settingsBlockPattern,
       nativeToolWasCalled: calls.any(
         (call) => call.name == AiSettingsNavigationService.toolName,
       ),
     );
     assistantText = AiActionParser.cleanActionContent(assistantText)
-        .replaceAll(
-          RegExp(r'\[FINANCE_START\][\s\S]*?(?:\[FINANCE_END\]|$)'),
-          '',
-        )
-        .replaceAll(
-          RegExp(
-            r'\[FINANCE_ACTION_START\][\s\S]*?(?:\[FINANCE_ACTION_END\]|$)',
-          ),
-          '',
-        )
+        .replaceAll(_unfinishedFinanceDraftBlockPattern, '')
+        .replaceAll(_unfinishedFinanceActionBlockPattern, '')
         .trim();
     final settingsTargets = <String>[];
     final cdtActions = <Map<String, dynamic>>[];
