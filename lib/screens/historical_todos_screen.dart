@@ -59,10 +59,13 @@ class _HistoricalTodoDateLabel {
 
 final Map<(String?, String), DateFormat> _historicalTodoDateFormats = {};
 
-DateFormat _historicalTodoDateFormat(String? locale) =>
+DateFormat _historicalTodoDateFormat(
+  String? locale, {
+  String pattern = 'yyyy-MM-dd',
+}) =>
     _historicalTodoDateFormats.putIfAbsent(
-      (locale, 'yyyy-MM-dd'),
-      () => DateFormat('yyyy-MM-dd', locale),
+      (locale, pattern),
+      () => DateFormat(pattern, locale),
     );
 
 class HistoricalTodosScreen extends StatefulWidget {
@@ -639,8 +642,12 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
     final scheme = theme.colorScheme;
     final busy = _busyId == item.id;
     final enabled = _busyId == null;
-    final time = DateFormat('HH:mm')
-        .format(DateTime.fromMillisecondsSinceEpoch(item.updatedAt).toLocal());
+    final time = _historicalTodoDateFormat(
+      Intl.defaultLocale,
+      pattern: 'HH:mm',
+    ).format(
+      DateTime.fromMillisecondsSinceEpoch(item.updatedAt).toLocal(),
+    );
     return ManagementCard(
       key: ValueKey(item.id),
       margin: const EdgeInsets.only(bottom: 10),
