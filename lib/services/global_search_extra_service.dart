@@ -17,6 +17,15 @@ import 'chat_storage_service.dart';
 import 'database_helper.dart';
 
 final RegExp _searchMessagePreviewWhitespacePattern = RegExp(r'\s+');
+final Map<(String?, String), DateFormat> _globalSearchExtraDateFormats = {};
+
+DateFormat _globalSearchExtraDateFormat(String pattern) {
+  final locale = Intl.defaultLocale;
+  return _globalSearchExtraDateFormats.putIfAbsent((
+    locale,
+    pattern,
+  ), () => DateFormat(pattern, locale));
+}
 
 class _IndexedRemoteSearchResult {
   _IndexedRemoteSearchResult(this.result) : recordDate = _recordDateFor(result);
@@ -54,8 +63,9 @@ abstract final class GlobalSearchExtraService {
   static String _money(int minor, String currency) =>
       '$currency ${(minor / 100).toStringAsFixed(2)}';
 
-  static String _day(int millis) => DateFormat('yyyy-MM-dd HH:mm')
-      .format(DateTime.fromMillisecondsSinceEpoch(millis));
+  static String _day(int millis) =>
+      _globalSearchExtraDateFormat('yyyy-MM-dd HH:mm')
+          .format(DateTime.fromMillisecondsSinceEpoch(millis));
 
   static bool _matches(
     List<String> terms,
@@ -246,13 +256,13 @@ abstract final class GlobalSearchExtraService {
             );
       final budgetMonth = date == null
           ? null
-          : DateFormat('yyyy-MM').format(date);
+          : _globalSearchExtraDateFormat('yyyy-MM').format(date);
       final installmentFromDate = transactionFrom == null
           ? null
-          : DateFormat('yyyy-MM-dd').format(transactionFrom);
+          : _globalSearchExtraDateFormat('yyyy-MM-dd').format(transactionFrom);
       final installmentToDate = transactionTo == null
           ? null
-          : DateFormat('yyyy-MM-dd').format(transactionTo);
+          : _globalSearchExtraDateFormat('yyyy-MM-dd').format(transactionTo);
       final templatesFuture = date == null
           ? FinanceRepository.getTemplates()
           : Future.value(const <FinanceEntryTemplate>[]);
@@ -575,13 +585,15 @@ abstract final class GlobalSearchExtraService {
             id: 'journal_${item.id}',
             title:
                 item.title?.trim().isNotEmpty == true ? item.title! : '未命名日记',
-            subtitle: DateFormat('yyyy-MM-dd').format(item.occurredAt),
+            subtitle: _globalSearchExtraDateFormat('yyyy-MM-dd')
+                .format(item.occurredAt),
             icon: Icons.auto_stories_outlined,
             type: SearchResultType.journal,
             label: '私密日记',
             record: item,
             fields: {
-              '日期': DateFormat('yyyy-MM-dd').format(item.occurredAt),
+              '日期': _globalSearchExtraDateFormat('yyyy-MM-dd')
+                  .format(item.occurredAt),
               '正文': item.content
             },
           ));
@@ -699,7 +711,7 @@ abstract final class GlobalSearchExtraService {
       final names = {for (final goal in goals) goal.uuid: goal.name};
       final dateKey = date == null
           ? null
-          : DateFormat('yyyy-MM-dd').format(date);
+          : _globalSearchExtraDateFormat('yyyy-MM-dd').format(date);
       final checkIns = await HabitRepository.getCheckIns(
         fromDate: dateKey,
         toDate: dateKey,
@@ -765,7 +777,8 @@ abstract final class GlobalSearchExtraService {
             '状态': task.isCompleted ? '已完成' : '未完成',
             '完成时间': task.completedAt == null
                 ? ''
-                : DateFormat('yyyy-MM-dd HH:mm').format(task.completedAt!),
+                : _globalSearchExtraDateFormat('yyyy-MM-dd HH:mm')
+                      .format(task.completedAt!),
             '感受记录': task.feeling
           },
         ));
@@ -798,13 +811,14 @@ abstract final class GlobalSearchExtraService {
             id: 'chat_session_${session.id}',
             title: session.title,
             subtitle:
-                'AI 历史对话 · ${DateFormat('yyyy-MM-dd').format(session.updatedAt)}',
+                'AI 历史对话 · ${_globalSearchExtraDateFormat('yyyy-MM-dd').format(session.updatedAt)}',
             icon: Icons.chat_bubble_outline_rounded,
             type: SearchResultType.chat,
             label: 'AI 历史对话',
             fields: {
               '会话标题': session.title,
-              '更新时间': DateFormat('yyyy-MM-dd HH:mm').format(session.updatedAt),
+              '更新时间': _globalSearchExtraDateFormat('yyyy-MM-dd HH:mm')
+                  .format(session.updatedAt),
               '对话内容': history
                   .map((message) => '${message.role.name}: ${message.content}')
                   .join('\n\n'),
@@ -831,7 +845,8 @@ abstract final class GlobalSearchExtraService {
             label: 'AI 对话消息',
             fields: {
               '会话': session.title,
-              '时间': DateFormat('yyyy-MM-dd HH:mm').format(message.timestamp),
+              '时间': _globalSearchExtraDateFormat('yyyy-MM-dd HH:mm')
+                  .format(message.timestamp),
               '内容': message.content
             },
             data: {'chat_session_id': session.id},
