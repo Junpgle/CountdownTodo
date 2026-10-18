@@ -325,6 +325,11 @@ InputDecoration financeFieldDecoration(
 }
 
 class FinanceAmountField extends StatelessWidget {
+  static final List<TextInputFormatter> _inputFormatters =
+      List<TextInputFormatter>.unmodifiable([
+        FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
+      ]);
+
   final TextEditingController controller;
   final String label;
   final bool autofocus;
@@ -346,7 +351,7 @@ class FinanceAmountField extends StatelessWidget {
       controller: controller,
       autofocus: autofocus,
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
-      inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]'))],
+      inputFormatters: _inputFormatters,
       decoration: financeFieldDecoration(context, label: label, hint: '0.00')
           .copyWith(
               prefixText: '¥ ',
