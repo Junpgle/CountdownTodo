@@ -424,6 +424,26 @@ abstract final class FinanceTextParser {
   static final RegExp _parsedDatePattern = RegExp(
     r'^(\d{4})(?!\d)-(\d{1,2})(?!\d)-(\d{1,2})(?!\d)(?=$|[\sT])',
   );
+  static final RegExp _assistantFinanceBlockPattern = RegExp(
+    r'\[(?:FINANCE|FN)_START\](.*?)\[(?:FINANCE|FN)_END\]',
+    dotAll: true,
+  );
+  static final RegExp _assistantFinanceActionBlockPattern = RegExp(
+    r'\[FINANCE_ACTION_START\](.*?)\[FINANCE_ACTION_END\]',
+    dotAll: true,
+  );
+  static final RegExp _assistantActionBlockPattern = RegExp(
+    r'\[ACTION_START\](.*?)\[ACTION_END\]',
+    dotAll: true,
+  );
+  static final List<RegExp> _assistantActionBlockPatterns = [
+    _assistantFinanceActionBlockPattern,
+    _assistantActionBlockPattern,
+  ];
+  static final RegExp _jsonCodeFenceOpeningPattern = RegExp(
+    r'^```(?:json)?\s*',
+  );
+  static final RegExp _jsonCodeFenceClosingPattern = RegExp(r'\s*```$');
 
   /// Returns true only for an explicitly marked block or text that contains
   /// both a bill amount and a clear cash-flow direction.
@@ -619,11 +639,7 @@ abstract final class FinanceTextParser {
     DateTime? now,
   }) {
     final drafts = <FinanceEntryDraft>[];
-    final marker = RegExp(
-      r'\[(?:FINANCE|FN)_START\](.*?)\[(?:FINANCE|FN)_END\]',
-      dotAll: true,
-    );
-    for (final match in marker.allMatches(content)) {
+    for (final match in _assistantFinanceBlockPattern.allMatches(content)) {
       final payload = _decodeMaps(match.group(1) ?? '');
       for (final map in payload) {
         final draft = FinanceEntryDraft.fromJson(
@@ -655,13 +671,7 @@ abstract final class FinanceTextParser {
   static List<FinanceAiAction> extractAssistantActions(String content) {
     final actions = <FinanceAiAction>[];
     final blocks = <String>[];
-    for (final marker in [
-      RegExp(
-        r'\[FINANCE_ACTION_START\](.*?)\[FINANCE_ACTION_END\]',
-        dotAll: true,
-      ),
-      RegExp(r'\[ACTION_START\](.*?)\[ACTION_END\]', dotAll: true),
-    ]) {
+    for (final marker in _assistantActionBlockPatterns) {
       blocks.addAll(
         marker.allMatches(content).map((match) => match.group(1) ?? ''),
       );
@@ -694,20 +704,8 @@ abstract final class FinanceTextParser {
 
   static String cleanAssistantContent(String content) {
     return content
-        .replaceAll(
-          RegExp(
-            r'\[(?:FINANCE|FN)_START\].*?\[(?:FINANCE|FN)_END\]',
-            dotAll: true,
-          ),
-          '',
-        )
-        .replaceAll(
-          RegExp(
-            r'\[FINANCE_ACTION_START\].*?\[FINANCE_ACTION_END\]',
-            dotAll: true,
-          ),
-          '',
-        )
+        .replaceAll(_assistantFinanceBlockPattern, '')
+        .replaceAll(_assistantFinanceActionBlockPattern, '')
         .trim();
   }
 
@@ -1486,8 +1484,8 @@ abstract final class FinanceTextParser {
     var text = raw.trim();
     if (text.startsWith('```')) {
       text = text
-          .replaceFirst(RegExp(r'^```(?:json)?\s*'), '')
-          .replaceFirst(RegExp(r'\s*```$'), '')
+          .replaceFirst(_jsonCodeFenceOpeningPattern, '')
+          .replaceFirst(_jsonCodeFenceClosingPattern, '')
           .trim();
     }
     try {
