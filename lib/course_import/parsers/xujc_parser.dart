@@ -4,6 +4,13 @@ import '../../models.dart';
 import '../course_schedule_semantics.dart';
 
 class XujcScheduleParser {
+  static final RegExp _lineBreakTagPattern =
+      RegExp(r'<br\s*/?>', caseSensitive: false);
+  static final RegExp _htmlTagPattern = RegExp(r'<[^>]*>');
+  static final RegExp _weekRulePattern =
+      RegExp(r"(\d+)-(\d+)周\((每周|单周|双周)\)");
+  static final RegExp _simpleWeekRangePattern = RegExp(r"(\d+)-(\d+)周");
+
   /// 嘉庚学院作息时间表映射
   static const Map<int, List<int>> timeMap = {
     1: [800, 845], // 第1节
@@ -66,8 +73,8 @@ class XujcScheduleParser {
         // 结构通常是: 课程名<br>教师<br>地点<br>周次1<br>周次2...
         // cell.innerHtml 中包含 <br>，可以据此分割
         List<String> parts = cell.innerHtml
-            .split(RegExp(r'<br\s*/?>', caseSensitive: false))
-            .map((s) => s.replaceAll(RegExp(r'<[^>]*>'), '').trim())
+            .split(_lineBreakTagPattern)
+            .map((s) => s.replaceAll(_htmlTagPattern, '').trim())
             .toList();
 
         if (parts.length < 4) continue;
@@ -120,8 +127,7 @@ class XujcScheduleParser {
     List<int> weeks = [];
     // 匹配格式: "1-15周(每周)", "3-3周(单周)", "6-8周(双周)", "4-4周(双周)(李霁)"
     // 或者是 "13-14周(每周)"
-    RegExp regExp = RegExp(r"(\d+)-(\d+)周\((每周|单周|双周)\)");
-    var matches = regExp.allMatches(rule);
+    var matches = _weekRulePattern.allMatches(rule);
 
     for (var match in matches) {
       int start = int.parse(match.group(1)!);
@@ -136,8 +142,7 @@ class XujcScheduleParser {
 
     // 兜底：如果没匹配到带括弧的，尝试匹配纯数字区间 e.g. "1-15周"
     if (weeks.isEmpty) {
-      RegExp simpleExp = RegExp(r"(\d+)-(\d+)周");
-      var match = simpleExp.firstMatch(rule);
+      var match = _simpleWeekRangePattern.firstMatch(rule);
       if (match != null) {
         int start = int.parse(match.group(1)!);
         int end = int.parse(match.group(2)!);
