@@ -137,6 +137,7 @@ todo.md
 !/test/services/mimo_asr_service_test.dart
 !/test/services/mimo_asr_billing_test.dart
 !/test/services/ai_query_tool_service_test.dart
+!/test/services/update_service_test.dart
 !/test/services/ai_tool_chat_runner_test.dart
 !/test/services/ai_tool_result_context_test.dart
 !/test/services/ai_function_calling_simulation_test.dart
