@@ -36,6 +36,9 @@ DateFormat _teamManagementDateFormat(String pattern) {
   );
 }
 
+final RegExp _teamInviteCopyCodePattern =
+    RegExp(r'邀请码：\[([a-zA-Z0-9]+)\]');
+
 String? normalizeInviteCode(String? code) {
   final value = code?.trim();
   if (value == null || value.isEmpty || value.toLowerCase() == 'null') {
@@ -248,8 +251,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
       if (data != null && data.text != null) {
         String text = data.text!;
         // 匹配格式：邀请您加入「XXX」团队。复制此消息后打开App即可加入。邀请码：[ABCDEF]
-        RegExp regExp = RegExp(r'邀请码：\[([a-zA-Z0-9]+)\]');
-        Match? match = regExp.firstMatch(text);
+        Match? match = _teamInviteCopyCodePattern.firstMatch(text);
 
         if (match != null && match.groupCount >= 1) {
           String inviteCode = match.group(1)!;
@@ -591,8 +593,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
         controller: controller,
         onChanged: (text) {
           // 🚀 实时监听：如果用户直接粘贴了整段邀请长文案，自动提取并替换为纯邀请码
-          RegExp regExp = RegExp(r'邀请码：\[([a-zA-Z0-9]+)\]');
-          Match? match = regExp.firstMatch(text);
+          Match? match = _teamInviteCopyCodePattern.firstMatch(text);
           if (match != null && match.groupCount >= 1) {
             final extractedCode = match.group(1)!;
             controller.value = TextEditingValue(
@@ -621,8 +622,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
         if (code.isEmpty) return;
 
         // 🚀 双重防线：提交前再次确保提取的是纯邀请码
-        RegExp regExp = RegExp(r'邀请码：\[([a-zA-Z0-9]+)\]');
-        Match? match = regExp.firstMatch(code);
+        Match? match = _teamInviteCopyCodePattern.firstMatch(code);
         if (match != null && match.groupCount >= 1) {
           code = match.group(1)!;
         }
