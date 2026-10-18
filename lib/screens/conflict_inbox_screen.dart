@@ -20,6 +20,16 @@ import '../features/habits/models/habit_goal_rule.dart';
 import '../services/storage/habit_storage.dart';
 import '../utils/json_value_parser.dart';
 
+final Map<(String?, String), DateFormat> _conflictInboxDateFormats = {};
+
+DateFormat _conflictInboxDateFormat(String pattern) {
+  final locale = Intl.defaultLocale;
+  return _conflictInboxDateFormats.putIfAbsent(
+    (locale, pattern),
+    () => DateFormat(pattern, locale),
+  );
+}
+
 enum _ConflictFilter { all, time, other }
 
 enum _ScheduleResolutionMode { recommend, group, manual }
@@ -1763,6 +1773,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
         map['startTime']);
     final end = _parseMs(
         map['due_date'] ?? map['dueDate'] ?? map['end_time'] ?? map['endTime']);
+    final timeFormat = _conflictInboxDateFormat('HH:mm');
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -1793,7 +1804,8 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                         fontSize: 14, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 4),
                 Text(
-                  '${DateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(start))} ~ ${DateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(end))}',
+                  '${timeFormat.format(DateTime.fromMillisecondsSinceEpoch(start))} ~ '
+                  '${timeFormat.format(DateTime.fromMillisecondsSinceEpoch(end))}',
                   style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                 ),
               ],
@@ -2702,7 +2714,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
         data['due_date'] ??
         data['dueDate']);
 
-    final sf = DateFormat('HH:mm');
+    final sf = _conflictInboxDateFormat('HH:mm');
     final originalTime = start > 0 && end > 0
         ? '${sf.format(DateTime.fromMillisecondsSinceEpoch(start))} ~ ${sf.format(DateTime.fromMillisecondsSinceEpoch(end))}'
         : '时间未知';
@@ -2999,9 +3011,11 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
         ((recommendedWindow.start.millisecondsSinceEpoch - startMs) /
                 const Duration(minutes: 1).inMilliseconds)
             .round();
+    final startDateFormat = _conflictInboxDateFormat('MM-dd HH:mm');
+    final endTimeFormat = _conflictInboxDateFormat('HH:mm');
     return '推荐：仅移动开始时间，保留 $durationMinutes 分钟时长。新时间为 '
-        '${DateFormat('MM-dd HH:mm').format(recommendedWindow.start)} ~ '
-        '${DateFormat('HH:mm').format(recommendedWindow.end)}'
+        '${startDateFormat.format(recommendedWindow.start)} ~ '
+        '${endTimeFormat.format(recommendedWindow.end)}'
         '${shiftedMinutes > 0 ? '，整体后移 $shiftedMinutes 分钟' : ''}。';
   }
 
@@ -3549,7 +3563,7 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
           start is int ? start : int.tryParse(start.toString()) ?? 0;
       final endMs = end is int ? end : int.tryParse(end.toString()) ?? 0;
       if (startMs > 0 && endMs > 0) {
-        final sf = DateFormat('MM-dd HH:mm');
+        final sf = _conflictInboxDateFormat('MM-dd HH:mm');
         timeStr =
             '${sf.format(DateTime.fromMillisecondsSinceEpoch(startMs))} ~ ${sf.format(DateTime.fromMillisecondsSinceEpoch(endMs))}';
       }
@@ -3558,7 +3572,7 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
           ? targetTime
           : int.tryParse(targetTime.toString()) ?? 0;
       if (tMs > 0) {
-        timeStr = DateFormat('MM-dd HH:mm')
+        timeStr = _conflictInboxDateFormat('MM-dd HH:mm')
             .format(DateTime.fromMillisecondsSinceEpoch(tMs));
       }
     }
@@ -3846,7 +3860,7 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
   String _formatTimestamp(dynamic value) {
     final ms = _toMillis(value);
     if (ms == null || ms <= 0) return '空';
-    return DateFormat('yyyy-MM-dd HH:mm:ss').format(
+    return _conflictInboxDateFormat('yyyy-MM-dd HH:mm:ss').format(
       DateTime.fromMillisecondsSinceEpoch(ms),
     );
   }
@@ -3854,7 +3868,7 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
   String _formatDateTimeMs(dynamic value) {
     final ms = _toMillis(value);
     if (ms == null || ms <= 0) return '空';
-    return DateFormat('MM-dd HH:mm').format(
+    return _conflictInboxDateFormat('MM-dd HH:mm').format(
       DateTime.fromMillisecondsSinceEpoch(ms),
     );
   }
