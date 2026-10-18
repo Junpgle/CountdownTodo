@@ -1,7 +1,6 @@
 import '../widgets/floating_glass_control.dart';
 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models.dart';
@@ -13,6 +12,7 @@ import '../services/schedule_conflict_service.dart';
 import '../storage_service.dart';
 import '../utils/app_dialogs.dart';
 import '../utils/semester_week_context.dart';
+import '../utils/time_utils.dart';
 
 class FixedScheduleEditorScreen extends StatefulWidget {
   const FixedScheduleEditorScreen({
@@ -287,16 +287,17 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
     }
 
     setState(() => _saving = true);
+    final dateText = AppTimeFormats.date(_date);
     final existing = widget.item;
     final item = existing == null
         ? FixedScheduleItem(
             title: title,
-            date: DateFormat('yyyy-MM-dd').format(_date),
+            date: dateText,
           )
         : FixedScheduleItem.fromJson(existing.toJson());
     item
       ..title = title
-      ..date = DateFormat('yyyy-MM-dd').format(_date)
+      ..date = dateText
       ..startTime = start?.millisecondsSinceEpoch
       ..endTime = end?.millisecondsSinceEpoch
       ..location = _locationController.text.trim().isEmpty
@@ -510,6 +511,8 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final topBarHeight = floatingGlassTopBarHeight(context);
+    final dateText = AppTimeFormats.date(_date);
+    final recurrenceEndDateText = AppTimeFormats.date(_recurrenceEndDate);
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: FloatingGlassAppBar(
@@ -565,7 +568,7 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
                     subtitle: Text(
                       _dateWithSemesterWeek(
                         _date,
-                        DateFormat('yyyy-MM-dd').format(_date),
+                        dateText,
                       ),
                     ),
                     onTap: _pickDate,
@@ -652,7 +655,7 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
                       subtitle: Text(
                         _dateWithSemesterWeek(
                           _recurrenceEndDate,
-                          DateFormat('yyyy-MM-dd').format(_recurrenceEndDate),
+                          recurrenceEndDateText,
                         ),
                       ),
                       onTap: _pickRecurrenceEndDate,
