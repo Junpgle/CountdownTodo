@@ -22,6 +22,16 @@ import 'optional_liquid_glass_surface.dart';
 import 'version_history_sheet.dart';
 import '../utils/app_dialogs.dart';
 
+final Map<(String?, String), DateFormat> _countdownSectionDateFormats = {};
+
+DateFormat _countdownSectionDateFormat(String pattern) {
+  final locale = Intl.defaultLocale;
+  return _countdownSectionDateFormats.putIfAbsent(
+    (locale, pattern),
+    () => DateFormat(pattern, locale),
+  );
+}
+
 class _CountdownDerivedInput {
   const _CountdownDerivedInput({
     required this.item,
@@ -180,7 +190,7 @@ Future<void> showCountdownEditorDialog({
                     side: BorderSide(color: Theme.of(context).dividerColor),
                   ),
                   title: Text(
-                    "目标日期: ${DateFormat('yyyy-MM-dd').format(selectedDate)}",
+                    "目标日期: ${_countdownSectionDateFormat('yyyy-MM-dd').format(selectedDate)}",
                     style: const TextStyle(fontSize: 14),
                   ),
                   trailing: const Icon(Icons.calendar_today, size: 20),
@@ -647,7 +657,6 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
       return EmptyState(text: "暂无有效倒计时", isLight: widget.isLight);
     }
 
-    final targetDateFormat = DateFormat('yyyy-MM-dd');
     return SizedBox(
       height: 130, // 🚀 适度增加总高度，防止小屏幕溢出
       child: ClipRect(
@@ -914,7 +923,7 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
                                 const SizedBox(height: 2),
                                 // 🚀 紧凑化
                                 Text(
-                                  "目标日: ${targetDateFormat.format(item.targetDate)}",
+                                  "目标日: ${_countdownSectionDateFormat('yyyy-MM-dd').format(item.targetDate)}",
                                   style: TextStyle(
                                     fontSize: 9,
                                     color: subTextColor,

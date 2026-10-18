@@ -303,6 +303,11 @@ void main() {
                   title: '昨天到期',
                   targetDate: DateTime(2026, 3, 8, 20),
                 ),
+                CountdownItem(
+                  id: 'active',
+                  title: '还有时间',
+                  targetDate: DateTime(2026, 3, 15),
+                ),
               ],
             ),
           ),
@@ -311,8 +316,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('暂无有效倒计时'), findsOneWidget);
+    expect(find.text('还有时间'), findsOneWidget);
     expect(find.text('昨天到期'), findsNothing);
+    expect(find.text('目标日: 2026-03-15'), findsOneWidget);
   });
 
   testWidgets('倒计时删除取消与确认只调用一次', (tester) async {
