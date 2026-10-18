@@ -18,6 +18,16 @@ import '../widgets/optional_liquid_glass_surface.dart';
 const Color emerald = Color(0xFF10B981);
 const Color emeraldAccent = Color(0xFF34D399);
 
+final Map<(String?, String), DateFormat> _appBoardDateFormats = {};
+
+DateFormat _appBoardDateFormat(String pattern) {
+  final locale = Intl.defaultLocale;
+  return _appBoardDateFormats.putIfAbsent(
+    (locale, pattern),
+    () => DateFormat(pattern, locale),
+  );
+}
+
 class AppBoardScreen extends StatefulWidget {
   final String username;
   final VoidCallback? onBack;
@@ -1741,6 +1751,7 @@ class MissionControl extends StatelessWidget {
       if (todo.isDone == showCompleted) displayTasks.add(todo);
     }
     final now = clock();
+    final dueTimeFormat = _appBoardDateFormat('HH:mm');
 
     return Column(
       children: [
@@ -1820,7 +1831,7 @@ class MissionControl extends StatelessWidget {
                               overflow: TextOverflow.ellipsis,
                             ),
                             Text(
-                              '${task.creatorName ?? "用户"} · ${task.dueDate != null ? DateFormat('HH:mm').format(task.dueDate!) : "无时间"}',
+                              '${task.creatorName ?? "用户"} · ${task.dueDate != null ? dueTimeFormat.format(task.dueDate!) : "无时间"}',
                               style: TextStyle(
                                 color: Colors.white.withValues(alpha: 0.2),
                                 fontSize: 8,
