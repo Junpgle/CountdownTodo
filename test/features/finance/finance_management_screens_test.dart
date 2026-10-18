@@ -2420,6 +2420,10 @@ void main() {
       250,
       scrollable: find.byType(Scrollable).first,
     );
+    expect(
+      find.descendant(of: card, matching: find.text('2026年10月1日 09:00 的余额')),
+      findsOneWidget,
+    );
 
     clockNow = DateTime(2026, 11, 15, 12, 0, 2);
     await tester.pump(const Duration(days: 15));
