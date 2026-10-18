@@ -313,12 +313,6 @@ class _PomodoroScreenState extends State<PomodoroScreen>
       return Scaffold(
         extendBody: true,
         body: SafeArea(
-          bottom: false,
-          minimum: EdgeInsets.only(
-            bottom: isFocusingOrWatching
-                ? 0
-                : floatingBottomNavigationContentPaddingFor(context),
-          ),
           child: Row(
             children: [
               // Left: large workbench area
@@ -350,7 +344,7 @@ class _PomodoroScreenState extends State<PomodoroScreen>
                 ),
               ),
 
-              // Right: bounded column with stats and compact controls
+              // Right: bounded column with statistics
               // Only show the right column when the timer is idle/finished to avoid distraction
               if (showLandscapeStats)
                 Container(
@@ -371,42 +365,19 @@ class _PomodoroScreenState extends State<PomodoroScreen>
                   ),
                   child: SafeArea(
                     top: false,
-                    child: SingleChildScrollView(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          // compact header with tab-like toggle
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                '番茄统计',
-                                style: Theme.of(context).textTheme.titleSmall
-                                    ?.copyWith(fontWeight: FontWeight.bold),
-                              ),
-                              ToggleButtons(
-                                isSelected: [tabIndex == 0, tabIndex == 1],
-                                onPressed: (i) {
-                                  _tabController.animateTo(i);
-                                  setState(() {});
-                                },
-                                constraints: const BoxConstraints(
-                                  minWidth: 32,
-                                  minHeight: 32,
-                                ),
-                                borderRadius: BorderRadius.circular(8),
-                                children: const [
-                                  Icon(Icons.timer_outlined, size: 18),
-                                  Icon(Icons.bar_chart_rounded, size: 18),
-                                ],
-                              ),
-                            ],
-                          ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text(
+                          '番茄统计',
+                          style: Theme.of(context).textTheme.titleSmall
+                              ?.copyWith(fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 12),
 
-                          const SizedBox(height: 12),
-
-                          // Always show stats summary (same widget used in portrait tab)
-                          Card(
+                        // Always show stats summary (same widget used in portrait tab)
+                        Expanded(
+                          child: Card(
                             elevation: 0,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
@@ -421,15 +392,14 @@ class _PomodoroScreenState extends State<PomodoroScreen>
                               ),
                             ),
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
             ],
           ),
         ),
-        bottomNavigationBar: _buildBottomTabBar(isFocusingOrWatching),
       );
     }
 
