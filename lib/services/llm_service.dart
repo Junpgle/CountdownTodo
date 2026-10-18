@@ -341,6 +341,7 @@ class CustomVisionModel {
 }
 
 class LLMService {
+  static final RegExp _jsonObjectFallbackPattern = RegExp(r'\{[^{}]*\}');
   static const String _configKey = 'llm_config';
   static const int _recognitionPromptProtocolVersion = 2;
   static const String _zhipuApiKeyKey = 'zhipu_api_key';
@@ -1212,7 +1213,7 @@ class LLMService {
     if (results.isNotEmpty) return results;
 
     // 尝试使用正则提取所有 JSON 对象
-    final matches = RegExp(r'\{[^{}]*\}').allMatches(trimmed);
+    final matches = _jsonObjectFallbackPattern.allMatches(trimmed);
     for (final match in matches) {
       try {
         final obj = jsonDecode(match.group(0)!) as Map<String, dynamic>;
