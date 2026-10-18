@@ -15,6 +15,12 @@ import '../../../widgets/app_state_views.dart';
 import '../../../widgets/floating_glass_control.dart';
 import '../../../widgets/optional_liquid_glass_surface.dart';
 
+final RegExp _updateSettingsPackageFilePattern = RegExp(
+  r'^CountdownTodo_v(.+)\.(?:apk|exe|zip)(?:\.zip)?$',
+  caseSensitive: false,
+);
+final RegExp _updateSettingsLineBreakPattern = RegExp(r'\r?\n');
+
 /// Settings block for the installed version, release notes and update flow.
 class UpdateSettingsSection extends StatefulWidget {
   const UpdateSettingsSection({super.key});
@@ -56,10 +62,7 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
   String? _versionFromPackagePath(String? path) {
     if (path == null || path.isEmpty) return null;
     final fileName = path.replaceAll('\\', '/').split('/').last;
-    final match = RegExp(
-      r'^CountdownTodo_v(.+)\.(?:apk|exe|zip)(?:\.zip)?$',
-      caseSensitive: false,
-    ).firstMatch(fileName);
+    final match = _updateSettingsPackageFilePattern.firstMatch(fileName);
     return match?.group(1);
   }
 
@@ -160,7 +163,7 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
           versionName: packageInfo.version,
           date: '',
           items: manifest.updateInfo.description
-              .split(RegExp(r'\r?\n'))
+              .split(_updateSettingsLineBreakPattern)
               .where((item) => item.trim().isNotEmpty)
               .toList(),
         );
@@ -620,7 +623,7 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
     final entry = _latestChangelog;
     if (entry != null && entry.items.isNotEmpty) return entry.items;
     return _manifest?.updateInfo.description
-            .split(RegExp(r'\r?\n'))
+            .split(_updateSettingsLineBreakPattern)
             .where((item) => item.trim().isNotEmpty)
             .toList() ??
         const [];
