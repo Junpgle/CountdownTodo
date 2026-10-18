@@ -41,6 +41,16 @@ class _BatchTagPageState extends State<BatchTagPage>
   final Set<String> _selectedPomodoros = {};
   final Set<String> _selectedTimeLogs = {};
 
+  final Map<(String?, String), DateFormat> _dateFormatters = {};
+
+  DateFormat _cachedDateFormat(String pattern) {
+    final locale = Intl.defaultLocale;
+    return _dateFormatters.putIfAbsent(
+      (locale, pattern),
+      () => DateFormat(pattern, locale),
+    );
+  }
+
   // 待添加的标签（支持多选）
   final Set<String> _targetTagUuids = {};
 
@@ -372,6 +382,7 @@ class _BatchTagPageState extends State<BatchTagPage>
   }
 
   Widget _buildFilterBar() {
+    final dateFormat = _cachedDateFormat('MM/dd');
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       color: Theme.of(context).colorScheme.surface,
@@ -412,7 +423,7 @@ class _BatchTagPageState extends State<BatchTagPage>
               FilterChip(
                 label: Text(
                   _dateRange != null
-                      ? '${DateFormat('MM/dd').format(_dateRange!.start)}-${DateFormat('MM/dd').format(_dateRange!.end)}'
+                      ? '${dateFormat.format(_dateRange!.start)}-${dateFormat.format(_dateRange!.end)}'
                       : '时间',
                   style: const TextStyle(fontSize: 12),
                 ),
@@ -530,6 +541,8 @@ class _BatchTagPageState extends State<BatchTagPage>
         child: Text('没有符合条件的番茄钟记录', style: TextStyle(color: Colors.grey)),
       );
     }
+    final startDateFormat = _cachedDateFormat('MM/dd HH:mm');
+    final endTimeFormat = _cachedDateFormat('HH:mm');
 
     return Column(
       children: [
@@ -567,7 +580,7 @@ class _BatchTagPageState extends State<BatchTagPage>
                   overflow: TextOverflow.ellipsis,
                 ),
                 subtitle: Text(
-                  '${DateFormat('MM/dd HH:mm').format(startTime)} → ${DateFormat('HH:mm').format(endTime)}  ${duration}min',
+                  '${startDateFormat.format(startTime)} → ${endTimeFormat.format(endTime)}  ${duration}min',
                   style: const TextStyle(fontSize: 11),
                 ),
                 trailing: pom.tagUuids.isNotEmpty
@@ -592,6 +605,8 @@ class _BatchTagPageState extends State<BatchTagPage>
         child: Text('没有符合条件的时间日志', style: TextStyle(color: Colors.grey)),
       );
     }
+    final startDateFormat = _cachedDateFormat('MM/dd HH:mm');
+    final endTimeFormat = _cachedDateFormat('HH:mm');
 
     return Column(
       children: [
@@ -627,7 +642,7 @@ class _BatchTagPageState extends State<BatchTagPage>
                   overflow: TextOverflow.ellipsis,
                 ),
                 subtitle: Text(
-                  '${DateFormat('MM/dd HH:mm').format(startTime)} → ${DateFormat('HH:mm').format(endTime)}  ${duration}min',
+                  '${startDateFormat.format(startTime)} → ${endTimeFormat.format(endTime)}  ${duration}min',
                   style: const TextStyle(fontSize: 11),
                 ),
                 trailing: log.tagUuids.isNotEmpty
