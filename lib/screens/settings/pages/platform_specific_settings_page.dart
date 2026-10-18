@@ -950,6 +950,10 @@ class _MacIslandShortcutDialog extends StatefulWidget {
 }
 
 class _MacIslandShortcutDialogState extends State<_MacIslandShortcutDialog> {
+  static final RegExp _singleCharacterKeyPattern =
+      RegExp(r'^[A-Z0-9]$');
+  static final RegExp _functionKeyPattern = RegExp(r'^F(?:[1-9]|1[0-2])$');
+
   late final FocusNode _focusNode;
   late _MacIslandShortcut _shortcut;
   String? _validationMessage;
@@ -972,8 +976,8 @@ class _MacIslandShortcutDialogState extends State<_MacIslandShortcutDialog> {
 
   String? _normalizedKey(LogicalKeyboardKey logicalKey) {
     final label = logicalKey.keyLabel.toUpperCase();
-    if (RegExp(r'^[A-Z0-9]$').hasMatch(label)) return label;
-    if (RegExp(r'^F(?:[1-9]|1[0-2])$').hasMatch(label)) return label;
+    if (_singleCharacterKeyPattern.hasMatch(label)) return label;
+    if (_functionKeyPattern.hasMatch(label)) return label;
     return null;
   }
 
