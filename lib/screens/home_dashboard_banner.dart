@@ -5,6 +5,10 @@ part of 'home_dashboard.dart';
 typedef _DashboardTodoCandidate = ({
   TodoItem todo,
   String specialType,
+  DateTime localDueDate,
+  DateTime? startTime,
+  bool isAllDay,
+  bool isCrossDay,
 });
 
 String _formatDashboardPomodoroTimeInfo(
@@ -50,7 +54,15 @@ DateFormat _dashboardDateFormat(String pattern) {
 mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
   List<TodoItem>? _dashboardTodoCandidateSource;
   int? _dashboardTodoCandidateRevision;
+  int? _dashboardTodoCandidateTimeZoneOffsetSeconds;
+  String? _dashboardTodoCandidateTimeZoneName;
   List<_DashboardTodoCandidate> _dashboardTodoCandidateCache = const [];
+  List<TodoItem>? _dashboardBannerTodoSource;
+  int? _dashboardBannerTodoRevision;
+  DateTime? _dashboardBannerTodoDay;
+  int? _dashboardBannerTodoTimeZoneOffsetSeconds;
+  String? _dashboardBannerTodoTimeZoneName;
+  List<_DashboardTodoCandidate> _dashboardBannerTodoCache = const [];
   Map<String, dynamic>? _upcomingCourseDataSource;
   List<CourseItem>? _upcomingCourseCache;
   DateTime? _upcomingCourseCacheDate;
@@ -58,26 +70,88 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
   String? _upcomingCourseCacheUsername;
   int? _upcomingCourseCacheRevision;
 
-  List<_DashboardTodoCandidate> _dashboardTodoCandidatesForCurrentRevision() {
+  List<_DashboardTodoCandidate> _dashboardTodoCandidatesForCurrentRevision(
+    DateTime now,
+  ) {
     final source = _todos;
     final revision = _todoDataRevision;
+    final timeZoneOffsetSeconds = now.timeZoneOffset.inSeconds;
+    final timeZoneName = now.timeZoneName;
     if (identical(source, _dashboardTodoCandidateSource) &&
-        revision == _dashboardTodoCandidateRevision) {
+        revision == _dashboardTodoCandidateRevision &&
+        timeZoneOffsetSeconds == _dashboardTodoCandidateTimeZoneOffsetSeconds &&
+        timeZoneName == _dashboardTodoCandidateTimeZoneName) {
       return _dashboardTodoCandidateCache;
     }
 
     final candidates = <_DashboardTodoCandidate>[];
     for (final todo in source) {
-      if (todo.isDone || todo.dueDate == null) continue;
+      final dueDate = todo.dueDate;
+      if (todo.isDone || dueDate == null) continue;
+      final specialType = ItemSemanticsService.specialTodoTypeForTitle(
+        todo.title,
+      );
+      final localDueDate = dueDate.toLocal();
+      final startTime = specialType == 'default'
+          ? DateTime.fromMillisecondsSinceEpoch(
+              todo.createdDate ?? todo.createdAt,
+            ).toLocal()
+          : null;
       candidates.add((
         todo: todo,
-        specialType: ItemSemanticsService.specialTodoTypeForTitle(todo.title),
+        specialType: specialType,
+        localDueDate: localDueDate,
+        startTime: startTime,
+        isAllDay: startTime != null &&
+            startTime.hour == 0 &&
+            startTime.minute == 0 &&
+            localDueDate.hour == 23 &&
+            localDueDate.minute == 59,
+        isCrossDay: startTime != null &&
+            (startTime.year != localDueDate.year ||
+                startTime.month != localDueDate.month ||
+                startTime.day != localDueDate.day),
       ));
     }
 
     _dashboardTodoCandidateSource = source;
     _dashboardTodoCandidateRevision = revision;
+    _dashboardTodoCandidateTimeZoneOffsetSeconds = timeZoneOffsetSeconds;
+    _dashboardTodoCandidateTimeZoneName = timeZoneName;
     return _dashboardTodoCandidateCache = candidates;
+  }
+
+  List<_DashboardTodoCandidate> _dashboardBannerTodoCandidatesForDay(
+    DateTime now,
+  ) {
+    final today = DateUtils.dateOnly(now);
+    final timeZoneOffsetSeconds = now.timeZoneOffset.inSeconds;
+    final timeZoneName = now.timeZoneName;
+    if (identical(_dashboardBannerTodoSource, _todos) &&
+        _dashboardBannerTodoRevision == _todoDataRevision &&
+        _dashboardBannerTodoDay == today &&
+        timeZoneOffsetSeconds ==
+            _dashboardBannerTodoTimeZoneOffsetSeconds &&
+        timeZoneName == _dashboardBannerTodoTimeZoneName) {
+      return _dashboardBannerTodoCache;
+    }
+
+    final candidates = <_DashboardTodoCandidate>[];
+    for (final candidate in _dashboardTodoCandidatesForCurrentRevision(now)) {
+      if (!AppTimeFormats.isSameDay(candidate.localDueDate, today)) continue;
+      if (candidate.specialType == 'default' &&
+          (candidate.isAllDay || candidate.isCrossDay)) {
+        continue;
+      }
+      candidates.add(candidate);
+    }
+
+    _dashboardBannerTodoSource = _todos;
+    _dashboardBannerTodoRevision = _todoDataRevision;
+    _dashboardBannerTodoDay = today;
+    _dashboardBannerTodoTimeZoneOffsetSeconds = timeZoneOffsetSeconds;
+    _dashboardBannerTodoTimeZoneName = timeZoneName;
+    return _dashboardBannerTodoCache = candidates;
   }
 
   Future<List<CourseItem>> _coursesForUpcomingNotifications(DateTime now) async {
@@ -908,15 +982,11 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
     // 3. 待办候选项只遍历一次；先分桶再按原顺序加入事件。
     final specialTodoEvents = <HomeBannerEvent>[];
     final regularTodoEvents = <HomeBannerEvent>[];
-    for (final candidate in _dashboardTodoCandidatesForCurrentRevision()) {
+    for (final candidate in _dashboardBannerTodoCandidatesForDay(now)) {
       final todo = candidate.todo;
       if (todo.isDeleted) continue;
       final specialType = candidate.specialType;
       if (specialType != 'default') {
-        if (!AppTimeFormats.isSameDay(todo.dueDate!.toLocal(), now)) {
-          continue;
-        }
-
         specialTodoEvents.add(
           HomeBannerEvent(
             type: 'special_todo',
@@ -934,23 +1004,8 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
         continue;
       }
 
-      final startMs = todo.createdDate ?? todo.createdAt;
-      final startTime = DateTime.fromMillisecondsSinceEpoch(
-        startMs,
-      ).toLocal();
-      final endTime = todo.dueDate!.toLocal();
-
-      // 判定全天任务或跨天任务
-      final isAllDay =
-          startTime.hour == 0 &&
-          startTime.minute == 0 &&
-          endTime.hour == 23 &&
-          endTime.minute == 59;
-      final isCrossDay =
-          startTime.year != endTime.year ||
-          startTime.month != endTime.month ||
-          startTime.day != endTime.day;
-      if (isAllDay || isCrossDay) continue;
+      final startTime = candidate.startTime!;
+      final endTime = candidate.localDueDate;
 
       final diffStart = startTime.difference(now).inMinutes;
       final isOngoing = now.isAfter(startTime) && now.isBefore(endTime);
@@ -1248,7 +1303,7 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
     final specialTodosToday = <TodoItem>[];
     final upcomingRegularTodos = <TodoItem>[];
     final allDayTodos = <TodoItem>[];
-    for (final candidate in _dashboardTodoCandidatesForCurrentRevision()) {
+    for (final candidate in _dashboardTodoCandidatesForCurrentRevision(now)) {
       final todo = candidate.todo;
       final dueDate = todo.dueDate;
       if (todo.isDone || dueDate == null) continue;
