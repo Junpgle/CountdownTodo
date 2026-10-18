@@ -10,6 +10,16 @@ import 'journal_detail_screen.dart';
 import 'journal_editor_screen.dart';
 import '../../../utils/app_dialogs.dart';
 
+final Map<String?, DateFormat> _photoWallDateFormats = {};
+
+DateFormat _photoWallDateFormat() {
+  final locale = Intl.defaultLocale;
+  return _photoWallDateFormats.putIfAbsent(
+    locale,
+    () => DateFormat('MM月dd日', locale),
+  );
+}
+
 class JournalHomeScreen extends StatefulWidget {
   final String username;
   final JournalStorage? storage;
@@ -639,6 +649,7 @@ class _PhotoWallCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final entryDateFormat = _photoWallDateFormat();
     return Card(
       clipBehavior: Clip.antiAlias,
       elevation: 0,
@@ -667,7 +678,7 @@ class _PhotoWallCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    DateFormat('MM月dd日').format(entry.occurredAt),
+                    entryDateFormat.format(entry.occurredAt),
                     style: Theme.of(context).textTheme.labelSmall?.copyWith(
                           color: scheme.primary,
                           fontWeight: FontWeight.w700,
