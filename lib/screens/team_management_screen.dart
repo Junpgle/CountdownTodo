@@ -2778,6 +2778,12 @@ class __TeamMembersViewState extends State<_TeamMembersView> {
 
   @override
   Widget build(BuildContext context) {
+    final requestCount = _requests.length;
+    final hasRequests = requestCount > 0;
+    final memberHeaderIndex = hasRequests ? requestCount + 3 : 0;
+    final memberStartIndex = memberHeaderIndex + 1;
+    final listItemCount = memberStartIndex + _members.length + 1;
+
     return Column(
       children: [
         const SizedBox(height: 12),
@@ -2808,32 +2814,56 @@ class __TeamMembersViewState extends State<_TeamMembersView> {
         Expanded(
           child: _loading
               ? const Center(child: CircularProgressIndicator())
-              : ListView(
+              : ListView.builder(
                   controller: widget.scrollController,
                   padding: const EdgeInsets.symmetric(horizontal: 16),
-                  children: [
-                    if (_requests.isNotEmpty) ...[
-                      Padding(
-                        padding:
-                            EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                        child: Text('待审批申请',
+                  itemCount: listItemCount,
+                  itemBuilder: (context, index) {
+                    if (hasRequests) {
+                      if (index == 0) {
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 8,
+                          ),
+                          child: Text(
+                            '待审批申请',
                             style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color:
-                                    Theme.of(context).colorScheme.secondary)),
-                      ),
-                      ..._requests.map((r) => _buildRequestItem(r)),
-                      const SizedBox(height: 16),
-                      const Divider(),
-                    ],
-                    const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                      child: Text('团队成员',
-                          style: TextStyle(fontWeight: FontWeight.bold)),
-                    ),
-                    ..._members.map((m) => _buildMemberItem(m)),
-                    const SizedBox(height: 40),
-                  ],
+                              fontWeight: FontWeight.bold,
+                              color: Theme.of(context).colorScheme.secondary,
+                            ),
+                          ),
+                        );
+                      }
+                      if (index <= requestCount) {
+                        return _buildRequestItem(_requests[index - 1]);
+                      }
+                      if (index == requestCount + 1) {
+                        return const SizedBox(height: 16);
+                      }
+                      if (index == requestCount + 2) {
+                        return const Divider();
+                      }
+                    }
+
+                    if (index == memberHeaderIndex) {
+                      return const Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 8,
+                        ),
+                        child: Text(
+                          '团队成员',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                      );
+                    }
+                    final memberIndex = index - memberStartIndex;
+                    if (memberIndex < _members.length) {
+                      return _buildMemberItem(_members[memberIndex]);
+                    }
+                    return const SizedBox(height: 40);
+                  },
                 ),
         ),
       ],

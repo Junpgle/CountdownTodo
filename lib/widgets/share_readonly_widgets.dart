@@ -68,25 +68,30 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
     final DateTime now = widget.clock?.call() ?? DateTime.now();
     final DateTime today = DateTime(now.year, now.month, now.day);
 
-    final displayItems = _buildSortedDisplayItems(now, today);
-    final pastItems = displayItems
-        .where((item) => _isBeforeDay(item.date, today))
-        .toList();
-    final todayItems = displayItems
-        .where(
-          (item) =>
-              !_isBeforeDay(item.date, today) && !_isAfterDay(item.date, today),
-        )
-        .toList();
-    final futureItems = displayItems
-        .where((item) => _isAfterDay(item.date, today))
-        .toList();
+    final displayProjection = _isWholeListExpanded
+        ? _buildSortedDisplayItems(now, today)
+        : _buildCollapsedSummary(today);
+    final displayItems = displayProjection.items;
+    final pastItems = <_ShareTodoDisplayItem>[];
+    final todayItems = <_ShareTodoDisplayItem>[];
+    final futureItems = <_ShareTodoDisplayItem>[];
+    var todayUndoneCount = 0;
+    for (final item in displayItems) {
+      if (_isBeforeDay(item.date, today)) {
+        pastItems.add(item);
+      } else if (_isAfterDay(item.date, today)) {
+        futureItems.add(item);
+      } else {
+        todayItems.add(item);
+        if (!item.isDone) todayUndoneCount++;
+      }
+    }
 
-    final int undoneCount = widget.todos
-        .where((todo) => !todo.isDeleted && !todo.isDone)
-        .length;
+    final int undoneCount = displayProjection.undoneCount;
 
-    if (displayItems.isEmpty) return const SizedBox.shrink();
+    if (!displayProjection.hasVisibleItems) {
+      return const SizedBox.shrink();
+    }
 
     // 标题栏
     final header = Row(
@@ -134,11 +139,13 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
       sections.add(
         _buildAnimatedSection(
           expanded: _isPastTodosExpanded,
-          child: Column(
-            children: pastItems
-                .map((item) => _buildDisplayItem(context, item, today))
-                .toList(),
-          ),
+          child: _isPastTodosExpanded
+              ? Column(
+                  children: pastItems
+                      .map((item) => _buildDisplayItem(context, item, today))
+                      .toList(growable: false),
+                )
+              : const SizedBox.shrink(),
         ),
       );
     }
@@ -243,7 +250,7 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
                               Text(
                                 allTodayDone
                                     ? "今日任务已完成 🎉"
-                                    : "今日还有 ${todayItems.where((item) => !item.isDone).length} 个待办",
+                                    : "今日还有 $todayUndoneCount 个待办",
                                 style: TextStyle(
                                   fontWeight: FontWeight.bold,
                                   fontSize: 15,
@@ -326,11 +333,13 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
       sections.add(
         _buildAnimatedSection(
           expanded: _isFutureExpanded,
-          child: Column(
-            children: futureItems
-                .map((item) => _buildDisplayItem(context, item, today))
-                .toList(),
-          ),
+          child: _isFutureExpanded
+              ? Column(
+                  children: futureItems
+                      .map((item) => _buildDisplayItem(context, item, today))
+                      .toList(growable: false),
+                )
+              : const SizedBox.shrink(),
         ),
       );
     }
@@ -547,21 +556,20 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
     );
   }
 
-  List<_ShareTodoDisplayItem> _buildSortedDisplayItems(
-    DateTime now,
-    DateTime today,
-  ) {
+  ({List<_ShareTodoDisplayItem> items, int undoneCount, bool hasVisibleItems})
+  _buildSortedDisplayItems(DateTime now, DateTime today) {
     final groupById = <String, TodoGroup>{
       for (final group in widget.todoGroups)
         if (!group.isDeleted) group.id: group,
     };
     final todosByGroup = <String, List<TodoItem>>{};
     final standaloneTodos = <TodoItem>[];
-    final visibleTodos = widget.todos
-        .where((todo) => !todo.isDeleted && !_isHistoricalTodo(todo, today))
-        .toList();
+    var undoneCount = 0;
+    for (final todo in widget.todos) {
+      if (todo.isDeleted) continue;
+      if (!todo.isDone) undoneCount++;
+      if (_isHistoricalTodo(todo, today)) continue;
 
-    for (final todo in visibleTodos) {
       final groupId = todo.groupId;
       if (groupId != null &&
           groupId.isNotEmpty &&
@@ -637,7 +645,29 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
     }
 
     items.sort(compareItems);
-    return items;
+    return (
+      items: items,
+      undoneCount: undoneCount,
+      hasVisibleItems: items.isNotEmpty,
+    );
+  }
+
+  ({List<_ShareTodoDisplayItem> items, int undoneCount, bool hasVisibleItems})
+  _buildCollapsedSummary(DateTime today) {
+    var undoneCount = 0;
+    var hasVisibleItems = false;
+    for (final todo in widget.todos) {
+      if (todo.isDeleted) continue;
+      if (!todo.isDone) undoneCount++;
+      if (!hasVisibleItems && !_isHistoricalTodo(todo, today)) {
+        hasVisibleItems = true;
+      }
+    }
+    return (
+      items: const <_ShareTodoDisplayItem>[],
+      undoneCount: undoneCount,
+      hasVisibleItems: hasVisibleItems,
+    );
   }
 
   void _sortFolderTodos(List<TodoItem> todos) {

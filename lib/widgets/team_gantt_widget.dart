@@ -4,7 +4,23 @@ import 'package:intl/intl.dart';
 import '../models.dart';
 import '../utils/calendar_date_math.dart';
 
-class TeamGanttWidget extends StatelessWidget {
+String? _teamGanttDateLocale;
+DateFormat? _teamGanttDayLabelFormat;
+
+final _invalidUtf16SurrogatePattern = RegExp(
+  r'[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(^|[^\uD800-\uDBFF])[\uDC00-\uDFFF]',
+);
+
+DateFormat _teamGanttDayFormat() {
+  final locale = Intl.defaultLocale;
+  if (_teamGanttDateLocale != locale) {
+    _teamGanttDateLocale = locale;
+    _teamGanttDayLabelFormat = DateFormat('dd', locale);
+  }
+  return _teamGanttDayLabelFormat ??= DateFormat('dd', locale);
+}
+
+class TeamGanttWidget extends StatefulWidget {
   final List<TodoItem> todos;
   final int viewDays;
   final Function(TodoItem)? onTodoTap;
@@ -19,7 +35,17 @@ class TeamGanttWidget extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  State<TeamGanttWidget> createState() => _TeamGanttWidgetState();
+}
+
+class _TeamGanttWidgetState extends State<TeamGanttWidget> {
+  List<TodoItem>? _todoProjectionSource;
+  List<TodoItem> _datedTodos = const [];
+  int _activeDatedTodoCount = 0;
+
+  void _prepareTodoProjection(List<TodoItem> todos) {
+    if (identical(_todoProjectionSource, todos)) return;
+
     const maxDisplayedTodos = 6;
     final datedTodos = <TodoItem>[];
     var activeDatedTodoCount = 0;
@@ -39,6 +65,20 @@ class TeamGanttWidget extends StatelessWidget {
       if (datedTodos.length > maxDisplayedTodos) datedTodos.removeLast();
     }
 
+    _todoProjectionSource = todos;
+    _datedTodos = datedTodos;
+    _activeDatedTodoCount = activeDatedTodoCount;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final todos = widget.todos;
+    final viewDays = widget.viewDays;
+    final onTodoTap = widget.onTodoTap;
+    _prepareTodoProjection(todos);
+    final datedTodos = _datedTodos;
+    final activeDatedTodoCount = _activeDatedTodoCount;
+
     if (datedTodos.isEmpty) {
       return const Center(
         child: Text(
@@ -49,7 +89,7 @@ class TeamGanttWidget extends StatelessWidget {
     }
 
     // 确定时间跨度
-    final now = this.now ?? DateTime.now();
+    final now = widget.now ?? DateTime.now();
     final timelineStart = CalendarDateMath.addDays(
       CalendarDateMath.dateOnly(now),
       -2,
@@ -58,7 +98,7 @@ class TeamGanttWidget extends StatelessWidget {
     final totalDays = CalendarDateMath.daysBetween(timelineStart, timelineEnd);
     const timelineWidth = 800.0;
     const horizontalPadding = 16.0;
-    late final DateFormat dayLabelFormat = DateFormat('dd');
+    final dayLabelFormat = _teamGanttDayFormat();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -203,11 +243,6 @@ class TeamGanttWidget extends StatelessWidget {
 
   String _safeStr(String? s) {
     if (s == null) return '';
-    return s.replaceAll(
-      RegExp(
-        r'[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(^|[^\uD800-\uDBFF])[\uDC00-\uDFFF]',
-      ),
-      '',
-    );
+    return s.replaceAll(_invalidUtf16SurrogatePattern, '');
   }
 }
