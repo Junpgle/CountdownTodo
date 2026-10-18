@@ -140,6 +140,7 @@ todo.md
 !/test/services/ongoing_activity_service_test.dart
 !/test/services/timeline_statistics_service_test.dart
 !/test/services/timeline_habit_summary_test.dart
+!/test/services/storage_service_history_test.dart
 !/test/services/calendar_sync_service_test.dart
 !/test/services/data_import_fixed_schedule_preview_test.dart
 !/test/services/data_refresh_domain_test.dart

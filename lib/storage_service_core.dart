@@ -278,12 +278,12 @@ mixin _StorageCore on _StorageServiceBase {
   Future<List<String>> getHistory(String username) async {
     final prefs = await SharedPreferences.getInstance();
     List<String> rawList = prefs.getStringList("history_$username") ?? [];
+    final timeFormat = DateFormat('yyyy-MM-dd HH:mm:ss');
     return rawList.map((item) {
       try {
         var map = jsonDecode(item);
         if (map is Map) {
-          String timeStr = DateFormat('yyyy-MM-dd HH:mm:ss')
-              .format(DateTime.parse(map['date']));
+          String timeStr = timeFormat.format(DateTime.parse(map['date']));
           return "时间: $timeStr\n得分: ${map['score']}\n用时: ${map['duration']}秒\n详情:\n${map['details']}\n-----------------";
         }
         return item;
