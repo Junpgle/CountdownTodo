@@ -214,6 +214,10 @@ void main() {
     expect(restored.finance.latestTitle, '咖啡');
     expect(
       restored.finance.toAndroidWidgetData(),
+      containsPair('finance_income', '¥1,200.00'),
+    );
+    expect(
+      restored.finance.toAndroidWidgetData(),
       containsPair('finance_latest_amount', '-¥28.00'),
     );
     expect(
