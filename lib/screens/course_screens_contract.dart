@@ -76,6 +76,7 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
   late PageController _pageController;
   final Map<String, GlobalKey> _courseCardKeys = {};
   final Map<String, GlobalKey> _todoCardKeys = {};
+  final Map<String, GlobalKey> _planBlockCardKeys = {};
   final Map<String, GlobalKey> _timeLogCardKeys = {};
   final Map<String, GlobalKey> _pomodoroCardKeys = {};
   final Map<String, GlobalKey> _deviceCalendarCardKeys = {};
@@ -103,6 +104,11 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
         ? 'w${_currentWeek}_${id}_d$weekday'
         : 'w${_currentWeek}_$id';
     return _todoCardKeys.putIfAbsent(keyStr, () => GlobalKey());
+  }
+
+  GlobalKey _getPlanBlockCardKey(String id, int weekday) {
+    final keyStr = 'w${_currentWeek}_${id}_d$weekday';
+    return _planBlockCardKeys.putIfAbsent(keyStr, () => GlobalKey());
   }
 
   GlobalKey _getTimeLogCardKey(String id) {

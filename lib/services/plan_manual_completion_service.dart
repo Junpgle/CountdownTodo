@@ -23,11 +23,13 @@ class PlanManualCompletionRequest {
     this._row,
     this._todo,
     this._focus,
+    this._runState,
   );
   final PlanManualCompletionService _owner;
   final PlanTodoIdentity identity;
   final Map<String, Object?> _row;
   final String _todo, _focus;
+  final String _runState;
   TodoPlanBlock get block =>
       TodoPlanBlock.fromJson(Map<String, dynamic>.from(_row));
   Future<PlanManualCompletionReceipt>? _flight;
@@ -57,7 +59,7 @@ class PlanManualCompletionReceipt {
   void invalidate() => _invalid = true;
 }
 
-/// Explicit historical status changes only. No focus fabrication or todo writes.
+/// Explicit historical status changes only. Focus and todo state are untouched.
 class PlanManualCompletionService {
   PlanManualCompletionService({
     this.databaseOverride,
@@ -167,21 +169,22 @@ class PlanManualCompletionService {
     if ((todo.teamUuid?.trim() ?? '').isNotEmpty || todo.collabType != 0) {
       throw const PlanAvailabilityException('团队规划暂不支持手动确认完成');
     }
-    if ((await PlanTodoGuard.focusIds(db, identity)).contains(todo.id)) {
-      throw const PlanAvailabilityException('此待办正在专注或已暂停，请先查看专注状态');
-    }
-    // Remote or inconsistent persisted focus markers cannot be treated as idle.
-    final focusing = await db.query(
-      'todo_plan_blocks',
-      columns: ['uuid'],
-      where: 'todo_uuid=? AND COALESCE(is_deleted,0)=0 AND status=5',
-      whereArgs: [todo.id],
-      limit: 1,
-    );
-    if (focusing.isNotEmpty) {
-      throw const PlanAvailabilityException('关联规划仍处于专注状态，请先核对');
-    }
     return _canonical(rows.single);
+  }
+
+  /// Capture only stable run identity/state so an active timer does not block
+  /// confirming an ended plan, while a timer change during the dialog is stale.
+  Future<String> _runStateSnapshot(PlanTodoIdentity identity) async {
+    final run = await PlanTodoGuard.runState(identity);
+    if (run == null) return 'null';
+    return jsonEncode({
+      'phase': run.phase.index,
+      'sessionUuid': run.sessionUuid,
+      'todoUuid': run.todoUuid,
+      'planBlockId': run.planBlockId,
+      'isPaused': run.isPaused,
+      'sessionStartMs': run.sessionStartMs,
+    });
   }
 
   Future<String> _focus(DatabaseExecutor db, TodoPlanBlock block) async {
@@ -244,8 +247,16 @@ class PlanManualCompletionService {
       }
       final todo = await _todo(tx, identity, block);
       final focus = await _focus(tx, block);
+      final runState = await _runStateSnapshot(identity);
       await identity.check();
-      return PlanManualCompletionRequest._(this, identity, row, todo, focus);
+      return PlanManualCompletionRequest._(
+        this,
+        identity,
+        row,
+        todo,
+        focus,
+        runState,
+      );
     });
     await identity.check();
     return request;
@@ -260,7 +271,8 @@ class PlanManualCompletionService {
     final row = await _row(tx, request.block.id);
     if (_canonical(row) != _canonical(expected) ||
         await _todo(tx, request.identity, request.block) != request._todo ||
-        await _focus(tx, request.block) != request._focus) {
+        await _focus(tx, request.block) != request._focus ||
+        await _runStateSnapshot(request.identity) != request._runState) {
       throw const PlanAvailabilityException('规划或投入已变化，请重新查看');
     }
     await request.identity.check();

@@ -450,8 +450,9 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection>
   }
 
   Future<void> _navigate(
-    Future<void> Function(PlanTodayCard data) action,
-  ) async {
+    Future<void> Function(PlanTodayCard data) action, {
+    bool preserveOnError = false,
+  }) async {
     if (!_canOpen) return;
     final data = _data!, request = ++_sequence;
     var failed = false;
@@ -469,16 +470,22 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection>
     } catch (error) {
       failed = true;
       if (mounted) {
-        setState(() {
-          _data = null;
-          _identity = null;
-          _error = '$error';
-        });
+        if (preserveOnError) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('$error')),
+          );
+        } else {
+          setState(() {
+            _data = null;
+            _identity = null;
+            _error = '$error';
+          });
+        }
       }
     } finally {
       if (mounted) {
         setState(() => _opening = false);
-        if (_active && !failed) unawaited(_load());
+        if (_active && (!failed || preserveOnError)) unawaited(_load());
       }
     }
   }
@@ -831,64 +838,100 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection>
 
     final block = request.block;
     final format = _planTodayDateFormat('M月d日 HH:mm');
-    final confirmed = await showAppDialog<bool>(
+    var saving = false;
+    String? saveError;
+    final confirmedReceipt = await showAppDialog<PlanManualCompletionReceipt>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('确认这次规划已完成？'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                block.titleSnapshot?.trim().isNotEmpty == true
-                    ? block.titleSnapshot!
-                    : '这次规划',
-              ),
-              const SizedBox(height: 8),
-              Text(
-                '${format.format(DateTime.fromMillisecondsSinceEpoch(block.startTime))} — ${format.format(DateTime.fromMillisecondsSinceEpoch(block.endTime))}',
-              ),
-              const SizedBox(height: 16),
-              const Text('仅将这次规划标为已完成。不会改变待办完成状态，也不会新增专注记录。'),
-            ],
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: const Text('确认这次规划已完成？'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  block.titleSnapshot?.trim().isNotEmpty == true
+                      ? block.titleSnapshot!
+                      : '这次规划',
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '${format.format(DateTime.fromMillisecondsSinceEpoch(block.startTime))} — ${format.format(DateTime.fromMillisecondsSinceEpoch(block.endTime))}',
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  '仅将这次规划标为已完成。不会改变待办完成状态、停止专注计时或新增专注记录。',
+                ),
+                if (saveError != null) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    '标记未成功：$saveError',
+                    style: TextStyle(
+                      color: Theme.of(dialogContext).colorScheme.error,
+                    ),
+                  ),
+                ],
+              ],
+            ),
           ),
+          actions: [
+            TextButton(
+              onPressed: saving ? null : () => Navigator.pop(dialogContext),
+              child: const Text('返回核对'),
+            ),
+            FilledButton(
+              key: ValueKey('plan-manual-confirm-agenda-${row.entry.id}'),
+              onPressed: saving
+                  ? null
+                  : () async {
+                      setDialogState(() {
+                        saving = true;
+                        saveError = null;
+                      });
+                      PlanManualCompletionReceipt? receipt;
+                      try {
+                        await data.overview.identity.check();
+                        receipt = await service.confirm(request);
+                        await receipt.identity.check();
+                        await service.ensureCompleted(receipt);
+                        if (!dialogContext.mounted) {
+                          receipt.invalidate();
+                          return;
+                        }
+                        Navigator.pop(dialogContext, receipt);
+                      } catch (error) {
+                        receipt?.invalidate();
+                        if (dialogContext.mounted) {
+                          setDialogState(() {
+                            saving = false;
+                            saveError = '$error';
+                          });
+                        }
+                      }
+                    },
+              child: saving
+                  ? const SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('确认完成'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('返回核对'),
-          ),
-          FilledButton(
-            key: ValueKey('plan-manual-confirm-agenda-${row.entry.id}'),
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('确认完成'),
-          ),
-        ],
       ),
+      barrierDismissible: false,
     );
-    if (confirmed != true ||
+    if (confirmedReceipt == null ||
         !mounted ||
         !_active ||
         route?.isCurrent == false) {
-      return;
-    }
-
-    await data.overview.identity.check();
-    final receipt = await service.confirm(request);
-    try {
-      await receipt.identity.check();
-    } catch (_) {
-      receipt.invalidate();
-      rethrow;
-    }
-    if (!mounted || !_active || route?.isCurrent == false) {
-      receipt.invalidate();
+      confirmedReceipt?.invalidate();
       return;
     }
     _maintenancePending = true;
-    _manualHostKey.currentState?.present(receipt);
-  });
+    _manualHostKey.currentState?.present(confirmedReceipt);
+  }, preserveOnError: true);
 
   Widget _agendaPlanActions(PlanTodayRow row, [GlobalKey? cardKey]) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
@@ -915,8 +958,8 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection>
           if (_canMarkAgendaPlanCompleted(row))
             FilledButton.tonalIcon(
               key: ValueKey('plan-today-complete-${row.entry.id}'),
-              onPressed: _canOpen
-                  ? () => _confirmAgendaPlanCompleted(row)
+              onPressed: _active
+                  ? () => _openAgendaPlanCompletion(row)
                   : null,
               icon: const Icon(Icons.check_circle_outline),
               label: const Text('标记为已完成'),
@@ -932,6 +975,25 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection>
       ),
     ],
   );
+
+  void _openAgendaPlanCompletion(PlanTodayRow row) {
+    if (!_active) return;
+    if (!_canOpen) {
+      final message = _loading
+          ? '今日规划正在更新，请稍后再试'
+          : _opening
+          ? '今日安排正在处理其他操作，请稍后再试'
+          : _error != null
+          ? '今日规划读取失败：$_error'
+          : '今日规划尚未就绪，正在重新读取';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+      if (!_loading && !_opening) unawaited(_load());
+      return;
+    }
+    unawaited(_confirmAgendaPlanCompleted(row));
+  }
 
   Widget _buildAgenda() {
     final overview = _data?.overview;

@@ -1,6 +1,7 @@
 import 'package:countdown_todo/models.dart';
 import 'package:countdown_todo/screens/course_screens.dart';
 import 'package:countdown_todo/storage_service.dart';
+import 'package:countdown_todo/utils/page_transitions.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -56,6 +57,77 @@ void main() {
       ),
       findsOneWidget,
     );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('周视图规划卡片通过共享容器动画打开详情', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(390, 844);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final monday = today.subtract(Duration(days: today.weekday - 1));
+    await StorageService.saveSemesters([
+      SemesterInfo(
+        id: 'week-plan-detail-test',
+        name: '测试学期',
+        startDate: monday,
+        isCurrent: true,
+      ),
+    ]);
+    final start = DateTime(now.year, now.month, now.day, 10);
+    await fixture.block(
+      TodoPlanBlock(
+        id: 'week-plan-detail',
+        todoId: 'todo-target',
+        titleSnapshot: '周视图规划详情',
+        startTime: start.millisecondsSinceEpoch,
+        endTime: start.add(const Duration(minutes: 30)).millisecondsSinceEpoch,
+        plannedMinutes: 30,
+      ),
+    );
+    expect(
+      await StorageService.getPlanBlocks(PlanAvailabilityFixture.username),
+      hasLength(1),
+    );
+
+    final routeObserver = _RouteObserver();
+    await tester.pumpWidget(
+      MaterialApp(
+        navigatorObservers: [routeObserver],
+        home: WeeklyCourseScreen(username: PlanAvailabilityFixture.username),
+      ),
+    );
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(seconds: 1)),
+    );
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pump(const Duration(milliseconds: 700));
+
+    final planCard = find.text('周视图规划详情');
+    expect(planCard, findsOneWidget);
+    await tester.tap(planCard);
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 100)),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 2));
+
+    final route = routeObserver.pushedRoutes.last;
+    expect(route, isA<ContainerTransformRoute>());
+    final detailPage = (route as ContainerTransformRoute).page;
+    expect(detailPage, isA<PlanBlockDetailScreen>());
+    expect(
+      (detailPage as PlanBlockDetailScreen).block.titleSnapshot,
+      '周视图规划详情',
+    );
+
+    Navigator.of(tester.element(find.byType(WeeklyCourseScreen))).pop();
+    await tester.pump(const Duration(seconds: 1));
+
+    expect(find.text('周视图规划详情'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -239,4 +311,13 @@ void main() {
     );
     expect(tester.takeException(), isNull);
   });
+}
+
+class _RouteObserver extends NavigatorObserver {
+  final List<Route<dynamic>> pushedRoutes = [];
+
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    pushedRoutes.add(route);
+  }
 }

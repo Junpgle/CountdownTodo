@@ -70,6 +70,7 @@ class TodoPlanScreen extends StatefulWidget {
 
 class _TodoPlanScreenState extends State<TodoPlanScreen>
     with WidgetsBindingObserver {
+  final GlobalKey _backlogActionKey = GlobalKey();
   late DateTime _focusedDate;
   bool _isLoading = true;
   List<TodoPlanBlock> _displayBlocks = [];
@@ -665,15 +666,18 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
             ),
           ),
           IconButton(
+            key: _backlogActionKey,
             icon: const Icon(Icons.playlist_add_check_rounded),
             tooltip: '待规划',
-            onPressed: () => Navigator.of(context).push(
-              PageTransitions.material(
-                builder: (_) => PlanBacklogScreen(
-                  username: widget.username,
-                  date: _focusedDate,
-                ),
+            onPressed: () => PageTransitions.pushFromRect<void>(
+              context: context,
+              page: PlanBacklogScreen(
+                username: widget.username,
+                date: _focusedDate,
               ),
+              sourceKey: _backlogActionKey,
+              sourceBorderRadius: BorderRadius.circular(24),
+              placeholderIcon: Icons.playlist_add_check_rounded,
             ),
           ),
           PopupMenuButton<String>(
@@ -1308,6 +1312,33 @@ class _PlanGridViewState extends State<_PlanGridView>
                 const Text('粒度', style: TextStyle(fontSize: 12)),
                 const SizedBox(width: 8),
                 SegmentedButton<int>(
+                  style: ButtonStyle(
+                    backgroundBuilder: (context, states, child) =>
+                        child ?? const SizedBox.shrink(),
+                    backgroundColor: WidgetStateProperty.resolveWith((states) {
+                      return states.contains(WidgetState.selected)
+                          ? Theme.of(context).colorScheme.primaryContainer
+                          : Theme.of(context).colorScheme.surfaceContainerLow;
+                    }),
+                    foregroundColor: WidgetStateProperty.resolveWith((states) {
+                      return states.contains(WidgetState.selected)
+                          ? Theme.of(context).colorScheme.onPrimaryContainer
+                          : Theme.of(context).colorScheme.onSurfaceVariant;
+                    }),
+                    overlayColor: WidgetStatePropertyAll(
+                      Theme.of(context).colorScheme.primary.withValues(
+                        alpha: 0.12,
+                      ),
+                    ),
+                    shape: const WidgetStatePropertyAll(
+                      RoundedRectangleBorder(
+                        borderRadius: BorderRadius.all(Radius.circular(12)),
+                      ),
+                    ),
+                    padding: const WidgetStatePropertyAll(
+                      EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    ),
+                  ),
                   segments: const [
                     ButtonSegment(value: 5, label: Text('5')),
                     ButtonSegment(value: 10, label: Text('10')),

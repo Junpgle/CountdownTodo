@@ -228,7 +228,37 @@ class PlanExecutionSummary extends StatelessWidget {
             onPressed: entries.isEmpty
                 ? null
                 : () => _showRecords(context, entries),
-            icon: const Icon(Icons.view_list_outlined, size: 16),
+            style: ButtonStyle(
+              backgroundBuilder: (context, states, child) =>
+                  child ?? const SizedBox.shrink(),
+              backgroundColor: WidgetStateProperty.resolveWith((states) {
+                return states.contains(WidgetState.disabled)
+                    ? colors.surfaceContainerLow.withValues(alpha: 0.5)
+                    : colors.secondaryContainer;
+              }),
+              foregroundColor: WidgetStateProperty.resolveWith((states) {
+                return states.contains(WidgetState.disabled)
+                    ? colors.onSurface.withValues(alpha: 0.38)
+                    : colors.onSecondaryContainer;
+              }),
+              overlayColor: WidgetStatePropertyAll(
+                colors.primary.withValues(alpha: 0.12),
+              ),
+              textStyle: WidgetStatePropertyAll(
+                Theme.of(context).textTheme.labelSmall,
+              ),
+              minimumSize: const WidgetStatePropertyAll(Size(0, 36)),
+              visualDensity: VisualDensity.compact,
+              shape: const WidgetStatePropertyAll(
+                RoundedRectangleBorder(
+                  borderRadius: BorderRadius.all(Radius.circular(10)),
+                ),
+              ),
+              padding: const WidgetStatePropertyAll(
+                EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              ),
+            ),
+            icon: const Icon(Icons.view_list_outlined, size: 14),
             label: const Text('时间轴记录'),
           ),
         ],

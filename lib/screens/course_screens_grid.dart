@@ -1407,6 +1407,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
               : colorScheme.secondary.withValues(alpha: 0.58);
           final title = plan.titleSnapshot ?? '规划任务';
           final planIndex = planIndices[plan]!;
+          final planCardKey = _getPlanBlockCardKey(plan.uuid, weekday);
 
           // 计算关联的番茄钟完成进度
           final pomProgress = planPomodoroProgressIndex?.progressFor(plan) ??
@@ -1463,20 +1464,33 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                         child: Opacity(opacity: t, child: child),
                       );
                     },
-                    child: Container(
-                      alignment: Alignment.center,
-                      clipBehavior: Clip.hardEdge,
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 3, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: planColor,
-                        borderRadius: BorderRadius.circular(4),
-                        border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.35),
-                            width: 0.5),
-                      ),
-                      // 如果有关联的番茄钟，用背景填充表示完成进度
-                      child: hasAssociatedPomodoro
+                    child: GestureDetector(
+                      onTap: () {
+                        PageTransitions.pushFromRect(
+                          context: context,
+                          page: PlanBlockDetailScreen(block: plan),
+                          sourceKey: planCardKey,
+                          sourceColor: _weekLazyLoadPlaceholderColor,
+                          sourceBorderRadius:
+                              const BorderRadius.all(Radius.circular(4)),
+                          placeholderIcon: Icons.event_note_rounded,
+                        );
+                      },
+                      child: Container(
+                        key: planCardKey,
+                        alignment: Alignment.center,
+                        clipBehavior: Clip.hardEdge,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 3, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: planColor,
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.35),
+                              width: 0.5),
+                        ),
+                        // 如果有关联的番茄钟，用背景填充表示完成进度
+                        child: hasAssociatedPomodoro
                           ? Stack(
                               fit: StackFit.expand,
                               children: [
@@ -1571,7 +1585,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                                 ),
                               ],
                             )
-                          : (height < 18
+                            : (height < 18
                               ? const Icon(Icons.event_note,
                                   size: 8, color: Colors.white)
                               : SingleChildScrollView(
@@ -1615,6 +1629,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                                         ),
                                     ],
                                   ))),
+                      ),
                     ),
                   ),
                 );
