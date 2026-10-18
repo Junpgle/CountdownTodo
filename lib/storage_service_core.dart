@@ -1,6 +1,8 @@
 part of 'storage_service.dart';
 // ignore_for_file: annotate_overrides, unused_element, unused_element_parameter
 
+final RegExp _legacyHistoryScorePattern = RegExp(r'得分: (\d+)');
+
 mixin _StorageCore on _StorageServiceBase {
   void triggerRefresh([
     Set<DataRefreshDomain> domains = const {DataRefreshDomain.all},
@@ -318,8 +320,7 @@ mixin _StorageCore on _StorageServiceBase {
           if (duration < bestTime) bestTime = duration;
         }
       } catch (e) {
-        RegExp scoreReg = RegExp(r"得分: (\d+)");
-        var match = scoreReg.firstMatch(item);
+        var match = _legacyHistoryScorePattern.firstMatch(item);
         if (match != null) {
           int score = int.parse(match.group(1)!);
           totalQuestions += 10;

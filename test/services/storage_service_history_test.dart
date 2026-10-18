@@ -30,4 +30,16 @@ void main() {
       '时间: 2026-10-16 08:09:10\n得分: 6\n用时: 31秒\n详情:\n第二条\n-----------------',
     ]);
   });
+
+  test('getMathStats reads legacy score text without JSON decoding', () async {
+    SharedPreferences.setMockInitialValues({
+      'history_test-user': ['corrupt record', '旧记录得分: 80'],
+    });
+
+    final stats = await StorageService.getMathStats('test-user');
+
+    expect(stats['accuracy'], 0.8);
+    expect(stats['bestTime'], isNull);
+    expect(stats['todayCount'], 0);
+  });
 }
