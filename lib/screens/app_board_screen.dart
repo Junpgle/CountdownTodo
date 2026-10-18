@@ -321,33 +321,36 @@ class _AppBoardScreenState extends State<AppBoardScreen>
       child: Row(
         children: [
           // Back Button
-          FloatingGlassControl(
-            height: 48,
-            borderRadius: 16,
-            tint: Theme.of(context).colorScheme.surfaceContainerHighest
-                .withValues(alpha: 0.08),
-            isDark: true,
-            useTopBarGlass: true,
-            fallback: IconButton(
-              onPressed: onBack,
-              icon: const Icon(Icons.arrow_back, color: Colors.white70),
-              style: IconButton.styleFrom(
-                backgroundColor: Colors.white.withValues(alpha: 0.05),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
+          SizedBox.square(
+            dimension: 48,
+            child: FloatingGlassControl(
+              height: 48,
+              borderRadius: 16,
+              tint: Theme.of(context).colorScheme.surfaceContainerHighest
+                  .withValues(alpha: 0.08),
+              isDark: true,
+              useTopBarGlass: true,
+              fallback: IconButton(
+                onPressed: onBack,
+                icon: const Icon(Icons.arrow_back, color: Colors.white70),
+                style: IconButton.styleFrom(
+                  backgroundColor: Colors.white.withValues(alpha: 0.05),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  side: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
                 ),
-                side: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
               ),
-            ),
-            child: IconButton(
-              onPressed: onBack,
-              icon: const Icon(Icons.arrow_back, color: Colors.white70),
-              style: IconButton.styleFrom(
-                backgroundColor: Colors.transparent,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
+              child: IconButton(
+                onPressed: onBack,
+                icon: const Icon(Icons.arrow_back, color: Colors.white70),
+                style: IconButton.styleFrom(
+                  backgroundColor: Colors.transparent,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  side: BorderSide.none,
                 ),
-                side: BorderSide.none,
               ),
             ),
           ),
