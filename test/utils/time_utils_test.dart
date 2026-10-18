@@ -23,4 +23,18 @@ void main() {
     expect(chinese, DateFormat('EEEE', 'zh_CN').format(date));
     expect(chinese, isNot(english));
   });
+
+  test('date formatter cache reuses instances per locale', () {
+    final originalLocale = Intl.defaultLocale;
+    addTearDown(() => Intl.defaultLocale = originalLocale);
+
+    Intl.defaultLocale = 'en_US';
+    final english = AppTimeFormats.dateFormatter('EEEE');
+    expect(AppTimeFormats.dateFormatter('EEEE'), same(english));
+
+    Intl.defaultLocale = 'zh_CN';
+    final chinese = AppTimeFormats.dateFormatter('EEEE');
+    expect(chinese, isNot(same(english)));
+    expect(AppTimeFormats.dateFormatter('EEEE'), same(chinese));
+  });
 }

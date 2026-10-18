@@ -82,6 +82,11 @@ class AppTimeFormats {
     return _dateFormatters[key] = DateFormat(pattern, locale);
   }
 
+  /// Returns a cached formatter for callers that format many dates at once.
+  static DateFormat dateFormatter(String pattern, {String? locale}) {
+    return _dateFormatter(pattern, locale);
+  }
+
   static String format(DateTime time, String pattern, {String? locale}) {
     return _dateFormatter(pattern, locale).format(time);
   }

@@ -5,20 +5,14 @@ import '../models/journal_entry.dart';
 import '../services/journal_media_service.dart';
 import '../services/journal_picker.dart';
 import '../services/journal_storage.dart';
+import '../../../utils/time_utils.dart';
 import '../../../widgets/floating_glass_control.dart';
 import 'journal_detail_screen.dart';
 import 'journal_editor_screen.dart';
 import '../../../utils/app_dialogs.dart';
 
-final Map<String?, DateFormat> _photoWallDateFormats = {};
-
-DateFormat _photoWallDateFormat() {
-  final locale = Intl.defaultLocale;
-  return _photoWallDateFormats.putIfAbsent(
-    locale,
-    () => DateFormat('MM月dd日', locale),
-  );
-}
+DateFormat _photoWallDateFormat() =>
+    AppTimeFormats.dateFormatter('MM月dd日');
 
 class JournalHomeScreen extends StatefulWidget {
   final String username;
@@ -391,7 +385,7 @@ class _Timeline extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final grouped = <String, List<JournalEntry>>{};
-    final monthFormat = DateFormat('yyyy年MM月');
+    final monthFormat = AppTimeFormats.dateFormatter('yyyy年MM月');
     for (final entry in entries) {
       final key = monthFormat.format(entry.occurredAt);
       grouped.putIfAbsent(key, () => []).add(entry);

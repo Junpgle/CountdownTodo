@@ -1,6 +1,5 @@
 import '../../../widgets/floating_glass_control.dart';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../models/journal_entry.dart';
@@ -10,6 +9,7 @@ import '../services/journal_picker_context.dart';
 import '../services/journal_storage.dart';
 import '../../../widgets/optional_liquid_glass_surface.dart';
 import '../../../utils/app_dialogs.dart';
+import '../../../utils/time_utils.dart';
 
 class JournalEditorScreen extends StatefulWidget {
   final String accountId;
@@ -377,8 +377,11 @@ class _JournalEditorScreenState extends State<JournalEditorScreen> {
                       icon: Icon(Icons.calendar_today_rounded,
                           size: 18, color: scheme.primary),
                       label: Text(
-                        DateFormat('yyyy年MM月dd日 · E', 'zh_CN')
-                            .format(_occurredAt),
+                        AppTimeFormats.format(
+                          _occurredAt,
+                          'yyyy年MM月dd日 · E',
+                          locale: 'zh_CN',
+                        ),
                         style: TextStyle(
                             color: scheme.primary, fontWeight: FontWeight.w700),
                       ),

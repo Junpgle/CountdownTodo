@@ -9,6 +9,7 @@ import '../services/course_legacy_recovery.dart';
 import '../services/course_calendar_adjustment_service.dart';
 import '../storage_service.dart';
 import '../utils/calendar_date_math.dart';
+import '../utils/time_utils.dart';
 import '../utils/text_file_reader.dart';
 
 // 引入不同高校的解析器
@@ -712,7 +713,7 @@ class CourseService {
     required DateTime to,
     bool applyCalendarAdjustments = true,
   }) async {
-    final dateFormat = DateFormat('yyyy-MM-dd');
+    final dateFormat = AppTimeFormats.dateFormatter('yyyy-MM-dd');
     final startDate = CalendarDateMath.dateOnly(from);
     final endDate = CalendarDateMath.dateOnly(to);
     if (!endDate.isAfter(startDate)) return const <CourseItem>[];
@@ -946,7 +947,7 @@ class CourseService {
     try {
       final now = DateTime.now();
       final todayNormalized = CalendarDateMath.dateOnly(now);
-      final dashboardDateFormat = DateFormat('yyyy-MM-dd');
+      final dashboardDateFormat = AppTimeFormats.dateFormatter('yyyy-MM-dd');
       final todayStr = dashboardDateFormat.format(now);
       final tomorrowNormalized = CalendarDateMath.addDays(todayNormalized, 1);
       final tomorrowStr = dashboardDateFormat.format(tomorrowNormalized);
