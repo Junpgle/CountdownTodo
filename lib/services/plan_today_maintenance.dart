@@ -8,6 +8,8 @@ import 'plan_todo_guard.dart';
 
 /// Reconciles expired plan states after Pomodoro records or page loads.
 class PlanTodayMaintenance {
+  static final RegExp _titleWhitespacePattern = RegExp(r'\s+');
+
   const PlanTodayMaintenance();
   Future<void> run(String username, DateTime now) async {
     final identity = await PlanTodoIdentity.capture(username);
@@ -97,7 +99,7 @@ class PlanTodayMaintenance {
 
   String _normalizeTitle(String? s) {
     if (s == null) return '';
-    return s.replaceAll(RegExp(r'\s+'), '').trim();
+    return s.replaceAll(_titleWhitespacePattern, '').trim();
   }
 
   bool _isRecordAssociatedWithBlock(
