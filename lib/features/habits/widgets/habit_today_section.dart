@@ -225,10 +225,13 @@ class _HabitTodaySectionState extends State<HabitTodaySection> {
 
   /// 今日达标汇总徽章（如「2/3 达标」）。
   Widget _buildSummaryBadge(ColorScheme colorScheme) {
-    final progressList =
-        _snapshot!.progressByHabit.values.where((p) => p.isPlanned);
-    final planned = progressList.length;
-    final met = progressList.where((p) => p.goalMet).length;
+    var planned = 0;
+    var met = 0;
+    for (final progress in _snapshot!.progressByHabit.values) {
+      if (!progress.isPlanned) continue;
+      planned++;
+      if (progress.goalMet) met++;
+    }
     if (planned == 0) {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
