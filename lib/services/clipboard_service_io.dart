@@ -24,6 +24,13 @@ class ClipboardConfig {
 /// Uses Win32 API for direct clipboard access on Windows.
 class ClipboardService {
   static final ClipboardService _instance = ClipboardService._internal();
+  static final RegExp _urlSchemePattern = RegExp(
+    r'^[a-zA-Z][a-zA-Z0-9+\-.]*://',
+  );
+  static final RegExp _ipv4HostPattern = RegExp(r'^\d{1,3}(\.\d{1,3}){3}$');
+  static final RegExp _domainHostPattern = RegExp(
+    r'^[a-zA-Z0-9\-]+(\.[a-zA-Z0-9\-]+)+$',
+  );
 
   factory ClipboardService() => _instance;
 
@@ -52,7 +59,7 @@ class ClipboardService {
     }
 
     // Add scheme if missing before parsing
-    final hasScheme = RegExp(r'^[a-zA-Z][a-zA-Z0-9+\-.]*://').hasMatch(trimmed);
+    final hasScheme = _urlSchemePattern.hasMatch(trimmed);
     final toParse = hasScheme ? trimmed : 'https://$trimmed';
 
     final uri = Uri.tryParse(toParse);
@@ -83,8 +90,8 @@ class ClipboardService {
 
     // Valid hosts: localhost, IPv4, or domain with at least one dot
     final isValidHost = host == 'localhost' ||
-        RegExp(r'^\d{1,3}(\.\d{1,3}){3}$').hasMatch(host) ||
-        RegExp(r'^[a-zA-Z0-9\-]+(\.[a-zA-Z0-9\-]+)+$').hasMatch(host);
+        _ipv4HostPattern.hasMatch(host) ||
+        _domainHostPattern.hasMatch(host);
 
     if (!isValidHost) {
 //       debugPrint('[ClipboardService] Invalid host: $host');
