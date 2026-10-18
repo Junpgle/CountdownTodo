@@ -93,7 +93,7 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
   List<TodoItem> _history = [];
   List<TodoItem> _deletedTodos = [];
   List<TodoItem> _orphanTodos = [];
-  List<TodoItem> _loadedTodos = [];
+  final Map<String, TodoItem> _loadedTodoById = {};
   bool _isLoading = true;
   bool _isLoadingMore = false;
   bool _hasMoreTodoPages = false;
@@ -145,6 +145,7 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
     }
     final generation = ++_loadGeneration;
     final offset = loadMore ? _nextTodoOffset : 0;
+    if (!loadMore) _loadedTodoById.clear();
     setState(() {
       if (loadMore) {
         _isLoadingMore = true;
@@ -153,7 +154,6 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
         _isLoadingMore = false;
         _hasMoreTodoPages = false;
         _nextTodoOffset = 0;
-        _loadedTodos = [];
         _history = [];
         _deletedTodos = [];
         _orphanTodos = [];
@@ -175,17 +175,13 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
 
       if (!mounted || generation != _loadGeneration) return;
       final pageTodos = results[0] as List<TodoItem>;
-      final mergedTodos = <String, TodoItem>{
-        if (loadMore)
-          for (final todo in _loadedTodos) todo.id: todo,
-      };
       for (final todo in pageTodos) {
-        final previous = mergedTodos[todo.id];
+        final previous = _loadedTodoById[todo.id];
         if (previous == null || todo.updatedAt > previous.updatedAt) {
-          mergedTodos[todo.id] = todo;
+          _loadedTodoById[todo.id] = todo;
         }
       }
-      final allTodos = mergedTodos.values.toList();
+      final allTodos = _loadedTodoById.values.toList();
       final groups = results[1] as List<TodoGroup>;
       final activeGroupIds = groups
           .where((g) => !g.isDeleted)
@@ -216,7 +212,6 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
       orphanTodos.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
 
       setState(() {
-        _loadedTodos = allTodos;
         // 1. 历史记录：已完成、日期在今天之前、未被逻辑删除
         _history = historyTodos;
 
