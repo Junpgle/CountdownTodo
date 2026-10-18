@@ -41,6 +41,9 @@ enum AiTodoActionType {
 }
 
 class AiTodoAction {
+  static final RegExp _minuteOfDayPattern = RegExp(r'^(\d{1,2}):(\d{1,2})$');
+  static final RegExp _integerListSeparatorPattern = RegExp(r'[,，\s]+');
+
   AiTodoAction({
     required this.type,
     this.todoId,
@@ -662,7 +665,7 @@ class AiTodoAction {
     if (parsed != null) return parsed;
     final text = value?.toString().trim();
     if (text == null || text.isEmpty) return null;
-    final match = RegExp(r'^(\d{1,2}):(\d{1,2})$').firstMatch(text);
+    final match = _minuteOfDayPattern.firstMatch(text);
     if (match == null) return null;
     final hour = int.tryParse(match.group(1)!);
     final minute = int.tryParse(match.group(2)!);
@@ -712,7 +715,7 @@ class AiTodoAction {
     }
     if (value is String && value.trim().isNotEmpty) {
       return value
-          .split(RegExp(r'[,，\s]+'))
+          .split(_integerListSeparatorPattern)
           .map(_parseInt)
           .whereType<int>()
           .toList();
