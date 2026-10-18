@@ -1,5 +1,20 @@
 part of 'time_log_screen.dart';
 
+String? _timeLogComponentDateLocale;
+final _timeLogComponentDateFormatters = <String, DateFormat>{};
+
+DateFormat _timeLogComponentDateFormat(String pattern) {
+  final locale = Intl.defaultLocale;
+  if (_timeLogComponentDateLocale != locale) {
+    _timeLogComponentDateLocale = locale;
+    _timeLogComponentDateFormatters.clear();
+  }
+  return _timeLogComponentDateFormatters.putIfAbsent(
+    pattern,
+    () => DateFormat(pattern, locale),
+  );
+}
+
 // ══════════════════════════════════════════════════════════
 // 日视图 — 补录模式（网格拖拽选时间段）
 // ══════════════════════════════════════════════════════════
@@ -52,6 +67,20 @@ class _DayViewState extends State<_DayView> {
   int _minutesPerBlock = 15;
   int? _dragStart, _dragEnd;
   String? _selectedTagId;
+  List<PomodoroTag>? _tagIndexSource;
+  List<String>? _tagUuidSnapshot;
+  Map<String, int> _tagIndicesByUuid = const {};
+  List<TimeLogItem>? _dayLogsSource;
+  List<TodoPlanBlock>? _dayPlanBlocksSource;
+  List<PomodoroRecord>? _dayPomodorosSource;
+  int? _dayRecordsStartMs;
+  int? _dayRecordsEndMs;
+  List<TimeLogItem> _dayLogs = const [];
+  List<TodoPlanBlock> _dayPlanBlocks = const [];
+  List<PomodoroRecord> _dayPomodoros = const [];
+  final Paint _selectionPaint = Paint();
+  final Paint _currentTimeLinePaint = Paint();
+  final Paint _currentTimeDotPaint = Paint();
 
   @override
   void initState() {
@@ -69,6 +98,74 @@ class _DayViewState extends State<_DayView> {
       _dragStart != null ? (_se - _ss + 1) * _minutesPerBlock : 0;
 
   DateTime get _gridStart => _dayStart(widget.date);
+
+  void _ensureDayRecords() {
+    final gridStartMs = _gridStart.millisecondsSinceEpoch;
+    final gridEndMs = _dayEndMs(_gridStart);
+    if (identical(_dayLogsSource, widget.logs) &&
+        identical(_dayPlanBlocksSource, widget.planBlocks) &&
+        identical(_dayPomodorosSource, widget.pomodoros) &&
+        _dayRecordsStartMs == gridStartMs &&
+        _dayRecordsEndMs == gridEndMs) {
+      return;
+    }
+
+    _dayLogsSource = widget.logs;
+    _dayPlanBlocksSource = widget.planBlocks;
+    _dayPomodorosSource = widget.pomodoros;
+    _dayRecordsStartMs = gridStartMs;
+    _dayRecordsEndMs = gridEndMs;
+    _dayLogs = [
+      for (final log in widget.logs)
+        if (log.endTime > gridStartMs && log.startTime < gridEndMs) log,
+    ];
+    _dayPlanBlocks = [
+      for (final block in widget.planBlocks)
+        if (block.endTime > gridStartMs && block.startTime < gridEndMs) block,
+    ];
+    _dayPomodoros = [
+      for (final pomodoro in widget.pomodoros)
+        if ((pomodoro.endTime ??
+                (pomodoro.startTime + pomodoro.effectiveDuration * 1000)) >
+            gridStartMs &&
+            pomodoro.startTime < gridEndMs)
+          pomodoro,
+    ];
+  }
+
+  Map<String, int> _tagIndicesFor(List<PomodoroTag> tags) {
+    final cachedUuids = _tagUuidSnapshot;
+    if (identical(_tagIndexSource, tags) &&
+        cachedUuids != null &&
+        cachedUuids.length == tags.length) {
+      var uuidsUnchanged = true;
+      for (var index = 0; index < tags.length; index++) {
+        if (cachedUuids[index] != tags[index].uuid) {
+          uuidsUnchanged = false;
+          break;
+        }
+      }
+      if (uuidsUnchanged) return _tagIndicesByUuid;
+    }
+
+    _tagIndexSource = tags;
+    _tagUuidSnapshot = tags.map((tag) => tag.uuid).toList(growable: false);
+    return _tagIndicesByUuid = _DayGridPainter._buildTagIndices(tags);
+  }
+
+  PomodoroTag? _firstPomodoroTagForUuids(
+    List<String> uuids,
+    Map<String, int> tagIndicesByUuid,
+  ) {
+    int? firstIndex;
+    for (final uuid in uuids) {
+      final index = tagIndicesByUuid[uuid];
+      if (index != null && (firstIndex == null || index < firstIndex)) {
+        firstIndex = index;
+      }
+    }
+    return firstIndex == null ? null : widget.tags[firstIndex];
+  }
 
   int? _getIndex(Offset pos, double width, double hourH) {
     final bw = width / _bpr;
@@ -130,7 +227,7 @@ class _DayViewState extends State<_DayView> {
       builder: (_) => StatefulBuilder(
         builder: (ctx, setModal) {
           final colorScheme = Theme.of(ctx).colorScheme;
-          final timeFormat = DateFormat('HH:mm');
+          final timeFormat = _timeLogComponentDateFormat('HH:mm');
           final dayLogs =
               widget.logs
                   .where((l) => l.endTime > gsMs && l.startTime < geMs)
@@ -396,18 +493,11 @@ class _DayViewState extends State<_DayView> {
 
   @override
   Widget build(BuildContext context) {
-    final gsMs = _gridStart.millisecondsSinceEpoch;
-    final geMs = _dayEndMs(_gridStart);
-    final dLogN = widget.logs
-        .where((l) => l.endTime > gsMs && l.startTime < geMs)
-        .length;
-    final dPlanN = widget.planBlocks
-        .where((p) => p.endTime > gsMs && p.startTime < geMs)
-        .length;
+    _ensureDayRecords();
 
     return Column(
       children: [
-        _buildCrossDayBar(dLogN, dPlanN),
+        _buildCrossDayBar(_dayLogs.length, _dayPlanBlocks.length),
         Expanded(
           child: Row(
             children: [
@@ -637,33 +727,55 @@ class _DayViewState extends State<_DayView> {
             children: [
               SizedBox(
                 height: totalH,
-                child: CustomPaint(
-                  size: Size(w, totalH),
-                  painter: _DayGridPainter(
-                    minutesPerBlock: _minutesPerBlock,
-                    dragStart: _dragStart,
-                    dragEnd: _dragEnd,
-                    logs: widget.logs,
-                    planBlocks: widget.planBlocks,
-                    showPlans: widget.entryMode == _EntryMode.plan,
-                    tags: widget.tags,
-                    gridStart: _gridStart,
-                    selColor: selTag != null
-                        ? hexColor(selTag.color, opacity: 0.48)
-                        : accent.withValues(alpha: 0.45),
-                    gridMajorColor: colorScheme.outlineVariant,
-                    gridMinorColor: colorScheme.outlineVariant.withValues(
-                      alpha: isDark ? 0.28 : 0.48,
+                child: Stack(
+                  children: [
+                    RepaintBoundary(
+                      child: CustomPaint(
+                        size: Size(w, totalH),
+                        painter: _DayGridPainter(
+                          minutesPerBlock: _minutesPerBlock,
+                          logs: _dayLogs,
+                          planBlocks: _dayPlanBlocks,
+                          showPlans: widget.entryMode == _EntryMode.plan,
+                          tags: widget.tags,
+                          tagIndicesByUuid: _tagIndicesFor(widget.tags),
+                          gridStart: _gridStart,
+                          gridMajorColor: colorScheme.outlineVariant,
+                          gridMinorColor: colorScheme.outlineVariant.withValues(
+                            alpha: isDark ? 0.28 : 0.48,
+                          ),
+                          successColor: colorScheme.cdtSuccess,
+                          planColor: colorScheme.secondary,
+                          isDark: isDark,
+                          hourH: hourH,
+                        ),
+                      ),
                     ),
-                    successColor: colorScheme.cdtSuccess,
-                    planColor: colorScheme.secondary,
-                    nowColor: colorScheme.cdtFocus,
-                    isDark: isDark,
-                    hourH: hourH,
-                  ),
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        child: CustomPaint(
+                          size: Size(w, totalH),
+                          painter: _DayGridInteractionPainter(
+                            minutesPerBlock: _minutesPerBlock,
+                            dragStart: _dragStart,
+                            dragEnd: _dragEnd,
+                            gridStart: _gridStart,
+                            selColor: selTag != null
+                                ? hexColor(selTag.color, opacity: 0.48)
+                                : accent.withValues(alpha: 0.45),
+                            nowColor: colorScheme.cdtFocus,
+                            hourH: hourH,
+                            selectionPaint: _selectionPaint,
+                            currentTimeLinePaint: _currentTimeLinePaint,
+                            currentTimeDotPaint: _currentTimeDotPaint,
+                          ),
+                        ),
+                      ),
+                    ),
+                    ..._pomodoroTapTargets(w, hourH),
+                  ],
                 ),
               ),
-              ..._pomodoroTapTargets(w, hourH),
             ],
           ),
         );
@@ -674,10 +786,14 @@ class _DayViewState extends State<_DayView> {
   List<Widget> _pomodoroTapTargets(double width, double hourH) {
     final gsMs = _gridStart.millisecondsSinceEpoch;
     final geMs = _dayEndMs(_gridStart);
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+    final focusColor = colorScheme.cdtFocus;
+    final tagIndicesByUuid = _tagIndicesFor(widget.tags);
     final List<Widget> targets = [];
-    for (final pom in widget.pomodoros) {
+    for (final pom in _dayPomodoros) {
       final pe = pom.endTime ?? (pom.startTime + pom.effectiveDuration * 1000);
-      if (pe <= gsMs || pom.startTime >= geMs) continue;
       final rs = max(pom.startTime, gsMs);
       final re = min(pe, geMs);
       final startF = (rs - gsMs) / 3600000;
@@ -687,15 +803,11 @@ class _DayViewState extends State<_DayView> {
       if (eH > sH && endF == eH.toDouble()) eH--;
       PomodoroTag? tag;
       if (pom.tagUuids.isNotEmpty) {
-        tag = widget.tags.cast<PomodoroTag?>().firstWhere(
-          (t) => pom.tagUuids.contains(t?.uuid),
-          orElse: () => null,
-        );
+        tag = _firstPomodoroTagForUuids(pom.tagUuids, tagIndicesByUuid);
       }
-      final isDark = Theme.of(context).brightness == Brightness.dark;
       final base = tag != null
           ? hexColor(tag.color)
-          : Theme.of(context).colorScheme.cdtFocus;
+          : focusColor;
       final fill = base.withValues(alpha: isDark ? 0.35 : 0.45);
       final mark = base.withValues(alpha: 0.85);
       for (int h = sH; h <= eH; h++) {
@@ -815,7 +927,7 @@ class _DayViewState extends State<_DayView> {
     final gs = _gridStart;
     final st = gs.add(Duration(minutes: _ss * _minutesPerBlock));
     final en = gs.add(Duration(minutes: (_se + 1) * _minutesPerBlock));
-    final timeFormat = DateFormat('HH:mm');
+    final timeFormat = _timeLogComponentDateFormat('HH:mm');
     return OptionalLiquidGlassSheet(
       topRadius: 20,
       padding: EdgeInsets.fromLTRB(
@@ -893,40 +1005,34 @@ class _DayViewState extends State<_DayView> {
 // ══════════════════════════════════════════════════════════
 class _DayGridPainter extends CustomPainter {
   final int minutesPerBlock;
-  final int? dragStart, dragEnd;
   final List<TimeLogItem> logs;
   final List<TodoPlanBlock> planBlocks;
   final bool showPlans;
   final List<PomodoroTag> tags;
   final DateTime gridStart;
-  final Color selColor;
   final Color gridMajorColor;
   final Color gridMinorColor;
   final Color successColor;
   final Color planColor;
-  final Color nowColor;
   final bool isDark;
   final double hourH;
-  final Map<String, int> _tagIndicesByUuid;
+  final Map<String, int> tagIndicesByUuid;
 
   _DayGridPainter({
     required this.minutesPerBlock,
-    this.dragStart,
-    this.dragEnd,
     required this.logs,
     required this.planBlocks,
     required this.showPlans,
     required this.tags,
+    required this.tagIndicesByUuid,
     required this.gridStart,
-    required this.selColor,
     required this.gridMajorColor,
     required this.gridMinorColor,
     required this.successColor,
     required this.planColor,
-    required this.nowColor,
     required this.isDark,
     required this.hourH,
-  }) : _tagIndicesByUuid = _buildTagIndices(tags);
+  });
 
   static Map<String, int> _buildTagIndices(List<PomodoroTag> tags) {
     final indices = <String, int>{};
@@ -940,7 +1046,7 @@ class _DayGridPainter extends CustomPainter {
   PomodoroTag? _firstTagForUuids(List<String> uuids) {
     int? firstIndex;
     for (final uuid in uuids) {
-      final index = _tagIndicesByUuid[uuid];
+      final index = tagIndicesByUuid[uuid];
       if (index != null && (firstIndex == null || index < firstIndex)) {
         firstIndex = index;
       }
@@ -963,7 +1069,6 @@ class _DayGridPainter extends CustomPainter {
       ..strokeWidth = 0.5;
     final eventFillPaint = Paint();
     final eventBarPaint = Paint();
-    final selectionPaint = Paint()..color = selColor;
 
     for (int h = 0; h <= 24; h++) {
       canvas.drawLine(
@@ -1068,20 +1173,77 @@ class _DayGridPainter extends CustomPainter {
       }
     }
 
+  }
+
+  @override
+  bool shouldRepaint(covariant _DayGridPainter o) =>
+      o.minutesPerBlock != minutesPerBlock ||
+      !identical(o.logs, logs) ||
+      !identical(o.planBlocks, planBlocks) ||
+      o.showPlans != showPlans ||
+      !identical(o.tags, tags) ||
+      o.gridStart != gridStart ||
+      o.gridMajorColor != gridMajorColor ||
+      o.gridMinorColor != gridMinorColor ||
+      o.successColor != successColor ||
+      o.planColor != planColor ||
+      o.isDark != isDark ||
+      o.hourH != hourH;
+}
+
+class _DayGridInteractionPainter extends CustomPainter {
+  final int minutesPerBlock;
+  final int? dragStart;
+  final int? dragEnd;
+  final DateTime gridStart;
+  final Color selColor;
+  final Color nowColor;
+  final double hourH;
+  final Paint selectionPaint;
+  final Paint currentTimeLinePaint;
+  final Paint currentTimeDotPaint;
+
+  _DayGridInteractionPainter({
+    required this.minutesPerBlock,
+    required this.dragStart,
+    required this.dragEnd,
+    required this.gridStart,
+    required this.selColor,
+    required this.nowColor,
+    required this.hourH,
+    required this.selectionPaint,
+    required this.currentTimeLinePaint,
+    required this.currentTimeDotPaint,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final bpr = 60 ~/ minutesPerBlock;
+    final blockWidth = size.width / bpr;
+    final gridStartMs = gridStart.millisecondsSinceEpoch;
+    final gridEndMs = _dayEndMs(gridStart);
+
     if (dragStart != null && dragEnd != null) {
-      final s = min(dragStart!, dragEnd!);
-      final e = max(dragStart!, dragEnd!);
-      for (int i = s; i <= e; i++) {
-        final rowStartMs = gsMs + i * 60 * minutesPerBlock * 1000;
+      final firstBlock = min(dragStart!, dragEnd!);
+      final lastBlock = max(dragStart!, dragEnd!);
+      selectionPaint.color = selColor;
+      for (var index = firstBlock; index <= lastBlock; index++) {
+        final rowStartMs =
+            gridStartMs + index * 60 * minutesPerBlock * 1000;
         final rowEndMs = rowStartMs + 60 * minutesPerBlock * 1000;
-        final segEnd = min(rowEndMs, geMs);
-        final startOffset = 0.0;
-        final endOffset = (segEnd - rowStartMs) / (60 * minutesPerBlock * 1000);
-        final left = i % bpr * bw + startOffset * bw;
-        final width = ((endOffset - startOffset) * bw).clamp(1.0, bw);
+        final segmentEnd = min(rowEndMs, gridEndMs);
+        final endOffset =
+            (segmentEnd - rowStartMs) / (60 * minutesPerBlock * 1000);
+        final left = index % bpr * blockWidth;
+        final width = (endOffset * blockWidth).clamp(1.0, blockWidth);
         canvas.drawRRect(
           RRect.fromRectAndRadius(
-            Rect.fromLTWH(left, i ~/ bpr * hourH + 1, width, hourH - 2),
+            Rect.fromLTWH(
+              left,
+              index ~/ bpr * hourH + 1,
+              width,
+              hourH - 2,
+            ),
             const Radius.circular(3),
           ),
           selectionPaint,
@@ -1090,39 +1252,30 @@ class _DayGridPainter extends CustomPainter {
     }
 
     final now = DateTime.now();
-    if (DateUtils.isSameDay(now, gridStart)) {
-      final h = now.hour;
-      final x = (now.minute + now.second / 60) / 60 * size.width;
-
-      canvas.drawLine(
-        Offset(x, h * hourH),
-        Offset(x, (h + 1) * hourH),
-        Paint()
-          ..color = nowColor.withValues(alpha: 0.7)
-          ..strokeWidth = 1.5,
-      );
-      canvas.drawCircle(Offset(x, h * hourH), 3, Paint()..color = nowColor);
-    }
+    if (!DateUtils.isSameDay(now, gridStart)) return;
+    final hour = now.hour;
+    final x = (now.minute + now.second / 60) / 60 * size.width;
+    currentTimeLinePaint
+      ..color = nowColor.withValues(alpha: 0.7)
+      ..strokeWidth = 1.5;
+    currentTimeDotPaint.color = nowColor;
+    canvas.drawLine(
+      Offset(x, hour * hourH),
+      Offset(x, (hour + 1) * hourH),
+      currentTimeLinePaint,
+    );
+    canvas.drawCircle(Offset(x, hour * hourH), 3, currentTimeDotPaint);
   }
 
   @override
-  bool shouldRepaint(covariant _DayGridPainter o) =>
-      o.minutesPerBlock != minutesPerBlock ||
-      o.dragStart != dragStart ||
-      o.dragEnd != dragEnd ||
-      !identical(o.logs, logs) ||
-      !identical(o.planBlocks, planBlocks) ||
-      o.showPlans != showPlans ||
-      !identical(o.tags, tags) ||
-      o.gridStart != gridStart ||
-      o.selColor != selColor ||
-      o.gridMajorColor != gridMajorColor ||
-      o.gridMinorColor != gridMinorColor ||
-      o.successColor != successColor ||
-      o.planColor != planColor ||
-      o.nowColor != nowColor ||
-      o.isDark != isDark ||
-      o.hourH != hourH;
+  bool shouldRepaint(covariant _DayGridInteractionPainter oldDelegate) =>
+      oldDelegate.minutesPerBlock != minutesPerBlock ||
+      oldDelegate.dragStart != dragStart ||
+      oldDelegate.dragEnd != dragEnd ||
+      oldDelegate.gridStart != gridStart ||
+      oldDelegate.selColor != selColor ||
+      oldDelegate.nowColor != nowColor ||
+      oldDelegate.hourH != hourH;
 }
 
 class _EntryModeToggle extends StatelessWidget {
@@ -1917,7 +2070,7 @@ class _TimePickerCard extends StatelessWidget {
           GestureDetector(
             onTap: onTapDate,
             child: Text(
-              DateFormat('MM月dd日').format(dt),
+              _timeLogComponentDateFormat('MM月dd日').format(dt),
               style: TextStyle(fontSize: 11, color: _TC.textSub(context)),
             ),
           ),
@@ -1925,7 +2078,7 @@ class _TimePickerCard extends StatelessWidget {
           Row(
             children: [
               Text(
-                DateFormat('HH:mm').format(dt),
+                _timeLogComponentDateFormat('HH:mm').format(dt),
                 style: TextStyle(
                   fontSize: 22,
                   fontWeight: FontWeight.w700,

@@ -28,6 +28,17 @@ class _MonthlyPomodoroSummary {
   }
 }
 
+final Map<(String?, String), DateFormat> _pomodoroStatsDateFormatters = {};
+
+DateFormat _pomodoroStatsDateFormat(String pattern, [String? locale]) {
+  final effectiveLocale = locale ?? Intl.defaultLocale;
+  final key = (effectiveLocale, pattern);
+  return _pomodoroStatsDateFormatters[key] ??= DateFormat(
+    pattern,
+    effectiveLocale,
+  );
+}
+
 class PomodoroStats extends StatefulWidget {
   final String username;
   final bool isCompact;
@@ -322,15 +333,19 @@ class PomodoroStatsState extends State<PomodoroStats> {
   }
 
   String _rangeLabel() {
-    if (_dimension == 0) return DateFormat('yyyy年MM月dd日').format(_selected);
+    if (_dimension == 0) {
+      return _pomodoroStatsDateFormat('yyyy年MM月dd日').format(_selected);
+    }
     if (_dimension == 1) {
       final range = _getRange();
-      final startStr = DateFormat('MM/dd').format(range.start);
-      final endStr = DateFormat('MM/dd')
+      final startStr = _pomodoroStatsDateFormat('MM/dd').format(range.start);
+      final endStr = _pomodoroStatsDateFormat('MM/dd')
           .format(range.end.subtract(const Duration(seconds: 1)));
       return '$startStr - $endStr';
     }
-    if (_dimension == 2) return DateFormat('yyyy年MM月').format(_selected);
+    if (_dimension == 2) {
+      return _pomodoroStatsDateFormat('yyyy年MM月').format(_selected);
+    }
     return '${_selected.year}年';
   }
 
@@ -599,55 +614,83 @@ class PomodoroStatsState extends State<PomodoroStats> {
   }
 
   Widget _buildTrendChart() {
-    // Generate 7 data points for the last 7 units
-    List<ChartData> dataPoints = [];
+    // Prepare seven adjacent bucket starts, then aggregate each session once.
     final chartRange = _getChartRange();
+    final bucketStarts = List<DateTime>.generate(7, (index) {
+      if (_dimension == 0) {
+        return CalendarDateMath.addDays(chartRange.start, index);
+      }
+      if (_dimension == 1) {
+        return CalendarDateMath.addDays(chartRange.start, index * 7);
+      }
+      if (_dimension == 2) {
+        return DateTime(
+          chartRange.start.year,
+          chartRange.start.month + index,
+          1,
+        );
+      }
+      return DateTime(chartRange.start.year + index, 1, 1);
+    }, growable: false);
+    final bucketStartEpochs = bucketStarts
+        .map((start) => start.millisecondsSinceEpoch)
+        .toList(growable: false);
+    final focusSecondsByBucket = List<int>.filled(7, 0);
+    final chartEndEpoch = chartRange.end.millisecondsSinceEpoch;
+    if (_dimension != 3) {
+      for (final session in _chartSessions) {
+        final startEpoch = session.startTime;
+        if (startEpoch < bucketStartEpochs.first ||
+            startEpoch >= chartEndEpoch) {
+          continue;
+        }
+
+        var low = 0;
+        var high = bucketStartEpochs.length;
+        while (low < high) {
+          final middle = (low + high) >> 1;
+          if (bucketStartEpochs[middle] <= startEpoch) {
+            low = middle + 1;
+          } else {
+            high = middle;
+          }
+        }
+        final bucketIndex = low - 1;
+        if (bucketIndex >= 0) {
+          focusSecondsByBucket[bucketIndex] += session.effectiveDuration;
+        }
+      }
+    }
+
+    final selectedWeekRange = _dimension == 1 ? _getRange() : null;
+    final dataPoints = <ChartData>[];
 
     for (int i = 0; i < 7; i++) {
-      DateTime start, end;
+      final start = bucketStarts[i];
       String label;
       bool isSelected = false;
 
       if (_dimension == 0) {
-        // Day
-        start = CalendarDateMath.addDays(chartRange.start, i);
-        end = CalendarDateMath.addDays(start, 1);
-        label = DateFormat('MM/dd').format(start);
+        label = _pomodoroStatsDateFormat('MM/dd').format(start);
         isSelected =
             start.year == _selected.year &&
             start.month == _selected.month &&
             start.day == _selected.day;
       } else if (_dimension == 1) {
-        // Week
-        start = CalendarDateMath.addDays(chartRange.start, i * 7);
-        end = CalendarDateMath.addDays(start, 7);
-        label = DateFormat('MM/dd').format(start);
-        final selRange = _getRange();
-        isSelected = start.isAtSameMomentAs(selRange.start);
+        label = _pomodoroStatsDateFormat('MM/dd').format(start);
+        isSelected = start.isAtSameMomentAs(selectedWeekRange!.start);
       } else if (_dimension == 2) {
-        // Month
-        start = DateTime(chartRange.start.year, chartRange.start.month + i, 1);
-        end = DateTime(start.year, start.month + 1, 1);
-        label = DateFormat('MM月').format(start);
+        label = _pomodoroStatsDateFormat('MM月').format(start);
         isSelected =
             start.year == _selected.year && start.month == _selected.month;
       } else {
-        // Year
-        start = DateTime(chartRange.start.year + i, 1, 1);
-        end = DateTime(start.year + 1, 1, 1);
         label = '${start.year}';
         isSelected = start.year == _selected.year;
       }
 
       final focusSecs = _dimension == 3
           ? (_yearlyFocusSeconds[start.year] ?? 0)
-          : _chartSessions
-                .where(
-                  (s) =>
-                      s.startTime >= start.millisecondsSinceEpoch &&
-                      s.startTime < end.millisecondsSinceEpoch,
-                )
-                .fold(0, (sum, s) => sum + s.effectiveDuration);
+          : focusSecondsByBucket[i];
       dataPoints.add(ChartData(label, focusSecs, isSelected, start));
     }
 

@@ -171,10 +171,32 @@ class ScreenTimeDetailScreen extends StatefulWidget {
   }
 }
 
+class _ScreenTimePeriodSummary {
+  const _ScreenTimePeriodSummary({
+    required this.total,
+    required this.topApps,
+    required this.categories,
+  });
+
+  final int total;
+  final List<MapEntry<String, Map<String, dynamic>>> topApps;
+  final List<Map<String, dynamic>> categories;
+}
+
 class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
   DeviceFilter _currentFilter = DeviceFilter.all;
   ScreenTimeRange _currentRange = ScreenTimeRange.day;
   Map<String, List<dynamic>> _historyStats = {};
+  final Map<
+    (ScreenTimeRange, int, int),
+    List<Map<String, dynamic>>
+  > _periodStatsCache = {};
+  final Map<
+    (ScreenTimeRange, int, int, DeviceFilter),
+    _ScreenTimePeriodSummary
+  > _periodSummaryCache = {};
+  final Map<(ScreenTimeRange, int, int, DeviceFilter), int>
+  _periodTotalCache = {};
   Map<String, String> _cloudMappings = {};
   bool _isLoading = true;
   Timer? _historyLoadTimer;
@@ -212,6 +234,9 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
     if (mounted) {
       setState(() {
         _historyStats = history;
+        _periodStatsCache.clear();
+        _periodSummaryCache.clear();
+        _periodTotalCache.clear();
         _cloudMappings = mappings;
         _isLoading = false;
       });
@@ -235,11 +260,13 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
     return "$s秒";
   }
 
+  static final RegExp _legacyDeviceIdPattern = RegExp(
+    r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
+  );
+
   static String simplifyDeviceName(String device) {
     if (device.isEmpty) return "未知设备";
-    if (RegExp(
-      r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
-    ).hasMatch(device)) {
+    if (_legacyDeviceIdPattern.hasMatch(device)) {
       return "未知设备(旧)";
     }
     return device
@@ -382,15 +409,13 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
       String appName = item['app_name'] ?? "未知应用";
       String deviceName = item['device_name'] ?? "未知设备";
       int duration = item['duration'] ?? 0;
-      if (!grouped.containsKey(appName)) {
-        grouped[appName] = {'total': 0, 'devices': <String, int>{}};
-      }
-      grouped[appName]!['total'] =
-          (grouped[appName]!['total'] as int) + duration;
-      (grouped[appName]!['devices'] as Map<String, int>)[deviceName] =
-          ((grouped[appName]!['devices'] as Map<String, int>)[deviceName] ??
-              0) +
-          duration;
+      final appGroup = grouped.putIfAbsent(
+        appName,
+        () => {'total': 0, 'devices': <String, int>{}},
+      );
+      appGroup['total'] = (appGroup['total'] as int) + duration;
+      final devices = appGroup['devices'] as Map<String, int>;
+      devices[deviceName] = (devices[deviceName] ?? 0) + duration;
     }
     var sorted = grouped.entries.toList();
     sorted.sort(
@@ -518,10 +543,21 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
   }
 
   List<dynamic> _statsForPeriod(DateTime periodStart, ScreenTimeRange range) {
+    final cacheKey = (
+      range,
+      periodStart.millisecondsSinceEpoch,
+      _todayNormalized.millisecondsSinceEpoch,
+    );
+    final cached = _periodStatsCache.remove(cacheKey);
+    if (cached != null) {
+      _periodStatsCache[cacheKey] = cached;
+      return cached;
+    }
+
     final Map<String, Map<String, dynamic>> grouped = {};
     for (final date in _daysInPeriod(periodStart, range, _todayNormalized)) {
       for (final raw in _historyStats[_historyKey(date)] ?? []) {
-        final item = Map<String, dynamic>.from(raw as Map);
+        final item = raw as Map;
         final appName = item['app_name']?.toString() ?? '未知应用';
         final packageName = item['package_name']?.toString() ?? '';
         final deviceName = item['device_name']?.toString() ?? '未知设备';
@@ -545,7 +581,154 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
             (grouped[key]!['duration'] as int) + duration;
       }
     }
-    return grouped.values.toList();
+    final stats = grouped.values.toList(growable: false);
+    if (_periodStatsCache.length >= 6) {
+      _periodStatsCache.remove(_periodStatsCache.keys.first);
+    }
+    _periodStatsCache[cacheKey] = stats;
+    return stats;
+  }
+
+  void _cachePeriodTotal(
+    (ScreenTimeRange, int, int, DeviceFilter) key,
+    int total,
+  ) {
+    _periodTotalCache.remove(key);
+    if (_periodTotalCache.length >= 14) {
+      _periodTotalCache.remove(_periodTotalCache.keys.first);
+    }
+    _periodTotalCache[key] = total;
+  }
+
+  int _totalForPeriod(
+    DateTime periodStart,
+    ScreenTimeRange range,
+    DeviceFilter filter,
+  ) {
+    final cacheKey = (
+      range,
+      periodStart.millisecondsSinceEpoch,
+      _todayNormalized.millisecondsSinceEpoch,
+      filter,
+    );
+    final cached = _periodTotalCache.remove(cacheKey);
+    if (cached != null) {
+      _periodTotalCache[cacheKey] = cached;
+      return cached;
+    }
+
+    final total = ScreenTimeDetailScreen.getTotalDuration(
+      _statsForPeriod(periodStart, range),
+      filter,
+    );
+    _cachePeriodTotal(cacheKey, total);
+    return total;
+  }
+
+  _ScreenTimePeriodSummary _summaryForPeriod(
+    List<dynamic> periodStats,
+    DateTime periodStart,
+    ScreenTimeRange range,
+    DeviceFilter filter,
+  ) {
+    final cacheKey = (
+      range,
+      periodStart.millisecondsSinceEpoch,
+      _todayNormalized.millisecondsSinceEpoch,
+      filter,
+    );
+    final cached = _periodSummaryCache.remove(cacheKey);
+    if (cached != null) {
+      _periodSummaryCache[cacheKey] = cached;
+      return cached;
+    }
+
+    final appGroups = <String, Map<String, dynamic>>{};
+    final catGroups = <String, List<dynamic>>{};
+    final catTotals = <String, int>{};
+    final matchesByDevice = filter == DeviceFilter.all
+        ? null
+        : <String, bool>{};
+    var selectedTotal = 0;
+    for (final item in periodStats) {
+      if (filter != DeviceFilter.all) {
+        final filterDeviceName = item['device_name'] ?? '';
+        final matches = matchesByDevice!.putIfAbsent(
+          filterDeviceName,
+          () => ScreenTimeDetailScreen.matchesFilter(filterDeviceName, filter),
+        );
+        if (!matches) continue;
+      }
+
+      final appName = item['app_name'] ?? '未知应用';
+      final deviceName = item['device_name'] ?? '未知设备';
+      final duration = item['duration'] as int;
+      selectedTotal += duration;
+      final appGroup = appGroups.putIfAbsent(
+        appName,
+        () => {'total': 0, 'devices': <String, int>{}},
+      );
+      appGroup['total'] = (appGroup['total'] as int) + duration;
+      final devices = appGroup['devices'] as Map<String, int>;
+      devices[deviceName] = (devices[deviceName] ?? 0) + duration;
+
+      final category = getCategoryForApp(
+        appName,
+        item['category'],
+        _cloudMappings,
+      );
+      catGroups.putIfAbsent(category, () => []).add(item);
+      catTotals[category] = (catTotals[category] ?? 0) + duration;
+    }
+    _cachePeriodTotal(cacheKey, selectedTotal);
+    final topApps = appGroups.entries.toList()
+      ..sort(
+        (a, b) =>
+            (b.value['total'] as int).compareTo(a.value['total'] as int),
+      );
+    final catDurs = catTotals.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+    final categories = <Map<String, dynamic>>[];
+    if (catDurs.length <= 6) {
+      for (final entry in catDurs) {
+        categories.add({
+          'name': entry.key,
+          'duration': entry.value,
+          'items': catGroups[entry.key],
+        });
+      }
+    } else {
+      for (var i = 0; i < 5; i++) {
+        categories.add({
+          'name': catDurs[i].key,
+          'duration': catDurs[i].value,
+          'items': catGroups[catDurs[i].key],
+        });
+      }
+      var otherDuration = 0;
+      final otherItems = <dynamic>[];
+      for (var i = 5; i < catDurs.length; i++) {
+        otherDuration += catDurs[i].value;
+        otherItems.addAll(catGroups[catDurs[i].key]!);
+      }
+      categories.add({
+        'name': '其他类别',
+        'duration': otherDuration,
+        'items': otherItems,
+      });
+    }
+
+    final summary = _ScreenTimePeriodSummary(
+      total: selectedTotal,
+      topApps: topApps,
+      categories: categories,
+    );
+    if (_periodSummaryCache.length >= 6) {
+      _periodSummaryCache.remove(_periodSummaryCache.keys.first);
+    }
+    _periodSummaryCache[cacheKey] = summary;
+    return summary;
   }
 
   // ─── 设备分布小组件（复用） ───
@@ -667,69 +850,26 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
     );
 
     final periodStats = _statsForPeriod(periodStart, _currentRange);
-    final prevPeriodStats = _statsForPeriod(prevPeriodStart, _currentRange);
 
-    int selectedTotal = ScreenTimeDetailScreen.getTotalDuration(
+    final summary = _summaryForPeriod(
       periodStats,
+      periodStart,
+      _currentRange,
       _currentFilter,
     );
-    int prevTotal = ScreenTimeDetailScreen.getTotalDuration(
-      prevPeriodStats,
+    final selectedTotal = summary.total;
+    int prevTotal = _totalForPeriod(
+      prevPeriodStart,
+      _currentRange,
       _currentFilter,
     );
     int diff = selectedTotal - prevTotal;
 
-    final filteredStats = ScreenTimeDetailScreen.getFilteredStats(
-      periodStats,
-      _currentFilter,
-    );
-    final topApps = getGroupedApps(filteredStats);
     final bottomContentPadding = floatingBottomNavigationContentPaddingFor(
       context,
     );
-
-    // 分类
-    Map<String, List<dynamic>> catGroups = {};
-    Map<String, int> catTotals = {};
-    for (var item in filteredStats) {
-      String appName = item['app_name'] ?? '未知应用';
-      String cat = getCategoryForApp(appName, item['category'], _cloudMappings);
-      item['category'] = cat;
-      catGroups.putIfAbsent(cat, () => []).add(item);
-      catTotals[cat] = (catTotals[cat] ?? 0) + (item['duration'] as int);
-    }
-    final catDurs = catTotals.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-
-    List<Map<String, dynamic>> finalCategories = [];
-    if (catDurs.length <= 6) {
-      for (var e in catDurs) {
-        finalCategories.add({
-          'name': e.key,
-          'duration': e.value,
-          'items': catGroups[e.key],
-        });
-      }
-    } else {
-      for (int i = 0; i < 5; i++) {
-        finalCategories.add({
-          'name': catDurs[i].key,
-          'duration': catDurs[i].value,
-          'items': catGroups[catDurs[i].key],
-        });
-      }
-      int otherDur = 0;
-      List<dynamic> otherItems = [];
-      for (int i = 5; i < catDurs.length; i++) {
-        otherDur += catDurs[i].value;
-        otherItems.addAll(catGroups[catDurs[i].key]!);
-      }
-      finalCategories.add({
-        'name': '其他类别',
-        'duration': otherDur,
-        'items': otherItems,
-      });
-    }
+    final topApps = summary.topApps;
+    final finalCategories = summary.categories;
 
     return LayoutBuilder(
       builder: (ctx, constraints) {
@@ -1153,12 +1293,7 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
 
     for (int i = slotCount - 1; i >= 0; i--) {
       final slotStart = _shiftPeriod(currentPeriodStart, _currentRange, -i);
-      totals.add(
-        ScreenTimeDetailScreen.getTotalDuration(
-          _statsForPeriod(slotStart, _currentRange),
-          _currentFilter,
-        ),
-      );
+      totals.add(_totalForPeriod(slotStart, _currentRange, _currentFilter));
       labels.add(_chartLabel(slotStart, i == 0));
     }
 
@@ -2014,7 +2149,7 @@ class AppDetailScreen extends StatelessWidget {
               for (String device in sortedDevices) {
                 List<int> trend = deviceTrends[device]!;
                 int currentUse = deviceCurrent[device] ?? 0;
-                int totalUse = trend.fold(0, (sum, val) => sum + val);
+                int totalUse = deviceTotals[device]!;
                 if (totalUse == 0) continue;
 
                 double cardWidth = isDesktop

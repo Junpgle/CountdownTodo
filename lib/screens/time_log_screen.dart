@@ -78,12 +78,6 @@ DateTime _dayStart(DateTime d) => CalendarDateMath.dateOnly(d);
 int _dayEndMs(DateTime d) =>
     CalendarDateMath.dayRange(d).endExclusive.millisecondsSinceEpoch;
 
-List<DateTime> _weekDays([DateTime? now]) {
-  final n = now ?? DateTime.now();
-  final monday = CalendarDateMath.weekRange(n).start;
-  return List.generate(7, (i) => CalendarDateMath.addDays(monday, i));
-}
-
 // ══════════════════════════════════════════════════════════
 // 主题色助手
 // ══════════════════════════════════════════════════════════
@@ -339,8 +333,11 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
 
   Future<void> _addLog(TimeLogItem log) async {
     setState(() {
-      _allLogs.removeWhere((l) => l.id == log.id);
-      _allLogs.add(log);
+      _allLogs = [
+        for (final existing in _allLogs)
+          if (existing.id != log.id) existing,
+        log,
+      ];
     });
     try {
       await StorageService.saveTimeLogs(widget.username, _allLogs, sync: true);
@@ -1069,10 +1066,39 @@ class _WeekView extends StatefulWidget {
   State<_WeekView> createState() => _WeekViewState();
 }
 
+class _WeekViewData {
+  const _WeekViewData({
+    required this.days,
+    required this.todayMinutes,
+    required this.dayStartMs,
+    required this.dayEndMs,
+    required this.logsByDay,
+    required this.pomodorosByDay,
+    required this.minutesByDay,
+    required this.minutesByTag,
+  });
+
+  final List<DateTime> days;
+  final int todayMinutes;
+  final List<int> dayStartMs;
+  final List<int> dayEndMs;
+  final List<List<TimeLogItem>> logsByDay;
+  final List<List<PomodoroRecord>> pomodorosByDay;
+  final List<int> minutesByDay;
+  final Map<String, int> minutesByTag;
+}
+
 class _WeekViewState extends State<_WeekView>
     with SingleTickerProviderStateMixin {
   late AnimationController _heatAnimCtrl;
   late Animation<double> _heatAnim;
+  List<TimeLogItem>? _cachedLogs;
+  List<PomodoroRecord>? _cachedPomodoros;
+  List<PomodoroTag>? _cachedTags;
+  DateTime? _cachedWeekStart;
+  int? _cachedTodayStartMs;
+  int? _cachedTodayEndMs;
+  _WeekViewData? _cachedWeekData;
 
   @override
   void initState() {
@@ -1105,47 +1131,174 @@ class _WeekViewState extends State<_WeekView>
     super.dispose();
   }
 
-  int _rangeMin(int from, int to) {
-    final lm = widget.logs
-        .where((l) => l.endTime > from && l.startTime < to)
-        .fold(
-          0,
-          (s, l) =>
-              s +
-              TimeLogRangeMath.overlapMinutes(
-                intervalStartMs: l.startTime,
-                intervalEndMs: l.endTime,
-                rangeStartMs: from,
-                rangeEndMs: to,
-              ),
+  _WeekViewData _buildWeekViewData(
+    List<DateTime> days,
+    DateTime todayStart,
+    DateTime todayEnd,
+  ) {
+    final dayStartMs = <int>[];
+    final dayEndMs = <int>[];
+    for (final day in days) {
+      final range = CalendarDateMath.dayRange(day);
+      dayStartMs.add(range.start.millisecondsSinceEpoch);
+      dayEndMs.add(range.endExclusive.millisecondsSinceEpoch);
+    }
+    final logsByDay = List.generate(days.length, (_) => <TimeLogItem>[]);
+    final pomodorosByDay = List.generate(
+      days.length,
+      (_) => <PomodoroRecord>[],
+    );
+    final minutesByDay = List<int>.filled(days.length, 0);
+    final visibleTagUuids = widget.tags.map((tag) => tag.uuid).toSet();
+    final minutesByTag = <String, int>{};
+    final seenTagUuids = <String>{};
+    final weekStartMs = dayStartMs.first;
+    final weekEndMs = dayEndMs.last;
+    final todayStartMs = todayStart.millisecondsSinceEpoch;
+    final todayEndMs = todayEnd.millisecondsSinceEpoch;
+    var todayMinutes = 0;
+
+    int firstDayEndingAfter(int instantMs) {
+      var low = 0;
+      var high = dayEndMs.length;
+      while (low < high) {
+        final middle = (low + high) ~/ 2;
+        if (dayEndMs[middle] <= instantMs) {
+          low = middle + 1;
+        } else {
+          high = middle;
+        }
+      }
+      return low;
+    }
+
+    for (final log in widget.logs) {
+      if (log.endTime > weekStartMs && log.startTime < weekEndMs) {
+        final overlapMinutes = TimeLogRangeMath.overlapMinutes(
+          intervalStartMs: log.startTime,
+          intervalEndMs: log.endTime,
+          rangeStartMs: weekStartMs,
+          rangeEndMs: weekEndMs,
         );
-    final pm = widget.pomodoros
-        .where(
-          (p) =>
-              p.startTime < to &&
-              (p.endTime ?? p.startTime + p.effectiveDuration * 1000) > from,
-        )
-        .fold(0, (s, p) => s + p.effectiveDuration ~/ 60);
-    return lm + pm;
+        seenTagUuids.clear();
+        for (final uuid in log.tagUuids) {
+          if (!visibleTagUuids.contains(uuid) || !seenTagUuids.add(uuid)) {
+            continue;
+          }
+          minutesByTag[uuid] = (minutesByTag[uuid] ?? 0) + overlapMinutes;
+        }
+      }
+      if (log.endTime > todayStartMs && log.startTime < todayEndMs) {
+        todayMinutes += TimeLogRangeMath.overlapMinutes(
+          intervalStartMs: log.startTime,
+          intervalEndMs: log.endTime,
+          rangeStartMs: todayStartMs,
+          rangeEndMs: todayEndMs,
+        );
+      }
+      for (
+        var dayIndex = firstDayEndingAfter(log.startTime);
+        dayIndex < days.length && dayStartMs[dayIndex] < log.endTime;
+        dayIndex++
+      ) {
+        logsByDay[dayIndex].add(log);
+        minutesByDay[dayIndex] += TimeLogRangeMath.overlapMinutes(
+          intervalStartMs: log.startTime,
+          intervalEndMs: log.endTime,
+          rangeStartMs: dayStartMs[dayIndex],
+          rangeEndMs: dayEndMs[dayIndex],
+        );
+      }
+    }
+    for (final pomodoro in widget.pomodoros) {
+      final endMs =
+          pomodoro.endTime ??
+          (pomodoro.startTime + pomodoro.effectiveDuration * 1000);
+      if (pomodoro.startTime < weekEndMs && endMs > weekStartMs) {
+        final durationMinutes = pomodoro.effectiveDuration ~/ 60;
+        seenTagUuids.clear();
+        for (final uuid in pomodoro.tagUuids) {
+          if (!visibleTagUuids.contains(uuid) || !seenTagUuids.add(uuid)) {
+            continue;
+          }
+          minutesByTag[uuid] = (minutesByTag[uuid] ?? 0) + durationMinutes;
+        }
+      }
+      if (pomodoro.startTime < todayEndMs && endMs > todayStartMs) {
+        todayMinutes += pomodoro.effectiveDuration ~/ 60;
+      }
+      for (
+        var dayIndex = firstDayEndingAfter(pomodoro.startTime);
+        dayIndex < days.length && dayStartMs[dayIndex] < endMs;
+        dayIndex++
+      ) {
+        pomodorosByDay[dayIndex].add(pomodoro);
+        minutesByDay[dayIndex] += pomodoro.effectiveDuration ~/ 60;
+      }
+    }
+
+    return _WeekViewData(
+      days: days,
+      todayMinutes: todayMinutes,
+      dayStartMs: dayStartMs,
+      dayEndMs: dayEndMs,
+      logsByDay: logsByDay,
+      pomodorosByDay: pomodorosByDay,
+      minutesByDay: minutesByDay,
+      minutesByTag: minutesByTag,
+    );
+  }
+
+  _WeekViewData _weekViewDataFor(
+    DateTime weekStart,
+    DateTime todayStart,
+    DateTime todayEnd,
+  ) {
+    final normalizedWeekStart = CalendarDateMath.weekRange(weekStart).start;
+    final todayStartMs = todayStart.millisecondsSinceEpoch;
+    final todayEndMs = todayEnd.millisecondsSinceEpoch;
+    final cached = _cachedWeekData;
+    if (cached != null &&
+        identical(_cachedLogs, widget.logs) &&
+        identical(_cachedPomodoros, widget.pomodoros) &&
+        identical(_cachedTags, widget.tags) &&
+        _cachedWeekStart == normalizedWeekStart &&
+        _cachedTodayStartMs == todayStartMs &&
+        _cachedTodayEndMs == todayEndMs) {
+      return cached;
+    }
+
+    final days = List<DateTime>.generate(
+      7,
+      (index) => CalendarDateMath.addDays(normalizedWeekStart, index),
+      growable: false,
+    );
+    final data = _buildWeekViewData(days, todayStart, todayEnd);
+    _cachedLogs = widget.logs;
+    _cachedPomodoros = widget.pomodoros;
+    _cachedTags = widget.tags;
+    _cachedWeekStart = normalizedWeekStart;
+    _cachedTodayStartMs = todayStartMs;
+    _cachedTodayEndMs = todayEndMs;
+    return _cachedWeekData = data;
   }
 
   @override
   Widget build(BuildContext context) {
-    final days = _weekDays(widget.weekStart);
     final todayRange = CalendarDateMath.dayRange(DateTime.now());
-    final todayMin = _rangeMin(
-      todayRange.start.millisecondsSinceEpoch,
-      todayRange.endExclusive.millisecondsSinceEpoch,
+    final weekData = _weekViewDataFor(
+      widget.weekStart,
+      todayRange.start,
+      todayRange.endExclusive,
     );
-    final wStart0 = days.first.millisecondsSinceEpoch;
-    final wEnd0 = _dayEndMs(days.last);
+    final days = weekData.days;
 
     return LayoutBuilder(
       builder: (ctx, outer) {
         final isWide = outer.maxWidth >= 720;
         return Column(
           children: [
-            _buildTopBar(ctx, todayMin),
+            _buildTopBar(ctx, weekData.todayMinutes),
             Expanded(
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1155,13 +1308,14 @@ class _WeekViewState extends State<_WeekView>
                       ctx,
                       days,
                       outer.maxWidth - (isWide ? 160.0 : 0),
+                      weekData,
                     ),
                   ),
-                  if (isWide) _buildTagSidebar(ctx, wStart0, wEnd0),
+                  if (isWide) _buildTagSidebar(ctx, weekData.minutesByTag),
                 ],
               ),
             ),
-            if (!isWide) _buildTagChips(ctx, wStart0, wEnd0),
+            if (!isWide) _buildTagChips(ctx, weekData.minutesByTag),
           ],
         );
       },
@@ -1254,7 +1408,12 @@ class _WeekViewState extends State<_WeekView>
     );
   }
 
-  Widget _buildGrid(BuildContext ctx, List<DateTime> days, double availW) {
+  Widget _buildGrid(
+    BuildContext ctx,
+    List<DateTime> days,
+    double availW,
+    _WeekViewData weekData,
+  ) {
     const totalW = kWeekTimeW + kWeekDayW * 7;
     final scale = availW / totalW;
     final tW = kWeekTimeW * scale;
@@ -1262,63 +1421,6 @@ class _WeekViewState extends State<_WeekView>
     final colorScheme = Theme.of(ctx).colorScheme;
     final accent = colorScheme.primary;
     final isDark = Theme.of(ctx).brightness == Brightness.dark;
-
-    final dayStartMs = <int>[];
-    final dayEndMs = <int>[];
-    for (final day in days) {
-      final range = CalendarDateMath.dayRange(day);
-      dayStartMs.add(range.start.millisecondsSinceEpoch);
-      dayEndMs.add(range.endExclusive.millisecondsSinceEpoch);
-    }
-    final logsByDay = List.generate(days.length, (_) => <TimeLogItem>[]);
-    final pomodorosByDay = List.generate(
-      days.length,
-      (_) => <PomodoroRecord>[],
-    );
-    final minutesByDay = List<int>.filled(days.length, 0);
-
-    int firstDayEndingAfter(int instantMs) {
-      var low = 0;
-      var high = dayEndMs.length;
-      while (low < high) {
-        final middle = (low + high) ~/ 2;
-        if (dayEndMs[middle] <= instantMs) {
-          low = middle + 1;
-        } else {
-          high = middle;
-        }
-      }
-      return low;
-    }
-
-    for (final log in widget.logs) {
-      for (
-        var dayIndex = firstDayEndingAfter(log.startTime);
-        dayIndex < days.length && dayStartMs[dayIndex] < log.endTime;
-        dayIndex++
-      ) {
-        logsByDay[dayIndex].add(log);
-        minutesByDay[dayIndex] += TimeLogRangeMath.overlapMinutes(
-          intervalStartMs: log.startTime,
-          intervalEndMs: log.endTime,
-          rangeStartMs: dayStartMs[dayIndex],
-          rangeEndMs: dayEndMs[dayIndex],
-        );
-      }
-    }
-    for (final pomodoro in widget.pomodoros) {
-      final endMs =
-          pomodoro.endTime ??
-          (pomodoro.startTime + pomodoro.effectiveDuration * 1000);
-      for (
-        var dayIndex = firstDayEndingAfter(pomodoro.startTime);
-        dayIndex < days.length && dayStartMs[dayIndex] < endMs;
-        dayIndex++
-      ) {
-        pomodorosByDay[dayIndex].add(pomodoro);
-        minutesByDay[dayIndex] += pomodoro.effectiveDuration ~/ 60;
-      }
-    }
 
     return Column(
       children: [
@@ -1331,7 +1433,7 @@ class _WeekViewState extends State<_WeekView>
               ...List.generate(7, (i) {
                 final d = days[i];
                 final isToday = AppTimeFormats.isSameDay(d, DateTime.now());
-                final dm = minutesByDay[i];
+                final dm = weekData.minutesByDay[i];
                 return GestureDetector(
                   onTap: () => widget.onDayTap(d),
                   child: Container(
@@ -1421,10 +1523,10 @@ class _WeekViewState extends State<_WeekView>
                       ),
                     ),
                     ...List.generate(days.length, (dayIndex) {
-                      final ds = dayStartMs[dayIndex];
-                      final de = dayEndMs[dayIndex];
-                      final dLogs = logsByDay[dayIndex];
-                      final dPoms = pomodorosByDay[dayIndex];
+                      final ds = weekData.dayStartMs[dayIndex];
+                      final de = weekData.dayEndMs[dayIndex];
+                      final dLogs = weekData.logsByDay[dayIndex];
+                      final dPoms = weekData.pomodorosByDay[dayIndex];
                       return SizedBox(
                         width: dW,
                         height: totalH,
@@ -1514,7 +1616,10 @@ class _WeekViewState extends State<_WeekView>
     );
   }
 
-  Widget _buildTagSidebar(BuildContext ctx, int ws, int we) => SizedBox(
+  Widget _buildTagSidebar(
+    BuildContext ctx,
+    Map<String, int> minutesByTag,
+  ) => SizedBox(
     width: 160,
     child: OptionalLiquidGlassSheet(
       fallbackDecoration: BoxDecoration(
@@ -1537,37 +1642,11 @@ class _WeekViewState extends State<_WeekView>
             ),
           ),
           Expanded(
-            child: ListView(
-              padding: const EdgeInsets.only(bottom: 8),
-              children: widget.tags.map((t) {
-                int tw = widget.logs
-                    .where(
-                      (l) =>
-                          l.tagUuids.contains(t.uuid) &&
-                          l.endTime > ws &&
-                          l.startTime < we,
-                    )
-                    .fold(
-                      0,
-                      (s, l) =>
-                          s +
-                          TimeLogRangeMath.overlapMinutes(
-                            intervalStartMs: l.startTime,
-                            intervalEndMs: l.endTime,
-                            rangeStartMs: ws,
-                            rangeEndMs: we,
-                          ),
-                    );
-                tw += widget.pomodoros
-                    .where(
-                      (p) =>
-                          p.tagUuids.contains(t.uuid) &&
-                          p.startTime < we &&
-                          (p.endTime ??
-                                  p.startTime + p.effectiveDuration * 1000) >
-                              ws,
-                    )
-                    .fold(0, (s, p) => s + p.effectiveDuration ~/ 60);
+            child: ListView.builder(
+              itemCount: widget.tags.length,
+              itemBuilder: (context, index) {
+                final t = widget.tags[index];
+                final tw = minutesByTag[t.uuid] ?? 0;
                 final c = hexColor(t.color);
                 return GestureDetector(
                   onTap: () => widget.onTagTap(t),
@@ -1621,7 +1700,8 @@ class _WeekViewState extends State<_WeekView>
                     ),
                   ),
                 );
-              }).toList(),
+              },
+              padding: const EdgeInsets.only(bottom: 8),
             ),
           ),
         ],
@@ -1629,39 +1709,19 @@ class _WeekViewState extends State<_WeekView>
     ),
   );
 
-  Widget _buildTagChips(BuildContext ctx, int ws, int we) => Container(
+  Widget _buildTagChips(
+    BuildContext ctx,
+    Map<String, int> minutesByTag,
+  ) => Container(
     height: 56,
     color: _TC.topBar(ctx),
-    child: ListView(
+    child: ListView.builder(
       scrollDirection: Axis.horizontal,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      children: widget.tags.map((t) {
-        int tw = widget.logs
-            .where(
-              (l) =>
-                  l.tagUuids.contains(t.uuid) &&
-                  l.endTime > ws &&
-                  l.startTime < we,
-            )
-            .fold(
-              0,
-              (s, l) =>
-                  s +
-                  TimeLogRangeMath.overlapMinutes(
-                    intervalStartMs: l.startTime,
-                    intervalEndMs: l.endTime,
-                    rangeStartMs: ws,
-                    rangeEndMs: we,
-                  ),
-            );
-        tw += widget.pomodoros
-            .where(
-              (p) =>
-                  p.tagUuids.contains(t.uuid) &&
-                  p.startTime < we &&
-                  (p.endTime ?? p.startTime + p.effectiveDuration * 1000) > ws,
-            )
-            .fold(0, (s, p) => s + p.effectiveDuration ~/ 60);
+      itemCount: widget.tags.length,
+      itemBuilder: (context, index) {
+        final t = widget.tags[index];
+        final tw = minutesByTag[t.uuid] ?? 0;
         final c = hexColor(t.color);
         return GestureDetector(
           onTap: () => widget.onTagTap(t),
@@ -1698,7 +1758,7 @@ class _WeekViewState extends State<_WeekView>
             ),
           ),
         );
-      }).toList(),
+      },
     ),
   );
 }
@@ -1775,6 +1835,8 @@ class _WeekColPainter extends CustomPainter {
   final Color focusColor;
   final Color logColor;
   final Paint _blockPaint = Paint();
+  late final Map<String, int> _tagIndicesByUuid =
+      _DayGridPainter._buildTagIndices(tags);
   TextPainter? _titlePainter;
   int _staggerBlockIndex = 0;
   late final int _totalBlockCount = dayPoms.length + dayLogs.length;
@@ -1853,10 +1915,14 @@ class _WeekColPainter extends CustomPainter {
 
   PomodoroTag? _matchingTag(List<String> tagUuids) {
     if (tagUuids.isEmpty) return null;
-    for (final tag in tags) {
-      if (tagUuids.contains(tag.uuid)) return tag;
+    int? firstIndex;
+    for (final uuid in tagUuids) {
+      final index = _tagIndicesByUuid[uuid];
+      if (index != null && (firstIndex == null || index < firstIndex)) {
+        firstIndex = index;
+      }
     }
-    return null;
+    return firstIndex == null ? null : tags[firstIndex];
   }
 
   @override
@@ -1987,64 +2053,130 @@ class _DayGridView extends StatefulWidget {
 }
 
 class _DayGridViewState extends State<_DayGridView> {
+  List<TimeLogItem>? _dayLogsSource;
+  List<PomodoroRecord>? _dayPomodorosSource;
+  int? _dayDataStartMs;
+  int? _dayDataEndMs;
+  List<TimeLogItem> _dayLogs = const [];
+  List<PomodoroRecord> _dayPomodoros = const [];
+  List<MapEntry<String, int>> _sortedTagMinutes = const [];
+  List<PomodoroTag>? _tagIndexSource;
+  List<PomodoroTag>? _tagIndexSnapshot;
+  Map<String, PomodoroTag> _tagsByUuid = const {};
+  Map<String, int> _tagIndicesByUuid = const {};
+  int _dayLogMinutes = 0;
+  int _dayPomodoroMinutes = 0;
+
+  void _ensureTagIndex() {
+    final cachedTags = _tagIndexSnapshot;
+    if (identical(_tagIndexSource, widget.tags) &&
+        cachedTags != null &&
+        cachedTags.length == widget.tags.length) {
+      var tagsUnchanged = true;
+      for (var index = 0; index < widget.tags.length; index++) {
+        if (!identical(cachedTags[index], widget.tags[index])) {
+          tagsUnchanged = false;
+          break;
+        }
+      }
+      if (tagsUnchanged) return;
+    }
+
+    final tagsByUuid = <String, PomodoroTag>{};
+    final tagIndicesByUuid = <String, int>{};
+    for (var index = 0; index < widget.tags.length; index++) {
+      final tag = widget.tags[index];
+      tagsByUuid.putIfAbsent(tag.uuid, () => tag);
+      tagIndicesByUuid.putIfAbsent(tag.uuid, () => index);
+    }
+    _tagIndexSource = widget.tags;
+    _tagIndexSnapshot = List<PomodoroTag>.of(widget.tags, growable: false);
+    _tagsByUuid = tagsByUuid;
+    _tagIndicesByUuid = tagIndicesByUuid;
+  }
+
+  void _ensureDayData(int dayStartMs, int dayEndMs) {
+    if (identical(_dayLogsSource, widget.logs) &&
+        identical(_dayPomodorosSource, widget.pomodoros) &&
+        _dayDataStartMs == dayStartMs &&
+        _dayDataEndMs == dayEndMs) {
+      return;
+    }
+
+    final dayLogs = <TimeLogItem>[];
+    final dayPomodoros = <PomodoroRecord>[];
+    final tagMinutesByUuid = <String, int>{};
+    var logMinutes = 0;
+    for (final log in widget.logs) {
+      if (log.endTime <= dayStartMs || log.startTime >= dayEndMs) continue;
+      dayLogs.add(log);
+      final overlapMinutes = TimeLogRangeMath.overlapMinutes(
+        intervalStartMs: log.startTime,
+        intervalEndMs: log.endTime,
+        rangeStartMs: dayStartMs,
+        rangeEndMs: dayEndMs,
+      );
+      logMinutes += overlapMinutes;
+      for (final uuid in log.tagUuids) {
+        tagMinutesByUuid[uuid] =
+            (tagMinutesByUuid[uuid] ?? 0) + overlapMinutes;
+      }
+    }
+
+    var pomodoroMinutes = 0;
+    for (final pomodoro in widget.pomodoros) {
+      final endMs =
+          pomodoro.endTime ??
+          (pomodoro.startTime + pomodoro.effectiveDuration * 1000);
+      if (endMs <= dayStartMs || pomodoro.startTime >= dayEndMs) continue;
+      dayPomodoros.add(pomodoro);
+      final durationMinutes = pomodoro.effectiveDuration ~/ 60;
+      pomodoroMinutes += durationMinutes;
+      for (final uuid in pomodoro.tagUuids) {
+        tagMinutesByUuid[uuid] =
+            (tagMinutesByUuid[uuid] ?? 0) + durationMinutes;
+      }
+    }
+
+    _dayLogsSource = widget.logs;
+    _dayPomodorosSource = widget.pomodoros;
+    _dayDataStartMs = dayStartMs;
+    _dayDataEndMs = dayEndMs;
+    _dayLogs = dayLogs;
+    _dayPomodoros = dayPomodoros;
+    _sortedTagMinutes = tagMinutesByUuid.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    _dayLogMinutes = logMinutes;
+    _dayPomodoroMinutes = pomodoroMinutes;
+  }
+
   @override
   Widget build(BuildContext context) {
     final dayRange = CalendarDateMath.dayRange(widget.date);
     final ds = dayRange.start.millisecondsSinceEpoch;
     final de = dayRange.endExclusive.millisecondsSinceEpoch;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final colorScheme = Theme.of(context).colorScheme;
-
-    final dLogs = widget.logs
-        .where((l) => l.endTime > ds && l.startTime < de)
-        .toList();
-    final dPoms = widget.pomodoros.where((p) {
-      final pe = p.endTime ?? (p.startTime + p.effectiveDuration * 1000);
-      return pe > ds && p.startTime < de;
-    }).toList();
-
-    final logMin = dLogs.fold(
-      0,
-      (s, l) =>
-          s +
-          TimeLogRangeMath.overlapMinutes(
-            intervalStartMs: l.startTime,
-            intervalEndMs: l.endTime,
-            rangeStartMs: ds,
-            rangeEndMs: de,
-          ),
-    );
-    final pomMin = dPoms.fold(0, (s, p) => s + p.effectiveDuration ~/ 60);
-    final totalMin = logMin + pomMin;
-
-    final Map<String, int> tagMinMap = {};
-    for (final l in dLogs) {
-      for (final uid in l.tagUuids) {
-        tagMinMap[uid] =
-            (tagMinMap[uid] ?? 0) +
-            TimeLogRangeMath.overlapMinutes(
-              intervalStartMs: l.startTime,
-              intervalEndMs: l.endTime,
-              rangeStartMs: ds,
-              rangeEndMs: de,
-            );
-      }
-    }
-    for (final p in dPoms) {
-      for (final uid in p.tagUuids) {
-        tagMinMap[uid] = (tagMinMap[uid] ?? 0) + p.effectiveDuration ~/ 60;
-      }
-    }
+    _ensureDayData(ds, de);
+    _ensureTagIndex();
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final colorScheme = theme.colorScheme;
+    final totalMin = _dayLogMinutes + _dayPomodoroMinutes;
 
     return Column(
       children: [
-        _buildSummary(context, totalMin, logMin, pomMin, tagMinMap),
+        _buildSummary(
+          context,
+          totalMin,
+          _dayLogMinutes,
+          _dayPomodoroMinutes,
+          _sortedTagMinutes,
+          _tagsByUuid,
+        ),
         Expanded(
           child: LayoutBuilder(
             builder: (ctx, constraints) {
               final gridAreaW = constraints.maxWidth - kTimeAxisW;
               final colW = gridAreaW / kColsPerH;
-              debugPrint('colW=$colW  gridAreaW=$gridAreaW');
               final rowH = constraints.maxHeight / kTotalRows;
 
               return Row(
@@ -2064,9 +2196,10 @@ class _DayGridViewState extends State<_DayGridView> {
                         rowW: gridAreaW,
                         rowH: rowH,
                         dayStartMs: ds,
-                        dLogs: dLogs,
-                        dPoms: dPoms,
+                        dLogs: _dayLogs,
+                        dPoms: _dayPomodoros,
                         tags: widget.tags,
+                        tagIndicesByUuid: _tagIndicesByUuid,
                         isDark: isDark,
                         focusColor: colorScheme.cdtFocus,
                         logColor: colorScheme.cdtInfo,
@@ -2090,7 +2223,8 @@ class _DayGridViewState extends State<_DayGridView> {
     int total,
     int logMin,
     int pomMin,
-    Map<String, int> tagMinMap,
+    List<MapEntry<String, int>> sortedTagMinutes,
+    Map<String, PomodoroTag> tagsByUuid,
   ) {
     final accent = Theme.of(ctx).colorScheme.primary;
     return Container(
@@ -2167,12 +2301,12 @@ class _DayGridViewState extends State<_DayGridView> {
               ),
             ],
           ),
-          if (tagMinMap.isNotEmpty && total > 0) ...[
+          if (sortedTagMinutes.isNotEmpty && total > 0) ...[
             const SizedBox(height: 8),
             _TagProgressBar(
-              tagMinMap: tagMinMap,
+              sortedTagMinutes: sortedTagMinutes,
               totalMin: total,
-              tags: widget.tags,
+              tagsByUuid: tagsByUuid,
             ),
           ],
         ],
@@ -2249,6 +2383,7 @@ class _GridCanvas extends StatelessWidget {
   final List<TimeLogItem> dLogs;
   final List<PomodoroRecord> dPoms;
   final List<PomodoroTag> tags;
+  final Map<String, int> tagIndicesByUuid;
   final bool isDark;
   final Color focusColor;
   final Color logColor;
@@ -2264,6 +2399,7 @@ class _GridCanvas extends StatelessWidget {
     required this.dLogs,
     required this.dPoms,
     required this.tags,
+    required this.tagIndicesByUuid,
     required this.isDark,
     required this.focusColor,
     required this.logColor,
@@ -2272,9 +2408,21 @@ class _GridCanvas extends StatelessWidget {
     required this.onTimeLogTap,
   });
 
+  PomodoroTag? _firstTagForUuids(List<String> uuids) {
+    int? firstIndex;
+    for (final uuid in uuids) {
+      final index = tagIndicesByUuid[uuid];
+      if (index != null && (firstIndex == null || index < firstIndex)) {
+        firstIndex = index;
+      }
+    }
+    return firstIndex == null ? null : tags[firstIndex];
+  }
+
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
+    final dayEndMs = _dayEndMs(DateTime.fromMillisecondsSinceEpoch(dayStartMs));
     final colorScheme = Theme.of(context).colorScheme;
     final isToday = AppTimeFormats.isSameDay(now, date);
     final nowTotalMin = isToday ? now.hour * 60 + now.minute : -1;
@@ -2310,19 +2458,13 @@ class _GridCanvas extends StatelessWidget {
               pom.endTime ?? (pom.startTime + pom.effectiveDuration * 1000);
           PomodoroTag? tag;
           if (pom.tagUuids.isNotEmpty) {
-            tag = tags.cast<PomodoroTag?>().firstWhere(
-              (t) => pom.tagUuids.contains(t?.uuid),
-              orElse: () => null,
-            );
+            tag = _firstTagForUuids(pom.tagUuids);
           }
           final base = tag != null ? hexColor(tag.color) : focusColor;
           final title = tag?.name ?? '专注';
           return _buildEventBlocks(
             startMs: max(pom.startTime, dayStartMs),
-            endMs: min(
-              pe,
-              _dayEndMs(DateTime.fromMillisecondsSinceEpoch(dayStartMs)),
-            ),
+            endMs: min(pe, dayEndMs),
             dayStartMs: dayStartMs,
             colW: colW,
             rowW: rowW,
@@ -2338,19 +2480,13 @@ class _GridCanvas extends StatelessWidget {
         ...dLogs.expand((log) {
           PomodoroTag? tag;
           if (log.tagUuids.isNotEmpty) {
-            tag = tags.cast<PomodoroTag?>().firstWhere(
-              (t) => log.tagUuids.contains(t?.uuid),
-              orElse: () => null,
-            );
+            tag = _firstTagForUuids(log.tagUuids);
           }
           final base = tag != null ? hexColor(tag.color) : logColor;
           final title = log.title.isNotEmpty ? log.title : (tag?.name ?? '补录');
           return _buildEventBlocks(
             startMs: max(log.startTime, dayStartMs),
-            endMs: min(
-              log.endTime,
-              _dayEndMs(DateTime.fromMillisecondsSinceEpoch(dayStartMs)),
-            ),
+            endMs: min(log.endTime, dayEndMs),
             dayStartMs: dayStartMs,
             colW: colW,
             rowW: rowW,
@@ -2674,20 +2810,18 @@ class _GridBgPainter extends CustomPainter {
 // 标签色条
 // ══════════════════════════════════════════════════════════
 class _TagProgressBar extends StatelessWidget {
-  final Map<String, int> tagMinMap;
+  final List<MapEntry<String, int>> sortedTagMinutes;
   final int totalMin;
-  final List<PomodoroTag> tags;
+  final Map<String, PomodoroTag> tagsByUuid;
 
   const _TagProgressBar({
-    required this.tagMinMap,
+    required this.sortedTagMinutes,
     required this.totalMin,
-    required this.tags,
+    required this.tagsByUuid,
   });
 
   @override
   Widget build(BuildContext context) {
-    final sorted = tagMinMap.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -2697,11 +2831,8 @@ class _TagProgressBar extends StatelessWidget {
             height: 5,
             width: double.infinity,
             child: Row(
-              children: sorted.map((e) {
-                final t = tags.cast<PomodoroTag?>().firstWhere(
-                  (t) => t?.uuid == e.key,
-                  orElse: () => null,
-                );
+              children: sortedTagMinutes.map((e) {
+                final t = tagsByUuid[e.key];
                 final c = t != null
                     ? hexColor(t.color)
                     : Theme.of(context).colorScheme.cdtInfo;
@@ -2717,11 +2848,8 @@ class _TagProgressBar extends StatelessWidget {
         Wrap(
           spacing: 10,
           runSpacing: 3,
-          children: sorted.map((e) {
-            final t = tags.cast<PomodoroTag?>().firstWhere(
-              (t) => t?.uuid == e.key,
-              orElse: () => null,
-            );
+          children: sortedTagMinutes.map((e) {
+            final t = tagsByUuid[e.key];
             if (t == null) return const SizedBox.shrink();
             final c = hexColor(t.color);
             return Row(

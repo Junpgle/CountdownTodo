@@ -1302,10 +1302,12 @@ class PomodoroService {
         final currentSeconds = currentlyLinked ? record.effectiveDuration : 0;
         final secondsDelta = currentSeconds - previousSeconds;
 
-        final oldLinkCount = block.pomodoroRecordIds
-            .where((uuid) => uuid == record.uuid)
-            .length;
-        block.pomodoroRecordIds.removeWhere((uuid) => uuid == record.uuid);
+        var oldLinkCount = 0;
+        block.pomodoroRecordIds.removeWhere((uuid) {
+          final matches = uuid == record.uuid;
+          if (matches) oldLinkCount++;
+          return matches;
+        });
         if (currentlyLinked) block.pomodoroRecordIds.add(record.uuid);
         final linkChanged = currentlyLinked
             ? oldLinkCount != 1

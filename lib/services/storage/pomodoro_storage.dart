@@ -83,6 +83,8 @@ class PomodoroStorage {
   static Future<List<TimeLogItem>> getTimeLogs(
     String username, {
     int? limit,
+    DateTime? from,
+    DateTime? to,
     required TimeLogMigrationSaver saveMigratedTimeLogs,
   }) async {
     final prefs = await SharedPreferences.getInstance();
@@ -115,9 +117,10 @@ class PomodoroStorage {
         await prefs.setBool(migrationKey, true);
       } else {
         final db = await dbHelper.databaseForUser(username);
-        final countRows =
-            await db.rawQuery('SELECT COUNT(*) as cnt FROM time_logs');
-        final hasSqlRows = (countRows.first['cnt'] as int? ?? 0) > 0;
+        final existingRows = await db.rawQuery(
+          'SELECT 1 FROM time_logs LIMIT 1',
+        );
+        final hasSqlRows = existingRows.isNotEmpty;
         final legacyJsonList =
             prefs.getStringList("${_timeLogsKey}_$username") ?? [];
         if (!hasSqlRows && legacyJsonList.isNotEmpty) {
@@ -135,9 +138,34 @@ class PomodoroStorage {
       }
 
       final db = await dbHelper.databaseForUser(username);
+      final timeConditions = <String>[];
+      final timeArgs = <Object?>[];
+      if (from != null) {
+        timeConditions.add('start_time >= ?');
+        timeArgs.add(from.millisecondsSinceEpoch);
+      }
+      if (to != null) {
+        timeConditions.add('start_time < ?');
+        timeArgs.add(to.millisecondsSinceEpoch);
+      }
+      final where = <String>[];
+      final whereArgs = <Object?>[];
+      if (timeConditions.isEmpty) {
+        where.add('is_deleted = 0');
+      } else {
+        final timeRange = timeConditions.join(' AND ');
+        where.add(
+          '((is_deleted = 0 AND ($timeRange)) OR '
+          '(is_deleted IS NULL AND ($timeRange)))',
+        );
+        whereArgs
+          ..addAll(timeArgs)
+          ..addAll(timeArgs);
+      }
       final List<Map<String, dynamic>> maps = await db.query(
         'time_logs',
-        where: 'is_deleted = 0',
+        where: where.join(' AND '),
+        whereArgs: whereArgs,
         orderBy: 'start_time DESC',
         limit: limit,
       );
@@ -146,7 +174,25 @@ class PomodoroStorage {
     } catch (e) {
 //       debugPrint("⚠️ TimeLogs SQL 异常: $e");
       final list = prefs.getStringList("${_timeLogsKey}_$username") ?? [];
-      return list.map((e) => TimeLogItem.fromJson(jsonDecode(e))).toList();
+      final items = list
+          .map((e) => TimeLogItem.fromJson(jsonDecode(e)))
+          .toList();
+      if (from == null && to == null) return items;
+      final fromMs = from?.millisecondsSinceEpoch;
+      final toMs = to?.millisecondsSinceEpoch;
+      final filtered = items
+          .where(
+            (item) =>
+                !item.isDeleted &&
+                (fromMs == null || item.startTime >= fromMs) &&
+                (toMs == null || item.startTime < toMs),
+          )
+          .toList()
+        ..sort((a, b) => b.startTime.compareTo(a.startTime));
+      if (limit != null && limit >= 0 && filtered.length > limit) {
+        return filtered.take(limit).toList();
+      }
+      return filtered;
     }
   }
 

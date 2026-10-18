@@ -38,6 +38,7 @@ class PomodoroTodaySection extends StatefulWidget {
 class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
     with SingleTickerProviderStateMixin {
   List<PomodoroRecord> _records = [];
+  final Map<String, GlobalKey> _recordCardKeys = {};
   bool _loading = true;
   bool _collapsed = false;
   bool _isToday = true;
@@ -89,6 +90,12 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
       hourlySeconds[startLocal.hour] += duration;
     }
     final maxHourlySeconds = hourlySeconds.reduce(max);
+    final activeRecordUuids = result.records
+        .map((record) => record.uuid)
+        .toSet();
+    _recordCardKeys.removeWhere(
+      (uuid, _) => !activeRecordUuids.contains(uuid),
+    );
 
     setState(() {
       _records = result.records;
@@ -100,6 +107,11 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
     });
     _chartAnimationController.forward(from: 0.0);
   }
+
+  GlobalKey _recordCardKeyFor(String recordUuid) => _recordCardKeys.putIfAbsent(
+    recordUuid,
+    GlobalKey.new,
+  );
 
   Widget _buildGlassCard({
     required double borderRadius,
@@ -458,7 +470,7 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
         ? (widget.isLight ? Colors.greenAccent : colorScheme.cdtSuccess)
         : (widget.isLight ? Colors.amber : colorScheme.cdtWarning);
     final hasPause = (record.totalPauseSeconds ?? 0) > 0;
-    final cardKey = GlobalKey();
+    final cardKey = _recordCardKeyFor(record.uuid);
 
     return Padding(
       key: ValueKey(record.uuid),
