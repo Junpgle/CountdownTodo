@@ -189,12 +189,13 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
 
   String _fixedScheduleTimeLabel(FixedScheduleItem item) {
     if (item.startTime == null) return '时间待定';
+    final timeFormat = _cachedDateFormat('HH:mm');
     final start = DateTime.fromMillisecondsSinceEpoch(item.startTime!);
     if (item.endTime == null) {
-      return '${DateFormat('HH:mm').format(start)} · 结束待定';
+      return '${timeFormat.format(start)} · 结束待定';
     }
     final end = DateTime.fromMillisecondsSinceEpoch(item.endTime!);
-    return '${DateFormat('HH:mm').format(start)} - ${DateFormat('HH:mm').format(end)}';
+    return '${timeFormat.format(start)} - ${timeFormat.format(end)}';
   }
 
   Future<void> _openFixedScheduleDetail(
