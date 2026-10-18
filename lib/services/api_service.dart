@@ -10,6 +10,8 @@ import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 
 class ApiService {
+  static final RegExp _trailingSlashPattern = RegExp(r'/$');
+
   /// Persisted values for the production API route selector.
   ///
   /// Keep these values stable because older releases store them in
@@ -112,7 +114,10 @@ class ApiService {
   /// routes share the Aliyun production namespace; test, legacy, and custom
   /// endpoints remain isolated.
   static String get syncServerKey {
-    final normalized = _effectiveBaseUrl.replaceFirst(RegExp(r'/$'), '');
+    final normalized = _effectiveBaseUrl.replaceFirst(
+      _trailingSlashPattern,
+      '',
+    );
     // Direct HTTP and Cloudflare HTTPS both reach the same Aliyun production
     // database, so switching routes must not create a second sync cursor.
     if (normalized == aliyunProdUrl || normalized == aliyunCloudflareUrl) {
