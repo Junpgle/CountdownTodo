@@ -109,9 +109,7 @@ abstract final class HabitAiContextService {
   static final RegExp _rollingMonthPattern = RegExp(
     r'(?:近|最近|过去)\s*(?:(\d+|[零〇○一二两三四五六七八九十]{1,3})\s*个?月|半年)',
   );
-  static final RegExp _rollingYearPattern = RegExp(
-    r'(?:近|最近|过去)\s*(?:一年|1年)',
-  );
+  static final RegExp _rollingYearPattern = RegExp(r'(?:近|最近|过去)\s*(?:一年|1年)');
 
   static final RegExp _relativePeriodPattern = RegExp(
     r'最近(?:30天|三十天|7天|七天)|过去(?:30天|三十天|7天|七天)|近(?:30天|三十天|7天|七天)|'
@@ -426,9 +424,7 @@ abstract final class HabitAiContextService {
     final chineseDate = _chineseDatePattern.firstMatch(text);
     final defaultChineseDateYear = text.contains('前年')
         ? today.year - 2
-        : text.contains('去年') ||
-              text.contains('上一年') ||
-              text.contains('前一年')
+        : text.contains('去年') || text.contains('上一年') || text.contains('前一年')
         ? today.year - 1
         : today.year;
     final parsedChineseDate = chineseDate == null
@@ -487,9 +483,7 @@ abstract final class HabitAiContextService {
     if (month != null && month >= 1 && month <= 12) {
       year ??= text.contains('前年')
           ? today.year - 2
-          : text.contains('去年') ||
-                text.contains('上一年') ||
-                text.contains('前一年')
+          : text.contains('去年') || text.contains('上一年') || text.contains('前一年')
           ? today.year - 1
           : today.year;
       final from = DateTime(year, month);
@@ -512,10 +506,7 @@ abstract final class HabitAiContextService {
           currentQuarterStart.month - 6,
         );
         to = HabitRuleResolver.addCalendarDays(
-          DateTime(
-            currentQuarterStart.year,
-            currentQuarterStart.month - 3,
-          ),
+          DateTime(currentQuarterStart.year, currentQuarterStart.month - 3),
           -1,
         );
       } else if (text.contains('上季度') ||
@@ -567,11 +558,7 @@ abstract final class HabitAiContextService {
           -1,
         );
       }
-      return (
-        from: from,
-        to: to,
-        label: '${_dateKey(from)} 至 ${_dateKey(to)}',
-      );
+      return (from: from, to: to, label: '${_dateKey(from)} 至 ${_dateKey(to)}');
     }
     final day = _day(today);
     DateTime from = day;
@@ -875,11 +862,10 @@ abstract final class HabitAiContextService {
     return value;
   }
 
-  static DateTime _mondayOf(DateTime date) =>
-      HabitRuleResolver.addCalendarDays(
-        _day(date),
-        DateTime.monday - date.weekday,
-      );
+  static DateTime _mondayOf(DateTime date) => HabitRuleResolver.addCalendarDays(
+    _day(date),
+    DateTime.monday - date.weekday,
+  );
 
   static String _formatProgressValue(
     HabitGoal goal,

@@ -19,6 +19,7 @@ import 'habit_archived_screen.dart';
 import 'habit_calendar_tab.dart';
 import 'habit_edit_screen.dart';
 import 'habit_today_tab.dart';
+import '../widgets/habit_celebration_settings_dialog.dart';
 import '../../../utils/app_dialogs.dart';
 
 /// 习惯中心：今日 / 日历 / 分析 三个标签页。
@@ -62,8 +63,9 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
     _loadChallengePromotion();
     _loadSleepLogMigration();
     if (widget.openSleepMigration) {
-      WidgetsBinding.instance
-          .addPostFrameCallback((_) => _openSleepLogMigrationEntry());
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _openSleepLogMigrationEntry(),
+      );
     } else {
       WidgetsBinding.instance.addPostFrameCallback((_) => _checkCoachMarks());
     }
@@ -84,9 +86,7 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
 
   Future<void> _openChallengePromotion() async {
     await Navigator.of(context).push(
-      PageTransitions.material(
-        builder: (_) => const ChallengeCenterScreen(),
-      ),
+      PageTransitions.material(builder: (_) => const ChallengeCenterScreen()),
     );
     if (mounted) _loadChallengePromotion();
   }
@@ -217,8 +217,8 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
                     existingText: displayProposal.hasEarlyWake
                         ? '已有习惯'
                         : displayProposal.hasReliableWakeTime
-                            ? null
-                            : '需手动补录',
+                        ? null
+                        : '需手动补录',
                   ),
                   const SizedBox(height: 14),
                   Text(
@@ -280,7 +280,8 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
                     children: [
                       ChoiceChip(
                         label: const Text('取开始时间'),
-                        selected: timeSelection ==
+                        selected:
+                            timeSelection ==
                             HabitSleepLogTimeSelection.startTime,
                         onSelected: (_) => setDialogState(
                           () => timeSelection =
@@ -289,7 +290,8 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
                       ),
                       ChoiceChip(
                         label: const Text('取平均时间'),
-                        selected: timeSelection ==
+                        selected:
+                            timeSelection ==
                             HabitSleepLogTimeSelection.midpoint,
                         onSelected: (_) => setDialogState(
                           () => timeSelection =
@@ -376,10 +378,7 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
       );
     } catch (e) {
       if (!mounted) return;
-      AppSnackBars.showSnackBar(
-        context,
-        SnackBar(content: Text('迁移失败：$e')),
-      );
+      AppSnackBars.showSnackBar(context, SnackBar(content: Text('迁移失败：$e')));
     }
   }
 
@@ -512,8 +511,9 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                              color: colorScheme.onPrimaryContainer
-                                  .withValues(alpha: 0.78),
+                              color: colorScheme.onPrimaryContainer.withValues(
+                                alpha: 0.78,
+                              ),
                               fontSize: 13,
                             ),
                           ),
@@ -568,8 +568,9 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
 
   Future<void> _checkCoachMarks() async {
     if (_showCoachMarks || !mounted) return;
-    final hasSeenCoachMarks =
-        await FeatureTipService.hasTipBeenShown('coach_habit_center');
+    final hasSeenCoachMarks = await FeatureTipService.hasTipBeenShown(
+      'coach_habit_center',
+    );
     if (hasSeenCoachMarks || !mounted) return;
 
     _showCoachMarks = true;
@@ -617,6 +618,11 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
         final topBarHeight = floatingGlassTopBarHeight(context);
 
         final actions = [
+          IconButton(
+            tooltip: '打卡仪式感设置',
+            onPressed: () => HabitCelebrationSettingsDialog.show(context),
+            icon: const Icon(Icons.auto_awesome_outlined),
+          ),
           IconButton(
             tooltip: '从时间日志迁移早睡早起',
             onPressed: _openSleepLogMigrationEntry,
@@ -704,10 +710,7 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
               // The tab pages share one transparent top bar, so reserve its
               // space once here rather than once per tab.
               padding: EdgeInsets.only(top: topBarHeight),
-              child: TabBarView(
-                controller: _tabController,
-                children: bodyTabs,
-              ),
+              child: TabBarView(controller: _tabController, children: bodyTabs),
             ),
           ),
         );

@@ -49,40 +49,36 @@ void main() {
     });
   });
 
-  test('canonical sleep goal is deterministic when old devices created copies',
-      () {
-    final copy = HabitGoal(
-      name: '我的早睡',
-      sourceType: HabitSourceType.timeCheckIn,
-      createdAt: 100,
-    );
-    final canonical = HabitGoal(
-      name: '早睡',
-      sourceType: HabitSourceType.timeCheckIn,
-      createdAt: 200,
-    );
+  test(
+    'canonical sleep goal is deterministic when old devices created copies',
+    () {
+      final copy = HabitGoal(
+        name: '我的早睡',
+        sourceType: HabitSourceType.timeCheckIn,
+        createdAt: 100,
+      );
+      final canonical = HabitGoal(
+        name: '早睡',
+        sourceType: HabitSourceType.timeCheckIn,
+        createdAt: 200,
+      );
 
-    expect(
-      HabitSleepGoalResolver.canonical(
-        [copy, canonical],
-        HabitAdaptationKind.earlySleep,
-      )?.uuid,
-      canonical.uuid,
-    );
+      expect(
+        HabitSleepGoalResolver.canonical([
+          copy,
+          canonical,
+        ], HabitAdaptationKind.earlySleep)?.uuid,
+        canonical.uuid,
+      );
 
-    final displayGoals = HabitSleepGoalResolver.forDisplay([
-      canonical,
-      copy,
-      HabitGoal(
-        name: '普通习惯',
-        sourceType: HabitSourceType.quantityCheckIn,
-      ),
-    ]);
-    expect(
-      displayGoals.map((goal) => goal.name).toList(),
-      ['早睡', '普通习惯'],
-    );
-  });
+      final displayGoals = HabitSleepGoalResolver.forDisplay([
+        canonical,
+        copy,
+        HabitGoal(name: '普通习惯', sourceType: HabitSourceType.quantityCheckIn),
+      ]);
+      expect(displayGoals.map((goal) => goal.name).toList(), ['早睡', '普通习惯']);
+    },
+  );
 
   test('logical today uses the plan timezone rather than device timezone', () {
     final plan = HabitSleepCoachingPlan(timezoneOffsetMinutes: 480);
@@ -95,8 +91,9 @@ void main() {
     expect(today, DateTime(2026, 8, 12));
   });
 
-  testWidgets('switching off disables the plan instead of pausing it',
-      (tester) async {
+  testWidgets('switching off disables the plan instead of pausing it', (
+    tester,
+  ) async {
     var enabledValue = true;
     bool? pausedValue;
     final plan = HabitSleepCoachingPlan(enabled: true);

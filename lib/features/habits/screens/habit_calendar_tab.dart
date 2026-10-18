@@ -89,8 +89,10 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
         goal.uuid,
         () => <HabitGoalRuleRevision>[],
       );
-      rules.sort((a, b) =>
-          (a.effectiveFromDate ?? '').compareTo(b.effectiveFromDate ?? ''));
+      rules.sort(
+        (a, b) =>
+            (a.effectiveFromDate ?? '').compareTo(b.effectiveFromDate ?? ''),
+      );
       if (rules.isNotEmpty) calculationGoals.add(goal);
     }
 
@@ -243,8 +245,9 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final isWide = constraints.maxWidth > 600;
-        final bottomPadding =
-            floatingBottomNavigationContentPaddingFor(context);
+        final bottomPadding = floatingBottomNavigationContentPaddingFor(
+          context,
+        );
 
         if (isWide) {
           return Row(
@@ -256,7 +259,11 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
                   onRefresh: _loadData,
                   child: ListView(
                     padding: EdgeInsets.fromLTRB(
-                        16, widget.topPadding + 12, 16, bottomPadding),
+                      16,
+                      widget.topPadding + 12,
+                      16,
+                      bottomPadding,
+                    ),
                     children: [
                       _buildMonthHeader(),
                       const SizedBox(height: 12),
@@ -270,15 +277,20 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
                 ),
               ),
               const VerticalDivider(
-                  width: 1, thickness: 1, color: Colors.black12),
+                width: 1,
+                thickness: 1,
+                color: Colors.black12,
+              ),
               Expanded(
                 flex: 4,
                 child: ListView(
                   padding: EdgeInsets.fromLTRB(
-                      16, widget.topPadding + 12, 16, bottomPadding),
-                  children: [
-                    _buildSelectedDayDetail(),
-                  ],
+                    16,
+                    widget.topPadding + 12,
+                    16,
+                    bottomPadding,
+                  ),
+                  children: [_buildSelectedDayDetail()],
                 ),
               ),
             ],
@@ -289,7 +301,11 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
           onRefresh: _loadData,
           child: ListView(
             padding: EdgeInsets.fromLTRB(
-                16, widget.topPadding + 12, 16, bottomPadding),
+              16,
+              widget.topPadding + 12,
+              16,
+              bottomPadding,
+            ),
             children: [
               _buildMonthHeader(),
               const SizedBox(height: 12),
@@ -370,10 +386,12 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
     final today = DateTime.now();
     for (int day = 1; day <= daysInMonth; day++) {
       final date = DateTime(_month.year, _month.month, day);
-      final isToday = date.year == today.year &&
+      final isToday =
+          date.year == today.year &&
           date.month == today.month &&
           date.day == today.day;
-      final isSelected = date.year == _selectedDay.year &&
+      final isSelected =
+          date.year == _selectedDay.year &&
           date.month == _selectedDay.month &&
           date.day == _selectedDay.day;
       final aggData = _aggregate(date);
@@ -410,8 +428,8 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
                 color: isSelected
                     ? colorScheme.primary
                     : isToday
-                        ? colorScheme.primary.withValues(alpha: 0.4)
-                        : Colors.transparent,
+                    ? colorScheme.primary.withValues(alpha: 0.4)
+                    : Colors.transparent,
                 width: isSelected ? 2 : 1,
               ),
             ),
@@ -428,8 +446,9 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
                         heightFactor: ratio,
                         widthFactor: 1.0,
                         child: Container(
-                          color: colorScheme.tertiaryContainer
-                              .withValues(alpha: 0.6),
+                          color: colorScheme.tertiaryContainer.withValues(
+                            alpha: 0.6,
+                          ),
                         ),
                       ),
                     ),
@@ -441,8 +460,9 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
                           '$day',
                           style: TextStyle(
                             fontSize: 13,
-                            fontWeight:
-                                isToday ? FontWeight.w800 : FontWeight.w500,
+                            fontWeight: isToday
+                                ? FontWeight.w800
+                                : FontWeight.w500,
                             color: isSelected
                                 ? colorScheme.primary
                                 : colorScheme.onSurface,
@@ -488,18 +508,12 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
           Container(
             width: 10,
             height: 10,
-            decoration: BoxDecoration(
-              color: color,
-              shape: BoxShape.circle,
-            ),
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
           ),
           const SizedBox(width: 4),
           Text(
             label,
-            style: TextStyle(
-              fontSize: 11,
-              color: colorScheme.onSurfaceVariant,
-            ),
+            style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
           ),
         ],
       );
@@ -519,7 +533,8 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
   // ── 选中日明细 ──────────────────────────────────────
   Widget _buildSelectedDayDetail() {
     final colorScheme = Theme.of(context).colorScheme;
-    final dayLabel = '${_selectedDay.month} 月 ${_selectedDay.day} 日'
+    final dayLabel =
+        '${_selectedDay.month} 月 ${_selectedDay.day} 日'
         ' · 周${'一二三四五六日'[_selectedDay.weekday - 1]}';
     final rows = <Widget>[];
     final key = HabitRuleResolver.dayKey(_selectedDay);
@@ -593,8 +608,10 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
       ),
       child: Row(
         children: [
-          Text(goal.icon.isNotEmpty ? goal.icon : '🎯',
-              style: const TextStyle(fontSize: 22)),
+          Text(
+            goal.icon.isNotEmpty ? goal.icon : '🎯',
+            style: const TextStyle(fontSize: 22),
+          ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -617,7 +634,9 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
                     const SizedBox(width: 8),
                     Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 6, vertical: 2),
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
                       decoration: BoxDecoration(
                         color: color.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(6),
@@ -644,7 +663,7 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
                       color: colorScheme.onSurfaceVariant,
                     ),
                   ),
-                ]
+                ],
               ],
             ),
           ),
@@ -688,11 +707,10 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
       style: OutlinedButton.styleFrom(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         minimumSize: const Size(0, 32),
-        foregroundColor:
-            skipped ? colorScheme.onSurfaceVariant : colorScheme.outline,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
-        ),
+        foregroundColor: skipped
+            ? colorScheme.onSurfaceVariant
+            : colorScheme.outline,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
       child: Text(skipped ? '取消跳过' : '跳过'),
     );
@@ -750,11 +768,10 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
       style: OutlinedButton.styleFrom(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         minimumSize: const Size(0, 32),
-        foregroundColor:
-            met ? colorScheme.onSurfaceVariant : colorScheme.primary,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
-        ),
+        foregroundColor: met
+            ? colorScheme.onSurfaceVariant
+            : colorScheme.primary,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
       child: Text(met ? '撤销' : '补卡'),
     );

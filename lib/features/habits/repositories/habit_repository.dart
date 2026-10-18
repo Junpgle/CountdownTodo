@@ -47,9 +47,11 @@ abstract final class HabitRepository {
   static Future<Set<String>> getHabitOnlyRecurringTodoSeriesIds() async {
     final goals = await getActiveGoals();
     return goals
-        .where((goal) =>
-            goal.sourceType == HabitSourceType.recurringTodo &&
-            goal.displayMode == HabitDisplayMode.habitOnly)
+        .where(
+          (goal) =>
+              goal.sourceType == HabitSourceType.recurringTodo &&
+              goal.displayMode == HabitDisplayMode.habitOnly,
+        )
         .expand((goal) => goal.sourceIds)
         .where((seriesId) => seriesId.isNotEmpty)
         .toSet();
@@ -60,19 +62,17 @@ abstract final class HabitRepository {
 
   static Future<List<HabitGoalRuleRevision>> getRulesForHabits(
     Iterable<String> habitUuids,
-  ) =>
-      HabitStorage.getRuleRevisionsForHabits(habitUuids);
+  ) => HabitStorage.getRuleRevisionsForHabits(habitUuids);
 
   static Future<List<HabitCheckIn>> getCheckIns({
     String? habitUuid,
     String? fromDate,
     String? toDate,
-  }) =>
-      HabitStorage.getCheckIns(
-        habitUuid: habitUuid,
-        fromDate: fromDate,
-        toDate: toDate,
-      );
+  }) => HabitStorage.getCheckIns(
+    habitUuid: habitUuid,
+    fromDate: fromDate,
+    toDate: toDate,
+  );
 
   static Future<List<HabitCheckIn>> getCheckInsForHabits(
     Iterable<String> habitUuids, {
@@ -237,13 +237,7 @@ abstract final class HabitRepository {
   @visibleForTesting
   static DateTime reminderStartFor(DateTime day, int minuteOfDay) {
     final m = minuteOfDay.clamp(0, 1439);
-    return DateTime(
-      day.year,
-      day.month,
-      day.day,
-      m ~/ 60,
-      m % 60,
-    );
+    return DateTime(day.year, day.month, day.day, m ~/ 60, m % 60);
   }
 
   static Future<TodoItem> _createRecurringTodoFromRule({
@@ -255,8 +249,11 @@ abstract final class HabitRepository {
     final todo = TodoItem(
       title: name,
       isAllDay: true,
-      createdDate:
-          DateTime(now.year, now.month, now.day).millisecondsSinceEpoch,
+      createdDate: DateTime(
+        now.year,
+        now.month,
+        now.day,
+      ).millisecondsSinceEpoch,
     );
     todo.recurrence = _recurrenceFromRule(rule);
     todo.customIntervalDays = rule.customIntervalDays;
@@ -267,8 +264,10 @@ abstract final class HabitRepository {
     // 目标时刻触发（循环实例会继承该时刻）。
     final fixedTimes = rule.reminderPolicy.fixedTimes;
     if (fixedTimes.isNotEmpty) {
-      todo.createdDate =
-          reminderStartFor(now, fixedTimes.first).millisecondsSinceEpoch;
+      todo.createdDate = reminderStartFor(
+        now,
+        fixedTimes.first,
+      ).millisecondsSinceEpoch;
       todo.reminderMinutes = 0;
     }
     await StorageService.updateSingleTodo(username, todo);
@@ -318,7 +317,9 @@ abstract final class HabitRepository {
   }) async {
     final todayKey = HabitRuleResolver.dayKey(
       HabitRuleResolver.logicalDateFor(
-          DateTime.now(), updatedRule.dayBoundaryMinute),
+        DateTime.now(),
+        updatedRule.dayBoundaryMinute,
+      ),
     );
 
     if (effectiveFromOption == 'all') {
@@ -334,7 +335,8 @@ abstract final class HabitRepository {
             fieldsToUpdate.contains('targetTimeMinute')) {
           rule.targetTimeMinute = updatedRule.targetTimeMinute;
         }
-        if (fieldsToUpdate == null || fieldsToUpdate.contains('timeComparison')) {
+        if (fieldsToUpdate == null ||
+            fieldsToUpdate.contains('timeComparison')) {
           rule.timeComparison = updatedRule.timeComparison;
         }
         if (fieldsToUpdate == null ||
@@ -375,8 +377,10 @@ abstract final class HabitRepository {
     }
 
     final sorted = allRules.where((r) => !r.isDeleted).toList()
-      ..sort((a, b) =>
-          (a.effectiveFromDate ?? '').compareTo(b.effectiveFromDate ?? ''));
+      ..sort(
+        (a, b) =>
+            (a.effectiveFromDate ?? '').compareTo(b.effectiveFromDate ?? ''),
+      );
     final current = sorted.isNotEmpty ? sorted.last : null;
 
     if (effectiveFromOption != 'nextPeriod' &&
@@ -409,7 +413,9 @@ abstract final class HabitRepository {
             HabitRuleResolver.nextPeriodStart(
               current,
               HabitRuleResolver.logicalDateFor(
-                  DateTime.now(), current.dayBoundaryMinute),
+                DateTime.now(),
+                current.dayBoundaryMinute,
+              ),
             ),
           )
         : todayKey;
@@ -534,9 +540,7 @@ abstract final class HabitRepository {
 
   /// Persist already-versioned check-in changes together, then publish one
   /// sync request, refresh signal, and reminder reschedule per affected habit.
-  static Future<void> saveCheckInsBatch(
-    List<HabitCheckIn> checkIns,
-  ) async {
+  static Future<void> saveCheckInsBatch(List<HabitCheckIn> checkIns) async {
     if (checkIns.isEmpty) return;
     await HabitStorage.saveCheckIns(checkIns);
     await _requestSync();
@@ -575,8 +579,10 @@ abstract final class HabitRepository {
       toDate: logicalDate,
     );
     final replaced = existing
-        .where((checkIn) =>
-            !checkIn.isDeleted && checkIn.source != HabitCheckInSource.skip)
+        .where(
+          (checkIn) =>
+              !checkIn.isDeleted && checkIn.source != HabitCheckInSource.skip,
+        )
         .toList(growable: false);
     if (replaced.isEmpty) return 0;
 
@@ -642,10 +648,7 @@ abstract final class HabitRepository {
     HabitGoal goal,
     DateTime logicalDate,
   ) async {
-    return HabitSourceResolver.todoForSeriesOnDate(
-      goal.sourceIds,
-      logicalDate,
-    );
+    return HabitSourceResolver.todoForSeriesOnDate(goal.sourceIds, logicalDate);
   }
 
   /// 切换完成型习惯当天实例的完成状态。

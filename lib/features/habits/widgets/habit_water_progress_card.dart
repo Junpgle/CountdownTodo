@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+
 import '../../../utils/android_energy_policy.dart';
 import '../../../services/power_save_mode_service.dart';
 
@@ -26,14 +27,16 @@ class HabitWaterProgressCard extends StatelessWidget {
     final double ratio = currentValue / safeTarget;
     final double visualRatio = ratio.clamp(0.0, 1.0).toDouble();
     final displayUnit = unit.trim().isEmpty ? 'ml' : unit.trim();
-    final double remaining =
-        math.max(safeTarget - currentValue, 0.0).toDouble();
+    final double remaining = math
+        .max(safeTarget - currentValue, 0.0)
+        .toDouble();
     final percent = (ratio * 100).round();
     final isComplete = currentValue >= safeTarget;
 
     return Semantics(
       container: true,
-      label: '今日饮水 ${_formatAmount(currentValue)} $displayUnit，'
+      label:
+          '今日饮水 ${_formatAmount(currentValue)} $displayUnit，'
           '目标 ${_formatAmount(safeTarget)} $displayUnit，完成 $percent%',
       child: Container(
         width: double.infinity,
@@ -112,8 +115,9 @@ class HabitWaterProgressCard extends StatelessWidget {
                       value: visualRatio,
                       minHeight: 8,
                       backgroundColor: colorScheme.primaryContainer,
-                      valueColor:
-                          AlwaysStoppedAnimation<Color>(colorScheme.primary),
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        colorScheme.primary,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 10),

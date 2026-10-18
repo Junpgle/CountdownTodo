@@ -41,8 +41,12 @@ abstract final class HabitSleepDurationService {
     try {
       final goals = await HabitRepository.getGoals();
       final durationGoals = goals
-          .where((goal) =>
-              !goal.isDeleted && !goal.isArchived && isSleepDurationGoal(goal))
+          .where(
+            (goal) =>
+                !goal.isDeleted &&
+                !goal.isArchived &&
+                isSleepDurationGoal(goal),
+          )
           .toList(growable: false);
       if (durationGoals.isEmpty) return 0;
 
@@ -132,10 +136,7 @@ abstract final class HabitSleepDurationService {
     for (final pair in pairs) {
       final localBedtime = pair.bedtime.localOccurredAt;
       final logicalDate = HabitRuleResolver.dayKey(
-        HabitRuleResolver.logicalDateFor(
-          localBedtime,
-          rule.dayBoundaryMinute,
-        ),
+        HabitRuleResolver.logicalDateFor(localBedtime, rule.dayBoundaryMinute),
       );
       final dedupeKey = _dedupeKey(goal, logicalDate);
       activeKeys.add(dedupeKey);
@@ -230,16 +231,24 @@ abstract final class HabitSleepDurationService {
     List<HabitCheckIn> sleepCheckIns,
     List<HabitCheckIn> wakeCheckIns,
   ) {
-    final bedtimes = sleepCheckIns
-        .where((checkIn) =>
-            !checkIn.isDeleted && checkIn.source != HabitCheckInSource.skip)
-        .toList()
-      ..sort((a, b) => a.occurredAt.compareTo(b.occurredAt));
-    final wakeTimes = wakeCheckIns
-        .where((checkIn) =>
-            !checkIn.isDeleted && checkIn.source != HabitCheckInSource.skip)
-        .toList()
-      ..sort((a, b) => a.occurredAt.compareTo(b.occurredAt));
+    final bedtimes =
+        sleepCheckIns
+            .where(
+              (checkIn) =>
+                  !checkIn.isDeleted &&
+                  checkIn.source != HabitCheckInSource.skip,
+            )
+            .toList()
+          ..sort((a, b) => a.occurredAt.compareTo(b.occurredAt));
+    final wakeTimes =
+        wakeCheckIns
+            .where(
+              (checkIn) =>
+                  !checkIn.isDeleted &&
+                  checkIn.source != HabitCheckInSource.skip,
+            )
+            .toList()
+          ..sort((a, b) => a.occurredAt.compareTo(b.occurredAt));
     if (bedtimes.isEmpty || wakeTimes.isEmpty) return const [];
     if (bedtimes.length < _minimumSleepPairIndexSize ||
         wakeTimes.length < _minimumSleepPairIndexSize) {
@@ -307,8 +316,7 @@ abstract final class HabitSleepDurationService {
   static HabitGoal? _firstGoal(
     Iterable<HabitGoal> goals,
     HabitAdaptationKind kind,
-  ) =>
-      HabitSleepGoalResolver.canonical(goals, kind);
+  ) => HabitSleepGoalResolver.canonical(goals, kind);
 
   static HabitGoalRuleRevision? _currentRule(
     HabitGoal goal,
@@ -321,10 +329,7 @@ abstract final class HabitSleepDurationService {
   }
 
   static String _dedupeKey(HabitGoal goal, String logicalDate) {
-    return HabitCheckIn.buildDedupeKey(
-      goal.uuid,
-      'sleep-pair/$logicalDate',
-    )!;
+    return HabitCheckIn.buildDedupeKey(goal.uuid, 'sleep-pair/$logicalDate')!;
   }
 
   static String _formatTime(DateTime value) =>
@@ -369,17 +374,18 @@ class _WakeTimeIndex {
     DateTime bedtime,
     Set<String> usedWakeUuids,
   ) {
-    final earliestWakeTime = bedtime.millisecondsSinceEpoch +
-        const Duration(
-          minutes: HabitSleepDurationService.minimumSleepMinutes,
-        ).inMilliseconds;
+    final earliestWakeTime =
+        bedtime.millisecondsSinceEpoch +
+        const Duration(minutes: HabitSleepDurationService.minimumSleepMinutes)
+            .inMilliseconds;
     while (true) {
       final localTime = _byLocalTime.firstKeyAfter(earliestWakeTime - 1);
       if (localTime == null) return null;
       final bucket = _byLocalTime[localTime]!;
       while (bucket.nextCandidateIndex < bucket.candidates.length &&
-          usedWakeUuids
-              .contains(bucket.candidates[bucket.nextCandidateIndex].uuid)) {
+          usedWakeUuids.contains(
+            bucket.candidates[bucket.nextCandidateIndex].uuid,
+          )) {
         bucket.nextCandidateIndex++;
       }
       if (bucket.nextCandidateIndex >= bucket.candidates.length) {

@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:uuid/uuid.dart';
+
 import '../../../utils/json_value_parser.dart';
 
 /// 目标周期类型。
@@ -52,11 +53,11 @@ class HabitReminderPolicy {
   });
 
   Map<String, dynamic> toJson() => {
-        'fixed_times': fixedTimes,
-        'progress_reminder': progressReminder ? 1 : 0,
-        'near_end_reminder': nearEndReminder ? 1 : 0,
-        'daily_summary_reminder': dailySummaryReminder ? 1 : 0,
-      };
+    'fixed_times': fixedTimes,
+    'progress_reminder': progressReminder ? 1 : 0,
+    'near_end_reminder': nearEndReminder ? 1 : 0,
+    'daily_summary_reminder': dailySummaryReminder ? 1 : 0,
+  };
 
   factory HabitReminderPolicy.fromJson(Map<String, dynamic> json) {
     List<int> times = [];
@@ -73,7 +74,8 @@ class HabitReminderPolicy {
           json['progress_reminder'] == 1 || json['progress_reminder'] == true,
       nearEndReminder:
           json['near_end_reminder'] == 1 || json['near_end_reminder'] == true,
-      dailySummaryReminder: json['daily_summary_reminder'] == 1 ||
+      dailySummaryReminder:
+          json['daily_summary_reminder'] == 1 ||
           json['daily_summary_reminder'] == true,
     );
   }
@@ -159,11 +161,11 @@ class HabitGoalRuleRevision {
     int? updatedAt,
     this.hasConflict = false,
     this.conflictData,
-  })  : uuid = uuid ?? const Uuid().v4(),
-        quickValues = quickValues ?? [],
-        reminderPolicy = reminderPolicy ?? const HabitReminderPolicy(),
-        createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch,
-        updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch;
+  }) : uuid = uuid ?? const Uuid().v4(),
+       quickValues = quickValues ?? [],
+       reminderPolicy = reminderPolicy ?? const HabitReminderPolicy(),
+       createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch,
+       updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch;
 
   void markAsChanged() {
     version++;
@@ -185,42 +187,44 @@ class HabitGoalRuleRevision {
   }
 
   Map<String, dynamic> toJson() => {
-        'uuid': uuid,
-        'habit_uuid': habitUuid,
-        'effective_from_date': effectiveFromDate,
-        'effective_to_date': effectiveToDate,
-        'period_type': periodType.index,
-        'weekdays_mask': weekdaysMask,
-        'custom_interval_days': customIntervalDays,
-        'target_value': targetValue,
-        'unit': unit,
-        'target_time_minute': targetTimeMinute,
-        'time_comparison': timeComparison.index,
-        'time_tolerance_minutes': timeToleranceMinutes,
-        'day_boundary_minute': dayBoundaryMinute,
-        'quick_values_json': jsonEncode(quickValues),
-        'reminder_policy_json': jsonEncode(reminderPolicy.toJson()),
-        'is_deleted': isDeleted ? 1 : 0,
-        'version': version,
-        'device_id': deviceId,
-        'created_at': createdAt,
-        'updated_at': updatedAt,
-        'has_conflict': hasConflict ? 1 : 0,
-        'conflict_data': conflictData != null ? jsonEncode(conflictData) : null,
-      };
+    'uuid': uuid,
+    'habit_uuid': habitUuid,
+    'effective_from_date': effectiveFromDate,
+    'effective_to_date': effectiveToDate,
+    'period_type': periodType.index,
+    'weekdays_mask': weekdaysMask,
+    'custom_interval_days': customIntervalDays,
+    'target_value': targetValue,
+    'unit': unit,
+    'target_time_minute': targetTimeMinute,
+    'time_comparison': timeComparison.index,
+    'time_tolerance_minutes': timeToleranceMinutes,
+    'day_boundary_minute': dayBoundaryMinute,
+    'quick_values_json': jsonEncode(quickValues),
+    'reminder_policy_json': jsonEncode(reminderPolicy.toJson()),
+    'is_deleted': isDeleted ? 1 : 0,
+    'version': version,
+    'device_id': deviceId,
+    'created_at': createdAt,
+    'updated_at': updatedAt,
+    'has_conflict': hasConflict ? 1 : 0,
+    'conflict_data': conflictData != null ? jsonEncode(conflictData) : null,
+  };
 
   factory HabitGoalRuleRevision.fromJson(Map<String, dynamic> json) {
     List<int> quickValues = [];
     final rawQuick = json['quick_values_json'];
     if (rawQuick is List) {
-      quickValues =
-          rawQuick.map((e) => int.tryParse(e.toString()) ?? 0).toList();
+      quickValues = rawQuick
+          .map((e) => int.tryParse(e.toString()) ?? 0)
+          .toList();
     } else if (rawQuick is String && rawQuick.isNotEmpty) {
       try {
         final decoded = jsonDecode(rawQuick);
         if (decoded is List) {
-          quickValues =
-              decoded.map((e) => int.tryParse(e.toString()) ?? 0).toList();
+          quickValues = decoded
+              .map((e) => int.tryParse(e.toString()) ?? 0)
+              .toList();
         }
       } catch (_) {}
     }
@@ -228,14 +232,16 @@ class HabitGoalRuleRevision {
     HabitReminderPolicy reminderPolicy = const HabitReminderPolicy();
     final rawReminder = json['reminder_policy_json'];
     if (rawReminder is Map) {
-      reminderPolicy =
-          HabitReminderPolicy.fromJson(Map<String, dynamic>.from(rawReminder));
+      reminderPolicy = HabitReminderPolicy.fromJson(
+        Map<String, dynamic>.from(rawReminder),
+      );
     } else if (rawReminder is String && rawReminder.isNotEmpty) {
       try {
         final decoded = jsonDecode(rawReminder);
         if (decoded is Map) {
-          reminderPolicy =
-              HabitReminderPolicy.fromJson(Map<String, dynamic>.from(decoded));
+          reminderPolicy = HabitReminderPolicy.fromJson(
+            Map<String, dynamic>.from(decoded),
+          );
         }
       } catch (_) {}
     }

@@ -185,8 +185,10 @@ void main() {
       final now = DateTime(2026, 8, 5, 14, 0);
       final days = [
         for (int i = 0; i < 10; i++)
-          _day(DateTime(2026, 8, 5).subtract(Duration(days: 10 - i)),
-              met: i.isEven),
+          _day(
+            DateTime(2026, 8, 5).subtract(Duration(days: 10 - i)),
+            met: i.isEven,
+          ),
       ];
 
       final summary = HabitStreakService.summarizeFromDays(
@@ -290,10 +292,18 @@ void main() {
       );
       final now = DateTime(2026, 8, 5, 14, 0);
       final days = [
-        _day(DateTime(2026, 8, 3),
-            met: true, hasRecord: true, firstAt: DateTime(2026, 8, 3, 7, 10)),
-        _day(DateTime(2026, 8, 4),
-            met: false, hasRecord: true, firstAt: DateTime(2026, 8, 4, 8, 5)),
+        _day(
+          DateTime(2026, 8, 3),
+          met: true,
+          hasRecord: true,
+          firstAt: DateTime(2026, 8, 3, 7, 10),
+        ),
+        _day(
+          DateTime(2026, 8, 4),
+          met: false,
+          hasRecord: true,
+          firstAt: DateTime(2026, 8, 4, 8, 5),
+        ),
       ];
 
       final summary = HabitStreakService.summarizeFromDays(
@@ -302,8 +312,10 @@ void main() {
         rule: rule,
         now: now,
       );
-      expect(summary.averageTimeMinute,
-          closeTo((7 * 60 + 10 + 8 * 60 + 5) / 2, 1e-9));
+      expect(
+        summary.averageTimeMinute,
+        closeTo((7 * 60 + 10 + 8 * 60 + 5) / 2, 1e-9),
+      );
       expect(summary.onTimeRate, 0.5);
     });
 

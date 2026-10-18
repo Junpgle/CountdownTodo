@@ -1,4 +1,5 @@
 import '../../../widgets/floating_glass_control.dart';
+
 import 'package:flutter/material.dart';
 
 import '../../../models.dart';
@@ -38,11 +39,7 @@ class HabitDetailScreen extends StatefulWidget {
   final HabitGoal goal;
   final String username;
 
-  const HabitDetailScreen({
-    super.key,
-    required this.goal,
-    this.username = '',
-  });
+  const HabitDetailScreen({super.key, required this.goal, this.username = ''});
 
   @override
   State<HabitDetailScreen> createState() => _HabitDetailScreenState();
@@ -79,17 +76,20 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
   void initState() {
     super.initState();
     _goal = widget.goal;
-    _loadData();
+    _loadData(showLoadingIndicator: true);
   }
 
-  Future<void> _loadData() async {
+  Future<void> _loadData({bool showLoadingIndicator = false}) async {
     if (!mounted) return;
-    setState(() => _loading = true);
+    if (showLoadingIndicator || _todayProgress == null) {
+      setState(() => _loading = true);
+    }
     if (HabitSleepDurationService.isSleepDurationGoal(_goal)) {
       await HabitSleepDurationService.syncAll();
     }
     final adaptation = HabitAdaptationService.forHabit(_goal);
-    final isSleepGoal = adaptation?.kind == HabitAdaptationKind.earlySleep ||
+    final isSleepGoal =
+        adaptation?.kind == HabitAdaptationKind.earlySleep ||
         adaptation?.kind == HabitAdaptationKind.earlyWake ||
         adaptation?.kind == HabitAdaptationKind.sleepDuration;
     final username = isSleepGoal ? await _accountUsername() : '';
@@ -110,8 +110,9 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
         // 详情页仍可使用本地快照离线展示。
       }
     }
-    final sleepCoachingSnapshot =
-        isSleepGoal ? await HabitSleepCoachingService.load(username) : null;
+    final sleepCoachingSnapshot = isSleepGoal
+        ? await HabitSleepCoachingService.load(username)
+        : null;
     final rules = await HabitRepository.getRules(habitUuid: _goal.uuid);
     final today = DateTime.now();
     final displayDate = HabitDayLoader.progressLogicalDateFor(
@@ -133,13 +134,13 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
     final todayDate = DateTime(today.year, today.month, today.day);
     final timeTrend =
         _goal.sourceType == HabitSourceType.timeCheckIn && rules.isNotEmpty
-            ? await HabitProgressCalculator.computeRange(
-                habit: _goal,
-                rules: rules,
-                from: HabitRuleResolver.addCalendarDays(todayDate, -29),
-                to: todayDate,
-              )
-            : const <HabitDayProgress>[];
+        ? await HabitProgressCalculator.computeRange(
+            habit: _goal,
+            rules: rules,
+            from: HabitRuleResolver.addCalendarDays(todayDate, -29),
+            to: todayDate,
+          )
+        : const <HabitDayProgress>[];
     // 时长型：今日专注记录（按绑定标签过滤）。
     final focusRecords = _goal.sourceType == HabitSourceType.pomodoroTag
         ? await HabitSourceResolver.recordsForTags(
@@ -192,13 +193,16 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
       );
       final refreshed = await HabitSleepCoachingService.load(username);
       if (mounted) {
-        setState(() => _sleepCoachingSnapshot = refreshed ??
-            HabitSleepCoachingSnapshot(
-              plan: plan,
-              stageIndex: 0,
-              stageProgressDays: 0,
-              metrics: snapshot.metrics,
-            ));
+        setState(
+          () => _sleepCoachingSnapshot =
+              refreshed ??
+              HabitSleepCoachingSnapshot(
+                plan: plan,
+                stageIndex: 0,
+                stageProgressDays: 0,
+                metrics: snapshot.metrics,
+              ),
+        );
       }
     } catch (_) {
       if (mounted) {
@@ -222,13 +226,16 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
       );
       final refreshed = await HabitSleepCoachingService.load(username);
       if (mounted) {
-        setState(() => _sleepCoachingSnapshot = refreshed ??
-            HabitSleepCoachingSnapshot(
-              plan: plan,
-              stageIndex: 0,
-              stageProgressDays: 0,
-              metrics: snapshot.metrics,
-            ));
+        setState(
+          () => _sleepCoachingSnapshot =
+              refreshed ??
+              HabitSleepCoachingSnapshot(
+                plan: plan,
+                stageIndex: 0,
+                stageProgressDays: 0,
+                metrics: snapshot.metrics,
+              ),
+        );
       }
     } catch (_) {
       if (mounted) {
@@ -256,13 +263,16 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
       );
       final refreshed = await HabitSleepCoachingService.load(username);
       if (mounted) {
-        setState(() => _sleepCoachingSnapshot = refreshed ??
-            HabitSleepCoachingSnapshot(
-              plan: plan,
-              stageIndex: 0,
-              stageProgressDays: 0,
-              metrics: snapshot.metrics,
-            ));
+        setState(
+          () => _sleepCoachingSnapshot =
+              refreshed ??
+              HabitSleepCoachingSnapshot(
+                plan: plan,
+                stageIndex: 0,
+                stageProgressDays: 0,
+                metrics: snapshot.metrics,
+              ),
+        );
       }
     } catch (_) {
       if (mounted) {
@@ -425,7 +435,7 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
   }
 
   Widget _buildBody(ColorScheme colorScheme, double topPadding) {
-    if (_loading) {
+    if (_loading && _todayProgress == null) {
       return const Center(child: CircularProgressIndicator());
     }
 
@@ -595,8 +605,9 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
                 Text(
                   '有 ${preview.pendingLogs.length} 条记录可以导入到这个$habitLabel习惯的历史打卡中。',
                   style: TextStyle(
-                    color: colorScheme.onSecondaryContainer
-                        .withValues(alpha: 0.78),
+                    color: colorScheme.onSecondaryContainer.withValues(
+                      alpha: 0.78,
+                    ),
                     fontSize: 12.5,
                   ),
                 ),
@@ -605,8 +616,9 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
                   Text(
                     '已导入 ${preview.alreadyImportedCount} 条，重复导入不会新增记录。',
                     style: TextStyle(
-                      color: colorScheme.onSecondaryContainer
-                          .withValues(alpha: 0.68),
+                      color: colorScheme.onSecondaryContainer.withValues(
+                        alpha: 0.68,
+                      ),
                       fontSize: 11.5,
                     ),
                   ),
@@ -615,10 +627,7 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
             ),
           ),
           const SizedBox(width: 4),
-          TextButton(
-            onPressed: _openTimeLogImport,
-            child: const Text('导入'),
-          ),
+          TextButton(onPressed: _openTimeLogImport, child: const Text('导入')),
         ],
       ),
     );
@@ -639,10 +648,10 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
         builder: (context, setDialogState) {
           final selectedPending =
               isBedtime && sleepKind == HabitSleepLogKind.nap
-                  ? preview.pendingLogs
-                      .where((log) => !preview.gridOnlyLogIds.contains(log.id))
-                      .toList(growable: false)
-                  : preview.pendingLogs;
+              ? preview.pendingLogs
+                    .where((log) => !preview.gridOnlyLogIds.contains(log.id))
+                    .toList(growable: false)
+              : preview.pendingLogs;
           final previewLogs = selectedPending.take(6).toList(growable: false);
           final selectedOptions = HabitSleepLogMigrationOptions(
             timeSelection: timeSelection,
@@ -708,7 +717,8 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
                       children: [
                         ChoiceChip(
                           label: const Text('取开始时间'),
-                          selected: timeSelection ==
+                          selected:
+                              timeSelection ==
                               HabitSleepLogTimeSelection.startTime,
                           onSelected: (_) => setDialogState(
                             () => timeSelection =
@@ -717,7 +727,8 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
                         ),
                         ChoiceChip(
                           label: const Text('取平均时间'),
-                          selected: timeSelection ==
+                          selected:
+                              timeSelection ==
                               HabitSleepLogTimeSelection.midpoint,
                           onSelected: (_) => setDialogState(
                             () => timeSelection =
@@ -803,8 +814,8 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
 
     final selectedPending = isBedtime && options.kind == HabitSleepLogKind.nap
         ? preview.pendingLogs
-            .where((log) => !preview.gridOnlyLogIds.contains(log.id))
-            .toList(growable: false)
+              .where((log) => !preview.gridOnlyLogIds.contains(log.id))
+              .toList(growable: false)
         : preview.pendingLogs;
     if (selectedPending.isEmpty) return;
     final effectivePreview = HabitTimeLogImportPreview(
@@ -832,10 +843,7 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
       _loadData();
     } catch (e) {
       if (!mounted) return;
-      AppSnackBars.showSnackBar(
-        context,
-        SnackBar(content: Text('导入失败：$e')),
-      );
+      AppSnackBars.showSnackBar(context, SnackBar(content: Text('导入失败：$e')));
     }
   }
 
@@ -863,21 +871,24 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
         .toList(growable: false);
     final recentRecordedDays = recordedDays.reversed.take(7);
     final summary = _summary;
-    final chartData = visibleTrend.map((day) {
-      final rule =
-          HabitRuleResolver.effectiveRule(_rules, day.logicalDate) ?? _rule;
-      return HabitTimePointChartData(
-        date: day.logicalDate,
-        actualTime: day.progress.firstRecordAt,
-        onTime: day.progress.goalMet,
-        targetTimeMinute: rule.targetTimeMinute,
-        dayBoundaryMinute: rule.dayBoundaryMinute > 0
-            ? rule.dayBoundaryMinute
-            : HabitRuleResolver.defaultDayBoundaryMinute,
-      );
-    }).toList(growable: false);
-    final hasTargetTime =
-        chartData.any((point) => point.targetTimeMinute != null);
+    final chartData = visibleTrend
+        .map((day) {
+          final rule =
+              HabitRuleResolver.effectiveRule(_rules, day.logicalDate) ?? _rule;
+          return HabitTimePointChartData(
+            date: day.logicalDate,
+            actualTime: day.progress.firstRecordAt,
+            onTime: day.progress.goalMet,
+            targetTimeMinute: rule.targetTimeMinute,
+            dayBoundaryMinute: rule.dayBoundaryMinute > 0
+                ? rule.dayBoundaryMinute
+                : HabitRuleResolver.defaultDayBoundaryMinute,
+          );
+        })
+        .toList(growable: false);
+    final hasTargetTime = chartData.any(
+      (point) => point.targetTimeMinute != null,
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -950,16 +961,8 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
                   spacing: 12,
                   runSpacing: 4,
                   children: [
-                    _trendLegend(
-                      colorScheme.tertiary,
-                      '达标',
-                      colorScheme,
-                    ),
-                    _trendLegend(
-                      colorScheme.error,
-                      '未达标',
-                      colorScheme,
-                    ),
+                    _trendLegend(colorScheme.tertiary, '达标', colorScheme),
+                    _trendLegend(colorScheme.error, '未达标', colorScheme),
                     _trendLegend(
                       colorScheme.surfaceContainerHighest,
                       '未打卡',
@@ -1022,24 +1025,19 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
         const SizedBox(width: 4),
         Text(
           label,
-          style: TextStyle(
-            fontSize: 11,
-            color: colorScheme.onSurfaceVariant,
-          ),
+          style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
         ),
       ],
     );
   }
 
-  Widget _buildTimeTrendDayRow(
-    HabitDayProgress day,
-    ColorScheme colorScheme,
-  ) {
+  Widget _buildTimeTrendDayRow(HabitDayProgress day, ColorScheme colorScheme) {
     final actual = day.progress.firstRecordAt!;
     final rule =
         HabitRuleResolver.effectiveRule(_rules, day.logicalDate) ?? _rule;
-    final statusColor =
-        day.progress.goalMet ? colorScheme.tertiary : colorScheme.error;
+    final statusColor = day.progress.goalMet
+        ? colorScheme.tertiary
+        : colorScheme.error;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 5),
       child: Row(
@@ -1067,10 +1065,7 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
           const Spacer(),
           Text(
             HabitText.timePointStatus(rule, day.progress),
-            style: TextStyle(
-              fontSize: 11.5,
-              color: statusColor,
-            ),
+            style: TextStyle(fontSize: 11.5, color: statusColor),
           ),
         ],
       ),
@@ -1084,8 +1079,9 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
     final averageTime = summary.averageTimeMinute == null
         ? '—'
         : HabitText.targetTime(summary.averageTimeMinute!.round());
-    final onTimeRate =
-        summary.onTimeRate == null ? '—' : _percent(summary.onTimeRate!);
+    final onTimeRate = summary.onTimeRate == null
+        ? '—'
+        : _percent(summary.onTimeRate!);
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -1108,12 +1104,8 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
             children: [
               Expanded(child: _statCell('平均时间', averageTime)),
               Expanded(child: _statCell('准时率', onTimeRate)),
-              Expanded(
-                child: _statCell('当前连续', '${summary.currentStreak} 天'),
-              ),
-              Expanded(
-                child: _statCell('最长连续', '${summary.longestStreak} 天'),
-              ),
+              Expanded(child: _statCell('当前连续', '${summary.currentStreak} 天')),
+              Expanded(child: _statCell('最长连续', '${summary.longestStreak} 天')),
             ],
           ),
           const SizedBox(height: 12),
@@ -1203,8 +1195,11 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.local_fire_department_rounded,
-                    size: 16, color: colorScheme.tertiary),
+                Icon(
+                  Icons.local_fire_department_rounded,
+                  size: 16,
+                  color: colorScheme.tertiary,
+                ),
                 const SizedBox(width: 4),
                 Text(
                   '连续 ${_summary!.currentStreak}',
@@ -1224,7 +1219,8 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
   // ── 今日进度卡 ──────────────────────────────────────
   Widget _buildTodayCard(ColorScheme colorScheme) {
     final progress = _todayProgress!;
-    final isHydration = HabitAdaptationService.forHabit(_goal)?.kind ==
+    final isHydration =
+        HabitAdaptationService.forHabit(_goal)?.kind ==
         HabitAdaptationKind.hydration;
     final dayProgress = HabitDayProgress(
       habit: _goal,
@@ -1276,8 +1272,10 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
                 Expanded(
                   child: OutlinedButton.icon(
                     onPressed: _addBackfill,
-                    icon:
-                        const Icon(Icons.add_circle_outline_rounded, size: 16),
+                    icon: const Icon(
+                      Icons.add_circle_outline_rounded,
+                      size: 16,
+                    ),
                     label: const Text('补录'),
                   ),
                 ),
@@ -1330,7 +1328,8 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
                     children: [
                       Text(
                         HabitText.formatDuration(
-                            record.actualDuration ?? record.plannedDuration),
+                          record.actualDuration ?? record.plannedDuration,
+                        ),
                         style: TextStyle(
                           fontSize: 13.5,
                           fontWeight: FontWeight.w600,
@@ -1437,8 +1436,9 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
                 ),
                 Text(
                   HabitText.timeOfDay(
-                      DateTime.fromMillisecondsSinceEpoch(checkIn.occurredAt)
-                          .toLocal()),
+                    DateTime.fromMillisecondsSinceEpoch(checkIn.occurredAt)
+                        .toLocal(),
+                  ),
                   style: TextStyle(
                     fontSize: 12,
                     color: colorScheme.onSurfaceVariant,
@@ -1471,7 +1471,7 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
     if (adaptation == null) return const SizedBox.shrink();
     final isSleepAdaptation =
         adaptation.kind == HabitAdaptationKind.earlyWake ||
-            adaptation.kind == HabitAdaptationKind.earlySleep;
+        adaptation.kind == HabitAdaptationKind.earlySleep;
     final isPushUpAdaptation = adaptation.kind == HabitAdaptationKind.pushUp;
     final isRunningAdaptation = adaptation.kind == HabitAdaptationKind.running;
     final isReadingAdaptation = adaptation.kind == HabitAdaptationKind.reading;
@@ -1493,26 +1493,26 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
           currentValue: isSleepAdaptation
               ? null
               : isSleepDurationAdaptation
-                  ? _todayProgress == null
-                      ? null
-                      : _todayProgress!.currentValue / 3600
-                  : isFocusDurationAdaptation
-                      ? _todayProgress == null
-                          ? null
-                          : _todayProgress!.currentValue / 60
-                      : _todayProgress?.currentValue,
+              ? _todayProgress == null
+                    ? null
+                    : _todayProgress!.currentValue / 3600
+              : isFocusDurationAdaptation
+              ? _todayProgress == null
+                    ? null
+                    : _todayProgress!.currentValue / 60
+              : _todayProgress?.currentValue,
           targetValue: isSleepAdaptation
               ? null
               : isSleepDurationAdaptation
-                  ? _rule.targetValue / 3600
-                  : isFocusDurationAdaptation
-                      ? _rule.targetValue / 60
-                      : _rule.targetValue,
+              ? _rule.targetValue / 3600
+              : isFocusDurationAdaptation
+              ? _rule.targetValue / 60
+              : _rule.targetValue,
           targetUnitOverride: isSleepDurationAdaptation
               ? '小时'
               : _rule.unit.isEmpty
-                  ? null
-                  : _rule.unit,
+              ? null
+              : _rule.unit,
         ),
         if (isSleepAdaptation || isSleepDurationAdaptation) ...[
           const SizedBox(height: 12),
@@ -1612,7 +1612,8 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
     }
     final value = checkIn.value;
     if (_goal.sourceType == HabitSourceType.durationCheckIn) {
-      final label = HabitAdaptationService.forHabit(_goal)?.kind ==
+      final label =
+          HabitAdaptationService.forHabit(_goal)?.kind ==
               HabitAdaptationKind.sleepDuration
           ? '睡眠'
           : '时长';
@@ -1685,8 +1686,13 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
                   );
                   if (picked != null) {
                     setDialogState(() {
-                      date = DateTime(picked.year, picked.month, picked.day,
-                          time.hour, time.minute);
+                      date = DateTime(
+                        picked.year,
+                        picked.month,
+                        picked.day,
+                        time.hour,
+                        time.minute,
+                      );
                     });
                   }
                 },
@@ -1706,8 +1712,13 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
                   if (picked != null) {
                     setDialogState(() {
                       time = picked;
-                      date = DateTime(date.year, date.month, date.day,
-                          picked.hour, picked.minute);
+                      date = DateTime(
+                        date.year,
+                        date.month,
+                        date.day,
+                        picked.hour,
+                        picked.minute,
+                      );
                     });
                   }
                 },
@@ -1717,11 +1728,12 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
                 const SizedBox(height: 8),
                 TextField(
                   controller: valueController,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
                   decoration: InputDecoration(
-                    labelText: _goal.sourceType ==
-                            HabitSourceType.durationCheckIn
+                    labelText:
+                        _goal.sourceType == HabitSourceType.durationCheckIn
                         ? '睡眠时长（小时）'
                         : '数量${_rule.unit.isNotEmpty ? '（${_rule.unit}）' : ''}',
                     border: const OutlineInputBorder(),
@@ -1778,13 +1790,13 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
 
   /// 时长型：启动专注并跳转番茄钟，默认时长为习惯设置的默认时长。
   Future<void> _startFocus() => HabitFocusLauncher.open(
-        context: context,
-        username: widget.username,
-        goal: _goal,
-        onReturned: () {
-          _loadData();
-        },
-      );
+    context: context,
+    username: widget.username,
+    goal: _goal,
+    onReturned: () {
+      _loadData();
+    },
+  );
 
   // ── 目标信息 ────────────────────────────────────────
   Widget _buildRuleSection(ColorScheme colorScheme) {
@@ -1799,8 +1811,10 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
       case HabitSourceType.pomodoroTag:
         items.add(('目标', '${(rule.targetValue / 60).round()} 分钟 / 周期'));
       case HabitSourceType.durationCheckIn:
-        items.add(
-            ('目标', '${(rule.targetValue / 3600).toStringAsFixed(1)} 小时 / 晚'));
+        items.add((
+          '目标',
+          '${(rule.targetValue / 3600).toStringAsFixed(1)} 小时 / 晚',
+        ));
       case HabitSourceType.quantityCheckIn:
         final target = rule.targetValue;
         final text = target == target.roundToDouble()
@@ -1819,8 +1833,10 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
               '${rule.timeToleranceMinutes > 0 ? '（±${rule.timeToleranceMinutes} 分钟）' : ''}',
         ));
         if (rule.dayBoundaryMinute > 0) {
-          items.add(
-              ('日期分界', HabitText.dayBoundaryLabel(rule.dayBoundaryMinute)));
+          items.add((
+            '日期分界',
+            HabitText.dayBoundaryLabel(rule.dayBoundaryMinute),
+          ));
         }
     }
 
@@ -1879,7 +1895,8 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
   Widget _buildDurationSummarySection(ColorScheme colorScheme) {
     final summary = _summary!;
     final unit = _periodUnit();
-    final isSleepDuration = HabitAdaptationService.forHabit(_goal)?.kind ==
+    final isSleepDuration =
+        HabitAdaptationService.forHabit(_goal)?.kind ==
         HabitAdaptationKind.sleepDuration;
     final averageDuration = summary.averageDuration == null
         ? '—'
@@ -1914,20 +1931,12 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
                     ),
                   ),
                   Expanded(
-                    child: _statCell(
-                      '当前连续',
-                      '${summary.currentStreak} $unit',
-                    ),
+                    child: _statCell('当前连续', '${summary.currentStreak} $unit'),
                   ),
                   Expanded(
-                    child: _statCell(
-                      '最长连续',
-                      '${summary.longestStreak} $unit',
-                    ),
+                    child: _statCell('最长连续', '${summary.longestStreak} $unit'),
                   ),
-                  Expanded(
-                    child: _statCell('完成率 7', _percent(summary.rate7)),
-                  ),
+                  Expanded(child: _statCell('完成率 7', _percent(summary.rate7))),
                 ],
               ),
               const SizedBox(height: 12),
@@ -1942,9 +1951,7 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
                       '${summary.completedCount}/${summary.plannedCount}',
                     ),
                   ),
-                  Expanded(
-                    child: _statCell('逾期', '${summary.overdueCount}'),
-                  ),
+                  Expanded(child: _statCell('逾期', '${summary.overdueCount}')),
                   Expanded(
                     child: _statCell(
                       '目标',
@@ -2016,9 +2023,7 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
                   Expanded(
                     child: _statCell('最长连续', '${summary.longestStreak} $unit'),
                   ),
-                  Expanded(
-                    child: _statCell('完成率 7', _percent(summary.rate7)),
-                  ),
+                  Expanded(child: _statCell('完成率 7', _percent(summary.rate7))),
                   Expanded(
                     child: _statCell('完成率 30', _percent(summary.rate30)),
                   ),
@@ -2064,10 +2069,7 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
         const SizedBox(height: 2),
         Text(
           label,
-          style: TextStyle(
-            fontSize: 10.5,
-            color: colorScheme.onSurfaceVariant,
-          ),
+          style: TextStyle(fontSize: 10.5, color: colorScheme.onSurfaceVariant),
         ),
       ],
     );
@@ -2108,10 +2110,7 @@ class _TrendLegendPainter extends CustomPainter {
       );
     } else {
       canvas.drawRRect(
-        RRect.fromRectAndRadius(
-          Offset.zero & size,
-          const Radius.circular(2),
-        ),
+        RRect.fromRectAndRadius(Offset.zero & size, const Radius.circular(2)),
         paint,
       );
     }

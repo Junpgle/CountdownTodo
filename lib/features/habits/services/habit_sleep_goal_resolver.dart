@@ -17,16 +17,20 @@ abstract final class HabitSleepGoalResolver {
     Iterable<HabitGoal> goals,
     HabitAdaptationKind kind,
   ) {
-    final candidates = goals.where((goal) {
-      if (goal.isDeleted || goal.isArchived) return false;
-      return HabitAdaptationService.forHabit(goal)?.kind == kind;
-    }).toList(growable: false);
+    final candidates = goals
+        .where((goal) {
+          if (goal.isDeleted || goal.isArchived) return false;
+          return HabitAdaptationService.forHabit(goal)?.kind == kind;
+        })
+        .toList(growable: false);
     if (candidates.isEmpty) return null;
 
-    final sorted = [...candidates]..sort((a, b) {
-        final nameRank = _canonicalNameRank(kind, a.name).compareTo(
-          _canonicalNameRank(kind, b.name),
-        );
+    final sorted = [...candidates]
+      ..sort((a, b) {
+        final nameRank = _canonicalNameRank(
+          kind,
+          a.name,
+        ).compareTo(_canonicalNameRank(kind, b.name));
         if (nameRank != 0) return nameRank;
         final createdRank = a.createdAt.compareTo(b.createdAt);
         if (createdRank != 0) return createdRank;
@@ -46,12 +50,14 @@ abstract final class HabitSleepGoalResolver {
       final goal = canonical(list, kind);
       if (goal != null) canonicalUuids.add(goal.uuid);
     }
-    return list.where((goal) {
-      if (goal.isArchived) return true;
-      final kind = HabitAdaptationService.forHabit(goal)?.kind;
-      if (kind == null || !_sleepKinds.contains(kind)) return true;
-      return canonicalUuids.contains(goal.uuid);
-    }).toList(growable: false);
+    return list
+        .where((goal) {
+          if (goal.isArchived) return true;
+          final kind = HabitAdaptationService.forHabit(goal)?.kind;
+          if (kind == null || !_sleepKinds.contains(kind)) return true;
+          return canonicalUuids.contains(goal.uuid);
+        })
+        .toList(growable: false);
   }
 
   static int _canonicalNameRank(HabitAdaptationKind kind, String name) {
@@ -60,10 +66,10 @@ abstract final class HabitSleepGoalResolver {
       HabitAdaptationKind.earlySleep => const {'早睡', '早点睡', 'bedtime'},
       HabitAdaptationKind.earlyWake => const {'早起', '起床', 'wakeup'},
       HabitAdaptationKind.sleepDuration => const {
-          '睡眠时长',
-          '睡眠时间',
-          'sleepduration'
-        },
+        '睡眠时长',
+        '睡眠时间',
+        'sleepduration',
+      },
       _ => const <String>{},
     };
     return canonicalNames.contains(normalized) ? 0 : 1;

@@ -11,15 +11,9 @@ typedef HabitTagProgressPeriod = ({
   DateTime logicalDate,
 });
 
-typedef HabitTagProgressSource = ({
-  String habitUuid,
-  List<String> tagUuids,
-});
+typedef HabitTagProgressSource = ({String habitUuid, List<String> tagUuids});
 
-typedef HabitTodoProgressSource = ({
-  String habitUuid,
-  List<String> seriesIds,
-});
+typedef HabitTodoProgressSource = ({String habitUuid, List<String> seriesIds});
 
 /// 习惯数据源解析：从循环待办、专注记录读取原始数据。
 ///
@@ -87,13 +81,17 @@ abstract final class HabitSourceResolver {
     if (seriesIds.isEmpty) return null;
     final day = DateTime(localDate.year, localDate.month, localDate.day);
     final startMs = day.millisecondsSinceEpoch;
-    final endMs = DateTime(day.year, day.month, day.day + 1)
-        .millisecondsSinceEpoch;
+    final endMs = DateTime(
+      day.year,
+      day.month,
+      day.day + 1,
+    ).millisecondsSinceEpoch;
     try {
       final maps = await DatabaseHelper.instance.getTodoMaps(
         includeDeleted: true,
         recurrenceSeriesIds: seriesIds.toSet(),
-        where: '((t.created_date >= ? AND t.created_date < ?) OR '
+        where:
+            '((t.created_date >= ? AND t.created_date < ?) OR '
             '(t.created_date IS NULL AND t.created_at >= ? AND t.created_at < ?))',
         whereArgs: [startMs, endMs, startMs, endMs],
       );
@@ -135,10 +133,7 @@ abstract final class HabitSourceResolver {
       HabitTodoIndex._(todos);
 
   /// 指定日期范围内是否完成。
-  static bool isTodoDoneOn(
-    List<TodoItem> todos,
-    DateTime localDate,
-  ) {
+  static bool isTodoDoneOn(List<TodoItem> todos, DateTime localDate) {
     final todo = todoForDate(todos, localDate);
     return todo != null && !todo.isDeleted && todo.isDone;
   }

@@ -29,30 +29,27 @@ void main() {
     });
 
     test('calendar ranges stay aligned after a daylight-saving transition', () {
-      final yesterday =
-          HabitAiContextService.buildContextInjectionSummary(
+      final yesterday = HabitAiContextService.buildContextInjectionSummary(
         userMessage: '查看昨天的习惯进度',
         goals: const [],
         now: DateTime(2026, 3, 9, 12),
       );
-      final rollingWeek =
-          HabitAiContextService.buildContextInjectionSummary(
+      final rollingWeek = HabitAiContextService.buildContextInjectionSummary(
         userMessage: '查看最近7天的习惯进度',
         goals: const [],
         now: DateTime(2026, 3, 9, 12),
       );
-      final previousMonth =
-          HabitAiContextService.buildContextInjectionSummary(
+      final previousMonth = HabitAiContextService.buildContextInjectionSummary(
         userMessage: '查看上个月的习惯进度',
         goals: const [],
         now: DateTime(2026, 4, 10, 12),
       );
       final previousQuarter =
           HabitAiContextService.buildContextInjectionSummary(
-        userMessage: '查看上季度的习惯进度',
-        goals: const [],
-        now: DateTime(2026, 4, 10, 12),
-      );
+            userMessage: '查看上季度的习惯进度',
+            goals: const [],
+            now: DateTime(2026, 4, 10, 12),
+          );
 
       expect(yesterday, contains('2026-03-08'));
       expect(rollingWeek, contains('2026-03-03 至 2026-03-09'));
@@ -138,12 +135,11 @@ void main() {
         expect(followUp, contains('2025-10-03 至 2026-10-03'), reason: period);
       }
 
-      final leapYearRange =
-          HabitAiContextService.buildContextInjectionSummary(
-            userMessage: '查看最近一年的习惯进度',
-            goals: const [],
-            now: DateTime(2024, 2, 29, 12),
-          );
+      final leapYearRange = HabitAiContextService.buildContextInjectionSummary(
+        userMessage: '查看最近一年的习惯进度',
+        goals: const [],
+        now: DateTime(2024, 2, 29, 12),
+      );
       final comparison = HabitAiContextService.buildContextInjectionSummary(
         userMessage: '比较最近一年和去年习惯进度',
         goals: const [],
@@ -154,26 +150,29 @@ void main() {
       expect(comparison, isNull);
     });
 
-    test('resolves the second previous month in direct and follow-up queries', () {
-      final testNow = DateTime(2026, 10, 3, 12);
-      for (final period in ['上上个月', '上上月']) {
-        final direct = HabitAiContextService.buildContextInjectionSummary(
-          userMessage: '查看$period的习惯进度',
-          goals: const [],
-          now: testNow,
-        );
-        final followUp = HabitAiContextService.buildContextInjectionSummary(
-          userMessage: '那$period呢？',
-          previousUserMessage: '查看2026-06-01至2026-06-30的习惯进度',
-          conversationContext: '习惯进度',
-          goals: const [],
-          now: testNow,
-        );
+    test(
+      'resolves the second previous month in direct and follow-up queries',
+      () {
+        final testNow = DateTime(2026, 10, 3, 12);
+        for (final period in ['上上个月', '上上月']) {
+          final direct = HabitAiContextService.buildContextInjectionSummary(
+            userMessage: '查看$period的习惯进度',
+            goals: const [],
+            now: testNow,
+          );
+          final followUp = HabitAiContextService.buildContextInjectionSummary(
+            userMessage: '那$period呢？',
+            previousUserMessage: '查看2026-06-01至2026-06-30的习惯进度',
+            conversationContext: '习惯进度',
+            goals: const [],
+            now: testNow,
+          );
 
-        expect(direct, contains('2026-08-01 至 2026-08-31'), reason: period);
-        expect(followUp, contains('2026-08-01 至 2026-08-31'), reason: period);
-      }
-    });
+          expect(direct, contains('2026-08-01 至 2026-08-31'), reason: period);
+          expect(followUp, contains('2026-08-01 至 2026-08-31'), reason: period);
+        }
+      },
+    );
 
     test('resolves quarter ranges and rejects quarter comparisons', () {
       final testNow = DateTime(2026, 10, 3, 12);
@@ -350,12 +349,11 @@ void main() {
     });
 
     test('resolves previous calendar years and dates', () {
-      final previousYear =
-          HabitAiContextService.buildContextInjectionSummary(
-            userMessage: '查看去年习惯进度',
-            goals: const [],
-            now: now,
-          );
+      final previousYear = HabitAiContextService.buildContextInjectionSummary(
+        userMessage: '查看去年习惯进度',
+        goals: const [],
+        now: now,
+      );
       final previousYearDate =
           HabitAiContextService.buildContextInjectionSummary(
             userMessage: '查看去年9月1日习惯进度',
@@ -385,14 +383,8 @@ void main() {
 
       expect(previousYear, contains('2025-01-01 至 2025-12-31'));
       expect(previousYearDate, contains('2025-09-01'));
-      expect(
-        previousYearMonth,
-        contains('2025-09-01 至 2025-09-30'),
-      );
-      expect(
-        previousYearMonthFollowUp,
-        contains('2025-09-01 至 2025-09-30'),
-      );
+      expect(previousYearMonth, contains('2025-09-01 至 2025-09-30'));
+      expect(previousYearMonthFollowUp, contains('2025-09-01 至 2025-09-30'));
       expect(beforePreviousYear, contains('2024-01-01 至 2024-12-31'));
     });
 

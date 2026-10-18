@@ -55,7 +55,7 @@ class _HabitTodayTabState extends State<HabitTodayTab> {
   @override
   void initState() {
     super.initState();
-    _loadData();
+    _loadData(showLoadingIndicator: true);
   }
 
   @override
@@ -66,9 +66,11 @@ class _HabitTodayTabState extends State<HabitTodayTab> {
     }
   }
 
-  Future<void> _loadData() async {
+  Future<void> _loadData({bool showLoadingIndicator = false}) async {
     if (!mounted) return;
-    setState(() => _loading = true);
+    if (showLoadingIndicator || _snapshot == null) {
+      setState(() => _loading = true);
+    }
     final snapshot = await HabitDayLoader.loadForDate(
       DateTime.now(),
       username: widget.username,
@@ -90,18 +92,11 @@ class _HabitTodayTabState extends State<HabitTodayTab> {
     return _cardKeys.putIfAbsent(goal.uuid, GlobalKey.new);
   }
 
-  Future<void> _openDetail(
-    HabitGoal goal, {
-    GlobalKey? sourceKey,
-  }) async {
-    final page = HabitDetailScreen(
-      goal: goal,
-      username: widget.username,
-    );
+  Future<void> _openDetail(HabitGoal goal, {GlobalKey? sourceKey}) async {
+    final page = HabitDetailScreen(goal: goal, username: widget.username);
     final changed = sourceKey == null
-        ? await Navigator.of(context).push(
-            PageTransitions.material(builder: (_) => page),
-          )
+        ? await Navigator.of(context)
+              .push(PageTransitions.material(builder: (_) => page))
         : await PageTransitions.pushFromRect(
             context: context,
             page: page,
@@ -116,26 +111,24 @@ class _HabitTodayTabState extends State<HabitTodayTab> {
   }
 
   Future<void> _openCreate() async {
-    final created = await Navigator.of(context).push(
-      PageTransitions.material(
-        builder: (_) => const HabitEditScreen(),
-      ),
-    );
+    final created = await Navigator.of(
+      context,
+    ).push(PageTransitions.material(builder: (_) => const HabitEditScreen()));
     if (created == true && mounted) _handleChanged();
   }
 
   /// 时长型：启动专注并跳转番茄钟，默认时长为习惯设置的默认时长。
   Future<void> _startFocus(HabitGoal goal) => HabitFocusLauncher.open(
-        context: context,
-        username: widget.username,
-        goal: goal,
-        onReturned: _handleChanged,
-      );
+    context: context,
+    username: widget.username,
+    goal: goal,
+    onReturned: _handleChanged,
+  );
 
   @override
   Widget build(BuildContext context) {
     final Widget content;
-    if (_loading) {
+    if (_loading && _snapshot == null) {
       content = const Center(child: CircularProgressIndicator());
     } else {
       final snapshot = _snapshot;
@@ -144,8 +137,9 @@ class _HabitTodayTabState extends State<HabitTodayTab> {
       } else if (snapshot.isEmpty) {
         content = _buildEmpty();
       } else {
-        final bottomPadding =
-            floatingBottomNavigationContentPaddingFor(context);
+        final bottomPadding = floatingBottomNavigationContentPaddingFor(
+          context,
+        );
         final groups = _groupedGoals(snapshot);
         final firstGoalUuid = snapshot.goals.first.uuid;
         content = RefreshIndicator(
@@ -463,8 +457,9 @@ class _HabitTodayTabState extends State<HabitTodayTab> {
                         value: planned == 0 ? 0 : met / planned,
                         strokeWidth: 8,
                         strokeCap: StrokeCap.round,
-                        backgroundColor:
-                            colorScheme.onSurface.withValues(alpha: 0.1),
+                        backgroundColor: colorScheme.onSurface.withValues(
+                          alpha: 0.1,
+                        ),
                         valueColor: AlwaysStoppedAnimation(colorScheme.primary),
                       ),
                       Center(

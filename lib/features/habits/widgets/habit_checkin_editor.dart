@@ -20,8 +20,8 @@ Future<HabitCheckIn?> showHabitCheckInEditor({
     text: isDurationType
         ? (checkIn.value / 3600).toStringAsFixed(2)
         : checkIn.value == checkIn.value.roundToDouble()
-            ? checkIn.value.round().toString()
-            : checkIn.value.toString(),
+        ? checkIn.value.round().toString()
+        : checkIn.value.toString(),
   );
   final noteController = TextEditingController(text: checkIn.note ?? '');
   final formKey = GlobalKey<FormState>();
@@ -49,8 +49,8 @@ Future<HabitCheckIn?> showHabitCheckInEditor({
             isTimeType
                 ? '编辑打卡时间'
                 : isDurationType
-                    ? '修正睡眠时长'
-                    : '编辑记录',
+                ? '修正睡眠时长'
+                : '编辑记录',
           ),
           content: Form(
             key: formKey,
@@ -60,8 +60,9 @@ Future<HabitCheckIn?> showHabitCheckInEditor({
                 if (!isTimeType)
                   TextFormField(
                     controller: valueController,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
                     decoration: InputDecoration(
                       labelText: isDurationType
                           ? '睡眠时长（小时）'
@@ -98,9 +99,7 @@ Future<HabitCheckIn?> showHabitCheckInEditor({
                       }
                     },
                     icon: const Icon(Icons.schedule_rounded, size: 18),
-                    label: Text(
-                      '实际时间：${HabitText.timeOfDay(editedTime)}',
-                    ),
+                    label: Text('实际时间：${HabitText.timeOfDay(editedTime)}'),
                   ),
                 const SizedBox(height: 10),
                 TextField(
@@ -142,10 +141,7 @@ Future<HabitCheckIn?> showHabitCheckInEditor({
       edited
         ..occurredAt = editedTime.toUtc().millisecondsSinceEpoch
         ..logicalDate = HabitRuleResolver.dayKey(
-          HabitRuleResolver.logicalDateFor(
-            editedTime,
-            rule.dayBoundaryMinute,
-          ),
+          HabitRuleResolver.logicalDateFor(editedTime, rule.dayBoundaryMinute),
         )
         ..timezoneOffsetMinutes = editedTime.timeZoneOffset.inMinutes;
     } else if (isDurationType) {
@@ -155,8 +151,9 @@ Future<HabitCheckIn?> showHabitCheckInEditor({
     } else {
       edited.value = double.parse(valueController.text.trim());
     }
-    edited.note =
-        noteController.text.trim().isEmpty ? null : noteController.text.trim();
+    edited.note = noteController.text.trim().isEmpty
+        ? null
+        : noteController.text.trim();
     return edited;
   } finally {
     valueController.dispose();

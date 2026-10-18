@@ -216,10 +216,12 @@ abstract final class HabitReminderService {
     }
 
     final ownedReminders = reminders
-        .map((reminder) => ScheduledReminderRegistry.withSource(
-              reminder,
-              ScheduledReminderSources.habit,
-            ))
+        .map(
+          (reminder) => ScheduledReminderRegistry.withSource(
+            reminder,
+            ScheduledReminderSources.habit,
+          ),
+        )
         .toList(growable: false);
     await NotificationService.scheduleReminders(
       ownedReminders,
@@ -298,7 +300,8 @@ abstract final class HabitReminderService {
   ) {
     final currentMin = (progress.currentValue / 60).ceil();
     final targetMin = (progress.targetValue / 60).ceil();
-    final isSleepDuration = HabitAdaptationService.forHabit(goal)?.kind ==
+    final isSleepDuration =
+        HabitAdaptationService.forHabit(goal)?.kind ==
         HabitAdaptationKind.sleepDuration;
 
     for (final minuteOfDay in _sortedFixedTimes(policy)) {
@@ -312,8 +315,8 @@ abstract final class HabitReminderService {
         title: title,
         text: remaining > 0
             ? isSleepDuration
-                ? '等待早睡和早起打卡生成时长'
-                : '今天还需 ${(remaining / 60).ceil()} 分钟，点击开始专注'
+                  ? '等待早睡和早起打卡生成时长'
+                  : '今天还需 ${(remaining / 60).ceil()} 分钟，点击开始专注'
             : '今日目标已完成',
       );
     }
@@ -366,7 +369,8 @@ abstract final class HabitReminderService {
         triggerAt: target.subtract(Duration(minutes: timePointAdvanceMinutes)),
         now: now,
         title: title,
-        text: '距离目标 ${HabitText.targetTime(targetMinute)}'
+        text:
+            '距离目标 ${HabitText.targetTime(targetMinute)}'
             '还有 $timePointAdvanceMinutes 分钟',
       );
       // 临近提醒（nearEnd）。
@@ -392,15 +396,16 @@ abstract final class HabitReminderService {
     );
   }
 
-  static void _addDailySummary(
-      {required HabitGoal goal,
-      required HabitReminderPolicy policy,
-      required String title,
-      required HabitProgress? progress,
-      required DateTime today,
-      required DateTime now,
-      required String logicalKey,
-      required List<Map<String, dynamic>> reminders}) {
+  static void _addDailySummary({
+    required HabitGoal goal,
+    required HabitReminderPolicy policy,
+    required String title,
+    required HabitProgress? progress,
+    required DateTime today,
+    required DateTime now,
+    required String logicalKey,
+    required List<Map<String, dynamic>> reminders,
+  }) {
     if (!policy.dailySummaryReminder) return;
     _addReminder(
       reminders: reminders,

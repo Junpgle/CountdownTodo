@@ -53,7 +53,8 @@ abstract final class HabitWidgetCheckIn {
 
     switch (goal.sourceType) {
       case HabitSourceType.quantityCheckIn:
-        final v = value ??
+        final v =
+            value ??
             (rule.quickValues.isNotEmpty
                 ? rule.quickValues.first.toDouble()
                 : 1.0);

@@ -91,8 +91,9 @@ abstract final class HabitDayLoader {
     HabitSleepCoachingSnapshot? sleepCoachingSnapshot;
     if (username.trim().isNotEmpty) {
       try {
-        sleepCoachingSnapshot =
-            await HabitSleepCoachingService.load(username.trim());
+        sleepCoachingSnapshot = await HabitSleepCoachingService.load(
+          username.trim(),
+        );
       } catch (e) {
         // 训练数据异常不阻塞首页习惯卡片，回退到规则中的最终目标。
         debugPrint('⚠️ 睡眠训练快照加载失败: $e');
@@ -117,11 +118,13 @@ abstract final class HabitDayLoader {
     final prepared = <_HabitDayWork>[];
 
     for (final goal in goals) {
-      final rules = rulesByHabit.putIfAbsent(
-        goal.uuid,
-        () => <HabitGoalRuleRevision>[],
-      )..sort((a, b) =>
-          (a.effectiveFromDate ?? '').compareTo(b.effectiveFromDate ?? ''));
+      final rules =
+          rulesByHabit.putIfAbsent(goal.uuid, () => <HabitGoalRuleRevision>[])
+            ..sort(
+              (a, b) => (a.effectiveFromDate ?? '').compareTo(
+                b.effectiveFromDate ?? '',
+              ),
+            );
       final progressDate = progressLogicalDateFor(
         goal: goal,
         rules: rules,
@@ -235,14 +238,12 @@ abstract final class HabitDayLoader {
     }
 
     final calendarDate = DateTime(date.year, date.month, date.day);
-    final rule = HabitRuleResolver.effectiveRule(rules, calendarDate) ??
+    final rule =
+        HabitRuleResolver.effectiveRule(rules, calendarDate) ??
         HabitRuleResolver.effectiveRule(
           rules,
           HabitRuleResolver.addCalendarDays(calendarDate, -1),
         );
-    return HabitRuleResolver.logicalDateFor(
-      date,
-      rule?.dayBoundaryMinute ?? 0,
-    );
+    return HabitRuleResolver.logicalDateFor(date, rule?.dayBoundaryMinute ?? 0);
   }
 }

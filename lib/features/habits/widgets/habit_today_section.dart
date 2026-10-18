@@ -102,13 +102,13 @@ class _HabitTodaySectionState extends State<HabitTodaySection> {
   }
 
   Future<void> _startFocus(HabitGoal goal) => HabitFocusLauncher.open(
-        context: context,
-        username: widget.username,
-        goal: goal,
-        onReturned: () {
-          _loadData();
-        },
-      );
+    context: context,
+    username: widget.username,
+    goal: goal,
+    onReturned: () {
+      _loadData();
+    },
+  );
 
   GlobalKey _cardKeyFor(HabitGoal goal) {
     return _cardKeys.putIfAbsent(goal.uuid, GlobalKey.new);
@@ -117,10 +117,7 @@ class _HabitTodaySectionState extends State<HabitTodaySection> {
   Future<void> _viewRecords(HabitGoal goal) async {
     await PageTransitions.pushFromRect(
       context: context,
-      page: HabitDetailScreen(
-        username: widget.username,
-        goal: goal,
-      ),
+      page: HabitDetailScreen(username: widget.username, goal: goal),
       sourceKey: _cardKeyFor(goal),
       placeholderBuilder: (_) => Text(
         goal.icon.isNotEmpty ? goal.icon : '🎯',
@@ -158,10 +155,11 @@ class _HabitTodaySectionState extends State<HabitTodaySection> {
                         : colorScheme.tertiary.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Icon(Icons.repeat_rounded,
-                      size: widget.compact ? 18 : 20,
-                      color:
-                          widget.isLight ? Colors.white : colorScheme.tertiary),
+                  child: Icon(
+                    Icons.repeat_rounded,
+                    size: widget.compact ? 18 : 20,
+                    color: widget.isLight ? Colors.white : colorScheme.tertiary,
+                  ),
                 ),
                 SizedBox(width: widget.compact ? 8 : 10),
                 Text(
@@ -246,8 +244,9 @@ class _HabitTodaySectionState extends State<HabitTodaySection> {
           style: TextStyle(
             fontSize: 11,
             fontWeight: FontWeight.w600,
-            color:
-                widget.isLight ? Colors.white : colorScheme.onTertiaryContainer,
+            color: widget.isLight
+                ? Colors.white
+                : colorScheme.onTertiaryContainer,
           ),
         ),
       );
@@ -258,8 +257,8 @@ class _HabitTodaySectionState extends State<HabitTodaySection> {
         color: widget.isLight
             ? Colors.white.withValues(alpha: 0.2)
             : met == planned
-                ? colorScheme.tertiaryContainer
-                : colorScheme.secondaryContainer,
+            ? colorScheme.tertiaryContainer
+            : colorScheme.secondaryContainer,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Text(
@@ -270,8 +269,8 @@ class _HabitTodaySectionState extends State<HabitTodaySection> {
           color: widget.isLight
               ? Colors.white
               : met == planned
-                  ? colorScheme.onTertiaryContainer
-                  : colorScheme.onSecondaryContainer,
+              ? colorScheme.onTertiaryContainer
+              : colorScheme.onSecondaryContainer,
         ),
       ),
     );
@@ -304,8 +303,11 @@ class _HabitTodaySectionState extends State<HabitTodaySection> {
       ),
       child: Column(
         children: [
-          Icon(Icons.auto_awesome_outlined,
-              size: 30, color: subColor.withValues(alpha: 0.5)),
+          Icon(
+            Icons.auto_awesome_outlined,
+            size: 30,
+            color: subColor.withValues(alpha: 0.5),
+          ),
           const SizedBox(height: 8),
           Text(
             '还没有习惯，去创建第一个吧',

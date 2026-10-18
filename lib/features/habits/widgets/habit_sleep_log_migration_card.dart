@@ -18,7 +18,8 @@ class HabitSleepLogMigrationCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final missingCount = (proposal.createsEarlySleep ? 1 : 0) +
+    final missingCount =
+        (proposal.createsEarlySleep ? 1 : 0) +
         (proposal.createsEarlyWake ? 1 : 0);
     return Center(
       child: ConstrainedBox(

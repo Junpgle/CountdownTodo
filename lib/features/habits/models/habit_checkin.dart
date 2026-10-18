@@ -1,4 +1,5 @@
 import 'package:uuid/uuid.dart';
+
 import '../../../utils/json_value_parser.dart';
 
 /// 打卡来源。
@@ -69,9 +70,9 @@ class HabitCheckIn {
     this.deviceId,
     int? createdAt,
     int? updatedAt,
-  })  : uuid = uuid ?? const Uuid().v4(),
-        createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch,
-        updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch;
+  }) : uuid = uuid ?? const Uuid().v4(),
+       createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch,
+       updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch;
 
   void markAsChanged() {
     version++;
@@ -86,22 +87,22 @@ class HabitCheckIn {
   }
 
   Map<String, dynamic> toJson() => {
-        'uuid': uuid,
-        'habit_uuid': habitUuid,
-        'rule_revision_uuid': ruleRevisionUuid,
-        'occurred_at': occurredAt,
-        'logical_date': logicalDate,
-        'timezone_offset_minutes': timezoneOffsetMinutes,
-        'value': value,
-        'note': note,
-        'source': source.name,
-        'dedupe_key': dedupeKey,
-        'is_deleted': isDeleted ? 1 : 0,
-        'version': version,
-        'device_id': deviceId,
-        'created_at': createdAt,
-        'updated_at': updatedAt,
-      };
+    'uuid': uuid,
+    'habit_uuid': habitUuid,
+    'rule_revision_uuid': ruleRevisionUuid,
+    'occurred_at': occurredAt,
+    'logical_date': logicalDate,
+    'timezone_offset_minutes': timezoneOffsetMinutes,
+    'value': value,
+    'note': note,
+    'source': source.name,
+    'dedupe_key': dedupeKey,
+    'is_deleted': isDeleted ? 1 : 0,
+    'version': version,
+    'device_id': deviceId,
+    'created_at': createdAt,
+    'updated_at': updatedAt,
+  };
 
   factory HabitCheckIn.fromJson(Map<String, dynamic> json) {
     return HabitCheckIn(

@@ -14,7 +14,7 @@ class HabitSleepCoachingCard extends StatelessWidget {
   final ValueChanged<bool> onPauseChanged;
   final ValueChanged<bool> onEnabledChanged;
   final Future<void> Function(int stepMinutes, int stageDays)?
-      onSettingsChanged;
+  onSettingsChanged;
 
   const HabitSleepCoachingCard({
     super.key,
@@ -101,9 +101,9 @@ class HabitSleepCoachingCard extends StatelessWidget {
               children: [
                 TextButton.icon(
                   onPressed: () => onPauseChanged(!isPaused),
-                  icon: Icon(isPaused
-                      ? Icons.play_arrow_rounded
-                      : Icons.pause_rounded),
+                  icon: Icon(
+                    isPaused ? Icons.play_arrow_rounded : Icons.pause_rounded,
+                  ),
                   label: Text(isPaused ? '继续训练' : '暂停训练'),
                 ),
                 const Spacer(),
@@ -241,8 +241,10 @@ class HabitSleepCoachingCard extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('训练节奏',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+              const Text(
+                '训练节奏',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+              ),
               const SizedBox(height: 6),
               const Text('节奏越慢越容易坚持；阶段天数用于判断是否稳定。'),
               const SizedBox(height: 14),
@@ -250,8 +252,12 @@ class HabitSleepCoachingCard extends StatelessWidget {
                 initialValue: step,
                 decoration: const InputDecoration(labelText: '每次调整'),
                 items: const [5, 10, 15, 20, 30]
-                    .map((value) => DropdownMenuItem(
-                        value: value, child: Text('$value 分钟')))
+                    .map(
+                      (value) => DropdownMenuItem(
+                        value: value,
+                        child: Text('$value 分钟'),
+                      ),
+                    )
                     .toList(),
                 onChanged: (value) => setModalState(() => step = value ?? step),
               ),
@@ -260,8 +266,12 @@ class HabitSleepCoachingCard extends StatelessWidget {
                 initialValue: days,
                 decoration: const InputDecoration(labelText: '每阶段稳定天数'),
                 items: const [2, 3, 4, 5, 7]
-                    .map((value) =>
-                        DropdownMenuItem(value: value, child: Text('$value 天')))
+                    .map(
+                      (value) => DropdownMenuItem(
+                        value: value,
+                        child: Text('$value 天'),
+                      ),
+                    )
                     .toList(),
                 onChanged: (value) => setModalState(() => days = value ?? days),
               ),
