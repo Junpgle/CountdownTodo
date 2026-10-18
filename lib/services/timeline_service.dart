@@ -1,5 +1,4 @@
 import 'package:flutter/foundation.dart';
-import 'package:intl/intl.dart';
 
 import 'database_helper.dart';
 import 'course_service.dart';
@@ -41,7 +40,7 @@ class TimelineService {
     final endOfDay = dayBounds.end;
     final startOfDayMs = startOfDay.millisecondsSinceEpoch;
     final endOfDayMs = endOfDay.millisecondsSinceEpoch;
-    final dayStr = DateFormat('yyyy-MM-dd').format(date);
+    final dayStr = AppTimeFormats.date(date);
 
     List<TimelineEvent> events = [];
 
@@ -253,7 +252,7 @@ class TimelineService {
       final habitGoals = await HabitStorage.getHabitGoals(
         includeArchived: true,
       );
-      final logicalDate = DateFormat('yyyy-MM-dd').format(startOfDay);
+      final logicalDate = AppTimeFormats.date(startOfDay);
       final independentHabitGoals = habitGoals
           .where(
             (goal) =>
@@ -612,6 +611,7 @@ class TimelineService {
       List<Map<String, dynamic>> topDays = [];
 
       if (trendRows.isNotEmpty) {
+        final dateFormat = AppTimeFormats.dateFormatter('yyyy-MM-dd');
         var sortedTrend = List.from(trendRows)
           ..sort(
             (a, b) => (b['total_dur'] as num? ?? 0).compareTo(
@@ -622,7 +622,7 @@ class TimelineService {
         for (var i = 0; i < sortedTrend.length && i < 5; i++) {
           final row = sortedTrend[i];
           final dayStr = row['day'] as String;
-          final d = DateFormat('yyyy-MM-dd').parse(dayStr);
+          final d = dateFormat.parse(dayStr);
           final mins = (row['total_dur'] as num? ?? 0).toInt() ~/ 60;
 
           if (i == 0) {
@@ -1352,7 +1352,7 @@ class TimelineService {
       );
 
       final activeDays = rows.map((r) => r['day']?.toString()).toSet();
-      final dayKeyFormat = DateFormat('yyyy-MM-dd');
+      final dayKeyFormat = AppTimeFormats.dateFormatter('yyyy-MM-dd');
       var cursor = anchor;
       var streak = 0;
       while (activeDays.contains(dayKeyFormat.format(cursor))) {
@@ -1395,7 +1395,7 @@ class TimelineService {
     );
 
     final activeDays = rows.map((r) => r['day']?.toString()).toSet();
-    final dayKeyFormat = DateFormat('yyyy-MM-dd');
+    final dayKeyFormat = AppTimeFormats.dateFormatter('yyyy-MM-dd');
     var cursor = startDay;
     var current = 0;
     var longest = 0;
