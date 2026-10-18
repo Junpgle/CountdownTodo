@@ -14,6 +14,7 @@ import '../models/finance_models.dart';
 /// 该类不依赖用户名参数：DatabaseHelper 会根据当前登录用户打开隔离的
 /// `uni_sync_<username>.db`，因此记账数据天然按账号隔离。
 abstract final class FinanceStorage {
+  static final RegExp _monthKeyPattern = RegExp(r'^\d{4}-(0[1-9]|1[0-2])$');
   static const int _maxDateTimeMillis = 8640000000000000;
   static const int _maxFinanceTimezoneOffsetMinutes = 14 * 60;
   static const int _maxTemplateUseCount = 0x7fffffff;
@@ -1912,7 +1913,7 @@ abstract final class FinanceStorage {
         budget.isPaymentMethod ? '余额不能为负数' : '预算金额必须大于 0',
       );
     }
-    if (!RegExp(r'^\d{4}-(0[1-9]|1[0-2])$').hasMatch(budget.monthKey)) {
+    if (!_monthKeyPattern.hasMatch(budget.monthKey)) {
       throw ArgumentError.value(budget.monthKey, 'monthKey', '月份格式无效');
     }
     if (budget.categoryUuid != null && budget.paymentMethodUuid != null) {
@@ -5442,8 +5443,7 @@ abstract final class FinanceStorage {
 
   static bool _hasValidRawFinanceMonthKey(Map<String, dynamic> map) {
     final value = map['month_key'] ?? map['monthKey'];
-    return value is String &&
-        RegExp(r'^\d{4}-(0[1-9]|1[0-2])$').hasMatch(value);
+    return value is String && _monthKeyPattern.hasMatch(value);
   }
 
   static bool _hasSafeRawIntegerRange(
@@ -5817,11 +5817,11 @@ abstract final class FinanceStorage {
         isSafeFinanceAmountMinor(item.amountMinor) &&
         (item.isPaymentMethod ? item.amountMinor >= 0 : item.amountMinor > 0) &&
         hasValidBalanceSnapshot &&
-        RegExp(r'^\d{4}-(0[1-9]|1[0-2])$').hasMatch(item.monthKey);
+        _monthKeyPattern.hasMatch(item.monthKey);
   }
 
   static bool _isBalanceSnapshotForMonth(String monthKey, int snapshotAt) {
-    if (!RegExp(r'^\d{4}-(0[1-9]|1[0-2])$').hasMatch(monthKey)) return false;
+    if (!_monthKeyPattern.hasMatch(monthKey)) return false;
     final parts = monthKey.split('-');
     final year = int.parse(parts[0]);
     final month = int.parse(parts[1]);
