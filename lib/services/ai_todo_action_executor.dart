@@ -111,6 +111,12 @@ class AiTodoActionExecutionResult {
 }
 
 class AiTodoActionExecutor {
+  static final RegExp _habitMinuteListSeparatorPattern = RegExp(r'[,，\s]+');
+  static final RegExp _habitMinuteOfDayPattern = RegExp(
+    r'^(\d{1,2}):(\d{1,2})$',
+  );
+  static final RegExp _habitTokenNormalizationPattern = RegExp(r'[\s_-]+');
+
   static AiTodoActionExecutionResult execute({
     required List<AiTodoAction> actions,
     required List<Map<String, dynamic>> existingTodos,
@@ -1170,7 +1176,7 @@ class AiTodoActionExecutor {
     final values = raw is List
         ? raw
         : raw is String && raw.trim().isNotEmpty
-        ? raw.split(RegExp(r'[,，\s]+'))
+        ? raw.split(_habitMinuteListSeparatorPattern)
         : const <dynamic>[];
     return values
         .map(_parseHabitMinute)
@@ -1186,7 +1192,7 @@ class AiTodoActionExecutor {
     if (value != null) return value;
     final text = raw?.toString().trim();
     if (text == null) return null;
-    final match = RegExp(r'^(\d{1,2}):(\d{1,2})$').firstMatch(text);
+    final match = _habitMinuteOfDayPattern.firstMatch(text);
     if (match == null) return null;
     final hour = int.tryParse(match.group(1)!);
     final minute = int.tryParse(match.group(2)!);
@@ -1211,7 +1217,7 @@ class AiTodoActionExecutor {
   }
 
   static String _normalizeHabitToken(String value) {
-    return value.toLowerCase().replaceAll(RegExp(r'[\s_-]+'), '');
+    return value.toLowerCase().replaceAll(_habitTokenNormalizationPattern, '');
   }
 
   static String _habitEffectiveFromDate(int dayBoundaryMinute) {
