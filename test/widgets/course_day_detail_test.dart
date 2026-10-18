@@ -1,4 +1,6 @@
+import 'package:countdown_todo/models.dart';
 import 'package:countdown_todo/screens/course_screens.dart';
+import 'package:countdown_todo/storage_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -18,6 +20,44 @@ void main() {
   });
 
   tearDown(() => fixture.dispose());
+
+  testWidgets('双周标题仍显示同一学期的周次范围', (tester) async {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final semesterStart = today.subtract(
+      Duration(days: today.weekday - 1 + 28),
+    );
+    await StorageService.saveSemesters([
+      SemesterInfo(
+        id: 'biweek-label-test',
+        name: '测试学期',
+        startDate: semesterStart,
+        isCurrent: true,
+      ),
+    ]);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: WeeklyCourseScreen(username: PlanAvailabilityFixture.username),
+      ),
+    );
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 500)),
+    );
+    await tester.pump();
+    await tester.tap(find.byTooltip('切换视图模式'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Text &&
+            RegExp(r'^测试学期 第\d+-\d+周$').hasMatch(widget.data ?? ''),
+      ),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('隐藏跨天待办时月详情仍展示单日全天待办', (tester) async {
     tester.view.devicePixelRatio = 1;

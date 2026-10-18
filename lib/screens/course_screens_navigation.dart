@@ -1,5 +1,7 @@
 part of 'course_screens.dart';
 
+final RegExp _courseWeekNumberPattern = RegExp(r'[^0-9]');
+
 // ignore_for_file: annotate_overrides, unused_element, unused_element_parameter
 
 mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
@@ -123,12 +125,18 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
     String label2 = getSemesterWeekLabel(w2Monday);
 
     // 如果两个周次在同一个学期，简写
-    if (label1.split(' ').first == label2.split(' ').first) {
-      final week1 = label1.split(' ').last;
-      final week2 = label2.split(' ').last;
-      final weekNumber1 = week1.replaceAll(RegExp(r'[^0-9]'), '');
-      final weekNumber2 = week2.replaceAll(RegExp(r'[^0-9]'), '');
-      return '${label1.split(' ').first} 第$weekNumber1-$weekNumber2周';
+    final label1Parts = label1.split(' ');
+    final label2Parts = label2.split(' ');
+    if (label1Parts.first == label2Parts.first) {
+      final weekNumber1 = label1Parts.last.replaceAll(
+        _courseWeekNumberPattern,
+        '',
+      );
+      final weekNumber2 = label2Parts.last.replaceAll(
+        _courseWeekNumberPattern,
+        '',
+      );
+      return '${label1Parts.first} 第$weekNumber1-$weekNumber2周';
     } else {
       return '$label1-$label2';
     }
