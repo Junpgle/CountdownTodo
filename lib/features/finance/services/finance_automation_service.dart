@@ -27,6 +27,7 @@ abstract final class FinanceAutomationService {
   static const int recurringNotificationBaseId = 52001;
   static const int recurringNotificationRange = 7999;
   static const int maxRecurringCatchUpPeriods = 12;
+  static final RegExp _monthPeriodPattern = RegExp(r'^\d{4}-(0[1-9]|1[0-2])$');
   static final Set<String> _budgetAlertInFlight = {};
   static Timer? _autoGenerationTimer;
   static int _autoGenerationTimerRevision = 0;
@@ -80,7 +81,7 @@ abstract final class FinanceAutomationService {
         var cursor = DateTime(now.year, now.month);
         final startMonth = DateTime(start.year, start.month);
         if (cursor.isBefore(startMonth)) cursor = startMonth;
-        if (RegExp(r'^\d{4}-(0[1-9]|1[0-2])$').hasMatch(lastGenerated ?? '')) {
+        if (_monthPeriodPattern.hasMatch(lastGenerated ?? '')) {
           final parts = lastGenerated!.split('-');
           final monthAfterLast = DateTime(
             int.parse(parts[0]),
@@ -290,7 +291,7 @@ abstract final class FinanceAutomationService {
     }
 
     var cursor = DateTime(start.year, start.month);
-    if (RegExp(r'^\d{4}-(0[1-9]|1[0-2])$').hasMatch(lastPeriod)) {
+    if (_monthPeriodPattern.hasMatch(lastPeriod)) {
       final parts = lastPeriod.split('-');
       cursor = DateTime(int.parse(parts[0]), int.parse(parts[1]) + 1);
     }
