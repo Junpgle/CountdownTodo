@@ -28,6 +28,10 @@ abstract final class FinanceAutomationService {
   static const int recurringNotificationRange = 7999;
   static const int maxRecurringCatchUpPeriods = 12;
   static final RegExp _monthPeriodPattern = RegExp(r'^\d{4}-(0[1-9]|1[0-2])$');
+  static final NumberFormat _reminderWholeAmountFormat = NumberFormat(
+    '#,##0',
+    'zh_CN',
+  );
   static final Set<String> _budgetAlertInFlight = {};
   static Timer? _autoGenerationTimer;
   static int _autoGenerationTimerRevision = 0;
@@ -614,7 +618,7 @@ abstract final class FinanceAutomationService {
 
   static String _formatAmount(int amountMinor) {
     final absolute = amountMinor.abs();
-    final whole = NumberFormat('#,##0', 'zh_CN').format(absolute ~/ 100);
+    final whole = _reminderWholeAmountFormat.format(absolute ~/ 100);
     final cents = (absolute % 100).toString().padLeft(2, '0');
     final sign = amountMinor < 0 ? '-' : '';
     return '¥$sign$whole.$cents';
