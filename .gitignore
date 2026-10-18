@@ -221,6 +221,7 @@ todo.md
 !/test/utils/system_ui_style_test.dart
 !/test/utils/page_transitions_test.dart
 !/test/utils/settings_navigation_test.dart
+!/test/utils/time_utils_test.dart
 !/test/features/
 /test/features/*
 !/test/features/thirty_day_challenge/

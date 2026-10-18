@@ -65,10 +65,25 @@ String formatCountdown(int totalSeconds) {
 // ── 日期时间格式化 ──────────────────────────────────────────
 
 class AppTimeFormats {
+  static const int _maximumCachedDateFormats = 32;
+  static final Map<(String?, String), DateFormat> _dateFormatters = {};
+
   const AppTimeFormats._();
 
+  static DateFormat _dateFormatter(String pattern, String? locale) {
+    final effectiveLocale = locale ?? Intl.defaultLocale;
+    final key = (effectiveLocale, pattern);
+    final cached = _dateFormatters[key];
+    if (cached != null) return cached;
+
+    if (_dateFormatters.length >= _maximumCachedDateFormats) {
+      _dateFormatters.clear();
+    }
+    return _dateFormatters[key] = DateFormat(pattern, locale);
+  }
+
   static String format(DateTime time, String pattern, {String? locale}) {
-    return DateFormat(pattern, locale).format(time);
+    return _dateFormatter(pattern, locale).format(time);
   }
 
   static String safeFormat(
