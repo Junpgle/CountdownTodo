@@ -747,6 +747,7 @@ final RegExp _financeAmountThousandsPattern = RegExp(
   r'^\d{1,3}(,\d{3})+(\.\d{0,2})?$',
 );
 final RegExp _financeAmountTrimZeroCentsPattern = RegExp(r'\.00$');
+final NumberFormat _financeWholeAmountFormat = NumberFormat('#,##0', 'zh_CN');
 
 int? parseFinanceAmount(String raw, {bool allowZero = false}) {
   final input = raw.trim();
@@ -771,7 +772,7 @@ String formatFinanceAmount(int amountMinor, {bool withSymbol = true}) {
   final absolute = amountMinor.abs();
   final whole = absolute ~/ 100;
   final cents = (absolute % 100).toString().padLeft(2, '0');
-  final groupedWhole = NumberFormat('#,##0', 'zh_CN').format(whole);
+  final groupedWhole = _financeWholeAmountFormat.format(whole);
   final value = '$groupedWhole.$cents';
   final sign = amountMinor < 0 ? '-' : '';
   return withSymbol ? '$sign¥$value' : '$sign$value';
