@@ -110,23 +110,26 @@ void main() {
     FixedScheduleItem? savedSchedule;
     await tester.pumpWidget(
       MaterialApp(
-        home: TodoConfirmScreen(
-          llmResults: const [
-            {
-              'itemKind': 'fixedSchedule',
-              'title': '客户同步',
-              'location': '第一会议室',
-              'remark': '带合同',
-              'isAllDay': false,
-              'startTime': '2026-08-03 10:00',
-              'endTime': null,
-              'timeMode': 'range',
-              'recurrence': 'none',
-              'reminderMinutes': 15,
-            },
-          ],
-          onFixedScheduleAdded: (item) async => savedSchedule = item,
-          onConfirm: (_) {},
+        home: TickerMode(
+          enabled: false,
+          child: TodoConfirmScreen(
+            llmResults: const [
+              {
+                'itemKind': 'fixedSchedule',
+                'title': '客户同步',
+                'location': '第一会议室',
+                'remark': '带合同',
+                'isAllDay': false,
+                'startTime': '2026-08-03 10:00',
+                'endTime': null,
+                'timeMode': 'range',
+                'recurrence': 'none',
+                'reminderMinutes': 15,
+              },
+            ],
+            onFixedScheduleAdded: (item) async => savedSchedule = item,
+            onConfirm: (_) {},
+          ),
         ),
       ),
     );
@@ -134,6 +137,7 @@ void main() {
 
     expect(find.textContaining('日程 1/1'), findsOneWidget);
     expect(find.textContaining('结束待定'), findsOneWidget);
+    expect(find.text('08-03 10:00开始 · 结束待定'), findsOneWidget);
     await tester.tap(find.text('确认并添加'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('保存为固定日程'));

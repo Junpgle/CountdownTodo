@@ -138,6 +138,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
   List<TodoGroup> _todoGroups = [];
   Map<String, int> _categoryReminderDefaults = {};
   SemesterWeekContext? _semesterWeekContext;
+  final Map<(String?, String), DateFormat> _dateFormatters = {};
 
   @override
   void initState() {
@@ -156,6 +157,14 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
   String _dateWithSemesterWeek(DateTime date, String formattedDate) =>
       _semesterWeekContext?.appendWeekLabel(date, formattedDate) ??
       formattedDate;
+
+  DateFormat _cachedDateFormat(String pattern) {
+    final locale = Intl.defaultLocale;
+    return _dateFormatters.putIfAbsent(
+      (locale, pattern),
+      () => DateFormat(pattern, locale),
+    );
+  }
 
   Future<void> _loadTodoMetadata() async {
     final username = await StorageService.getLoginSession();
@@ -505,7 +514,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                     ListTile(
                       contentPadding: EdgeInsets.zero,
                       title: Text(
-                        '完成日期: ${_dateWithSemesterWeek(createdAt, DateFormat('yyyy-MM-dd').format(createdAt))}',
+                        '完成日期: ${_dateWithSemesterWeek(createdAt, _cachedDateFormat('yyyy-MM-dd').format(createdAt))}',
                       ),
                       onTap: () async {
                         final pickedDate = await showAppDatePicker(
@@ -556,7 +565,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                       title: Text(
                         dueDate == null
                             ? '设置截止时间（当前未安排）'
-                            : '${_dateWithSemesterWeek(dueDate!, DateFormat('yyyy-MM-dd HH:mm').format(dueDate!))} 前完成',
+                            : '${_dateWithSemesterWeek(dueDate!, _cachedDateFormat('yyyy-MM-dd HH:mm').format(dueDate!))} 前完成',
                       ),
                       onTap: () async {
                         final pickedDate = await showAppDatePicker(
@@ -724,7 +733,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                       title: Text(
                         recurrenceEndDate == null
                             ? '重复结束日期 (可选)'
-                            : '循环截止: ${_dateWithSemesterWeek(recurrenceEndDate!, DateFormat('yyyy-MM-dd').format(recurrenceEndDate!))}',
+                            : '循环截止: ${_dateWithSemesterWeek(recurrenceEndDate!, _cachedDateFormat('yyyy-MM-dd').format(recurrenceEndDate!))}',
                       ),
                       trailing: const Icon(Icons.event_busy, size: 20),
                       onTap: () async {
@@ -915,7 +924,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
     }
     final item = FixedScheduleItem(
       title: todo.title,
-      date: DateFormat('yyyy-MM-dd').format(dateSource),
+      date: _cachedDateFormat('yyyy-MM-dd').format(dateSource),
       startTime: start?.millisecondsSinceEpoch,
       endTime: end?.millisecondsSinceEpoch,
       source: FixedScheduleSource.ai,
@@ -1370,34 +1379,34 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
       if (todo.isAllDay) {
         timeText = todo.startTime == null
             ? '日期待确认 · 时间待定'
-            : '${DateFormat('yyyy-MM-dd').format(todo.startTime!)} · 时间待定';
+            : '${_cachedDateFormat('yyyy-MM-dd').format(todo.startTime!)} · 时间待定';
       } else if (todo.startTime != null && todo.endTime != null) {
         timeText =
-            '${DateFormat('MM-dd HH:mm').format(todo.startTime!)}–${DateFormat('HH:mm').format(todo.endTime!)}';
+            '${_cachedDateFormat('MM-dd HH:mm').format(todo.startTime!)}–${_cachedDateFormat('HH:mm').format(todo.endTime!)}';
       } else if (todo.startTime != null) {
         timeText =
-            '${DateFormat('MM-dd HH:mm').format(todo.startTime!)}开始 · 结束待定';
+            '${_cachedDateFormat('MM-dd HH:mm').format(todo.startTime!)}开始 · 结束待定';
       } else {
         timeText = '日期和时间待确认';
       }
     } else if (intent == CaptureIntentKind.planBlock) {
       timeIcon = Icons.view_timeline_outlined;
       timeText = todo.startTime != null && todo.endTime != null
-          ? '${DateFormat('MM-dd HH:mm').format(todo.startTime!)}–${DateFormat('HH:mm').format(todo.endTime!)}'
+          ? '${_cachedDateFormat('MM-dd HH:mm').format(todo.startTime!)}–${_cachedDateFormat('HH:mm').format(todo.endTime!)}'
           : '规划时段待确认';
     } else if (todo.isAllDay) {
       timeIcon = Icons.today;
       if (todo.startTime != null) {
-        timeText = '${DateFormat('yyyy-MM-dd').format(todo.startTime!)}内完成';
+        timeText = '${_cachedDateFormat('yyyy-MM-dd').format(todo.startTime!)}内完成';
       } else {
         timeText = '某天内完成';
       }
     } else if (todo.endTime != null) {
       timeIcon = Icons.schedule;
-      timeText = '${DateFormat('MM-dd HH:mm').format(todo.endTime!)}前完成';
+      timeText = '${_cachedDateFormat('MM-dd HH:mm').format(todo.endTime!)}前完成';
     } else if (todo.startTime != null) {
       timeIcon = Icons.play_circle_outline;
-      timeText = '时间待确认: ${DateFormat('MM-dd HH:mm').format(todo.startTime!)}';
+      timeText = '时间待确认: ${_cachedDateFormat('MM-dd HH:mm').format(todo.startTime!)}';
     } else {
       timeIcon = Icons.access_time;
       timeText = '未安排';
