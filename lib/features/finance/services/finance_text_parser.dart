@@ -349,6 +349,12 @@ abstract final class FinanceTextParser {
   static final RegExp _sentenceAmountColonBeforePattern = RegExp(r':\s*$');
   static final RegExp _sentenceAmountColonAfterPattern = RegExp(r'^\s*:');
   static final RegExp _sentenceWhitespacePattern = RegExp(r'\s+');
+  static final _normalizedExpenseCategoryAliases = _normalizeCategoryAliases(
+    _expenseCategoryAliases,
+  );
+  static final _normalizedIncomeCategoryAliases = _normalizeCategoryAliases(
+    _incomeCategoryAliases,
+  );
   static final RegExp _sentenceValueLeadingDelimiterPattern = RegExp(
     r'^[,，。；;、\s]+',
   );
@@ -1108,25 +1114,35 @@ abstract final class FinanceTextParser {
   ) {
     if (type == FinanceTransactionType.refund) return '退款';
     final aliases = type == FinanceTransactionType.income
-        ? _incomeCategoryAliases
-        : _expenseCategoryAliases;
+        ? _normalizedIncomeCategoryAliases
+        : _normalizedExpenseCategoryAliases;
     final normalized = text.toLowerCase().replaceAll(
       _sentenceWhitespacePattern,
       '',
     );
     String? matchedCategory;
     var matchedLength = 0;
-    for (final entry in aliases.entries) {
-      final alias = entry.key.toLowerCase().replaceAll(
-        _sentenceWhitespacePattern,
-        '',
-      );
+    for (final entry in aliases) {
+      final alias = entry.key;
       if (normalized.contains(alias) && alias.length > matchedLength) {
         matchedCategory = entry.value;
         matchedLength = alias.length;
       }
     }
     return matchedCategory;
+  }
+
+  static List<MapEntry<String, String>> _normalizeCategoryAliases(
+    Map<String, String> aliases,
+  ) {
+    return aliases.entries
+        .map(
+          (entry) => MapEntry(
+            entry.key.toLowerCase().replaceAll(_sentenceWhitespacePattern, ''),
+            entry.value,
+          ),
+        )
+        .toList(growable: false);
   }
 
   /// Maps natural-language finance terms to the canonical local category name.
