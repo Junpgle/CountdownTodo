@@ -1057,7 +1057,6 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
           final stackIndex = collisionMap[collisionKey] ?? 0;
           collisionMap[collisionKey] = stackIndex + 1;
 
-          final colorScheme = Theme.of(context).colorScheme;
           Color todoColor =
               (todo.isDone ? colorScheme.cdtSuccess : colorScheme.cdtWarning)
                   .withValues(alpha: todo.isDone ? 0.5 : 0.85);
@@ -1259,14 +1258,14 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
           if (height < 18.0) height = 18.0;
 
           Color logColor =
-              Theme.of(context).colorScheme.cdtInfo.withValues(alpha: 0.7);
+              colorScheme.cdtInfo.withValues(alpha: 0.7);
           String logTitle = log.title.isNotEmpty ? log.title : '时间日志';
           if (log.tagUuids.isNotEmpty) {
             final tag = firstTagFor(log.tagUuids);
             if (tag != null) {
               logColor = AppColorUtils.hexToColor(
                 tag.color,
-                fallback: Theme.of(context).colorScheme.cdtInfo,
+                fallback: colorScheme.cdtInfo,
                 opacity: 0.7,
               );
               if (logTitle == '时间日志') logTitle = tag.name;
@@ -1403,7 +1402,6 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
           double height = bottom - top;
           if (height < 18.0) height = 18.0;
 
-          final colorScheme = Theme.of(context).colorScheme;
           final planColor = plan.status == TodoPlanStatus.finished
               ? colorScheme.cdtSuccess.withValues(alpha: 0.58)
               : colorScheme.secondary.withValues(alpha: 0.58);
@@ -1672,7 +1670,6 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
             var height = bottom - top;
             if (height < 18.0) height = 18.0;
 
-            final colorScheme = Theme.of(context).colorScheme;
             final fixedColor = colorScheme.primary.withValues(alpha: 0.82);
             final fixedSchedulePlaceholderColor =
                 colorScheme.brightness == Brightness.dark
@@ -1843,7 +1840,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
             if (height < 18.0) height = 18.0;
 
             Color pomColor =
-                Theme.of(context).colorScheme.cdtFocus.withValues(alpha: 0.6);
+                colorScheme.cdtFocus.withValues(alpha: 0.6);
             String pomTitle = '专注';
 
             if (record.tagUuids.isNotEmpty) {
@@ -1851,7 +1848,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
               if (tag != null) {
                 pomColor = AppColorUtils.hexToColor(
                   tag.color,
-                  fallback: Theme.of(context).colorScheme.cdtFocus,
+                  fallback: colorScheme.cdtFocus,
                   opacity: 0.6,
                 );
                 pomTitle = tag.name;
@@ -2021,7 +2018,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
             var height = bottom - top;
             if (height < 18.0) height = 18.0;
             final color = event.colorValue == null
-                ? Theme.of(context).colorScheme.tertiary.withValues(alpha: 0.78)
+                ? colorScheme.tertiary.withValues(alpha: 0.78)
                 : Color(event.colorValue!).withValues(alpha: 0.78);
             final calendarCardKey = _getDeviceCalendarCardKey(
               event.id,
