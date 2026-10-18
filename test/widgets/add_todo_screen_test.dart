@@ -4,6 +4,7 @@ import 'package:countdown_todo/screens/todo_confirm_screen.dart';
 import 'package:countdown_todo/services/api_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -88,6 +89,10 @@ void main() {
 
     expect(find.text('要记录什么日程？'), findsOneWidget);
     expect(find.byKey(const ValueKey('fixed-schedule-date')), findsOneWidget);
+    expect(
+      find.textContaining(DateFormat('yyyy-MM-dd').format(DateTime.now())),
+      findsOneWidget,
+    );
     expect(find.text('某天内完成'), findsNothing);
   });
 

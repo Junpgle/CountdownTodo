@@ -106,6 +106,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
   bool _scheduleTimeTbd = false;
   bool _scheduleEndTimeTbd = false;
   SemesterWeekContext? _semesterWeekContext;
+  final Map<(String?, String), DateFormat> _dateFormatters = {};
 
   int _selectedTabIndex = 0;
   bool _isParsing = false;
@@ -539,26 +540,26 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       if (result.isAllDay) {
         return result.startTime == null
             ? '日期待确认 · 时间待定'
-            : '${DateFormat('MM-dd').format(result.startTime!)} · 时间待定';
+            : '${_cachedDateFormat('MM-dd').format(result.startTime!)} · 时间待定';
       }
       if (result.startTime != null && result.endTime != null) {
-        return '${DateFormat('MM-dd HH:mm').format(result.startTime!)}–${DateFormat('HH:mm').format(result.endTime!)}';
+        return '${_cachedDateFormat('MM-dd HH:mm').format(result.startTime!)}–${_cachedDateFormat('HH:mm').format(result.endTime!)}';
       }
       if (result.startTime != null) {
-        return '${DateFormat('MM-dd HH:mm').format(result.startTime!)}开始 · 结束待定';
+        return '${_cachedDateFormat('MM-dd HH:mm').format(result.startTime!)}开始 · 结束待定';
       }
       return '日期和时间待确认';
     }
     if (intent == CaptureIntentKind.planBlock) {
       return result.startTime != null && result.endTime != null
-          ? '${DateFormat('MM-dd HH:mm').format(result.startTime!)}–${DateFormat('HH:mm').format(result.endTime!)}'
+          ? '${_cachedDateFormat('MM-dd HH:mm').format(result.startTime!)}–${_cachedDateFormat('HH:mm').format(result.endTime!)}'
           : '规划时段待确认';
     }
     if (result.isAllDay && result.startTime != null) {
-      return '${DateFormat('MM-dd').format(result.startTime!)}内完成';
+      return '${_cachedDateFormat('MM-dd').format(result.startTime!)}内完成';
     }
     if (result.endTime != null) {
-      return '${DateFormat('MM-dd HH:mm').format(result.endTime!)}前完成';
+      return '${_cachedDateFormat('MM-dd HH:mm').format(result.endTime!)}前完成';
     }
     return '未安排';
   }
@@ -925,6 +926,14 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       _semesterWeekContext?.appendWeekLabel(date, formattedDate) ??
       formattedDate;
 
+  DateFormat _cachedDateFormat(String pattern) {
+    final locale = Intl.defaultLocale;
+    return _dateFormatters.putIfAbsent(
+      (locale, pattern),
+      () => DateFormat(pattern, locale),
+    );
+  }
+
   Future<void> _pickScheduleStartTime() async {
     final picked = await showAppTimePicker(
       context: context,
@@ -1203,7 +1212,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
             : FixedScheduleSource.ai);
     final item = FixedScheduleItem(
       title: parsed.title.trim().isEmpty ? _titleCtrl.text : parsed.title,
-      date: DateFormat('yyyy-MM-dd').format(dateSource),
+      date: _cachedDateFormat('yyyy-MM-dd').format(dateSource),
       startTime: start?.millisecondsSinceEpoch,
       endTime: end?.millisecondsSinceEpoch,
       source: resolvedSource,
@@ -1693,7 +1702,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
             _buildSuggestionItem(
               icon: Icons.calendar_today_rounded,
               label:
-                  "建议截止: ${DateFormat('MM-dd HH:mm').format(_suggestedDueDate!)}",
+                  "建议截止: ${_cachedDateFormat('MM-dd HH:mm').format(_suggestedDueDate!)}",
               showAccept: true,
               onAccept: _acceptDueDateSuggestion,
               accentColor: Colors.deepOrangeAccent,
@@ -2286,11 +2295,11 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                             _isAllDay
                                 ? _dateWithSemesterWeek(
                                     _createdAt,
-                                    DateFormat('MM-dd').format(_createdAt),
+                                    _cachedDateFormat('MM-dd').format(_createdAt),
                                   )
                                 : (_dueDate == null
                                       ? "未安排"
-                                      : "${_dateWithSemesterWeek(_dueDate!, DateFormat('MM-dd HH:mm').format(_dueDate!))} 前完成"),
+                                      : "${_dateWithSemesterWeek(_dueDate!, _cachedDateFormat('MM-dd HH:mm').format(_dueDate!))} 前完成"),
                           ),
                           trailing: _dueDate != null && !_isAllDay
                               ? IconButton(
@@ -2311,7 +2320,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                           subtitle: Text(
                             _dateWithSemesterWeek(
                               _scheduleDate,
-                              DateFormat('yyyy-MM-dd').format(_scheduleDate),
+                              _cachedDateFormat('yyyy-MM-dd').format(_scheduleDate),
                             ),
                           ),
                           trailing: Row(
@@ -2507,7 +2516,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                                                 ? "未指定"
                                                 : _dateWithSemesterWeek(
                                                     _recurrenceEndDate!,
-                                                    DateFormat('yyyy-MM-dd')
+                                                    _cachedDateFormat('yyyy-MM-dd')
                                                         .format(
                                                           _recurrenceEndDate!,
                                                         ),
