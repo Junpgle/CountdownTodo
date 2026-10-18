@@ -5,6 +5,14 @@ export 'app_settings_catalog.dart' show AiSettingsDestination;
 
 /// The model selects an ID; titles, paths and actual routes are owned by the app.
 abstract final class AiSettingsNavigationService {
+  static final RegExp _settingsBlockPattern = RegExp(
+    r'\[SETTINGS_START\](.*?)\[SETTINGS_END\]',
+    dotAll: true,
+  );
+  static final RegExp _settingsBlockCleanupPattern = RegExp(
+    r'\[SETTINGS_START\].*?(?:\[SETTINGS_END\]|$)',
+    dotAll: true,
+  );
   static const toolName = 'propose_settings_navigation';
   static const destinations = AppSettingsCatalog.destinations;
   static List<AiSettingsDestination> get availableDestinations =>
@@ -184,10 +192,7 @@ abstract final class AiSettingsNavigationService {
 
   static List<String> extractTargets(String content) {
     final targets = <String>[];
-    for (final match in RegExp(
-      r'\[SETTINGS_START\](.*?)\[SETTINGS_END\]',
-      dotAll: true,
-    ).allMatches(content)) {
+    for (final match in _settingsBlockPattern.allMatches(content)) {
       try {
         final decoded = jsonDecode(match.group(1)!.trim());
         if (decoded is Map) targets.addAll(validateTargets(decoded['targets']));
@@ -200,7 +205,7 @@ abstract final class AiSettingsNavigationService {
 
   static String cleanContent(String content) => content
       .replaceAll(
-        RegExp(r'\[SETTINGS_START\].*?(?:\[SETTINGS_END\]|$)', dotAll: true),
+        _settingsBlockCleanupPattern,
         '',
       )
       .trim();
