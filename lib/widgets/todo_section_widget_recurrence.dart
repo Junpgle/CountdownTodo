@@ -407,7 +407,8 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
       completedCount: summary.completedCount,
       totalCount: todo.recurrenceEndDate == null ? null : summary.totalCount,
       overdueCount: summary.overdueCount,
-      onNodeTap: (node) => _handleRecurrenceNodeTap(todo, node),
+      onNodeTap: (node) =>
+          _handleRecurrenceNodeTap(todo, node, dateStructure!),
       onManage: () => _showRecurrenceManagement(todo),
     );
   }
@@ -415,6 +416,7 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
   Future<void> _handleRecurrenceNodeTap(
     TodoItem current,
     TodoRecurrenceProgressNode node,
+    _TodoRecurrenceDateStructure dateStructure,
   ) async {
     if (node.isCurrent) {
       _setTodoCompletion(current, !current.isDone);
@@ -423,13 +425,17 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
 
     final occurrenceId = node.occurrenceId;
     if (occurrenceId != null) {
-      final occurrence = widget.todos.cast<TodoItem?>().firstWhere(
-            (item) => item?.id == occurrenceId,
-            orElse: () => null,
-          );
-      if (occurrence != null) {
-        await _showRecurrenceOccurrenceActions(occurrence, node.date);
-        return;
+      final slotIndex = dateStructure.occurrenceSlotIndexById[occurrenceId];
+      if (slotIndex != null && slotIndex < dateStructure.slots.length) {
+        final occurrenceIndex = dateStructure.slots[slotIndex].occurrenceIndex;
+        if (occurrenceIndex != null &&
+            occurrenceIndex < dateStructure.occurrences.length) {
+          final occurrence = dateStructure.occurrences[occurrenceIndex];
+          if (occurrence.id == occurrenceId) {
+            await _showRecurrenceOccurrenceActions(occurrence, node.date);
+            return;
+          }
+        }
       }
     }
 

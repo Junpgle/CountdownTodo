@@ -107,6 +107,7 @@ mixin _TodoSectionContract {
   Future<void> _handleRecurrenceNodeTap(
     TodoItem current,
     TodoRecurrenceProgressNode node,
+    _TodoRecurrenceDateStructure dateStructure,
   );
 
   Future<void> _showRecurrenceOccurrenceActions(
