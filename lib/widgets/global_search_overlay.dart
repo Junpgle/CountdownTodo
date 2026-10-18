@@ -127,6 +127,8 @@ class GlobalSearchOverlay extends StatefulWidget {
 
 class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
     with SingleTickerProviderStateMixin {
+  static final RegExp _highlightTermSeparator = RegExp(r'[\s,，;；]+');
+
   final TextEditingController _controller = TextEditingController();
   final FocusNode _inputFocusNode = FocusNode();
   final FocusNode _keyboardFocusNode = FocusNode();
@@ -138,6 +140,8 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
   Map<SearchResultType, List<SearchResult>>? _groupedResultsCache;
   bool _isSearching = false;
   String _currentQuery = '';
+  String? _cachedHighlightQuery;
+  List<String> _cachedHighlightTerms = const <String>[];
   SearchScope _scope = SearchScope.all;
   int _requestSequence = 0;
   String? _lastRecordedQuery;
@@ -289,6 +293,7 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
       _isSearching = true;
       _searchFailed = false;
     });
+    final customSearch = widget.search;
     bool isCurrent() =>
         mounted &&
         !_resultRouteOpen &&
@@ -297,7 +302,7 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
         scope == _scope;
     try {
       final results =
-          await (widget.search?.call(
+          await (customSearch?.call(
                 query,
                 scope: scope,
                 recordHistory: shouldRecord,
@@ -306,12 +311,14 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
                 query,
                 scope: scope,
                 recordHistory: shouldRecord,
+                shouldContinue: isCurrent,
               ));
       if (!isCurrent()) return;
+      final scopedResults = customSearch == null
+          ? results
+          : results.where((item) => scope.includes(item.type)).toList();
       setState(() {
-        _replaceResults(
-          results.where((item) => scope.includes(item.type)).toList(),
-        );
+        _replaceResults(scopedResults);
         _isSearching = false;
         _expanded.clear();
         final ids = _results.map((result) => result.id).toSet();
@@ -1218,17 +1225,25 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
   // 关键词高亮
   // ──────────────────────────────────────────────────────────────────────────
 
+  List<String> _highlightTermsFor(String query) {
+    if (_cachedHighlightQuery == query) return _cachedHighlightTerms;
+
+    _cachedHighlightQuery = query;
+    _cachedHighlightTerms = query
+        .split(_highlightTermSeparator)
+        .map((term) => term.trim().toLowerCase())
+        .where((term) => term.isNotEmpty)
+        .toList(growable: false);
+    return _cachedHighlightTerms;
+  }
+
   Widget _highlightText(
     String text,
     String query,
     TextStyle style,
     Color highlightColor,
   ) {
-    final terms = query
-        .split(RegExp(r'[\s,，;；]+'))
-        .map((s) => s.trim())
-        .where((s) => s.isNotEmpty)
-        .toList();
+    final terms = _highlightTermsFor(query);
 
     if (terms.isEmpty) {
       return Text(
@@ -1242,13 +1257,12 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
     final lower = text.toLowerCase();
     final matches = <_TextMatch>[];
     for (final term in terms) {
-      final lowerTerm = term.toLowerCase();
       var start = 0;
       while (true) {
-        final idx = lower.indexOf(lowerTerm, start);
+        final idx = lower.indexOf(term, start);
         if (idx == -1) break;
-        matches.add(_TextMatch(idx, idx + lowerTerm.length));
-        start = idx + lowerTerm.length;
+        matches.add(_TextMatch(idx, idx + term.length));
+        start = idx + term.length;
       }
     }
 
@@ -1271,6 +1285,11 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
       }
     }
 
+    final highlightStyle = style.copyWith(
+      color: highlightColor,
+      fontWeight: FontWeight.w900,
+      backgroundColor: highlightColor.withValues(alpha: 0.1),
+    );
     final List<TextSpan> spans = [];
     int start = 0;
     for (final m in merged) {
@@ -1278,14 +1297,7 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
         spans.add(TextSpan(text: text.substring(start, m.start), style: style));
       }
       spans.add(
-        TextSpan(
-          text: text.substring(m.start, m.end),
-          style: style.copyWith(
-            color: highlightColor,
-            fontWeight: FontWeight.w900,
-            backgroundColor: highlightColor.withValues(alpha: 0.1),
-          ),
-        ),
+        TextSpan(text: text.substring(m.start, m.end), style: highlightStyle),
       );
       start = m.end;
     }
