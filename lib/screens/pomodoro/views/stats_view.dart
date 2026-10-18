@@ -846,7 +846,7 @@ class PomodoroStatsState extends State<PomodoroStats> {
   }
 
   List<Widget> _buildSessionList() {
-    final timeFormatter = DateFormat('HH:mm');
+    final timeFormatter = _pomodoroStatsDateFormat('HH:mm');
 
     if (_dimension == 0) {
       return _sessions.map((session) {
@@ -863,8 +863,8 @@ class PomodoroStatsState extends State<PomodoroStats> {
     }
 
     final dayLabelFormatter = (_dimension == 1 || _dimension == 2)
-        ? DateFormat('MM月dd日')
-        : DateFormat('yyyy年MM月dd日');
+        ? _pomodoroStatsDateFormat('MM月dd日')
+        : _pomodoroStatsDateFormat('yyyy年MM月dd日');
     final widgets = <Widget>[];
     DateTime? previousDay;
     for (final session in _sessions) {
@@ -1432,7 +1432,7 @@ class PomodoroStatsState extends State<PomodoroStats> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    DateFormat('yyyy-MM-dd HH:mm:ss').format(
+                    _pomodoroStatsDateFormat('yyyy-MM-dd HH:mm:ss').format(
                       DateTime.fromMillisecondsSinceEpoch(
                         editSession.startTime,
                         isUtc: true,
@@ -1502,7 +1502,7 @@ class PomodoroStatsState extends State<PomodoroStats> {
                           const Icon(Icons.access_time, size: 18),
                           const SizedBox(width: 8),
                           Text(
-                            DateFormat('HH:mm').format(
+                            _pomodoroStatsDateFormat('HH:mm').format(
                               DateTime.fromMillisecondsSinceEpoch(
                                 editSession.endTime ?? editSession.startTime,
                                 isUtc: true,
@@ -1819,7 +1819,7 @@ class PomodoroStatsState extends State<PomodoroStats> {
     int index,
     PauseInterval interval,
   ) {
-    final startStr = DateFormat('HH:mm:ss').format(
+    final startStr = _pomodoroStatsDateFormat('HH:mm:ss').format(
       DateTime.fromMillisecondsSinceEpoch(
         interval.startMs,
         isUtc: true,
@@ -1827,7 +1827,7 @@ class PomodoroStatsState extends State<PomodoroStats> {
     );
     final endStr = interval.isOngoing
         ? '进行中'
-        : DateFormat('HH:mm:ss').format(
+        : _pomodoroStatsDateFormat('HH:mm:ss').format(
             DateTime.fromMillisecondsSinceEpoch(
               interval.endMs!,
               isUtc: true,
