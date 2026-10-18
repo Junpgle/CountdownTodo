@@ -37,6 +37,15 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
   late List<TodoGroup> _groups;
   late List<TodoItem> _todos;
   final _searchController = TextEditingController();
+  final Map<(String?, String), DateFormat> _dateFormatters = {};
+
+  DateFormat _cachedDateFormat(String pattern) {
+    final locale = Intl.defaultLocale;
+    return _dateFormatters.putIfAbsent(
+      (locale, pattern),
+      () => DateFormat(pattern, locale),
+    );
+  }
 
   @override
   void dispose() {
@@ -243,12 +252,12 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
                     itemBuilder: (context, index) {
                       final t = unassigned[index];
                       final startStr = t.createdDate != null
-                          ? DateFormat('MM-dd HH:mm').format(
+                          ? _cachedDateFormat('MM-dd HH:mm').format(
                               DateTime.fromMillisecondsSinceEpoch(
                                   t.createdDate!))
                           : null;
                       final dueStr = t.dueDate != null
-                          ? DateFormat('MM-dd HH:mm').format(t.dueDate!)
+                          ? _cachedDateFormat('MM-dd HH:mm').format(t.dueDate!)
                           : null;
 
                       return OptionalLiquidGlassCard(
