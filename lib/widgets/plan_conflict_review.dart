@@ -23,7 +23,18 @@ typedef PlanConflictReviewLoader = Future<PlanConflictReviewResult> Function(
   bool appOnly,
 });
 
-String _time(DateTime value) => DateFormat('MM-dd HH:mm').format(value);
+final Map<(String?, String), DateFormat> _planConflictReviewDateFormats = {};
+
+DateFormat _planConflictReviewDateFormat(String pattern) {
+  final locale = Intl.defaultLocale;
+  return _planConflictReviewDateFormats.putIfAbsent(
+    (locale, pattern),
+    () => DateFormat(pattern, locale),
+  );
+}
+
+String _time(DateTime value) =>
+    _planConflictReviewDateFormat('MM-dd HH:mm').format(value);
 DateTime _day(DateTime value) => DateTime(value.year, value.month, value.day);
 String _sourceName(PlanBusySource source) => switch (source) {
   PlanBusySource.course => '课程',
@@ -565,6 +576,7 @@ class _PlanConflictReviewSheetState extends State<PlanConflictReviewSheet>
     final media = MediaQuery.of(context);
     final colors = Theme.of(context).colorScheme;
     final result = _result;
+    final conflictDateFormat = _planConflictReviewDateFormat('M月d日');
     final rows = <Object>[];
     DateTime? group;
     for (final entry in result?.entries ?? const <PlanConflictEntry>[]) {
@@ -634,7 +646,7 @@ class _PlanConflictReviewSheetState extends State<PlanConflictReviewSheet>
                               ? Padding(
                                   padding: const EdgeInsets.only(top: 12),
                                   child: Text(
-                                    DateFormat('M月d日').format(row),
+                                    conflictDateFormat.format(row),
                                     style: Theme.of(context)
                                         .textTheme
                                         .titleSmall,
@@ -654,7 +666,7 @@ class _PlanConflictReviewSheetState extends State<PlanConflictReviewSheet>
                                       'plan-conflict-range-selected',
                                     ),
                                     label: Text(
-                                      DateFormat('M月d日').format(widget.date),
+                                      conflictDateFormat.format(widget.date),
                                     ),
                                     selected: _range == 0,
                                     onSelected: (_) {
@@ -713,8 +725,8 @@ class _PlanConflictReviewSheetState extends State<PlanConflictReviewSheet>
                             ],
                             if (result != null) ...[
                               Text(
-                                '${DateFormat('M月d日').format(result.start)}–'
-                                '${DateFormat('M月d日').format(CalendarDateMath.inclusiveEndDate(result.end))} · '
+                                '${conflictDateFormat.format(result.start)}–'
+                                '${conflictDateFormat.format(CalendarDateMath.inclusiveEndDate(result.end))} · '
                                 '${result.entries.length}条规划时间重叠',
                               ),
                               const SizedBox(height: 8),
