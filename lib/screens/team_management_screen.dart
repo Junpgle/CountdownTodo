@@ -26,6 +26,16 @@ import '../utils/page_transitions.dart';
 import '../widgets/floating_glass_control.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
 
+final Map<(String?, String), DateFormat> _teamManagementDateFormats = {};
+
+DateFormat _teamManagementDateFormat(String pattern) {
+  final locale = Intl.defaultLocale;
+  return _teamManagementDateFormats.putIfAbsent(
+    (locale, pattern),
+    () => DateFormat(pattern, locale),
+  );
+}
+
 String? normalizeInviteCode(String? code) {
   final value = code?.trim();
   if (value == null || value.isEmpty || value.toLowerCase() == 'null') {
@@ -1614,7 +1624,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
                         ),
                       const SizedBox(height: 4),
                       Text(
-                          '创建于 ${DateFormat('yyyy年MM月dd日').format(DateTime.fromMillisecondsSinceEpoch(team.createdAt))}',
+                          '创建于 ${_teamManagementDateFormat('yyyy年MM月dd日').format(DateTime.fromMillisecondsSinceEpoch(team.createdAt))}',
                           style: TextStyle(
                               fontSize: 12, color: Colors.grey.shade500),
                           maxLines: 1,
@@ -2313,7 +2323,7 @@ class _TeamDetailViewState extends State<_TeamDetailView>
                                 fontSize: 24, fontWeight: FontWeight.bold)),
                         const SizedBox(height: 4),
                         Text(
-                            '创建于 ${DateFormat('yyyy-MM-dd').format(DateTime.fromMillisecondsSinceEpoch(widget.team.createdAt))}',
+                            '创建于 ${_teamManagementDateFormat('yyyy-MM-dd').format(DateTime.fromMillisecondsSinceEpoch(widget.team.createdAt))}',
                             style: TextStyle(
                                 color: Colors.grey.shade500, fontSize: 13)),
                       ],
@@ -2537,7 +2547,7 @@ class _TeamAnnouncementViewState extends State<_TeamAnnouncementView> {
                         date = DateTime.tryParse(rawDate?.toString() ?? '') ??
                             DateTime.now();
                       }
-                      return Text(DateFormat('MM-dd HH:mm').format(date),
+                      return Text(_teamManagementDateFormat('MM-dd HH:mm').format(date),
                           style: TextStyle(
                               fontSize: 12, color: Colors.grey.shade500));
                     }),
