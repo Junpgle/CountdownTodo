@@ -73,6 +73,8 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('已选1段 · 45分钟'), findsOneWidget);
+      expect(find.text('2026年10月8日'), findsOneWidget);
+      expect(find.text('10:00–10:45'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('cleanup-cancel')));
       await tester.pumpAndSettle();
       expect(find.textContaining('手机日历副本不会随本次操作删除'), findsOneWidget);

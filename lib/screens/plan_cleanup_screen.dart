@@ -208,6 +208,7 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
     with WidgetsBindingObserver {
   final _search = TextEditingController();
   final _selected = <String>{};
+  final Map<(String?, String), DateFormat> _dateFormatters = {};
   late final PlanCleanupRepository _repository;
   PlanTodoIdentity? _identity;
   PlanCleanupPage? _page;
@@ -231,6 +232,14 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
   StreamSubscription<PomodoroRunState?>? _focus;
   DateTime get _now => widget.clock?.call() ?? DateTime.now();
   bool get _detail => widget.todoId != null;
+
+  DateFormat _cachedDateFormat(String pattern) {
+    final locale = Intl.defaultLocale;
+    return _dateFormatters.putIfAbsent(
+      (locale, pattern),
+      () => DateFormat(pattern, locale),
+    );
+  }
 
   @override
   void initState() {
@@ -799,15 +808,16 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
     if (mounted) setState(() => _working = false);
   }
 
-  String _date(int ms) =>
-      DateFormat('yyyy/M/d').format(DateTime.fromMillisecondsSinceEpoch(ms));
+  String _date(int ms) => _cachedDateFormat('yyyy/M/d').format(
+    DateTime.fromMillisecondsSinceEpoch(ms),
+  );
   String _range(PlanCleanupItem item) {
     final start = DateTime.fromMillisecondsSinceEpoch(item.start),
         end = DateTime.fromMillisecondsSinceEpoch(item.end);
     final offset = start.timeZoneOffset == end.timeZoneOffset
         ? ''
         : ' · ${start.timeZoneName}→${end.timeZoneName}';
-    return '${DateFormat('HH:mm').format(start)}–${DateFormat(DateUtils.isSameDay(start, end) ? 'HH:mm' : 'M/d HH:mm').format(end)}$offset';
+    return '${_cachedDateFormat('HH:mm').format(start)}–${_cachedDateFormat(DateUtils.isSameDay(start, end) ? 'HH:mm' : 'M/d HH:mm').format(end)}$offset';
   }
 
   String _reminder(PlanCleanupItem item) {
@@ -1135,7 +1145,7 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
     ];
     String? lastDate;
     for (final item in _items) {
-      final date = DateFormat('yyyy年M月d日')
+      final date = _cachedDateFormat('yyyy年M月d日')
           .format(DateTime.fromMillisecondsSinceEpoch(item.start));
       if (date != lastDate) {
         children.add(
