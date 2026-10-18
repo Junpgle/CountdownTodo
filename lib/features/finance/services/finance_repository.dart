@@ -742,12 +742,17 @@ String sanitizeFinanceCsvText(String value) {
 }
 
 /// 将用户输入的人民币金额转换为分，拒绝负数和超过两位小数的值。
+final RegExp _financeAmountPlainPattern = RegExp(r'^\d+(\.\d{0,2})?$');
+final RegExp _financeAmountThousandsPattern = RegExp(
+  r'^\d{1,3}(,\d{3})+(\.\d{0,2})?$',
+);
+final RegExp _financeAmountTrimZeroCentsPattern = RegExp(r'\.00$');
+
 int? parseFinanceAmount(String raw, {bool allowZero = false}) {
   final input = raw.trim();
-  final validNumber = RegExp(r'^\d+(\.\d{0,2})?$');
-  final validThousands = RegExp(r'^\d{1,3}(,\d{3})+(\.\d{0,2})?$');
   if (input.isEmpty ||
-      (!validNumber.hasMatch(input) && !validThousands.hasMatch(input))) {
+      (!_financeAmountPlainPattern.hasMatch(input) &&
+          !_financeAmountThousandsPattern.hasMatch(input))) {
     return null;
   }
   final value = input.replaceAll(',', '');
@@ -775,7 +780,7 @@ String formatFinanceAmount(int amountMinor, {bool withSymbol = true}) {
 String formatFinanceAmountInput(int amountMinor) => formatFinanceAmount(
   amountMinor,
   withSymbol: false,
-).replaceFirst(RegExp(r'\.00$'), '');
+).replaceFirst(_financeAmountTrimZeroCentsPattern, '');
 
 String formatSignedFinanceAmount(int amountMinor, FinanceTransactionType type) {
   return '${type.signedPrefix}${formatFinanceAmount(amountMinor)}';
