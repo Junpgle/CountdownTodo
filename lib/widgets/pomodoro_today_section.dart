@@ -46,6 +46,15 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
   int _totalSeconds = 0;
   List<int> _hourlySeconds = List<int>.filled(24, 0);
   int _maxHourlySeconds = 0;
+  final Map<(String?, String), DateFormat> _dateFormatters = {};
+
+  DateFormat _cachedDateFormat(String pattern) {
+    final locale = Intl.defaultLocale;
+    return _dateFormatters.putIfAbsent(
+      (locale, pattern),
+      () => DateFormat(pattern, locale),
+    );
+  }
 
   @override
   void initState() {
@@ -418,7 +427,7 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
   // ==========================================
   Widget _buildRecordsList() {
     final colorScheme = Theme.of(context).colorScheme;
-    final timeFormat = DateFormat('HH:mm');
+    final timeFormat = _cachedDateFormat('HH:mm');
 
     return _buildGlassCard(
       borderRadius: 20,
