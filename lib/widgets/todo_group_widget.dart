@@ -20,7 +20,8 @@ class TodoGroupWidget extends StatefulWidget {
   final Function(String todoId) onTodoDropped;
   final Function(String todoId)? onTodoRemoved;
   final VoidCallback onDelete;
-  final Function(TodoItem) onTodoTap;
+  final void Function(TodoItem)? onTodoTap;
+  final void Function(TodoItem, BuildContext)? onTodoTapWithContext;
   final Function(TodoItem) onTodoDelete;
   final Function(TodoItem)? onShowIndependentTodoStatus;
   final Widget Function(TodoItem)? recurrenceProgressBuilder;
@@ -37,11 +38,12 @@ class TodoGroupWidget extends StatefulWidget {
     required this.onTodoDropped,
     this.onTodoRemoved,
     required this.onDelete,
-    required this.onTodoTap,
+    this.onTodoTap,
+    this.onTodoTapWithContext,
     required this.onTodoDelete,
     this.onShowIndependentTodoStatus,
     this.recurrenceProgressBuilder,
-  });
+  }) : assert(onTodoTap != null || onTodoTapWithContext != null);
 
   @override
   State<TodoGroupWidget> createState() => _TodoGroupWidgetState();
@@ -68,6 +70,7 @@ class _TodoGroupMetrics {
 class _TodoGroupWidgetState extends State<TodoGroupWidget>
     with TickerProviderStateMixin {
   late AnimationController _progressController;
+  final Map<String, GlobalKey> _todoCardKeys = <String, GlobalKey>{};
   bool _hasAnimated = false;
   bool _suppressTodoItemTap = false;
   bool _showAllTodos = false;
@@ -81,6 +84,9 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
   int? _cachedProgressLastNowMicros;
   double _cachedGroupFillProgress = 0;
   final Map<(String?, String), DateFormat> _dateFormatters = {};
+
+  GlobalKey _todoCardKeyFor(String todoId) =>
+      _todoCardKeys.putIfAbsent(todoId, () => GlobalKey());
 
   @override
   void initState() {
@@ -838,7 +844,13 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
             _suppressTodoItemTap = false;
             return;
           }
-          widget.onTodoTap(todo);
+          final onTodoTapWithContext = widget.onTodoTapWithContext;
+          final cardContext = _todoCardKeyFor(todo.id).currentContext;
+          if (onTodoTapWithContext != null && cardContext != null) {
+            onTodoTapWithContext(todo, cardContext);
+          } else {
+            widget.onTodoTap?.call(todo);
+          }
         },
         borderRadius: BorderRadius.circular(12),
         child: AiGeneratedTodoWaterBorder(
@@ -847,6 +859,7 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
           child: Container(
             margin: const EdgeInsets.symmetric(vertical: 4.0),
             clipBehavior: Clip.antiAlias,
+            key: _todoCardKeyFor(todo.id),
             decoration: BoxDecoration(
               color: widget.isLight
                   ? Colors.black.withValues(alpha: 0.02)

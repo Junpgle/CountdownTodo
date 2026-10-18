@@ -1891,7 +1891,7 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
           widget.onGroupsChanged(widget.todoGroups);
           widget.onRefreshRequested();
         },
-        onTodoTap: (todo) => _editTodo(todo, context),
+        onTodoTapWithContext: _editTodo,
         onTodoDelete: (todo) async {
           _invalidateTodoViewModel();
           setState(() {
