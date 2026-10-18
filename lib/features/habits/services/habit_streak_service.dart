@@ -1,3 +1,6 @@
+import '../../../models.dart';
+import '../../../services/pomodoro_service.dart';
+import '../models/habit_checkin.dart';
 import '../models/habit_goal.dart';
 import '../models/habit_goal_rule.dart';
 import '../models/habit_progress.dart';
@@ -22,26 +25,27 @@ abstract final class HabitStreakService {
     required List<HabitGoalRuleRevision> rules,
     DateTime? now,
     int? lookbackDays,
+    List<TodoItem>? todos,
+    List<PomodoroRecord>? records,
+    List<HabitCheckIn>? checkIns,
   }) async {
     final nowValue = now ?? DateTime.now();
-    if (rules.isEmpty) {
-      return const HabitStreakSummary();
-    }
-    final rule = HabitRuleResolver.effectiveRule(rules, nowValue) ??
-        rules.firstWhere((r) => !r.isDeleted, orElse: () => rules.first);
-    final today = HabitRuleResolver.logicalDateFor(
-      nowValue,
-      rule.dayBoundaryMinute,
+    final window = summaryWindow(
+      rules: rules,
+      now: nowValue,
+      lookbackDays: lookbackDays,
     );
-    final lookback = lookbackDays ?? _defaultLookbackDays(rule.periodType);
-    final from = HabitRuleResolver.addCalendarDays(today, -lookback);
+    if (window == null) return const HabitStreakSummary();
 
     final days = await HabitProgressCalculator.computeRange(
       habit: habit,
       rules: rules,
-      from: from,
-      to: today,
+      from: window.from,
+      to: window.today,
       now: nowValue,
+      todos: todos,
+      records: records,
+      checkIns: checkIns,
       // 每周/每月习惯只需周期级进度：跳过周期内重复条目，
       // 避免 60 个月回看窗口生成约 1860 个 day-level 条目。
       periodLevel: true,
@@ -50,8 +54,34 @@ abstract final class HabitStreakService {
     return summarizeFromDays(
       habit: habit,
       days: days,
-      rule: rule,
+      rule: window.rule,
       now: nowValue,
+    );
+  }
+
+  /// 解析连续统计使用的规则和回看范围，供批量数据加载方复用。
+  static ({
+    HabitGoalRuleRevision rule,
+    DateTime today,
+    DateTime from,
+  })? summaryWindow({
+    required List<HabitGoalRuleRevision> rules,
+    DateTime? now,
+    int? lookbackDays,
+  }) {
+    if (rules.isEmpty) return null;
+    final nowValue = now ?? DateTime.now();
+    final rule = HabitRuleResolver.effectiveRule(rules, nowValue) ??
+        rules.firstWhere((r) => !r.isDeleted, orElse: () => rules.first);
+    final today = HabitRuleResolver.logicalDateFor(
+      nowValue,
+      rule.dayBoundaryMinute,
+    );
+    final lookback = lookbackDays ?? _defaultLookbackDays(rule.periodType);
+    return (
+      rule: rule,
+      today: today,
+      from: HabitRuleResolver.addCalendarDays(today, -lookback),
     );
   }
 

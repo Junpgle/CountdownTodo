@@ -305,12 +305,15 @@ abstract final class HabitRepository {
   /// [effectiveFromOption]：
   /// - 'today'：从今天开始（默认），关闭旧版本、新规则从今天生效；
   /// - 'nextPeriod'：从下一个周期开始（如每周从下周一、每月从下月 1 号）；
-  /// - 'all'：修改全部历史目标（覆盖所有版本的目标值）。
+  /// - 'all'：修改全部历史目标；可指定仅覆盖部分规则字段。
+  /// [fieldsToUpdate] 仅用于选择性覆盖全部历史时保留未指定的历史规则字段；
+  /// 留空时保持旧调用方的整条规则覆盖语义。
   static Future<void> updateRule({
     required HabitGoal goal,
     required HabitGoalRuleRevision updatedRule,
     String effectiveFromOption = 'today',
     required List<HabitGoalRuleRevision> allRules,
+    Set<String>? fieldsToUpdate,
     String username = '',
   }) async {
     final todayKey = HabitRuleResolver.dayKey(
@@ -321,19 +324,45 @@ abstract final class HabitRepository {
     if (effectiveFromOption == 'all') {
       for (final rule in allRules) {
         if (rule.isDeleted) continue;
-        rule
-          ..targetValue = updatedRule.targetValue
-          ..unit = updatedRule.unit
-          ..targetTimeMinute = updatedRule.targetTimeMinute
-          ..timeComparison = updatedRule.timeComparison
-          ..timeToleranceMinutes = updatedRule.timeToleranceMinutes
-          ..periodType = updatedRule.periodType
-          ..weekdaysMask = updatedRule.weekdaysMask
-          ..customIntervalDays = updatedRule.customIntervalDays
-          ..dayBoundaryMinute = updatedRule.dayBoundaryMinute
-          ..quickValues = updatedRule.quickValues
-          ..reminderPolicy = updatedRule.reminderPolicy
-          ..markAsChanged();
+        if (fieldsToUpdate == null || fieldsToUpdate.contains('targetValue')) {
+          rule.targetValue = updatedRule.targetValue;
+        }
+        if (fieldsToUpdate == null || fieldsToUpdate.contains('unit')) {
+          rule.unit = updatedRule.unit;
+        }
+        if (fieldsToUpdate == null ||
+            fieldsToUpdate.contains('targetTimeMinute')) {
+          rule.targetTimeMinute = updatedRule.targetTimeMinute;
+        }
+        if (fieldsToUpdate == null || fieldsToUpdate.contains('timeComparison')) {
+          rule.timeComparison = updatedRule.timeComparison;
+        }
+        if (fieldsToUpdate == null ||
+            fieldsToUpdate.contains('timeToleranceMinutes')) {
+          rule.timeToleranceMinutes = updatedRule.timeToleranceMinutes;
+        }
+        if (fieldsToUpdate == null || fieldsToUpdate.contains('periodType')) {
+          rule.periodType = updatedRule.periodType;
+        }
+        if (fieldsToUpdate == null || fieldsToUpdate.contains('weekdaysMask')) {
+          rule.weekdaysMask = updatedRule.weekdaysMask;
+        }
+        if (fieldsToUpdate == null ||
+            fieldsToUpdate.contains('customIntervalDays')) {
+          rule.customIntervalDays = updatedRule.customIntervalDays;
+        }
+        if (fieldsToUpdate == null ||
+            fieldsToUpdate.contains('dayBoundaryMinute')) {
+          rule.dayBoundaryMinute = updatedRule.dayBoundaryMinute;
+        }
+        if (fieldsToUpdate == null || fieldsToUpdate.contains('quickValues')) {
+          rule.quickValues = updatedRule.quickValues;
+        }
+        if (fieldsToUpdate == null ||
+            fieldsToUpdate.contains('reminderPolicy')) {
+          rule.reminderPolicy = updatedRule.reminderPolicy;
+        }
+        rule.markAsChanged();
       }
       final current = HabitRuleResolver.effectiveRule(allRules, DateTime.now());
       if (current != null) goal.currentRuleUuid = current.uuid;
@@ -613,10 +642,10 @@ abstract final class HabitRepository {
     HabitGoal goal,
     DateTime logicalDate,
   ) async {
-    final todos = await HabitSourceResolver.todosForSeries(
+    return HabitSourceResolver.todoForSeriesOnDate(
       goal.sourceIds,
+      logicalDate,
     );
-    return HabitSourceResolver.todoForDate(todos, logicalDate);
   }
 
   /// 切换完成型习惯当天实例的完成状态。

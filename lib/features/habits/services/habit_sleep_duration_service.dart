@@ -1,6 +1,5 @@
 import 'dart:collection';
 
-import '../../../services/storage/habit_storage.dart';
 import '../../../services/storage/user_session_storage.dart';
 import '../models/habit_checkin.dart';
 import '../models/habit_goal.dart';
@@ -47,14 +46,33 @@ abstract final class HabitSleepDurationService {
           .toList(growable: false);
       if (durationGoals.isEmpty) return 0;
 
+      final durationGoalUuids = durationGoals
+          .map((goal) => goal.uuid)
+          .toList(growable: false);
       final earlySleep = _firstGoal(goals, HabitAdaptationKind.earlySleep);
       final earlyWake = _firstGoal(goals, HabitAdaptationKind.earlyWake);
       if (earlySleep == null || earlyWake == null) return 0;
 
-      final sourceCheckIns = await HabitRepository.getCheckInsForHabits([
-        earlySleep.uuid,
-        earlyWake.uuid,
+      final loadedData = await Future.wait<Object>([
+        HabitRepository.getRulesForHabits(durationGoalUuids),
+        HabitRepository.getCheckInsForHabits(
+          durationGoalUuids,
+          includeDeleted: true,
+        ),
+        HabitRepository.getCheckInsForHabits([earlySleep.uuid, earlyWake.uuid]),
       ]);
+      final durationRules = loadedData[0] as List<HabitGoalRuleRevision>;
+      final durationCheckIns = loadedData[1] as List<HabitCheckIn>;
+      final rulesByGoal = <String, List<HabitGoalRuleRevision>>{};
+      for (final rule in durationRules) {
+        rulesByGoal.putIfAbsent(rule.habitUuid, () => []).add(rule);
+      }
+      final checkInsByGoal = <String, List<HabitCheckIn>>{};
+      for (final checkIn in durationCheckIns) {
+        checkInsByGoal.putIfAbsent(checkIn.habitUuid, () => []).add(checkIn);
+      }
+
+      final sourceCheckIns = loadedData[2] as List<HabitCheckIn>;
       final sleepCheckIns = <HabitCheckIn>[];
       final wakeCheckIns = <HabitCheckIn>[];
       for (final checkIn in sourceCheckIns) {
@@ -72,6 +90,8 @@ abstract final class HabitSleepDurationService {
         synced += await _syncGoal(
           goal: goal,
           pairs: pairs,
+          rules: rulesByGoal[goal.uuid] ?? const [],
+          allExisting: checkInsByGoal[goal.uuid] ?? const [],
           pendingChanges: pendingChanges,
         );
         if (pendingChanges.isNotEmpty) {
@@ -87,18 +107,15 @@ abstract final class HabitSleepDurationService {
   static Future<int> _syncGoal({
     required HabitGoal goal,
     required List<_SleepPair> pairs,
+    required List<HabitGoalRuleRevision> rules,
+    required List<HabitCheckIn> allExisting,
     required List<HabitCheckIn> pendingChanges,
   }) async {
-    final rules = await HabitRepository.getRules(habitUuid: goal.uuid);
     final activeRules = rules.where((rule) => !rule.isDeleted).toList();
     if (activeRules.isEmpty) return 0;
     final rule = _currentRule(goal, activeRules);
     if (rule == null) return 0;
 
-    final allExisting = await HabitStorage.getCheckIns(
-      habitUuid: goal.uuid,
-      includeDeleted: true,
-    );
     final byKey = <String, HabitCheckIn>{};
     final manualLogicalDates = <String>{};
     for (final checkIn in allExisting) {

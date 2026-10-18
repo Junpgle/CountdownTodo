@@ -38,6 +38,9 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
   List<HabitGoal> _goals = [];
   Map<String, List<HabitGoalRuleRevision>> _rulesByHabit = {};
   Map<String, Map<String, HabitDayProgress>> _dayByHabitAndLogicalDate = {};
+  final Map<String, ({_DayAggregate status, double ratio})> _aggregateCache =
+      {};
+  String? _aggregateCacheTodayKey;
   bool _loading = true;
 
   @override
@@ -56,6 +59,8 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
 
   Future<void> _loadData() async {
     if (!mounted) return;
+    _aggregateCache.clear();
+    _aggregateCacheTodayKey = null;
     setState(() => _loading = true);
     await HabitSleepDurationService.syncAll();
     // 日历是历史视图，归档习惯仍需参与计算；今日 / 分析页仍只加载未归档习惯。
@@ -177,8 +182,24 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
 
   // ── 每日聚合状态 ────────────────────────────────────
   ({_DayAggregate status, double ratio}) _aggregate(DateTime day) {
-    // 未来日期不显示状态（设计文档 11.2）。
     final now = DateTime.now();
+    final todayKey = HabitRuleResolver.dayKey(now);
+    if (_aggregateCacheTodayKey != todayKey) {
+      _aggregateCache.clear();
+      _aggregateCacheTodayKey = todayKey;
+    }
+    final cacheKey = '$todayKey|${HabitRuleResolver.dayKey(day)}';
+    return _aggregateCache.putIfAbsent(
+      cacheKey,
+      () => _calculateAggregate(day, now),
+    );
+  }
+
+  ({_DayAggregate status, double ratio}) _calculateAggregate(
+    DateTime day,
+    DateTime now,
+  ) {
+    // 未来日期不显示状态（设计文档 11.2）。
     if (day.isAfter(DateTime(now.year, now.month, now.day))) {
       return (status: _DayAggregate.future, ratio: 0.0);
     }

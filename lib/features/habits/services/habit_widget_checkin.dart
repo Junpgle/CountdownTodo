@@ -33,8 +33,7 @@ abstract final class HabitWidgetCheckIn {
     double? value,
     String username = '',
   }) async {
-    final goals = await HabitStorage.getHabitGoals(includeArchived: false);
-    final goal = goals.where((g) => g.uuid == habitId).firstOrNull;
+    final goal = await HabitStorage.getActiveHabitGoalByUuid(habitId);
     if (goal == null) return const HabitWidgetCheckInDone(succeeded: false);
 
     final rules = await HabitStorage.getRuleRevisions(

@@ -30,6 +30,11 @@ typedef _HabitAnalysisStatistics = ({
   List<int> monthTrend,
 });
 
+typedef _HabitStreakInputs = ({
+  Map<String, List<HabitCheckIn>> checkInsByHabit,
+  Map<String, List<PomodoroRecord>> recordsByHabit,
+});
+
 /// 习惯中心「分析」标签页：各习惯的连续与完成率统计。
 class HabitAnalysisTab extends StatefulWidget {
   final double topPadding;
@@ -107,32 +112,56 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
     }
 
     final analysisNow = DateTime.now();
-    final analysisStatisticsFuture = _computeAnalysisStatistics(
+    final analysisInputsFuture = _loadAnalysisInputs(
       goals,
       rulesByHabit,
       now: analysisNow,
     );
+    final streakInputsFuture = _loadStreakInputs(
+      goals,
+      rulesByHabit,
+      now: analysisNow,
+    );
+    final analysisStatisticsFuture = analysisInputsFuture.then(
+      (inputs) => _computeAnalysisStatistics(
+        goals,
+        rulesByHabit,
+        inputs: inputs,
+        now: analysisNow,
+      ),
+    );
 
-    // 并行统计各习惯，避免串行拖慢分析页加载。
-    final futures = <Future<void>>[];
-    for (final goal in goals) {
-      final rules = rulesByHabit[goal.uuid] ?? const [];
-      if (rules.isEmpty) continue;
-      futures.add(() async {
+    // 连续统计共用一次按最大回看范围读取的原始数据，避免每个习惯单独读库。
+    final summariesFuture = () async {
+      final streakInputs = await streakInputsFuture;
+      final analysisInputs = await analysisInputsFuture;
+      await Future.wait(goals.map((goal) async {
+        final rules = rulesByHabit[goal.uuid] ?? const [];
+        if (rules.isEmpty) return;
+        final todosByHabit = analysisInputs.todosByHabit;
+        final todos = goal.sourceType == HabitSourceType.recurringTodo
+            ? (todosByHabit == null ? null : todosByHabit[goal.uuid])
+            : const <TodoItem>[];
         summaries[goal.uuid] = await HabitStreakService.summarize(
           habit: goal,
           rules: rules,
+          now: analysisNow,
+          todos: todos,
+          records: goal.sourceType == HabitSourceType.pomodoroTag
+              ? streakInputs.recordsByHabit[goal.uuid] ??
+                  const <PomodoroRecord>[]
+              : const <PomodoroRecord>[],
+          checkIns: streakInputs.checkInsByHabit[goal.uuid] ??
+              const <HabitCheckIn>[],
         );
-      }());
-    }
-    // 本周进度与近 30 天趋势共享数据读取和逐日进度计算。
-    futures.add(() async {
-      final statistics = await analysisStatisticsFuture;
-      _weekPlanned = statistics.weekPlanned;
-      _weekMet = statistics.weekMet;
-      _monthTrend = statistics.monthTrend;
-    }());
-    await Future.wait(futures);
+      }));
+    }();
+
+    final statistics = await analysisStatisticsFuture;
+    await summariesFuture;
+    _weekPlanned = statistics.weekPlanned;
+    _weekMet = statistics.weekMet;
+    _monthTrend = statistics.monthTrend;
 
     if (mounted) {
       setState(() {
@@ -148,9 +177,9 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
   Future<_HabitAnalysisStatistics> _computeAnalysisStatistics(
     List<HabitGoal> goals,
     Map<String, List<HabitGoalRuleRevision>> rulesByHabit, {
+    required _HabitAnalysisInputs inputs,
     required DateTime now,
   }) async {
-    final inputs = await _loadAnalysisInputs(goals, rulesByHabit, now: now);
     final today = DateTime(now.year, now.month, now.day);
     final from = HabitRuleResolver.addCalendarDays(today, -29);
     final trend = List<int>.filled(30, 0);
@@ -255,6 +284,64 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
       }
     }
     return (weekPlanned: weekPlanned, weekMet: weekMet, monthTrend: trend);
+  }
+
+  /// 连续统计按各习惯最大回看窗口批量读取打卡与专注记录。
+  Future<_HabitStreakInputs> _loadStreakInputs(
+    List<HabitGoal> goals,
+    Map<String, List<HabitGoalRuleRevision>> rulesByHabit, {
+    required DateTime now,
+  }) async {
+    final windowsByHabit = <String, ({
+      HabitGoalRuleRevision rule,
+      DateTime today,
+      DateTime from,
+    })>{};
+    for (final goal in goals) {
+      final rules = rulesByHabit[goal.uuid] ?? const [];
+      final window = HabitStreakService.summaryWindow(rules: rules, now: now);
+      if (window != null) windowsByHabit[goal.uuid] = window;
+    }
+    if (windowsByHabit.isEmpty) {
+      return (
+        checkInsByHabit: const <String, List<HabitCheckIn>>{},
+        recordsByHabit: const <String, List<PomodoroRecord>>{},
+      );
+    }
+
+    final windows = windowsByHabit.values;
+    final from = windows.map((window) => window.from).reduce(
+          (a, b) => a.isBefore(b) ? a : b,
+        );
+    final to = windows.map((window) => window.today).reduce(
+          (a, b) => a.isAfter(b) ? a : b,
+        );
+    final calculationGoals = goals
+        .where((goal) => windowsByHabit.containsKey(goal.uuid))
+        .toList(growable: false);
+
+    final checkInsFuture = HabitRepository.getCheckInsForHabits(
+      calculationGoals.map((goal) => goal.uuid),
+      fromDate: HabitRuleResolver.dayKey(from),
+      toDate: HabitRuleResolver.dayKey(to),
+    );
+    final recordsFuture = HabitSourceResolver.recordsForRange(
+      calculationGoals
+          .where((goal) => goal.sourceType == HabitSourceType.pomodoroTag)
+          .map((goal) => (habitUuid: goal.uuid, tagUuids: goal.sourceIds)),
+      from: from,
+      to: to,
+    );
+    final checkIns = await checkInsFuture;
+    final recordsByHabit = await recordsFuture;
+    final checkInsByHabit = <String, List<HabitCheckIn>>{};
+    for (final checkIn in checkIns) {
+      (checkInsByHabit[checkIn.habitUuid] ??= <HabitCheckIn>[]).add(checkIn);
+    }
+    return (
+      checkInsByHabit: checkInsByHabit,
+      recordsByHabit: recordsByHabit,
+    );
   }
 
   /// 周进度与月趋势共用近 30 天数据快照，避免重复读取相同来源。

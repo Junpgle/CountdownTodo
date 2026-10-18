@@ -125,6 +125,24 @@ abstract final class HabitStorage {
     }
   }
 
+  /// Loads one active habit by its unique UUID.
+  static Future<HabitGoal?> getActiveHabitGoalByUuid(String uuid) async {
+    try {
+      final db = await DatabaseHelper.instance.database;
+      final maps = await db.query(
+        tableGoals,
+        where: 'uuid = ? AND is_deleted = 0 AND is_archived = 0',
+        whereArgs: [uuid],
+        limit: 1,
+      );
+      if (maps.isEmpty) return null;
+      return HabitGoal.fromJson(maps.first);
+    } catch (e) {
+      debugPrint('⚠️ HabitStorage 按 UUID 读取习惯目标失败: $e');
+      return null;
+    }
+  }
+
   static Future<List<HabitGoalRuleRevision>> getRuleRevisions({
     String? habitUuid,
     bool includeDeleted = true,

@@ -36,6 +36,14 @@ class JournalStorage {
   ];
   String? _reconciledMediaAccountId;
 
+  static bool _isSqlLikeCaseInvariant(String term) {
+    for (final rune in term.runes) {
+      final character = String.fromCharCode(rune);
+      if (character.toLowerCase() != character.toUpperCase()) return false;
+    }
+    return true;
+  }
+
   /// Loads a compact page for the timeline/photo wall. Image bytes are loaded
   /// only for an entry opened by the user or for a visible web preview.
   Future<List<JournalEntry>> loadEntries({
@@ -43,6 +51,7 @@ class JournalStorage {
     int limit = 40,
     int offset = 0,
     String? searchQuery,
+    List<String> searchTerms = const [],
     DateTime? occurredOn,
   }) async {
     final db = await databaseLoader(accountId);
@@ -54,6 +63,14 @@ class JournalStorage {
     if (hasQuery) {
       where.add('(title LIKE ? OR content LIKE ?)');
       whereArgs.addAll(['%$query%', '%$query%']);
+    }
+    for (final rawTerm in searchTerms) {
+      final term = rawTerm.trim();
+      // Keep the first keyword's legacy LIKE filter. Push only case-invariant
+      // additional terms down; Dart handles the rest without Unicode misses.
+      if (term.isEmpty || !_isSqlLikeCaseInvariant(term)) continue;
+      where.add('(title LIKE ? OR content LIKE ?)');
+      whereArgs.addAll(['%$term%', '%$term%']);
     }
     if (occurredOn != null) {
       final start = DateTime(

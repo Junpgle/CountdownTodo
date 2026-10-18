@@ -71,6 +71,12 @@ class _CloudChallengePickerScreenState
   final _service = CloudChallengeService();
   final _searchController = TextEditingController();
   CloudChallengeCatalog? _catalog;
+  CloudChallengeCatalog? _filterGroupsCatalog;
+  List<_CloudChallengeFilterGroup>? _cachedFilterGroups;
+  CloudChallengeCatalog? _filterKeysCatalog;
+  final Map<CloudChallengeTemplate, Set<String>> _filterKeysByChallenge = {};
+  CloudChallengeCatalog? _searchTextCatalog;
+  final Map<CloudChallengeTemplate, String> _searchTextByChallenge = {};
   final Set<String> _selectedFilters = <String>{};
   Object? _error;
   bool _isLoading = true;
@@ -99,6 +105,14 @@ class _CloudChallengePickerScreenState
         .expand((group) => group.options)
         .map((option) => option.key)
         .toSet();
+    if (!identical(_filterKeysCatalog, catalog)) {
+      _filterKeysCatalog = catalog;
+      _filterKeysByChallenge.clear();
+    }
+    if (!identical(_searchTextCatalog, catalog)) {
+      _searchTextCatalog = catalog;
+      _searchTextByChallenge.clear();
+    }
     _catalog = catalog;
     _selectedFilters.removeWhere(
       (filter) => !availableFilters.contains(filter),
@@ -173,25 +187,40 @@ class _CloudChallengePickerScreenState
 
     return catalog.challenges.where((challenge) {
       if (selectedFiltersByGroup.isNotEmpty) {
-        final challengeFilters = _filterKeysForChallenge(challenge);
+        final challengeFilters = _filterKeysForChallenge(catalog, challenge);
         for (final filters in selectedFiltersByGroup.values) {
           if (!filters.any(challengeFilters.contains)) return false;
         }
       }
       if (query.isEmpty) return true;
 
-      final searchableText = [
-        challenge.id,
-        challenge.title,
-        challenge.description,
-        ...challenge.tags,
-        ...challenge.tasks,
-      ].join('\n').toLowerCase();
+      final searchableText = _searchTextByChallenge.putIfAbsent(
+        challenge,
+        () => [
+          challenge.id,
+          challenge.title,
+          challenge.description,
+          ...challenge.tags,
+          ...challenge.tasks,
+        ].join('\n').toLowerCase(),
+      );
       return searchableText.contains(query);
     }).toList(growable: false);
   }
 
   List<_CloudChallengeFilterGroup> _filterGroups(
+    CloudChallengeCatalog catalog,
+  ) {
+    if (identical(_filterGroupsCatalog, catalog)) {
+      return _cachedFilterGroups!;
+    }
+    final groups = _buildFilterGroups(catalog);
+    _filterGroupsCatalog = catalog;
+    _cachedFilterGroups = groups;
+    return groups;
+  }
+
+  List<_CloudChallengeFilterGroup> _buildFilterGroups(
     CloudChallengeCatalog catalog,
   ) {
     final periodLabels = <String>{};
@@ -271,7 +300,21 @@ class _CloudChallengePickerScreenState
     return _topicCategoryByLabel[label] ?? '其他主题';
   }
 
-  Set<String> _filterKeysForChallenge(CloudChallengeTemplate challenge) {
+  Set<String> _filterKeysForChallenge(
+    CloudChallengeCatalog catalog,
+    CloudChallengeTemplate challenge,
+  ) {
+    if (!identical(_filterKeysCatalog, catalog)) {
+      _filterKeysCatalog = catalog;
+      _filterKeysByChallenge.clear();
+    }
+    return _filterKeysByChallenge.putIfAbsent(
+      challenge,
+      () => _buildFilterKeysForChallenge(challenge),
+    );
+  }
+
+  Set<String> _buildFilterKeysForChallenge(CloudChallengeTemplate challenge) {
     final filters = <String>{};
     final periodLabel = _periodLabelForChallenge(challenge);
     if (periodLabel != null) {
@@ -341,6 +384,7 @@ class _CloudChallengePickerScreenState
   void _clearFilters() {
     if (_searchController.text.isEmpty && _selectedFilters.isEmpty) return;
     _searchController.clear();
+    _searchTextByChallenge.clear();
     setState(() => _selectedFilters.clear());
   }
 
@@ -400,66 +444,71 @@ class _CloudChallengePickerScreenState
 
   Widget _buildCatalog(CloudChallengeCatalog catalog, ColorScheme scheme) {
     final challenges = _filteredChallenges(catalog);
+    final filterGroups = _filterGroups(catalog);
     final query = _searchController.text.trim();
     final hasFilter = query.isNotEmpty || _selectedFilters.isNotEmpty;
     final bottomPadding = floatingBottomBarShouldFloat(context)
         ? MediaQuery.paddingOf(context).bottom + 16
         : 28.0;
+    final headerItems = <Widget>[
+      _buildCatalogHeader(catalog, scheme),
+      const SizedBox(height: 20),
+      _buildSearchField(scheme),
+      if (filterGroups.isNotEmpty) ...[
+        const SizedBox(height: 18),
+        _buildTagFilters(filterGroups, scheme),
+      ],
+      const SizedBox(height: 18),
+      Row(
+        children: [
+          Expanded(
+            child: Text(
+              '挑一场现在就想开始的挑战',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w900,
+                  ),
+            ),
+          ),
+          Text(
+            !hasFilter
+                ? '${challenges.length} 份'
+                : '${challenges.length}/${catalog.challenges.length} 份',
+            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w700,
+                ),
+          ),
+        ],
+      ),
+      const SizedBox(height: 10),
+    ];
+    final resultItemCount = challenges.isEmpty ? 1 : challenges.length * 2;
 
-    return ListView(
+    return ListView.builder(
       padding: EdgeInsets.fromLTRB(
         16,
         floatingGlassTopBarHeight(context) + 16,
         16,
         bottomPadding,
       ),
-      children: [
-        _buildCatalogHeader(catalog, scheme),
-        const SizedBox(height: 20),
-        _buildSearchField(scheme),
-        if (_filterGroups(catalog).isNotEmpty) ...[
-          const SizedBox(height: 18),
-          _buildTagFilters(catalog, scheme),
-        ],
-        const SizedBox(height: 18),
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                '挑一场现在就想开始的挑战',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w900,
-                    ),
-              ),
-            ),
-            Text(
-              !hasFilter
-                  ? '${challenges.length} 份'
-                  : '${challenges.length}/${catalog.challenges.length} 份',
-              style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                    color: scheme.onSurfaceVariant,
-                    fontWeight: FontWeight.w700,
-                  ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        if (challenges.isEmpty)
-          _buildEmptySearchState(query, scheme)
-        else
-          for (final challenge in challenges) ...[
-            _buildChallengeCard(challenge, scheme),
-            const SizedBox(height: 12),
-          ],
-      ],
+      itemCount: headerItems.length + resultItemCount,
+      itemBuilder: (context, index) {
+        if (index < headerItems.length) return headerItems[index];
+        if (challenges.isEmpty) return _buildEmptySearchState(query, scheme);
+        final resultIndex = index - headerItems.length;
+        if (resultIndex.isOdd) return const SizedBox(height: 12);
+        return _buildChallengeCard(
+          challenges[resultIndex ~/ 2],
+          scheme,
+        );
+      },
     );
   }
 
   Widget _buildTagFilters(
-    CloudChallengeCatalog catalog,
+    List<_CloudChallengeFilterGroup> groups,
     ColorScheme scheme,
   ) {
-    final groups = _filterGroups(catalog);
     _CloudChallengeFilterGroup? periodGroup;
     final topicGroups = <_CloudChallengeFilterGroup>[];
     for (final group in groups) {
@@ -556,7 +605,10 @@ class _CloudChallengePickerScreenState
   Widget _buildSearchField(ColorScheme scheme) {
     return TextField(
       controller: _searchController,
-      onChanged: (_) => setState(() {}),
+      onChanged: (value) {
+        if (value.trim().isEmpty) _searchTextByChallenge.clear();
+        setState(() {});
+      },
       textInputAction: TextInputAction.search,
       decoration: InputDecoration(
         labelText: '搜索云端挑战',

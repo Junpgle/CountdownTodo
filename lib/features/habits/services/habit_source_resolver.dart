@@ -79,6 +79,34 @@ abstract final class HabitSourceResolver {
     }
   }
 
+  /// 只读取指定本地日期内的循环待办，避免解码整个系列的历史记录。
+  static Future<TodoItem?> todoForSeriesOnDate(
+    List<String> seriesIds,
+    DateTime localDate,
+  ) async {
+    if (seriesIds.isEmpty) return null;
+    final day = DateTime(localDate.year, localDate.month, localDate.day);
+    final startMs = day.millisecondsSinceEpoch;
+    final endMs = DateTime(day.year, day.month, day.day + 1)
+        .millisecondsSinceEpoch;
+    try {
+      final maps = await DatabaseHelper.instance.getTodoMaps(
+        includeDeleted: true,
+        recurrenceSeriesIds: seriesIds.toSet(),
+        where: '((t.created_date >= ? AND t.created_date < ?) OR '
+            '(t.created_date IS NULL AND t.created_at >= ? AND t.created_at < ?))',
+        whereArgs: [startMs, endMs, startMs, endMs],
+      );
+      return todoForDate(
+        maps.map(TodoItem.fromJson).toList(growable: false),
+        day,
+      );
+    } catch (e) {
+      debugPrint('⚠️ HabitSourceResolver 按日期读取循环待办失败: $e');
+      return null;
+    }
+  }
+
   /// 找到系列中归属指定本地日期的待办实例。
   ///
   /// 实例日期取业务开始时间（createdDate ?? createdAt）的本地日历日，
