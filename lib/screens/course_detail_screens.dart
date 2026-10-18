@@ -167,7 +167,8 @@ class DeviceCalendarEventDetailScreen extends StatelessWidget {
 
   final DeviceCalendarEvent event;
 
-  String _dateLabel(DateTime value) => DateFormat('yyyy年M月d日').format(value);
+  String _dateLabel(DateTime value) =>
+      AppTimeFormats.format(value, 'yyyy年M月d日');
 
   DateTime get _allDayEndDate {
     // Android and EventKit expose all-day end times as the following midnight.
@@ -197,10 +198,10 @@ class DeviceCalendarEventDetailScreen extends StatelessWidget {
         : '${_dateLabel(event.start)} – ${_dateLabel(event.allDay ? _allDayEndDate : event.end)}';
     final startValue = event.allDay
         ? '全天'
-        : DateFormat('HH:mm').format(event.start);
+        : AppTimeFormats.format(event.start, 'HH:mm');
     final endValue = event.allDay
         ? '全天'
-        : DateFormat('HH:mm').format(event.end);
+        : AppTimeFormats.format(event.end, 'HH:mm');
 
     return AppDetailScreen(
       appBarTitle: '日程详情',
@@ -282,6 +283,9 @@ class PlanBlockDetailScreen extends StatelessWidget {
     final start = DateTime.fromMillisecondsSinceEpoch(block.startTime)
         .toLocal();
     final end = DateTime.fromMillisecondsSinceEpoch(block.endTime).toLocal();
+    final startLabel = AppTimeFormats.format(start, 'yyyy年M月d日 HH:mm');
+    final endLabel = AppTimeFormats.format(end, 'HH:mm');
+    final timeRange = '$startLabel – $endLabel';
     final status = switch (block.status) {
       TodoPlanStatus.planned => '待执行',
       TodoPlanStatus.reminded => '已提醒',
@@ -305,8 +309,7 @@ class PlanBlockDetailScreen extends StatelessWidget {
             AppDetailWideCard(
               icon: Icons.calendar_today_rounded,
               title: '时间',
-              value:
-                  '${DateFormat('yyyy年M月d日 HH:mm').format(start)} – ${DateFormat('HH:mm').format(end)}',
+              value: timeRange,
             ),
             AppDetailWideCard(
               icon: Icons.event_available_rounded,
@@ -1273,6 +1276,13 @@ class PomodoroDetailScreen extends StatelessWidget {
     final endLocal = interval.endMs != null
         ? DateTime.fromMillisecondsSinceEpoch(interval.endMs!).toLocal()
         : null;
+    final startLabel = AppTimeFormats.format(
+      startLocal,
+      'yyyy-MM-dd HH:mm:ss',
+    );
+    final endLabel = endLocal == null
+        ? ''
+        : ' - ${AppTimeFormats.format(endLocal, 'HH:mm:ss')}';
     final durationSec = interval.durationSeconds;
     final isOngoing = interval.isOngoing;
 
@@ -1307,7 +1317,7 @@ class PomodoroDetailScreen extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '${AppTimeFormats.format(startLocal, 'yyyy-MM-dd HH:mm:ss')}${endLocal != null ? ' - ${DateFormat('HH:mm:ss').format(endLocal)}' : ''}',
+                  '$startLabel$endLabel',
                   style: TextStyle(fontSize: 13, color: colorScheme.onSurface),
                 ),
                 if (isOngoing)

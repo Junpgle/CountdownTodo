@@ -193,6 +193,9 @@ void main() {
       await tap(t, find.text('手机讲座'));
       expect(find.byType(DeviceCalendarEventDetailScreen), findsOneWidget);
       expect(find.text('手机日历 · 只读'), findsOneWidget);
+      expect(find.text('2026年10月8日'), findsOneWidget);
+      expect(find.text('15:00'), findsOneWidget);
+      expect(find.text('16:00'), findsOneWidget);
       await t.pageBack();
       await settle(t);
       expect(allTaps, 0);
