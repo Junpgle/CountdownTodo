@@ -373,16 +373,27 @@ mixin _StorageCore on _StorageServiceBase {
         requestSync: requestSync,
         onCommitted: () {
           _inflightTodoRequests.clear();
+          _inflightTodoSearchDateRequests.clear();
+          _inflightTimelineTodoRequests.clear();
           triggerRefresh(const {DataRefreshDomain.countdowns});
         },
       );
-  Future<void> _clearGhostConflictFlags(dynamic db) =>
-      StorageConflictCleanup.clearGhostConflictFlags(db);
-  Future<List<CountdownItem>> getCountdowns(String username,
-          {bool includeDeleted = false}) =>
+  Future<void> _clearGhostConflictFlags(
+    dynamic db, {
+    Iterable<String> tables = const ['todos', 'todo_groups', 'countdowns'],
+  }) =>
+      StorageConflictCleanup.clearGhostConflictFlags(db, tables: tables);
+  Future<List<CountdownItem>> getCountdowns(
+    String username, {
+    bool includeDeleted = false,
+    DateTime? from,
+    DateTime? to,
+  }) =>
       CountdownStorage.getCountdowns(
         username,
         includeDeleted: includeDeleted,
+        from: from,
+        to: to,
         saveMigratedCountdowns: saveCountdowns,
       );
   Future<void> deleteCountdownGlobally(

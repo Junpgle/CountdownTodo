@@ -827,6 +827,8 @@ mixin _StorageSettings on _StorageServiceBase {
 
     await batch.commit(noResult: true);
     _inflightTodoRequests.clear();
+    _inflightTodoSearchDateRequests.clear();
+    _inflightTimelineTodoRequests.clear();
 
     // Invalidate SharedPreferences cache so next load picks up the resolved item
     final prefs = await SharedPreferences.getInstance();

@@ -310,6 +310,13 @@ class StorageService {
   ) =>
       _storage.getFixedSchedulesByDay(username, day);
 
+  static Future<List<FixedScheduleItem>> getFixedSchedulesByDateRange(
+    String username, {
+    required DateTime from,
+    required DateTime to,
+  }) =>
+      _storage.getFixedSchedulesByDateRange(username, from: from, to: to);
+
   static Future<void> deleteFixedSchedule(
     String username,
     FixedScheduleItem item,
@@ -378,9 +385,35 @@ class StorageService {
     newStatus: newStatus,
   );
 
-  static Future<List<TodoPlanBlock>> getPlanBlocks(String username,
-          {bool includeDeleted = false}) =>
-      _storage.getPlanBlocks(username, includeDeleted: includeDeleted);
+  static Future<List<TodoPlanBlock>> getPlanBlocks(
+    String username, {
+    bool includeDeleted = false,
+    DateTime? from,
+    DateTime? to,
+  }) =>
+      _storage.getPlanBlocks(
+        username,
+        includeDeleted: includeDeleted,
+        from: from,
+        to: to,
+      );
+
+  static Future<List<TodoPlanBlock>> getPlanBlocksForReminderWindow(
+    String username, {
+    required DateTime now,
+    required DateTime limit,
+  }) =>
+      _storage.getPlanBlocksForReminderWindow(
+        username,
+        now: now,
+        limit: limit,
+      );
+
+  static Future<List<TodoPlanBlock>> getDashboardPlanBlocks(
+    String username, {
+    required DateTime now,
+  }) =>
+      _storage.getDashboardPlanBlocks(username, now: now);
 
   static Future<void> deletePlanBlockGlobally(
           String username, String idToDelete) =>
@@ -485,9 +518,18 @@ class StorageService {
       _storage.saveCountdowns(username, items,
           sync: sync, isSyncSource: isSyncSource);
 
-  static Future<List<CountdownItem>> getCountdowns(String username,
-          {bool includeDeleted = false}) =>
-      _storage.getCountdowns(username, includeDeleted: includeDeleted);
+  static Future<List<CountdownItem>> getCountdowns(
+    String username, {
+    bool includeDeleted = false,
+    DateTime? from,
+    DateTime? to,
+  }) =>
+      _storage.getCountdowns(
+        username,
+        includeDeleted: includeDeleted,
+        from: from,
+        to: to,
+      );
 
   static Future<void> deleteCountdownGlobally(
           String username, String idToDelete) =>
@@ -496,11 +538,13 @@ class StorageService {
   static Future<void> saveTodos(String username, List<TodoItem> items,
           {bool sync = true,
           bool isSyncSource = false,
-          bool recomputeScheduleConflicts = true}) =>
+          bool recomputeScheduleConflicts = true,
+          List<TodoItem>? bandSyncSnapshot}) =>
       _storage.saveTodos(username, items,
           sync: sync,
           isSyncSource: isSyncSource,
-          recomputeScheduleConflicts: recomputeScheduleConflicts);
+          recomputeScheduleConflicts: recomputeScheduleConflicts,
+          bandSyncSnapshot: bandSyncSnapshot);
 
   static Future<Map<String, int>> scanAllTodoConflicts(String username) =>
       _storage.scanAllTodoConflicts(username);
@@ -536,6 +580,23 @@ class StorageService {
           {bool includeDeleted = false, int? limit, int offset = 0}) =>
       _storage.getTodos(username,
           includeDeleted: includeDeleted, limit: limit, offset: offset);
+
+  static Future<List<TodoItem>> getTodosForWidget(String username) =>
+      _storage.getTodosForWidget(username);
+
+  static Future<List<TodoItem>> getTodosForSearchDateRange(
+    String username, {
+    required DateTime from,
+    required DateTime to,
+  }) =>
+      _storage.getTodosForSearchDateRange(username, from: from, to: to);
+
+  static Future<List<TodoItem>> getTodosForTimelineRange(
+    String username, {
+    required DateTime from,
+    required DateTime to,
+  }) =>
+      _storage.getTodosForTimelineRange(username, from: from, to: to);
 
   static Future<void> clearTeamItems(String teamUuid) =>
       _storage.clearTeamItems(teamUuid);
@@ -622,8 +683,13 @@ class StorageService {
           {bool sync = true}) =>
       _storage.saveTimeLogs(username, items, sync: sync);
 
-  static Future<List<TimeLogItem>> getTimeLogs(String username, {int? limit}) =>
-      _storage.getTimeLogs(username, limit: limit);
+  static Future<List<TimeLogItem>> getTimeLogs(
+    String username, {
+    int? limit,
+    DateTime? from,
+    DateTime? to,
+  }) =>
+      _storage.getTimeLogs(username, limit: limit, from: from, to: to);
 
   static Future<bool> deleteTimeLogGlobally(
           String username, String idToDelete) =>
@@ -666,8 +732,14 @@ class StorageService {
 
   static Future<Map<String, List<dynamic>>> getScreenTimeHistory({
     String? username,
+    String? fromDate,
+    String? toDate,
   }) =>
-      _storage.getScreenTimeHistory(username: username);
+      _storage.getScreenTimeHistory(
+        username: username,
+        fromDate: fromDate,
+        toDate: toDate,
+      );
 
   static Future<void> updateLastScreenTimeSync({String? username}) =>
       _storage.updateLastScreenTimeSync(username: username);

@@ -168,6 +168,10 @@ class DatabaseHelper {
           //           debugPrint("✅ Database: 修复字段 courses.${column['name']}");
         }
       }
+      await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_courses_date_start '
+        'ON courses(date, start_time)',
+      );
     } catch (e) {
       //       debugPrint("⚠️ Database: 检查/修复 courses 表结构失败: $e");
     }
@@ -913,6 +917,10 @@ class DatabaseHelper {
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_finance_loan_installments_loan '
       'ON finance_loan_installments(loan_uuid, is_deleted, installment_index)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_finance_loan_installments_due_date '
+      'ON finance_loan_installments(is_deleted, due_date, loan_uuid, installment_index)',
     );
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_finance_categories_active '
@@ -2204,13 +2212,24 @@ class DatabaseHelper {
     await ensureAiUsageSchema(db);
 
     // 21. 创建性能索引
+    await ensureCourseTableSchema(db);
     await ensurePlanEditorDraftSchema(db);
     await ensureMissingIndexes(db);
   }
 
   static Future<void> ensureMissingIndexes(Database db) async {
     await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_op_logs_pending_timestamp '
+      'ON op_logs(timestamp) WHERE is_synced = 0',
+    );
+    await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_plan_blocks_day ON todo_plan_blocks(is_deleted, start_time)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_plan_blocks_active_end ON todo_plan_blocks(is_deleted, end_time)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_plan_blocks_active_status ON todo_plan_blocks(is_deleted, status)',
     );
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_plan_blocks_todo_active ON todo_plan_blocks(todo_uuid, is_deleted, start_time)',
@@ -2229,6 +2248,10 @@ class DatabaseHelper {
     );
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_todos_created_date ON todos(is_deleted, created_date)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_todos_recurrence_series_date '
+      'ON todos(recurrence_series_id, created_date, created_at)',
     );
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_pomodoro_start ON pomodoro_records(is_deleted, start_time)',
@@ -2924,6 +2947,7 @@ class DatabaseHelper {
   Future<List<Map<String, dynamic>>> getTodoMaps({
     bool includeDeleted = false,
     String? where,
+    List<Object?>? whereArgs,
     List<String>? uuids,
     Set<String>? recurrenceSeriesIds,
     int? limit,
@@ -2940,8 +2964,18 @@ class DatabaseHelper {
     final int userId = prefs.getInt('current_user_id') ?? 0;
 
     final whereParts = <String>[];
-    final whereArgs = <Object?>[];
+    final queryArgs = <Object?>[];
 
+    if (whereArgs?.isNotEmpty ?? false) {
+      if (where == null || where.isEmpty) {
+        throw ArgumentError.value(
+          whereArgs,
+          'whereArgs',
+          'requires a non-empty where clause',
+        );
+      }
+      queryArgs.addAll(whereArgs!);
+    }
     if (where != null && where.isNotEmpty) {
       whereParts.add(where);
     } else if (!includeDeleted) {
@@ -2951,14 +2985,14 @@ class DatabaseHelper {
       whereParts.add(
         't.uuid IN (${List.filled(uuids.length, '?').join(', ')})',
       );
-      whereArgs.addAll(uuids);
+      queryArgs.addAll(uuids);
     }
     if (recurrenceSeriesIds != null && recurrenceSeriesIds.isNotEmpty) {
       whereParts.add(
         't.recurrence_series_id IN '
         '(${List.filled(recurrenceSeriesIds.length, '?').join(', ')})',
       );
-      whereArgs.addAll(recurrenceSeriesIds);
+      queryArgs.addAll(recurrenceSeriesIds);
     }
 
     final List<String> projectedColumns = _todoBaseColumns.map((col) {
@@ -3011,40 +3045,96 @@ class DatabaseHelper {
       if (offset > 0) sql.write(' OFFSET $offset');
     }
 
-    final rows = await db.rawQuery(sql.toString(), whereArgs);
+    final rows = await db.rawQuery(sql.toString(), queryArgs);
     if (inlineTextColumns) {
       return rows;
     }
-    final hasOversizedText = rows.any((row) {
+    final hydratedRows = <Map<String, dynamic>>[];
+    for (final resultRow in rows) {
+      // sqflite returns unmodifiable row maps; hydration removes helper
+      // columns from rows that do not need the chunked text fallback.
+      final row = Map<String, dynamic>.from(resultRow);
       final contentLength = _toNullableInt(row['_content_length']) ?? 0;
       final remarkLength = _toNullableInt(row['_remark_length']) ?? 0;
       final conflictLength = includeConflictData
           ? (_toNullableInt(row['_conflict_length']) ?? 0)
           : 0;
-      return contentLength > _todoTextChunkSize ||
+      final hasOversizedText = contentLength > _todoTextChunkSize ||
           remarkLength > _todoTextChunkSize ||
           conflictLength > _todoTextChunkSize;
-    });
-    if (!hasOversizedText) {
-      return rows.map((row) {
-        final hydrated = Map<String, dynamic>.from(row)
-          ..remove('_content_length')
-          ..remove('_remark_length');
-        if (includeConflictData) hydrated.remove('_conflict_length');
-        return hydrated;
-      }).toList();
+      if (hasOversizedText) {
+        hydratedRows.add(
+          await _hydrateTodoRow(
+            db,
+            row,
+            includeConflictData: includeConflictData,
+          ),
+        );
+        continue;
+      }
+
+      row
+        ..remove('_content_length')
+        ..remove('_remark_length');
+      if (includeConflictData) row.remove('_conflict_length');
+      hydratedRows.add(row);
     }
-    final hydrated = <Map<String, dynamic>>[];
-    for (final row in rows) {
-      hydrated.add(
-        await _hydrateTodoRow(
+    return hydratedRows;
+  }
+
+  /// Returns the todo fields consumed by home-screen widgets without loading
+  /// remarks, images, original analysis text, or conflict payloads.
+  Future<List<Map<String, dynamic>>> getTodoWidgetMaps(String username) async {
+    final prefs = await SharedPreferences.getInstance();
+    final userId = prefs.getInt('current_user_id') ?? 0;
+    final db = await databaseForUser(username);
+    final rows = await db.rawQuery('''
+      SELECT
+        t.uuid AS uuid,
+        t.team_name AS team_name,
+        CASE
+          WHEN t.collab_type = 1 AND c.is_completed IS NOT NULL
+          THEN c.is_completed
+          ELSE t.is_completed
+        END AS is_completed,
+        t.is_deleted AS is_deleted,
+        t.version AS version,
+        t.due_date AS due_date,
+        t.created_date AS created_date,
+        t.created_at AS created_at,
+        t.updated_at AS updated_at,
+        t.recurrence AS recurrence,
+        t.recurrence_series_id AS recurrence_series_id,
+        t.custom_interval_days AS custom_interval_days,
+        t.recurrence_end_date AS recurrence_end_date,
+        t.is_all_day AS is_all_day,
+        CASE
+          WHEN LENGTH(t.content) <= $_todoTextChunkSize THEN t.content
+        END AS content,
+        LENGTH(t.content) AS _content_length
+      FROM todos t
+      LEFT JOIN todo_completions c
+        ON t.uuid = c.todo_uuid AND c.user_id = $userId
+      WHERE t.is_deleted IS NOT 1
+      ORDER BY t.updated_at DESC
+    ''');
+
+    final hydratedRows = <Map<String, dynamic>>[];
+    for (final resultRow in rows) {
+      final row = Map<String, dynamic>.from(resultRow);
+      final contentLength = _toNullableInt(row['_content_length']) ?? 0;
+      if (contentLength > _todoTextChunkSize) {
+        row['content'] = await _readTodoTextColumn(
           db,
-          row,
-          includeConflictData: includeConflictData,
-        ),
-      );
+          row['uuid']?.toString() ?? '',
+          'content',
+          contentLength,
+        );
+      }
+      row.remove('_content_length');
+      hydratedRows.add(row);
     }
-    return hydrated;
+    return hydratedRows;
   }
 
   Future<Map<String, dynamic>> _hydrateTodoRow(
