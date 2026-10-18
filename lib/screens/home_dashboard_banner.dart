@@ -9,6 +9,7 @@ typedef _DashboardTodoCandidate = ({
   DateTime? startTime,
   bool isAllDay,
   bool isCrossDay,
+  bool isDateOnly,
 });
 
 String _formatDashboardPomodoroTimeInfo(
@@ -111,6 +112,7 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
             (startTime.year != localDueDate.year ||
                 startTime.month != localDueDate.month ||
                 startTime.day != localDueDate.day),
+        isDateOnly: specialType == 'default' && todo.isDateOnly,
       ));
     }
 
@@ -1310,14 +1312,18 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
 
       final todoType = candidate.specialType;
       final isSpecialTodo = todoType != 'default';
-      final localDueDate = dueDate.toLocal();
+      final localDueDate = candidate.localDueDate;
       final isDueToday = AppTimeFormats.isSameDay(localDueDate, now);
 
       if (!todo.isDeleted) {
         if (isSpecialTodo && isDueToday) {
           specialTodosToday.add(todo);
         } else if (!isSpecialTodo &&
-            TodoNotificationPolicy.isInsideLiveWindow(todo, now)) {
+            TodoNotificationPolicy.isInsideLiveWindowForLocalDueDate(
+              localDueDate: localDueDate,
+              isDateOnly: candidate.isDateOnly,
+              now: now,
+            )) {
           upcomingRegularTodos.add(todo);
         }
       }
@@ -1327,10 +1333,7 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
           isDueToday &&
           localDueDate.hour == 23 &&
           localDueDate.minute == 59) {
-        final startDate = DateTime.fromMillisecondsSinceEpoch(
-          todo.createdDate ?? todo.createdAt,
-          isUtc: true,
-        ).toLocal();
+        final startDate = candidate.startTime!;
         if (startDate.hour == 0 && startDate.minute == 0) {
           allDayTodos.add(todo);
         }
