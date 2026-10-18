@@ -23,6 +23,7 @@ void main() {
               },
             ],
             hasPermission: true,
+            lastSyncTime: DateTime(2026, 10, 17, 12, 34),
             onOpenSettings: () {},
             onViewDetail: () {},
           ),
@@ -39,6 +40,7 @@ void main() {
     final initialDevicePainter = painterFor(false);
     final initialAppPainter = painterFor(true);
     final initialProgress = initialDevicePainter.currentSweepProgress;
+    expect(find.text('更新: 12:34'), findsOneWidget);
 
     await tester.pump(const Duration(milliseconds: 200));
 
