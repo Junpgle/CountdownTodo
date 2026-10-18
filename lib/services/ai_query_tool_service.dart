@@ -73,6 +73,7 @@ class AiQueryToolService {
   final Future<List<FinanceBudget>> Function() loadBudgets;
 
   static const toolNames = {'query_finance', 'query_app_data', 'query_habits'};
+  static final RegExp _datePattern = RegExp(r'^(\d{4})-(\d{2})-(\d{2})$');
   static const domains = [
     'todos',
     'todo_groups',
@@ -291,7 +292,7 @@ query_*自动执行只读查询；propose_*只生成待确认操作草案，不�
   }
 
   static DateTime parseDate(String value) {
-    final match = RegExp(r'^(\d{4})-(\d{2})-(\d{2})$').firstMatch(value);
+    final match = _datePattern.firstMatch(value);
     if (match == null) throw const FormatException('日期必须为yyyy-MM-dd');
     final year = int.parse(match[1]!);
     final month = int.parse(match[2]!);
