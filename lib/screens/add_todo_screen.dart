@@ -86,6 +86,9 @@ class AddTodoScreen extends StatefulWidget {
 
 class _AddTodoScreenState extends State<AddTodoScreen>
     with SingleTickerProviderStateMixin, WidgetsBindingObserver {
+  static final RegExp _latinKeywordPattern = RegExp(r'[a-z0-9]+');
+  static final RegExp _cjkKeywordPattern = RegExp(r'[一-鿿]+');
+
   final TextEditingController _titleCtrl = TextEditingController();
   final TextEditingController _remarkCtrl = TextEditingController();
   final TextEditingController _aiInputCtrl = TextEditingController();
@@ -1939,10 +1942,10 @@ class _AddTodoScreenState extends State<AddTodoScreen>
   List<String> _extractKeywords() {
     final text = _titleCtrl.text.trim().toLowerCase();
     final tokens = <String>[];
-    for (final m in RegExp(r'[a-z0-9]+').allMatches(text)) {
+    for (final m in _latinKeywordPattern.allMatches(text)) {
       if (m.group(0)!.length >= 2) tokens.add(m.group(0)!);
     }
-    for (final m in RegExp(r'[一-鿿]+').allMatches(text)) {
+    for (final m in _cjkKeywordPattern.allMatches(text)) {
       final seg = m.group(0)!;
       for (int i = 0; i < seg.length; i++) {
         tokens.add(seg[i]);
