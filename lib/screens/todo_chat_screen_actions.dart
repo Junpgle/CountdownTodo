@@ -2,6 +2,10 @@ part of 'todo_chat_screen.dart';
 
 final RegExp _actionFeedbackLatinTokenPattern = RegExp(r'[a-z0-9]+');
 final RegExp _actionFeedbackCjkTokenPattern = RegExp(r'[一-鿿]+');
+final RegExp _habitReminderCamelCasePattern = RegExp(r'[A-Z]');
+final RegExp _financeOptionLeadingPunctuationPattern = RegExp(
+  r'^[^\u4e00-\u9fffA-Za-z0-9]+',
+);
 
 // ignore_for_file: annotate_overrides, unused_element, unused_element_parameter
 
@@ -199,7 +203,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
             'dailySummaryReminder': '每日汇总提醒',
           }.entries) {
             final snakeKey = entry.key.replaceAllMapped(
-              RegExp(r'[A-Z]'),
+              _habitReminderCamelCasePattern,
               (match) => '_${match.group(0)!.toLowerCase()}',
             );
             final value = policy.containsKey(entry.key)
@@ -904,7 +908,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
 
   String _normalizeFinanceOption(String? value) {
     return (value ?? '')
-        .replaceAll(RegExp(r'^[^\u4e00-\u9fffA-Za-z0-9]+'), '')
+        .replaceAll(_financeOptionLeadingPunctuationPattern, '')
         .trim()
         .toLowerCase();
   }
