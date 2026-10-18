@@ -303,7 +303,10 @@ class UpdateService {
   static const String manifestUrl =
       "https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master/update_manifest.json";
   static String get fallbackManifestUrl {
-    final base = ApiService.effectiveBaseUrl.replaceFirst(RegExp(r'/$'), '');
+    final baseUrl = ApiService.effectiveBaseUrl;
+    final base = baseUrl.endsWith('/')
+        ? baseUrl.substring(0, baseUrl.length - 1)
+        : baseUrl;
     return '$base/api/manifest';
   }
 
