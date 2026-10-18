@@ -73,7 +73,13 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
   bool _showAllTodos = false;
   List<TodoItem>? _sortedTodosInput;
   List<TodoItem>? _sortedTodosCache;
+  List<TodoItem>? _urgentTodoInput;
+  TodoItem? _urgentTodoCache;
   _TodoGroupMetrics? _cachedMetrics;
+  _TodoGroupMetrics? _cachedProgressMetrics;
+  int? _cachedProgressNextChangeMicros;
+  int? _cachedProgressLastNowMicros;
+  double _cachedGroupFillProgress = 0;
   final Map<(String?, String), DateFormat> _dateFormatters = {};
 
   @override
@@ -96,13 +102,30 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
 
     _sortedTodosInput = groupTodos;
     return _sortedTodosCache = List<TodoItem>.of(groupTodos)
-      ..sort((a, b) {
-        if (a.isDone != b.isDone) return a.isDone ? 1 : -1;
-        if (a.dueDate == null && b.dueDate == null) return 0;
-        if (a.dueDate == null) return 1;
-        if (b.dueDate == null) return -1;
-        return a.dueDate!.compareTo(b.dueDate!);
-      });
+      ..sort(_compareGroupTodos);
+  }
+
+  int _compareGroupTodos(TodoItem a, TodoItem b) {
+    if (a.isDone != b.isDone) return a.isDone ? 1 : -1;
+    if (a.dueDate == null && b.dueDate == null) return 0;
+    if (a.dueDate == null) return 1;
+    if (b.dueDate == null) return -1;
+    return a.dueDate!.compareTo(b.dueDate!);
+  }
+
+  TodoItem _mostUrgentTodoFor(List<TodoItem> groupTodos) {
+    if (identical(_urgentTodoInput, groupTodos)) return _urgentTodoCache!;
+
+    var mostUrgent = groupTodos.first;
+    for (var i = 1; i < groupTodos.length; i++) {
+      final candidate = groupTodos[i];
+      if (_compareGroupTodos(candidate, mostUrgent) < 0) {
+        mostUrgent = candidate;
+      }
+    }
+
+    _urgentTodoInput = groupTodos;
+    return _urgentTodoCache = mostUrgent;
   }
 
   // TodoSection replaces grouped lists when versioned inputs change. The day
@@ -161,6 +184,51 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
     );
   }
 
+  double _groupFillProgressFor(_TodoGroupMetrics metrics, int nowMicros) {
+    final cachedNextChange = _cachedProgressNextChangeMicros;
+    final cachedLastNow = _cachedProgressLastNowMicros;
+    if (identical(_cachedProgressMetrics, metrics) &&
+        cachedLastNow != null &&
+        nowMicros >= cachedLastNow &&
+        (cachedNextChange == null || nowMicros < cachedNextChange)) {
+      _cachedProgressLastNowMicros = nowMicros;
+      return _cachedGroupFillProgress;
+    }
+
+    var groupFillProgress = 0.0;
+    int? nextChangeMicros;
+    for (final interval in metrics.progressIntervals) {
+      final startMicros = interval.$1;
+      final totalMinutes = interval.$2;
+      final elapsedMicros = nowMicros - startMicros;
+      final elapsedMinutes = elapsedMicros > 0
+          ? elapsedMicros ~/ Duration.microsecondsPerMinute
+          : 0;
+
+      if (elapsedMicros > 0) {
+        final taskProgress = (elapsedMinutes / totalMinutes).clamp(0.0, 1.0);
+        if (taskProgress > groupFillProgress) {
+          groupFillProgress = taskProgress;
+        }
+      }
+
+      if (elapsedMinutes < totalMinutes) {
+        final changeMicros =
+            startMicros +
+            (elapsedMinutes + 1) * Duration.microsecondsPerMinute;
+        if (changeMicros > nowMicros &&
+            (nextChangeMicros == null || changeMicros < nextChangeMicros)) {
+          nextChangeMicros = changeMicros;
+        }
+      }
+    }
+
+    _cachedProgressMetrics = metrics;
+    _cachedProgressNextChangeMicros = nextChangeMicros;
+    _cachedProgressLastNowMicros = nowMicros;
+    return _cachedGroupFillProgress = groupFillProgress;
+  }
+
   DateFormat _cachedDateFormat(String pattern) {
     final locale = Intl.defaultLocale;
     return _dateFormatters.putIfAbsent(
@@ -174,39 +242,28 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
     final group = widget.group;
     final groupTodos = widget.groupTodos;
     final isExpanded = group.isExpanded;
-    final sortedTodos = _sortedTodosFor(groupTodos);
-    final foldedTodoCount =
-        widget.onlyShowMostUrgentTodo &&
-            !_showAllTodos &&
-            sortedTodos.length > 1
-        ? sortedTodos.length - 1
-        : 0;
-    final visibleTodos = foldedTodoCount > 0
-        ? sortedTodos.take(1)
-        : sortedTodos;
-
     final totalCount = groupTodos.length;
+    final showOnlyMostUrgentTodo =
+        widget.onlyShowMostUrgentTodo && !_showAllTodos && totalCount > 1;
+    final sortedTodos = showOnlyMostUrgentTodo
+        ? null
+        : _sortedTodosFor(groupTodos);
+    final urgentTodo = showOnlyMostUrgentTodo
+        ? _mostUrgentTodoFor(groupTodos)
+        : null;
+    final foldedTodoCount = showOnlyMostUrgentTodo ? totalCount - 1 : 0;
+    final Iterable<TodoItem> visibleTodos = showOnlyMostUrgentTodo
+        ? <TodoItem>[urgentTodo!]
+        : sortedTodos!;
+
     final now = DateTime.now();
     final nowMicros = now.microsecondsSinceEpoch;
     final today = DateTime(now.year, now.month, now.day);
     final metrics = _metricsFor(groupTodos, today);
     final doneCount = metrics.doneCount;
     final hasOverdue = metrics.hasOverdue;
-    var groupFillProgress = 0.0;
+    var groupFillProgress = _groupFillProgressFor(metrics, nowMicros);
     final nearestDeadline = metrics.nearestDeadline;
-
-    for (final interval in metrics.progressIntervals) {
-      final startMicros = interval.$1;
-      final totalMin = interval.$2;
-      if (nowMicros > startMicros) {
-        final elapsedMin =
-            (nowMicros - startMicros) ~/ Duration.microsecondsPerMinute;
-        final taskProgress = (elapsedMin / totalMin).clamp(0.0, 1.0);
-        if (taskProgress > groupFillProgress) {
-          groupFillProgress = taskProgress;
-        }
-      }
-    }
 
     final progress = totalCount == 0 ? 0.0 : doneCount / totalCount;
     final allDone = totalCount > 0 && doneCount == totalCount;
@@ -341,7 +398,7 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
                                 ),
                               ),
                               if (widget.onlyShowMostUrgentTodo &&
-                                  sortedTodos.length > 1)
+                                  totalCount > 1)
                                 _buildFoldedTodosToggle(
                                   context,
                                   foldedTodoCount,

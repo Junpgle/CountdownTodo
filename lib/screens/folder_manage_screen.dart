@@ -360,10 +360,32 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final active = _groups.where((g) => !g.isDeleted).toList();
     final query = _searchController.text.trim().toLowerCase();
-    final visible =
-        active.where((g) => g.name.toLowerCase().contains(query)).toList();
+    final visibleGroups = <TodoGroup>[];
+    var activeGroupCount = 0;
+    for (final group in _groups) {
+      if (group.isDeleted) continue;
+      activeGroupCount++;
+      if (group.name.toLowerCase().contains(query)) visibleGroups.add(group);
+    }
+    final visibleGroupIds = {for (final group in visibleGroups) group.id};
+    final todosByGroupId = <String, List<TodoItem>>{};
+    final pendingTodoCountsByGroupId = <String, int>{};
+    if (visibleGroupIds.isNotEmpty) {
+      for (final todo in _todos) {
+        final groupId = todo.groupId;
+        if (todo.isDeleted ||
+            groupId == null ||
+            !visibleGroupIds.contains(groupId)) {
+          continue;
+        }
+        (todosByGroupId[groupId] ??= <TodoItem>[]).add(todo);
+        if (!todo.isDone) {
+          pendingTodoCountsByGroupId[groupId] =
+              (pendingTodoCountsByGroupId[groupId] ?? 0) + 1;
+        }
+      }
+    }
     final topBarHeight = floatingGlassTopBarHeight(context);
     return Scaffold(
       extendBodyBehindAppBar: true,
@@ -417,7 +439,7 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
               spacing: 16,
               runSpacing: 8,
               children: [
-                Text('我的文件夹 · ${active.length}',
+                Text('我的文件夹 · $activeGroupCount',
                     style: theme.textTheme.titleMedium
                         ?.copyWith(fontWeight: FontWeight.w700)),
                 FilledButton.icon(
@@ -431,22 +453,31 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
               hintText: '搜索文件夹名称',
               onChanged: (_) => setState(() {})),
           const SizedBox(height: 16),
-          if (visible.isEmpty)
+          if (visibleGroups.isEmpty)
             ManagementEmptyState(
                 icon: Icons.folder_open_rounded,
                 title: query.isEmpty ? '暂无文件夹' : '没有找到匹配的文件夹',
                 description:
                     query.isEmpty ? '新建一个文件夹，把相关待办放在一起。' : '试试其他名称，或清空搜索。'),
-          ...visible.map((g) => _buildFolder(g, scheme)),
+          ...visibleGroups.map(
+            (group) => _buildFolder(
+              group,
+              scheme,
+              todosByGroupId[group.id] ?? const <TodoItem>[],
+              pendingTodoCountsByGroupId[group.id] ?? 0,
+            ),
+          ),
         ]),
       ),
     );
   }
 
-  Widget _buildFolder(TodoGroup g, ColorScheme scheme) {
-    final todos =
-        _todos.where((t) => t.groupId == g.id && !t.isDeleted).toList();
-    final pending = todos.where((t) => !t.isDone).length;
+  Widget _buildFolder(
+    TodoGroup g,
+    ColorScheme scheme,
+    List<TodoItem> todos,
+    int pending,
+  ) {
     return ManagementCard(
       padding: EdgeInsets.zero,
       clipBehavior: Clip.antiAlias,

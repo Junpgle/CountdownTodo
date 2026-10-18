@@ -27,8 +27,31 @@ class TodoEditScreenState extends State<TodoEditScreen> {
   final GlobalKey _planKey = GlobalKey();
   final GlobalKey _focusKey = GlobalKey();
   final GlobalKey _dataKey = GlobalKey();
+  final Map<(String?, String), DateFormat> _dateFormatCache = {};
+  String? _verifiedEditingTodoImagePath;
   bool _showCoachMarks = false;
   late TodoItem _editingTodo;
+
+  DateFormat _dateFormat(String pattern) {
+    final locale = Intl.defaultLocale;
+    return _dateFormatCache.putIfAbsent(
+      (locale, pattern),
+      () => DateFormat(pattern, locale),
+    );
+  }
+
+  bool _hasEditingTodoImage() {
+    final path = _editingTodo.imagePath;
+    if (path == null || path.isEmpty) {
+      _verifiedEditingTodoImagePath = null;
+      return false;
+    }
+    if (_verifiedEditingTodoImagePath == path) return true;
+
+    final exists = localImageExists(path);
+    _verifiedEditingTodoImagePath = exists ? path : null;
+    return exists;
+  }
 
   Future<void> _checkCoachMarks() async {
     if (_showCoachMarks || !mounted) return;
@@ -85,6 +108,9 @@ class TodoEditScreenState extends State<TodoEditScreen> {
   late int _reminderMinutes;
   Map<String, int> _categoryReminderDefaults = {};
   List<Team> _teams = [];
+  Map<String, Team> _teamsByUuid = const {};
+  List<TodoGroup> _availableGroups = const [];
+  Map<String, TodoGroup> _availableGroupsById = const {};
   String? _selectedTeamUuid;
   int _collabType = 0;
   bool _syncFolderToTeam = false;
@@ -98,6 +124,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
   @override
   void initState() {
     super.initState();
+    _rebuildAvailableGroupIndex();
     _editingTodo = widget.todo;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final route = ModalRoute.of(context);
@@ -146,6 +173,23 @@ class TodoEditScreenState extends State<TodoEditScreen> {
     _loadFocusRecords();
   }
 
+  @override
+  void didUpdateWidget(covariant TodoEditScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.todoGroups, widget.todoGroups)) {
+      _rebuildAvailableGroupIndex();
+    }
+  }
+
+  void _rebuildAvailableGroupIndex() {
+    final groupsById = <String, TodoGroup>{};
+    for (final group in widget.todoGroups) {
+      if (group.id.isNotEmpty) groupsById[group.id] = group;
+    }
+    _availableGroupsById = groupsById;
+    _availableGroups = groupsById.values.toList(growable: false);
+  }
+
   Future<void> _loadFocusRecords() async {
     if (!mounted) return;
     final editingTodoId = _editingTodo.id;
@@ -185,8 +229,14 @@ class TodoEditScreenState extends State<TodoEditScreen> {
   Future<void> _loadTeams() async {
     final rawTeams = await ApiService.fetchTeams();
     if (mounted) {
+      final teams = rawTeams.map((t) => Team.fromJson(t)).toList();
+      final teamsByUuid = <String, Team>{};
+      for (final team in teams) {
+        teamsByUuid.putIfAbsent(team.uuid, () => team);
+      }
       setState(() {
-        _teams = rawTeams.map((t) => Team.fromJson(t)).toList();
+        _teams = teams;
+        _teamsByUuid = teamsByUuid;
       });
     }
   }
@@ -431,14 +481,12 @@ class TodoEditScreenState extends State<TodoEditScreen> {
         : theme.colorScheme.surface;
     final topBarHeight = floatingGlassTopBarHeight(context);
 
-    final uniqueFolderMap = <String, TodoGroup>{};
-    for (var g in widget.todoGroups) {
-      if (g.id.isNotEmpty) uniqueFolderMap[g.id] = g;
-    }
-    final availableGroups = uniqueFolderMap.values.toList();
+    final availableGroups = _availableGroups;
+    final selectedGroupId = _selectedGroupId;
     final effectiveGroupId =
-        (availableGroups.any((g) => g.id == _selectedGroupId))
-        ? _selectedGroupId
+        selectedGroupId != null &&
+            _availableGroupsById.containsKey(selectedGroupId)
+        ? selectedGroupId
         : null;
 
     return Scaffold(
@@ -733,7 +781,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                     Expanded(
                       child: _buildSquareTile(
                         title: "完成日期",
-                        subtitle: DateFormat('MM-dd').format(_createdDate),
+                        subtitle: _dateFormat('MM-dd').format(_createdDate),
                         icon: Icons.event_available_rounded,
                         color: Theme.of(context).colorScheme.secondary,
                         onTap: () async {
@@ -782,7 +830,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                     Expanded(
                       child: _buildSquareTile(
                         title: "开始时间",
-                        subtitle: DateFormat('MM-dd HH:mm')
+                        subtitle: _dateFormat('MM-dd HH:mm')
                             .format(_createdDate),
                         icon: Icons.play_circle_outline_rounded,
                         color: colorScheme.primary,
@@ -820,8 +868,8 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                         subtitle: _dueDate == null
                             ? (_preserveLegacyTiming ? "结束时间待定" : "未安排")
                             : _preserveLegacyTiming
-                            ? DateFormat('MM-dd HH:mm').format(_dueDate!)
-                            : "${DateFormat('MM-dd HH:mm').format(_dueDate!)} 前完成",
+                            ? _dateFormat('MM-dd HH:mm').format(_dueDate!)
+                            : "${_dateFormat('MM-dd HH:mm').format(_dueDate!)} 前完成",
                         icon: _preserveLegacyTiming
                             ? Icons.stop_circle_outlined
                             : Icons.flag_rounded,
@@ -1004,7 +1052,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                                 Text(
                                   _recurrenceEndDate == null
                                       ? "未指定"
-                                      : DateFormat('yyyy-MM-dd')
+                                      : _dateFormat('yyyy-MM-dd')
                                             .format(_recurrenceEndDate!),
                                   style: TextStyle(
                                     color: _recurrenceEndDate == null
@@ -1040,10 +1088,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                           title: "归属文件夹",
                           subtitle: effectiveGroupId == null
                               ? "未分类"
-                              : (availableGroups
-                                        .where((g) => g.id == effectiveGroupId)
-                                        .firstOrNull
-                                        ?.name ??
+                              : (_availableGroupsById[effectiveGroupId]?.name ??
                                     '未知'),
                           icon: Icons.folder_rounded,
                           color: Colors.amber.shade600,
@@ -1082,13 +1127,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                           title: "团队归属",
                           subtitle: _selectedTeamUuid == null
                               ? "个人私有"
-                              : (_teams
-                                        .where(
-                                          (t) => t.uuid == _selectedTeamUuid,
-                                        )
-                                        .firstOrNull
-                                        ?.name ??
-                                    '未知'),
+                              : (_teamsByUuid[_selectedTeamUuid]?.name ?? '未知'),
                           icon: Icons.groups_rounded,
                           color: Colors.indigoAccent,
                           value: _selectedTeamUuid ?? "__none__",
@@ -1117,7 +1156,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                 if (_selectedTeamUuid != null && effectiveGroupId != null)
                   Builder(
                     builder: (context) {
-                      final folder = uniqueFolderMap[effectiveGroupId];
+                      final folder = _availableGroupsById[effectiveGroupId];
                       if (folder != null &&
                           folder.teamUuid != _selectedTeamUuid) {
                         return Padding(
@@ -1164,7 +1203,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 12),
-                if (localImageExists(_editingTodo.imagePath))
+                if (_hasEditingTodoImage())
                   GestureDetector(
                     onTap: () =>
                         _showFullImage(context, _editingTodo.imagePath!),
@@ -1711,7 +1750,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          '${DateFormat('MM-dd HH:mm').format(startLocal)} · $durationMin 分钟',
+                          '${_dateFormat('MM-dd HH:mm').format(startLocal)} · $durationMin 分钟',
                           style: const TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w500,
@@ -1917,7 +1956,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                             color: colorScheme.primary.withValues(alpha: 0.7),
                           ),
                           title: Text(
-                            "${DateFormat('MM-dd').format(start)} ${DateFormat('HH:mm').format(start)} - ${DateFormat('HH:mm').format(end)}",
+                            "${_dateFormat('MM-dd').format(start)} ${_dateFormat('HH:mm').format(start)} - ${_dateFormat('HH:mm').format(end)}",
                             style: const TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w500,

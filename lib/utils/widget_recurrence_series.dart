@@ -147,18 +147,7 @@ List<WidgetRecurrenceOccurrenceItem> _buildOccurrenceWindow(
   required DateTime now,
   required DateTime? recurrenceEnd,
 }) {
-  final byStartMs = <int, WidgetRecurrenceOccurrenceItem>{};
-  for (final occurrence in actualOccurrences) {
-    final start = _startOf(occurrence);
-    byStartMs[start.millisecondsSinceEpoch] = WidgetRecurrenceOccurrenceItem(
-      occurrenceId: occurrence.id,
-      startAtMs: start.millisecondsSinceEpoch,
-      dueAtMs: occurrence.dueDate?.toLocal().millisecondsSinceEpoch,
-      isDone: occurrence.isDone,
-      isDateOnly: occurrence.isDateOnly,
-    );
-  }
-
+  final projectedItems = <WidgetRecurrenceOccurrenceItem>[];
   if (ruleAnchor.recurrence != RecurrenceType.none) {
     var projectedStart = _startOf(ruleAnchor);
     final anchorDue = ruleAnchor.dueDate?.toLocal();
@@ -166,9 +155,8 @@ List<WidgetRecurrenceOccurrenceItem> _buildOccurrenceWindow(
     for (var i = 0; i < _futureOccurrenceLimit; i++) {
       if (recurrenceEnd != null && projectedStart.isAfter(recurrenceEnd)) break;
       final key = projectedStart.millisecondsSinceEpoch;
-      byStartMs.putIfAbsent(
-        key,
-        () => WidgetRecurrenceOccurrenceItem(
+      projectedItems.add(
+        WidgetRecurrenceOccurrenceItem(
           occurrenceId: '',
           startAtMs: key,
           dueAtMs: dueOffset == null
@@ -187,25 +175,122 @@ List<WidgetRecurrenceOccurrenceItem> _buildOccurrenceWindow(
     }
   }
 
-  final sorted = byStartMs.values.toList()
-    ..sort((a, b) => a.startAtMs.compareTo(b.startAtMs));
   final nowMs = now.millisecondsSinceEpoch;
-  var low = 0;
-  var high = sorted.length;
-  while (low < high) {
-    final middle = (low + high) >> 1;
-    if (sorted[middle].startAtMs < nowMs) {
-      low = middle + 1;
+  int actualStartAt(int index) =>
+      _startOf(actualOccurrences[index]).millisecondsSinceEpoch;
+
+  WidgetRecurrenceOccurrenceItem actualItem(
+    TodoItem occurrence,
+    int startAtMs,
+  ) =>
+      WidgetRecurrenceOccurrenceItem(
+        occurrenceId: occurrence.id,
+        startAtMs: startAtMs,
+        dueAtMs: occurrence.dueDate?.toLocal().millisecondsSinceEpoch,
+        isDone: occurrence.isDone,
+        isDateOnly: occurrence.isDateOnly,
+      );
+
+  int lowerBoundActual(int target) {
+    var low = 0;
+    var high = actualOccurrences.length;
+    while (low < high) {
+      final middle = (low + high) >> 1;
+      if (actualStartAt(middle) < target) {
+        low = middle + 1;
+      } else {
+        high = middle;
+      }
+    }
+    return low;
+  }
+
+  int lowerBoundProjected(int target) {
+    var low = 0;
+    var high = projectedItems.length;
+    while (low < high) {
+      final middle = (low + high) >> 1;
+      if (projectedItems[middle].startAtMs < target) {
+        low = middle + 1;
+      } else {
+        high = middle;
+      }
+    }
+    return low;
+  }
+
+  // Actual occurrences are already sorted by the caller, and projections are
+  // chronological. Merge only the visible window instead of materializing all
+  // historical instances. Actual items keep the former duplicate-date winner.
+  final firstFutureActualIndex = lowerBoundActual(nowMs);
+  final firstFutureProjectedIndex = lowerBoundProjected(nowMs);
+  var actualPastIndex = firstFutureActualIndex - 1;
+  var projectedPastIndex = firstFutureProjectedIndex - 1;
+  final pastDescending = <WidgetRecurrenceOccurrenceItem>[];
+  while (pastDescending.length < _pastOccurrenceLimit &&
+      (actualPastIndex >= 0 || projectedPastIndex >= 0)) {
+    final actualStart = actualPastIndex < 0
+        ? null
+        : actualStartAt(actualPastIndex);
+    final projectedStart = projectedPastIndex < 0
+        ? null
+        : projectedItems[projectedPastIndex].startAtMs;
+    if (projectedStart == null ||
+        (actualStart != null && actualStart >= projectedStart)) {
+      final startAtMs = actualStart!;
+      pastDescending.add(
+        actualItem(actualOccurrences[actualPastIndex], startAtMs),
+      );
+      var beforeSameStart = actualPastIndex - 1;
+      while (beforeSameStart >= 0 &&
+          actualStartAt(beforeSameStart) == startAtMs) {
+        beforeSameStart--;
+      }
+      actualPastIndex = beforeSameStart;
+      if (projectedStart == startAtMs) projectedPastIndex--;
     } else {
-      high = middle;
+      pastDescending.add(projectedItems[projectedPastIndex]);
+      projectedPastIndex--;
     }
   }
 
-  final firstPast = low > _pastOccurrenceLimit ? low - _pastOccurrenceLimit : 0;
-  final afterFuture = low + _futureOccurrenceLimit < sorted.length
-      ? low + _futureOccurrenceLimit
-      : sorted.length;
-  return sorted.sublist(firstPast, afterFuture);
+  var actualFutureIndex = firstFutureActualIndex;
+  var projectedFutureIndex = firstFutureProjectedIndex;
+  final futureItems = <WidgetRecurrenceOccurrenceItem>[];
+  while (futureItems.length < _futureOccurrenceLimit &&
+      (actualFutureIndex < actualOccurrences.length ||
+          projectedFutureIndex < projectedItems.length)) {
+    final actualStart = actualFutureIndex >= actualOccurrences.length
+        ? null
+        : actualStartAt(actualFutureIndex);
+    final projectedStart = projectedFutureIndex >= projectedItems.length
+        ? null
+        : projectedItems[projectedFutureIndex].startAtMs;
+    if (projectedStart == null ||
+        (actualStart != null && actualStart <= projectedStart)) {
+      final startAtMs = actualStart!;
+      var afterSameStart = actualFutureIndex + 1;
+      while (afterSameStart < actualOccurrences.length &&
+          actualStartAt(afterSameStart) == startAtMs) {
+        afterSameStart++;
+      }
+      futureItems.add(
+        actualItem(actualOccurrences[afterSameStart - 1], startAtMs),
+      );
+      actualFutureIndex = afterSameStart;
+      if (projectedStart == startAtMs) projectedFutureIndex++;
+    } else {
+      futureItems.add(projectedItems[projectedFutureIndex]);
+      projectedFutureIndex++;
+    }
+  }
+
+  final result = <WidgetRecurrenceOccurrenceItem>[
+    for (var index = pastDescending.length - 1; index >= 0; index--)
+      pastDescending[index],
+    ...futureItems,
+  ];
+  return result;
 }
 
 DateTime _startOf(TodoItem todo) => todo.effectiveStartTime;

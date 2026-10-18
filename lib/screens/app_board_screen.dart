@@ -1049,6 +1049,120 @@ class TodayHourlyTimeline extends StatelessWidget {
   }
 }
 
+class _GanttTaskLayoutInput {
+  const _GanttTaskLayoutInput({
+    required this.todo,
+    required this.isDone,
+    required this.createdAt,
+    required this.dueDateMicros,
+    required this.dueDateIsUtc,
+    required this.dueDateYear,
+    required this.dueDateMonth,
+    required this.dueDateDay,
+    required this.dueDateHour,
+    required this.dueDateMinute,
+    required this.dueDateOffsetSeconds,
+  });
+
+  factory _GanttTaskLayoutInput.from(TodoItem todo) {
+    final dueDate = todo.dueDate;
+    return _GanttTaskLayoutInput(
+      todo: todo,
+      isDone: todo.isDone,
+      createdAt: todo.createdAt,
+      dueDateMicros: dueDate?.microsecondsSinceEpoch,
+      dueDateIsUtc: dueDate?.isUtc,
+      dueDateYear: dueDate?.year,
+      dueDateMonth: dueDate?.month,
+      dueDateDay: dueDate?.day,
+      dueDateHour: dueDate?.hour,
+      dueDateMinute: dueDate?.minute,
+      dueDateOffsetSeconds: dueDate?.timeZoneOffset.inSeconds,
+    );
+  }
+
+  final TodoItem todo;
+  final bool isDone;
+  final int createdAt;
+  final int? dueDateMicros;
+  final bool? dueDateIsUtc;
+  final int? dueDateYear;
+  final int? dueDateMonth;
+  final int? dueDateDay;
+  final int? dueDateHour;
+  final int? dueDateMinute;
+  final int? dueDateOffsetSeconds;
+
+  bool matches(TodoItem candidate) {
+    final dueDate = candidate.dueDate;
+    return identical(todo, candidate) &&
+        isDone == candidate.isDone &&
+        createdAt == candidate.createdAt &&
+        dueDateMicros == dueDate?.microsecondsSinceEpoch &&
+        dueDateIsUtc == dueDate?.isUtc &&
+        dueDateYear == dueDate?.year &&
+        dueDateMonth == dueDate?.month &&
+        dueDateDay == dueDate?.day &&
+        dueDateHour == dueDate?.hour &&
+        dueDateMinute == dueDate?.minute &&
+        dueDateOffsetSeconds == dueDate?.timeZoneOffset.inSeconds;
+  }
+}
+
+class _GanttLayout {
+  const _GanttLayout({
+    required this.minDate,
+    required this.totalDays,
+    required this.startDates,
+    required this.activeRows,
+    required this.completedRows,
+  });
+
+  final DateTime minDate;
+  final int totalDays;
+  final Map<TodoItem, DateTime> startDates;
+  final List<List<TodoItem>> activeRows;
+  final List<List<TodoItem>> completedRows;
+}
+
+class _GanttDayGridPainter extends CustomPainter {
+  const _GanttDayGridPainter({
+    required this.dayCount,
+    required this.dayWidth,
+    required this.color,
+  });
+
+  final int dayCount;
+  final double dayWidth;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (dayCount <= 0 || size.height <= 0) return;
+
+    final grid = Path();
+    for (var day = 1; day <= dayCount; day++) {
+      final x = day * dayWidth - 0.5;
+      grid
+        ..moveTo(x, 0)
+        ..lineTo(x, size.height);
+    }
+    canvas.drawPath(
+      grid,
+      Paint()
+        ..color = color
+        ..strokeWidth = 1
+        ..style = PaintingStyle.stroke,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _GanttDayGridPainter oldDelegate) =>
+      dayCount != oldDelegate.dayCount ||
+      dayWidth != oldDelegate.dayWidth ||
+      color != oldDelegate.color;
+}
+
 class GanttChart extends StatefulWidget {
   final List<TodoItem> todos;
   final double dayWidth;
@@ -1069,6 +1183,11 @@ class _GanttChartState extends State<GanttChart> {
   final ScrollController _scrollController = ScrollController();
   final ValueNotifier<double> _horizontalOffset = ValueNotifier<double>(0);
   bool _hasScrolledToToday = false;
+  List<TodoItem>? _layoutTodoSource;
+  List<_GanttTaskLayoutInput>? _layoutInputs;
+  DateTime? _layoutToday;
+  int? _layoutTimeZoneOffsetSeconds;
+  _GanttLayout? _cachedLayout;
 
   @override
   void initState() {
@@ -1206,6 +1325,71 @@ class _GanttChartState extends State<GanttChart> {
         : task.dueDate!.subtract(const Duration(days: 3));
   }
 
+  _GanttLayout _layoutFor(List<TodoItem> todos, DateTime now) {
+    final today = CalendarDateMath.dateOnly(now);
+    final timeZoneOffsetSeconds = now.timeZoneOffset.inSeconds;
+    final cachedInputs = _layoutInputs;
+    final cachedLayout = _cachedLayout;
+    if (identical(_layoutTodoSource, todos) &&
+        _layoutToday == today &&
+        _layoutTimeZoneOffsetSeconds == timeZoneOffsetSeconds &&
+        cachedLayout != null &&
+        cachedInputs != null &&
+        cachedInputs.length == todos.length) {
+      var inputsUnchanged = true;
+      for (var index = 0; index < todos.length; index++) {
+        if (!cachedInputs[index].matches(todos[index])) {
+          inputsUnchanged = false;
+          break;
+        }
+      }
+      if (inputsUnchanged) return cachedLayout;
+    }
+
+    DateTime minDate = CalendarDateMath.addDays(today, -7);
+    DateTime maxDate = CalendarDateMath.addDays(today, 30);
+    final activeTodos = <TodoItem>[];
+    final completedTodos = <TodoItem>[];
+    final layoutInputs = <_GanttTaskLayoutInput>[];
+    final startDates = Map<TodoItem, DateTime>.identity();
+    for (final todo in todos) {
+      layoutInputs.add(_GanttTaskLayoutInput.from(todo));
+      if (todo.isDone) {
+        completedTodos.add(todo);
+      } else {
+        activeTodos.add(todo);
+      }
+
+      final start = _taskStartDate(todo);
+      startDates[todo] = start;
+      final end = todo.dueDate!;
+      if (start.isBefore(minDate)) minDate = start;
+      if (end.isAfter(maxDate)) maxDate = end;
+    }
+
+    minDate = CalendarDateMath.addDays(CalendarDateMath.dateOnly(minDate), -7);
+    maxDate = CalendarDateMath.addDays(CalendarDateMath.dateOnly(maxDate), 7);
+    final totalDays = CalendarDateMath.daysBetween(minDate, maxDate);
+    final layout = _GanttLayout(
+      minDate: minDate,
+      totalDays: totalDays,
+      startDates: startDates,
+      activeRows: _packTasks(activeTodos, startDates, minDate, maxDate),
+      completedRows: _packTasks(
+        completedTodos,
+        startDates,
+        minDate,
+        maxDate,
+      ),
+    );
+
+    _layoutTodoSource = todos;
+    _layoutToday = today;
+    _layoutTimeZoneOffsetSeconds = timeZoneOffsetSeconds;
+    _layoutInputs = layoutInputs;
+    return _cachedLayout = layout;
+  }
+
   Widget _buildTaskRow({
     required List<TodoItem> rowTasks,
     required Map<TodoItem, DateTime> startDates,
@@ -1306,40 +1490,12 @@ class _GanttChartState extends State<GanttChart> {
 
     final now = DateTime.now();
 
-    // Calculate dynamic range based on tasks
-    final today = CalendarDateMath.dateOnly(now);
-    DateTime minDate = CalendarDateMath.addDays(today, -7);
-    DateTime maxDate = CalendarDateMath.addDays(today, 30);
-
-    final activeTodos = <TodoItem>[];
-    final completedTodos = <TodoItem>[];
-    final startDates = Map<TodoItem, DateTime>.identity();
-    for (final todo in widget.todos) {
-      if (todo.isDone) {
-        completedTodos.add(todo);
-      } else {
-        activeTodos.add(todo);
-      }
-
-      final start = _taskStartDate(todo);
-      startDates[todo] = start;
-      final end = todo.dueDate!;
-      if (start.isBefore(minDate)) minDate = start;
-      if (end.isAfter(maxDate)) maxDate = end;
-    }
-
-    // Add buffers
-    minDate = CalendarDateMath.addDays(CalendarDateMath.dateOnly(minDate), -7);
-    maxDate = CalendarDateMath.addDays(CalendarDateMath.dateOnly(maxDate), 7);
-
-    final totalDays = CalendarDateMath.daysBetween(minDate, maxDate);
-    final activeRows = _packTasks(activeTodos, startDates, minDate, maxDate);
-    final completedRows = _packTasks(
-      completedTodos,
-      startDates,
-      minDate,
-      maxDate,
-    );
+    final layout = _layoutFor(widget.todos, now);
+    final minDate = layout.minDate;
+    final totalDays = layout.totalDays;
+    final startDates = layout.startDates;
+    final activeRows = layout.activeRows;
+    final completedRows = layout.completedRows;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -1457,19 +1613,13 @@ class _GanttChartState extends State<GanttChart> {
                       }),
                     ),
                     Expanded(
-                      child: Row(
-                        children: List.generate(totalDays, (index) {
-                          return Container(
-                            width: effectiveDayWidth,
-                            decoration: BoxDecoration(
-                              border: Border(
-                                right: BorderSide(
-                                  color: Colors.white.withValues(alpha: 0.02),
-                                ),
-                              ),
-                            ),
-                          );
-                        }),
+                      child: CustomPaint(
+                        painter: _GanttDayGridPainter(
+                          dayCount: totalDays,
+                          dayWidth: effectiveDayWidth,
+                          color: Colors.white.withValues(alpha: 0.02),
+                        ),
+                        child: const SizedBox.expand(),
                       ),
                     ),
                   ],

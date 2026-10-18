@@ -8,6 +8,63 @@ import '../storage_service.dart';
 import '../widgets/management_page.dart';
 import '../utils/app_dialogs.dart';
 
+class _HistoricalTodoDateHeader {
+  const _HistoricalTodoDateHeader(this.date, this.count);
+
+  final String date;
+  final int count;
+}
+
+class _HistoricalTodoListProjection {
+  const _HistoricalTodoListProjection({
+    required this.source,
+    required this.query,
+    required this.matchingItems,
+    required this.visibleCount,
+    required this.rows,
+  });
+
+  final List<TodoItem> source;
+  final String query;
+  final List<TodoItem> matchingItems;
+  final int visibleCount;
+  final List<Object> rows;
+}
+
+class _HistoricalTodoSearchFields {
+  const _HistoricalTodoSearchFields({
+    required this.sourceTitle,
+    required this.sourceRemark,
+    required this.title,
+    required this.remark,
+  });
+
+  final String sourceTitle;
+  final String? sourceRemark;
+  final String title;
+  final String remark;
+}
+
+class _HistoricalTodoDateLabel {
+  const _HistoricalTodoDateLabel({
+    required this.updatedAt,
+    required this.locale,
+    required this.value,
+  });
+
+  final int updatedAt;
+  final String? locale;
+  final String value;
+}
+
+final Map<(String?, String), DateFormat> _historicalTodoDateFormats = {};
+
+DateFormat _historicalTodoDateFormat(String? locale) =>
+    _historicalTodoDateFormats.putIfAbsent(
+      (locale, 'yyyy-MM-dd'),
+      () => DateFormat('yyyy-MM-dd', locale),
+    );
+
 class HistoricalTodosScreen extends StatefulWidget {
   final String username;
   final Future<List<TodoItem>> Function()? loadTodos;
@@ -41,6 +98,11 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
   String? _busyId;
   int _loadGeneration = 0;
   int _nextTodoOffset = 0;
+  final Map<int, _HistoricalTodoListProjection> _listProjections = {};
+  final Expando<_HistoricalTodoSearchFields> _searchFields =
+      Expando<_HistoricalTodoSearchFields>('historical todo search fields');
+  final Expando<_HistoricalTodoDateLabel> _dateLabels =
+      Expando<_HistoricalTodoDateLabel>('historical todo date label');
   final _searchController = TextEditingController();
   late TabController _tabController;
 
@@ -58,21 +120,14 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
     super.dispose();
   }
 
-  bool _isHistorical(TodoItem t) {
+  bool _isHistorical(TodoItem t, DateTime today) {
     if (!t.isDone) return false;
-    DateTime today = DateTime.now();
-    today = DateTime(today.year, today.month, today.day);
 
     if (t.dueDate != null) {
       DateTime d = DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day);
       return d.isBefore(today);
     } else {
-      DateTime cDate = DateTime.fromMillisecondsSinceEpoch(
-        t.createdDate ?? t.createdAt,
-        isUtc: true,
-      ).toLocal();
-      DateTime c = DateTime(cDate.year, cDate.month, cDate.day);
-      return c.isBefore(today);
+      return (t.createdDate ?? t.createdAt) < today.millisecondsSinceEpoch;
     }
   }
 
@@ -133,29 +188,40 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
           .where((g) => !g.isDeleted)
           .map((g) => g.id)
           .toSet();
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      final historyTodos = <TodoItem>[];
+      final deletedTodos = <TodoItem>[];
+      final orphanTodos = <TodoItem>[];
+      for (final todo in allTodos) {
+        if (todo.isDeleted) {
+          deletedTodos.add(todo);
+          continue;
+        }
+        if (todo.isDone) {
+          if (_isHistorical(todo, today)) historyTodos.add(todo);
+          continue;
+        }
+        final groupId = todo.groupId;
+        if (groupId != null &&
+            (groupId.isEmpty || !activeGroupIds.contains(groupId))) {
+          orphanTodos.add(todo);
+        }
+      }
+      historyTodos.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+      deletedTodos.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+      orphanTodos.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
 
       setState(() {
         _loadedTodos = allTodos;
         // 1. 历史记录：已完成、日期在今天之前、未被逻辑删除
-        _history = allTodos
-            .where((t) => _isHistorical(t) && !t.isDeleted)
-            .toList();
-        _history.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+        _history = historyTodos;
 
         // 2. 回收站：逻辑删除的数据
-        _deletedTodos = allTodos.where((t) => t.isDeleted).toList();
-        _deletedTodos.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+        _deletedTodos = deletedTodos;
 
         // 3. 孤儿待办：未删除、未完成，且符合以下任一可见性异常条件的：
-        _orphanTodos = allTodos.where((t) {
-          if (t.isDeleted || t.isDone) return false;
-          if (t.groupId != null && t.groupId!.isEmpty) return true;
-          if (t.groupId != null && !activeGroupIds.contains(t.groupId)) {
-            return true;
-          }
-          return false;
-        }).toList();
-        _orphanTodos.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+        _orphanTodos = orphanTodos;
 
         _nextTodoOffset = offset + _todoPageSize;
         _hasMoreTodoPages =
@@ -178,6 +244,100 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
         );
       }
     }
+  }
+
+  _HistoricalTodoListProjection _projectList(
+    List<TodoItem> items,
+    int section,
+    String query,
+  ) {
+    final cached = _listProjections[section];
+    if (cached != null &&
+        identical(cached.source, items) &&
+        cached.query == query) {
+      return cached;
+    }
+
+    final candidates = cached != null &&
+            identical(cached.source, items) &&
+            query.startsWith(cached.query)
+        ? cached.matchingItems
+        : items;
+    final List<TodoItem> matchingItems;
+    if (query.isEmpty) {
+      matchingItems = candidates;
+    } else {
+      matchingItems = <TodoItem>[];
+      for (final item in candidates) {
+        final fields = _searchFieldsFor(item);
+        if (fields.title.contains(query) || fields.remark.contains(query)) {
+          matchingItems.add(item);
+        }
+      }
+    }
+
+    final groups = <String, List<TodoItem>>{};
+    for (final item in matchingItems) {
+      final date = _dateLabelFor(item);
+      groups.putIfAbsent(date, () => []).add(item);
+    }
+
+    final rows = <Object>[];
+    for (final group in groups.entries) {
+      rows.add(_HistoricalTodoDateHeader(group.key, group.value.length));
+      rows.addAll(group.value);
+    }
+
+    final projection = _HistoricalTodoListProjection(
+      source: items,
+      query: query,
+      matchingItems: matchingItems,
+      visibleCount: matchingItems.length,
+      rows: rows,
+    );
+    _listProjections[section] = projection;
+    return projection;
+  }
+
+  _HistoricalTodoSearchFields _searchFieldsFor(TodoItem item) {
+    final title = item.title;
+    final remark = item.remark;
+    final cached = _searchFields[item];
+    if (cached != null &&
+        identical(cached.sourceTitle, title) &&
+        identical(cached.sourceRemark, remark)) {
+      return cached;
+    }
+
+    final fields = _HistoricalTodoSearchFields(
+      sourceTitle: title,
+      sourceRemark: remark,
+      title: title.toLowerCase(),
+      remark: (remark ?? '').toLowerCase(),
+    );
+    _searchFields[item] = fields;
+    return fields;
+  }
+
+  String _dateLabelFor(TodoItem item) {
+    final updatedAt = item.updatedAt;
+    final locale = Intl.defaultLocale;
+    final cached = _dateLabels[item];
+    if (cached != null &&
+        cached.updatedAt == updatedAt &&
+        cached.locale == locale) {
+      return cached.value;
+    }
+
+    final value = _historicalTodoDateFormat(locale).format(
+      DateTime.fromMillisecondsSinceEpoch(updatedAt).toLocal(),
+    );
+    _dateLabels[item] = _HistoricalTodoDateLabel(
+      updatedAt: updatedAt,
+      locale: locale,
+      value: value,
+    );
+    return value;
   }
 
   Future<void> _deleteItem(TodoItem item) async {
@@ -359,20 +519,9 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final query = _searchController.text.trim().toLowerCase();
-    final visible = items
-        .where(
-          (item) =>
-              item.title.toLowerCase().contains(query) ||
-              (item.remark ?? '').toLowerCase().contains(query),
-        )
-        .toList();
-    final groups = <String, List<TodoItem>>{};
-    for (final item in visible) {
-      final date = DateFormat(
-        'yyyy-MM-dd',
-      ).format(DateTime.fromMillisecondsSinceEpoch(item.updatedAt).toLocal());
-      groups.putIfAbsent(date, () => []).add(item);
-    }
+    final projection = _projectList(items, section, query);
+    final visibleCount = projection.visibleCount;
+    final rows = projection.rows;
     const titles = ['完成的事，值得回顾', '删除后，仍有找回的机会', '让待办回到清单'];
     const descriptions = [
       '查看以前完成的待办，可取消完成或移至回收站。',
@@ -384,94 +533,103 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
       Icons.restore_from_trash_outlined,
       Icons.folder_off_outlined,
     ];
+    final headerChildren = <Widget>[
+      ManagementIntro(
+        icon: icons[section],
+        title: titles[section],
+        description: descriptions[section],
+      ),
+      ManagementSearchField(
+        controller: _searchController,
+        hintText: '搜索待办名称或备注',
+        onChanged: (_) => setState(() {}),
+      ),
+      const SizedBox(height: 16),
+      Wrap(
+        alignment: WrapAlignment.spaceBetween,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: 12,
+        runSpacing: 8,
+        children: [
+          Text(
+            query.isEmpty
+                ? _hasMoreTodoPages
+                      ? '已加载 ${items.length} 条待办'
+                      : '共 ${items.length} 条待办'
+                : '找到 $visibleCount 条待办${_hasMoreTodoPages ? '（当前已加载）' : ''}',
+            style: theme.textTheme.titleSmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+          if (section == 1 && items.isNotEmpty)
+            TextButton.icon(
+              onPressed: _busyId != null ? null : _clearRecycleBin,
+              style: TextButton.styleFrom(foregroundColor: scheme.error),
+              icon: const Icon(Icons.delete_sweep_outlined, size: 18),
+              label: const Text('清空全部'),
+            ),
+        ],
+      ),
+      if (visibleCount == 0)
+        ManagementEmptyState(
+          icon: icons[section],
+          title: query.isNotEmpty
+              ? '没有找到匹配的待办'
+              : ['没有历史待办', '回收站空空如也', '没有需要修复的待办'][section],
+          description: query.isNotEmpty
+              ? '试试其他关键词，或清空搜索。'
+              : [
+                  '以前完成的待办会出现在这里。',
+                  '已删除的待办会保留在这里，供你恢复。',
+                  '当前未发现文件夹关联异常。',
+                ][section],
+        ),
+    ];
+    final hasFooter = _isLoadingMore || _hasMoreTodoPages;
     return RefreshIndicator(
       onRefresh: () => _loadData(),
-      child: ManagementPage(
+      child: ManagementPage.builder(
         key: PageStorageKey('todo-history-$section'),
         maxWidth: 900,
         topPadding: topPadding,
-        children: [
-          ManagementIntro(
-            icon: icons[section],
-            title: titles[section],
-            description: descriptions[section],
-          ),
-          ManagementSearchField(
-            controller: _searchController,
-            hintText: '搜索待办名称或备注',
-            onChanged: (_) => setState(() {}),
-          ),
-          const SizedBox(height: 16),
-          Wrap(
-            alignment: WrapAlignment.spaceBetween,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            spacing: 12,
-            runSpacing: 8,
-            children: [
-              Text(
-                query.isEmpty
-                    ? _hasMoreTodoPages
-                          ? '已加载 ${items.length} 条待办'
-                          : '共 ${items.length} 条待办'
-                    : '找到 ${visible.length} 条待办${_hasMoreTodoPages ? '（当前已加载）' : ''}',
-                style: theme.textTheme.titleSmall?.copyWith(
-                  color: scheme.onSurfaceVariant,
+        itemCount: headerChildren.length + rows.length + (hasFooter ? 1 : 0),
+        itemBuilder: (context, index) {
+          if (index < headerChildren.length) return headerChildren[index];
+          final rowIndex = index - headerChildren.length;
+          if (rowIndex < rows.length) {
+            final row = rows[rowIndex];
+            if (row is _HistoricalTodoDateHeader) {
+              return Padding(
+                padding: const EdgeInsets.only(top: 16, bottom: 10),
+                child: Text(
+                  '${row.date} · ${row.count} 条',
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
                 ),
-              ),
-              if (section == 1 && items.isNotEmpty)
-                TextButton.icon(
-                  onPressed: _busyId != null ? null : _clearRecycleBin,
-                  style: TextButton.styleFrom(foregroundColor: scheme.error),
-                  icon: const Icon(Icons.delete_sweep_outlined, size: 18),
-                  label: const Text('清空全部'),
-                ),
-            ],
-          ),
-          if (visible.isEmpty)
-            ManagementEmptyState(
-              icon: icons[section],
-              title: query.isNotEmpty
-                  ? '没有找到匹配的待办'
-                  : ['没有历史待办', '回收站空空如也', '没有需要修复的待办'][section],
-              description: query.isNotEmpty
-                  ? '试试其他关键词，或清空搜索。'
-                  : [
-                      '以前完成的待办会出现在这里。',
-                      '已删除的待办会保留在这里，供你恢复。',
-                      '当前未发现文件夹关联异常。',
-                    ][section],
-            ),
-          for (final group in groups.entries) ...[
-            Padding(
-              padding: const EdgeInsets.only(top: 16, bottom: 10),
-              child: Text(
-                '${group.key} · ${group.value.length} 条',
-                style: theme.textTheme.labelLarge?.copyWith(
-                  color: scheme.onSurfaceVariant,
-                ),
-              ),
-            ),
-            ...group.value.map((item) => _buildCard(item, section)),
-          ],
-          if (_isLoadingMore)
-            const Padding(
+              );
+            }
+            return _buildCard(row as TodoItem, section);
+          }
+          if (_isLoadingMore) {
+            return const Padding(
               padding: EdgeInsets.symmetric(vertical: 20),
               child: Center(child: CircularProgressIndicator()),
-            )
-          else if (_hasMoreTodoPages)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              child: Center(
-                child: TextButton.icon(
-                  onPressed: _isLoading || _busyId != null
-                      ? null
-                      : () => _loadData(loadMore: true),
-                  icon: const Icon(Icons.expand_more_rounded),
-                  label: const Text('加载更多待办'),
-                ),
+            );
+          }
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Center(
+              child: TextButton.icon(
+                onPressed: _isLoading || _busyId != null
+                    ? null
+                    : () => _loadData(loadMore: true),
+                icon: const Icon(Icons.expand_more_rounded),
+                label: const Text('加载更多待办'),
               ),
             ),
-        ],
+          );
+        },
       ),
     );
   }

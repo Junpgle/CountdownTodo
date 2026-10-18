@@ -22,6 +22,104 @@ import 'optional_liquid_glass_surface.dart';
 import 'version_history_sheet.dart';
 import '../utils/app_dialogs.dart';
 
+class _CountdownDerivedInput {
+  const _CountdownDerivedInput({
+    required this.item,
+    required this.id,
+    required this.teamUuid,
+    required this.teamName,
+    required this.targetDateMicros,
+    required this.targetDateIsUtc,
+    required this.targetDateYear,
+    required this.targetDateMonth,
+    required this.targetDateDay,
+    required this.targetDateHour,
+    required this.targetDateMinute,
+    required this.targetDateSecond,
+    required this.targetDateMillisecond,
+    required this.targetDateMicrosecond,
+    required this.targetDateOffsetSeconds,
+  });
+
+  factory _CountdownDerivedInput.from(CountdownItem item) {
+    final targetDate = item.targetDate;
+    return _CountdownDerivedInput(
+      item: item,
+      id: item.id,
+      teamUuid: item.teamUuid,
+      teamName: item.teamName,
+      targetDateMicros: targetDate.microsecondsSinceEpoch,
+      targetDateIsUtc: targetDate.isUtc,
+      targetDateYear: targetDate.year,
+      targetDateMonth: targetDate.month,
+      targetDateDay: targetDate.day,
+      targetDateHour: targetDate.hour,
+      targetDateMinute: targetDate.minute,
+      targetDateSecond: targetDate.second,
+      targetDateMillisecond: targetDate.millisecond,
+      targetDateMicrosecond: targetDate.microsecond,
+      targetDateOffsetSeconds: targetDate.timeZoneOffset.inSeconds,
+    );
+  }
+
+  final CountdownItem item;
+  final String id;
+  final String? teamUuid;
+  final String? teamName;
+  final int targetDateMicros;
+  final bool targetDateIsUtc;
+  final int targetDateYear;
+  final int targetDateMonth;
+  final int targetDateDay;
+  final int targetDateHour;
+  final int targetDateMinute;
+  final int targetDateSecond;
+  final int targetDateMillisecond;
+  final int targetDateMicrosecond;
+  final int targetDateOffsetSeconds;
+
+  bool matches(CountdownItem candidate) {
+    final targetDate = candidate.targetDate;
+    return identical(item, candidate) &&
+        id == candidate.id &&
+        teamUuid == candidate.teamUuid &&
+        teamName == candidate.teamName &&
+        targetDateMicros == targetDate.microsecondsSinceEpoch &&
+        targetDateIsUtc == targetDate.isUtc &&
+        targetDateYear == targetDate.year &&
+        targetDateMonth == targetDate.month &&
+        targetDateDay == targetDate.day &&
+        targetDateHour == targetDate.hour &&
+        targetDateMinute == targetDate.minute &&
+        targetDateSecond == targetDate.second &&
+        targetDateMillisecond == targetDate.millisecond &&
+        targetDateMicrosecond == targetDate.microsecond &&
+        targetDateOffsetSeconds == targetDate.timeZoneOffset.inSeconds;
+  }
+}
+
+class _CountdownHolidayClassification {
+  const _CountdownHolidayClassification({
+    required this.title,
+    required this.isHoliday,
+  });
+
+  final String title;
+  final bool isHoliday;
+}
+
+class _CountdownSectionData {
+  const _CountdownSectionData({
+    required this.teamUuids,
+    required this.teamNames,
+    required this.activeCountdowns,
+  });
+
+  final List<String> teamUuids;
+  final Map<String, String?> teamNames;
+  final List<CountdownItem> activeCountdowns;
+}
+
 /// Opens the shared important-day editor from any home entry point.
 ///
 /// Keeping the editor outside the section state lets the home bottom bar open
@@ -196,6 +294,7 @@ class CountdownSectionWidget extends StatefulWidget {
   final String username;
   final bool isLight;
   final VoidCallback onDataChanged;
+  final int? dataRevision;
   final Key? addKey; // 🚀 新增 addKey 用于高亮引导
   final GlobalKey? historyKey; // 用于历史页共享容器转场
   final DateTime Function()? now;
@@ -206,6 +305,7 @@ class CountdownSectionWidget extends StatefulWidget {
     required this.username,
     required this.isLight,
     required this.onDataChanged,
+    this.dataRevision,
     this.addKey,
     this.historyKey,
     this.now,
@@ -218,8 +318,16 @@ class CountdownSectionWidget extends StatefulWidget {
 class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
     with TickerProviderStateMixin {
   final Map<String, AnimationController> _pulseControllers = {};
+  final Map<String, _CountdownHolidayClassification>
+      _holidayClassificationsById = {};
   final GlobalKey _localHistoryKey = GlobalKey();
   String? _selectedTeamUuid; // 🚀 选中的团队视口
+  List<CountdownItem>? _derivedSource;
+  List<_CountdownDerivedInput>? _derivedInputs;
+  DateTime? _derivedToday;
+  String? _derivedTeamUuid;
+  int? _derivedDataRevision;
+  _CountdownSectionData? _cachedDerivedData;
 
   GlobalKey get _historySourceKey => widget.historyKey ?? _localHistoryKey;
 
@@ -244,6 +352,19 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
   bool _isHolidayKeyword(String title) {
     final lower = title.toLowerCase();
     return _holidayKeywords.any((kw) => lower.contains(kw));
+  }
+
+  bool _isHolidayFor(CountdownItem item) {
+    final cached = _holidayClassificationsById[item.id];
+    if (cached != null && cached.title == item.title) {
+      return cached.isHoliday;
+    }
+    final isHoliday = _isHolidayKeyword(item.title);
+    _holidayClassificationsById[item.id] = _CountdownHolidayClassification(
+      title: item.title,
+      isHoliday: isHoliday,
+    );
+    return isHoliday;
   }
 
   // 🚀 桌面端滑动优化：增加控制器
@@ -280,6 +401,72 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
   void _addCountdown() => _showCountdownDialog();
 
   void _editCountdown(CountdownItem item) => _showCountdownDialog(item: item);
+
+  _CountdownSectionData _derivedDataFor(DateTime today) {
+    final cachedInputs = _derivedInputs;
+    final cachedData = _cachedDerivedData;
+    if (identical(_derivedSource, widget.countdowns) &&
+        _derivedToday == today &&
+        _derivedTeamUuid == _selectedTeamUuid &&
+        cachedInputs != null &&
+        cachedData != null &&
+        cachedInputs.length == widget.countdowns.length) {
+      final dataRevision = widget.dataRevision;
+      if (dataRevision != null) {
+        if (_derivedDataRevision == dataRevision) return cachedData;
+      } else {
+        var inputsUnchanged = true;
+        for (var index = 0; index < widget.countdowns.length; index++) {
+          if (!cachedInputs[index].matches(widget.countdowns[index])) {
+            inputsUnchanged = false;
+            break;
+          }
+        }
+        if (inputsUnchanged) return cachedData;
+      }
+    }
+
+    final inputs = <_CountdownDerivedInput>[];
+    final teamUuids = <String>{};
+    final teamNames = <String, String?>{};
+    final activeCountdowns = <CountdownItem>[];
+    for (final item in widget.countdowns) {
+      inputs.add(_CountdownDerivedInput.from(item));
+      final teamUuid = item.teamUuid;
+      if (teamUuid != null) {
+        teamUuids.add(teamUuid);
+        teamNames.putIfAbsent(teamUuid, () => item.teamName);
+      }
+      if ((_selectedTeamUuid == null || teamUuid == _selectedTeamUuid) &&
+          CalendarDateMath.daysBetween(today, item.targetDate) >= 0) {
+        activeCountdowns.add(item);
+      }
+    }
+    activeCountdowns.sort((a, b) => a.targetDate.compareTo(b.targetDate));
+
+    final currentIds = activeCountdowns.map((item) => item.id).toSet();
+    for (final id in _pulseControllers.keys.toList(growable: false)) {
+      if (currentIds.contains(id)) continue;
+      _pulseControllers.remove(id)?.dispose();
+    }
+    for (final id in _holidayClassificationsById.keys.toList(growable: false)) {
+      if (currentIds.contains(id)) continue;
+      _holidayClassificationsById.remove(id);
+    }
+
+    final data = _CountdownSectionData(
+      teamUuids: teamUuids.toList(growable: false),
+      teamNames: teamNames,
+      activeCountdowns: activeCountdowns,
+    );
+    _derivedSource = widget.countdowns;
+    _derivedInputs = inputs;
+    _derivedToday = today;
+    _derivedTeamUuid = _selectedTeamUuid;
+    _derivedDataRevision = widget.dataRevision;
+    _cachedDerivedData = data;
+    return data;
+  }
 
   Future<void> _showCountdownDialog({CountdownItem? item}) {
     return showCountdownEditorDialog(
@@ -333,11 +520,11 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
     final bool isDarkTheme = Theme.of(context).brightness == Brightness.dark;
     final bool useDarkUI = isDarkTheme || widget.isLight;
 
-    // 🚀 提取动态团队列表
-    final teams = <String>{};
-    for (var c in widget.countdowns) {
-      if (c.teamUuid != null) teams.add(c.teamUuid!);
-    }
+    final today = CalendarDateMath.dateOnly(
+      widget.now?.call() ?? DateTime.now(),
+    );
+    final derivedData = _derivedDataFor(today);
+    final teams = derivedData.teamUuids;
 
     return ScrollConfiguration(
       behavior: ScrollConfiguration.of(context).copyWith(
@@ -413,11 +600,7 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
                 children: [
                   _buildTeamTab("全部", null, useDarkUI),
                   ...teams.map((uuid) {
-                    final name =
-                        widget.countdowns
-                            .firstWhere((c) => c.teamUuid == uuid)
-                            .teamName ??
-                        "团队项目";
+                    final name = derivedData.teamNames[uuid] ?? "团队项目";
                     return _buildTeamTab(name, uuid, useDarkUI);
                   }),
                 ],
@@ -425,7 +608,7 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
             ),
           ],
           const SizedBox(height: 12),
-          _buildList(),
+          _buildList(today, derivedData.activeCountdowns),
         ],
       ),
     );
@@ -459,33 +642,12 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
     );
   }
 
-  Widget _buildList() {
-    final today = CalendarDateMath.dateOnly(
-      widget.now?.call() ?? DateTime.now(),
-    );
-    final List<CountdownItem> activeCountdowns = widget.countdowns.where((
-      item,
-    ) {
-      if (_selectedTeamUuid != null && item.teamUuid != _selectedTeamUuid) {
-        return false;
-      }
-      return CalendarDateMath.daysBetween(today, item.targetDate) >= 0;
-    }).toList()..sort((a, b) => a.targetDate.compareTo(b.targetDate));
-
-    // 清理已删除倒计时项的 pulse controller，防止内存泄漏
-    final currentIds = activeCountdowns.map((c) => c.id).toSet();
-    _pulseControllers.keys
-        .where((id) => !currentIds.contains(id))
-        .toList()
-        .forEach((id) {
-          _pulseControllers[id]?.dispose();
-          _pulseControllers.remove(id);
-        });
-
+  Widget _buildList(DateTime today, List<CountdownItem> activeCountdowns) {
     if (activeCountdowns.isEmpty) {
       return EmptyState(text: "暂无有效倒计时", isLight: widget.isLight);
     }
 
+    final targetDateFormat = DateFormat('yyyy-MM-dd');
     return SizedBox(
       height: 130, // 🚀 适度增加总高度，防止小屏幕溢出
       child: ClipRect(
@@ -502,7 +664,7 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
             final diff = CalendarDateMath.daysBetween(today, item.targetDate);
 
             final bool isUrgent = diff <= 3;
-            final bool isHoliday = _isHolidayKeyword(item.title);
+            final bool isHoliday = _isHolidayFor(item);
 
             if (isUrgent &&
                 !isHoliday &&
@@ -752,7 +914,7 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
                                 const SizedBox(height: 2),
                                 // 🚀 紧凑化
                                 Text(
-                                  "目标日: ${DateFormat('yyyy-MM-dd').format(item.targetDate)}",
+                                  "目标日: ${targetDateFormat.format(item.targetDate)}",
                                   style: TextStyle(
                                     fontSize: 9,
                                     color: subTextColor,

@@ -32,6 +32,10 @@ class TodoClassificationSuggestion {
 }
 
 class TodoClassificationService {
+  static final RegExp _whitespaceRegex = RegExp(r'\s+');
+  static final RegExp _latinTokenRegex = RegExp(r'[a-z0-9]+');
+  static final RegExp _cjkCharacterRegex = RegExp(r'[\u4e00-\u9fff]');
+
   static const _urgentKeywords = [
     '今天',
     '今晚',
@@ -95,15 +99,21 @@ class TodoClassificationService {
     required Map<String, int> categoryReminderDefaults,
     Map<String, List<TodoItem>>? historyByGroup,
     Map<String, Map<String, double>>? suppliedFeedbackByType,
+    Set<String>? suppliedTextTokens,
+    String? suppliedTokenText,
+    Map<String, Set<String>>? scoringTokenCache,
     DateTime? dueDate,
   }) async {
     final text = '${title.trim()} ${remark.trim()}'.trim();
-    final textTokens = _tokenList(text);
+    final lowerText = text.toLowerCase();
+    final textTokens = suppliedTokenText == text && suppliedTextTokens != null
+        ? suppliedTextTokens
+        : _tokensFor(text, scoringTokenCache);
 
     // Load feedback weights for all score types with one grouped query.
     final feedbackByType = suppliedFeedbackByType ??
         await SuggestionFeedbackService.getAllPosteriorsByTypes(
-          keywords: textTokens,
+          keywords: textTokens.toList(),
           suggestionTypes: const ['group', 'tag', 'priority'],
         );
     final groupFeedback = feedbackByType['group'] ?? const <String, double>{};
@@ -111,14 +121,17 @@ class TodoClassificationService {
     final priorityFeedback =
         feedbackByType['priority'] ?? const <String, double>{};
 
-    final priority = _classifyPriority(text, dueDate, priorityFeedback);
-    final tags = _classifyTags(text, tagFeedback);
+    final priority = _classifyPriority(lowerText, dueDate, priorityFeedback);
+    final tags = _classifyTags(lowerText, tagFeedback);
     final groupScore = _scoreGroups(
       text,
+      lowerText,
+      textTokens,
       groups,
       history,
       groupFeedback,
       historyByGroup: historyByGroup,
+      scoringTokenCache: scoringTokenCache,
     );
     final group = groupScore.group;
     final confidence = groupScore.confidence;
@@ -169,18 +182,21 @@ class TodoClassificationService {
       var batchEnd = offset + batchSize;
       if (batchEnd > eligibleTodos.length) batchEnd = eligibleTodos.length;
       final batch = eligibleTodos.sublist(offset, batchEnd);
+      final batchTexts = [
+        for (final todo in batch)
+          '${todo.title.trim()} ${(todo.remark ?? '').trim()}'.trim(),
+      ];
+      final batchTextTokens = <Set<String>>[
+        for (final text in batchTexts) _tokens(text),
+      ];
       final feedbackByQuery =
           await SuggestionFeedbackService.getAllPosteriorsForQueries(
-        keywordSets: [
-          for (final todo in batch)
-            _tokenList(
-              '${todo.title.trim()} ${(todo.remark ?? '').trim()}'.trim(),
-            ),
-        ],
+        keywordSets: [for (final tokens in batchTextTokens) tokens.toList()],
         suggestionTypes: const ['group', 'tag', 'priority'],
       );
 
       final groupedHistory = historyByGroup ??= _indexHistoryByGroup(todos);
+      final scoringTokenCache = <String, Set<String>>{};
       for (var index = 0; index < batch.length; index++) {
         final todo = batch[index];
         final suggestion = await _recommendForText(
@@ -191,6 +207,9 @@ class TodoClassificationService {
           categoryReminderDefaults: categoryReminderDefaults,
           historyByGroup: groupedHistory,
           suppliedFeedbackByType: feedbackByQuery[index],
+          suppliedTextTokens: batchTextTokens[index],
+          suppliedTokenText: batchTexts[index],
+          scoringTokenCache: scoringTokenCache,
           dueDate: todo.dueDate,
         );
         final isUnclassified = todo.groupId == null || todo.groupId!.isEmpty;
@@ -336,7 +355,7 @@ class TodoClassificationService {
 
       final profile = _tagProfiles[tagName];
       if (profile != null) {
-        addScore(tag.uuid, _keywordHits(text, profile) * 3.0);
+        addScore(tag.uuid, _keywordHitsInLowerText(lowerText, profile) * 3.0);
       }
 
       if (normalizedGroupName != null &&
@@ -358,33 +377,39 @@ class TodoClassificationService {
 
   static _GroupScore _scoreGroups(
     String text,
+    String lowerText,
+    Set<String> textTokens,
     List<TodoGroup> groups,
     List<TodoItem> history,
     Map<String, double> groupFeedback, {
     Map<String, List<TodoItem>>? historyByGroup,
+    Map<String, Set<String>>? scoringTokenCache,
   }) {
     final availableGroups = groups.where((g) => !g.isDeleted).toList();
     if (availableGroups.isEmpty || text.trim().isEmpty) {
       return const _GroupScore(null, 0);
     }
-    final textTokens = _tokens(text);
     TodoGroup? bestGroup;
     var bestScore = 0.0;
     var secondScore = 0.0;
 
     for (final group in availableGroups) {
-      var score = _similarity(textTokens, _tokens(group.name)) * 2.2;
+      var score =
+          _similarity(textTokens, _tokensFor(group.name, scoringTokenCache)) *
+          2.2;
       for (final entry in _tagProfiles.entries) {
         if (group.name.contains(entry.key) ||
             entry.key.contains(group.name.trim())) {
-          score += _keywordHits(text, entry.value) * 0.42;
+          score += _keywordHitsInLowerText(lowerText, entry.value) * 0.42;
         }
       }
       final relatedHistory = historyByGroup == null
           ? history.where((t) => t.groupId == group.id && !t.isDeleted).take(24)
           : historyByGroup[group.id] ?? const <TodoItem>[];
       for (final todo in relatedHistory) {
-        score += _similarity(textTokens, _tokens(todo.title)) * 0.32;
+        score +=
+            _similarity(textTokens, _tokensFor(todo.title, scoringTokenCache)) *
+            0.32;
       }
       // Blend with feedback posterior
       final posterior = groupFeedback[group.id];
@@ -407,13 +432,13 @@ class TodoClassificationService {
   }
 
   static int _classifyPriority(
-    String text,
+    String lowerText,
     DateTime? dueDate,
     Map<String, double> priorityFeedback,
   ) {
     var score = 1;
-    if (_keywordHits(text, _importantKeywords) > 0) score++;
-    if (_keywordHits(text, _urgentKeywords) > 0) score += 2;
+    if (_keywordHitsInLowerText(lowerText, _importantKeywords) > 0) score++;
+    if (_keywordHitsInLowerText(lowerText, _urgentKeywords) > 0) score += 2;
     if (dueDate != null) {
       final hours = dueDate.difference(DateTime.now()).inHours;
       if (hours <= 12) {
@@ -455,15 +480,21 @@ class TodoClassificationService {
   }
 
   static List<String> _classifyTags(
-    String text,
+    String lowerText,
     Map<String, double> tagFeedback,
   ) {
     final tags = <String>[];
     for (final entry in _tagProfiles.entries) {
-      if (_keywordHits(text, entry.value) > 0) tags.add(entry.key);
+      if (_keywordHitsInLowerText(lowerText, entry.value) > 0) {
+        tags.add(entry.key);
+      }
     }
-    if (_keywordHits(text, _urgentKeywords) > 0) tags.add('紧急');
-    if (_keywordHits(text, _importantKeywords) > 0) tags.add('重要');
+    if (_keywordHitsInLowerText(lowerText, _urgentKeywords) > 0) {
+      tags.add('紧急');
+    }
+    if (_keywordHitsInLowerText(lowerText, _importantKeywords) > 0) {
+      tags.add('重要');
+    }
 
     // Boost tags that users historically accepted
     if (tagFeedback.isNotEmpty) {
@@ -478,7 +509,7 @@ class TodoClassificationService {
   }
 
   static String _normalizeTagName(String value) =>
-      value.trim().toLowerCase().replaceAll(RegExp(r'\s+'), '');
+      value.trim().toLowerCase().replaceAll(_whitespaceRegex, '');
 
   static bool _tagNameMatches(String a, String b) {
     if (a.isEmpty || b.isEmpty) return false;
@@ -500,29 +531,45 @@ class TodoClassificationService {
     return parts.join(' · ');
   }
 
-  static int _keywordHits(String text, List<String> keywords) {
-    final lower = text.toLowerCase();
-    return keywords.where((k) => lower.contains(k.toLowerCase())).length;
+  static int _keywordHitsInLowerText(
+    String lowerText,
+    List<String> lowercaseKeywords,
+  ) {
+    var hits = 0;
+    for (final keyword in lowercaseKeywords) {
+      if (lowerText.contains(keyword)) hits++;
+    }
+    return hits;
   }
 
   static Set<String> _tokens(String text) {
-    final normalized = text.toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+    final normalized = text.toLowerCase().replaceAll(_whitespaceRegex, ' ');
     final tokens = <String>{};
-    for (final match in RegExp(r'[a-z0-9]+').allMatches(normalized)) {
+    for (final match in _latinTokenRegex.allMatches(normalized)) {
       final token = match.group(0);
       if (token != null && token.length >= 2) tokens.add(token);
     }
-    final cjk = RegExp(r'[\u4e00-\u9fff]').allMatches(normalized).toList();
-    for (var i = 0; i < cjk.length; i++) {
-      tokens.add(cjk[i].group(0)!);
-      if (i + 1 < cjk.length) {
-        tokens.add('${cjk[i].group(0)!}${cjk[i + 1].group(0)!}');
+    final cjkMatches = _cjkCharacterRegex.allMatches(normalized).iterator;
+    if (cjkMatches.moveNext()) {
+      var current = cjkMatches.current.group(0)!;
+      tokens.add(current);
+      while (cjkMatches.moveNext()) {
+        final next = cjkMatches.current.group(0)!;
+        tokens.add('$current$next');
+        tokens.add(next);
+        current = next;
       }
     }
     return tokens;
   }
 
-  static List<String> _tokenList(String text) => _tokens(text).toList();
+  static Set<String> _tokensFor(
+    String text,
+    Map<String, Set<String>>? cache,
+  ) {
+    if (cache == null) return _tokens(text);
+    return cache.putIfAbsent(text, () => _tokens(text));
+  }
 
   static double _similarity(Set<String> a, Set<String> b) {
     if (a.isEmpty || b.isEmpty) return 0;

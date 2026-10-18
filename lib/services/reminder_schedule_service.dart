@@ -57,9 +57,12 @@ class ReminderScheduleService {
   static const int _debounceMs = 2000;
 
   /// 根据最新的待办 + 课程列表，重新调度所有未来提醒。
+  /// `loadCourses` 会在账号校验及防抖后调用，查询日期范围的结束日不包含在内。
   static Future<void> scheduleAll({
     required List<TodoItem> todos,
     required List<CourseItem> courses,
+    Future<List<CourseItem>> Function(DateTime from, DateTime to)?
+    loadCourses,
     String? expectedUsername,
     bool force = false,
   }) async {
@@ -88,6 +91,21 @@ class ReminderScheduleService {
 
     final now = DateTime.now();
     final limit = now.add(const Duration(days: 7));
+    var scheduledCourses = courses;
+    int? loadedCourseReminderMinutes;
+    if (loadCourses != null) {
+      loadedCourseReminderMinutes =
+          await StorageService.getCourseReminderMinutes();
+      final lastRelevantCourseStart = limit.add(
+        Duration(minutes: loadedCourseReminderMinutes),
+      );
+      final courseDateEndExclusive = DateTime(
+        lastRelevantCourseStart.year,
+        lastRelevantCourseStart.month,
+        lastRelevantCourseStart.day + 1,
+      );
+      scheduledCourses = await loadCourses(now, courseDateEndExclusive);
+    }
     final reminders = <Map<String, dynamic>>[];
 
     // ── 获取当前用户 ────────────────────────────────────────────────
@@ -201,10 +219,10 @@ class ReminderScheduleService {
     }
 
     // ── 课程提醒 ──────────────────────────────────────────────────
-    final courseAdvanceMinutes =
+    final courseAdvanceMinutes = loadedCourseReminderMinutes ??
         await StorageService.getCourseReminderMinutes();
-    for (int i = 0; i < courses.length && i < 999; i++) {
-      final c = courses[i];
+    for (int i = 0; i < scheduledCourses.length && i < 999; i++) {
+      final c = scheduledCourses[i];
       // 课程 date 是 yyyy-MM-dd，startTime 是 800/1000 等整数
       try {
         final dateParts = c.date.split('-');
@@ -265,7 +283,11 @@ class ReminderScheduleService {
     );
 
     // ── 规划块提醒 ──────────────────────────────────────────────────
-    final planBlocks = await StorageService.getPlanBlocks(effectiveUsername);
+    final planBlocks = await StorageService.getPlanBlocksForReminderWindow(
+      effectiveUsername,
+      now: now,
+      limit: limit,
+    );
     final remindedBlocks = <TodoPlanBlock>[];
     for (int i = 0; i < planBlocks.length && i < 999; i++) {
       final pb = planBlocks[i];
@@ -395,9 +417,22 @@ class ReminderScheduleService {
       }
       final start = DateTime.fromMillisecondsSinceEpoch(item.startTime!)
           .toLocal();
+      if (!start.isAfter(now)) continue;
+
+      var maxAdvance = -1;
+      for (final minutes in item.reminderMinutes) {
+        if (minutes > maxAdvance) maxAdvance = minutes;
+      }
+      if (maxAdvance < 0 ||
+          !start.subtract(Duration(minutes: maxAdvance)).isBefore(limit)) {
+        continue;
+      }
+
       final advances =
           item.reminderMinutes.where((minutes) => minutes >= 0).toSet().toList()
             ..sort((left, right) => right.compareTo(left));
+      if (advances.isEmpty) continue;
+
       final timeText = item.endTime == null
           ? '${_hm(start)} · 结束时间待定'
           : '${_hm(start)} - ${_hm(DateTime.fromMillisecondsSinceEpoch(item.endTime!).toLocal())}';
@@ -406,6 +441,8 @@ class ReminderScheduleService {
         if (item.remark?.trim().isNotEmpty == true) item.remark!.trim(),
         timeText,
       ];
+      final reminderTitle = '📌 ${item.title}';
+      final reminderText = detailParts.join(' · ');
       for (
         var reminderIndex = 0;
         reminderIndex < advances.length &&
@@ -425,8 +462,8 @@ class ReminderScheduleService {
         reminders.add({
           'triggerAtMs': triggerAt.toUtc().millisecondsSinceEpoch,
           'startAtMs': start.toUtc().millisecondsSinceEpoch,
-          'title': '📌 ${item.title}',
-          'text': detailParts.join(' · '),
+          'title': reminderTitle,
+          'text': reminderText,
           'notifId':
               _fixedScheduleBaseId +
               index * _fixedScheduleReminderStride +

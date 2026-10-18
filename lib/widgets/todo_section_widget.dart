@@ -136,10 +136,41 @@ class TodoSectionWidget extends StatefulWidget {
 }
 
 Map<String, String> _buildRecurrenceSeriesRepresentativeIds(
-  Map<String, List<TodoItem>> seriesOccurrences,
-) {
+  Map<String, List<TodoItem>> seriesOccurrences, {
+  bool occurrencesSortedByStart = false,
+}) {
   final representativeIds = <String, String>{};
   for (final entry in seriesOccurrences.entries) {
+    if (occurrencesSortedByStart) {
+      // The main view sorts ascending first, so scan backward and stop after
+      // the newest active date; scanning equal-date entries preserves tie order.
+      final occurrences = entry.value;
+      int? latestStart;
+      TodoItem? latest;
+      int? latestActiveStart;
+      TodoItem? latestActive;
+      for (var i = occurrences.length - 1; i >= 0; i--) {
+        final occurrence = occurrences[i];
+        final start = occurrence.createdDate ?? occurrence.createdAt;
+        if (!occurrence.isDeleted) {
+          latestStart ??= start;
+          if (start == latestStart) latest = occurrence;
+
+          if (occurrence.recurrence != RecurrenceType.none) {
+            latestActiveStart ??= start;
+            if (start == latestActiveStart) latestActive = occurrence;
+          }
+        }
+        if (latestActiveStart != null && start < latestActiveStart) break;
+      }
+
+      final representative = latestActive ?? latest;
+      if (representative != null) {
+        representativeIds[entry.key] = representative.id;
+      }
+      continue;
+    }
+
     TodoItem? latest;
     TodoItem? latestActive;
     for (final occurrence in entry.value) {

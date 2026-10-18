@@ -43,20 +43,12 @@ Future<void> widgetBackgroundCallback(Uri? uri) async {
     if (id != null) {
       final username = await StorageService.getCurrentUsername();
       if (username != null && username.isNotEmpty) {
-        List<TodoItem> todos = await StorageService.getTodos(username);
-        bool changed = false;
-        for (var t in todos) {
-          if (t.id == id) {
-            t.isDone = !t.isDone;
-            t.markAsChanged();
-            changed = true;
-            break;
-          }
-        }
-        if (changed) {
-          todos.sort((a, b) => a.isDone == b.isDone ? 0 : (a.isDone ? 1 : -1));
-          await StorageService.saveTodos(username, todos);
-          await WidgetService._updateCurrentUserWidgets(todos: todos);
+        final todo = await StorageService.getTodoByUuid(username, id);
+        if (todo != null && !todo.isDeleted) {
+          todo.isDone = !todo.isDone;
+          todo.markAsChanged();
+          await StorageService.updateSingleTodo(username, todo);
+          await WidgetService._updateCurrentUserWidgets();
         }
       }
     }
@@ -136,16 +128,61 @@ class WidgetService {
   /// 由 [StorageService.onDataChangedHook] 触发，600ms 防抖合并
   /// 同步 / 批量操作期间的多次变更；失败时静默等待周期刷新兜底。
   static Timer? _widgetRefreshDebouncer;
+  static Future<void>? _widgetRefreshInFlight;
+  static bool _widgetRefreshRequestedWhileRunning = false;
 
   /// 读取当前登录用户并刷新其 Widget 数据。
   ///
   /// 调用方可以传入已经加载好的 Todo，避免同一业务流程重复读取；
   /// 未传入时统一从当前用户的存储中加载。
-  static Future<void> _updateCurrentUserWidgets({List<TodoItem>? todos}) async {
+  static Future<void> _updateCurrentUserWidgets({List<TodoItem>? todos}) {
+    final inFlight = _widgetRefreshInFlight;
+    if (inFlight != null) {
+      _widgetRefreshRequestedWhileRunning = true;
+      return inFlight;
+    }
+
+    final completer = Completer<void>();
+    final refresh = completer.future;
+    _widgetRefreshInFlight = refresh;
+    unawaited(_drainCurrentUserWidgetRefreshes(completer, todos));
+    return refresh;
+  }
+
+  static Future<void> _drainCurrentUserWidgetRefreshes(
+    Completer<void> completer,
+    List<TodoItem>? initialTodos,
+  ) async {
+    var todos = initialTodos;
+    try {
+      do {
+        _widgetRefreshRequestedWhileRunning = false;
+        try {
+          await _performCurrentUserWidgetRefresh(todos: todos);
+        } catch (_) {
+          if (!_widgetRefreshRequestedWhileRunning) rethrow;
+        }
+        // A refresh requested during the current pass reloads persisted data,
+        // so the final widget snapshot includes every intervening mutation.
+        todos = null;
+      } while (_widgetRefreshRequestedWhileRunning);
+      completer.complete();
+    } catch (error, stackTrace) {
+      completer.completeError(error, stackTrace);
+    } finally {
+      if (identical(_widgetRefreshInFlight, completer.future)) {
+        _widgetRefreshInFlight = null;
+      }
+    }
+  }
+
+  static Future<void> _performCurrentUserWidgetRefresh({
+    List<TodoItem>? todos,
+  }) async {
     if (!await _hasInstalledWidgets()) return;
     final username = await StorageService.getCurrentUsername();
     if (username == null || username.isEmpty) return;
-    final items = todos ?? await StorageService.getTodos(username);
+    final items = todos ?? await StorageService.getTodosForWidget(username);
     await updateAllWidgetData(username, items);
   }
 
@@ -258,17 +295,27 @@ class WidgetService {
     if (_widgetUpdateDisabled) return;
     DateTime now = DateTime.now();
     DateTime today = DateTime(now.year, now.month, now.day);
+    final tomorrow = DateTime(today.year, today.month, today.day + 1);
+    final courseRangeEnd = DateTime(today.year, today.month, today.day + 15);
     final courseDateFormat = DateFormat('yyyy-MM-dd');
 
     final results = await Future.wait([
       Future.value(todos),
-      CourseService.getAllCourses(username),
-      StorageService.getCountdowns(username),
-      StorageService.getTimeLogs(username),
+      CourseService.getCoursesForDateRange(
+        username,
+        from: today,
+        to: courseRangeEnd,
+      ),
+      StorageService.getCountdowns(username, from: today),
+      StorageService.getTimeLogs(username, from: today, to: tomorrow),
       PomodoroService.getTodayRecords(),
       PomodoroService.getTags(),
       _buildFinanceWidgetSummary(),
-      StorageService.getFixedSchedules(username),
+      StorageService.getFixedSchedulesByDateRange(
+        username,
+        from: today,
+        to: courseRangeEnd,
+      ),
     ]);
 
     final List<TodoItem> allTodos = results[0] as List<TodoItem>;
@@ -482,6 +529,7 @@ class WidgetService {
         allTodos,
         allCourses,
         countdownsRaw,
+        pomsRaw,
         now,
         today,
         habitItems: habitItems,
@@ -692,6 +740,7 @@ class WidgetService {
     List<TodoItem> allTodos,
     List<CourseItem> allCourses,
     List<CountdownItem> countdownsRaw,
+    List<PomodoroRecord> todayPomodoroRecords,
     DateTime now,
     DateTime today, {
     List<WidgetHabitItem> habitItems = const [],
@@ -817,16 +866,13 @@ class WidgetService {
       }
     } catch (_) {}
 
-    try {
-      final todayRecords = await PomodoroService.getTodayRecords();
-      for (final r in todayRecords) {
-        final end = r.endTime;
-        final start = r.startTime;
-        if (!r.isDeleted && end != null && end > 0 && start > 0) {
-          todayMinutes += ((end - start) ~/ 60000);
-        }
+    for (final r in todayPomodoroRecords) {
+      final end = r.endTime;
+      final start = r.startTime;
+      if (!r.isDeleted && end != null && end > 0 && start > 0) {
+        todayMinutes += ((end - start) ~/ 60000);
       }
-    } catch (_) {}
+    }
 
     final focusState = WidgetFocusState(
       isRunning: isRunning,

@@ -14,6 +14,7 @@ class _TodoRecurrenceDateStructure {
     required this.seriesId,
     required this.occurrences,
     required this.occurrenceStartEpochs,
+    required this.occurrenceSlotIndexById,
     required this.recurrence,
     required this.customIntervalDays,
     required this.recurrenceEndDayEpoch,
@@ -24,6 +25,7 @@ class _TodoRecurrenceDateStructure {
   final String? seriesId;
   final List<TodoItem> occurrences;
   final List<int> occurrenceStartEpochs;
+  final Map<String, int> occurrenceSlotIndexById;
   final RecurrenceType recurrence;
   final int? customIntervalDays;
   final int? recurrenceEndDayEpoch;
@@ -39,6 +41,7 @@ class _TodoRecurrenceDateStructure {
   }) {
     final slots = <_TodoRecurrenceDateSlot>[];
     final occurrenceStartEpochs = <int>[];
+    final occurrenceSlotIndexById = <String, int>{};
     final currentStart = _startFor(todo);
     DateTime? previousStart;
 
@@ -66,6 +69,7 @@ class _TodoRecurrenceDateStructure {
         }
       }
 
+      occurrenceSlotIndexById.putIfAbsent(item.id, () => slots.length);
       slots.add(_TodoRecurrenceDateSlot(date: start, occurrenceIndex: index));
       previousStart = start;
     }
@@ -79,6 +83,8 @@ class _TodoRecurrenceDateStructure {
       seriesId: seriesId,
       occurrences: occurrences,
       occurrenceStartEpochs: occurrenceStartEpochs,
+      occurrenceSlotIndexById:
+          Map<String, int>.unmodifiable(occurrenceSlotIndexById),
       recurrence: todo.recurrence,
       customIntervalDays: todo.customIntervalDays,
       recurrenceEndDayEpoch: recurrenceEndDay?.millisecondsSinceEpoch,
@@ -281,62 +287,89 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
       _recurrenceDateStructures[structureKey] = dateStructure;
     }
 
-    final allNodes = <TodoRecurrenceProgressNode>[];
+    var currentIndex = dateStructure.occurrenceSlotIndexById[todo.id] ?? -1;
+    if (currentIndex < 0) {
+      for (var index = 0; index < dateStructure.slots.length; index++) {
+        final occurrenceIndex = dateStructure.slots[index].occurrenceIndex;
+        if (occurrenceIndex != null &&
+            actualOccurrences[occurrenceIndex].id == todo.id) {
+          currentIndex = index;
+          break;
+        }
+      }
+    }
+    final fixedEnd = todo.recurrenceEndDate != null;
+    final historyEnd = currentIndex >= 0
+        ? currentIndex + 1
+        : dateStructure.slots.length;
+    final summaryEnd = fixedEnd ? dateStructure.slots.length : historyEnd;
+    final displayStart = currentIndex >= 0
+        ? (currentIndex - 2).clamp(0, dateStructure.slots.length).toInt()
+        : (dateStructure.slots.length - 3)
+              .clamp(0, dateStructure.slots.length)
+              .toInt();
+    final nodes = <TodoRecurrenceProgressNode>[];
+    var completedCount = 0;
+    var overdueCount = 0;
     final currentStart = DateTime.fromMillisecondsSinceEpoch(
       todo.createdDate ?? todo.createdAt,
       isUtc: true,
     ).toLocal();
     final occurrenceDuration =
         todo.dueDate?.difference(currentStart) ?? const Duration(hours: 24);
-    for (final slot in dateStructure.slots) {
+    for (var index = 0; index < dateStructure.slots.length; index++) {
+      final slot = dateStructure.slots[index];
       final occurrenceIndex = slot.occurrenceIndex;
+      final DateTime date;
+      final TodoRecurrenceNodeState state;
+      final String? occurrenceId;
+      final bool isCurrent;
       if (occurrenceIndex == null) {
         final missingStart = slot.date;
-        allNodes.add(
-          TodoRecurrenceProgressNode(
-            date: missingStart,
-            state: missingStart.isAfter(now)
-                ? TodoRecurrenceNodeState.future
-                : missingStart.add(occurrenceDuration).isBefore(now)
-                ? TodoRecurrenceNodeState.overdue
-                : TodoRecurrenceNodeState.pending,
-          ),
-        );
-        continue;
+        date = missingStart;
+        state = missingStart.isAfter(now)
+            ? TodoRecurrenceNodeState.future
+            : missingStart.add(occurrenceDuration).isBefore(now)
+            ? TodoRecurrenceNodeState.overdue
+            : TodoRecurrenceNodeState.pending;
+        occurrenceId = null;
+        isCurrent = false;
+      } else {
+        final item = actualOccurrences[occurrenceIndex];
+        final start = slot.date;
+        final end = item.dueDate ?? start;
+        isCurrent = item.id == todo.id;
+        date = start;
+        occurrenceId = item.id;
+        state = item.isDone
+            ? TodoRecurrenceNodeState.completed
+            : isCurrent
+            ? todo.recurrence == RecurrenceType.none
+                  ? TodoRecurrenceNodeState.neutral
+                  : TodoRecurrenceNodeState.current
+            : start.isAfter(now)
+            ? TodoRecurrenceNodeState.future
+            : end.isBefore(now)
+            ? TodoRecurrenceNodeState.overdue
+            : TodoRecurrenceNodeState.pending;
       }
 
-      final item = actualOccurrences[occurrenceIndex];
-      final start = slot.date;
-      final end = item.dueDate ?? start;
-      final isCurrent = item.id == todo.id;
-      final state = item.isDone
-          ? TodoRecurrenceNodeState.completed
-          : isCurrent
-          ? todo.recurrence == RecurrenceType.none
-                ? TodoRecurrenceNodeState.neutral
-                : TodoRecurrenceNodeState.current
-          : start.isAfter(now)
-          ? TodoRecurrenceNodeState.future
-          : end.isBefore(now)
-          ? TodoRecurrenceNodeState.overdue
-          : TodoRecurrenceNodeState.pending;
-      allNodes.add(
+      if (index < summaryEnd) {
+        if (state == TodoRecurrenceNodeState.completed) completedCount++;
+        if (state == TodoRecurrenceNodeState.overdue) overdueCount++;
+      }
+      if (index < displayStart) continue;
+      nodes.add(
         TodoRecurrenceProgressNode(
-          date: start,
+          date: date,
           state: state,
-          occurrenceId: item.id,
+          occurrenceId: occurrenceId,
           isCurrent: isCurrent,
         ),
       );
     }
-    final currentIndex = allNodes.indexWhere((node) => node.isCurrent);
-    final historyEnd = currentIndex >= 0 ? currentIndex + 1 : allNodes.length;
-    final historyNodes = allNodes.take(historyEnd).toList();
-    final nodes = historyNodes
-        .skip((historyNodes.length - 3).clamp(0, historyNodes.length))
-        .followedBy(allNodes.skip(historyEnd))
-        .toList();
 
+    var projectedCount = 0;
     if (todo.recurrence != RecurrenceType.none) {
       const openEndedFuturePreviewCount = 14;
       var futureCount = 0;
@@ -346,7 +379,7 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
       final requestedProjectionCount = todo.recurrenceEndDate == null
           ? openEndedFuturePreviewCount - futureCount
           : 90;
-      final projectedCount = dateStructure.ensureProjectedDates(
+      projectedCount = dateStructure.ensureProjectedDates(
         todo,
         requestedProjectionCount,
       );
@@ -356,16 +389,17 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
           state: TodoRecurrenceNodeState.future,
         );
         nodes.add(projectedNode);
-        allNodes.add(projectedNode);
       }
     }
 
     // 有结束日期的有限循环展示整个系列的完成进度；开放式循环没有固定
     // 总期数，因此仍以已经发生的历史和当前期作为统计范围。
-    final summary = _calculateRecurrenceSummary(
-      allNodes: allNodes,
-      historyNodes: historyNodes,
-      hasFixedEnd: todo.recurrenceEndDate != null,
+    final summary = (
+      completedCount: completedCount,
+      totalCount: fixedEnd
+          ? dateStructure.slots.length + projectedCount
+          : summaryEnd,
+      overdueCount: overdueCount,
     );
     return TodoRecurrenceProgress(
       key: ValueKey('recurrence_progress_${seriesId ?? todo.id}'),

@@ -1022,8 +1022,11 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
     final List<_GroupDisplayData> separateGroupData = vm.separateGroupData;
 
     final List<Widget> sections = [];
+    final bool allTodayDone = vm.allTodayDone;
 
-    if (separateFolders && separateGroupData.isNotEmpty) {
+    if (_isWholeListExpanded &&
+        separateFolders &&
+        separateGroupData.isNotEmpty) {
       sections.add(
         _buildGroupLabel(
           text: "📂 文件夹",
@@ -1042,7 +1045,7 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
       );
     }
 
-    if (pastItems.isNotEmpty) {
+    if (_isWholeListExpanded && pastItems.isNotEmpty) {
       final List<TodoItem> overdueTodos = vm.overdueTodos;
 
       if (overdueTodos.isNotEmpty) {
@@ -1086,45 +1089,49 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
       sections.add(
         _buildAnimatedSection(
           expanded: _isPastTodosExpanded,
-          child: Column(
-            children: pastItems.map((item) {
-              final todo = item.todo;
-              if (todo != null) {
-                return _buildTodoItemCard(
-                  todo,
-                  isPast: true,
-                  isFuture: false,
-                  now: now,
-                  key: _getTodoDismissKey('dismiss', todo.id),
-                );
-              }
-              return _buildGroupWidget(item.group!, item.groupTodos!);
-            }).toList(),
-          ),
+          child: _isPastTodosExpanded
+              ? Column(
+                  children: pastItems
+                      .map((item) {
+                        final todo = item.todo;
+                        if (todo != null) {
+                          return _buildTodoItemCard(
+                            todo,
+                            isPast: true,
+                            isFuture: false,
+                            now: now,
+                            key: _getTodoDismissKey('dismiss', todo.id),
+                          );
+                        }
+                        return _buildGroupWidget(item.group!, item.groupTodos!);
+                      })
+                      .toList(growable: false),
+                )
+              : const SizedBox.shrink(),
         ),
       );
     }
 
-    final bool allTodayDone = vm.allTodayDone;
     final bool showTodayItems =
         _isTodayManuallyExpanded || (!allTodayDone && _isTodayExpanded);
 
     // ── 今日板块动画封装 ──
-    sections.add(
-      AnimatedSwitcher(
-        duration: const Duration(milliseconds: 400),
-        transitionBuilder: (child, animation) {
-          return FadeTransition(
-            opacity: animation,
-            child: SizeTransition(
-              sizeFactor: animation,
-              alignment: AlignmentDirectional.topStart,
-              child: child,
-            ),
-          );
-        },
-        child: (!showTodayItems && todayItems.isNotEmpty)
-            ? GestureDetector(
+    if (_isWholeListExpanded) {
+      sections.add(
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 400),
+          transitionBuilder: (child, animation) {
+            return FadeTransition(
+              opacity: animation,
+              child: SizeTransition(
+                sizeFactor: animation,
+                alignment: AlignmentDirectional.topStart,
+                child: child,
+              ),
+            );
+          },
+          child: (!showTodayItems && todayItems.isNotEmpty)
+              ? GestureDetector(
                 key: const ValueKey('today_summary_card'),
                 onTap: () => setState(() {
                   _isTodayManuallyExpanded = true;
@@ -1288,7 +1295,34 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                   ),
                   _buildAnimatedSection(
                     expanded: _isTodayExpanded,
-                    child: ReorderableListView(
+                    child: ReorderableListView.builder(
+                      itemCount: todayItems.length,
+                      itemBuilder: (context, index) {
+                        final item = todayItems[index];
+                        if (item.todo != null) {
+                          return _buildTodoItemCard(
+                            item.todo!,
+                            isPast: false,
+                            isFuture: false,
+                            now: now,
+                            key: _getTodoDismissKey('dismiss', item.todo!.id),
+                            dragHandle: ReorderableDelayedDragStartListener(
+                              index: index,
+                              child: _buildTodoDragHandleIcon(
+                                item.todo!,
+                                Theme.of(context).colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          );
+                        }
+                        return Container(
+                          key: ValueKey('group_${item.group!.id}'),
+                          child: _buildGroupWidget(
+                            item.group!,
+                            item.groupTodos!,
+                          ),
+                        );
+                      },
                       padding: EdgeInsets.zero,
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
@@ -1328,33 +1362,6 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                         }
                         widget.onTodosChanged(updatedList);
                       },
-                      children: todayItems.asMap().entries.map((entry) {
-                        final int index = entry.key;
-                        final item = entry.value;
-                        if (item.todo != null) {
-                          return _buildTodoItemCard(
-                            item.todo!,
-                            isPast: false,
-                            isFuture: false,
-                            now: now,
-                            key: _getTodoDismissKey('dismiss', item.todo!.id),
-                            dragHandle: ReorderableDelayedDragStartListener(
-                              index: index,
-                              child: _buildTodoDragHandleIcon(
-                                item.todo!,
-                                Theme.of(context).colorScheme.onSurfaceVariant,
-                              ),
-                            ),
-                          );
-                        }
-                        return Container(
-                          key: ValueKey('group_${item.group!.id}'),
-                          child: _buildGroupWidget(
-                            item.group!,
-                            item.groupTodos!,
-                          ),
-                        );
-                      }).toList(),
                     ),
                   ),
                 ],
@@ -1362,8 +1369,9 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
             : const SizedBox.shrink(key: ValueKey('today_empty')),
       ),
     );
+    }
 
-    if (futureItems.isNotEmpty) {
+    if (_isWholeListExpanded && futureItems.isNotEmpty) {
       sections.add(
         _buildGroupLabel(
           text: "将来 · ${vm.futureUndoneCount} 未完成",
@@ -1375,21 +1383,25 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
       sections.add(
         _buildAnimatedSection(
           expanded: _isFutureExpanded,
-          child: Column(
-            children: futureItems.map((item) {
-              final todo = item.todo;
-              if (todo != null) {
-                return _buildTodoItemCard(
-                  todo,
-                  isPast: false,
-                  isFuture: true,
-                  now: now,
-                  key: _getTodoDismissKey('dismiss', todo.id),
-                );
-              }
-              return _buildGroupWidget(item.group!, item.groupTodos!);
-            }).toList(),
-          ),
+          child: _isFutureExpanded
+              ? Column(
+                  children: futureItems
+                      .map((item) {
+                        final todo = item.todo;
+                        if (todo != null) {
+                          return _buildTodoItemCard(
+                            todo,
+                            isPast: false,
+                            isFuture: true,
+                            now: now,
+                            key: _getTodoDismissKey('dismiss', todo.id),
+                          );
+                        }
+                        return _buildGroupWidget(item.group!, item.groupTodos!);
+                      })
+                      .toList(growable: false),
+                )
+              : const SizedBox.shrink(),
         ),
       );
     }
@@ -1555,6 +1567,7 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
 
     final seriesRepresentativeIds = _buildRecurrenceSeriesRepresentativeIds(
       seriesOccurrences,
+      occurrencesSortedByStart: true,
     );
 
     // Build groupById map for O(1) lookup - avoid todoGroups.any() per todo

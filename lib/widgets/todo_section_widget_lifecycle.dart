@@ -173,13 +173,10 @@ mixin _TodoSectionLifecycleMixin on _TodoSectionStateBase {
       return dueDate.day < today.day;
     }
 
-    final createdAt = DateTime.fromMillisecondsSinceEpoch(
-      t.createdDate ?? t.createdAt,
-      isUtc: true,
-    ).toLocal();
-    if (createdAt.year != today.year) return createdAt.year < today.year;
-    if (createdAt.month != today.month) return createdAt.month < today.month;
-    return createdAt.day < today.day;
+    // `today` is local midnight, so comparing epoch values preserves the
+    // local-calendar boundary without allocating and converting a DateTime
+    // for every completed todo.
+    return (t.createdDate ?? t.createdAt) < today.millisecondsSinceEpoch;
   }
 
   void showAddTodoDialog() {

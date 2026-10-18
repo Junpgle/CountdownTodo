@@ -30,6 +30,7 @@ class HistoricalCountdownsScreen extends StatefulWidget {
 class _HistoricalCountdownsScreenState
     extends State<HistoricalCountdownsScreen> {
   List<CountdownItem> _history = [];
+  List<String> _historySearchTitles = const <String>[];
   final _searchController = TextEditingController();
   bool _isLoading = true;
   bool _loadFailed = false;
@@ -61,18 +62,23 @@ class _HistoricalCountdownsScreenState
               StorageService.getCountdowns(widget.username));
       if (!mounted || generation != _loadGeneration) return;
       final today = _now();
+      final history =
+          items
+              .where(
+                (item) =>
+                    !item.isDeleted &&
+                    CalendarDateMath.daysBetween(item.targetDate, today) > 0,
+              )
+              .toList()
+            ..sort((a, b) => b.targetDate.compareTo(a.targetDate));
+      final searchTitles = [
+        for (final item in history) item.title.toLowerCase(),
+      ];
       setState(() {
         // Countdown targets are calendar dates, so avoid elapsed-hour math
         // around daylight-saving transitions.
-        _history =
-            items
-                .where(
-                  (item) =>
-                      !item.isDeleted &&
-                      CalendarDateMath.daysBetween(item.targetDate, today) > 0,
-                )
-                .toList()
-              ..sort((a, b) => b.targetDate.compareTo(a.targetDate));
+        _history = history;
+        _historySearchTitles = searchTitles;
         _isLoading = false;
         _loadFailed = false;
       });
@@ -145,11 +151,58 @@ class _HistoricalCountdownsScreenState
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final query = _searchController.text.trim().toLowerCase();
-    var visible = _history
-        .where((item) => item.title.toLowerCase().contains(query))
-        .toList();
-    if (_oldestFirst) visible = visible.reversed.toList();
+    final visible = query.isEmpty
+        ? _history
+        : [
+            for (var index = 0; index < _history.length; index++)
+              if (_historySearchTitles[index].contains(query)) _history[index],
+          ];
     final topBarHeight = floatingGlassTopBarHeight(context);
+    final headerChildren = <Widget>[
+      const ManagementIntro(
+        icon: Icons.history_rounded,
+        title: '那些期待过的日子',
+        description: '已结束的倒计时留在这里，方便回顾与整理。',
+      ),
+      if (_loadFailed) ...[
+        ManagementLoadError(
+          title: '暂时无法加载记录',
+          description: '请重试，已保存的倒计时不会受影响。',
+          onRetry: _loadData,
+        ),
+      ] else ...[
+        ManagementSearchField(
+          controller: _searchController,
+          hintText: '搜索历史倒计时',
+          onChanged: (_) => setState(() {}),
+        ),
+        const SizedBox(height: 16),
+        ManagementFilterBar<bool>(
+          value: _oldestFirst,
+          onChanged: (value) => setState(() => _oldestFirst = value),
+          options: [
+            ManagementFilterOption(value: false, label: '最近结束'),
+            ManagementFilterOption(value: true, label: '最早结束'),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Text(
+          query.isEmpty
+              ? '共 ${_history.length} 段记录'
+              : '找到 ${visible.length} 段记录',
+          style: theme.textTheme.titleSmall?.copyWith(
+            color: scheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 12),
+        if (visible.isEmpty)
+          ManagementEmptyState(
+            icon: Icons.hourglass_empty_rounded,
+            title: query.isEmpty ? '还没有历史倒计时' : '没有找到匹配的记录',
+            description: query.isEmpty ? '倒计时结束后，可以在这里回顾。' : '试试其他关键词，或清空搜索。',
+          ),
+      ],
+    ];
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: FloatingGlassAppBar(
@@ -169,58 +222,20 @@ class _HistoricalCountdownsScreenState
             ? const Center(child: CircularProgressIndicator())
             : RefreshIndicator(
                 onRefresh: _loadData,
-                child: ManagementPage(
+                child: ManagementPage.builder(
                   topPadding: topBarHeight,
                   maxWidth: 900,
-                  children: [
-                    const ManagementIntro(
-                      icon: Icons.history_rounded,
-                      title: '那些期待过的日子',
-                      description: '已结束的倒计时留在这里，方便回顾与整理。',
-                    ),
-                    if (_loadFailed) ...[
-                      ManagementLoadError(
-                        title: '暂时无法加载记录',
-                        description: '请重试，已保存的倒计时不会受影响。',
-                        onRetry: _loadData,
-                      ),
-                    ] else ...[
-                      ManagementSearchField(
-                        controller: _searchController,
-                        hintText: '搜索历史倒计时',
-                        onChanged: (_) => setState(() {}),
-                      ),
-                      const SizedBox(height: 16),
-                      ManagementFilterBar<bool>(
-                        value: _oldestFirst,
-                        onChanged: (value) =>
-                            setState(() => _oldestFirst = value),
-                        options: [
-                          ManagementFilterOption(value: false, label: '最近结束'),
-                          ManagementFilterOption(value: true, label: '最早结束'),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        query.isEmpty
-                            ? '共 ${_history.length} 段记录'
-                            : '找到 ${visible.length} 段记录',
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          color: scheme.onSurfaceVariant,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      if (visible.isEmpty)
-                        ManagementEmptyState(
-                          icon: Icons.hourglass_empty_rounded,
-                          title: query.isEmpty ? '还没有历史倒计时' : '没有找到匹配的记录',
-                          description: query.isEmpty
-                              ? '倒计时结束后，可以在这里回顾。'
-                              : '试试其他关键词，或清空搜索。',
-                        ),
-                      ...visible.map(_buildCard),
-                    ],
-                  ],
+                  itemCount: headerChildren.length + visible.length,
+                  itemBuilder: (context, index) {
+                    if (index < headerChildren.length) {
+                      return headerChildren[index];
+                    }
+                    final visibleIndex = index - headerChildren.length;
+                    final recordIndex = _oldestFirst
+                        ? visible.length - 1 - visibleIndex
+                        : visibleIndex;
+                    return _buildCard(visible[recordIndex]);
+                  },
                 ),
               ),
       ),
