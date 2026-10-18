@@ -6,7 +6,7 @@ import '../utils/calendar_date_math.dart';
 import 'pomodoro_service.dart';
 import 'plan_todo_guard.dart';
 
-/// Existing homepage missed-state policy, isolated from display aggregation.
+/// Reconciles expired plan states after Pomodoro records or page loads.
 class PlanTodayMaintenance {
   const PlanTodayMaintenance();
   Future<void> run(String username, DateTime now) async {
@@ -18,6 +18,22 @@ class PlanTodayMaintenance {
     ]);
     await identity.check();
     final blocks = results[0] as List<TodoPlanBlock>;
+    final expiredFocusing = blocks.any(
+      (block) =>
+          !block.isDeleted &&
+          block.status == TodoPlanStatus.focusing &&
+          block.endTime < now.millisecondsSinceEpoch,
+    );
+    PomodoroRunState? run;
+    var focusStateReadable = true;
+    if (expiredFocusing) {
+      try {
+        run = await PlanTodoGuard.runState(identity);
+      } catch (_) {
+        await identity.check();
+        focusStateReadable = false;
+      }
+    }
     final records = (results[1] as List<PomodoroRecord>)
         .where(
           (r) =>
@@ -27,10 +43,26 @@ class PlanTodayMaintenance {
         )
         .toList();
     for (final block in blocks) {
-      if (!block.isDeleted &&
-          block.status == TodoPlanStatus.planned &&
-          _actualSecondsForBlock(block, records) <= 0 &&
-          block.endTime < now.millisecondsSinceEpoch) {
+      if (block.isDeleted || block.endTime >= now.millisecondsSinceEpoch) {
+        continue;
+      }
+      final actualSeconds = _actualSecondsForBlock(block, records);
+      TodoPlanStatus? nextStatus;
+      if (block.status == TodoPlanStatus.planned && actualSeconds <= 0) {
+        nextStatus = TodoPlanStatus.missed;
+      } else if (block.status == TodoPlanStatus.focusing &&
+          focusStateReadable &&
+          !_hasActiveFocus(run, block)) {
+        if (block.plannedMinutes > 0 &&
+            actualSeconds >= block.plannedMinutes * 60 * 0.8) {
+          nextStatus = TodoPlanStatus.finished;
+        } else if (actualSeconds <= 0) {
+          nextStatus = TodoPlanStatus.missed;
+        } else {
+          nextStatus = TodoPlanStatus.planned;
+        }
+      }
+      if (nextStatus != null) {
         // The decision retains the old cache/matching policy. A concurrent
         // edit or identity change must not be overwritten by this maintenance.
         await StorageService.savePlanBlockEdited(
@@ -38,11 +70,20 @@ class PlanTodayMaintenance {
           block,
           expectedVersion: block.version,
           expectedUpdatedAt: block.updatedAt,
-          newStatus: TodoPlanStatus.missed,
+          newStatus: nextStatus,
           beforeWrite: (_) => identity.check(),
         );
       }
     }
+  }
+
+  bool _hasActiveFocus(PomodoroRunState? run, TodoPlanBlock block) {
+    if (run == null ||
+        (run.phase != PomodoroPhase.focusing &&
+            run.phase != PomodoroPhase.remoteWatching)) {
+      return false;
+    }
+    return run.planBlockId == block.uuid || run.todoUuid == block.todoId;
   }
 
   bool _timeRangesOverlap(

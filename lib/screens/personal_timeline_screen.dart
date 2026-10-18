@@ -38,6 +38,25 @@ enum TimelineDimension { daily, weekly, monthly, yearly }
 
 enum _TimelinePosterAction { share, save }
 
+typedef _FinanceCardMetrics = ({
+  Map<String, FinanceCategory> categoryByUuid,
+  List<MapEntry<String, int>> topCategories,
+  int maxCategory,
+  int spendingDays,
+  MapEntry<String, int>? peakDay,
+  int expenseCount,
+  int incomeCount,
+  int refundCount,
+});
+
+final Map<(String?, String), DateFormat> _timelineDateFormatters = {};
+
+DateFormat _timelineDateFormat(String pattern, [String? locale]) {
+  final effectiveLocale = locale ?? Intl.defaultLocale;
+  final key = (effectiveLocale, pattern);
+  return _timelineDateFormatters[key] ??= DateFormat(pattern, effectiveLocale);
+}
+
 @visibleForTesting
 ({DateTime start, DateTime end}) timelineDateRange(
   TimelineDimension dimension,
@@ -138,14 +157,24 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
   // Finance data is loaded separately from the timeline summary so an older
   // database without the finance tables can never hide the rest of the page.
   FinanceSummary _financeSummary = const FinanceSummary();
-  List<FinanceTransaction> _financeTransactions = const [];
-  List<FinanceCategory> _financeCategories = const [];
+  _FinanceCardMetrics _financeCardMetrics = (
+    categoryByUuid: const {},
+    topCategories: const [],
+    maxCategory: 1,
+    spendingDays: 0,
+    peakDay: null,
+    expenseCount: 0,
+    incomeCount: 0,
+    refundCount: 0,
+  );
 
   // ML Medal Recommendation System
   TimelineSummary? _allTimeSummary;
   MedalRecommendation? _allTimeRecommendation;
   MedalRecommendation? _medalRecommendation; // Range-specific
   List<MedalProgress> _earnedThisSession = [];
+  MedalRecommendation? _allTimeMedalIndexSource;
+  Map<String, MedalProgress> _allTimeMedalProgressById = const {};
 
   // ML Timeline Insights
   List<TimelineMLInsight> _mlInsights = [];
@@ -210,6 +239,16 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
       List<FinanceTransaction> financeTransactions = const [];
       List<FinanceTransaction> allFinanceTransactions = const [];
       List<FinanceCategory> financeCategories = const [];
+      _FinanceCardMetrics financeCardMetrics = (
+        categoryByUuid: const {},
+        topCategories: const [],
+        maxCategory: 1,
+        spendingDays: 0,
+        peakDay: null,
+        expenseCount: 0,
+        incomeCount: 0,
+        refundCount: 0,
+      );
       DateTime? financeAsOf;
       try {
         final financeData = await Future.wait<dynamic>([
@@ -225,18 +264,36 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
           now: financeAsOf,
         );
         financeSummary = FinanceSummary.fromTransactions(financeTransactions);
+        financeCardMetrics = _createFinanceCardMetrics(
+          summary: financeSummary,
+          transactions: financeTransactions,
+          categories: financeCategories,
+        );
       } catch (error) {
         debugPrint('❌ get timeline finance data error: $error');
       }
 
       // 3. Get Focus Time
       final records = await PomodoroService.getRecordsInRange(start, end);
-      final timeLogs = await StorageService.getTimeLogs(widget.username);
-      final planBlocks = await StorageService.getPlanBlocks(widget.username);
+      final timeLogs = await StorageService.getTimeLogs(
+        widget.username,
+        from: start,
+        to: end,
+      );
+      final planBlocks = await StorageService.getPlanBlocks(
+        widget.username,
+        from: start,
+        to: end,
+      );
       final tags = await PomodoroService.getAllTagsIncludingDeleted();
 
       // 4. Get Top Category (Simplified)
-      final screenStats = await StorageService.getScreenTimeHistory();
+      final screenTimeDateFormat = _timelineDateFormat('yyyy-MM-dd');
+      final screenStats = await StorageService.getScreenTimeHistory(
+        username: widget.username,
+        fromDate: screenTimeDateFormat.format(start),
+        toDate: screenTimeDateFormat.format(end),
+      );
       final appMappings = await StorageService.getAppMappings();
       Map<String, int> catUsage = {};
       Map<String, int> appUsage = {};
@@ -247,7 +304,6 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
 
       // Iterate through days in range
       DateTime cursor = start;
-      final screenTimeDateFormat = DateFormat('yyyy-MM-dd');
       while (cursor.isBefore(end)) {
         final dateStr = screenTimeDateFormat.format(cursor);
         final stats = screenStats[dateStr] ?? [];
@@ -277,7 +333,11 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
         cursor = AppTimeFormats.localDayStartOffset(cursor, 1);
       }
 
-      final todos = await StorageService.getTodos(widget.username);
+      final todos = await StorageService.getTodosForTimelineRange(
+        widget.username,
+        from: start,
+        to: end,
+      );
       final habitOnlyRecurringSeriesIds =
           await HabitRepository.getHabitOnlyRecurringTodoSeriesIds();
       final startMs = start.millisecondsSinceEpoch;
@@ -342,11 +402,15 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
       final medalTotalCount =
           regularTotalCount + rangeStatistics.recurringScheduledCount;
 
-      final courses = await CourseService.getAllCourses(widget.username);
+      final courses = await CourseService.getCoursesForDateRange(
+        widget.username,
+        from: start,
+        to: end,
+      );
       final Map<String, int> coursesByDay = {};
       var courseCount = 0;
       var maxDailyCourseCount = 0;
-      final courseDateFormat = DateFormat('yyyy-MM-dd');
+      final courseDateFormat = _timelineDateFormat('yyyy-MM-dd');
       for (final course in courses) {
         DateTime? courseDay;
         try {
@@ -425,8 +489,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
           _recurringLongestStreak = rangeStatistics.recurringLongestStreak;
           _topFocusTags = rangeStatistics.topFocusTags;
           _financeSummary = financeSummary;
-          _financeTransactions = financeTransactions;
-          _financeCategories = financeCategories;
+          _financeCardMetrics = financeCardMetrics;
 
           // Calculate ML Medal Recommendations
           _medalRecommendation = MedalRecommendationService.getRecommendations(
@@ -598,7 +661,12 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
       final totalSecs = summary.totalFocusMinutes * 60;
 
       // 3. Screen Time
-      final screenStats = await StorageService.getScreenTimeHistory();
+      final allTimeScreenTimeDateFormat = _timelineDateFormat('yyyy-MM-dd');
+      final screenStats = await StorageService.getScreenTimeHistory(
+        username: widget.username,
+        fromDate: allTimeScreenTimeDateFormat.format(start),
+        toDate: allTimeScreenTimeDateFormat.format(end),
+      );
       final appMappings = await StorageService.getAppMappings();
       final categoryCache = <(String, String, String?), String>{};
       int screenTotal = 0;
@@ -1173,16 +1241,16 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
     final day = DateTime(date.year, date.month, date.day);
     switch (dimension) {
       case TimelineDimension.daily:
-        return DateFormat('yyyy年MM月dd日').format(day);
+        return _timelineDateFormat('yyyy年MM月dd日').format(day);
       case TimelineDimension.weekly:
         final start = AppTimeFormats.localDayStartOffset(
           day,
           -(day.weekday - 1),
         );
         final end = AppTimeFormats.localDayStartOffset(start, 6);
-        return '${DateFormat('MM/dd').format(start)} - ${DateFormat('MM/dd').format(end)}';
+        return '${_timelineDateFormat('MM/dd').format(start)} - ${_timelineDateFormat('MM/dd').format(end)}';
       case TimelineDimension.monthly:
-        return DateFormat('yyyy年MM月').format(day);
+        return _timelineDateFormat('yyyy年MM月').format(day);
       case TimelineDimension.yearly:
         return '${day.year}年';
     }
@@ -1281,7 +1349,8 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
       }
 
       final safePeriod = _getPeriodName();
-      final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+      final timestamp = _timelineDateFormat('yyyyMMdd_HHmmss')
+          .format(DateTime.now());
       final fileName = 'CountDownTodo_${safePeriod}_timeline_$timestamp.png';
       final pngBytes = bytes.buffer.asUint8List();
       final filePath = await BrowserFileService.saveBytesFile(
@@ -1383,7 +1452,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
                 ),
               ),
               Text(
-                DateFormat('yyyy.MM.dd HH:mm').format(DateTime.now()),
+                _timelineDateFormat('yyyy.MM.dd HH:mm').format(DateTime.now()),
                 style: TextStyle(
                   fontSize: 15,
                   color: cs.onSurfaceVariant,
@@ -2027,16 +2096,16 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
   String _timelinePeriodLabel() {
     switch (_dimension) {
       case TimelineDimension.daily:
-        return DateFormat('yyyy年MM月dd日').format(_selectedDate);
+        return _timelineDateFormat('yyyy年MM月dd日').format(_selectedDate);
       case TimelineDimension.weekly:
         final start = AppTimeFormats.localDayStartOffset(
           AppTimeFormats.dayStart(_selectedDate),
           -(_selectedDate.weekday - 1),
         );
         final end = AppTimeFormats.localDayStartOffset(start, 6);
-        return '${DateFormat('MM/dd').format(start)} - ${DateFormat('MM/dd').format(end)}';
+        return '${_timelineDateFormat('MM/dd').format(start)} - ${_timelineDateFormat('MM/dd').format(end)}';
       case TimelineDimension.monthly:
-        return DateFormat('yyyy年MM月').format(_selectedDate);
+        return _timelineDateFormat('yyyy年MM月').format(_selectedDate);
       case TimelineDimension.yearly:
         return '${_selectedDate.year}年';
     }
@@ -2045,7 +2114,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
   String _timelinePeriodSubtitle() {
     switch (_dimension) {
       case TimelineDimension.daily:
-        return DateFormat('EEEE', 'zh_CN').format(_selectedDate);
+        return _timelineDateFormat('EEEE', 'zh_CN').format(_selectedDate);
       case TimelineDimension.weekly:
         return '本周回顾';
       case TimelineDimension.monthly:
@@ -2117,7 +2186,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
     if (_summary != null &&
         _summary!.actualStartTime != null &&
         _summary!.actualEndTime != null) {
-      return '${DateFormat('yyyy.MM.dd').format(_summary!.actualStartTime!)} - ${DateFormat('yyyy.MM.dd').format(_summary!.actualEndTime!)}';
+      return '${_timelineDateFormat('yyyy.MM.dd').format(_summary!.actualStartTime!)} - ${_timelineDateFormat('yyyy.MM.dd').format(_summary!.actualEndTime!)}';
     }
 
     DateTime start;
@@ -2132,22 +2201,22 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
 
     switch (_dimension) {
       case TimelineDimension.daily:
-        return DateFormat('yyyy.MM.dd').format(day);
+        return _timelineDateFormat('yyyy.MM.dd').format(day);
       case TimelineDimension.weekly:
         start = AppTimeFormats.localDayStartOffset(day, -(day.weekday - 1));
         end = AppTimeFormats.localDayStartOffset(start, 6);
         final displayEnd = end.isAfter(today) ? today : end;
-        return '${DateFormat('yyyy.MM.dd').format(start)} - ${DateFormat('yyyy.MM.dd').format(displayEnd)}';
+        return '${_timelineDateFormat('yyyy.MM.dd').format(start)} - ${_timelineDateFormat('yyyy.MM.dd').format(displayEnd)}';
       case TimelineDimension.monthly:
         start = DateTime(day.year, day.month, 1);
         end = DateTime(day.year, day.month + 1, 0);
         final displayEnd = end.isAfter(today) ? today : end;
-        return '${DateFormat('yyyy.MM.dd').format(start)} - ${DateFormat('yyyy.MM.dd').format(displayEnd)}';
+        return '${_timelineDateFormat('yyyy.MM.dd').format(start)} - ${_timelineDateFormat('yyyy.MM.dd').format(displayEnd)}';
       case TimelineDimension.yearly:
         start = DateTime(day.year, 1, 1);
         end = DateTime(day.year, 12, 31);
         final displayEnd = end.isAfter(today) ? today : end;
-        return '${DateFormat('yyyy.MM.dd').format(start)} - ${DateFormat('yyyy.MM.dd').format(displayEnd)}';
+        return '${_timelineDateFormat('yyyy.MM.dd').format(start)} - ${_timelineDateFormat('yyyy.MM.dd').format(displayEnd)}';
     }
   }
 
@@ -2545,46 +2614,25 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
     // 这里的预览只展示当前时段内“第一次获得”的新勋章
     final rangeTarget = _medalRecommendation;
     final allTimeTarget = _allTimeRecommendation;
-    if (rangeTarget == null) return const [];
+    if (rangeTarget == null || rangeTarget.earnedMedals.isEmpty) {
+      return const [];
+    }
+
+    final allTimeProgressById = allTimeTarget == null
+        ? null
+        : _allTimeMedalIndexFor(allTimeTarget);
+    final rangeStart = allTimeTarget == null ? null : _medalRangeStart();
 
     return rangeTarget.earnedMedals
         .where((p) {
           // 如果全记录数据还没好，先展示当前的（保底逻辑）
           if (allTimeTarget == null) return true;
 
-          // 在全记录中查找对应的勋章
-          final allTimeProgress = allTimeTarget.allMedals.firstWhere(
-            (mp) => mp.medal.id == p.medal.id,
-            orElse: () => p,
-          );
-
-          // 计算当前时段的开始时间
-          DateTime rangeStart;
-          switch (_dimension) {
-            case TimelineDimension.daily:
-              rangeStart = DateTime(
-                _selectedDate.year,
-                _selectedDate.month,
-                _selectedDate.day,
-              );
-              break;
-            case TimelineDimension.weekly:
-              rangeStart = AppTimeFormats.localDayStartOffset(
-                AppTimeFormats.dayStart(_selectedDate),
-                -(_selectedDate.weekday - 1),
-              );
-              break;
-            case TimelineDimension.monthly:
-              rangeStart = DateTime(_selectedDate.year, _selectedDate.month, 1);
-              break;
-            case TimelineDimension.yearly:
-              rangeStart = DateTime(_selectedDate.year, 1, 1);
-              break;
-          }
+          final allTimeProgress = allTimeProgressById![p.medal.id] ?? p;
 
           // 如果全量统计显示这个勋章是在当前选定时段之前获得的，就不要在预览里重复展示了
           if (allTimeProgress.earned && allTimeProgress.firstEarnedAt != null) {
-            if (allTimeProgress.firstEarnedAt!.isBefore(rangeStart)) {
+            if (allTimeProgress.firstEarnedAt!.isBefore(rangeStart!)) {
               return false;
             }
           }
@@ -2600,6 +2648,42 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
           );
         })
         .toList();
+  }
+
+  Map<String, MedalProgress> _allTimeMedalIndexFor(
+    MedalRecommendation recommendation,
+  ) {
+    if (identical(_allTimeMedalIndexSource, recommendation)) {
+      return _allTimeMedalProgressById;
+    }
+
+    final progressById = <String, MedalProgress>{};
+    for (final progress in recommendation.allMedals) {
+      progressById.putIfAbsent(progress.medal.id, () => progress);
+    }
+    _allTimeMedalIndexSource = recommendation;
+    _allTimeMedalProgressById = progressById;
+    return progressById;
+  }
+
+  DateTime _medalRangeStart() {
+    switch (_dimension) {
+      case TimelineDimension.daily:
+        return DateTime(
+          _selectedDate.year,
+          _selectedDate.month,
+          _selectedDate.day,
+        );
+      case TimelineDimension.weekly:
+        return AppTimeFormats.localDayStartOffset(
+          AppTimeFormats.dayStart(_selectedDate),
+          -(_selectedDate.weekday - 1),
+        );
+      case TimelineDimension.monthly:
+        return DateTime(_selectedDate.year, _selectedDate.month, 1);
+      case TimelineDimension.yearly:
+        return DateTime(_selectedDate.year, 1, 1);
+    }
   }
 
   Widget _buildMedalWall(ColorScheme cs, bool isWide) {
@@ -2739,12 +2823,12 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
     if (time == null) return _getDateRangeString();
     switch (_dimension) {
       case TimelineDimension.daily:
-        return DateFormat('HH:mm').format(time);
+        return _timelineDateFormat('HH:mm').format(time);
       case TimelineDimension.weekly:
       case TimelineDimension.monthly:
-        return DateFormat('MM/dd HH:mm').format(time);
+        return _timelineDateFormat('MM/dd HH:mm').format(time);
       case TimelineDimension.yearly:
-        return DateFormat('yyyy/MM/dd').format(time);
+        return _timelineDateFormat('yyyy/MM/dd').format(time);
     }
   }
 
@@ -2905,7 +2989,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
   }
 
   Widget _buildJournalEntry(TimelineEvent event, ColorScheme cs) {
-    final timeStr = DateFormat('HH:mm').format(event.timestamp);
+    final timeStr = _timelineDateFormat('HH:mm').format(event.timestamp);
     final isImportant =
         event.type == TimelineEventType.pomodoroEnd ||
         event.type == TimelineEventType.todoCompleted ||
@@ -3425,49 +3509,23 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
 
   Widget _buildFinanceSummaryCard(ColorScheme cs) {
     final summary = _financeSummary;
-    final categoryMap = {
-      for (final category in _financeCategories) category.uuid: category,
-    };
-    final topCategories =
-        summary.expenseByCategory.entries
-            .where((entry) => entry.value > 0)
-            .toList()
-          ..sort((a, b) => b.value.compareTo(a.value));
-    final maxCategory = topCategories.isEmpty ? 1 : topCategories.first.value;
-    final spendingDays = summary.expenseByDate.values
-        .where((value) => value > 0)
-        .length;
-    final averagePerDay = spendingDays == 0
+    final metrics = _financeCardMetrics;
+    final categoryMap = metrics.categoryByUuid;
+    final topCategories = metrics.topCategories;
+    final maxCategory = metrics.maxCategory;
+    final averagePerDay = metrics.spendingDays == 0
         ? 0
-        : summary.netExpenseMinor ~/ spendingDays;
-    final peakDay = summary.expenseByDate.entries
-        .where((entry) => entry.value > 0)
-        .fold<MapEntry<String, int>?>(
-          null,
-          (best, entry) =>
-              best == null || entry.value > best.value ? entry : best,
-        );
-    final expenseCount = _financeTransactions
-        .where(
-          (transaction) => transaction.type == FinanceTransactionType.expense,
-        )
-        .length;
-    final incomeCount = _financeTransactions
-        .where(
-          (transaction) => transaction.type == FinanceTransactionType.income,
-        )
-        .length;
-    final refundCount = _financeTransactions
-        .where(
-          (transaction) => transaction.type == FinanceTransactionType.refund,
-        )
-        .length;
-    final outflowTransactionCount = expenseCount + refundCount;
+        : summary.netExpenseMinor ~/ metrics.spendingDays;
+    final outflowTransactionCount = metrics.expenseCount + metrics.refundCount;
     final averagePerTransaction = outflowTransactionCount == 0
         ? 0
         : summary.netExpenseMinor ~/ outflowTransactionCount;
     final hasTransactions = summary.transactionCount > 0;
     final financeAccent = summary.netExpenseMinor > 0 ? cs.error : cs.primary;
+    final peakDay = metrics.peakDay;
+    final expenseCount = metrics.expenseCount;
+    final incomeCount = metrics.incomeCount;
+    final refundCount = metrics.refundCount;
 
     String categoryLabel(String uuid) {
       final category = categoryMap[uuid];
@@ -3585,7 +3643,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
               _buildRankItem(
                 0,
                 '最高支出日',
-                '${DateFormat('MM/dd').format(dateFromKey(peakDay.key))} · '
+                '${_timelineDateFormat('MM/dd').format(dateFromKey(peakDay.key))} · '
                     '${formatFinanceAmount(peakDay.value)}',
                 cs,
               ),
@@ -3645,6 +3703,53 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  _FinanceCardMetrics _createFinanceCardMetrics({
+    required FinanceSummary summary,
+    required List<FinanceTransaction> transactions,
+    required List<FinanceCategory> categories,
+  }) {
+    final categoryByUuid = <String, FinanceCategory>{
+      for (final category in categories) category.uuid: category,
+    };
+    final topCategories = summary.expenseByCategory.entries
+        .where((entry) => entry.value > 0)
+        .toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+    var spendingDays = 0;
+    MapEntry<String, int>? peakDay;
+    for (final entry in summary.expenseByDate.entries) {
+      if (entry.value <= 0) continue;
+      spendingDays++;
+      if (peakDay == null || entry.value > peakDay.value) peakDay = entry;
+    }
+
+    var expenseCount = 0;
+    var incomeCount = 0;
+    var refundCount = 0;
+    for (final transaction in transactions) {
+      switch (transaction.type) {
+        case FinanceTransactionType.expense:
+          expenseCount++;
+        case FinanceTransactionType.income:
+          incomeCount++;
+        case FinanceTransactionType.refund:
+          refundCount++;
+      }
+    }
+
+    return (
+      categoryByUuid: categoryByUuid,
+      topCategories: topCategories,
+      maxCategory: topCategories.isEmpty ? 1 : topCategories.first.value,
+      spendingDays: spendingDays,
+      peakDay: peakDay,
+      expenseCount: expenseCount,
+      incomeCount: incomeCount,
+      refundCount: refundCount,
     );
   }
 
@@ -5036,8 +5141,13 @@ class _SparklinePainter extends CustomPainter {
       ..strokeJoin = StrokeJoin.round;
 
     final path = Path();
-    final double maxVal = data.reduce((a, b) => a > b ? a : b);
-    final double minVal = data.reduce((a, b) => a < b ? a : b);
+    var maxVal = data.first;
+    var minVal = data.first;
+    for (var index = 1; index < data.length; index++) {
+      final value = data[index];
+      maxVal = maxVal > value ? maxVal : value;
+      minVal = minVal < value ? minVal : value;
+    }
     final double range = (maxVal - minVal).clamp(1.0, double.infinity);
 
     final double stepX = size.width / (data.length - 1);

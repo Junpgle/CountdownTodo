@@ -250,6 +250,9 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection>
 
   void _onSignal() {
     final signal = StorageService.scopedDataRefreshNotifier.value;
+    if (signal.affects(DataRefreshDomain.pomodoro)) {
+      _maintenancePending = true;
+    }
     final refreshesPlans =
         signal.affects(DataRefreshDomain.todos) ||
         signal.affects(DataRefreshDomain.planBlocks) ||
@@ -731,69 +734,161 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection>
     );
   }
 
-  void _agendaAdd([GlobalKey? sourceKey]) => unawaited(
-    _agendaNavigate(() async {
-      final action = await showAppModalBottomSheet<String>(
-        context: context,
-        showDragHandle: true,
-        builder: (context) => SafeArea(
+  void _agendaAdd([GlobalKey? sourceKey]) {
+    final snapshot = _agenda!;
+    unawaited(
+      _agendaNavigate(() async {
+        final action = await showAppModalBottomSheet<String>(
+          context: context,
+          showDragHandle: true,
+          builder: (context) => SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.event_available_outlined),
+                  title: const Text('新增固定日程'),
+                  subtitle: const Text('考试、会议、预约等事项'),
+                  onTap: () => Navigator.pop(context, 'fixed'),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.view_week_outlined),
+                  title: const Text('安排待办时间'),
+                  onTap: () => Navigator.pop(context, 'plan'),
+                ),
+              ],
+            ),
+          ),
+        );
+        if (!mounted || action == null) return;
+        // The menu temporarily makes this route non-current; check the captured
+        // account directly before acting on the selection.
+        await snapshot.identity.check();
+        if (!mounted || snapshot.day != _today) return;
+        if (action == 'plan') {
+          final page = TodoPlanScreen(
+            username: widget.username,
+            initialDate: _today,
+          );
+          if (sourceKey != null) {
+            await PageTransitions.pushFromRect(
+              context: context,
+              page: page,
+              sourceKey: sourceKey,
+              placeholderIcon: Icons.calendar_month_rounded,
+            );
+          } else {
+            await Navigator.of(context)
+                .push(PageTransitions.material(builder: (_) => page));
+          }
+        } else if (action == 'fixed') {
+          final page = AddTodoScreen(
+            initialMode: AddTodoInitialMode.fixedSchedule,
+            onTodoAdded: widget.onTodoAdded ?? (_) async {},
+            onFixedScheduleAdded: (item) =>
+                StorageService.saveFixedSchedules(widget.username, [item]),
+          );
+          if (sourceKey != null) {
+            await PageTransitions.pushFromRect(
+              context: context,
+              page: page,
+              sourceKey: sourceKey,
+              placeholderIcon: Icons.add_task_rounded,
+            );
+          } else {
+            await Navigator.of(context)
+                .push(PageTransitions.material(builder: (_) => page));
+          }
+        }
+        _maintenancePending = true;
+      }),
+    );
+  }
+
+  bool _canMarkAgendaPlanCompleted(PlanTodayRow row) {
+    if (row.entry.end <= 0 ||
+        row.entry.end > _now.millisecondsSinceEpoch ||
+        row.entry.id.startsWith('mapped_') ||
+        row.status < 0 ||
+        row.status >= TodoPlanStatus.values.length) {
+      return false;
+    }
+    return const {
+      TodoPlanStatus.planned,
+      TodoPlanStatus.reminded,
+      TodoPlanStatus.delayed,
+      TodoPlanStatus.missed,
+    }.contains(TodoPlanStatus.values[row.status]);
+  }
+
+  Future<void> _confirmAgendaPlanCompleted(PlanTodayRow row) => _navigate((
+    data,
+  ) async {
+    final route = ModalRoute.of(context);
+    final service = PlanManualCompletionService(clock: widget.clock);
+    final request = await service.prepare(widget.username, row.entry.id);
+    if (!mounted || !_active || route?.isCurrent == false) return;
+
+    final block = request.block;
+    final format = DateFormat('M月d日 HH:mm');
+    final confirmed = await showAppDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('确认这次规划已完成？'),
+        content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              ListTile(
-                leading: const Icon(Icons.event_available_outlined),
-                title: const Text('新增固定日程'),
-                subtitle: const Text('考试、会议、预约等事项'),
-                onTap: () => Navigator.pop(context, 'fixed'),
+              Text(
+                block.titleSnapshot?.trim().isNotEmpty == true
+                    ? block.titleSnapshot!
+                    : '这次规划',
               ),
-              ListTile(
-                leading: const Icon(Icons.view_week_outlined),
-                title: const Text('安排待办时间'),
-                onTap: () => Navigator.pop(context, 'plan'),
+              const SizedBox(height: 8),
+              Text(
+                '${format.format(DateTime.fromMillisecondsSinceEpoch(block.startTime))} — ${format.format(DateTime.fromMillisecondsSinceEpoch(block.endTime))}',
               ),
+              const SizedBox(height: 16),
+              const Text('仅将这次规划标为已完成。不会改变待办完成状态，也不会新增专注记录。'),
             ],
           ),
         ),
-      );
-      if (!mounted || !_active) return;
-      if (action == 'plan') {
-        final page = TodoPlanScreen(
-          username: widget.username,
-          initialDate: _today,
-        );
-        if (sourceKey != null) {
-          await PageTransitions.pushFromRect(
-            context: context,
-            page: page,
-            sourceKey: sourceKey,
-            placeholderIcon: Icons.calendar_month_rounded,
-          );
-        } else {
-          await Navigator.of(context)
-              .push(PageTransitions.material(builder: (_) => page));
-        }
-      } else if (action == 'fixed') {
-        final page = AddTodoScreen(
-          initialMode: AddTodoInitialMode.fixedSchedule,
-          onTodoAdded: widget.onTodoAdded ?? (_) async {},
-          onFixedScheduleAdded: (item) =>
-              StorageService.saveFixedSchedules(widget.username, [item]),
-        );
-        if (sourceKey != null) {
-          await PageTransitions.pushFromRect(
-            context: context,
-            page: page,
-            sourceKey: sourceKey,
-            placeholderIcon: Icons.add_task_rounded,
-          );
-        } else {
-          await Navigator.of(context)
-              .push(PageTransitions.material(builder: (_) => page));
-        }
-      }
-      if (action != null) _maintenancePending = true;
-    }),
-  );
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('返回核对'),
+          ),
+          FilledButton(
+            key: ValueKey('plan-manual-confirm-agenda-${row.entry.id}'),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('确认完成'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true ||
+        !mounted ||
+        !_active ||
+        route?.isCurrent == false) {
+      return;
+    }
+
+    await data.overview.identity.check();
+    final receipt = await service.confirm(request);
+    try {
+      await receipt.identity.check();
+    } catch (_) {
+      receipt.invalidate();
+      rethrow;
+    }
+    if (!mounted || !_active || route?.isCurrent == false) {
+      receipt.invalidate();
+      return;
+    }
+    _maintenancePending = true;
+    _manualHostKey.currentState?.present(receipt);
+  });
 
   Widget _agendaPlanActions(PlanTodayRow row, [GlobalKey? cardKey]) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
@@ -817,6 +912,15 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection>
                 : null,
             child: const Text('投入明细'),
           ),
+          if (_canMarkAgendaPlanCompleted(row))
+            FilledButton.tonalIcon(
+              key: ValueKey('plan-today-complete-${row.entry.id}'),
+              onPressed: _canOpen
+                  ? () => _confirmAgendaPlanCompleted(row)
+                  : null,
+              icon: const Icon(Icons.check_circle_outline),
+              label: const Text('标记为已完成'),
+            ),
           if (row.status == TodoPlanStatus.missed.index)
             TextButton.icon(
               key: ValueKey('plan-today-recover-${row.entry.id}'),
@@ -917,6 +1021,7 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection>
 
   String _status(PlanTodayRow row) {
     if (row.status == TodoPlanStatus.finished.index) return '已完成';
+    if (row.status == TodoPlanStatus.focusing.index) return '正在专注';
     if (row.status == TodoPlanStatus.missed.index) {
       return row.entry.end <= _now.millisecondsSinceEpoch ? '漏做' : '状态待核对';
     }

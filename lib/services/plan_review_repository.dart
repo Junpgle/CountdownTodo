@@ -135,6 +135,8 @@ class PlanReviewRepository {
   final DateTime Function()? clock;
   final void Function(String sql, int rowCount)? onQuery;
   static final _databaseTokens = Expando<int>();
+  static final _conflictFlagsByDatabase =
+      Expando<Future<Map<String, bool>>>('planReviewConflictFlags');
   static int _nextDatabaseToken = 0;
   DateTime get now => clock?.call() ?? DateTime.now();
 
@@ -191,20 +193,51 @@ class PlanReviewRepository {
     DateTime start,
     DateTime end,
     DateTime instant, {
+    required Database schemaOwner,
     String? planId,
     bool overlappingPlans = false,
   }) async {
-    final flags = <String, bool>{};
-    for (final table in ['todo_plan_blocks', 'pomodoro_records', 'time_logs']) {
-      flags[table] = (await _query(
-        db,
-        'PRAGMA table_info($table)',
-      )).any((row) => row['name'] == 'has_conflict');
-    }
+    final flags = await _conflictColumnFlags(db, schemaOwner);
     if (!end.isAfter(start) || CalendarDateMath.daysBetween(start, end) > 32) {
       throw ArgumentError('请选择有效的日、周或月范围');
     }
     return _ReviewSql(start, end, instant, flags, planId, overlappingPlans);
+  }
+
+  Future<Map<String, bool>> _conflictColumnFlags(
+    DatabaseExecutor tx,
+    Database schemaOwner,
+  ) async {
+    var pending = _conflictFlagsByDatabase[schemaOwner];
+    if (pending == null) {
+      pending = _readConflictColumnFlags(tx);
+      _conflictFlagsByDatabase[schemaOwner] = pending;
+    }
+    try {
+      return await pending;
+    } catch (error, stackTrace) {
+      if (identical(_conflictFlagsByDatabase[schemaOwner], pending)) {
+        _conflictFlagsByDatabase[schemaOwner] = null;
+      }
+      Error.throwWithStackTrace(error, stackTrace);
+    }
+  }
+
+  Future<Map<String, bool>> _readConflictColumnFlags(
+    DatabaseExecutor tx,
+  ) async {
+    final flags = <String, bool>{};
+    for (final table in const [
+      'todo_plan_blocks',
+      'pomodoro_records',
+      'time_logs',
+    ]) {
+      flags[table] = (await _query(
+        tx,
+        'PRAGMA table_info($table)',
+      )).any((row) => row['name'] == 'has_conflict');
+    }
+    return Map.unmodifiable(flags);
   }
 
   Future<PlanReviewOverview> _overview(
@@ -285,7 +318,13 @@ class PlanReviewRepository {
     final db = await _database(username);
     final instant = now;
     final result = await db.transaction((tx) async {
-      final sql = await _sql(tx, start, end, instant);
+      final sql = await _sql(
+        tx,
+        start,
+        end,
+        instant,
+        schemaOwner: db,
+      );
       return _overview(tx, sql, identity, instant);
     });
     await identity.check();
@@ -300,11 +339,18 @@ class PlanReviewRepository {
     final start = DateTime(instant.year, instant.month, instant.day);
     final end = DateTime(start.year, start.month, start.day + 1);
     final result = await db.transaction((tx) async {
-      final sql = await _sql(tx, start, end, instant);
+      final sql = await _sql(
+        tx,
+        start,
+        end,
+        instant,
+        schemaOwner: db,
+      );
       final overview = await _overview(tx, sql, identity, instant);
       final rows = await _query(tx, '''${sql.cte},
         card_rows AS (SELECT *, CASE
-          WHEN status=1 THEN 3 WHEN status=6 OR end<=${sql.instant} THEN 2
+          WHEN status=1 THEN 3 WHEN status=5 THEN 0
+          WHEN status=6 OR end<=${sql.instant} THEN 2
           WHEN start<=${sql.instant} THEN 0 ELSE 1 END priority
           FROM plans WHERE ${sql.planRange} AND valid=1 AND status NOT IN (3,7)),
         need AS (SELECT id FROM card_rows WHERE priority=2 ORDER BY start,id LIMIT 1),
@@ -332,11 +378,19 @@ class PlanReviewRepository {
     final start = DateTime(instant.year, instant.month, instant.day);
     final end = DateTime(start.year, start.month, start.day + 1);
     final result = await db.transaction((tx) async {
-      final sql = await _sql(tx, start, end, instant, overlappingPlans: true);
+      final sql = await _sql(
+        tx,
+        start,
+        end,
+        instant,
+        schemaOwner: db,
+        overlappingPlans: true,
+      );
       final overview = await _overview(tx, sql, identity, instant);
       final rows = await _query(tx, '''${sql.cte},
         agenda_rows AS (SELECT *, CASE
-          WHEN status=1 THEN 3 WHEN status=6 OR end<=${sql.instant} THEN 2
+          WHEN status=1 THEN 3 WHEN status=5 THEN 0
+          WHEN status=6 OR end<=${sql.instant} THEN 2
           WHEN start<=${sql.instant} THEN 0 ELSE 1 END priority
           FROM plans WHERE start<${sql.hi} AND end>${sql.lo}
             AND deleted=0 AND valid=1 AND status NOT IN (3,7)),
@@ -348,7 +402,8 @@ class PlanReviewRepository {
           p.id planId,p.todoId,p.status,1 verified,COALESCE(m.seconds,0) focusSeconds,
           p.priority,p.groupCount,
           (SELECT MIN(start) FROM agenda_rows WHERE priority=1) nextStart,
-          (SELECT MIN(end) FROM agenda_rows WHERE priority=0) nextEnd
+          (SELECT MIN(end) FROM agenda_rows
+            WHERE priority=0 AND end>${sql.instant}) nextEnd
         FROM ranked p LEFT JOIN measured m ON m.ownerPlan=p.id
         WHERE p.position<=5 ORDER BY p.priority,p.start,p.id''', sql.args);
       final todoIds = await _query(
@@ -390,7 +445,13 @@ class PlanReviewRepository {
     final db = await _database(username);
     final instant = now;
     final result = await db.transaction((tx) async {
-      final sql = await _sql(tx, start, end, instant);
+      final sql = await _sql(
+        tx,
+        start,
+        end,
+        instant,
+        schemaOwner: db,
+      );
       final overview = await _overview(tx, sql, identity, instant);
       final days = await _query(tx, '${sql.cte} ${sql.dayAggregate}', sql.args);
       final ranking = await _query(
@@ -441,6 +502,7 @@ class PlanReviewRepository {
         start,
         end,
         instant,
+        schemaOwner: db,
         planId: cumulative ? planId : null,
       );
       final where = [

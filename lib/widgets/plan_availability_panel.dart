@@ -21,6 +21,16 @@ import '../services/plan_availability_service.dart';
 import '../storage_service.dart';
 import '../utils/app_dialogs.dart';
 
+final Map<(String?, String), DateFormat> _planAvailabilityDateFormats = {};
+
+DateFormat _planAvailabilityDateFormat(String pattern) {
+  final locale = Intl.defaultLocale;
+  return _planAvailabilityDateFormats.putIfAbsent(
+    (locale, pattern),
+    () => DateFormat(pattern, locale),
+  );
+}
+
 class _PlanSplitRequest {
   const _PlanSplitRequest(this.query);
   final PlanAvailabilityQuery query;
@@ -91,6 +101,8 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
   int _start = 480, _end = 1320, _sequence = 0;
   bool _expanded = false, _loading = false, _appOnly = false;
   PlanAvailabilitySnapshot? _snapshot;
+  PlanAvailabilitySnapshot? _sortedBusySnapshot;
+  List<PlanBusyInterval>? _sortedBusyIntervals;
   PlanAvailabilityResult? _result;
   PlanAvailabilityException? _error;
   DateTime? _selectedStart;
@@ -111,6 +123,28 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
   String? _weeklyError;
   bool _weeklyIgnored = false;
   int _weeklySequence = 0;
+
+  void _setSnapshot(PlanAvailabilitySnapshot? snapshot) {
+    _snapshot = snapshot;
+    _sortedBusySnapshot = null;
+    _sortedBusyIntervals = null;
+  }
+
+  List<PlanBusyInterval> _busyInDisplayOrder(
+    PlanAvailabilitySnapshot snapshot,
+  ) {
+    if (identical(_sortedBusySnapshot, snapshot)) {
+      return _sortedBusyIntervals!;
+    }
+    final busy = snapshot.busy;
+    final sorted = busy.length < 2
+        ? busy
+        : (busy.toList()..sort((a, b) => a.start.compareTo(b.start)));
+    _sortedBusySnapshot = snapshot;
+    _sortedBusyIntervals = sorted;
+    return sorted;
+  }
+
   Future<void> _loadWeekly({bool invalidate = true}) async {
     final previousKey = _weeklyRules?.fingerprint, previousError = _weeklyError;
     final sequence = ++_weeklySequence, username = widget.username;
@@ -477,7 +511,7 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
     if (changed || dateChanged || minutesChanged) {
       _sequence++;
       _selectedStart = null;
-      _snapshot = null;
+      _setSnapshot(null);
       _result = null;
       _loading = false;
       _error = null;
@@ -527,7 +561,7 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
     ++_sequence;
     setState(() {
       _selectedStart = null;
-      _snapshot = null;
+      _setSnapshot(null);
       _result = null;
       _error = null;
       _loading = false;
@@ -793,7 +827,7 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
     setState(() {
       _loading = true;
       _selectedStart = null;
-      _snapshot = null;
+      _setSnapshot(null);
       _result = null;
       _error = null;
     });
@@ -827,7 +861,7 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
     setState(() {
       _loading = true;
       _selectedStart = null;
-      _snapshot = null;
+      _setSnapshot(null);
       _result = null;
       _error = null;
     });
@@ -842,7 +876,7 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
               ));
       if (!mounted || sequence != _sequence) return;
       setState(() {
-        _snapshot = snapshot;
+        _setSnapshot(snapshot);
         _result = PlanAvailabilityService.find(query, snapshot, now: _now);
       });
       if (selectFirst &&
@@ -957,14 +991,14 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '${DateFormat('HH:mm').format(slot.start)}–${DateFormat('HH:mm').format(slot.end)}',
+                    '${_planAvailabilityDateFormat('HH:mm').format(slot.start)}–${_planAvailabilityDateFormat('HH:mm').format(slot.end)}',
                     style: theme.textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.w600,
                     ),
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    '${DateFormat('MM-dd').format(slot.start)} · ${slot.minutes} 分钟${_selectedStart == slot.start ? ' · 已选用' : ''}',
+                    '${_planAvailabilityDateFormat('MM-dd').format(slot.start)} · ${slot.minutes} 分钟${_selectedStart == slot.start ? ' · 已选用' : ''}',
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: colors.onSurfaceVariant,
                     ),
@@ -1176,7 +1210,7 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
       _enabledAvoid
         ..clear()
         ..addAll(query.avoidWindows);
-      _snapshot = selection.snapshot;
+      _setSnapshot(selection.snapshot);
       _result = PlanAvailabilityService.find(
         query,
         selection.snapshot,
@@ -1505,7 +1539,7 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
                           Icons.calendar_today_outlined,
                           size: 18,
                         ),
-                        label: Text(DateFormat('yyyy-MM-dd').format(_date)),
+                        label: Text(_planAvailabilityDateFormat('yyyy-MM-dd').format(_date)),
                       ),
                       TextButton(
                         key: const ValueKey('plan-window-start'),
@@ -1683,8 +1717,8 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
                         padding: const EdgeInsets.only(top: 6),
                         child: Text(
                           _snapshot!.todo.isDateOnly
-                              ? '须在 ${DateFormat('MM-dd').format(_snapshot!.todo.dueDate!)} 当天结束前完成'
-                              : '须在 ${DateFormat('MM-dd HH:mm').format(_snapshot!.todo.dueDate!)} 截止前完成',
+                              ? '须在 ${_planAvailabilityDateFormat('MM-dd').format(_snapshot!.todo.dueDate!)} 当天结束前完成'
+                              : '须在 ${_planAvailabilityDateFormat('MM-dd HH:mm').format(_snapshot!.todo.dueDate!)} 截止前完成',
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: colors.onSurfaceVariant,
                           ),
@@ -1701,16 +1735,13 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
                         ),
                         children: [
                           for (final item
-                              in (_snapshot!.busy.toList()..sort(
-                                    (a, b) => a.start.compareTo(b.start),
-                                  ))
-                                  .take(50))
+                              in _busyInDisplayOrder(_snapshot!).take(50))
                             Padding(
                               padding: const EdgeInsets.symmetric(vertical: 6),
                               child: Align(
                                 alignment: Alignment.centerLeft,
                                 child: Text(
-                                  '${_sourceLabel(item.source)} · ${DateFormat('MM-dd HH:mm').format(item.start)}–${DateFormat('MM-dd HH:mm').format(item.end)}',
+                                  '${_sourceLabel(item.source)} · ${_planAvailabilityDateFormat('MM-dd HH:mm').format(item.start)}–${_planAvailabilityDateFormat('MM-dd HH:mm').format(item.end)}',
                                   style: theme.textTheme.bodySmall,
                                 ),
                               ),

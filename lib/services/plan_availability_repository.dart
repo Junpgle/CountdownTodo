@@ -177,9 +177,7 @@ class PlanAvailabilityRepository {
     String settingsFingerprint = '',
     int calendarRevision = 0,
   }) {
-    final todo = local.todos
-        .where((item) => item.id == query.todoId)
-        .firstOrNull;
+    final todo = local.findTodo(query.todoId);
     if (todo == null || todo.isDeleted || todo.isDone) {
       throw const PlanAvailabilityException('待办已完成或删除，请重新选择');
     }
@@ -201,10 +199,18 @@ class PlanAvailabilityRepository {
     _LocalAvailabilityData local, {
     List<PlanBusyInterval> external = const [],
   }) {
-    final busy = <PlanBusyInterval>[...external];
+    final busy = <PlanBusyInterval>[];
+    for (final item in external) {
+      if (item.end.isAfter(query.sourceStart) &&
+          item.start.isBefore(query.sourceEnd)) {
+        busy.add(item);
+      }
+    }
     final unknown = <String>[];
     final dateFormat = DateFormat('yyyy-MM-dd');
     final day = dateFormat.format(query.dayStart);
+    final sourceStartMs = query.sourceStart.millisecondsSinceEpoch;
+    final sourceEndMs = query.sourceEnd.millisecondsSinceEpoch;
     void add(
       DateTime start,
       DateTime end,
@@ -230,6 +236,11 @@ class PlanAvailabilityRepository {
     }
 
     final courseIds = <String>{};
+    final sourceStartDay = DateTime(
+      query.sourceStart.year,
+      query.sourceStart.month,
+      query.sourceStart.day,
+    );
     for (final course in local.courses) {
       if (course.isDeleted || !courseIds.add(course.uuid)) continue;
       DateTime date;
@@ -239,11 +250,6 @@ class PlanAvailabilityRepository {
         unknown.add('课程“${course.courseName}”：日期待定');
         continue;
       }
-      final sourceStartDay = DateTime(
-        query.sourceStart.year,
-        query.sourceStart.month,
-        query.sourceStart.day,
-      );
       if (date.isBefore(sourceStartDay) || !date.isBefore(query.sourceEnd)) {
         continue;
       }
@@ -291,16 +297,13 @@ class PlanAvailabilityRepository {
         item,
       );
     }
-    final plannedTodoIds = local.blocks
-        .where(
-          (item) =>
-              !item.isDeleted &&
-              item.endTime > query.sourceStart.millisecondsSinceEpoch &&
-              item.startTime < query.sourceEnd.millisecondsSinceEpoch,
-        )
-        .map((item) => item.todoId)
-        .toSet();
+    final plannedTodoIds = <String>{};
     for (final item in local.blocks) {
+      if (!item.isDeleted &&
+          item.endTime > sourceStartMs &&
+          item.startTime < sourceEndMs) {
+        plannedTodoIds.add(item.todoId);
+      }
       if (item.id == query.excludeBlockId ||
           !PlanAvailabilityService.occupies(item)) {
         continue;
@@ -324,30 +327,33 @@ class PlanAvailabilityRepository {
       );
     }
     for (final item in local.todos) {
-      if (item.isDeleted ||
-          item.isDone ||
-          !item.hasLegacyTimeRange ||
-          // Match the planning calendar's legacy projection. A cross-day
-          // deadline, zero placeholder or physical creation fallback does not
-          // establish a continuous execution reservation.
-          (item.createdDate ?? 0) <= 0 ||
-          item.createdDate == item.createdAt ||
-          DateTime(
-                item.effectiveStartTime.year,
-                item.effectiveStartTime.month,
-                item.effectiveStartTime.day,
-              ) !=
-              DateTime(
-                item.dueDate!.year,
-                item.dueDate!.month,
-                item.dueDate!.day,
-              ) ||
+      if (item.isDeleted || item.isDone) continue;
+      final createdDate = item.createdDate;
+      final dueDate = item.dueDate;
+      if (createdDate == null ||
+          dueDate == null ||
+          createdDate <= 0 ||
+          createdDate == item.createdAt ||
           plannedTodoIds.contains(item.id)) {
         continue;
       }
+
+      final start = item.effectiveStartTime;
+      final end = dueDate.toLocal();
+      if (item.isAllDay ||
+          TodoItem.looksLikeLegacyDateOnlyRange(start, end) ||
+          !end.isAfter(start) ||
+          // Match the planning calendar's legacy projection. A cross-day
+          // deadline, zero placeholder or physical creation fallback does not
+          // establish a continuous execution reservation.
+          start.year != dueDate.year ||
+          start.month != dueDate.month ||
+          start.day != dueDate.day) {
+        continue;
+      }
       add(
-        item.effectiveStartTime,
-        item.dueDate!.toLocal(),
+        start,
+        end,
         PlanBusySource.legacyTodo,
         item.id,
         item.title,
@@ -356,13 +362,7 @@ class PlanAvailabilityRepository {
     }
     return PlanAvailabilityDaySources(
       date: query.dayStart,
-      busy: List.unmodifiable(
-        busy.where(
-          (item) =>
-              item.end.isAfter(query.sourceStart) &&
-              item.start.isBefore(query.sourceEnd),
-        ),
-      ),
+      busy: List.unmodifiable(busy),
       unknownTimes: List.unmodifiable(unknown),
     );
   }
@@ -874,7 +874,7 @@ class PlanAvailabilityRepository {
 }
 
 class _LocalAvailabilityData {
-  const _LocalAvailabilityData({
+  _LocalAvailabilityData({
     required this.courses,
     required this.courseFingerprint,
     required this.todos,
@@ -886,6 +886,24 @@ class _LocalAvailabilityData {
   final List<TodoItem> todos;
   final List<FixedScheduleItem> schedules;
   final List<TodoPlanBlock> blocks;
+  String? _cachedTodoId;
+  TodoItem? _cachedTodo;
+  bool _hasCachedTodo = false;
+
+  TodoItem? findTodo(String id) {
+    if (_hasCachedTodo && _cachedTodoId == id) return _cachedTodo;
+    for (final todo in todos) {
+      if (todo.id != id) continue;
+      _cachedTodo = todo;
+      _cachedTodoId = id;
+      _hasCachedTodo = true;
+      return todo;
+    }
+    _cachedTodo = null;
+    _cachedTodoId = id;
+    _hasCachedTodo = true;
+    return null;
+  }
 }
 
 class _AvailabilityReadSources {

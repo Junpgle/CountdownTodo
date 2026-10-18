@@ -97,17 +97,29 @@ class TimelineRangeStatistics {
       );
 
   TimelineRecurrenceSeriesStatistics? get bestRecurrenceSeries {
-    final resolved =
-        recurrenceSeries.where((series) => series.resolvedCount > 0).toList();
-    if (resolved.isEmpty) return null;
-    resolved.sort((a, b) {
-      final rate = b.completionRate.compareTo(a.completionRate);
-      if (rate != 0) return rate;
-      final completed = b.completedCount.compareTo(a.completedCount);
-      if (completed != 0) return completed;
-      return b.longestStreak.compareTo(a.longestStreak);
-    });
-    return resolved.first;
+    TimelineRecurrenceSeriesStatistics? best;
+    for (final series in recurrenceSeries) {
+      if (series.resolvedCount <= 0) continue;
+      final currentBest = best;
+      if (currentBest == null) {
+        best = series;
+        continue;
+      }
+      final rate = currentBest.completionRate.compareTo(series.completionRate);
+      if (rate != 0) {
+        if (rate < 0) best = series;
+        continue;
+      }
+      final completed = currentBest.completedCount.compareTo(
+        series.completedCount,
+      );
+      if (completed != 0) {
+        if (completed < 0) best = series;
+        continue;
+      }
+      if (currentBest.longestStreak < series.longestStreak) best = series;
+    }
+    return best;
   }
 }
 
@@ -134,13 +146,6 @@ class TimelineStatisticsService {
             record.startTime >= startMs &&
             record.startTime < endMs)
         .toList();
-    final logs = timeLogs
-        .where((log) =>
-            !log.isDeleted &&
-            log.startTime >= startMs &&
-            log.startTime < endMs &&
-            log.endTime > log.startTime)
-        .toList();
     final blocks = planBlocks
         .where((block) =>
             !block.isDeleted &&
@@ -152,13 +157,16 @@ class TimelineStatisticsService {
       for (final tag in tags) tag.uuid: tag.name,
     };
     final focusByTag = <String, int>{};
+    final seenTagUuids = <String>{};
     void addTaggedDuration(List<String> tagUuids, int seconds) {
       if (seconds <= 0) return;
       if (tagUuids.isEmpty) {
         focusByTag['未分类'] = (focusByTag['未分类'] ?? 0) + seconds;
         return;
       }
-      for (final uuid in tagUuids.toSet()) {
+      seenTagUuids.clear();
+      for (final uuid in tagUuids) {
+        if (!seenTagUuids.add(uuid)) continue;
         final name = tagNames[uuid]?.trim();
         final displayName = name == null || name.isEmpty ? '已删除标签' : name;
         focusByTag[displayName] = (focusByTag[displayName] ?? 0) + seconds;
@@ -167,6 +175,7 @@ class TimelineStatisticsService {
 
     var pomodoroSeconds = 0;
     var timeLogSeconds = 0;
+    var timeLogCount = 0;
     var pauseSeconds = 0;
     var pauseCount = 0;
     for (final record in records) {
@@ -179,7 +188,14 @@ class TimelineStatisticsService {
           : ((record.totalPauseSeconds ?? 0) > 0 ? 1 : 0);
       addTaggedDuration(record.tagUuids, duration);
     }
-    for (final log in logs) {
+    for (final log in timeLogs) {
+      if (log.isDeleted ||
+          log.startTime < startMs ||
+          log.startTime >= endMs ||
+          log.endTime <= log.startTime) {
+        continue;
+      }
+      timeLogCount++;
       final seconds = math.max(0, (log.endTime - log.startTime) ~/ 1000);
       timeLogSeconds += seconds;
       addTaggedDuration(log.tagUuids, seconds);
@@ -231,7 +247,7 @@ class TimelineStatisticsService {
       pomodoroFocusSeconds: pomodoroSeconds,
       timeLogSeconds: timeLogSeconds,
       pomodoroCount: records.length,
-      timeLogCount: logs.length,
+      timeLogCount: timeLogCount,
       pauseSeconds: pauseSeconds,
       pauseCount: pauseCount,
       plannedMinutes:

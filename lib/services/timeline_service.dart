@@ -20,6 +20,15 @@ import 'storage/habit_storage.dart';
 
 class TimelineService {
   static final TimelineService instance = TimelineService._();
+  static final RegExp _homeworkTitlePattern =
+      RegExp(r'作业|练习|刷题|homework|lab|实验|课后');
+  static final RegExp _examTitlePattern =
+      RegExp(r'考试|测验|考证|期中|期末|exam|test|背诵|复习');
+  static final RegExp _titleWordDelimiterPattern =
+      RegExp(r'[\s、，,。（）()\[\]\-—_]');
+  static final RegExp _titleWordStopPattern =
+      RegExp(r'的|了|和|是|就|都|而|及|与|着|或|个|项|次');
+
   TimelineService._();
 
   Future<List<TimelineEvent>> getEventsForDay(
@@ -483,38 +492,66 @@ class TimelineService {
       );
 
       // 4. Pomodoro Details (Quality metrics)
-      final pomodoroDetailStats = await db.rawQuery(
-        'SELECT COUNT(*) as total, '
-        'SUM(CASE WHEN status = \'interrupted\' AND planned_duration > 0 AND actual_duration < planned_duration THEN 1 ELSE 0 END) as interrupted '
+      final dailyFocusRows = await db.rawQuery(
+        'WITH focus_rows AS ('
+        'SELECT strftime(\'%Y-%m-%d\', datetime(start_time / 1000, \'unixepoch\', \'localtime\')) as day, '
+        'COALESCE(actual_duration, planned_duration, 0) as duration, '
+        'COALESCE(actual_duration, planned_duration, 0) as pomodoro_duration, '
+        'NULL as time_log_duration_ms, 0 as time_log_count, '
+        '1 as pomodoro_record_count, '
+        'CASE WHEN status = \'interrupted\' AND planned_duration > 0 '
+        'AND actual_duration < planned_duration THEN 1 ELSE 0 END as interrupted_pomodoro_count '
         'FROM pomodoro_records '
-        'WHERE is_deleted = 0 AND start_time >= ? AND start_time < ?',
-        [startMs, endMs],
+        'WHERE is_deleted = 0 AND start_time >= ? AND start_time < ? '
+        'UNION ALL '
+        'SELECT strftime(\'%Y-%m-%d\', datetime(start_time / 1000, \'unixepoch\', \'localtime\')) as day, '
+        '(end_time - start_time) / 1000 as duration, NULL as pomodoro_duration, '
+        'MAX(0, end_time - start_time) as time_log_duration_ms, 1 as time_log_count, '
+        '0 as pomodoro_record_count, 0 as interrupted_pomodoro_count '
+        'FROM time_logs '
+        'WHERE is_deleted = 0 AND start_time >= ? AND start_time < ?'
+        ') SELECT day, SUM(duration) as total_dur, '
+        'COALESCE(SUM(pomodoro_duration), 0) as pomodoro_seconds, '
+        'COALESCE(SUM(CAST(duration AS INTEGER)), 0) as total_seconds, '
+        'COALESCE(SUM(CASE WHEN CAST(duration AS INTEGER) >= 3600 THEN 1 ELSE 0 END), 0) as deep_work_count, '
+        'COALESCE(SUM(time_log_duration_ms), 0) as time_log_duration_ms, '
+        'COALESCE(SUM(time_log_count), 0) as time_log_count, '
+        'COALESCE(SUM(pomodoro_record_count), 0) as pomodoro_record_count, '
+        'COALESCE(SUM(interrupted_pomodoro_count), 0) as interrupted_pomodoro_count, '
+        'COUNT(*) as entry_count '
+        'FROM focus_rows GROUP BY day ORDER BY day ASC',
+        [startMs, endMs, startMs, endMs],
       );
-      final int totalPomos = pomodoroDetailStats.first['total'] as int? ?? 0;
-      final int interruptedPomos =
-          pomodoroDetailStats.first['interrupted'] as int? ?? 0;
-      final double interruptionRate = totalPomos > 0
+      final trendRows = dailyFocusRows;
+      num pomodoroFocusSecondsTotal = 0;
+      var totalSecs = 0;
+      var deepWork = 0;
+      var totalPomos = 0;
+      var interruptedPomos = 0;
+      var focusEntryCount = 0;
+      var timeLogCount = 0;
+      var timeLogDurationMs = 0;
+      for (final row in dailyFocusRows) {
+        pomodoroFocusSecondsTotal +=
+            (row['pomodoro_seconds'] as num? ?? 0);
+        totalSecs += (row['total_seconds'] as num? ?? 0).toInt();
+        deepWork += (row['deep_work_count'] as num? ?? 0).toInt();
+        totalPomos += (row['pomodoro_record_count'] as num? ?? 0).toInt();
+        interruptedPomos +=
+            (row['interrupted_pomodoro_count'] as num? ?? 0).toInt();
+        focusEntryCount += (row['entry_count'] as num? ?? 0).toInt();
+        timeLogCount += (row['time_log_count'] as num? ?? 0).toInt();
+        timeLogDurationMs +=
+            (row['time_log_duration_ms'] as num? ?? 0).toInt();
+      }
+      final pomodoroFocusSeconds = pomodoroFocusSecondsTotal.toInt();
+      final timeLogSeconds = timeLogDurationMs ~/ 1000;
+      final interruptionRate = totalPomos > 0
           ? interruptedPomos / totalPomos
           : 0.0;
-      final pomodoroDurationRows = await db.rawQuery(
-        'SELECT COALESCE(SUM(COALESCE(actual_duration, planned_duration, 0)), 0) as total '
-        'FROM pomodoro_records '
-        'WHERE is_deleted = 0 AND start_time >= ? AND start_time < ?',
-        [startMs, endMs],
-      );
-      final pomodoroFocusSeconds =
-          (pomodoroDurationRows.first['total'] as num? ?? 0).toInt();
-
-      final timeLogStats = await db.rawQuery(
-        'SELECT COUNT(*) as total, '
-        'COALESCE(SUM(MAX(0, end_time - start_time)), 0) as duration_ms '
-        'FROM time_logs '
-        'WHERE is_deleted = 0 AND start_time >= ? AND start_time < ?',
-        [startMs, endMs],
-      );
-      final timeLogCount = (timeLogStats.first['total'] as num? ?? 0).toInt();
-      final timeLogSeconds =
-          (timeLogStats.first['duration_ms'] as num? ?? 0).toInt() ~/ 1000;
+      final avgPomo = focusEntryCount > 0
+          ? (totalSecs / focusEntryCount) / 60
+          : 0.0;
 
       // 4b. Task Quality (Overdue vs Early)
       final taskQualityStats = await db.rawQuery(
@@ -564,16 +601,6 @@ class TimelineService {
           .toList();
 
       // 6. Highlights - Daily Trend for Sparkline
-      final trendRows = await db.rawQuery(
-        'SELECT day, SUM(dur) as total_dur FROM ('
-        'SELECT strftime(\'%Y-%m-%d\', datetime(start_time / 1000, \'unixepoch\', \'localtime\')) as day, COALESCE(actual_duration, planned_duration, 0) as dur FROM pomodoro_records '
-        'WHERE is_deleted = 0 AND start_time >= ? AND start_time < ? '
-        'UNION ALL '
-        'SELECT strftime(\'%Y-%m-%d\', datetime(start_time / 1000, \'unixepoch\', \'localtime\')) as day, (end_time - start_time) / 1000 as dur FROM time_logs '
-        'WHERE is_deleted = 0 AND start_time >= ? AND start_time < ?'
-        ') GROUP BY day ORDER BY day ASC',
-        [startMs, endMs, startMs, endMs],
-      );
       List<double> dailyTrend = trendRows
           .map((r) => (r['total_dur'] as num? ?? 0).toDouble() / 60)
           .toList();
@@ -646,25 +673,6 @@ class TimelineService {
       }
 
       // 8. Focus Depth & Avg
-      final pomoAll = await db.rawQuery(
-        'SELECT dur FROM ('
-        'SELECT COALESCE(actual_duration, planned_duration, 0) as dur FROM pomodoro_records WHERE is_deleted = 0 AND start_time >= ? AND start_time < ? '
-        'UNION ALL '
-        'SELECT (end_time - start_time) / 1000 as dur FROM time_logs WHERE is_deleted = 0 AND start_time >= ? AND start_time < ?'
-        ')',
-        [startMs, endMs, startMs, endMs],
-      );
-      int totalSecs = 0;
-      int deepWork = 0;
-      for (var row in pomoAll) {
-        final dur = (row['dur'] as num? ?? 0).toInt();
-        totalSecs += dur;
-        if (dur >= 60 * 60) deepWork++;
-      }
-      final avgPomo = pomoAll.isNotEmpty
-          ? (totalSecs / pomoAll.length) / 60
-          : 0.0;
-
       // 9. Task & Subject Distribution (Combine Todos & Pomodoros for better signal)
       final List<String> allTitles = [];
 
@@ -696,9 +704,10 @@ class TimelineService {
       int homework = 0;
       int exam = 0;
       Map<String, int> subjectCounts = {};
+      Map<String, int> examSubjectDist = {};
       Map<String, int> wordFrequency = {};
 
-      final Map<String, List<String>> categories = {
+      const Map<String, List<String>> categories = {
         '系统/硬件': [
           '计组',
           'cpu',
@@ -931,22 +940,24 @@ class TimelineService {
         if (sub.trim().isEmpty) continue;
 
         // Homework/Exam tagging
-        if (RegExp(r'作业|练习|刷题|homework|lab|实验|课后').hasMatch(sub)) homework++;
-        if (RegExp(r'考试|测验|考证|期中|期末|exam|test|背诵|复习').hasMatch(sub)) exam++;
+        if (_homeworkTitlePattern.hasMatch(sub)) homework++;
+        final isExam = _examTitlePattern.hasMatch(sub);
+        if (isExam) exam++;
 
         // Word frequency (Split by common delimiters)
-        final words = sub.split(RegExp(r'[\s、，,。（）()\[\]\-—_]'));
+        final words = sub.split(_titleWordDelimiterPattern);
         for (var w in words) {
-          if (w.length > 1 &&
-              !RegExp(r'的|了|和|是|就|都|而|及|与|着|或|个|项|次').hasMatch(w)) {
+          if (w.length > 1 && !_titleWordStopPattern.hasMatch(w)) {
             wordFrequency[w] = (wordFrequency[w] ?? 0) + 1;
           }
         }
 
         bool matched = false;
+        String? matchedCategory;
         for (var entry in categories.entries) {
           if (entry.value.any((k) => sub.contains(k))) {
             subjectCounts[entry.key] = (subjectCounts[entry.key] ?? 0) + 1;
+            matchedCategory = entry.key;
             matched = true;
             break;
           }
@@ -955,35 +966,16 @@ class TimelineService {
           // If not matched, we will try to use the top frequent word later
           subjectCounts['其他'] = (subjectCounts['其他'] ?? 0) + 1;
         }
+        if (isExam) {
+          final category = matchedCategory ?? '其他';
+          examSubjectDist[category] = (examSubjectDist[category] ?? 0) + 1;
+        }
       }
 
       final hwRatio = totalItems > 0 ? (homework / totalItems) : 0.0;
       final exRatio = totalItems > 0 ? (exam / totalItems) : 0.0;
 
-      // Calculate Exam Subject Distribution
-      Map<String, int> examSubjectDist = {};
-      for (var title in allTitles) {
-        final sub = title.toLowerCase();
-        if (RegExp(r'考试|测验|考证|期中|期末|exam|test|背诵|复习').hasMatch(sub)) {
-          bool matched = false;
-          for (var entry in categories.entries) {
-            if (entry.value.any((k) => sub.contains(k))) {
-              examSubjectDist[entry.key] =
-                  (examSubjectDist[entry.key] ?? 0) + 1;
-              matched = true;
-              break;
-            }
-          }
-          if (!matched) {
-            examSubjectDist['其他'] = (examSubjectDist['其他'] ?? 0) + 1;
-          }
-        }
-      }
-
       // Dynamic Category Elevation: If 'Other' has many items, extract common keywords
-      final sortedWords = wordFrequency.entries.toList()
-        ..sort((a, b) => b.value.compareTo(a.value));
-
       Map<String, double> subjectDist = {};
       int othersCount = subjectCounts['其他'] ?? 0;
 
@@ -996,18 +988,16 @@ class TimelineService {
 
       // Distribute 'Other' into dynamic keywords if possible
       if (othersCount > 0 && totalItems > 0) {
+        final sortedWords = wordFrequency.entries.toList()
+          ..sort((a, b) => b.value.compareTo(a.value));
+        final categoryKeywords = categories.values
+            .expand((keywords) => keywords)
+            .toSet();
         int distributed = 0;
         for (var wordEntry in sortedWords) {
           // If a word is frequent and NOT part of existing category keywords
-          bool isExisting = false;
-          for (var list in categories.values) {
-            if (list.contains(wordEntry.key)) {
-              isExisting = true;
-              break;
-            }
-          }
-
-          if (!isExisting && wordEntry.value > 1) {
+          if (!categoryKeywords.contains(wordEntry.key) &&
+              wordEntry.value > 1) {
             final dynamicLabel = wordEntry.key;
             subjectDist[dynamicLabel] =
                 (subjectDist[dynamicLabel] ?? 0) +
@@ -1142,7 +1132,7 @@ class TimelineService {
         countdownEditedCount: 0,
         countdownCompletedCount: cdStats.first['completed'] as int? ?? 0,
         attendedCourses: [],
-        pomodoroCount: pomoAll.length,
+        pomodoroCount: focusEntryCount,
         longestPomodoroMinutes: topPomo != null
             ? (topPomo['actual_duration'] as num? ?? 0).toInt() ~/ 60
             : 0,

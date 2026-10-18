@@ -38,7 +38,14 @@ abstract final class PlanAvailabilityService {
     PlanAvailabilityQuery query,
     TodoItem? todo,
     DateTime now,
-  ) {
+  ) => _invalidReason(query, todo, now);
+
+  static String? _invalidReason(
+    PlanAvailabilityQuery query,
+    TodoItem? todo,
+    DateTime now, {
+    void Function(DateTime start, DateTime end)? onWeeklyWindow,
+  }) {
     if (todo == null || todo.id != query.todoId) return '请选择待办项目';
     if (todo.isDeleted || todo.isDone) return '该待办已完成或删除，请重新选择';
     if (query.windowStart < 0 ||
@@ -75,8 +82,9 @@ abstract final class PlanAvailabilityService {
     if (query.weekly?.active ?? false) {
       try {
         for (final w in query.weekly!.rules!.days[query.date.weekday - 1]) {
-          PlanWeeklyRules.boundary(query.date, w.start);
-          PlanWeeklyRules.boundary(query.date, w.end);
+          final windowStart = PlanWeeklyRules.boundary(query.date, w.start);
+          final windowEnd = PlanWeeklyRules.boundary(query.date, w.end);
+          onWeeklyWindow?.call(windowStart, windowEnd);
         }
       } on FormatException catch (error) {
         return error.message;
@@ -102,14 +110,28 @@ abstract final class PlanAvailabilityService {
   ) {
     final sorted = blocked.where((b) => b.end.isAfter(b.start)).toList()
       ..sort((a, b) => a.start.compareTo(b.start));
+    return _subtractMerged(input, _mergeSortedBlocked(sorted));
+  }
+
+  static List<PlanTimeSlot> _mergeSortedBlocked(
+    Iterable<PlanTimeSlot> sorted,
+  ) {
     final merged = <PlanTimeSlot>[];
     for (final b in sorted) {
+      if (!b.end.isAfter(b.start)) continue;
       if (merged.isEmpty || b.start.isAfter(merged.last.end)) {
         merged.add(b);
       } else if (b.end.isAfter(merged.last.end)) {
         merged[merged.length - 1] = PlanTimeSlot(merged.last.start, b.end);
       }
     }
+    return merged;
+  }
+
+  static List<PlanTimeSlot> _subtractMerged(
+    List<PlanTimeSlot> input,
+    List<PlanTimeSlot> merged,
+  ) {
     final result = <PlanTimeSlot>[];
     var i = 0;
     for (final gap in input) {
@@ -137,7 +159,15 @@ abstract final class PlanAvailabilityService {
     PlanAvailabilitySnapshot snapshot, {
     required DateTime now,
   }) {
-    final invalid = invalidReason(query, snapshot.todo, now);
+    final weeklyWindows = <PlanTimeSlot>[];
+    final invalid = _invalidReason(
+      query,
+      snapshot.todo,
+      now,
+      onWeeklyWindow: (windowStart, windowEnd) {
+        weeklyWindows.add(PlanTimeSlot(windowStart, windowEnd));
+      },
+    );
     if (invalid != null) {
       return PlanAvailabilityDiagnostics(
         PlanAvailabilityReason.invalid,
@@ -190,8 +220,7 @@ abstract final class PlanAvailabilityService {
     stage('当前时刻与截止裁剪后', gaps);
     final weekly = query.weekly;
     if (weekly?.active == true) {
-      final windows = weekly!.rules!.days[query.date.weekday - 1];
-      if (windows.isEmpty) {
+      if (weeklyWindows.isEmpty) {
         stage('每周可安排时间后', []);
         return PlanAvailabilityDiagnostics(
           PlanAvailabilityReason.weeklyNone,
@@ -199,19 +228,19 @@ abstract final class PlanAvailabilityService {
           stages: stages,
         );
       }
-      gaps = [
-        for (final w in windows)
-          if (PlanWeeklyRules.boundary(query.date, w.end).isAfter(start) &&
-              PlanWeeklyRules.boundary(query.date, w.start).isBefore(end))
-            PlanTimeSlot(
-              PlanWeeklyRules.boundary(query.date, w.start).isAfter(start)
-                  ? PlanWeeklyRules.boundary(query.date, w.start)
-                  : start,
-              PlanWeeklyRules.boundary(query.date, w.end).isBefore(end)
-                  ? PlanWeeklyRules.boundary(query.date, w.end)
-                  : end,
-            ),
-      ];
+      final availableWindows = <PlanTimeSlot>[];
+      for (final window in weeklyWindows) {
+        final windowStart = window.start;
+        final windowEnd = window.end;
+        if (!windowEnd.isAfter(start) || !windowStart.isBefore(end)) continue;
+        availableWindows.add(
+          PlanTimeSlot(
+            windowStart.isAfter(start) ? windowStart : start,
+            windowEnd.isBefore(end) ? windowEnd : end,
+          ),
+        );
+      }
+      gaps = availableWindows;
     }
     stage('每周可安排时间后', gaps);
     if (gaps.isEmpty) {
@@ -223,20 +252,30 @@ abstract final class PlanAvailabilityService {
     }
     gaps = _subtract(gaps, query.avoidWindows.map((w) => w.onDate(query.date)));
     stage('避让后', gaps);
-    gaps = _subtract(
-      gaps,
-      snapshot.busy.map((b) => PlanTimeSlot(b.start, b.end)),
-    );
+    final sortedBusy = snapshot.busy
+        .where((item) => item.end.isAfter(item.start))
+        .toList()
+      ..sort((a, b) => a.start.compareTo(b.start));
+    final unbufferedBusy = _mergeSortedBlocked([
+      for (final item in sortedBusy) PlanTimeSlot(item.start, item.end),
+    ]);
+    gaps = _subtractMerged(gaps, unbufferedBusy);
     stage('日程占用后', gaps);
-    gaps = _subtract(
+    final bufferedBusy = _mergeSortedBlocked([
+      for (final item in sortedBusy) query.buffered(item),
+    ]);
+    gaps = _subtractMerged(
       gaps,
-      snapshot.busy.where((b) => b.end.isAfter(b.start)).map(query.buffered),
+      bufferedBusy,
     );
-    gaps = [
-      for (final gap in gaps)
-        if (gap.end.isAfter(minuteCeiling(gap.start)))
-          PlanTimeSlot(minuteCeiling(gap.start), gap.end),
-    ]..sort((a, b) => a.start.compareTo(b.start));
+    final minuteAlignedGaps = <PlanTimeSlot>[];
+    for (final gap in gaps) {
+      final minuteStart = minuteCeiling(gap.start);
+      if (gap.end.isAfter(minuteStart)) {
+        minuteAlignedGaps.add(PlanTimeSlot(minuteStart, gap.end));
+      }
+    }
+    gaps = minuteAlignedGaps..sort((a, b) => a.start.compareTo(b.start));
     stage('缓冲与整分钟裁剪后', gaps);
     final enough = gaps.any((g) => g.minutes >= query.minutes);
     final message = enough
@@ -312,7 +351,22 @@ abstract final class PlanAvailabilityService {
     required DateTime now,
   }) {
     final slot = selection.slot;
-    if (invalidReason(selection.query, snapshot.todo, now) != null ||
+    final weekly = selection.query.weekly;
+    var weeklyWindowContainsSlot = false;
+    final invalid = _invalidReason(
+      selection.query,
+      snapshot.todo,
+      now,
+      onWeeklyWindow: weekly?.active == true
+          ? (windowStart, windowEnd) {
+              if (!slot.start.isBefore(windowStart) &&
+                  !slot.end.isAfter(windowEnd)) {
+                weeklyWindowContainsSlot = true;
+              }
+            }
+          : null,
+    );
+    if (invalid != null ||
         slot.start.isBefore(minuteCeiling(now)) ||
         slot.minutes != selection.query.minutes ||
         !slot.end.isAfter(slot.start)) {
@@ -340,15 +394,8 @@ abstract final class PlanAvailabilityService {
           : due;
       if (deadline.isBefore(upper)) upper = deadline;
     }
-    final weekly = query.weekly;
     if (weekly?.active == true &&
-        !weekly!.rules!.days[query.date.weekday - 1].any(
-          (w) =>
-              !slot.start.isBefore(
-                PlanWeeklyRules.boundary(query.date, w.start),
-              ) &&
-              !slot.end.isAfter(PlanWeeklyRules.boundary(query.date, w.end)),
-        )) {
+        !weeklyWindowContainsSlot) {
       return false;
     }
     return !slot.start.isBefore(lower) &&

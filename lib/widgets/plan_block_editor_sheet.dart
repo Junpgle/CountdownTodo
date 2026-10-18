@@ -39,6 +39,16 @@ import 'plan_availability_panel.dart';
 import 'optional_liquid_glass_surface.dart';
 import 'time_estimation_hint.dart';
 
+final Map<(String?, String), DateFormat> _planBlockEditorDateFormats = {};
+
+DateFormat _planBlockEditorDateFormat(String pattern) {
+  final locale = Intl.defaultLocale;
+  return _planBlockEditorDateFormats.putIfAbsent(
+    (locale, pattern),
+    () => DateFormat(pattern, locale),
+  );
+}
+
 Future<T?> showPlanBlockEditorPage<T>({
   required BuildContext context,
   required WidgetBuilder builder,
@@ -583,7 +593,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
           leading: const Icon(Icons.drafts_outlined),
           title: const Text('此待办有未完成的本机草稿'),
           subtitle: Text(
-            DateFormat('M月d日 HH:mm').format(
+            _planBlockEditorDateFormat('M月d日 HH:mm').format(
               DateTime.fromMillisecondsSinceEpoch(_draftOffer!.updatedAt),
             ),
           ),
@@ -853,7 +863,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
                   rows
                       .map(
                         (r) =>
-                            '${DateFormat('MM-dd HH:mm').format(DateTime.fromMillisecondsSinceEpoch(r['start_time'] as int))}–${DateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(r['end_time'] as int))}',
+                            '${_planBlockEditorDateFormat('MM-dd HH:mm').format(DateTime.fromMillisecondsSinceEpoch(r['start_time'] as int))}–${_planBlockEditorDateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(r['end_time'] as int))}',
                       )
                       .join('\n'),
                 ),
@@ -1183,7 +1193,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
   String _todoUrgencyLabel(TodoItem todo) {
     final target = todo.dueDate;
     if (target == null) return '无时间';
-    return DateFormat('MM-dd HH:mm').format(target);
+    return _planBlockEditorDateFormat('MM-dd HH:mm').format(target);
   }
 
   Widget _buildTodoDropdownRow(TodoItem todo) {
@@ -2073,7 +2083,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
       if (!mounted || route?.isCurrent == false) return;
       if (_dirty) throw StateError('请先保存修改，或放弃修改后重新打开');
       final block = request.block;
-      final format = DateFormat('M月d日 HH:mm');
+      final format = _planBlockEditorDateFormat('M月d日 HH:mm');
       final confirmed = await showAppDialog<bool>(
         context: context,
         builder: (dialogContext) => AlertDialog(
@@ -2207,7 +2217,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
           ),
           const SizedBox(height: 4),
           Text(
-            DateFormat('HH:mm').format(start ? _start : _end),
+            _planBlockEditorDateFormat('HH:mm').format(start ? _start : _end),
             style: theme.textTheme.headlineSmall?.copyWith(
               fontWeight: FontWeight.w600,
             ),
@@ -2352,7 +2362,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
             ),
           if (widget.recovery != null) ...[
             Text(
-              '原安排：${DateFormat('MM-dd HH:mm').format(DateTime.fromMillisecondsSinceEpoch(widget.recovery!.source.startTime))}–${DateFormat('MM-dd HH:mm').format(DateTime.fromMillisecondsSinceEpoch(widget.recovery!.source.endTime))} · 漏做',
+              '原安排：${_planBlockEditorDateFormat('MM-dd HH:mm').format(DateTime.fromMillisecondsSinceEpoch(widget.recovery!.source.startTime))}–${_planBlockEditorDateFormat('MM-dd HH:mm').format(DateTime.fromMillisecondsSinceEpoch(widget.recovery!.source.endTime))} · 漏做',
               key: const ValueKey('plan-recovery-origin'),
             ),
             for (final notice in widget.recovery!.notices)
@@ -2455,7 +2465,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 Text(
-                  '${DateFormat('M月d日').format(_start)} 周${['一', '二', '三', '四', '五', '六', '日'][_start.weekday - 1]}',
+                  '${_planBlockEditorDateFormat('M月d日').format(_start)} 周${['一', '二', '三', '四', '五', '六', '日'][_start.weekday - 1]}',
                   style: theme.textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.w600,
                   ),

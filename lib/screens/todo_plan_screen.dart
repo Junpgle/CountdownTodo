@@ -63,7 +63,7 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
     with WidgetsBindingObserver {
   late DateTime _focusedDate;
   bool _isLoading = true;
-  List<TodoPlanBlock> _planBlocks = [];
+  List<TodoPlanBlock> _displayBlocks = [];
   List<TodoItem> _todos = [];
   List<TodoGroup> _todoGroups = [];
   List<CourseItem> _courses = [];
@@ -83,6 +83,10 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
   String? _runningPlanId;
   Timer? _undoExpiry;
   ScaffoldFeatureController<SnackBar, SnackBarClosedReason>? _dragNotice;
+  Future<List<TodoItem>>? _planningTodosRead;
+  Future<List<TodoGroup>>? _planningGroupsRead;
+  Future<List<CourseItem>>? _planningCoursesRead;
+  Future<List<PomodoroTag>>? _planningTagsRead;
 
   bool _showCoachMarks = false;
 
@@ -158,6 +162,7 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
     _dragForeground = state == AppLifecycleState.resumed;
     _undoExpiry?.cancel();
     if (state == AppLifecycleState.resumed) {
+      _invalidatePlanningLookupReads();
       unawaited(_loadData());
       unawaited(_checkUndo());
     }
@@ -166,6 +171,9 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
   @override
   void didUpdateWidget(covariant TodoPlanScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.username != widget.username) {
+      _invalidatePlanningLookupReads();
+    }
     if (oldWidget.username != widget.username ||
         oldWidget.initialDate != widget.initialDate ||
         oldWidget.dragService != widget.dragService) {
@@ -319,6 +327,12 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
   void _onScopedDataRefresh() {
     if (!mounted) return;
     final signal = StorageService.scopedDataRefreshNotifier.value;
+    if (signal.affects(DataRefreshDomain.todos)) _planningTodosRead = null;
+    if (signal.affects(DataRefreshDomain.todoGroups)) {
+      _planningGroupsRead = null;
+    }
+    if (signal.affects(DataRefreshDomain.courses)) _planningCoursesRead = null;
+    if (signal.affects(DataRefreshDomain.pomodoro)) _planningTagsRead = null;
     if (signal.affects(DataRefreshDomain.todos) ||
         signal.affects(DataRefreshDomain.todoGroups) ||
         signal.affects(DataRefreshDomain.courses) ||
@@ -328,6 +342,13 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
         signal.affects(DataRefreshDomain.timeLogs)) {
       unawaited(_loadData());
     }
+  }
+
+  void _invalidatePlanningLookupReads() {
+    _planningTodosRead = null;
+    _planningGroupsRead = null;
+    _planningCoursesRead = null;
+    _planningTagsRead = null;
   }
 
   Future<void> _loadData() async {
@@ -347,10 +368,10 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
       }
       results = await Future.wait([
         StorageService.getPlanBlocksByDay(widget.username, focusedDate),
-        StorageService.getTodos(widget.username),
-        StorageService.getTodoGroups(widget.username),
-        CourseService.getAllCourses(widget.username),
-        PomodoroService.getTags(),
+        _planningTodosRead ??= StorageService.getTodos(widget.username),
+        _planningGroupsRead ??= StorageService.getTodoGroups(widget.username),
+        _planningCoursesRead ??= CourseService.getAllCourses(widget.username),
+        _planningTagsRead ??= PomodoroService.getTags(),
         const PlanExecutionRepository().read(widget.username, focusedDate),
         PomodoroService.loadRunState(),
       ]);
@@ -359,6 +380,7 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
         throw const PlanDragException('账号已切换，请重新打开规划', stale: true);
       }
     } catch (error) {
+      _invalidatePlanningLookupReads();
       debugPrint('TodoPlan load failed: $error');
       if (mounted && loadGeneration == _loadGeneration) {
         setState(() {
@@ -389,15 +411,22 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
     final tags = results[4] as List<PomodoroTag>;
     final execution = results[5] as PlanExecutionData;
     final records = execution.records;
+    _PlanActualRecordIndex? actualRecordIndex;
 
     // 自动标记过期未完成的规划块为 missed
     final now = _dragService.now.millisecondsSinceEpoch;
     final missedBlocks = <TodoPlanBlock>[];
     for (final b in blocks) {
-      if ((b.status == TodoPlanStatus.planned ||
-              b.status == TodoPlanStatus.reminded) &&
-          _actualSecondsForPlanBlock(b, records) <= 0 &&
-          b.endTime < now) {
+      if (b.status != TodoPlanStatus.planned &&
+          b.status != TodoPlanStatus.reminded) {
+        continue;
+      }
+      final actualSeconds = records.isEmpty
+          ? max(b.actualFocusSeconds, 0)
+          : (actualRecordIndex ??= _PlanActualRecordIndex(records)).secondsFor(
+              b,
+            );
+      if (actualSeconds <= 0 && b.endTime < now) {
         b.status = TodoPlanStatus.missed;
         b.markAsChanged();
         missedBlocks.add(b);
@@ -409,8 +438,13 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
 
     if (!mounted || loadGeneration != _loadGeneration) return;
 
+    final mappedBlocks = _buildMappedBlocks(todos, courses, blocks);
+    final mappedBlockIds = mappedBlocks.map((block) => block.id).toSet();
+    final displayBlocks = [...blocks, ...mappedBlocks]
+      ..sort((a, b) => a.startTime.compareTo(b.startTime));
+
     setState(() {
-      _planBlocks = blocks;
+      _displayBlocks = displayBlocks;
       _todos = todos;
       _todoGroups = todoGroups;
       _courses = courses;
@@ -424,9 +458,7 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
       _loadedDate = focusedDate;
       _mappedBlockIds
         ..clear()
-        ..addAll(
-          _buildMappedBlocks(todos, courses, blocks).map((block) => block.id),
-        );
+        ..addAll(mappedBlockIds);
       _isLoading = false;
       _overviewReady = true;
       _overviewRevision++;
@@ -562,9 +594,7 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final mappedBlocks = _buildMappedBlocks(_todos, _courses, _planBlocks);
-    final displayBlocks = [..._planBlocks, ...mappedBlocks]
-      ..sort((a, b) => a.startTime.compareTo(b.startTime));
+    final displayBlocks = _displayBlocks;
     final topBarHeight = floatingGlassTopBarHeight(context);
     final compactDateNavigation =
         MediaQuery.sizeOf(context).width < 360 ||
@@ -644,6 +674,7 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
               } else if (value == 'next') {
                 _nextDay();
               } else if (value == 'refresh') {
+                _invalidatePlanningLookupReads();
                 _loadData();
               } else if (value == 'weekly') {
                 Navigator.of(context).push(
@@ -756,33 +787,53 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
   }
 }
 
-int _actualSecondsForPlanBlock(
-  TodoPlanBlock block,
-  List<PomodoroRecord> records,
-) {
-  final linkedRecordSeconds = records
-      .where((record) => _pomodoroRecordBelongsToPlanBlock(record, block))
-      .fold<int>(0, (sum, record) => sum + record.effectiveDuration);
-  return max(block.actualFocusSeconds, linkedRecordSeconds);
-}
+class _PlanActualRecordIndex {
+  final Map<String, List<PomodoroRecord>> _byPlanBlockId = {};
+  final Map<String, PomodoroRecord> _byRecordId = {};
+  final Map<String, List<PomodoroRecord>> _legacyByTodoId = {};
 
-bool _pomodoroRecordBelongsToPlanBlock(
-  PomodoroRecord record,
-  TodoPlanBlock block,
-) {
-  if (record.isDeleted || block.isDeleted) return false;
-  if (record.planBlockId == block.uuid ||
-      block.pomodoroRecordIds.contains(record.uuid)) {
-    return true;
+  _PlanActualRecordIndex(Iterable<PomodoroRecord> records) {
+    for (final record in records) {
+      if (record.isDeleted) continue;
+      _byRecordId.putIfAbsent(record.uuid, () => record);
+
+      final planBlockId = record.planBlockId;
+      if (planBlockId?.isNotEmpty == true) {
+        (_byPlanBlockId[planBlockId!] ??= <PomodoroRecord>[]).add(record);
+      } else if (record.todoUuid != null) {
+        (_legacyByTodoId[record.todoUuid!] ??= <PomodoroRecord>[]).add(record);
+      }
+    }
   }
-  if (record.planBlockId?.isNotEmpty == true ||
-      record.todoUuid == null ||
-      record.todoUuid != block.todoId) {
-    return false;
+
+  int secondsFor(TodoPlanBlock block) {
+    if (block.isDeleted) return max(block.actualFocusSeconds, 0);
+
+    final matchedRecordIds = <String>{};
+    var linkedRecordSeconds = 0;
+    void addRecord(PomodoroRecord record) {
+      if (matchedRecordIds.add(record.uuid)) {
+        linkedRecordSeconds += record.effectiveDuration;
+      }
+    }
+
+    for (final record in _byPlanBlockId[block.uuid] ?? const []) {
+      addRecord(record);
+    }
+    for (final recordId in block.pomodoroRecordIds) {
+      final record = _byRecordId[recordId];
+      if (record != null) addRecord(record);
+    }
+
+    for (final record in _legacyByTodoId[block.todoId] ?? const []) {
+      final recordEnd =
+          record.endTime ?? record.startTime + record.effectiveDuration * 1000;
+      if (record.startTime < block.endTime && recordEnd > block.startTime) {
+        addRecord(record);
+      }
+    }
+    return max(block.actualFocusSeconds, linkedRecordSeconds);
   }
-  final recordEnd =
-      record.endTime ?? record.startTime + record.effectiveDuration * 1000;
-  return record.startTime < block.endTime && recordEnd > block.startTime;
 }
 
 class _PlanGridView extends StatefulWidget {
@@ -833,6 +884,7 @@ class _PlanGridViewState extends State<_PlanGridView>
     with WidgetsBindingObserver {
   final _manualHostKey = GlobalKey<PlanManualCompletionHostState>();
   late final _manualCompletion = PlanManualCompletionService(clock: () => widget.dragService.now);
+  late Map<String, TodoItem> _todoById;
   int? _dragStartBlock;
   int? _dragEndBlock;
   int _minutesPerBlock = 15;
@@ -841,10 +893,22 @@ class _PlanGridViewState extends State<_PlanGridView>
   PlanDragKind? _gestureKind;
   Offset? _pointerOrigin;
   bool _saving = false;
+  List<Widget>? _gridLinesCache;
+  double? _gridLinesWidth;
+  double? _gridLinesHourHeight;
+  int? _gridLinesBlocksPerHour;
+  List<Widget>? _hourLabelsCache;
+  double? _hourLabelsHourHeight;
+  DateTime? _executionEntriesDate;
+  List<PomodoroRecord>? _executionRecordsSource;
+  List<TimeLogItem>? _executionLogsSource;
+  List<PlanExecutionEntry>? _executionEntriesCache;
+  int _executionLaneCountCache = 1;
 
   @override
   void initState() {
     super.initState();
+    _rebuildItemIndexes();
     WidgetsBinding.instance.addObserver(this);
   }
 
@@ -862,6 +926,9 @@ class _PlanGridViewState extends State<_PlanGridView>
   @override
   void didUpdateWidget(covariant _PlanGridView oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.todos, widget.todos)) {
+      _rebuildItemIndexes();
+    }
     final gesture = _gesture;
     if (gesture == null || _saving) return;
     final latest = widget.blocks
@@ -876,6 +943,39 @@ class _PlanGridViewState extends State<_PlanGridView>
       _gestureKind = null;
       _pointerOrigin = null;
     }
+  }
+
+  void _rebuildItemIndexes() {
+    final todoById = <String, TodoItem>{};
+    for (final todo in widget.todos) {
+      todoById.putIfAbsent(todo.id, () => todo);
+    }
+    _todoById = todoById;
+  }
+
+  List<PlanExecutionEntry> _executionEntries() {
+    final cachedEntries = _executionEntriesCache;
+    final cachedDate = _executionEntriesDate;
+    if (cachedEntries != null &&
+        cachedDate != null &&
+        DateUtils.isSameDay(cachedDate, widget.date) &&
+        identical(_executionRecordsSource, widget.pomodoroRecords) &&
+        identical(_executionLogsSource, widget.timeLogs)) {
+      return cachedEntries;
+    }
+
+    final entries = PlanExecutionEntry.forDay(
+      widget.date,
+      widget.pomodoroRecords,
+      widget.timeLogs,
+    );
+    _executionEntriesDate = widget.date;
+    _executionRecordsSource = widget.pomodoroRecords;
+    _executionLogsSource = widget.timeLogs;
+    _executionEntriesCache = entries;
+    _executionLaneCountCache =
+        PlanExecutionEntry.timelineLaneCount(entries);
+    return entries;
   }
 
   void _beginGesture(TodoPlanBlock block, PlanDragKind kind, Offset position) {
@@ -1050,14 +1150,8 @@ class _PlanGridViewState extends State<_PlanGridView>
 
   @override
   Widget build(BuildContext context) {
-    final executionEntries = PlanExecutionEntry.forDay(
-      widget.date,
-      widget.pomodoroRecords,
-      widget.timeLogs,
-    );
-    final executionLaneCount = PlanExecutionEntry.timelineLaneCount(
-      executionEntries,
-    );
+    final executionEntries = _executionEntries();
+    final executionLaneCount = _executionLaneCountCache;
 
     return PlanManualCompletionHost(
       key: _manualHostKey,
@@ -1080,26 +1174,7 @@ class _PlanGridViewState extends State<_PlanGridView>
                       width: kTimeAxisW,
                       height: totalH,
                       child: Stack(
-                        children: List.generate(
-                          24,
-                          (h) => Positioned(
-                            top: h * hourH + 1,
-                            right: 6,
-                            height: max(1.0, hourH - 1),
-                            child: FittedBox(
-                              fit: BoxFit.scaleDown,
-                              alignment: Alignment.centerRight,
-                              child: Text(
-                                '${h.toString().padLeft(2, '0')}:00',
-                                style: TextStyle(
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.grey.withValues(alpha: 0.66),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
+                        children: _buildHourLabels(hourH),
                       ),
                     ),
                     // 网格
@@ -1273,6 +1348,15 @@ class _PlanGridViewState extends State<_PlanGridView>
   }
 
   List<Widget> _buildGridLines(double width, double hourH) {
+    final blocksPerHour = _blocksPerHour;
+    final cachedLines = _gridLinesCache;
+    if (cachedLines != null &&
+        _gridLinesWidth == width &&
+        _gridLinesHourHeight == hourH &&
+        _gridLinesBlocksPerHour == blocksPerHour) {
+      return cachedLines;
+    }
+
     final lines = <Widget>[];
     for (int h = 0; h <= 24; h++) {
       lines.add(
@@ -1285,12 +1369,12 @@ class _PlanGridViewState extends State<_PlanGridView>
         ),
       );
     }
-    for (int c = 1; c < _blocksPerHour; c++) {
+    for (int c = 1; c < blocksPerHour; c++) {
       lines.add(
         Positioned(
           top: 0,
           bottom: 0,
-          left: width * c / _blocksPerHour,
+          left: width * c / blocksPerHour,
           width: 0.5,
           child: Container(color: Colors.grey.withValues(alpha: 0.05)),
         ),
@@ -1308,7 +1392,41 @@ class _PlanGridViewState extends State<_PlanGridView>
       ),
     );
 
+    _gridLinesCache = lines;
+    _gridLinesWidth = width;
+    _gridLinesHourHeight = hourH;
+    _gridLinesBlocksPerHour = blocksPerHour;
     return lines;
+  }
+
+  List<Widget> _buildHourLabels(double hourH) {
+    final cachedLabels = _hourLabelsCache;
+    if (cachedLabels != null && _hourLabelsHourHeight == hourH) {
+      return cachedLabels;
+    }
+    final labels = List<Widget>.generate(
+      24,
+      (hour) => Positioned(
+        top: hour * hourH + 1,
+        right: 6,
+        height: max(1.0, hourH - 1),
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerRight,
+          child: Text(
+            '${hour.toString().padLeft(2, '0')}:00',
+            style: TextStyle(
+              fontSize: 9,
+              fontWeight: FontWeight.w600,
+              color: Colors.grey.withValues(alpha: 0.66),
+            ),
+          ),
+        ),
+      ),
+    );
+    _hourLabelsCache = labels;
+    _hourLabelsHourHeight = hourH;
+    return labels;
   }
 
   List<Widget> _buildBlockItems(
@@ -1330,10 +1448,7 @@ class _PlanGridViewState extends State<_PlanGridView>
 
     final clippedStart = start.isBefore(dayStart) ? dayStart : start;
     final clippedEnd = end.isAfter(dayEnd) ? dayEnd : end;
-    final todo = widget.todos.cast<TodoItem?>().firstWhere(
-      (t) => t?.id == block.todoId,
-      orElse: () => null,
-    );
+    final todo = _todoById[block.todoId];
     final isMappedBlock = widget.mappedBlockIds.contains(block.id);
     final canDrag =
         !previewOnly &&
@@ -1661,10 +1776,7 @@ class _PlanGridViewState extends State<_PlanGridView>
 
     if (block.id.startsWith('mapped_todo_')) {
       final todoId = block.id.substring('mapped_todo_'.length);
-      final todo = widget.todos.cast<TodoItem?>().firstWhere(
-        (item) => item?.id == todoId,
-        orElse: () => null,
-      );
+      final todo = _todoById[todoId];
       if (todo != null) {
         Navigator.of(context).push(
           PageTransitions.material(
