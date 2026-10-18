@@ -751,6 +751,8 @@ abstract final class FinanceStorage {
   static Future<List<FinanceLoanInstallment>> getLoanInstallments(
     String loanUuid, {
     bool includeDeleted = false,
+    String? fromDueDate,
+    String? toDueDate,
   }) async {
     await ensureReady();
     final db = await _database;
@@ -765,6 +767,14 @@ abstract final class FinanceStorage {
         ..add('installment_index <= ?');
       args.add(loan.termMonths);
     }
+    if (fromDueDate != null) {
+      where.add('due_date >= ?');
+      args.add(fromDueDate);
+    }
+    if (toDueDate != null) {
+      where.add('due_date < ?');
+      args.add(toDueDate);
+    }
     final rows = await db.query(
       'finance_loan_installments',
       where: where.join(' AND '),
@@ -777,20 +787,35 @@ abstract final class FinanceStorage {
   /// Loads scheduled installments for all active loans with one indexed join.
   /// The term bound matches [getLoanInstallments]' default behavior.
   static Future<Map<String, List<FinanceLoanInstallment>>>
-  getLoanInstallmentsForActiveLoans() async {
+  getLoanInstallmentsForActiveLoans({
+    String? fromDueDate,
+    String? toDueDate,
+  }) async {
     await ensureReady();
     final db = await _database;
+    final where = <String>[
+      'loan.is_deleted = 0',
+      'installment.is_deleted = 0',
+      'installment.installment_index <= loan.term_months',
+    ];
+    final args = <Object?>[];
+    if (fromDueDate != null) {
+      where.add('installment.due_date >= ?');
+      args.add(fromDueDate);
+    }
+    if (toDueDate != null) {
+      where.add('installment.due_date < ?');
+      args.add(toDueDate);
+    }
     final rows = await db.rawQuery('''
       SELECT installment.*
       FROM finance_loan_installments AS installment
       JOIN finance_loans AS loan ON loan.uuid = installment.loan_uuid
-      WHERE loan.is_deleted = 0
-        AND installment.is_deleted = 0
-        AND installment.installment_index <= loan.term_months
+      WHERE ${where.join(' AND ')}
       ORDER BY installment.loan_uuid ASC,
         installment.installment_index ASC,
         installment.due_date ASC
-    ''');
+    ''', args);
     final installmentsByLoan = <String, List<FinanceLoanInstallment>>{};
     for (final row in rows) {
       final installment = FinanceLoanInstallment.fromMap(row);

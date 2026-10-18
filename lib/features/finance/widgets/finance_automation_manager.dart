@@ -50,6 +50,10 @@ class FinanceAutomationManager extends StatefulWidget {
 class _FinanceAutomationManagerState extends State<FinanceAutomationManager> {
   final _search = TextEditingController();
   final _busy = <String>{};
+  final _categoryDisplayNames = <String, String>{};
+  final _paymentMethodDisplayNames = <String, String>{};
+  Map<String, FinanceCategory> _categoriesByUuid = const {};
+  Map<String, FinancePaymentMethod> _paymentMethodsByUuid = const {};
   _AutomationTab _tab = _AutomationTab.rules;
   _RuleFilter _filter = _RuleFilter.all;
 
@@ -58,6 +62,42 @@ class _FinanceAutomationManagerState extends State<FinanceAutomationManager> {
       widget.rules.where((rule) => !rule.isDeleted).toList();
   List<FinanceEntryTemplate> get _templates =>
       widget.templates.where((template) => !template.isDeleted).toList();
+
+  @override
+  void initState() {
+    super.initState();
+    _rebuildCategoryIndex();
+    _rebuildPaymentMethodIndex();
+  }
+
+  @override
+  void didUpdateWidget(covariant FinanceAutomationManager oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.categories, widget.categories)) {
+      _rebuildCategoryIndex();
+    }
+    if (!identical(oldWidget.paymentMethods, widget.paymentMethods)) {
+      _rebuildPaymentMethodIndex();
+    }
+  }
+
+  void _rebuildCategoryIndex() {
+    final categoriesByUuid = <String, FinanceCategory>{};
+    for (final category in widget.categories) {
+      categoriesByUuid.putIfAbsent(category.uuid, () => category);
+    }
+    _categoriesByUuid = categoriesByUuid;
+    _categoryDisplayNames.clear();
+  }
+
+  void _rebuildPaymentMethodIndex() {
+    final paymentMethodsByUuid = <String, FinancePaymentMethod>{};
+    for (final method in widget.paymentMethods) {
+      paymentMethodsByUuid.putIfAbsent(method.uuid, () => method);
+    }
+    _paymentMethodsByUuid = paymentMethodsByUuid;
+    _paymentMethodDisplayNames.clear();
+  }
 
   @override
   void dispose() {
@@ -95,13 +135,14 @@ class _FinanceAutomationManagerState extends State<FinanceAutomationManager> {
       });
 
   String _categoryName(String? uuid) {
-    for (final category in widget.categories) {
-      if (category.uuid == uuid) {
-        return '${category.icon} ${financeCategoryDisplayName(category, widget.categories)}'
-            '${category.isArchived ? '（已归档）' : ''}';
-      }
-    }
-    return uuid == null ? '未指定分类' : '已归档或未知分类';
+    if (uuid == null) return '未指定分类';
+    final category = _categoriesByUuid[uuid];
+    if (category == null) return '已归档或未知分类';
+    return _categoryDisplayNames.putIfAbsent(
+      uuid,
+      () => '${category.icon} ${financeCategoryDisplayName(category, widget.categories)}'
+          '${category.isArchived ? '（已归档）' : ''}',
+    );
   }
 
   String _paymentName(String? uuid, FinanceTransactionType type) {
@@ -111,19 +152,21 @@ class _FinanceAutomationManagerState extends State<FinanceAutomationManager> {
           ? '未指定到账账户（不更新余额）'
           : '未指定付款方式';
     }
-    for (final method in widget.paymentMethods) {
-      if (method.uuid == uuid) {
-        final name = financePaymentMethodDisplayName(
-          method,
-          widget.paymentMethods,
-        );
-        final archivedLabel = method.isArchived ? '（已归档）' : '';
-        return '$label · $name$archivedLabel';
-      }
+    final method = _paymentMethodsByUuid[uuid];
+    if (method == null) {
+      return type == FinanceTransactionType.income
+          ? '已归档或未知到账账户'
+          : '已归档或未知付款方式';
     }
-    return type == FinanceTransactionType.income
-        ? '已归档或未知到账账户'
-        : '已归档或未知付款方式';
+    final displayName = _paymentMethodDisplayNames.putIfAbsent(uuid, () {
+      final name = financePaymentMethodDisplayName(
+        method,
+        widget.paymentMethods,
+      );
+      final archivedLabel = method.isArchived ? '（已归档）' : '';
+      return '$name$archivedLabel';
+    });
+    return '$label · $displayName';
   }
 
   bool _matches(
@@ -133,53 +176,72 @@ class _FinanceAutomationManagerState extends State<FinanceAutomationManager> {
     String? category,
     String? paymentMethod,
     FinanceTransactionType type,
+    String query,
   ) {
-    final query = _search.text.trim().toLowerCase();
-    return query.isEmpty ||
-        [
-          name,
-          merchant,
-          note,
-          _categoryName(category),
-          _paymentName(paymentMethod, type),
-        ].whereType<String>().join(' ').toLowerCase().contains(query);
+    if (query.isEmpty) return true;
+    return [
+      name,
+      merchant,
+      note,
+      _categoryName(category),
+      _paymentName(paymentMethod, type),
+    ].whereType<String>().join(' ').toLowerCase().contains(query);
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
-    final rules = _rules
-        .where(
-          (rule) =>
-              (_filter == _RuleFilter.all ||
-                  rule.isEnabled == (_filter == _RuleFilter.enabled)) &&
-              _matches(
-                rule.name,
-                rule.merchant,
-                rule.note,
-                rule.categoryUuid,
-                rule.paymentMethodUuid,
-                rule.type,
-              ),
-        )
-        .toList();
-    final templates = _templates
-        .where(
-          (template) => _matches(
-            template.name,
-            template.merchant,
-            template.note,
-            template.categoryUuid,
-            template.paymentMethodUuid,
-            template.type,
-          ),
-        )
-        .toList();
+    final query = _search.text.trim().toLowerCase();
+    final allRules = _isRules ? _rules : const <FinanceRecurringRule>[];
+    final allTemplates = _isRules ? const <FinanceEntryTemplate>[] : _templates;
+    var enabledRuleCount = 0;
+    for (final rule in allRules) {
+      if (rule.isEnabled) enabledRuleCount++;
+    }
+    final rules = _isRules
+        ? allRules
+              .where(
+                (rule) =>
+                    (_filter == _RuleFilter.all ||
+                        rule.isEnabled == (_filter == _RuleFilter.enabled)) &&
+                    _matches(
+                      rule.name,
+                      rule.merchant,
+                      rule.note,
+                      rule.categoryUuid,
+                      rule.paymentMethodUuid,
+                      rule.type,
+                      query,
+                    ),
+              )
+              .toList()
+        : const <FinanceRecurringRule>[];
+    final templates = !_isRules
+        ? allTemplates
+              .where(
+                (template) => _matches(
+                  template.name,
+                  template.merchant,
+                  template.note,
+                  template.categoryUuid,
+                  template.paymentMethodUuid,
+                  template.type,
+                  query,
+                ),
+              )
+              .toList()
+        : const <FinanceEntryTemplate>[];
+    final ruleDisplayNames = _isRules && rules.isNotEmpty
+        ? financeRecurringRuleDisplayNames(allRules)
+        : const <String, String>{};
+    final templateDisplayNames = !_isRules && templates.isNotEmpty
+        ? financeEntryTemplateDisplayNames(allTemplates)
+        : const <String, String>{};
     final count = _isRules ? rules.length : templates.length;
-    final total = _isRules ? _rules.length : _templates.length;
-    final filtered = _search.text.trim().isNotEmpty ||
-        (_isRules && _filter != _RuleFilter.all);
+    final total = _isRules ? allRules.length : allTemplates.length;
+    final filtered =
+        query.isNotEmpty || (_isRules && _filter != _RuleFilter.all);
 
     return FinancePageList(topPadding: widget.topPadding, children: [
       const FinancePageIntro(
@@ -248,11 +310,11 @@ class _FinanceAutomationManagerState extends State<FinanceAutomationManager> {
             ChoiceChip(
               key: ValueKey('finance-automation-filter-${filter.name}'),
               label: Text(switch (filter) {
-                _RuleFilter.all => '全部 ${_rules.length}',
+                _RuleFilter.all => '全部 ${allRules.length}',
                 _RuleFilter.enabled =>
-                  '已启用 ${_rules.where((rule) => rule.isEnabled).length}',
+                  '已启用 $enabledRuleCount',
                 _RuleFilter.paused =>
-                  '已暂停 ${_rules.where((rule) => !rule.isEnabled).length}',
+                  '已暂停 ${allRules.length - enabledRuleCount}',
               }),
               selected: _filter == filter,
               onSelected: (_) => setState(() => _filter = filter),
@@ -299,8 +361,20 @@ class _FinanceAutomationManagerState extends State<FinanceAutomationManager> {
         FinanceAdaptiveFields(
           minChildWidth: 330,
           children: _isRules
-              ? [for (final rule in rules) _ruleCard(rule)]
-              : [for (final template in templates) _templateCard(template)],
+              ? [
+                  for (final rule in rules)
+                    _ruleCard(
+                      rule,
+                      ruleDisplayNames[rule.uuid] ?? rule.name,
+                    ),
+                ]
+              : [
+                  for (final template in templates)
+                    _templateCard(
+                      template,
+                      templateDisplayNames[template.uuid] ?? template.name,
+                    ),
+                ],
         ),
       if (_isRules && total > 0) ...[
         const SizedBox(height: 16),
@@ -392,10 +466,9 @@ class _FinanceAutomationManagerState extends State<FinanceAutomationManager> {
     );
   }
 
-  Widget _ruleCard(FinanceRecurringRule rule) {
+  Widget _ruleCard(FinanceRecurringRule rule, String displayName) {
     final key = 'rule-${rule.uuid}';
     final busy = _busy.contains(key);
-    final displayName = financeRecurringRuleDisplayName(rule, _rules);
     void edit() => _run(key, () => widget.onEditRule(rule));
     final schedule = rule.frequency == FinanceRecurringFrequency.yearly
         ? '每年 ${rule.monthOfYear} 月 ${rule.dayOfMonth} 日'
@@ -454,7 +527,7 @@ class _FinanceAutomationManagerState extends State<FinanceAutomationManager> {
     );
   }
 
-  Widget _templateCard(FinanceEntryTemplate template) {
+  Widget _templateCard(FinanceEntryTemplate template, String displayName) {
     final key = 'template-${template.uuid}';
     final busy = _busy.contains(key);
     void edit() => _run(key, () => widget.onEditTemplate(template));
@@ -464,7 +537,7 @@ class _FinanceAutomationManagerState extends State<FinanceAutomationManager> {
       onTap: busy ? null : use,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         _heading(
-          financeEntryTemplateDisplayName(template, _templates),
+          displayName,
           Icons.bolt_outlined,
           key,
           edit,

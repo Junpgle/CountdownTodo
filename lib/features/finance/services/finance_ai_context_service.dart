@@ -598,29 +598,39 @@ abstract final class FinanceAiContextService {
                 item.transactionDate.compareTo(toKey) < 0,
           )
           .toList(growable: false);
-      final transactions = recentQuery == null
-          ? periodTransactions
-          : (await FinanceRepository.getTransactions(
-                  to: _recentTransactionQueryEndDate(asOfAt),
-                  type: recentQuery.type,
-                ))
-                .where((item) => item.balanceEventAt() <= asOfAt)
-                .toList()
-            ..sort((left, right) {
-              final eventOrder = right
-                  .balanceEventAt()
-                  .compareTo(left.balanceEventAt());
-              if (eventOrder != 0) return eventOrder;
-              final dateOrder = right.transactionDate.compareTo(
-                left.transactionDate,
-              );
-              return dateOrder != 0
-                  ? dateOrder
-                  : right.updatedAt.compareTo(left.updatedAt);
-            });
-      final selectedTransactions = recentQuery == null
-          ? transactions
-          : transactions.take(recentQuery.count).toList(growable: false);
+      final List<FinanceTransaction> selectedTransactions;
+      if (recentQuery == null) {
+        selectedTransactions = periodTransactions;
+      } else {
+        final recentValues = await FinanceRepository.getTransactions(
+          to: _recentTransactionQueryEndDate(asOfAt),
+          type: recentQuery.type,
+        );
+        final recentEvents =
+            <({FinanceTransaction transaction, int eventAt})>[];
+        for (final transaction in recentValues) {
+          final eventAt = transaction.balanceEventAt();
+          if (eventAt <= asOfAt) {
+            recentEvents.add((transaction: transaction, eventAt: eventAt));
+          }
+        }
+        recentEvents.sort((left, right) {
+          final eventOrder = right.eventAt.compareTo(left.eventAt);
+          if (eventOrder != 0) return eventOrder;
+          final dateOrder = right.transaction.transactionDate.compareTo(
+            left.transaction.transactionDate,
+          );
+          return dateOrder != 0
+              ? dateOrder
+              : right.transaction.updatedAt.compareTo(
+                  left.transaction.updatedAt,
+                );
+        });
+        selectedTransactions = recentEvents
+            .take(recentQuery.count)
+            .map((entry) => entry.transaction)
+            .toList(growable: false);
+      }
       final allBudgets = values[1] as List<FinanceBudget>;
       Map<String, int>? paymentMethodBalances;
       if (needsPaymentBalances) {
@@ -703,7 +713,7 @@ abstract final class FinanceAiContextService {
         range: range,
         summary: FinanceSummary.fromTransactions(
           selectedTransactions,
-          asOfAt: asOfAt,
+          asOfAt: recentQuery == null ? asOfAt : null,
         ),
         transactions: selectedTransactions,
         categories: catalogData.categories,

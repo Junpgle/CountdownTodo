@@ -460,16 +460,23 @@ abstract final class FinanceRepository {
   static Future<List<FinanceLoanInstallment>> getLoanInstallments(
     String loanUuid, {
     bool includeDeleted = false,
+    String? fromDueDate,
+    String? toDueDate,
   }) {
     return FinanceStorage.getLoanInstallments(
       loanUuid,
       includeDeleted: includeDeleted,
+      fromDueDate: fromDueDate,
+      toDueDate: toDueDate,
     );
   }
 
   static Future<Map<String, List<FinanceLoanInstallment>>>
-  getLoanInstallmentsForActiveLoans() {
-    return FinanceStorage.getLoanInstallmentsForActiveLoans();
+  getLoanInstallmentsForActiveLoans({String? fromDueDate, String? toDueDate}) {
+    return FinanceStorage.getLoanInstallmentsForActiveLoans(
+      fromDueDate: fromDueDate,
+      toDueDate: toDueDate,
+    );
   }
 
   static Future<void> saveLoan(FinanceLoan loan, {FinanceLoan? original}) {

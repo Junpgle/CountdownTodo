@@ -53,6 +53,10 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
   late int _timezoneOffsetMinutes;
   List<FinanceCategory> _categories = const [];
   List<FinancePaymentMethod> _paymentMethods = const [];
+  final _categoriesByUuid = <String, FinanceCategory>{};
+  final _paymentMethodsByUuid = <String, FinancePaymentMethod>{};
+  final _categoryDisplayNameCache = <String, String>{};
+  final _paymentMethodDisplayNameCache = <String, String>{};
   List<FinanceEntryTemplate> _templates = const [];
   String? _categoryUuid;
   String? _paymentMethodUuid;
@@ -212,8 +216,8 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
         final templates = await FinanceStorage.getTemplates();
         if (!mounted) return;
         setState(() {
-          _categories = categories;
-          _paymentMethods = paymentMethods;
+          _replaceCategories(categories);
+          _replacePaymentMethods(paymentMethods);
           _templates = templates;
           if (widget.transaction == null &&
               widget.originalTransaction == null) {
@@ -315,8 +319,8 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
         _installmentCountController.text = _installmentCount.toString();
       }
       setState(() {
-        _categories = options[0] as List<FinanceCategory>;
-        _paymentMethods = options[1] as List<FinancePaymentMethod>;
+        _replaceCategories(options[0] as List<FinanceCategory>);
+        _replacePaymentMethods(options[1] as List<FinancePaymentMethod>);
         _templates = options[2] as List<FinanceEntryTemplate>;
         _originalTransaction = originalTransaction;
         _remainingRefundableMinor = remainingRefundableMinor;
@@ -512,15 +516,39 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
   }
 
   String _categoryName(FinanceCategory category) =>
-      financeCategoryDisplayName(category, _categories);
+      _categoryDisplayNameCache.putIfAbsent(
+        category.uuid,
+        () => financeCategoryDisplayName(category, _categories),
+      );
+
+  String _paymentMethodName(FinancePaymentMethod method) =>
+      _paymentMethodDisplayNameCache.putIfAbsent(
+        method.uuid,
+        () => financePaymentMethodDisplayName(method, _visiblePaymentMethods),
+      );
+
+  void _replaceCategories(List<FinanceCategory> categories) {
+    _categories = categories;
+    _categoriesByUuid.clear();
+    for (final category in categories) {
+      _categoriesByUuid.putIfAbsent(category.uuid, () => category);
+    }
+    _categoryDisplayNameCache.clear();
+  }
+
+  void _replacePaymentMethods(List<FinancePaymentMethod> paymentMethods) {
+    _paymentMethods = paymentMethods;
+    _paymentMethodsByUuid.clear();
+    for (final method in paymentMethods) {
+      _paymentMethodsByUuid.putIfAbsent(method.uuid, () => method);
+    }
+    _paymentMethodDisplayNameCache.clear();
+  }
 
   FinanceCategory? _categoryByUuid(String? uuid) {
     final normalized = uuid?.trim();
     if (normalized == null || normalized.isEmpty) return null;
-    for (final category in _categories) {
-      if (category.uuid == normalized) return category;
-    }
-    return null;
+    return _categoriesByUuid[normalized];
   }
 
   FinanceCategory _topLevelCategory(FinanceCategory category) {
@@ -1333,12 +1361,18 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
     ColorScheme colorScheme, {
     required bool isWide,
   }) {
-    final selectedCategory = _visibleCategories
-        .where((item) => item.uuid == _categoryUuid)
-        .firstOrNull;
-    final selectedPaymentMethod = _visiblePaymentMethods
-        .where((item) => item.uuid == _paymentMethodUuid)
-        .firstOrNull;
+    final categoryCandidate = _categoriesByUuid[_categoryUuid];
+    final selectedCategory =
+        categoryCandidate != null &&
+            categoryCandidate.type ==
+                financeCategoryTypeForTransaction(_type) &&
+            !categoryCandidate.isDeleted
+        ? categoryCandidate
+        : null;
+    final paymentMethodCandidate = _paymentMethodsByUuid[_paymentMethodUuid];
+    final selectedPaymentMethod = paymentMethodCandidate?.isDeleted == true
+        ? null
+        : paymentMethodCandidate;
 
     final category = _buildFinancePickerField(
       key: ValueKey('finance-category-$_type-$_categoryUuid'),
@@ -1354,7 +1388,9 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
           : _categoryName(selectedCategory),
       selectedIcon: selectedCategory?.icon,
       fieldIcon: Icons.category_outlined,
-      onTap: _isSaving || _isBoundRefund || _isLoanInterest ? null : _pickCategory,
+      onTap: _isSaving || _isBoundRefund || _isLoanInterest
+          ? null
+          : _pickCategory,
     );
 
     final payment = _buildFinancePickerField(
@@ -1385,10 +1421,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
           : '未指定（不更新账户余额）',
       selectedName: selectedPaymentMethod == null
           ? null
-          : financePaymentMethodDisplayName(
-              selectedPaymentMethod,
-              _visiblePaymentMethods,
-            ),
+          : _paymentMethodName(selectedPaymentMethod),
       selectedIcon: selectedPaymentMethod?.icon,
       fieldIcon: Icons.account_balance_wallet_outlined,
       onTap: _isSaving || _isLoanInterest ? null : _pickPaymentMethod,
@@ -1612,7 +1645,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
     );
     _dismissKeyboard();
     if (saved != true || !mounted || created == null) return null;
-    setState(() => _categories = [..._categories, created!]);
+    setState(() => _replaceCategories([..._categories, created!]));
     return created;
   }
 

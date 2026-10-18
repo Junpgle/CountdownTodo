@@ -49,6 +49,10 @@ class _FinanceCategoryDetailScreenState
   String? _expandedCategoryUuid;
   late List<FinanceTransaction> _transactions;
   late Map<String, FinanceCategory> _categories;
+  Map<String, FinanceCategory>? _categoryRootCacheSource;
+  Map<String, FinanceCategory> _categoryRootsByUuid = const {};
+  Map<String, FinanceCategory>? _categoryLabelCacheSource;
+  final Map<String, String> _categoryLabelsByUuid = {};
   Timer? _financeChangeRefreshTimer;
   Timer? _upcomingTransactionTimer;
   int _loadGeneration = 0;
@@ -123,22 +127,26 @@ class _FinanceCategoryDetailScreenState
       if (!mounted || generation != _loadGeneration) return;
 
       final now = widget.clock();
-      final includesNow = !now.isBefore(from) && now.isBefore(to);
-      _scheduleUpcomingTransactionRefresh(
-        allTransactions,
-        now: now,
-        periodStart: from,
-        periodEnd: to,
-      );
-      final nextTransactions = includesNow
-          ? allTransactions
-                .where(
-                  (transaction) =>
-                      transaction.balanceEventAt() <=
-                      now.millisecondsSinceEpoch,
-                )
-                .toList(growable: false)
-          : allTransactions;
+      final nowAt = now.millisecondsSinceEpoch;
+      final periodEndAt = to.millisecondsSinceEpoch;
+      var nextTransactions = allTransactions;
+      int? nextEventAt;
+      if (now.isBefore(from)) {
+        nextEventAt = from.millisecondsSinceEpoch;
+      } else if (now.isBefore(to)) {
+        final occurredTransactions = <FinanceTransaction>[];
+        for (final transaction in allTransactions) {
+          final eventAt = transaction.balanceEventAt();
+          if (eventAt <= nowAt) {
+            occurredTransactions.add(transaction);
+          } else if (eventAt < periodEndAt &&
+              (nextEventAt == null || eventAt < nextEventAt)) {
+            nextEventAt = eventAt;
+          }
+        }
+        nextTransactions = occurredTransactions;
+      }
+      _scheduleUpcomingTransactionRefresh(now: now, nextEventAt: nextEventAt);
       final nextCategories = {
         for (final category in refreshedCategories) category.uuid: category,
       };
@@ -154,63 +162,68 @@ class _FinanceCategoryDetailScreenState
     }
   }
 
-  void _scheduleUpcomingTransactionRefresh(
-    Iterable<FinanceTransaction> values, {
+  void _scheduleUpcomingTransactionRefresh({
     required DateTime now,
-    required DateTime periodStart,
-    required DateTime periodEnd,
+    required int? nextEventAt,
   }) {
     _upcomingTransactionTimer?.cancel();
     _upcomingTransactionTimer = null;
 
-    final nowAt = now.millisecondsSinceEpoch;
-    final periodEndAt = periodEnd.millisecondsSinceEpoch;
-    int? nextEventAt;
-    if (now.isBefore(periodStart)) {
-      nextEventAt = periodStart.millisecondsSinceEpoch;
-    } else if (now.isBefore(periodEnd)) {
-      for (final transaction in values) {
-        final eventAt = transaction.balanceEventAt();
-        if (eventAt > nowAt &&
-            eventAt < periodEndAt &&
-            (nextEventAt == null || eventAt < nextEventAt)) {
-          nextEventAt = eventAt;
-        }
-      }
-    }
     if (nextEventAt == null) return;
+    final nowAt = now.millisecondsSinceEpoch;
 
     final delayMs = (nextEventAt - nowAt + 1)
         .clamp(1, const Duration(days: 24).inMilliseconds)
         .toInt();
-    _upcomingTransactionTimer = Timer(
-      Duration(milliseconds: delayMs),
-      () {
-        _upcomingTransactionTimer = null;
-        if (mounted) unawaited(_reloadPeriodData());
-      },
-    );
+    _upcomingTransactionTimer = Timer(Duration(milliseconds: delayMs), () {
+      _upcomingTransactionTimer = null;
+      if (mounted) unawaited(_reloadPeriodData());
+    });
   }
 
   FinanceCategory? get _rootCategory =>
       rootCategoryUuid == null ? null : categories[rootCategoryUuid];
 
-  FinanceCategory _rootFor(FinanceCategory category) {
-    var current = category;
-    final visited = <String>{};
-    while (visited.add(current.uuid)) {
-      final parentUuid = current.parentUuid?.trim();
-      if (parentUuid == null || parentUuid.isEmpty) break;
-      final parent = categories[parentUuid];
-      if (parent == null || parent.type != current.type) break;
-      current = parent;
+  void _ensureCategoryRootCache() {
+    if (identical(_categoryRootCacheSource, categories)) return;
+
+    final rootsByUuid = <String, FinanceCategory>{};
+    for (final category in categories.values) {
+      var current = category;
+      final visited = <String>{};
+      while (visited.add(current.uuid)) {
+        final parentUuid = current.parentUuid?.trim();
+        if (parentUuid == null || parentUuid.isEmpty) break;
+        final parent = categories[parentUuid];
+        if (parent == null || parent.type != current.type) break;
+        current = parent;
+      }
+      rootsByUuid[category.uuid] = current;
     }
-    return current;
+
+    _categoryRootCacheSource = categories;
+    _categoryRootsByUuid = rootsByUuid;
   }
 
-  String _categoryLabel(FinanceCategory category) =>
-      '${financeCategoryReferenceDisplayName(category.uuid, categories.values)}'
-      '${category.isArchived ? '（已归档）' : ''}';
+  FinanceCategory _rootFor(FinanceCategory category) {
+    _ensureCategoryRootCache();
+    return _categoryRootsByUuid[category.uuid] ?? category;
+  }
+
+  String _categoryLabel(FinanceCategory category) {
+    if (!identical(_categoryLabelCacheSource, categories)) {
+      _categoryLabelCacheSource = categories;
+      _categoryLabelsByUuid.clear();
+    }
+    final displayName = _categoryLabelsByUuid.putIfAbsent(
+      category.uuid,
+      () => financeCategoryReferenceDisplayName(
+        category.uuid,
+        categories.values,
+      ),
+    );
+    return '$displayName${category.isArchived ? '（已归档）' : ''}';
+  }
 
   bool _belongsToRoot(FinanceTransaction transaction) {
     final category = categories[transaction.categoryUuid];
@@ -232,81 +245,85 @@ class _FinanceCategoryDetailScreenState
               _rootFor(category).uuid == root.uuid)
           .toList();
 
-  int _netExpense(Iterable<FinanceTransaction> values) {
-    var total = 0;
-    for (final transaction in values) {
-      total += switch (transaction.type) {
-        FinanceTransactionType.expense => transaction.amountMinor,
-        FinanceTransactionType.refund => -transaction.amountMinor,
-        FinanceTransactionType.income => 0,
-      };
-    }
-    return total;
-  }
-
   List<FinanceTransaction> get _matchingTransactions => transactions
       .where((transaction) =>
           transaction.type != FinanceTransactionType.income &&
           _belongsToRoot(transaction))
       .toList();
 
-  List<_FinanceCategoryDetailItem> _items(
+  ({List<_FinanceCategoryDetailItem> items, int total}) _itemsAndTotal(
     List<FinanceTransaction> matchingTransactions,
   ) {
+    final amountByCategory = <String, int>{};
+    final countByCategory = <String, int>{};
+    var total = 0;
+    for (final transaction in matchingTransactions) {
+      final contribution = switch (transaction.type) {
+        FinanceTransactionType.expense => transaction.amountMinor,
+        FinanceTransactionType.refund => -transaction.amountMinor,
+        FinanceTransactionType.income => 0,
+      };
+      total += contribution;
+      final categoryUuid = transaction.categoryUuid;
+      if (categoryUuid == null) continue;
+      amountByCategory[categoryUuid] =
+          (amountByCategory[categoryUuid] ?? 0) + contribution;
+      countByCategory[categoryUuid] =
+          (countByCategory[categoryUuid] ?? 0) + 1;
+    }
+
     final root = _rootCategory;
     if (root == null) {
-      final amount = _netExpense(matchingTransactions);
-      if (matchingTransactions.isEmpty) return const [];
+      if (matchingTransactions.isEmpty) {
+        return (items: const [], total: total);
+      }
       final isUncategorized = rootCategoryUuid == null;
-      return [
-        _FinanceCategoryDetailItem(
-          categoryUuid: isUncategorized
-              ? financeUncategorizedCategoryFilterUuid
-              : rootCategoryUuid!,
-          title: isUncategorized ? '未分类' : '分类已删除或不可用',
-          icon: '💰',
-          amountMinor: amount,
-          transactionCount: matchingTransactions.length,
-        ),
-      ];
+      return (
+        items: [
+          _FinanceCategoryDetailItem(
+            categoryUuid: isUncategorized
+                ? financeUncategorizedCategoryFilterUuid
+                : rootCategoryUuid!,
+            title: isUncategorized ? '未分类' : '分类已删除或不可用',
+            icon: '💰',
+            amountMinor: total,
+            transactionCount: matchingTransactions.length,
+          ),
+        ],
+        total: total,
+      );
     }
 
     final children = _childCategories(root);
     final result = <_FinanceCategoryDetailItem>[];
     for (final category in children) {
-      final categoryTransactions = matchingTransactions
-          .where((transaction) => transaction.categoryUuid == category.uuid)
-          .toList();
-      if (categoryTransactions.isEmpty) continue;
-      final amount = _netExpense(categoryTransactions);
+      final transactionCount = countByCategory[category.uuid] ?? 0;
+      if (transactionCount == 0) continue;
       result.add(
         _FinanceCategoryDetailItem(
           categoryUuid: category.uuid,
           title: _categoryLabel(category),
           icon: category.icon,
-          amountMinor: amount,
-          transactionCount: categoryTransactions.length,
+          amountMinor: amountByCategory[category.uuid] ?? 0,
+          transactionCount: transactionCount,
         ),
       );
     }
 
-    final directTransactions = matchingTransactions
-        .where((transaction) => transaction.categoryUuid == root.uuid)
-        .toList();
-    final directAmount = _netExpense(directTransactions);
-    if (directTransactions.isNotEmpty) {
+    final directCount = countByCategory[root.uuid] ?? 0;
+    if (directCount > 0) {
       result.add(
         _FinanceCategoryDetailItem(
           categoryUuid: root.uuid,
           title: _categoryLabel(root),
           icon: root.icon,
-          amountMinor: directAmount,
-          transactionCount: directTransactions.length,
+          amountMinor: amountByCategory[root.uuid] ?? 0,
+          transactionCount: directCount,
         ),
       );
     }
     result.sort((a, b) => b.amountMinor.compareTo(a.amountMinor));
-    return result;
+    return (items: result, total: total);
   }
 
   @override
@@ -314,8 +331,9 @@ class _FinanceCategoryDetailScreenState
     final colorScheme = Theme.of(context).colorScheme;
     final root = _rootCategory;
     final matchingTransactions = _matchingTransactions;
-    final items = _items(matchingTransactions);
-    final total = _netExpense(matchingTransactions);
+    final summary = _itemsAndTotal(matchingTransactions);
+    final items = summary.items;
+    final total = summary.total;
     final hasSubcategories = root != null && _childCategories(root).isNotEmpty;
     final String categoryTitle;
     final String sectionTitle;
@@ -583,21 +601,32 @@ class _FinanceCategoryDetailScreenState
   List<FinanceTransaction> _transactionsForItem(
     _FinanceCategoryDetailItem item,
   ) {
-    final matches = transactions.where((transaction) {
-      if (transaction.type == FinanceTransactionType.income) return false;
-      if (item.categoryUuid == financeUncategorizedCategoryFilterUuid) {
-        return transaction.categoryUuid == null ||
-            transaction.categoryUuid!.trim().isEmpty;
-      }
-      return transaction.categoryUuid == item.categoryUuid;
-    }).toList();
-    matches.sort((left, right) {
-      final dateComparison = right.transactionDate.compareTo(
-        left.transactionDate,
+    final matches = <FinanceTransaction>[];
+    for (final transaction in transactions) {
+      if (transaction.type == FinanceTransactionType.income) continue;
+      final matchesCategory =
+          item.categoryUuid == financeUncategorizedCategoryFilterUuid
+          ? transaction.categoryUuid == null ||
+                transaction.categoryUuid!.trim().isEmpty
+          : transaction.categoryUuid == item.categoryUuid;
+      if (matchesCategory) matches.add(transaction);
+    }
+    if (matches.length < 2) return matches;
+
+    final timedMatches = [
+      for (final transaction in matches)
+        (transaction: transaction, eventAt: transaction.balanceEventAt()),
+    ];
+    timedMatches.sort((left, right) {
+      final dateComparison = right.transaction.transactionDate.compareTo(
+        left.transaction.transactionDate,
       );
       if (dateComparison != 0) return dateComparison;
-      return right.balanceEventAt().compareTo(left.balanceEventAt());
+      return right.eventAt.compareTo(left.eventAt);
     });
+    for (var index = 0; index < timedMatches.length; index++) {
+      matches[index] = timedMatches[index].transaction;
+    }
     return matches;
   }
 

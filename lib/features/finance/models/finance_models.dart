@@ -1574,6 +1574,36 @@ String financePaymentMethodDisplayName(
   return '${paymentMethod.name}（同名账户 $duplicateNumber）';
 }
 
+/// Builds payment-method display names in one grouping pass.
+Map<String, String> financePaymentMethodDisplayNames(
+  Iterable<FinancePaymentMethod> paymentMethods,
+) {
+  final methodsByName = <String, List<FinancePaymentMethod>>{};
+  for (final method in paymentMethods) {
+    if (method.isDeleted) continue;
+    (methodsByName[_normalizeFinancePaymentMethodName(method.name)] ??= [])
+        .add(method);
+  }
+
+  final namesByUuid = <String, String>{};
+  for (final sameNameMethods in methodsByName.values) {
+    if (sameNameMethods.length > 1) {
+      sameNameMethods.sort((left, right) {
+        final sortOrder = left.sortOrder.compareTo(right.sortOrder);
+        return sortOrder != 0 ? sortOrder : left.uuid.compareTo(right.uuid);
+      });
+    }
+    for (var index = 0; index < sameNameMethods.length; index++) {
+      final method = sameNameMethods[index];
+      final displayName = sameNameMethods.length < 2
+          ? method.name
+          : '${method.name}（同名账户 ${index + 1}/${sameNameMethods.length}）';
+      namesByUuid.putIfAbsent(method.uuid, () => displayName);
+    }
+  }
+  return namesByUuid;
+}
+
 String _normalizeFinancePaymentMethodName(String value) {
   return value
       .replaceAll(RegExp(r'^[^\u4e00-\u9fffA-Za-z0-9]+'), '')
@@ -2390,6 +2420,36 @@ String financeRecurringRuleDisplayName(
   return '${rule.name}（同名周期账单 ${index + 1}/${sameNameRules.length}）';
 }
 
+/// Builds the display names for a rule collection in one grouping pass.
+Map<String, String> financeRecurringRuleDisplayNames(
+  Iterable<FinanceRecurringRule> rules, {
+  bool includeDeleted = false,
+}) {
+  final rulesByName = <String, List<FinanceRecurringRule>>{};
+  for (final rule in rules) {
+    if (!includeDeleted && rule.isDeleted) continue;
+    (rulesByName[_normalizeFinanceDisplayName(rule.name)] ??= []).add(rule);
+  }
+
+  final namesByUuid = <String, String>{};
+  for (final sameNameRules in rulesByName.values) {
+    if (sameNameRules.length > 1) {
+      sameNameRules.sort((left, right) {
+        final createdAt = left.createdAt.compareTo(right.createdAt);
+        return createdAt != 0 ? createdAt : left.uuid.compareTo(right.uuid);
+      });
+    }
+    for (var index = 0; index < sameNameRules.length; index++) {
+      final rule = sameNameRules[index];
+      final displayName = sameNameRules.length < 2
+          ? rule.name
+          : '${rule.name}（同名周期账单 ${index + 1}/${sameNameRules.length}）';
+      namesByUuid.putIfAbsent(rule.uuid, () => displayName);
+    }
+  }
+  return namesByUuid;
+}
+
 /// 快捷记账模板。模板只保存默认字段，不会直接产生账单。
 class FinanceEntryTemplate {
   String uuid;
@@ -2517,8 +2577,41 @@ String financeEntryTemplateDisplayName(
   return '${template.name}（同名模板 ${index + 1}/${sameNameTemplates.length}）';
 }
 
+/// Builds the display names for a template collection in one grouping pass.
+Map<String, String> financeEntryTemplateDisplayNames(
+  Iterable<FinanceEntryTemplate> templates, {
+  bool includeDeleted = false,
+}) {
+  final templatesByName = <String, List<FinanceEntryTemplate>>{};
+  for (final template in templates) {
+    if (!includeDeleted && template.isDeleted) continue;
+    (templatesByName[_normalizeFinanceDisplayName(template.name)] ??= []).add(
+      template,
+    );
+  }
+
+  final namesByUuid = <String, String>{};
+  for (final sameNameTemplates in templatesByName.values) {
+    if (sameNameTemplates.length > 1) {
+      sameNameTemplates.sort((left, right) {
+        final createdAt = left.createdAt.compareTo(right.createdAt);
+        return createdAt != 0 ? createdAt : left.uuid.compareTo(right.uuid);
+      });
+    }
+    for (var index = 0; index < sameNameTemplates.length; index++) {
+      final template = sameNameTemplates[index];
+      final displayName = sameNameTemplates.length < 2
+          ? template.name
+          : '${template.name}（同名模板 ${index + 1}/${sameNameTemplates.length}）';
+      namesByUuid.putIfAbsent(template.uuid, () => displayName);
+    }
+  }
+  return namesByUuid;
+}
+
+final _financeDisplayWhitespacePattern = RegExp(r'\s+');
 String _normalizeFinanceDisplayName(String value) =>
-    value.replaceAll(RegExp(r'\s+'), '').trim().toLowerCase();
+    value.replaceAll(_financeDisplayWhitespacePattern, '').trim().toLowerCase();
 
 class FinanceCumulativeBalanceEvent {
   final String transactionDate;

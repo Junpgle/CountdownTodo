@@ -95,9 +95,8 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
       ];
     }
 
-    final categoriesByUuid = <String, FinanceCategory>{
-      for (final category in widget.categories) category.uuid: category,
-    };
+    final categoryNames = _CatalogCategoryNameIndex(widget.categories);
+    final categoriesByUuid = categoryNames.categoriesByUuid;
     final type = _section == _CatalogSection.expense
         ? FinanceCategoryType.expense
         : FinanceCategoryType.income;
@@ -111,12 +110,12 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
       entries.add(
         _CatalogEntry(
           uuid: category.uuid,
-          name: financeCategorySiblingDisplayName(category, widget.categories),
+          name: categoryNames.siblingName(category),
           icon: category.icon,
           isSystem: category.isSystem,
           isArchived: category.isArchived || parent?.isArchived == true,
           parentUuid: category.parentUuid,
-          searchName: financeCategoryDisplayName(category, widget.categories),
+          searchName: categoryNames.displayName(category),
           onEdit: () => widget.onEditCategory(category),
           onArchive: () => widget.onArchiveCategory(category),
           onRestore: () => widget.onRestoreCategory(category),
@@ -231,14 +230,35 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
     final colors = theme.colorScheme;
     final entries = _entries;
     final query = _searchController.text.trim().toLowerCase();
-    final visible = entries
-        .where(
-          (entry) =>
-              _matchesFilter(entry, _filter) && _matchesSearch(entry, query),
-        )
-        .toList();
-    final personal = visible.where((entry) => !entry.isSystem).toList();
-    final system = visible.where((entry) => entry.isSystem).toList();
+    final visible = <_CatalogEntry>[];
+    final personal = <_CatalogEntry>[];
+    final system = <_CatalogEntry>[];
+    var activeCount = 0;
+    var customCount = 0;
+    var archivedCount = 0;
+    for (final entry in entries) {
+      if (entry.isArchived) {
+        archivedCount++;
+      } else {
+        activeCount++;
+        if (!entry.isSystem) customCount++;
+      }
+
+      if (!_matchesFilter(entry, _filter) || !_matchesSearch(entry, query)) {
+        continue;
+      }
+      visible.add(entry);
+      if (entry.isSystem) {
+        system.add(entry);
+      } else {
+        personal.add(entry);
+      }
+    }
+    final filterCounts = <_CatalogFilter, int>{
+      _CatalogFilter.active: activeCount,
+      _CatalogFilter.custom: customCount,
+      _CatalogFilter.archived: archivedCount,
+    };
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -404,7 +424,7 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
                         _CatalogFilter.active => '使用中',
                         _CatalogFilter.custom => '自定义',
                         _CatalogFilter.archived => '已归档',
-                      }} · ${entries.where((entry) => _matchesFilter(entry, filter)).length}',
+                      }} · ${filterCounts[filter]}',
                     ),
                     selected: filter == _filter,
                     onSelected: (_) => setState(() => _filter = filter),
@@ -1081,6 +1101,69 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
       ),
     );
   }
+}
+
+typedef _CatalogCategorySiblingKey = ({
+  FinanceCategoryType type,
+  String parentUuid,
+  String normalizedName,
+});
+
+final _catalogCategoryWhitespace = RegExp(r'\s+');
+
+class _CatalogCategoryNameIndex {
+  _CatalogCategoryNameIndex(List<FinanceCategory> categories) {
+    final siblingsByKey = <_CatalogCategorySiblingKey, List<FinanceCategory>>{};
+    for (final category in categories) {
+      categoriesByUuid[category.uuid] = category;
+      if (category.isDeleted) continue;
+      final key = (
+        type: category.type,
+        parentUuid: category.parentUuid?.trim() ?? '',
+        normalizedName: category.name
+            .replaceAll(_catalogCategoryWhitespace, '')
+            .trim()
+            .toLowerCase(),
+      );
+      (siblingsByKey[key] ??= <FinanceCategory>[]).add(category);
+    }
+
+    for (final siblings in siblingsByKey.values) {
+      if (siblings.length < 2) continue;
+      siblings.sort((left, right) {
+        final sortOrder = left.sortOrder.compareTo(right.sortOrder);
+        return sortOrder != 0 ? sortOrder : left.uuid.compareTo(right.uuid);
+      });
+      for (var index = 0; index < siblings.length; index++) {
+        final category = siblings[index];
+        _siblingNames[category.uuid] =
+            '${category.name}（同名分类 ${index + 1}/${siblings.length}）';
+      }
+    }
+  }
+
+  final categoriesByUuid = <String, FinanceCategory>{};
+  final _siblingNames = <String, String>{};
+  final _displayNames = <String, String>{};
+
+  String siblingName(FinanceCategory category) =>
+      _siblingNames[category.uuid] ?? category.name;
+
+  String displayName(FinanceCategory category) =>
+      _displayNames.putIfAbsent(category.uuid, () {
+        final names = <String>[];
+        final visited = <String>{};
+        FinanceCategory? current = category;
+        while (current != null && visited.add(current.uuid)) {
+          names.add(siblingName(current));
+          final parentUuid = current.parentUuid?.trim();
+          if (parentUuid == null || parentUuid.isEmpty) break;
+          final parent = categoriesByUuid[parentUuid];
+          if (parent == null || parent.type != current.type) break;
+          current = parent;
+        }
+        return names.reversed.join(' - ');
+      });
 }
 
 class _CatalogEntry {

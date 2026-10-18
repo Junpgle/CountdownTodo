@@ -102,31 +102,69 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
   bool _guideAttempted = false;
   bool _showingGuide = false;
   bool _quickEntryInProgress = false;
+  List<FinanceCategory>? _categoryMapSource;
+  Map<String, FinanceCategory>? _cachedCategoryMap;
+  List<FinancePaymentMethod>? _paymentMethodMapSource;
+  Map<String, FinancePaymentMethod>? _cachedPaymentMethodMap;
 
-  Map<String, FinanceCategory> get _categoryMap => {
-    for (final item in _categories) item.uuid: item,
-  };
+  Map<String, FinanceCategory> get _categoryMap {
+    if (!identical(_categoryMapSource, _categories)) {
+      _categoryMapSource = _categories;
+      _cachedCategoryMap = {for (final item in _categories) item.uuid: item};
+    }
+    return _cachedCategoryMap!;
+  }
 
-  Map<String, FinancePaymentMethod> get _paymentMethodMap => {
-    for (final item in _paymentMethods) item.uuid: item,
-  };
-
-  bool get _hasLedgerFilters =>
-      _keyword.trim().isNotEmpty ||
-      _filterType != null ||
-      _categoryFilterUuid != null;
+  Map<String, FinancePaymentMethod> get _paymentMethodMap {
+    if (!identical(_paymentMethodMapSource, _paymentMethods)) {
+      _paymentMethodMapSource = _paymentMethods;
+      _cachedPaymentMethodMap = {
+        for (final item in _paymentMethods) item.uuid: item,
+      };
+    }
+    return _cachedPaymentMethodMap!;
+  }
 
   bool get _isCategoryLedgerRoute => widget.initialCategoryFilterUuid != null;
 
-  bool get _hasManualLedgerFilters =>
-      _keyword.trim().isNotEmpty || _filterType != null;
+  bool _shouldClearFiltersBeforePop({
+    required String keyword,
+    required FinanceTransactionType? filterType,
+    required String? categoryUuid,
+  }) {
+    final hasManualFilters = keyword.trim().isNotEmpty || filterType != null;
+    return _isCategoryLedgerRoute
+        ? hasManualFilters
+        : hasManualFilters || categoryUuid != null;
+  }
 
-  bool get _clearFiltersBeforePop =>
-      _isCategoryLedgerRoute ? _hasManualLedgerFilters : _hasLedgerFilters;
+  bool get _clearFiltersBeforePop => _shouldClearFiltersBeforePop(
+    keyword: _keyword,
+    filterType: _filterType,
+    categoryUuid: _categoryFilterUuid,
+  );
 
   bool get _handleLedgerBack =>
       _selectedIndex == 1 &&
       (!_isCategoryLedgerRoute || _clearFiltersBeforePop);
+
+  void _updateLedgerFilter({
+    required VoidCallback update,
+    required String keyword,
+    required FinanceTransactionType? filterType,
+    required String? categoryUuid,
+  }) {
+    final willHaveClearableFilters = _shouldClearFiltersBeforePop(
+      keyword: keyword,
+      filterType: filterType,
+      categoryUuid: categoryUuid,
+    );
+    if (willHaveClearableFilters != _clearFiltersBeforePop) {
+      setState(update);
+    } else {
+      update();
+    }
+  }
 
   void _clearLedgerFilters() {
     if (!_clearFiltersBeforePop) return;
@@ -1149,12 +1187,24 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
                           filterType: _filterType,
                           categoryUuid: _categoryFilterUuid,
                           onOpenDetail: _openDetail,
-                          onKeywordChanged: (value) =>
-                              setState(() => _keyword = value),
-                          onFilterChanged: (value) =>
-                              setState(() => _filterType = value),
-                          onCategoryChanged: (value) =>
-                              setState(() => _categoryFilterUuid = value),
+                          onKeywordChanged: (value) => _updateLedgerFilter(
+                            update: () => _keyword = value,
+                            keyword: value,
+                            filterType: _filterType,
+                            categoryUuid: _categoryFilterUuid,
+                          ),
+                          onFilterChanged: (value) => _updateLedgerFilter(
+                            update: () => _filterType = value,
+                            keyword: _keyword,
+                            filterType: value,
+                            categoryUuid: _categoryFilterUuid,
+                          ),
+                          onCategoryChanged: (value) => _updateLedgerFilter(
+                            update: () => _categoryFilterUuid = value,
+                            keyword: _keyword,
+                            filterType: _filterType,
+                            categoryUuid: value,
+                          ),
                           onEdit: (transaction) =>
                               _openEntry(transaction: transaction),
                           onDelete: _deleteTransaction,

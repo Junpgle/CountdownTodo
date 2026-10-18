@@ -38,6 +38,12 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
   List<FinanceLoanInstallment> _loanRepayments = const [];
   Set<String> _loanInterestTransactionUuids = const {};
   Map<String, int> _paymentMethodBalances = const {};
+  List<FinanceCategory>? _categoryCacheSource;
+  Map<String, FinanceCategory> _categoryMapCache = const {};
+  final Map<String, String> _categoryDisplayNames = {};
+  List<FinancePaymentMethod>? _paymentMethodCacheSource;
+  Map<String, FinancePaymentMethod> _paymentMethodMapCache = const {};
+  final Map<String, String> _paymentMethodDisplayNames = {};
   bool? _balanceSyncSupported;
   FinanceSummary _summary = const FinanceSummary();
   bool _isLoading = true;
@@ -63,9 +69,36 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
 
   void _onFinanceChanged() => _load(showLoading: false);
 
-  Map<String, FinanceCategory> get _categoryMap => {
-    for (final item in _categories) item.uuid: item,
-  };
+  void _ensureCategoryCaches() {
+    if (identical(_categoryCacheSource, _categories)) return;
+    _categoryCacheSource = _categories;
+    _categoryMapCache = {for (final item in _categories) item.uuid: item};
+    _categoryDisplayNames.clear();
+  }
+
+  Map<String, FinanceCategory> get _categoryMap {
+    _ensureCategoryCaches();
+    return _categoryMapCache;
+  }
+
+  String _categoryDisplayName(FinanceCategory category) {
+    _ensureCategoryCaches();
+    return _categoryDisplayNames.putIfAbsent(
+      category.uuid,
+      () => financeCategoryDisplayName(category, _categories),
+    );
+  }
+
+  void _ensurePaymentMethodCaches() {
+    if (identical(_paymentMethodCacheSource, _paymentMethods)) return;
+    _paymentMethodCacheSource = _paymentMethods;
+    _paymentMethodMapCache = {
+      for (final method in _paymentMethods) method.uuid: method,
+    };
+    _paymentMethodDisplayNames
+      ..clear()
+      ..addAll(financePaymentMethodDisplayNames(_paymentMethods));
+  }
 
   FinanceBudget? get _overallBudget {
     for (final budget in _budgets) {
@@ -83,9 +116,15 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
     return _latestPaymentSnapshots(_balanceSnapshots, _balanceAsOfAt);
   }
 
-  Map<String, FinancePaymentMethod> get _paymentMethodMap => {
-    for (final method in _paymentMethods) method.uuid: method,
-  };
+  Map<String, FinancePaymentMethod> get _paymentMethodMap {
+    _ensurePaymentMethodCaches();
+    return _paymentMethodMapCache;
+  }
+
+  String _paymentMethodDisplayName(FinancePaymentMethod method) {
+    _ensurePaymentMethodCaches();
+    return _paymentMethodDisplayNames[method.uuid] ?? method.name;
+  }
 
   bool get _isFutureMonth {
     final now = widget.clock();
@@ -376,6 +415,7 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
       );
       return;
     }
+    final displayNames = financePaymentMethodDisplayNames(methods);
     final paymentMethodUuid = await showAppModalBottomSheet<String>(
       context: context,
       builder: (context) => SafeArea(
@@ -393,7 +433,7 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
             for (final method in methods)
               ListTile(
                 leading: Text(method.icon),
-                title: Text(financePaymentMethodDisplayName(method, methods)),
+                title: Text(displayNames[method.uuid] ?? method.name),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => Navigator.of(context).pop(method.uuid),
               ),
@@ -532,17 +572,14 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
     if (budget.paymentMethodUuid != null) {
       final paymentMethod = _paymentMethodMap[budget.paymentMethodUuid];
       if (paymentMethod == null) return '已归档或未知付款方式';
-      final name = financePaymentMethodDisplayName(
-        paymentMethod,
-        _paymentMethods,
-      );
+      final name = _paymentMethodDisplayName(paymentMethod);
       final archivedLabel = paymentMethod.isArchived ? '（已归档）' : '';
       return '$name$archivedLabel';
     }
     final category = _categoryMap[budget.categoryUuid];
     return category == null
         ? '已归档或未知分类'
-        : '${financeCategoryDisplayName(category, _categories)}${category.isArchived ? '（已归档）' : ''}';
+        : '${_categoryDisplayName(category)}${category.isArchived ? '（已归档）' : ''}';
   }
 
   String _budgetIcon(FinanceBudget budget) {
