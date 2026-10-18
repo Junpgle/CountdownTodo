@@ -2,11 +2,11 @@ import 'dart:async';
 
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
-import 'package:intl/intl.dart';
 import '../services/api_service.dart';
 import '../services/tai_service.dart';
 import '../services/storage/user_session_storage.dart';
 import '../utils/app_platform.dart';
+import '../utils/time_utils.dart';
 import '../storage_service.dart';
 
 class ScreenTimeService {
@@ -102,7 +102,7 @@ class ScreenTimeService {
             hasScreenTimeData = true;
           } else if (stats is List && stats.isNotEmpty) {
             // 向后兼容旧格式
-            String today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+            final today = AppTimeFormats.date(DateTime.now());
             await StorageService.saveLocalScreenTime(
               {'date': today, 'apps': stats},
               username: session.username,
@@ -114,7 +114,7 @@ class ScreenTimeService {
         final List<Map<String, dynamic>> apps =
             await TaiService.getTodayStats();
         if (apps.isNotEmpty) {
-          String today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+          final today = AppTimeFormats.date(DateTime.now());
           await StorageService.saveLocalScreenTime(
             {'date': today, 'apps': apps},
             username: session.username,
@@ -144,7 +144,7 @@ class ScreenTimeService {
 
       // 3. 仅拉取多端聚合后的屏幕时间总表。该任务不应每两分钟再带起
       // 待办、倒计时、习惯等整套业务同步。
-      String today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+      final today = AppTimeFormats.date(DateTime.now());
       await UserSessionStorage.ensureCurrentSession(session);
       final cloudStats = await ApiService.fetchScreenTime(
         session.userId,

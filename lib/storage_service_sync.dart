@@ -104,7 +104,7 @@ mixin _StorageSync on _StorageServiceBase {
     final cacheKey = _scopedKey(keyScreenTimeCache, effectiveUsername);
     final syncKey = _scopedKey(keyLastScreenTimeSync, effectiveUsername);
     final now = DateTime.now();
-    final String today = DateFormat('yyyy-MM-dd').format(now);
+    final String today = time_utils.AppTimeFormats.date(now);
 
     // 1. 获取已有的历史记录
     String? histStr = prefs.getString(historyKey);
@@ -1164,7 +1164,7 @@ mixin _StorageSync on _StorageServiceBase {
         try {
           // 如果没有记录日期（旧版本升级上来），退而求其次用今天
           final String finalDate =
-              recordDate ?? DateFormat('yyyy-MM-dd').format(DateTime.now());
+              recordDate ?? time_utils.AppTimeFormats.date(DateTime.now());
 
           screenPayload = {
             'device_name': friendlyName,

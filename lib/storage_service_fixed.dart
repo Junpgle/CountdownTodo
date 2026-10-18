@@ -144,7 +144,7 @@ mixin _StorageFixed on _StorageServiceBase {
     String username,
     DateTime day,
   ) async {
-    final date = DateFormat('yyyy-MM-dd').format(day.toLocal());
+    final date = time_utils.AppTimeFormats.date(day.toLocal());
     try {
       final db = await DatabaseHelper.instance.databaseForUser(username);
       final maps = await db.query(
@@ -175,7 +175,7 @@ mixin _StorageFixed on _StorageServiceBase {
     final endDate = DateTime(localTo.year, localTo.month, localTo.day);
     if (!endDate.isAfter(startDate)) return const [];
 
-    final dateFormat = DateFormat('yyyy-MM-dd');
+    final dateFormat = time_utils.AppTimeFormats.dateFormatter('yyyy-MM-dd');
     try {
       final db = await DatabaseHelper.instance.databaseForUser(username);
       final maps = await db.query(
