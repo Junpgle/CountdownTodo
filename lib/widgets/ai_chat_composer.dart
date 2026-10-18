@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -24,12 +26,14 @@ class AiChatComposer extends StatefulWidget {
     required this.onToggleThinking,
     required this.onToggleContext,
     required this.onSettings,
+    this.onSettingsFromSource,
     required this.onModelConfig,
     required this.onClearHistory,
     this.hasAttachment = false,
     this.isPickingAttachment = false,
     this.onCopyPrompt,
     this.onPasteReply,
+    this.onPasteImage,
     this.onRetry,
     this.onVoice,
     this.keyboardInset,
@@ -49,10 +53,12 @@ class AiChatComposer extends StatefulWidget {
   final VoidCallback onToggleThinking;
   final VoidCallback onToggleContext;
   final VoidCallback onSettings;
+  final Future<void> Function(GlobalKey sourceKey)? onSettingsFromSource;
   final VoidCallback onModelConfig;
   final VoidCallback onClearHistory;
   final VoidCallback? onCopyPrompt;
   final VoidCallback? onPasteReply;
+  final Future<bool> Function()? onPasteImage;
   final VoidCallback? onRetry;
   final VoidCallback? onVoice;
 
@@ -65,7 +71,18 @@ class AiChatComposer extends StatefulWidget {
 
 class _AiChatComposerState extends State<AiChatComposer> {
   final _focusNode = FocusNode();
+  final GlobalKey _contextSettingsSourceKey = GlobalKey();
+  final GlobalKey _moreMenuSourceKey = GlobalKey();
   bool _expanded = false;
+
+  void _openSettingsFrom(GlobalKey sourceKey) {
+    final onSettingsFromSource = widget.onSettingsFromSource;
+    if (onSettingsFromSource == null) {
+      widget.onSettings();
+      return;
+    }
+    onSettingsFromSource(sourceKey);
+  }
 
   @override
   void dispose() {
@@ -94,6 +111,31 @@ class _AiChatComposerState extends State<AiChatComposer> {
     }
   }
 
+  Future<void> _pasteClipboard() async {
+    final handledAsImage = await widget.onPasteImage?.call() ?? false;
+    if (handledAsImage || !mounted) return;
+
+    final clipboard = await Clipboard.getData(Clipboard.kTextPlain);
+    if (!mounted) return;
+    final text = clipboard?.text;
+    if (text == null || text.isEmpty) return;
+
+    final value = widget.controller.value;
+    final selection = value.selection;
+    final start = selection.isValid
+        ? selection.start.clamp(0, value.text.length).toInt()
+        : value.text.length;
+    final end = selection.isValid
+        ? selection.end.clamp(start, value.text.length).toInt()
+        : start;
+    final pastedText = value.text.replaceRange(start, end, text);
+    widget.controller.value = value.copyWith(
+      text: pastedText,
+      selection: TextSelection.collapsed(offset: start + text.length),
+      composing: TextRange.empty,
+    );
+  }
+
   void _selectAction(_ComposerAction action) {
     switch (action) {
       case _ComposerAction.copy:
@@ -105,7 +147,7 @@ class _AiChatComposerState extends State<AiChatComposer> {
       case _ComposerAction.model:
         widget.onModelConfig();
       case _ComposerAction.settings:
-        widget.onSettings();
+        _openSettingsFrom(_moreMenuSourceKey);
       case _ComposerAction.clear:
         widget.onClearHistory();
     }
@@ -174,7 +216,9 @@ class _AiChatComposerState extends State<AiChatComposer> {
                 ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 136),
                   child: TextButton.icon(
-                    onPressed: widget.onSettings,
+                    key: _contextSettingsSourceKey,
+                    onPressed: () =>
+                        _openSettingsFrom(_contextSettingsSourceKey),
                     icon: Icon(
                       widget.contextEnabled
                           ? Icons.manage_search_rounded
@@ -208,35 +252,45 @@ class _AiChatComposerState extends State<AiChatComposer> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                TextField(
-                  key: const ValueKey('ai-chat-input'),
-                  controller: widget.controller,
-                  focusNode: _focusNode,
-                  readOnly: _expanded,
-                  selectAllOnFocus: false,
-                  minLines: minLines,
-                  maxLines: maxLines,
-                  keyboardType: TextInputType.multiline,
-                  textInputAction: TextInputAction.newline,
-                  style: TextStyle(
-                    fontSize: 15,
-                    height: 1.4,
-                    color: colors.onSurface,
-                  ),
-                  decoration: InputDecoration(
-                    hintText: '问问助手…',
-                    hintStyle: TextStyle(
+                Actions(
+                  actions: <Type, Action<Intent>>{
+                    PasteTextIntent: CallbackAction<PasteTextIntent>(
+                      onInvoke: (_) {
+                        unawaited(_pasteClipboard());
+                        return null;
+                      },
+                    ),
+                  },
+                  child: TextField(
+                    key: const ValueKey('ai-chat-input'),
+                    controller: widget.controller,
+                    focusNode: _focusNode,
+                    readOnly: _expanded,
+                    selectAllOnFocus: false,
+                    minLines: minLines,
+                    maxLines: maxLines,
+                    keyboardType: TextInputType.multiline,
+                    textInputAction: TextInputAction.newline,
+                    style: TextStyle(
                       fontSize: 15,
                       height: 1.4,
-                      color: colors.onSurfaceVariant,
+                      color: colors.onSurface,
                     ),
-                    filled: false,
-                    border: InputBorder.none,
-                    enabledBorder: InputBorder.none,
-                    focusedBorder: InputBorder.none,
-                    disabledBorder: InputBorder.none,
-                    isDense: true,
-                    contentPadding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+                    decoration: InputDecoration(
+                      hintText: '问问助手…',
+                      hintStyle: TextStyle(
+                        fontSize: 15,
+                        height: 1.4,
+                        color: colors.onSurfaceVariant,
+                      ),
+                      filled: false,
+                      border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
+                      disabledBorder: InputBorder.none,
+                      isDense: true,
+                      contentPadding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+                    ),
                   ),
                 ),
                 Padding(
@@ -287,49 +341,55 @@ class _AiChatComposerState extends State<AiChatComposer> {
                         '智能上下文 · ${widget.contextLabel}',
                         widget.onToggleContext,
                       ),
-                      PopupMenuButton<_ComposerAction>(
-                        key: const ValueKey('ai-chat-more'),
-                        tooltip: '更多输入操作',
-                        icon: const Icon(Icons.more_horiz_rounded, size: 20),
-                        style: plainStyle,
-                        onSelected: _selectAction,
-                        onOpened: _focusNode.unfocus,
-                        itemBuilder: (_) => [
-                          PopupMenuItem(
-                            value: _ComposerAction.copy,
-                            enabled:
-                                !widget.isLoading &&
-                                widget.onCopyPrompt != null,
-                            child: const Text('复制提示词'),
+                      KeyedSubtree(
+                        key: _moreMenuSourceKey,
+                        child: PopupMenuButton<_ComposerAction>(
+                          key: const ValueKey('ai-chat-more'),
+                          tooltip: '更多输入操作',
+                          icon: const Icon(
+                            Icons.more_horiz_rounded,
+                            size: 20,
                           ),
-                          PopupMenuItem(
-                            value: _ComposerAction.paste,
-                            enabled:
-                                !widget.isLoading &&
-                                widget.onPasteReply != null,
-                            child: const Text('粘贴AI回复识别'),
-                          ),
-                          PopupMenuItem(
-                            value: _ComposerAction.retry,
-                            enabled:
-                                !widget.isLoading && widget.onRetry != null,
-                            child: const Text('重试上一条回复'),
-                          ),
-                          const PopupMenuDivider(),
-                          const PopupMenuItem(
-                            value: _ComposerAction.model,
-                            child: Text('模型配置'),
-                          ),
-                          const PopupMenuItem(
-                            value: _ComposerAction.settings,
-                            child: Text('AI 助手设置'),
-                          ),
-                          PopupMenuItem(
-                            value: _ComposerAction.clear,
-                            enabled: !widget.isLoading,
-                            child: const Text('清空聊天记录'),
-                          ),
-                        ],
+                          style: plainStyle,
+                          onSelected: _selectAction,
+                          onOpened: _focusNode.unfocus,
+                          itemBuilder: (_) => [
+                            PopupMenuItem(
+                              value: _ComposerAction.copy,
+                              enabled:
+                                  !widget.isLoading &&
+                                  widget.onCopyPrompt != null,
+                              child: const Text('复制提示词'),
+                            ),
+                            PopupMenuItem(
+                              value: _ComposerAction.paste,
+                              enabled:
+                                  !widget.isLoading &&
+                                  widget.onPasteReply != null,
+                              child: const Text('粘贴AI回复识别'),
+                            ),
+                            PopupMenuItem(
+                              value: _ComposerAction.retry,
+                              enabled:
+                                  !widget.isLoading && widget.onRetry != null,
+                              child: const Text('重试上一条回复'),
+                            ),
+                            const PopupMenuDivider(),
+                            const PopupMenuItem(
+                              value: _ComposerAction.model,
+                              child: Text('模型配置'),
+                            ),
+                            const PopupMenuItem(
+                              value: _ComposerAction.settings,
+                              child: Text('AI 助手设置'),
+                            ),
+                            PopupMenuItem(
+                              value: _ComposerAction.clear,
+                              enabled: !widget.isLoading,
+                              child: const Text('清空聊天记录'),
+                            ),
+                          ],
+                        ),
                       ),
                       const Spacer(),
                       IconButton(

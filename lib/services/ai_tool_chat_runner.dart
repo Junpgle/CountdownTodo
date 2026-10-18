@@ -4,6 +4,8 @@ import 'dart:convert';
 import '../features/finance/models/finance_models.dart';
 import 'ai_action_parser.dart';
 import 'ai_chat_service.dart';
+import 'ai_native_tool_call_parser.dart';
+import 'ai_native_tool_definition_builder.dart';
 import 'ai_query_tool_service.dart';
 import 'ai_planning_draft_validator.dart';
 import 'ai_tool_result_context.dart';
@@ -21,6 +23,244 @@ typedef AiReadToolExecutor = Future<Map<String, dynamic>> Function(
 /// Continues the same user turn after the app returns read-only tool results.
 /// Mutation tools stay proposals handled by the existing confirmation UI.
 abstract final class AiToolChatRunner {
+  static final RegExp _legacyTextToolBlock = RegExp(
+    r'<tool_call\b[^>]*>([\s\S]*?)</tool_call\s*>',
+    caseSensitive: false,
+  );
+  static final RegExp _legacyTextToolOpen = RegExp(
+    r'<tool_call\b[^>]*>',
+    caseSensitive: false,
+  );
+  static final RegExp _legacyTextToolClose = RegExp(
+    r'</tool_call\s*>',
+    caseSensitive: false,
+  );
+
+  static String _visibleTextBeforeLegacyToolCalls(String content) {
+    final lowerContent = content.toLowerCase();
+    var cursor = 0;
+    final visible = StringBuffer();
+    while (cursor < content.length) {
+      final openMatches = _legacyTextToolOpen.allMatches(content, cursor);
+      final openMatch = openMatches.isEmpty ? null : openMatches.first;
+      final closeMatches = _legacyTextToolClose.allMatches(content, cursor);
+      final closeBeforeOpen = closeMatches.isEmpty
+          ? null
+          : closeMatches.first;
+      if (closeBeforeOpen != null &&
+          (openMatch == null || closeBeforeOpen.start < openMatch.start)) {
+        visible.write(content.substring(cursor, closeBeforeOpen.start));
+        cursor = closeBeforeOpen.end;
+        continue;
+      }
+      if (openMatch != null) {
+        visible.write(content.substring(cursor, openMatch.start));
+        final toolCloseMatches = _legacyTextToolClose.allMatches(
+          content,
+          openMatch.end,
+        );
+        final closeMatch = toolCloseMatches.isEmpty
+            ? null
+            : toolCloseMatches.first;
+        if (closeMatch == null) return visible.toString();
+        cursor = closeMatch.end;
+        continue;
+      }
+
+      final partialOpenIndex = lowerContent.lastIndexOf('<tool_call');
+      if (partialOpenIndex >= cursor &&
+          !lowerContent.substring(partialOpenIndex).contains('>')) {
+        visible.write(content.substring(cursor, partialOpenIndex));
+        return visible.toString();
+      }
+      visible.write(content.substring(cursor));
+      return visible.toString();
+    }
+    return visible.toString();
+  }
+
+  static ({
+    String content,
+    List<AiChatFunctionCall> calls,
+    bool hadToolMarkup,
+  }) _parseLegacyTextToolCalls(
+    String content,
+    List<Map<String, dynamic>> tools,
+    int round,
+  ) {
+    // Some OpenAI-compatible providers return tool calls as XML-like assistant
+    // text instead of populating `tool_calls`. Only accept functions advertised
+    // in this round; writes still pass through proposal validation and the
+    // existing confirmation-card path.
+    final allowedTools = <String, Map>{};
+    for (final tool in tools) {
+      final function = tool['function'];
+      if (function is! Map) continue;
+      final name = function['name']?.toString() ?? '';
+      if (name.isNotEmpty) allowedTools[name] = function;
+    }
+
+    final calls = <AiChatFunctionCall>[];
+    var callIndex = 0;
+    for (final blockMatch in _legacyTextToolBlock.allMatches(content)) {
+      final block = blockMatch.group(1) ?? '';
+      final functionMatch = RegExp(
+        r'<function\s*=\s*([A-Za-z_][A-Za-z0-9_]*)\s*>',
+        caseSensitive: false,
+      ).firstMatch(block);
+      if (functionMatch == null) continue;
+
+      final requestedName = functionMatch.group(1)!.toLowerCase();
+      var canonicalName = requestedName;
+      String? aliasedDomain;
+      if (!allowedTools.containsKey(canonicalName) &&
+          requestedName.startsWith('query_')) {
+        final domain = requestedName.substring('query_'.length);
+        if (AiQueryToolService.domains.contains(domain) &&
+            allowedTools.containsKey('query_app_data')) {
+          canonicalName = 'query_app_data';
+          aliasedDomain = domain;
+        }
+      }
+      final function = allowedTools[canonicalName];
+      if (function == null) continue;
+
+      final parameters = function['parameters'];
+      final properties = parameters is Map ? parameters['properties'] : null;
+      if (parameters is! Map || properties is! Map) continue;
+      final arguments = <String, dynamic>{};
+      var valid = true;
+      final functionBodyStart = functionMatch.end;
+      final functionBodyEnd = block.toLowerCase().lastIndexOf('</function>');
+      final functionBody = functionBodyEnd >= functionBodyStart
+          ? block.substring(functionBodyStart, functionBodyEnd)
+          : block.substring(functionBodyStart);
+      for (final parameterMatch in RegExp(
+        r'<parameter\s*=\s*([A-Za-z_][A-Za-z0-9_]*)\s*>([\s\S]*?)</parameter\s*>',
+        caseSensitive: false,
+      ).allMatches(functionBody)) {
+        final name = parameterMatch.group(1)!;
+        final specification = properties[name];
+        if (specification is! Map || arguments.containsKey(name)) {
+          valid = false;
+          break;
+        }
+        var rawValue = parameterMatch.group(2)!.trim();
+        rawValue = rawValue
+            .replaceAll('&lt;', '<')
+            .replaceAll('&gt;', '>')
+            .replaceAll('&quot;', '"')
+            .replaceAll('&#39;', "'")
+            .replaceAll('&apos;', "'")
+            .replaceAll('&amp;', '&');
+        final parsedValue = _parseLegacyTextParameterValue(
+          rawValue,
+          specification,
+        );
+        if (!parsedValue.valid ||
+            (specification['enum'] is List &&
+                !(specification['enum'] as List).contains(parsedValue.value))) {
+          valid = false;
+          break;
+        }
+        arguments[name] = parsedValue.value;
+      }
+
+      if (aliasedDomain != null) {
+        if (arguments['domain'] != null &&
+            arguments['domain'] != aliasedDomain) {
+          valid = false;
+        }
+        arguments['domain'] = aliasedDomain;
+      }
+      final requiredParameters = parameters['required'];
+      if (requiredParameters is List &&
+          requiredParameters.any((name) => !arguments.containsKey(name))) {
+        valid = false;
+      }
+      if (parameters['additionalProperties'] == false &&
+          arguments.keys.any((name) => !properties.containsKey(name))) {
+        valid = false;
+      }
+      if (!valid) continue;
+
+      calls.add(
+        AiChatFunctionCall(
+          id: 'legacy-text-$round-${callIndex++}',
+          name: canonicalName,
+          arguments: jsonEncode(arguments),
+        ),
+      );
+    }
+
+    final hadToolMarkup = RegExp(
+      r'</?tool_call\b',
+      caseSensitive: false,
+    ).hasMatch(content);
+    var cleaned = content.replaceAll(_legacyTextToolBlock, '');
+    final malformedStart = RegExp(
+      r'<tool_call\b',
+      caseSensitive: false,
+    ).allMatches(cleaned);
+    final malformedToolCall = malformedStart.isEmpty
+        ? null
+        : malformedStart.first;
+    if (malformedToolCall != null) {
+      cleaned = cleaned.substring(0, malformedToolCall.start);
+    }
+    cleaned = cleaned.replaceAll(_legacyTextToolClose, '');
+    return (
+      content: cleaned,
+      calls: calls,
+      hadToolMarkup: hadToolMarkup,
+    );
+  }
+
+  static dynamic _decodeLegacyJsonValue(String value) {
+    try {
+      return jsonDecode(value);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static ({bool valid, dynamic value}) _parseLegacyTextParameterValue(
+    String rawValue,
+    Map specification,
+  ) {
+    final rawType = specification['type'];
+    final types = rawType is List
+        ? rawType.map((type) => type.toString()).toList(growable: false)
+        : rawType == null
+        ? const <String>[]
+        : <String>[rawType.toString()];
+    if (rawValue == 'null' && types.contains('null')) {
+      return (valid: true, value: null);
+    }
+
+    for (final type in types.isEmpty ? const ['json'] : types) {
+      final decodedJson = type == 'object' || type == 'array' || type == 'json'
+          ? _decodeLegacyJsonValue(rawValue)
+          : null;
+      final value = switch (type) {
+        'string' => rawValue,
+        'integer' => int.tryParse(rawValue),
+        'number' => num.tryParse(rawValue),
+        'boolean' => rawValue.toLowerCase() == 'true'
+            ? true
+            : rawValue.toLowerCase() == 'false'
+            ? false
+            : null,
+        'object' => decodedJson is Map ? decodedJson : null,
+        'array' => decodedJson is List ? decodedJson : null,
+        'json' => decodedJson,
+        _ => null,
+      };
+      if (value != null) return (valid: true, value: value);
+    }
+    return (valid: false, value: null);
+  }
+
   static Stream<AiChatStreamChunk> run({
     required List<Map<String, dynamic>> messages,
     required List<Map<String, dynamic>> tools,
@@ -31,6 +271,8 @@ abstract final class AiToolChatRunner {
     bool includeReasoningContent = false,
     bool requirePlanningProposal = false,
     String planningRequestText = '',
+    String previousUserMessage = '',
+    String previousAssistantMessage = '',
     Set<String>? knownTodoIds,
     Set<String>? knownHabitIds,
     Set<String>? knownFinanceTransactionIds,
@@ -150,6 +392,7 @@ abstract final class AiToolChatRunner {
       }
       var content = '';
       var reasoning = '';
+      var streamedVisibleContent = '';
       final calls = <AiChatFunctionCall>[];
       final runRound =
           planningRepairAttempted ||
@@ -162,10 +405,17 @@ abstract final class AiToolChatRunner {
         content += chunk.content;
         reasoning += chunk.reasoningContent;
         calls.addAll(chunk.toolCalls);
+        final visibleContent = hasPlanningTool || hasWriteProposalTool
+            ? ''
+            : _visibleTextBeforeLegacyToolCalls(content);
+        final visibleDelta = visibleContent.startsWith(streamedVisibleContent)
+            ? visibleContent.substring(streamedVisibleContent.length)
+            : '';
+        streamedVisibleContent = visibleContent;
         yield AiChatStreamChunk(
           // Proposal prose stays buffered until we know whether an actual
           // call arrived. Never flash a false "created/saved" claim.
-          content: hasPlanningTool || hasWriteProposalTool ? '' : chunk.content,
+          content: visibleDelta,
           reasoningContent: chunk.reasoningContent,
           // Emit calls only after the complete proposal passes app-side
           // validation. Malformed writes must not reach the action parser.
@@ -174,7 +424,36 @@ abstract final class AiToolChatRunner {
           usageSummary: chunk.usageSummary,
         );
       }
+      yield AiChatStreamChunk(
+        rawModelReply: AiNativeToolCallParser.formatRawReply(content, calls),
+      );
       if (cancelled()) return;
+      final legacyCalls = _parseLegacyTextToolCalls(content, roundTools, round);
+      content = legacyCalls.content;
+      for (final call in legacyCalls.calls) {
+        final duplicate = calls.any(
+          (existing) =>
+              existing.name == call.name &&
+              existing.arguments.trim() == call.arguments.trim(),
+        );
+        if (!duplicate) calls.add(call);
+      }
+      final unsupportedLegacyToolMarkup =
+          legacyCalls.hadToolMarkup &&
+          legacyCalls.calls.isEmpty &&
+          calls.isEmpty;
+      if (unsupportedLegacyToolMarkup) {
+        if (hasPlanningTool || hasWriteProposalTool) {
+          if (content.trim().isEmpty) {
+            content = '上一轮返回了当前未开放的文本工具调用。';
+          }
+        } else {
+          content = [
+            content.trim(),
+            '模型返回了无法识别的查询调用格式，未读取数据。请重试。',
+          ].where((part) => part.isNotEmpty).join('\n\n');
+        }
+      }
       final proposalValidationIssues = <String, String>{};
       final readCallsInRound = calls
           .where(
@@ -186,6 +465,7 @@ abstract final class AiToolChatRunner {
       var deferredReferenceProposal = false;
       var createdTodoCount = 0;
       var createdTodoRemarkCount = 0;
+      var createdFinanceDraftCount = 0;
       for (final call in calls) {
         if (!_writeProposalToolNames.contains(call.name) ||
             !roundAllowedToolNames.contains(call.name)) {
@@ -244,6 +524,10 @@ abstract final class AiToolChatRunner {
         } else if (call.name == 'propose_cdt_actions') {
           createdTodoCount += _createdTodoCount(call.arguments);
           createdTodoRemarkCount += _createdTodoRemarkCount(call.arguments);
+        } else if (call.name == 'propose_finance_drafts') {
+          createdFinanceDraftCount += _createdFinanceDraftCount(
+            call.arguments,
+          );
         }
       }
       final cdtProposalCalls = calls
@@ -261,6 +545,92 @@ abstract final class AiToolChatRunner {
             '用户明确要求 $requestedTodoCount 条待办，当前提案只有 $createdTodoCount 条';
         for (final call in cdtProposalCalls) {
           proposalValidationIssues.putIfAbsent(call.id, () => issue);
+        }
+      }
+      final financeDraftCalls = calls
+          .where(
+            (call) =>
+                call.name == 'propose_finance_drafts' &&
+                roundAllowedToolNames.contains(call.name),
+          )
+          .toList(growable: false);
+      final requestedFinanceDraftCount =
+          AiTodoContextBuilder.explicitFinanceDraftCount(planningRequestText);
+      if (requestedFinanceDraftCount != null &&
+          financeDraftCalls.isNotEmpty &&
+          createdFinanceDraftCount < requestedFinanceDraftCount) {
+        final issue =
+            '用户明确要求 $requestedFinanceDraftCount 笔新增账单，当前提案只有 $createdFinanceDraftCount 笔';
+        for (final call in financeDraftCalls) {
+          proposalValidationIssues.putIfAbsent(call.id, () => issue);
+        }
+      }
+      final requiredCdtActionNames =
+          AiTodoContextBuilder.requiredExplicitCdtActionNames(
+            planningRequestText,
+            previousUserMessage: previousUserMessage,
+            previousAssistantMessage: previousAssistantMessage,
+          ).intersection(
+            AiNativeToolDefinitionBuilder.allowedCdtActionNames(roundTools),
+          );
+      if (cdtProposalCalls.isNotEmpty && requiredCdtActionNames.isNotEmpty) {
+        final proposedCdtActionNames = <String>{};
+        for (final call in cdtProposalCalls) {
+          if (proposalValidationIssues.containsKey(call.id)) continue;
+          proposedCdtActionNames.addAll(_cdtActionNames(call.arguments));
+          if (_hasNewTodoInPlan(call.arguments)) {
+            proposedCdtActionNames.add('create_todo');
+          }
+        }
+        final missingCdtActionNames =
+            requiredCdtActionNames.difference(proposedCdtActionNames);
+        if (missingCdtActionNames.isNotEmpty) {
+          final issue =
+              '用户明确要求的 CDT 操作未全部包含：'
+              '${missingCdtActionNames.map(_cdtActionLabel).join('、')}；'
+              '当前提案只有 ${proposedCdtActionNames.map(_cdtActionLabel).join('、')}';
+          for (final call in cdtProposalCalls) {
+            proposalValidationIssues.update(
+              call.id,
+              (existing) => '$existing；$issue',
+              ifAbsent: () => issue,
+            );
+          }
+        }
+      }
+      final financeActionCalls = calls
+          .where(
+            (call) =>
+                call.name == 'propose_finance_actions' &&
+                roundAllowedToolNames.contains(call.name),
+          )
+          .toList(growable: false);
+      final requiredFinanceActionNames =
+          AiNativeToolDefinitionBuilder.allowedFinanceActionNames(roundTools);
+      if (financeActionCalls.isNotEmpty &&
+          requiredFinanceActionNames.isNotEmpty) {
+        final proposedFinanceActionNames = <String>{};
+        for (final call in financeActionCalls) {
+          proposedFinanceActionNames.addAll(
+            _financeActionNames(call.arguments),
+          );
+        }
+        final missingFinanceActionNames = requiredFinanceActionNames.difference(
+          proposedFinanceActionNames,
+        );
+        if (missingFinanceActionNames.isNotEmpty) {
+          final issue =
+              '用户明确要求的账单操作未全部包含：'
+              '${missingFinanceActionNames.map(_financeActionLabel).join('、')}；'
+              '当前提案只有 '
+              '${proposedFinanceActionNames.map(_financeActionLabel).join('、')}';
+          for (final call in financeActionCalls) {
+            proposalValidationIssues.update(
+              call.id,
+              (existing) => '$existing；$issue',
+              ifAbsent: () => issue,
+            );
+          }
         }
       }
       final requestedTodoRemarkCount = _explicitTodoRemarkCount(
@@ -355,7 +725,8 @@ abstract final class AiToolChatRunner {
         final claimsDraft = RegExp(
           r'草案.{0,12}已生成|已(?:生成|创建|新建|保存)|我已为|回复.{0,12}确认.{0,20}保存',
         ).hasMatch(content);
-        if (isLikelyClarification(content)) {
+        if (isLikelyClarification(content) &&
+            !unsupportedLegacyToolMarkup) {
           if (content.isNotEmpty) yield AiChatStreamChunk(content: content);
           return;
         }
@@ -371,6 +742,7 @@ abstract final class AiToolChatRunner {
           history.add({
             'role': 'system',
             'content':
+                '${unsupportedLegacyToolMarkup ? '上一轮输出了无法解析或本轮未开放的文本工具调用；没有执行查询、生成确认卡或写入数据。请使用本轮可用的 propose_cdt_actions 工具。' : ''}'
                 '上一条只有文字，没有返回规划工具调用，App没有创建任何待办或规划卡。'
                 '用户已要求生成方案，请现在调用propose_cdt_actions提交create_plan_block。'
                 '已有待办用真实todoId；不存在的事项用newTodoTitle，不编造ID。'
@@ -392,7 +764,8 @@ abstract final class AiToolChatRunner {
           hasWriteProposalTool &&
           !hasPlanningTool &&
           !proposalsProduced) {
-        if (isLikelyClarification(content)) {
+        if (isLikelyClarification(content) &&
+            !unsupportedLegacyToolMarkup) {
           if (content.isNotEmpty) yield AiChatStreamChunk(content: content);
           return;
         }
@@ -406,6 +779,7 @@ abstract final class AiToolChatRunner {
           history.add({
             'role': 'system',
             'content':
+                '${unsupportedLegacyToolMarkup ? '上一轮输出了无法解析或本轮未开放的文本工具调用；没有执行查询、生成确认卡或写入数据。请根据用户的原始请求使用本轮可用的 propose_* 工具，信息不足时再向用户追问。' : ''}'
                 '用户明确要求执行数据变更，但上一轮只返回了文字，没有返回函数调用。'
                 'App没有生成确认卡，也没有写入任何数据。若目标和必填信息齐全，'
                 '现在调用相应的propose_*工具生成待确认操作卡；若缺少目标或信息有歧义，'
@@ -416,6 +790,18 @@ abstract final class AiToolChatRunner {
         yield AiChatStreamChunk(
           content: '模型未返回可执行的操作调用；应用没有生成确认卡，也没有写入数据。请重试或补充缺少的信息。',
         );
+        return;
+      }
+      if (calls.isEmpty &&
+          legacyCalls.hadToolMarkup &&
+          !hasPlanningTool &&
+          !hasWriteProposalTool) {
+        final unseenContent = content.startsWith(streamedVisibleContent)
+            ? content.substring(streamedVisibleContent.length)
+            : content;
+        if (unseenContent.isNotEmpty) {
+          yield AiChatStreamChunk(content: unseenContent);
+        }
         return;
       }
       final missingWriteProposalNames = requiredWriteProposalNames.difference(
@@ -1062,6 +1448,11 @@ abstract final class AiToolChatRunner {
     } catch (_) {
       return '参数不是有效JSON';
     }
+    final countdownRoutingIssue = _countdownMutationRoutingIssue(
+      decoded,
+      requestText: requestText,
+    );
+    if (countdownRoutingIssue != null) return countdownRoutingIssue;
     if (!_matchesJsonSchema(decoded, parameters)) {
       return '参数不符合本轮工具 schema 或缺少必填字段';
     }
@@ -1075,6 +1466,23 @@ abstract final class AiToolChatRunner {
       knownFinanceCatalogIdsByKind: knownFinanceCatalogIdsByKind,
       knownReferenceIdsByDomain: knownReferenceIdsByDomain,
     );
+  }
+
+  static String? _countdownMutationRoutingIssue(
+    Object? decoded, {
+    required String requestText,
+  }) {
+    if (!AiTodoContextBuilder.isExplicitCountdownMutationRequest(requestText) ||
+        AiTodoContextBuilder.isExplicitlyTargetingTodo(requestText) ||
+        decoded is! Map ||
+        decoded['actions'] is! List) {
+      return null;
+    }
+    final hasTodoUpdate = (decoded['actions'] as List).any(
+      (action) => action is Map && action['action'] == 'update_todo',
+    );
+    if (!hasTodoUpdate) return null;
+    return '本轮修改对象是倒计时，但参数使用了待办动作update_todo/todoId。请改用update_countdown，在一个动作对象中提供updates数组，每项使用真实countdownId和title；不要使用titleSnapshot或todoId。';
   }
 
   static String? _writeProposalSemanticIssue(
@@ -1524,6 +1932,9 @@ abstract final class AiToolChatRunner {
           }
           break;
         case 'create_time_log':
+          if (title == null || title.isEmpty) {
+            return 'create_time_log 每项都必须包含专注内容标题';
+          }
           final tagAliases = [
             if (record['tagUuids'] is List)
               (record['tagUuids'] as List)
@@ -2344,19 +2755,133 @@ abstract final class AiToolChatRunner {
       if (arguments is! Map || arguments['actions'] is! List) return 0;
       var count = 0;
       for (final action in (arguments['actions'] as List).whereType<Map>()) {
-        if (action['action'] != 'create_todo') continue;
-        final rawTodos = action['todos'];
-        final todos = rawTodos is List ? rawTodos : [action];
-        count += todos.where((todo) {
-          if (todo is! Map) return false;
-          return todo['title']?.toString().trim().isNotEmpty == true;
-        }).length;
+        if (action['action'] == 'create_todo') {
+          final rawTodos = action['todos'];
+          final todos = rawTodos is List ? rawTodos : [action];
+          count += todos.where((todo) {
+            if (todo is! Map) return false;
+            return todo['title']?.toString().trim().isNotEmpty == true;
+          }).length;
+        } else if (action['action'] == 'create_plan_block' &&
+            action['blocks'] is List) {
+          count += (action['blocks'] as List).whereType<Map>().where(
+            (block) =>
+                block['newTodoTitle']?.toString().trim().isNotEmpty == true,
+          ).length;
+        }
       }
       return count;
     } catch (_) {
       return 0;
     }
   }
+
+  static int _createdFinanceDraftCount(String rawArguments) {
+    try {
+      final arguments = jsonDecode(rawArguments);
+      if (arguments is! Map || arguments['drafts'] is! List) return 0;
+      return (arguments['drafts'] as List).whereType<Map>().length;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  static Set<String> _cdtActionNames(String rawArguments) {
+    try {
+      final decoded = jsonDecode(rawArguments);
+      if (decoded is! Map || decoded['actions'] is! List) {
+        return const {};
+      }
+      return (decoded['actions'] as List)
+          .whereType<Map>()
+          .map((action) {
+            final name = action['action']?.toString() ?? '';
+            return name == 'bulk_reschedule' ? 'reschedule_todo' : name;
+          })
+          .where((action) => action.isNotEmpty)
+          .toSet();
+    } catch (_) {
+      return const {};
+    }
+  }
+
+  static Set<String> _financeActionNames(String rawArguments) {
+    try {
+      final decoded = jsonDecode(rawArguments);
+      if (decoded is! Map || decoded['actions'] is! List) {
+        return const {};
+      }
+      return (decoded['actions'] as List)
+          .whereType<Map>()
+          .map((action) => action['action']?.toString() ?? '')
+          .where((action) => action.isNotEmpty)
+          .toSet();
+    } catch (_) {
+      return const {};
+    }
+  }
+
+  static String _financeActionLabel(String action) => switch (action) {
+    'update_finance' => '修改账单',
+    'delete_finance' => '删除账单',
+    _ => action,
+  };
+
+  static bool _hasNewTodoInPlan(String rawArguments) {
+    try {
+      final decoded = jsonDecode(rawArguments);
+      if (decoded is! Map || decoded['actions'] is! List) return false;
+      for (final action in decoded['actions'] as List) {
+        if (action is! Map ||
+            action['action'] != 'create_plan_block' ||
+            action['blocks'] is! List) {
+          continue;
+        }
+        if ((action['blocks'] as List).whereType<Map>().any(
+          (block) => block['newTodoTitle']?.toString().trim().isNotEmpty == true,
+        )) {
+          return true;
+        }
+      }
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static String _cdtActionLabel(String action) => switch (action) {
+    'create_todo' => '新建待办',
+    'create_habit' => '创建习惯',
+    'update_habit' => '修改习惯',
+    'delete_habit' => '删除习惯',
+    'create_schedule' => '新建固定日程',
+    'update_schedule' => '修改固定日程',
+    'cancel_schedule' => '取消固定日程',
+    'delete_schedule' => '删除固定日程',
+    'create_plan_block' => '创建规划块',
+    'update_plan_block' => '修改规划块',
+    'reschedule_plan_blocks' => '重排规划块',
+    'delete_plan_block' => '删除规划块',
+    'skip_plan_block' => '跳过规划块',
+    'start_plan_block_pomodoro' => '启动规划番茄钟',
+    'create_time_log' => '创建专注记录',
+    'update_time_log' => '修改专注记录',
+    'delete_time_log' => '删除专注记录',
+    'start_pomodoro' => '启动番茄钟',
+    'stop_pomodoro' => '停止番茄钟',
+    'create_countdown' => '创建倒计时',
+    'update_countdown' => '修改倒计时',
+    'complete_countdown' => '完成倒计时',
+    'delete_countdown' => '删除倒计时',
+    'complete_todo' => '完成待办',
+    'delete_todo' => '删除待办',
+    'update_todo' => '修改待办',
+    'reschedule_todo' => '改期待办',
+    'categorize_todo' => '分类待办',
+    'split_todo' => '拆分待办',
+    'merge_todos' => '合并待办',
+    _ => action,
+  };
 
   static int _createdTodoRemarkCount(String rawArguments) {
     try {
@@ -2380,44 +2905,8 @@ abstract final class AiToolChatRunner {
     }
   }
 
-  static int? _explicitTodoCount(String text) {
-    final isPlanningRequest = RegExp(r'规划|计划块|时间块|安排|排进|排入').hasMatch(text);
-    final explicitlyCreatesTodo =
-        AiTodoContextBuilder.isExplicitTodoCreationRequest(text) ||
-        (!isPlanningRequest &&
-            const ['提醒我', '新建', '新增', '创建', '添加'].any(
-              (verb) => AiTodoContextBuilder.isExplicitlyRequested(text, verb),
-            ));
-    if (!explicitlyCreatesTodo) return null;
-    final match = RegExp(r'(\d+|[一二两三四五六七八九十]+)\s*(?:个|条|份|项|件)?\s*(?:待办|任务)')
-        .firstMatch(text);
-    final rawCount = match?.group(1);
-    if (rawCount == null) return null;
-    final numeric = int.tryParse(rawCount);
-    if (numeric != null) return numeric > 0 ? numeric : null;
-
-    const digits = {
-      '一': 1,
-      '二': 2,
-      '两': 2,
-      '三': 3,
-      '四': 4,
-      '五': 5,
-      '六': 6,
-      '七': 7,
-      '八': 8,
-      '九': 9,
-      '十': 10,
-    };
-    final tenIndex = rawCount.indexOf('十');
-    if (tenIndex == -1) return digits[rawCount];
-    final tensText = rawCount.substring(0, tenIndex);
-    final onesText = rawCount.substring(tenIndex + 1);
-    final tens = tensText.isEmpty ? 1 : digits[tensText];
-    final ones = onesText.isEmpty ? 0 : digits[onesText];
-    if (tens == null || ones == null) return null;
-    return tens * 10 + ones;
-  }
+  static int? _explicitTodoCount(String text) =>
+      AiTodoContextBuilder.explicitTodoCreationCount(text);
 
   static int? _explicitTodoRemarkCount(String text) {
     if (_explicitTodoCount(text) == null) return null;

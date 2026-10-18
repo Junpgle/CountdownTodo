@@ -63,6 +63,8 @@ class AiTodoAction {
     this.customIntervalDays,
     this.recurrenceEndDate,
     this.groupId,
+    this.teamUuid,
+    this.teamName,
     this.reminderMinutes,
     this.reminderMinutesList = const [],
     this.durationMinutes,
@@ -102,6 +104,7 @@ class AiTodoAction {
     bool? hasCustomIntervalDays,
     bool? hasRecurrenceEndDate,
     bool? hasGroupId,
+    bool? hasTeamUuid,
     bool? hasReminderMinutes,
     bool? hasReminderMinutesList,
     bool? hasTagUuids,
@@ -118,6 +121,7 @@ class AiTodoAction {
            hasCustomIntervalDays ?? customIntervalDays != null,
        hasRecurrenceEndDate = hasRecurrenceEndDate ?? recurrenceEndDate != null,
        hasGroupId = hasGroupId ?? groupId != null,
+       hasTeamUuid = hasTeamUuid ?? (teamUuid != null || teamName != null),
        hasReminderMinutes = hasReminderMinutes ?? reminderMinutes != null,
        hasReminderMinutesList =
            hasReminderMinutesList ?? reminderMinutesList.isNotEmpty,
@@ -144,6 +148,8 @@ class AiTodoAction {
   int? customIntervalDays;
   String? recurrenceEndDate;
   String? groupId;
+  String? teamUuid;
+  String? teamName;
   int? reminderMinutes;
   List<int> reminderMinutesList;
   int? durationMinutes;
@@ -187,6 +193,7 @@ class AiTodoAction {
   bool hasCustomIntervalDays;
   bool hasRecurrenceEndDate;
   bool hasGroupId;
+  bool hasTeamUuid;
   bool hasReminderMinutes;
   bool hasReminderMinutesList;
   bool hasTagUuids;
@@ -307,6 +314,8 @@ class AiTodoAction {
     'customIntervalDays': customIntervalDays,
     'recurrenceEndDate': recurrenceEndDate,
     'groupId': groupId,
+    'teamUuid': teamUuid,
+    'teamName': teamName,
     'reminderMinutes': reminderMinutes,
     'reminderMinutesList': reminderMinutesList,
     'durationMinutes': durationMinutes,
@@ -346,6 +355,7 @@ class AiTodoAction {
     'hasCustomIntervalDays': hasCustomIntervalDays,
     'hasRecurrenceEndDate': hasRecurrenceEndDate,
     'hasGroupId': hasGroupId,
+    'hasTeamUuid': hasTeamUuid,
     'hasReminderMinutes': hasReminderMinutes,
     'hasReminderMinutesList': hasReminderMinutesList,
     'hasTagUuids': hasTagUuids,
@@ -414,6 +424,8 @@ class AiTodoAction {
       customIntervalDays: _parseInt(json['customIntervalDays']),
       recurrenceEndDate: json['recurrenceEndDate']?.toString(),
       groupId: json['groupId']?.toString(),
+      teamUuid: (json['teamUuid'] ?? json['team_uuid'])?.toString(),
+      teamName: (json['teamName'] ?? json['team_name'])?.toString(),
       reminderMinutes: _parseInt(json['reminderMinutes']),
       reminderMinutesList: _parseIntList(
         json['reminderMinutesList'] ??
@@ -516,6 +528,12 @@ class AiTodoAction {
         'hasRecurrenceEndDate',
       ),
       hasGroupId: _fieldWasProvided(json, 'groupId', 'hasGroupId'),
+      hasTeamUuid: _fieldWasProvidedAny(json, const [
+        'teamUuid',
+        'team_uuid',
+        'teamName',
+        'team_name',
+      ], 'hasTeamUuid'),
       hasReminderMinutes: _fieldWasProvided(
         json,
         'reminderMinutes',

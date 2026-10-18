@@ -1,6 +1,8 @@
 import 'dart:convert';
 
+import '../models.dart';
 import '../models/ai_todo_action.dart';
+import 'ai_team_binding_resolver.dart';
 import 'ai_settings_navigation_service.dart';
 import 'ai_tool_result_context.dart';
 
@@ -135,6 +137,7 @@ class AiActionParser {
     required String originalText,
     Map<String, String> existingTodoTitles = const {},
     Map<String, String> existingScheduleTitles = const {},
+    List<Team> availableTeams = const [],
     Set<String>? allowedActionNames,
   }) {
     content = AiToolResultContext.withoutHistory(content);
@@ -234,10 +237,94 @@ class AiActionParser {
       action.isSelected = true;
       action.originalText ??= originalText;
     }
+    _resolveCountdownTeamBindings(
+      actions,
+      originalText: originalText,
+      availableTeams: availableTeams,
+    );
     return actions;
   }
 
+  static void _resolveCountdownTeamBindings(
+    List<AiTodoAction> actions, {
+    required String originalText,
+    required List<Team> availableTeams,
+  }) {
+    final hasRequestedTeamBinding =
+        AiTeamBindingResolver.hasExplicitBindingIntent(originalText);
+    final requestedTeam = AiTeamBindingResolver.requestedTeam(
+      originalText,
+      teams: availableTeams,
+    );
+    for (final action in actions.where(
+      (action) => action.type == AiTodoActionType.createCountdown,
+    )) {
+      if (requestedTeam != null) {
+        action.teamName = requestedTeam.name;
+        action.teamUuid = requestedTeam.uuid;
+        action.hasTeamUuid = true;
+      } else if (hasRequestedTeamBinding) {
+        // An explicit but unmatched local team must never become a pseudo
+        // binding on a proposal card. The send flow reports the lookup failure.
+        action.teamName = null;
+        action.teamUuid = null;
+        action.hasTeamUuid = true;
+      } else if (action.teamName?.trim().isNotEmpty == true) {
+        final team = AiTeamBindingResolver.resolveName(
+          action.teamName!,
+          teams: availableTeams,
+        );
+        if (team != null) {
+          action.teamUuid = team.uuid;
+          action.teamName = team.name;
+        } else {
+          final teamByUuid = action.teamUuid == null
+              ? null
+              : _teamByUuid(action.teamUuid!, availableTeams);
+          if (teamByUuid != null) {
+            action.teamUuid = teamByUuid.uuid;
+            action.teamName = teamByUuid.name;
+          } else {
+            action.teamName = action.teamName!.trim();
+          }
+        }
+        action.hasTeamUuid = true;
+      } else if (action.teamUuid?.trim().isNotEmpty == true) {
+        final team = _teamByUuid(action.teamUuid!, availableTeams);
+        if (team != null) action.teamName = team.name;
+        action.hasTeamUuid = true;
+      }
+
+      final teamName = action.teamName?.trim();
+      if (action.hasTeamUuid && teamName?.isNotEmpty == true) {
+        final title = action.title;
+        if (title != null) {
+          action.title = title
+              .replaceFirst(
+                RegExp(
+                  '^\\s*${RegExp.escape(teamName!)}'
+                  r'(?:\s*[·•|:：、\-—–]\s*|\s+)',
+                ),
+                '',
+              )
+              .trim();
+        }
+      }
+    }
+  }
+
+  static Team? _teamByUuid(String uuid, List<Team> teams) {
+    for (final team in teams) {
+      if (team.uuid == uuid.trim()) return team;
+    }
+    return null;
+  }
+
   static String cleanActionContent(String content) {
+    final hadLegacyToolCall = RegExp(
+      r'</?tool_call\b',
+      caseSensitive: false,
+    ).hasMatch(content);
     String cleaned =
         AiSettingsNavigationService.cleanContent(
               AiToolResultContext.withoutHistory(content),
@@ -259,8 +346,30 @@ class AiActionParser {
     cleaned = cleaned
         .replaceAll(RegExp('\\[(?:$_legacyActionMarkers)\\]'), '')
         .replaceAll(RegExp(r'```(?:json)?\s*```', dotAll: true), '');
+    cleaned = cleaned.replaceAll(
+      RegExp(
+        r'<tool_call\b[^>]*>[\s\S]*?</tool_call\s*>',
+        caseSensitive: false,
+      ),
+      '',
+    );
+    final malformedToolCall = RegExp(
+      r'<tool_call\b',
+      caseSensitive: false,
+    ).firstMatch(cleaned);
+    if (malformedToolCall != null) {
+      cleaned = cleaned.substring(0, malformedToolCall.start);
+    }
+    cleaned = cleaned.replaceAll(
+      RegExp(r'</tool_call\s*>', caseSensitive: false),
+      '',
+    );
 
-    return cleaned.trim();
+    final visibleContent = cleaned.trim();
+    if (visibleContent.isEmpty && hadLegacyToolCall) {
+      return '这条回复包含未执行的工具调用，请重新发送问题。';
+    }
+    return visibleContent;
   }
 
   static List<String> extractSuggestions(
@@ -285,8 +394,10 @@ class AiActionParser {
       for (final item in list) {
         if (item is! String) continue;
         final suggestion = item.trim();
+        final suggestionTerms = _meaningfulSuggestionTerms(suggestion);
         if (suggestion.isEmpty ||
             suggestion.runes.length > 15 ||
+            suggestionTerms.isEmpty ||
             !seen.add(suggestion.toLowerCase()) ||
             (contextText != null &&
                 !_isGroundedInContext(suggestion, contextText))) {

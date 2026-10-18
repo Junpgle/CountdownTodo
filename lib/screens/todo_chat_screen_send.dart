@@ -11,6 +11,274 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
     return usage;
   }
 
+  List<AiTodoAction> _pendingCountdownDraftActions() => _messages
+      .where((message) => message.role == ChatRole.assistant)
+      .expand((message) => message.todoActions ?? const <AiTodoAction>[])
+      .where(
+        (action) =>
+            action.type == AiTodoActionType.createCountdown &&
+            !action.isAdded &&
+            !action.isIgnored,
+      )
+      .toList(growable: false);
+
+  bool _hasUnresolvedCountdownTeamBinding(AiTodoAction action) {
+    if (action.type != AiTodoActionType.createCountdown) return false;
+    final name = action.teamName?.trim() ?? '';
+    final uuid = action.teamUuid?.trim() ?? '';
+    if (name.isEmpty && uuid.isEmpty) return false;
+
+    final team = AiTeamBindingResolver.resolveReference(
+      name: name,
+      uuid: uuid,
+      teams: widget.teams,
+    );
+    if (team == null) return true;
+    action
+      ..teamName = team.name
+      ..teamUuid = team.uuid
+      ..hasTeamUuid = true;
+    return false;
+  }
+
+  List<AiTodoAction> _buildPendingCountdownTitleReplacement({
+    required List<AiTodoAction> previousDrafts,
+    required String suffix,
+    required Team? requestedTeam,
+    required String originalText,
+  }) {
+    if (previousDrafts.isEmpty) return const [];
+
+    final replacements = <AiTodoAction>[];
+    for (final previous in previousDrafts) {
+      final title = previous.title?.trim() ?? '';
+      final dueDate = previous.dueDate?.trim();
+      if (previous.type != AiTodoActionType.createCountdown ||
+          title.isEmpty ||
+          dueDate == null ||
+          dueDate.isEmpty) {
+        return const [];
+      }
+
+      final replacement = AiTodoAction.fromJson(previous.toJson())
+        ..title = title.endsWith(suffix) ? title : '$title$suffix'
+        ..originalText = originalText
+        ..isAdded = false
+        ..isIgnored = false
+        ..isSelected = true;
+      if (requestedTeam != null) {
+        replacement
+          ..teamName = requestedTeam.name
+          ..teamUuid = requestedTeam.uuid
+          ..hasTeamUuid = true;
+      }
+      replacements.add(replacement);
+    }
+    return replacements;
+  }
+
+  bool _supersedePendingCountdownDrafts(Set<AiTodoAction> previousDrafts) {
+    var changed = false;
+    for (var index = 0; index < _messages.length; index++) {
+      final message = _messages[index];
+      final actions = message.todoActions;
+      if (message.role != ChatRole.assistant || actions == null) continue;
+      var messageChanged = false;
+      final replacements = actions.map((action) {
+        if (!previousDrafts.contains(action)) return action;
+        final ignored = AiTodoAction.fromJson(action.toJson())
+          ..isIgnored = true;
+        messageChanged = true;
+        return ignored;
+      }).toList(growable: false);
+      if (messageChanged) {
+        _messages[index] = message.copyWith(todoActions: replacements);
+        changed = true;
+      }
+    }
+    return changed;
+  }
+
+  Future<void> _finishPendingCountdownTitleEditLocally({
+    required String sessionId,
+    required String originalText,
+    required String suffix,
+    required List<AiTodoAction> previousDrafts,
+    required bool hasRequestedTeamBinding,
+    required String? requestedTeamName,
+    required Team? requestedTeam,
+  }) async {
+    final replacements = _buildPendingCountdownTitleReplacement(
+      previousDrafts: previousDrafts,
+      suffix: suffix,
+      requestedTeam: requestedTeam,
+      originalText: originalText,
+    );
+    final hasUnresolvedTeamBinding =
+        (hasRequestedTeamBinding && requestedTeam == null) ||
+        replacements.any(_hasUnresolvedCountdownTeamBinding);
+    final isValid =
+        !hasUnresolvedTeamBinding &&
+        replacements.length == previousDrafts.length;
+    final todoActions = isValid ? replacements : const <AiTodoAction>[];
+    late final String content;
+    if (hasRequestedTeamBinding && requestedTeam == null) {
+      content =
+          '本地团队列表中没有找到唯一匹配的团队「${requestedTeamName ?? '本轮指定团队'}」，旧草案已保留，应用没有替换或写入数据。请核对团队名称后重试。';
+    } else if (hasUnresolvedTeamBinding) {
+      content = '现有倒计时的团队归属无法匹配本地团队，旧草案已保留，应用没有替换或写入数据。请先核对团队后重试。';
+    } else if (isValid) {
+      content =
+          '应用已按现有草案生成全部倒计时标题修订卡，追加“$suffix”，并保留原截止时间${requestedTeam == null ? '和原团队归属' : '，绑定到本地团队「${requestedTeam.name}」'}。旧草案已由新草案替换；请核对新卡片后执行。';
+    } else {
+      content = '现有待确认倒计时草案缺少标题或截止时间，无法安全生成完整替换卡；旧草案已保留，应用没有写入数据。';
+    }
+    final assistantContent = _appendPendingWriteConfirmationNotice(
+      content: content,
+      todoActions: todoActions,
+      financeDrafts: const [],
+      financeActions: const [],
+    );
+    final assistantMsg = ChatMessage(
+      role: ChatRole.assistant,
+      content: assistantContent,
+      rawContent: assistantContent,
+      smartContext: _lastRequestSmartContext,
+      todoActions: todoActions.isNotEmpty ? todoActions : null,
+    );
+
+    var supersededCountdownDrafts = false;
+    setState(() {
+      if (isValid) {
+        supersededCountdownDrafts = _supersedePendingCountdownDrafts(
+          previousDrafts.toSet(),
+        );
+      }
+      _messages.add(assistantMsg);
+      _streamingContent = '';
+      _streamingReasoning = '';
+      _streamingToolCalls = [];
+      _streamingFinishReason = null;
+      _isLoading = false;
+      _cancelGeneration = null;
+      _suggestions = [];
+      if (todoActions.isNotEmpty) _actionRailCollapsed = false;
+    });
+    await ChatStorageService.addMessage(assistantMsg, sessionId: sessionId);
+    if (supersededCountdownDrafts) await _saveHistorySilently();
+    _scrollToBottom();
+    _generateSessionTitle(sessionId: sessionId);
+  }
+
+  String _fallbackCdtActionLabel(String name) => switch (name) {
+    'create_todo' => '新建待办',
+    'create_habit' => '创建习惯',
+    'update_habit' => '修改习惯',
+    'delete_habit' => '删除习惯',
+    'create_schedule' => '新建固定日程',
+    'update_schedule' => '修改固定日程',
+    'cancel_schedule' => '取消固定日程',
+    'delete_schedule' => '删除固定日程',
+    'create_plan_block' => '创建规划块',
+    'update_plan_block' => '修改规划块',
+    'reschedule_plan_blocks' => '重排规划块',
+    'delete_plan_block' => '删除规划块',
+    'skip_plan_block' => '跳过规划块',
+    'start_plan_block_pomodoro' => '启动规划番茄钟',
+    'create_time_log' => '创建专注记录',
+    'update_time_log' => '修改专注记录',
+    'delete_time_log' => '删除专注记录',
+    'start_pomodoro' => '启动番茄钟',
+    'stop_pomodoro' => '停止番茄钟',
+    'create_countdown' => '创建倒计时',
+    'update_countdown' => '修改倒计时',
+    'complete_countdown' => '完成倒计时',
+    'delete_countdown' => '删除倒计时',
+    'complete_todo' => '完成待办',
+    'delete_todo' => '删除待办',
+    'update_todo' => '修改待办',
+    'reschedule_todo' => '改期待办',
+    'categorize_todo' => '分类待办',
+    'split_todo' => '拆分待办',
+    'merge_todos' => '合并待办',
+    'create_todo_group' => '创建分类',
+    'update_todo_group' => '修改分类',
+    'delete_todo_group' => '删除分类',
+    'create_pomodoro_tag' => '创建番茄标签',
+    'update_pomodoro_tag' => '修改番茄标签',
+    'delete_pomodoro_tag' => '删除番茄标签',
+    _ => name,
+  };
+
+  Set<String> _parsedCdtActionNames(Iterable<AiTodoAction> actions) {
+    final names = <String>{};
+    for (final action in actions) {
+      final name = switch (action.type) {
+        AiTodoActionType.createTodo => 'create_todo',
+        AiTodoActionType.createHabit => 'create_habit',
+        AiTodoActionType.updateHabit => 'update_habit',
+        AiTodoActionType.deleteHabit => 'delete_habit',
+        AiTodoActionType.updateTodo => 'update_todo',
+        AiTodoActionType.completeTodo => 'complete_todo',
+        AiTodoActionType.deleteTodo => 'delete_todo',
+        AiTodoActionType.createFixedSchedule => 'create_schedule',
+        AiTodoActionType.updateFixedSchedule => 'update_schedule',
+        AiTodoActionType.cancelFixedSchedule => 'cancel_schedule',
+        AiTodoActionType.deleteFixedSchedule => 'delete_schedule',
+        AiTodoActionType.rescheduleTodo ||
+        AiTodoActionType.bulkRescheduleTodo => 'reschedule_todo',
+        AiTodoActionType.categorizeTodo => 'categorize_todo',
+        AiTodoActionType.createPlanBlock || AiTodoActionType.planTodos =>
+          'create_plan_block',
+        AiTodoActionType.updatePlanBlock => 'update_plan_block',
+        AiTodoActionType.deletePlanBlock => 'delete_plan_block',
+        AiTodoActionType.reschedulePlanBlocks => 'reschedule_plan_blocks',
+        AiTodoActionType.skipPlanBlock => 'skip_plan_block',
+        AiTodoActionType.startPlanBlockPomodoro =>
+          'start_plan_block_pomodoro',
+        AiTodoActionType.splitTodo => 'split_todo',
+        AiTodoActionType.mergeTodos => 'merge_todos',
+        AiTodoActionType.createTimeLog => 'create_time_log',
+        AiTodoActionType.updateTimeLog => 'update_time_log',
+        AiTodoActionType.deleteTimeLog => 'delete_time_log',
+        AiTodoActionType.startPomodoro => 'start_pomodoro',
+        AiTodoActionType.stopPomodoro => 'stop_pomodoro',
+        AiTodoActionType.createCountdown => 'create_countdown',
+        AiTodoActionType.updateCountdown => 'update_countdown',
+        AiTodoActionType.completeCountdown => 'complete_countdown',
+        AiTodoActionType.deleteCountdown => 'delete_countdown',
+        AiTodoActionType.createTodoGroup => 'create_todo_group',
+        AiTodoActionType.updateTodoGroup => 'update_todo_group',
+        AiTodoActionType.deleteTodoGroup => 'delete_todo_group',
+        AiTodoActionType.createPomodoroTag => 'create_pomodoro_tag',
+        AiTodoActionType.updatePomodoroTag => 'update_pomodoro_tag',
+        AiTodoActionType.deletePomodoroTag => 'delete_pomodoro_tag',
+        AiTodoActionType.unknown => '',
+      };
+      if (name.isNotEmpty) names.add(name);
+      if (action.type == AiTodoActionType.createPlanBlock &&
+          action.newTodoTitle?.trim().isNotEmpty == true) {
+        names.add('create_todo');
+      }
+    }
+    return names;
+  }
+
+  int _parsedTodoCreationCount(Iterable<AiTodoAction> actions) => actions
+      .where(
+        (action) =>
+            action.type == AiTodoActionType.createTodo &&
+            action.title?.trim().isNotEmpty == true,
+      )
+      .length +
+      actions
+          .where(
+            (action) =>
+                action.type == AiTodoActionType.createPlanBlock &&
+                action.newTodoTitle?.trim().isNotEmpty == true,
+          )
+          .length;
+
   Future<void> _openVoiceInput() async {
     if (_isLoading || _openingVoiceInput || _pendingAttachment != null) return;
     _openingVoiceInput = true;
@@ -228,14 +496,21 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
     if (sessionId == null) return;
 
     var attachmentForMessage = attachment;
-    if (attachment != null &&
-        attachment.path.isNotEmpty &&
-        !attachment.path.startsWith('data:')) {
+    if (attachment != null) {
       try {
-        final persistedPath = await persistImagePath(
-          attachment.path,
-          'chat_attachments',
-        );
+        final persistedPath = attachment.path.isNotEmpty &&
+                !attachment.path.startsWith('data:')
+            ? await persistImagePath(
+                attachment.path,
+                'chat_attachments',
+              )
+            : attachment.bytes == null
+            ? null
+            : await persistImageBytes(
+                attachment.bytes!,
+                'chat_attachments',
+                attachment.name,
+              );
         if (persistedPath != null && persistedPath.isNotEmpty) {
           attachmentForMessage = ChatImageAttachment(
             path: persistedPath,
@@ -265,15 +540,39 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
     final previousUserMessage = _latestUserTextFromHistory();
     final previousAssistantMessage =
         _latestAssistantMessageForActionRouting();
-    final useQueryTools =
-        _smartContext &&
-        _contextMode == AiContextMode.functionCalling &&
-        nativeToolMode &&
-        AiNativeToolDefinitionBuilder.shouldExposeQueryTools(
+    final pendingCountdownTitleEditSuffix =
+        AiTodoContextBuilder.pendingCountdownTitleSuffixForRequest(
           requestText,
           previousUserMessage: previousUserMessage,
           previousAssistantMessage: previousAssistantMessage,
         );
+    final hasRequestedCountdownTeamBinding =
+        AiTeamBindingResolver.hasExplicitBindingIntent(requestText);
+    final requestedCountdownTeam = hasRequestedCountdownTeamBinding
+        ? AiTeamBindingResolver.requestedTeam(
+            requestText,
+            teams: widget.teams,
+          )
+        : null;
+    final requestedCountdownTeamName = hasRequestedCountdownTeamBinding
+        ? AiTeamBindingResolver.requestedTeamName(
+            requestText,
+            teams: widget.teams,
+          )
+        : null;
+    final pendingCountdownDraftsToReplace =
+        pendingCountdownTitleEditSuffix == null
+        ? const <AiTodoAction>[]
+        : _pendingCountdownDraftActions();
+    final isPendingCountdownTitleEdit =
+        pendingCountdownTitleEditSuffix != null &&
+        pendingCountdownDraftsToReplace.isNotEmpty;
+    // Keep read queries registered on every Function Calling turn. The model
+    // decides when to call them; only an invocation reads app data.
+    final useQueryTools =
+        _smartContext &&
+        _contextMode == AiContextMode.functionCalling &&
+        nativeToolMode;
 
     setState(() {
       _messages.add(userMsg);
@@ -294,6 +593,19 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
     ChatUsageSummary? usageSummary;
 
     try {
+      if (isPendingCountdownTitleEdit) {
+        await _finishPendingCountdownTitleEditLocally(
+          sessionId: sessionId,
+          originalText: requestText,
+          suffix: pendingCountdownTitleEditSuffix,
+          previousDrafts: pendingCountdownDraftsToReplace,
+          hasRequestedTeamBinding: hasRequestedCountdownTeamBinding,
+          requestedTeamName: requestedCountdownTeamName,
+          requestedTeam: requestedCountdownTeam,
+        );
+        return;
+      }
+
       final conversationContext = _recentConversationTextForContext(
         excludingMessageId: userMsg.id,
       );
@@ -327,6 +639,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
                 requestText,
                 previousUserMessage: previousUserMessage,
                 previousAssistantMessage: previousAssistantMessage,
+                availableTeams: widget.teams,
               ),
             ]
           : null;
@@ -336,6 +649,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
                   requestText,
                   previousUserMessage: previousUserMessage,
                   previousAssistantMessage: previousAssistantMessage,
+                  availableTeams: widget.teams,
                 )
                 .where((tool) {
                   final name =
@@ -374,6 +688,25 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
           AiNativeToolDefinitionBuilder.allowedToolNames(
             proposalToolDefinitions,
           );
+      final requiredFallbackTodoCount =
+          !nativeToolMode && allowedCdtActionNames.contains('create_todo')
+          ? AiTodoContextBuilder.explicitTodoCreationCount(requestText)
+          : null;
+      final requiredFallbackFinanceDraftCount =
+          !nativeToolMode &&
+              allowedProposalToolNames.contains('propose_finance_drafts')
+          ? AiTodoContextBuilder.explicitFinanceDraftCount(requestText)
+          : null;
+      final requiredFallbackCdtActionNames = nativeToolMode
+          ? const <String>{}
+          : {
+              ...AiTodoContextBuilder.requiredExplicitCdtActionNames(
+                requestText,
+                previousUserMessage: previousUserMessage,
+                previousAssistantMessage: previousAssistantMessage,
+              ).intersection(allowedCdtActionNames),
+              if (requiredFallbackTodoCount != null) 'create_todo',
+            };
       const actionsRequiringKnownTodoIds = {
         'update_todo',
         'complete_todo',
@@ -439,9 +772,15 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
       final knownReferenceIdsByDomain = nativeToolMode
           ? await _loadKnownReferenceIdsByDomain(allowedCdtActionNames)
           : const <String, Set<String>>{};
+      final effectiveChatProvider = AiChatService.effectiveProvider(
+        provider,
+        apiUrl,
+      );
       final includeReasoningContent =
           nativeToolMode &&
-          AiChatService.effectiveProvider(provider, apiUrl) == 'deepseek';
+          (effectiveChatProvider == 'deepseek' ||
+              (AiChatService.usesMimoChatProtocol(provider, apiUrl) &&
+                  _deepThinking));
       final List<Map<String, dynamic>> apiMessages =
           await _buildApiMessagesForRequest(
             financeContext: financeContext,
@@ -453,6 +792,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
             queryTools: useQueryTools,
           );
       String fullContent = '';
+      String? latestRawModelReply;
       String reasoningContent = '';
       final nativeToolCalls = <AiChatFunctionCall>[];
       final toolCallProgress = <int, ChatNativeToolCall>{};
@@ -523,6 +863,8 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
               cancelToken: _cancelGeneration,
               includeReasoningContent: includeReasoningContent,
               planningRequestText: requestText,
+              previousUserMessage: previousUserMessage,
+              previousAssistantMessage: previousAssistantMessage,
               knownTodoIds: knownTodoTitlesForToolValidation?.keys.toSet(),
               knownHabitIds: knownHabitIdsForToolValidation,
               knownFinanceTransactionIds:
@@ -539,6 +881,9 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
             )
           : streamRound(apiMessages, nativeTools ?? []);
       await for (final chunk in responseStream) {
+        if (chunk.rawModelReply != null) {
+          latestRawModelReply = chunk.rawModelReply;
+        }
         if (chunk.usageSummary != null) {
           usageSummaries.add(chunk.usageSummary!);
           usageSummary = ChatUsageSummary.combine(usageSummaries);
@@ -603,6 +948,311 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
           }
         }
       }
+      latestRawModelReply ??= AiNativeToolCallParser.formatRawReply(
+        fullContent,
+        nativeToolCalls,
+      );
+
+      List<String> completeFallbackBlocks(
+        String content,
+        String start,
+        String end,
+      ) => RegExp(
+        '${RegExp.escape(start)}[\\s\\S]*?${RegExp.escape(end)}',
+      ).allMatches(content).map((match) => match.group(0)!).toList();
+
+      String normalizeFallbackCdtActionName(Object? value) {
+        final name = value?.toString() ?? '';
+        return switch (name) {
+          'create_habit_goal' || 'habit_create' => 'create_habit',
+          'update_habit_goal' || 'habit_update' => 'update_habit',
+          'delete_habit_goal' || 'habit_delete' => 'delete_habit',
+          'create_fixed_schedule' => 'create_schedule',
+          'update_fixed_schedule' => 'update_schedule',
+          'cancel_fixed_schedule' => 'cancel_schedule',
+          'delete_fixed_schedule' => 'delete_schedule',
+          'bulk_reschedule' || 'bulk_reschedule_todo' => 'reschedule_todo',
+          'plan_todos' || 'create_todo_plan_block' || 'schedule_todo_block' =>
+            'create_plan_block',
+          'create_group' || 'create_category' || 'create_folder' =>
+            'create_todo_group',
+          'update_group' || 'update_category' || 'update_folder' =>
+            'update_todo_group',
+          'delete_group' || 'delete_category' || 'delete_folder' =>
+            'delete_todo_group',
+          _ => name,
+        };
+      }
+
+      Set<String> fallbackCdtActionNames(String content) {
+        final names = <String>{};
+        for (final block in completeFallbackBlocks(
+          content,
+          '[ACTION_START]',
+          '[ACTION_END]',
+        )) {
+          try {
+            final body = block
+                .substring(
+                  '[ACTION_START]'.length,
+                  block.length - '[ACTION_END]'.length,
+                )
+                .trim();
+            final decoded = jsonDecode(body);
+            if (decoded is! Map || decoded['actions'] is! List) continue;
+            for (final action in (decoded['actions'] as List).whereType<Map>()) {
+              final name = normalizeFallbackCdtActionName(action['action']);
+              if (name.isEmpty) continue;
+              names.add(name);
+              final rawBlocks =
+                  action['blocks'] ?? action['plans'] ?? action['todos'];
+              if (name == 'create_plan_block' && rawBlocks is List) {
+                final createsTodo = rawBlocks
+                    .whereType<Map>()
+                    .any(
+                      (planned) =>
+                          planned['newTodoTitle']?.toString().trim().isNotEmpty ==
+                          true,
+                    );
+                if (createsTodo) names.add('create_todo');
+              }
+            }
+          } catch (_) {
+            // Malformed action blocks are surfaced by the final card check.
+          }
+        }
+        return names;
+      }
+
+      int fallbackCreatedTodoCount(String content) {
+        var count = 0;
+        for (final block in completeFallbackBlocks(
+          content,
+          '[ACTION_START]',
+          '[ACTION_END]',
+        )) {
+          try {
+            final body = block
+                .substring(
+                  '[ACTION_START]'.length,
+                  block.length - '[ACTION_END]'.length,
+                )
+                .trim();
+            final decoded = jsonDecode(body);
+            if (decoded is! Map || decoded['actions'] is! List) continue;
+            for (final rawAction in (decoded['actions'] as List).whereType<Map>()) {
+              final name = normalizeFallbackCdtActionName(rawAction['action']);
+              if (name == 'create_todo') {
+                final rawTodos = rawAction['todos'];
+                final todos = rawTodos is List ? rawTodos : [rawAction];
+                count += todos.where((rawTodo) {
+                  if (rawTodo is! Map) return false;
+                  return rawTodo['title']?.toString().trim().isNotEmpty == true;
+                }).length;
+              } else if (name == 'create_plan_block') {
+                final rawBlocks = rawAction['blocks'] ??
+                    rawAction['plans'] ??
+                    rawAction['todos'];
+                if (rawBlocks is! List) continue;
+                count += rawBlocks.whereType<Map>().where(
+                  (planned) =>
+                      planned['newTodoTitle']?.toString().trim().isNotEmpty ==
+                      true,
+                ).length;
+              }
+            }
+          } catch (_) {
+            // Malformed action blocks count as no created todos.
+          }
+        }
+        return count;
+      }
+
+      int fallbackCreatedFinanceDraftCount(String content) =>
+          FinanceTextParser.extractAssistantDrafts(content).length;
+
+      List<String> fallbackFinanceBlocksForMissingCount(
+        String content, {
+        required int? remainingDraftCount,
+      }) {
+        final blocks = completeFallbackBlocks(
+          content,
+          '[FINANCE_START]',
+          '[FINANCE_END]',
+        );
+        if (remainingDraftCount == null) return blocks;
+        if (remainingDraftCount <= 0) return const [];
+
+        final recovered = <String>[];
+        var remaining = remainingDraftCount;
+        for (final block in blocks) {
+          if (remaining <= 0) break;
+          try {
+            final body = block
+                .substring(
+                  '[FINANCE_START]'.length,
+                  block.length - '[FINANCE_END]'.length,
+                )
+                .trim();
+            final decoded = jsonDecode(body);
+            final rawDrafts = switch (decoded) {
+              List value => value,
+              Map value when value['drafts'] is List =>
+                value['drafts'] as List,
+              Map value when value['entries'] is List =>
+                value['entries'] as List,
+              Map value when value['finance'] is List =>
+                value['finance'] as List,
+              Map value when value['transactions'] is List =>
+                value['transactions'] as List,
+              Map value => [value],
+              _ => const <Object?>[],
+            };
+            final selectedDrafts = <Map<String, dynamic>>[];
+            for (final rawDraft in rawDrafts) {
+              if (rawDraft is! Map || remaining <= 0) continue;
+              final draft = Map<String, dynamic>.from(rawDraft);
+              final candidate =
+                  '[FINANCE_START]${jsonEncode([draft])}[FINANCE_END]';
+              if (FinanceTextParser.extractAssistantDrafts(candidate).isEmpty) {
+                continue;
+              }
+              selectedDrafts.add(draft);
+              remaining--;
+            }
+            if (selectedDrafts.isNotEmpty) {
+              recovered.add(
+                '[FINANCE_START]\n${jsonEncode(selectedDrafts)}\n[FINANCE_END]',
+              );
+            }
+          } catch (_) {
+            // Invalid or malformed retry drafts cannot create a confirmation card.
+          }
+        }
+        return recovered;
+      }
+
+      Set<String> missingFallbackCdtActionNames(String content) {
+        final missing = requiredFallbackCdtActionNames.difference(
+          fallbackCdtActionNames(content),
+        );
+        if (requiredFallbackTodoCount != null &&
+            fallbackCreatedTodoCount(content) < requiredFallbackTodoCount) {
+          missing.add('create_todo');
+        }
+        return missing;
+      }
+
+      String fallbackMissingCdtActionLabel(String name, String content) {
+        if (name != 'create_todo' || requiredFallbackTodoCount == null) {
+          return _fallbackCdtActionLabel(name);
+        }
+        final remaining =
+            requiredFallbackTodoCount - fallbackCreatedTodoCount(content);
+        return remaining > 0
+            ? '新建待办（还需 $remaining 条）'
+            : _fallbackCdtActionLabel(name);
+      }
+
+      List<String> fallbackCdtBlocksForMissingActions(
+        String content,
+        Set<String> missingActions, {
+        int? remainingTodoCount,
+      }) {
+        final blocks = completeFallbackBlocks(
+          content,
+          '[ACTION_START]',
+          '[ACTION_END]',
+        );
+        if (missingActions.isEmpty) return blocks;
+        final recovered = <String>[];
+        var todosRemaining = remainingTodoCount;
+        for (final block in blocks) {
+          try {
+            final body = block
+                .substring(
+                  '[ACTION_START]'.length,
+                  block.length - '[ACTION_END]'.length,
+                )
+                .trim();
+            final decoded = jsonDecode(body);
+            if (decoded is! Map || decoded['actions'] is! List) continue;
+            final actions = <Map<String, dynamic>>[];
+            for (final rawAction in (decoded['actions'] as List)) {
+              if (rawAction is! Map) continue;
+              final name = normalizeFallbackCdtActionName(
+                rawAction['action'],
+              );
+              final action = Map<String, dynamic>.from(rawAction);
+              if (name == 'create_todo' &&
+                  missingActions.contains('create_todo')) {
+                final rawTodos = action['todos'];
+                final todos = rawTodos is List ? rawTodos : [action];
+                final selectedTodos = <Object?>[];
+                for (final rawTodo in todos) {
+                  if (rawTodo is! Map ||
+                      rawTodo['title']?.toString().trim().isNotEmpty != true ||
+                      (todosRemaining != null && todosRemaining <= 0)) {
+                    continue;
+                  }
+                  selectedTodos.add(rawTodo);
+                  if (todosRemaining != null) todosRemaining--;
+                }
+                if (selectedTodos.isEmpty) continue;
+                if (rawTodos is List) action['todos'] = selectedTodos;
+                actions.add(action);
+                continue;
+              }
+              if (name == 'create_plan_block') {
+                final blockField = action.containsKey('blocks')
+                    ? 'blocks'
+                    : action.containsKey('plans')
+                    ? 'plans'
+                    : action.containsKey('todos')
+                    ? 'todos'
+                    : null;
+                final rawBlocks = blockField == null
+                    ? null
+                    : action[blockField];
+                if (rawBlocks is List &&
+                    (missingActions.contains('create_plan_block') ||
+                        missingActions.contains('create_todo'))) {
+                  final selectedBlocks = <Object?>[];
+                  for (final rawPlan in rawBlocks) {
+                    if (rawPlan is! Map) continue;
+                    final createsTodo =
+                        rawPlan['newTodoTitle']?.toString().trim().isNotEmpty ==
+                        true;
+                    if (createsTodo) {
+                      if (todosRemaining != null && todosRemaining <= 0) {
+                        continue;
+                      }
+                      selectedBlocks.add(rawPlan);
+                      if (todosRemaining != null) todosRemaining--;
+                    } else if (missingActions.contains('create_plan_block')) {
+                      selectedBlocks.add(rawPlan);
+                    }
+                  }
+                  if (selectedBlocks.isEmpty) continue;
+                  action[blockField!] = selectedBlocks;
+                  actions.add(action);
+                  continue;
+                }
+              }
+              if (missingActions.contains(name)) actions.add(action);
+            }
+            if (actions.isEmpty) continue;
+            final repairedEnvelope = Map<String, dynamic>.from(decoded)
+              ..['actions'] = actions;
+            recovered.add(
+              '[ACTION_START]\n${jsonEncode(repairedEnvelope)}\n[ACTION_END]',
+            );
+          } catch (_) {
+            // Ignore malformed retry blocks; they cannot create a card.
+          }
+        }
+        return recovered;
+      }
 
       Set<String> missingFallbackProposalBlocks(String content) {
         bool hasBlock(String start, String end) =>
@@ -611,10 +1261,14 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
 
         return {
           if (allowedProposalToolNames.contains('propose_cdt_actions') &&
-              !hasBlock('[ACTION_START]', '[ACTION_END]'))
+              (!hasBlock('[ACTION_START]', '[ACTION_END]') ||
+                  missingFallbackCdtActionNames(content).isNotEmpty))
             'propose_cdt_actions',
           if (allowedProposalToolNames.contains('propose_finance_drafts') &&
-              !hasBlock('[FINANCE_START]', '[FINANCE_END]'))
+              (!hasBlock('[FINANCE_START]', '[FINANCE_END]') ||
+                  (requiredFallbackFinanceDraftCount != null &&
+                      fallbackCreatedFinanceDraftCount(content) <
+                          requiredFallbackFinanceDraftCount)))
             'propose_finance_drafts',
           if (allowedProposalToolNames.contains('propose_finance_actions') &&
               !hasBlock('[FINANCE_ACTION_START]', '[FINANCE_ACTION_END]'))
@@ -629,24 +1283,74 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
         _ => name,
       };
 
+      String fallbackMissingProposalLabel(String name, String content) {
+        if (name == 'propose_finance_drafts' &&
+            requiredFallbackFinanceDraftCount != null) {
+          final remaining =
+              requiredFallbackFinanceDraftCount -
+              fallbackCreatedFinanceDraftCount(content);
+          if (remaining > 0) return '新增账单确认卡（还需$remaining笔）';
+        }
+        return fallbackProposalLabel(name);
+      }
+
+      void appendFallbackBlocks(String blocks) {
+        if (blocks.trim().isEmpty) return;
+        final suggestionMatch = RegExp(
+          r'\[SUGGEST_START\][\s\S]*?\[SUGGEST_END\]',
+        ).firstMatch(fullContent);
+        if (suggestionMatch == null) {
+          fullContent = '${fullContent.trimRight()}\n\n$blocks';
+          return;
+        }
+        fullContent =
+            '${fullContent.substring(0, suggestionMatch.start).trimRight()}'
+            '\n\n$blocks\n\n'
+            '${fullContent.substring(suggestionMatch.start)}';
+      }
+
+      final missingFallbackBeforeRetry = !nativeToolMode
+          ? missingFallbackProposalBlocks(fullContent)
+          : const <String>{};
       if (!nativeToolMode &&
           _cancelGeneration?.isCompleted != true &&
           fallbackWriteTools.isNotEmpty &&
-          allowedProposalToolNames.isNotEmpty &&
-          missingFallbackProposalBlocks(fullContent).length ==
-              allowedProposalToolNames.length &&
+          missingFallbackBeforeRetry.isNotEmpty &&
           !AiToolChatRunner.isLikelyClarification(fullContent)) {
-        final missing = missingFallbackProposalBlocks(fullContent);
-        final missingLabels = missing.map(fallbackProposalLabel).join('、');
+        final missingCdtActions = missingFallbackCdtActionNames(fullContent);
+        final existingFallbackTodoCount =
+            fallbackCreatedTodoCount(fullContent);
+        final remainingFallbackTodoCount = requiredFallbackTodoCount == null
+            ? null
+            : requiredFallbackTodoCount > existingFallbackTodoCount
+            ? requiredFallbackTodoCount - existingFallbackTodoCount
+            : 0;
+        final remainingFallbackFinanceDraftCount =
+            requiredFallbackFinanceDraftCount == null
+            ? null
+            : (requiredFallbackFinanceDraftCount -
+                      fallbackCreatedFinanceDraftCount(fullContent))
+                  .clamp(0, requiredFallbackFinanceDraftCount)
+                  .toInt();
+        final missingLabels = {
+          ...missingFallbackBeforeRetry.map(
+            (name) => fallbackMissingProposalLabel(name, fullContent),
+          ),
+          ...missingCdtActions.map(
+            (name) => fallbackMissingCdtActionLabel(name, fullContent),
+          ),
+        }.join('、');
         final retryMessages = [
           ...apiMessages,
           {'role': 'assistant', 'content': fullContent},
           {
             'role': 'system',
             'content':
-                '上一轮没有输出以下操作协议块：$missingLabels。应用尚未生成这些确认卡，也没有写入数据。'
-                '请根据当前用户请求按动作协议输出一份完整回复和完整操作块；若缺少必需信息或对象不明确，只向用户提出必要问题。'
-                '不要只用自然语言声称已操作或已保存。',
+                '上一轮的操作提案缺少以下确认卡或动作：$missingLabels。应用尚未生成缺失项目的确认卡，也没有写入数据。'
+                '已输出的其他操作块和确认卡会保留；请只补充缺失的操作块，不要重复已输出的块，也不要重写完整回复。'
+                '${requiredFallbackTodoCount == null ? '' : '明确要求的待办数量只补足剩余条数，不能额外创建。'}'
+                '${requiredFallbackFinanceDraftCount == null ? '' : '明确要求的新增账单数量只补足剩余笔数，不能重复已有账单或额外新增。'}'
+                '若缺少必需信息或对象不明确，只向用户提出必要问题；不要用自然语言声称已操作或已保存。',
           },
         ];
         final retryContent = StringBuffer();
@@ -680,8 +1384,40 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
             if (mounted) _streamingFinishReason = chunk.finishReason;
           }
         }
+        final retryText = retryContent.toString();
+        latestRawModelReply = retryText;
         if (retryContent.isNotEmpty) {
-          fullContent = retryContent.toString();
+          final recoveredBlocks = <String>[];
+          for (final name in missingFallbackBeforeRetry) {
+            final (start, end) = switch (name) {
+              'propose_cdt_actions' => ('[ACTION_START]', '[ACTION_END]'),
+              'propose_finance_drafts' => ('[FINANCE_START]', '[FINANCE_END]'),
+              'propose_finance_actions' => (
+                '[FINANCE_ACTION_START]',
+                '[FINANCE_ACTION_END]',
+              ),
+              _ => ('', ''),
+            };
+            if (start.isNotEmpty) {
+              recoveredBlocks.addAll(
+                switch (name) {
+                  'propose_cdt_actions' => fallbackCdtBlocksForMissingActions(
+                        retryText,
+                        missingCdtActions,
+                        remainingTodoCount: remainingFallbackTodoCount,
+                      ),
+                  'propose_finance_drafts' =>
+                    fallbackFinanceBlocksForMissingCount(
+                      retryText,
+                      remainingDraftCount:
+                          remainingFallbackFinanceDraftCount,
+                    ),
+                  _ => completeFallbackBlocks(retryText, start, end),
+                },
+              );
+            }
+          }
+          appendFallbackBlocks(recoveredBlocks.join('\n\n'));
           if (retryReasoning.isNotEmpty) {
             reasoningContent = retryReasoning.toString();
           }
@@ -702,10 +1438,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
               !AiSettingsNavigationService.shouldOfferForRequest(requestText)
           ? <String>[]
           : AiSettingsNavigationService.extractTargets(actionContent);
-      final rawModelReply = AiNativeToolCallParser.formatRawReply(
-        fullContent,
-        nativeToolCalls,
-      );
+      final rawModelReply = latestRawModelReply;
       final existingTodoTitles = await _existingTodoTitleMap(
         allowedCdtActionNames,
       );
@@ -724,6 +1457,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
             originalText: requestText,
             existingTodoTitles: existingTodoTitles,
             existingScheduleTitles: existingScheduleTitles,
+            availableTeams: widget.teams,
             allowedActionNames: allowedCdtActionNames,
           );
           final financeDrafts = allowedProposalToolNames.contains(
@@ -747,19 +1481,24 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
           final cleanContent = FinanceTextParser.cleanAssistantContent(
             AiActionParser.cleanActionContent(actionContent),
           );
-          final interruptedContent = financeDrafts.isNotEmpty
-              ? _financeDraftSummary(financeDrafts.length)
-              : todoActions.any((action) => action.isPlanBlockAction)
-              ? _planningDraftSummary(todoActions)
-              : cleanContent.isNotEmpty
-              ? cleanContent
-              : todoActions.isNotEmpty
-              ? '已生成待确认操作草案，请核对后添加。'
-              : financeActions.isNotEmpty
-              ? '已生成账单操作草案，请在确认卡中核对。'
-              : nativeToolCalls.isNotEmpty || _streamingToolCalls.isNotEmpty
-              ? '工具调用已记录；应用没有自动修改数据。请查看调用详情和处理结果。'
-              : cleanContent;
+          final interruptedContent = _appendPendingWriteConfirmationNotice(
+            content: financeDrafts.isNotEmpty
+                ? _financeDraftSummary(financeDrafts.length)
+                : todoActions.any((action) => action.isPlanBlockAction)
+                ? _planningDraftSummary(todoActions)
+                : cleanContent.isNotEmpty
+                ? cleanContent
+                : todoActions.isNotEmpty
+                ? '已生成待确认操作草案，请核对后添加。'
+                : financeActions.isNotEmpty
+                ? '已生成账单操作草案，请在确认卡中核对。'
+                : nativeToolCalls.isNotEmpty || _streamingToolCalls.isNotEmpty
+                ? '工具调用已记录；应用没有自动修改数据。请查看调用详情和处理结果。'
+                : cleanContent,
+            todoActions: todoActions,
+            financeDrafts: financeDrafts,
+            financeActions: financeActions,
+          );
           final finishReasonNote = _streamingFinishReason == null
               ? ''
               : '\n\n模型结束原因：$_streamingFinishReason；响应流收尾前已中断。';
@@ -811,14 +1550,24 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
       final existingScheduleTitles = {
         for (final schedule in _fixedSchedules) schedule.id: schedule.title,
       };
-      final todoActions = AiActionParser.extractTodoActions(
+      final parsedTodoActions = AiActionParser.extractTodoActions(
         actionContent,
         originalText: requestText,
         existingTodoTitles: existingTodoTitles,
         existingScheduleTitles: existingScheduleTitles,
+        availableTeams: widget.teams,
         allowedActionNames: allowedCdtActionNames,
       );
-      final inlineSuggestions = _extractFreshSuggestions(actionContent);
+      final hasUnresolvedCountdownTeamBinding =
+          (hasRequestedCountdownTeamBinding && requestedCountdownTeam == null) ||
+          parsedTodoActions.any(_hasUnresolvedCountdownTeamBinding);
+      final todoActions = hasUnresolvedCountdownTeamBinding
+          ? parsedTodoActions
+                .where(
+                  (action) => action.type != AiTodoActionType.createCountdown,
+                )
+                .toList(growable: false)
+          : parsedTodoActions;
       final financeDrafts = allowedProposalToolNames.contains(
             'propose_finance_drafts',
           )
@@ -836,11 +1585,37 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
         financeDrafts: financeDrafts,
         financeActions: financeActions,
       );
+      final inlineSuggestions = _extractFreshSuggestions(
+        actionContent,
+        todoActions: todoActions,
+        financeDrafts: financeDrafts,
+        financeActions: financeActions,
+        settingsTargets: settingsTargets,
+        nativeToolCalls: nativeToolCallRecords,
+      );
       final cleanContent = FinanceTextParser.cleanAssistantContent(
         AiActionParser.cleanActionContent(actionContent),
       );
+      final parsedFallbackCdtActionNames = nativeToolMode
+          ? const <String>{}
+          : _parsedCdtActionNames(todoActions);
+      final missingParsedFallbackCdtActions = nativeToolMode
+          ? const <String>{}
+          : requiredFallbackCdtActionNames.difference(
+              parsedFallbackCdtActionNames,
+            );
+      final missingFallbackCdtActions = nativeToolMode
+          ? const <String>{}
+          : {
+              ...missingParsedFallbackCdtActions,
+              ...missingFallbackCdtActionNames(fullContent),
+            };
       final missingFallbackWrites = !nativeToolMode
-          ? missingFallbackProposalBlocks(fullContent)
+          ? {
+              ...missingFallbackProposalBlocks(fullContent),
+              if (missingFallbackCdtActions.isNotEmpty)
+                'propose_cdt_actions',
+            }
           : const <String>{};
       final hasAnyFallbackWriteCard =
           todoActions.isNotEmpty ||
@@ -865,34 +1640,60 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
       final fallbackWriteWarning = !fallbackWriteIncomplete
           ? null
           : hasAnyFallbackWriteCard
-          ? '已生成部分待确认操作卡，但还缺少${missingFallbackWrites.map(fallbackProposalLabel).join('、')}；应用没有写入缺失操作，请核对现有卡片并重试。'
+          ? '已生成部分待确认操作卡，但还缺少${[
+              for (final name in missingFallbackWrites)
+                if (name != 'propose_cdt_actions' ||
+                    missingFallbackCdtActions.isEmpty)
+                  fallbackMissingProposalLabel(name, fullContent),
+              ...missingFallbackCdtActions.map(
+                (name) => fallbackMissingCdtActionLabel(name, fullContent),
+              ),
+            ].join('、')}；应用没有写入缺失操作，请核对现有卡片并重试。'
           : '本轮未生成有效的待确认操作卡，应用没有写入数据。请补充信息或重试。';
-      final assistantContent =
-          fallbackWriteWarning ??
-          (nativeWriteProposalUnresolved
-              ? '模型函数调用未能解析成有效操作卡，本地数据没有更改。请补充具体对象或信息后重试。'
-              : null) ??
-          (financeDrafts.isNotEmpty
-              ? _financeDraftSummary(financeDrafts.length)
-              : todoActions.any((action) => action.isPlanBlockAction)
-              ? _planningDraftSummary(todoActions)
-              : allowedCdtActionNames.contains('create_plan_block') &&
-                    nativeToolCalls.any(
-                      (call) => call.name == 'propose_cdt_actions',
-                    ) &&
-                    todoActions.isEmpty
-              ? '规划工具返回的草案未通过校验，没有生成可执行卡片，也未保存任何数据。请重新生成规划。'
-              : cleanContent.isNotEmpty
-              ? cleanContent
-              : todoActions.isNotEmpty
-              ? '已生成待确认操作草案，请核对后添加。'
-              : financeActions.isNotEmpty
-              ? '已生成账单操作草案，请在确认卡中核对。'
-              : settingsTargets.isNotEmpty
-              ? '已找到相关设置，点击卡片即可前往调整。'
-              : nativeToolCalls.isNotEmpty
-              ? '工具调用已记录；应用没有自动修改数据。请查看调用详情和处理结果。'
-              : cleanContent);
+      final String? unresolvedCountdownTeamReply;
+      if (hasUnresolvedCountdownTeamBinding &&
+          hasRequestedCountdownTeamBinding &&
+          requestedCountdownTeam == null) {
+        unresolvedCountdownTeamReply =
+            '本地团队列表中没有找到唯一匹配的团队「${requestedCountdownTeamName ?? '本轮指定团队'}」，未生成团队绑定的倒计时草案。请核对名称后重试。';
+      } else if (hasUnresolvedCountdownTeamBinding) {
+        unresolvedCountdownTeamReply =
+            '返回的团队无法匹配本地团队列表，相关倒计时草案未生成。请从本地团队中选择准确团队后重试。';
+      } else {
+        unresolvedCountdownTeamReply = null;
+      }
+      final assistantContent = _appendPendingWriteConfirmationNotice(
+        content:
+            unresolvedCountdownTeamReply ??
+            fallbackWriteWarning ??
+            (nativeWriteProposalUnresolved
+                ? '模型函数调用未能解析成有效操作卡，本地数据没有更改。请补充具体对象或信息后重试。'
+                : null) ??
+            (financeDrafts.isNotEmpty
+                ? _financeDraftSummary(financeDrafts.length)
+                : todoActions.any((action) => action.isPlanBlockAction)
+                ? _planningDraftSummary(todoActions)
+                : allowedCdtActionNames.contains('create_plan_block') &&
+                      nativeToolCalls.any(
+                        (call) => call.name == 'propose_cdt_actions',
+                      ) &&
+                      todoActions.isEmpty
+                ? '规划工具返回的草案未通过校验，没有生成可执行卡片，也未保存任何数据。请重新生成规划。'
+                : cleanContent.isNotEmpty
+                ? cleanContent
+                : todoActions.isNotEmpty
+                ? '已生成待确认操作草案，请核对后添加。'
+                : financeActions.isNotEmpty
+                ? '已生成账单操作草案，请在确认卡中核对。'
+                : settingsTargets.isNotEmpty
+                ? '已找到相关设置，点击卡片即可前往调整。'
+                : nativeToolCalls.isNotEmpty
+                ? '工具调用已记录；应用没有自动修改数据。请查看调用详情和处理结果。'
+                : cleanContent),
+        todoActions: todoActions,
+        financeDrafts: financeDrafts,
+        financeActions: financeActions,
+      );
 
       final assistantMsg = ChatMessage(
         role: ChatRole.assistant,
@@ -1277,6 +2078,60 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
     }
   }
 
+  Future<bool> _pasteChatImageFromClipboard() async {
+    final image = await readClipboardImage();
+    if (image == null) return false;
+
+    if (_isLoading || _isPickingAttachment) {
+      if (mounted) {
+        AppSnackBars.showSnackBar(
+          context,
+          const SnackBar(content: Text('当前操作完成后再粘贴图片')),
+        );
+      }
+      return true;
+    }
+    if (_pendingAttachment != null) {
+      if (mounted) {
+        AppSnackBars.showSnackBar(
+          context,
+          const SnackBar(content: Text('请先移除现有附件，再粘贴图片')),
+        );
+      }
+      return true;
+    }
+
+    final maxBytes = AiMultimodalMessageBuilder.maxBytesFor(
+      ChatAttachmentKind.image,
+    );
+    if (image.length > maxBytes) {
+      if (mounted) {
+        AppSnackBars.showSnackBar(
+          context,
+          SnackBar(
+            content: Text('图片过大，请粘贴 ${(maxBytes / 1024 / 1024).round()}MB 以内的图片'),
+          ),
+        );
+      }
+      return true;
+    }
+
+    if (!mounted) return true;
+    setState(() {
+      _pendingAttachment = ChatImageAttachment(
+        path: '',
+        name: image.displayName,
+        mimeType: image.mimeType,
+        sizeBytes: image.length,
+        bytes: image.bytes,
+      );
+      _liveEstimatedTokens = _estimateTokensForPendingInput(
+        _inputCtrl.text.trim(),
+      );
+    });
+    return true;
+  }
+
   Future<List<Map<String, dynamic>>> _buildApiMessagesForRequest({
     required String financeContext,
     required String habitContext,
@@ -1389,6 +2244,41 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
   String _financeDraftSummary(int count) => count == 1
       ? '已生成 1 笔待确认记账。请在下方卡片核对，点击“编辑并保存”后才会写入账本；聊天回复“确认”不会直接入账。'
       : '已生成 $count 笔待确认记账。请逐笔在下方卡片核对并点击“编辑并保存”；聊天回复“确认”不会直接入账。';
+
+  String _appendPendingWriteConfirmationNotice({
+    required String content,
+    required List<AiTodoAction> todoActions,
+    required List<FinanceEntryDraft> financeDrafts,
+    required List<FinanceAiAction> financeActions,
+  }) {
+    final hasPendingTodoActions = todoActions.any(
+      (action) => !action.isAdded && !action.isIgnored,
+    );
+    final hasPendingFinanceActions = financeActions.any(
+      (action) => action.isMutation,
+    );
+    if (!hasPendingTodoActions &&
+        financeDrafts.isEmpty &&
+        !hasPendingFinanceActions) {
+      return content;
+    }
+    if (RegExp(
+      r'待确认|尚未(?:写入|保存|入账|执行)|点击.{0,14}(?:执行|保存|确认删除)',
+    ).hasMatch(content)) {
+      return content;
+    }
+
+    final notices = <String>[
+      if (hasPendingTodoActions)
+        '操作卡尚未写入；请核对后点击“执行所选操作”。',
+      if (financeDrafts.isNotEmpty)
+        '账单草案尚未入账；请在账单卡中点击“编辑并保存”。',
+      if (hasPendingFinanceActions)
+        '账单修改或删除尚未执行；请在对应卡片中核对并操作。',
+    ];
+    final notice = notices.join('\n');
+    return content.trim().isEmpty ? notice : '${content.trim()}\n\n$notice';
+  }
 
   Future<bool> _tryConfirmPendingFinanceDraft(String text) async {
     final command = text.trim().replaceAll(RegExp(r'[\s，。！？、,.!?]'), '');
@@ -1661,6 +2551,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
           originalText,
           previousUserMessage: previousUserMessage,
           previousAssistantMessage: previousAssistantMessage,
+          availableTeams: widget.teams,
         );
     final allowedManualCdtActions =
         AiNativeToolDefinitionBuilder.allowedCdtActionNames(
@@ -1685,13 +2576,13 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
       originalText: originalText,
       existingTodoTitles: existingTodoTitles,
       existingScheduleTitles: existingScheduleTitles,
+      availableTeams: widget.teams,
       allowedActionNames: allowedManualCdtActions,
     );
     final settingsTargets =
         AiSettingsNavigationService.shouldOfferForRequest(originalText)
         ? AiSettingsNavigationService.extractTargets(fullContent)
         : const <String>[];
-    final inlineSuggestions = _extractFreshSuggestions(fullContent);
     final financeDrafts = allowedManualProposalToolNames.contains(
           'propose_finance_drafts',
         )
@@ -1703,9 +2594,90 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
       return !action.isMutation ||
           allowedManualFinanceActions.contains(action.actionName);
     }).toList();
+    final inlineSuggestions = _extractFreshSuggestions(
+      fullContent,
+      todoActions: todoActions,
+      financeDrafts: financeDrafts,
+      financeActions: financeActions,
+      settingsTargets: settingsTargets,
+      nativeToolCalls: const [],
+    );
     final cleanContent = FinanceTextParser.cleanAssistantContent(
       AiActionParser.cleanActionContent(fullContent),
     );
+    final requiredManualCdtActions =
+        AiTodoContextBuilder.requiredExplicitCdtActionNames(
+          originalText,
+          previousUserMessage: previousUserMessage,
+          previousAssistantMessage: previousAssistantMessage,
+        );
+    final missingManualCdtActions = requiredManualCdtActions.difference(
+      _parsedCdtActionNames(todoActions),
+    );
+    final missingManualFinanceActions = allowedManualFinanceActions.difference(
+      financeActions
+          .where((action) => action.isMutation)
+          .map((action) => action.actionName)
+          .toSet(),
+    );
+    final requiredManualTodoCount =
+        allowedManualCdtActions.contains('create_todo')
+        ? AiTodoContextBuilder.explicitTodoCreationCount(originalText)
+        : null;
+    final missingManualTodoCount = requiredManualTodoCount == null
+        ? 0
+        : (requiredManualTodoCount - _parsedTodoCreationCount(todoActions))
+              .clamp(0, requiredManualTodoCount)
+              .toInt();
+    final requiredManualFinanceDraftCount =
+        allowedManualProposalToolNames.contains('propose_finance_drafts')
+        ? AiTodoContextBuilder.explicitFinanceDraftCount(originalText)
+        : null;
+    final missingManualFinanceDraftCount =
+        requiredManualFinanceDraftCount == null
+        ? 0
+        : (requiredManualFinanceDraftCount - financeDrafts.length)
+              .clamp(0, requiredManualFinanceDraftCount)
+              .toInt();
+    final missingManualProposalLabels = <String>{
+      if (missingManualTodoCount > 0) '还缺少 $missingManualTodoCount 条待办',
+      ...missingManualCdtActions
+          .where(
+            (name) =>
+                name != 'create_todo' || requiredManualTodoCount == null,
+          )
+          .map(_fallbackCdtActionLabel),
+      ...missingManualFinanceActions.map(
+        (name) => switch (name) {
+          'update_finance' => '修改账单操作',
+          'delete_finance' => '删除账单操作',
+          _ => name,
+        },
+      ),
+      if (requiredManualFinanceDraftCount == null &&
+          allowedManualProposalToolNames.contains('propose_finance_drafts') &&
+          AiTodoContextBuilder.shouldOfferFinanceDraftProposal(originalText) &&
+          financeDrafts.isEmpty)
+        '新增账单确认卡',
+      if (missingManualFinanceDraftCount > 0)
+        '还缺少 $missingManualFinanceDraftCount 笔账单',
+    };
+    final incompleteManualProposalNotice =
+        missingManualProposalLabels.isNotEmpty &&
+            !AiToolChatRunner.isLikelyClarification(cleanContent)
+        ? '外部AI回复缺少${missingManualProposalLabels.join('、')}；本次只识别到已生成的部分草案，没有写入数据。请补齐提案后重新粘贴。'
+        : null;
+    final manualAssistantContent =
+        incompleteManualProposalNotice ??
+        (financeDrafts.isNotEmpty
+            ? _financeDraftSummary(financeDrafts.length)
+            : cleanContent.isEmpty
+            ? settingsTargets.isNotEmpty
+                  ? '已找到相关设置，点击卡片即可前往调整。'
+                  : financeActions.isNotEmpty
+                  ? '已生成账单操作草案，请在确认卡中核对。'
+                  : fullContent
+            : cleanContent);
 
     final newMessages = <ChatMessage>[];
     if (originalText.isNotEmpty && _lastUserContent() != originalText) {
@@ -1713,15 +2685,12 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
     }
     final assistantMsg = ChatMessage(
       role: ChatRole.assistant,
-      content: financeDrafts.isNotEmpty
-          ? _financeDraftSummary(financeDrafts.length)
-          : cleanContent.isEmpty
-          ? settingsTargets.isNotEmpty
-                ? '已找到相关设置，点击卡片即可前往调整。'
-                : financeActions.isNotEmpty
-                ? '已生成账单操作草案，请在确认卡中核对。'
-                : fullContent
-          : cleanContent,
+      content: _appendPendingWriteConfirmationNotice(
+        content: manualAssistantContent,
+        todoActions: todoActions,
+        financeDrafts: financeDrafts,
+        financeActions: financeActions,
+      ),
       rawContent: fullContent,
       settingsTargets: settingsTargets,
       smartContext: smartContext,
@@ -2000,9 +2969,23 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
   }
 
   Future<void> _showPromptSettings() async {
-    await Navigator.of(context).push<void>(
-      PageTransitions.material<void>(
-        builder: (_) => const AiAssistantSettingsPage(),
+    await _showPromptSettingsFromSource(_settingsKey);
+  }
+
+  Future<void> _showPromptSettingsFromSource(GlobalKey sourceKey) async {
+    final colorScheme = Theme.of(context).colorScheme;
+    await PageTransitions.pushFromRect<void>(
+      context: context,
+      page: const AiAssistantSettingsPage(),
+      sourceKey: sourceKey,
+      sourceColor: colorScheme.brightness == Brightness.dark
+          ? Colors.black
+          : Colors.white,
+      sourceBorderRadius: BorderRadius.circular(24),
+      placeholderBuilder: (_) => Icon(
+        Icons.tune_rounded,
+        color: colorScheme.primary,
+        size: 30,
       ),
     );
     if (!mounted) return;

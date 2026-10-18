@@ -968,9 +968,11 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
                 await ChatStorageService.setSmartContextEnabled(_smartContext);
               },
               onSettings: _showPromptSettings,
+              onSettingsFromSource: _showPromptSettingsFromSource,
               onModelConfig: _showModelConfig,
               onCopyPrompt: _inputHasText ? _copyManualPromptFromInput : null,
               onPasteReply: _pasteManualReplyFromClipboard,
+              onPasteImage: _pasteChatImageFromClipboard,
               onRetry:
                   !_isLoading &&
                       _messages.isNotEmpty &&

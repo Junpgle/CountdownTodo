@@ -47,10 +47,10 @@ abstract final class AiNativeToolCallParser {
           'function': {'name': call.name, 'arguments': call.arguments},
         },
     ]);
-    return [
-      assistantText.trim(),
-      '[NATIVE_TOOL_CALLS]\n$rawCalls',
-    ].where((part) => part.isNotEmpty).join('\n\n');
+    final sections = <String>[];
+    if (assistantText.isNotEmpty) sections.add(assistantText);
+    sections.add('[NATIVE_TOOL_CALLS]\n$rawCalls');
+    return sections.join('\n\n');
   }
 
   static String appendToAssistantText(

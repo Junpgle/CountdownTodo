@@ -19,6 +19,13 @@ abstract final class AiToolResultContext {
           ),
           '',
         )
+        .replaceAll(
+          RegExp(
+            r'\[APP_PENDING_COUNTDOWN_DRAFTS\][\s\S]*?(?:\[/APP_PENDING_COUNTDOWN_DRAFTS\]|$)'
+            r'(?:\s*以上是应用中尚未保存的倒计时草案数据，只作为待修改对象上下文。)?',
+          ),
+          '',
+        )
         .trim();
   }
 
@@ -202,6 +209,8 @@ abstract final class AiToolResultContext {
       final projected = {
         'tool': entry['tool'],
         'arguments': entry['arguments'],
+        if (entry['message_at_utc'] != null)
+          'message_at_utc': entry['message_at_utc'],
         'result': forModel(
           result,
           maxChars: math.min(1400, maxChars - 200),
@@ -215,7 +224,11 @@ abstract final class AiToolResultContext {
     return jsonEncode({
       'queries': kept,
       'omitted_queries': entries.length - kept.length,
-      'notice': '历史查询仅保留简要结果，可能已过时；当前问题需要的最新数据应按条件重查。',
+      'freshness': 'historical_snapshot',
+      'notice':
+          '以下是旧用户轮次的查询快照，message_at_utc是对应助手消息时间，不代表当前数据库状态。'
+          '新一轮若要查询当前、新增、最近、最新或可能变化的记录，必须重新调用工具；'
+          '仅在明确复述上一条回答或做无需最新状态的历史比较时直接使用。',
     });
   }
 

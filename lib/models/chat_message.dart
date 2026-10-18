@@ -513,6 +513,7 @@ class ChatMessage {
             'tool': call.name,
             'arguments': call.arguments,
             'result': call.result,
+            'message_at_utc': timestamp.toUtc().toIso8601String(),
           },
     ];
     final queryHistory = AiToolResultContext.history(
@@ -522,6 +523,31 @@ class ChatMessage {
     if (queryHistory.isNotEmpty) {
       sections.add(
         '[READ_ONLY_TOOL_HISTORY]\n$queryHistory\n[/READ_ONLY_TOOL_HISTORY]',
+      );
+    }
+    final pendingCountdowns = todoActions
+        ?.where(
+          (action) =>
+              action.type == AiTodoActionType.createCountdown &&
+              !action.isAdded &&
+              !action.isIgnored,
+        )
+        .map((action) {
+          final item = <String, dynamic>{
+            'title': action.title,
+            'dueDate': action.dueDate,
+          };
+          final teamName = action.teamName?.trim();
+          if (teamName?.isNotEmpty == true) item['teamName'] = teamName;
+          return item;
+        })
+        .toList(growable: false);
+    if (pendingCountdowns?.isNotEmpty == true) {
+      sections.add(
+        '[APP_PENDING_COUNTDOWN_DRAFTS]\n'
+        '${jsonEncode({'action': 'create_countdown', 'countdowns': pendingCountdowns})}\n'
+        '[/APP_PENDING_COUNTDOWN_DRAFTS]\n'
+        '以上是应用中尚未保存的倒计时草案数据，只作为待修改对象上下文。',
       );
     }
     if (contextDrafts != null && contextDrafts.isNotEmpty) {

@@ -99,6 +99,7 @@ class AiTokenUsage {
 class AiChatStreamChunk {
   const AiChatStreamChunk({
     this.content = '',
+    this.rawModelReply,
     this.reasoningContent = '',
     this.toolCallDeltas = const [],
     this.toolCalls = const [],
@@ -109,6 +110,7 @@ class AiChatStreamChunk {
   });
 
   final String content;
+  final String? rawModelReply;
   final String reasoningContent;
   final List<AiChatFunctionCallDelta> toolCallDeltas;
   final List<AiChatFunctionCall> toolCalls;
@@ -422,11 +424,7 @@ class AiChatService {
         body['stream_options'] = {'include_usage': true};
       }
       body['thinking'] = {
-        'type': isMimo && tools != null && tools.isNotEmpty
-            ? 'disabled'
-            : deepThinking
-            ? 'enabled'
-            : 'disabled',
+        'type': deepThinking ? 'enabled' : 'disabled',
       };
     }
     return body;

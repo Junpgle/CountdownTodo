@@ -1212,6 +1212,29 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
                           ],
                         ),
                       ),
+                      if (todo.type == AiTodoActionType.createCountdown)
+                        Padding(
+                          padding: const EdgeInsets.only(left: 28, top: 4),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.groups_outlined,
+                                size: 13,
+                                color: Theme.of(context).colorScheme.onSurface
+                                    .withValues(alpha: 0.45),
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                '团队：${_countdownTeamLabel(todo)}',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Theme.of(context).colorScheme.onSurface
+                                      .withValues(alpha: 0.6),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       if (todo.remark != null && todo.remark!.isNotEmpty)
                         Padding(
                           padding: const EdgeInsets.only(left: 28, top: 4),
@@ -1713,13 +1736,6 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
     final remarkCtrl = TextEditingController(text: action.remark ?? '');
     final startCtrl = TextEditingController(text: action.startTime ?? '');
     final dueCtrl = TextEditingController(text: action.dueDate ?? '');
-    final idCtrl = TextEditingController(
-      text: action.isFixedScheduleAction
-          ? action.scheduleId ?? ''
-          : action.isHabitAction
-          ? action.habitUuid ?? ''
-          : action.todoId ?? '',
-    );
     final dateCtrl = TextEditingController(text: action.date ?? '');
     final locationCtrl = TextEditingController(text: action.location ?? '');
     final durationCtrl = TextEditingController(
@@ -1732,7 +1748,28 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
     );
     final colorCtrl = TextEditingController(text: action.color ?? '');
     final statusCtrl = TextEditingController(text: action.status ?? '');
-    final tagCtrl = TextEditingController(text: action.tagUuids.join(','));
+    final initialTagUuids = List<String>.from(action.tagUuids);
+    var selectedTagUuids = List<String>.from(action.tagUuids);
+    final sourceTags = widget.pomodoroTags.isNotEmpty
+        ? widget.pomodoroTags
+        : await PomodoroService.getTags();
+    if (!mounted) return;
+    final availableTags = sourceTags
+        .where((tag) => !tag.isDeleted && !tag.isArchived)
+        .toList();
+    const personalTeamChoice = '__personal__';
+    const unselectedTeamChoice = '__select_team__';
+    final hasTeamReference =
+        action.teamUuid?.trim().isNotEmpty == true ||
+        action.teamName?.trim().isNotEmpty == true;
+    final resolvedTeam = AiTeamBindingResolver.resolveReference(
+      name: action.teamName,
+      uuid: action.teamUuid,
+      teams: widget.teams,
+    );
+    var teamChoice =
+        resolvedTeam?.uuid ??
+        (hasTeamReference ? unselectedTeamChoice : personalTeamChoice);
     var recurrence = action.recurrence;
     var isAllDay = action.isAllDay;
     var timeMode =
@@ -1771,15 +1808,33 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (action.mutatesExistingItem ||
-                      action.isTimeLogAction ||
-                      action.isCountdownAction ||
-                      action.isTodoGroupAction ||
-                      action.isPomodoroTagAction ||
-                      action.isFixedScheduleAction)
-                    _editField(idCtrl, _idFieldLabel(action)),
                   if (_usesTitle(action))
                     _editField(titleCtrl, _titleLabel(action)),
+                  if (action.type == AiTodoActionType.createCountdown)
+                    DropdownButtonFormField<String>(
+                      initialValue: teamChoice,
+                      decoration: const InputDecoration(labelText: '绑定团队'),
+                      items: [
+                        const DropdownMenuItem(
+                          value: personalTeamChoice,
+                          child: Text('仅自己可见'),
+                        ),
+                        if (teamChoice == unselectedTeamChoice)
+                          const DropdownMenuItem(
+                            value: unselectedTeamChoice,
+                            enabled: false,
+                            child: Text('请选择本地团队'),
+                          ),
+                        for (final team in widget.teams)
+                          DropdownMenuItem(
+                            value: team.uuid,
+                            child: Text(team.name),
+                          ),
+                      ],
+                      onChanged: (value) => setDialogState(() {
+                        teamChoice = value ?? personalTeamChoice;
+                      }),
+                    ),
                   if (_usesRemark(action)) _editField(remarkCtrl, '备注'),
                   if (action.isFixedScheduleAction)
                     _editField(dateCtrl, '日程日期', hint: 'YYYY-MM-DD'),
@@ -1817,7 +1872,60 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
                       '状态',
                       hint: 'completed 或 interrupted',
                     ),
-                  if (_usesTags(action)) _editField(tagCtrl, '番茄标签ID（逗号分隔）'),
+                  if (_usesTags(action)) ...[
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        '番茄标签',
+                        style: Theme.of(context).textTheme.labelLarge,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    if (availableTags.isEmpty)
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          selectedTagUuids.isEmpty
+                              ? '暂无可选标签'
+                              : '已有 ${selectedTagUuids.length} 个不可选标签，保存时会保留',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      )
+                    else
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 4,
+                        children: [
+                          for (final tag in availableTags)
+                            FilterChip(
+                              label: Text(tag.name),
+                              selected: selectedTagUuids.contains(tag.uuid),
+                              onSelected: (selected) => setDialogState(() {
+                                if (selected) {
+                                  if (!selectedTagUuids.contains(tag.uuid)) {
+                                    selectedTagUuids.add(tag.uuid);
+                                  }
+                                } else {
+                                  selectedTagUuids.remove(tag.uuid);
+                                }
+                              }),
+                            ),
+                        ],
+                      ),
+                    if (selectedTagUuids.any(
+                      (uuid) => !availableTags.any(
+                        (tag) => tag.uuid == uuid,
+                      ),
+                    ))
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          '存在不可选标签，保存时会保留',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ),
+                    const SizedBox(height: 8),
+                  ],
                   if (action.isTodoAction || action.isFixedScheduleAction) ...[
                     const SizedBox(height: 8),
                     if (action.isTodoAction)
@@ -1890,16 +1998,32 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
             ),
             FilledButton(
               onPressed: () {
+                if (action.type == AiTodoActionType.createCountdown &&
+                    teamChoice == unselectedTeamChoice) {
+                  AppSnackBars.showSnackBar(
+                    context,
+                    const SnackBar(content: Text('请先选择本地团队或仅自己可见')),
+                  );
+                  return;
+                }
                 setState(() {
-                  if (action.isFixedScheduleAction) {
-                    action.scheduleId = _nullIfBlank(idCtrl.text);
-                  } else if (action.isHabitAction) {
-                    action.habitUuid = _nullIfBlank(idCtrl.text);
-                  } else {
-                    action.todoId = _nullIfBlank(idCtrl.text);
-                  }
                   if (_usesTitle(action)) {
                     action.title = _nullIfBlank(titleCtrl.text);
+                  }
+                  if (action.type == AiTodoActionType.createCountdown) {
+                    if (teamChoice == personalTeamChoice) {
+                      action.teamUuid = null;
+                      action.teamName = null;
+                    } else {
+                      for (final team in widget.teams) {
+                        if (team.uuid == teamChoice) {
+                          action.teamUuid = team.uuid;
+                          action.teamName = team.name;
+                          break;
+                        }
+                      }
+                    }
+                    action.hasTeamUuid = true;
                   }
                   if (action.type == AiTodoActionType.updateHabit) {
                     final fields = Map<String, dynamic>.from(
@@ -1935,11 +2059,13 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
                   }
                   action.color = _nullIfBlank(colorCtrl.text);
                   action.status = _nullIfBlank(statusCtrl.text);
-                  action.tagUuids = tagCtrl.text
-                      .split(',')
-                      .map((e) => e.trim())
-                      .where((e) => e.isNotEmpty)
-                      .toList();
+                  action.tagUuids = List<String>.from(selectedTagUuids);
+                  action.hasTagUuids =
+                      action.hasTagUuids ||
+                      selectedTagUuids.length != initialTagUuids.length ||
+                      selectedTagUuids.any(
+                        (uuid) => !initialTagUuids.contains(uuid),
+                      );
                   action.recurrence = recurrence;
                   action.isAllDay = isAllDay;
                   action.timeMode = timeMode;
@@ -2012,6 +2138,20 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
     return trimmed.isEmpty ? null : trimmed;
   }
 
+  String _countdownTeamLabel(AiTodoAction action) {
+    final team = AiTeamBindingResolver.resolveReference(
+      name: action.teamName,
+      uuid: action.teamUuid,
+      teams: widget.teams,
+    );
+    if (team != null) return team.name;
+    if (action.teamName?.trim().isNotEmpty == true ||
+        action.teamUuid?.trim().isNotEmpty == true) {
+      return '需重新选择团队';
+    }
+    return '仅自己可见';
+  }
+
   bool _usesTitle(AiTodoAction action) =>
       action.type != AiTodoActionType.completeTodo &&
       action.type != AiTodoActionType.deleteTodo &&
@@ -2061,16 +2201,6 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
 
   bool _usesTags(AiTodoAction action) =>
       action.isTimeLogAction || action.isPomodoroAction;
-
-  String _idFieldLabel(AiTodoAction action) {
-    if (action.isHabitAction) return '习惯UUID';
-    if (action.isFixedScheduleAction) return '日程ID';
-    if (action.isTimeLogAction) return '专注记录ID';
-    if (action.isCountdownAction) return '倒计时ID';
-    if (action.isTodoGroupAction) return '分类ID';
-    if (action.isPomodoroTagAction) return '标签ID';
-    return '待办ID';
-  }
 
   String _titleLabel(AiTodoAction action) {
     if (action.isHabitAction) return '习惯名称';
@@ -2512,6 +2642,34 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
       AppSnackBars.showSnackBar(
         context,
         const SnackBar(content: Text('待办标题为空，请先编辑确认卡再执行')),
+      );
+      return;
+    }
+    final hasUnresolvedCountdownTeam = pendingActions.any((action) {
+      if (action.type != AiTodoActionType.createCountdown) return false;
+      final name = action.teamName?.trim() ?? '';
+      final uuid = action.teamUuid?.trim() ?? '';
+      if (name.isEmpty && uuid.isEmpty) return false;
+
+      final team = AiTeamBindingResolver.resolveReference(
+        name: name,
+        uuid: uuid,
+        teams: widget.teams,
+      );
+      if (team == null) return true;
+
+      // Keep a resolved local binding canonical so the executor persists the
+      // same team that the confirmation card displays, including name aliases.
+      action
+        ..teamName = team.name
+        ..teamUuid = team.uuid
+        ..hasTeamUuid = true;
+      return false;
+    });
+    if (hasUnresolvedCountdownTeam) {
+      AppSnackBars.showSnackBar(
+        context,
+        const SnackBar(content: Text('目标团队未匹配，请编辑确认卡选择团队或改为仅自己可见')),
       );
       return;
     }
@@ -3015,40 +3173,15 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
     );
   }
 
-  String _buildRawReplyDebugText(ChatMessage msg) {
-    final sections = <String>[];
-    if (msg.rawContent.trim().isNotEmpty) {
-      sections.add(msg.rawContent.trim());
-    } else {
-      sections.add('当前历史消息没有保存模型原始回复。');
-      if (msg.content.trim().isNotEmpty) {
-        sections.add('[CLEANED_CONTENT]\n${msg.content.trim()}');
-      }
-      if (msg.nativeToolCalls?.isNotEmpty == true) {
-        const encoder = JsonEncoder.withIndent('  ');
-        sections.add(
-          '[NATIVE_TOOL_CALLS]\n${encoder.convert(msg.nativeToolCalls!.map((call) => call.toJson()).toList())}',
-        );
-      }
+  String _buildRawReplyText(ChatMessage msg) {
+    final rawReply = msg.rawContent;
+    if (rawReply.isEmpty) return '当前消息没有保存模型原始回复。';
+    if (rawReply == msg.content &&
+        (rawReply.startsWith('模型未返回可执行的操作调用；') ||
+            rawReply.startsWith('模型没有返回可执行的规划草案，'))) {
+      return '这条历史消息只保存了应用提示，模型原始回复当时未留存，无法恢复。';
     }
-
-    final actions = msg.todoActions;
-    if (actions != null && actions.isNotEmpty) {
-      const encoder = JsonEncoder.withIndent('  ');
-      sections.add(
-        '[PARSED_ACTIONS]\n${encoder.convert(actions.map((action) => action.toJson()).toList())}',
-      );
-    }
-
-    if (msg.reasoningContent.trim().isNotEmpty) {
-      sections.add('[REASONING]\n${msg.reasoningContent.trim()}');
-    }
-
-    if (msg.smartContext.trim().isNotEmpty) {
-      sections.add('[SMART_CONTEXT]\n${msg.smartContext.trim()}');
-    }
-
-    return sections.join('\n\n');
+    return rawReply;
   }
 
   Future<void> _showRawReplyDialog(ChatMessage msg) async {
@@ -3063,7 +3196,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
             constraints: const BoxConstraints(maxWidth: 720, maxHeight: 560),
             child: SingleChildScrollView(
               child: SelectableText(
-                _buildRawReplyDebugText(msg),
+                _buildRawReplyText(msg),
                 style: TextStyle(
                   fontSize: 12,
                   height: 1.45,

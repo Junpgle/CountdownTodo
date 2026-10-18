@@ -34,7 +34,7 @@ class _AiAssistantSettingsPageState extends State<AiAssistantSettingsPage> {
   AiContextMode _contextMode = AiContextMode.functionCalling;
   bool _showContextPreview = false;
   bool _injectMoreContext = false;
-  bool _deepThinking = false;
+  bool _deepThinking = true;
   bool _promptEnabled = true;
   bool _promptDirty = false;
   late Future<LLMConfig?> _llmConfigFuture;

@@ -1810,8 +1810,8 @@ class AiTodoActionExecutor {
           : existing?.isCompleted ?? false,
       version: existing?.version ?? 1,
       createdAt: existing?.createdAt,
-      teamUuid: existing?.teamUuid,
-      teamName: existing?.teamName,
+      teamUuid: action.hasTeamUuid ? action.teamUuid : existing?.teamUuid,
+      teamName: action.hasTeamUuid ? action.teamName : existing?.teamName,
       creatorId: existing?.creatorId,
       creatorName: existing?.creatorName,
     );

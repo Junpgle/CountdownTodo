@@ -1,6 +1,10 @@
+import 'dart:convert';
+
 import 'package:intl/intl.dart';
 
+import '../models/ai_todo_action.dart';
 import '../models.dart';
+import 'ai_team_binding_resolver.dart';
 import 'chat_storage_service.dart';
 import 'pomodoro_service.dart';
 import 'ai_settings_navigation_service.dart';
@@ -8,16 +12,18 @@ import 'ai_settings_navigation_service.dart';
 class AiTodoContextBuilder {
   static const pendingWriteProposalContextMarker =
       '[APP_PENDING_WRITE_PROPOSAL]';
+  static const pendingCountdownDraftsContextMarker =
+      '[APP_PENDING_COUNTDOWN_DRAFTS]';
 
   static const int actionProtocolVersion = 2;
   static const int smartContextProtocolVersion = 2;
   static const String _dynamicSuggestionRules = '''
 【AI动态下一步建议】
 建议只由模型结合本轮用户请求、助手最终回复和实际查询结果即时生成；应用没有固定建议清单，不得把功能目录或通用开场问题当作建议栏内容。
-先判断本轮是否确有自然、具体且有帮助的后续；每条建议都必须明确承接本轮提到的事项、对象、数据或结果，输出1-4条，每条不超过15字。
-不要输出功能菜单、通用引导、欢迎语或与本轮无关的查询；不要按照固定主题轮流填充建议栏。只从本轮结果中挑选可继续处理的具体事项，或提出与当前操作卡直接相关的调整。
+建议数量为0-4条，默认输出0条；只有本轮确有自然、具体且有帮助的后续时才输出。每条必须明确承接本轮提到的事项、对象、数据或结果，并包含可从本轮内容核对的具体依据；每条不超过15字。
+不要输出功能菜单、通用引导、欢迎语、泛化问句或与本轮无关的查询；不要按照固定主题轮流填充建议栏，也不要复用常见问题清单。只从本轮结果中挑选可继续处理的具体事项，或提出与当前操作卡直接相关的字段调整。
 已有待确认操作卡时，只能建议调整卡片中与本轮有关的具体字段；不要建议用户在聊天里回复“确认”来保存，也不要用通用问题填充建议栏。
-没有合适后续时完全省略建议块，不要为了填充建议栏而提问。建议只在用户点击后发起下一轮请求，不能据此直接执行写操作；写操作仍须生成待确认操作卡并等待用户确认。
+没有合适后续时完全省略建议块（相当于0条），不要为了填充建议栏而提问。建议只在用户点击后发起下一轮请求，不能据此直接执行写操作；写操作仍须生成待确认操作卡并等待用户确认。
 格式：[SUGGEST_START]["建议1","建议2"][SUGGEST_END]
 ''';
   static final RegExp _explicitIsoDateRangePattern = RegExp(
@@ -208,6 +214,7 @@ class AiTodoContextBuilder {
     String userMessage, {
     String previousUserMessage = '',
     String previousAssistantMessage = '',
+    List<Team> availableTeams = const [],
   }) {
     final resolvedCreationRequest = inheritExplicitCreationClarification(
       userMessage,
@@ -217,6 +224,17 @@ class AiTodoContextBuilder {
     final isCreationClarificationFollowUp =
         resolvedCreationRequest != userMessage.trim();
     userMessage = resolvedCreationRequest;
+    final pendingCountdownTitleSuffix = pendingCountdownTitleSuffixForRequest(
+      userMessage,
+      previousUserMessage: previousUserMessage,
+      previousAssistantMessage: previousAssistantMessage,
+    );
+    final hasRequestedCountdownTeam =
+        AiTeamBindingResolver.hasExplicitBindingIntent(userMessage);
+    final requestedCountdownTeam = AiTeamBindingResolver.requestedTeam(
+      userMessage,
+      teams: availableTeams,
+    );
     final actions = <String>[];
     void add(String line) {
       if (!actions.contains(line)) actions.add(line);
@@ -235,9 +253,13 @@ class AiTodoContextBuilder {
             (_matchesAny(userMessage, const ['待办', '任务']) ||
                 _matchesAny(userMessage, _planningTimeKeywords)) &&
             !_matchesAny(userMessage, _fixedScheduleEventKeywords));
-    final explicitlyCreatesTodo =
-        _matchesAny(userMessage, _createTodoKeywords) ||
-        isExplicitTodoCreationRequest(userMessage);
+    final hasExplicitCreateIntent =
+        isExplicitTodoCreationRequest(userMessage) ||
+        _createTodoKeywords.any(
+          (verb) =>
+              isExplicitlyRequested(userMessage, verb) &&
+              _hasExplicitActionPrefix(userMessage, verb),
+        );
     final habitCreationFollowUp = _isHabitCreationFollowUp(
       userMessage,
       previousAssistantMessage,
@@ -264,7 +286,7 @@ class AiTodoContextBuilder {
         habitCreationFollowUp ||
         habitUpdateFollowUp ||
         habitDeleteFollowUp;
-    final explicitlyTargetsTodo = _matchesAny(userMessage, _todoTypeKeywords);
+    final explicitlyTargetsTodo = isExplicitlyTargetingTodo(userMessage);
     final habitUpdateRequested =
         habitUpdateFollowUp ||
         (mentionsHabit &&
@@ -281,8 +303,9 @@ class AiTodoContextBuilder {
         habitCreationFollowUp ||
         habitUpdateRequested ||
         habitDeleteRequested ||
+        isExplicitHabitCreationRequest(userMessage) ||
         (mentionsHabit &&
-            (explicitlyCreatesTodo ||
+            (hasExplicitCreateIntent ||
                 _matchesAny(userMessage, _habitCreationKeywords)));
     final unresolvedHabitTodoChoice =
         !isPlanningRequest &&
@@ -307,7 +330,11 @@ class AiTodoContextBuilder {
     final planningActions = declinedOperation || !isPlanningRequest
         ? <String>{}
         : explicitPlanningActionNames(userMessage);
+    final countdownOnlyMutationRequest =
+        isExplicitCountdownMutationRequest(userMessage) &&
+        !explicitlyTargetsTodo;
     final requestsTodoAction =
+        !countdownOnlyMutationRequest &&
         !readOnlyRequest &&
         (!requestsHabitAction ||
             (habitCreationFollowUp
@@ -316,7 +343,7 @@ class AiTodoContextBuilder {
         !unresolvedHabitTodoChoice &&
         (contextualTodoMutation ||
             _shouldInjectTodoContext(userMessage) ||
-            _matchesAny(userMessage, _createTodoKeywords) ||
+            _matchesAny(userMessage, const ['提醒我', '记得']) ||
             isExplicitTodoCreationRequest(userMessage) ||
             _matchesAny(userMessage, _recurrenceKeywords) ||
             userMessage.contains('待办') ||
@@ -330,7 +357,11 @@ class AiTodoContextBuilder {
             userMessage.contains('账单') ||
             RegExp(r'\d+(?:\.\d+)?\s*(?:元|块(?:钱)?|人民币|¥|￥)')
                 .hasMatch(userMessage));
-    if (requestsTodoAction && (!isPlanningRequest || explicitlyCreatesTodo)) {
+    final financeDraftIntent = shouldOfferFinanceDraftProposal(userMessage);
+    final financeMutationIntent =
+        hasExplicitFinanceUpdateIntent(userMessage) ||
+        hasExplicitFinanceDeleteIntent(userMessage);
+    if (requestsTodoAction && _hasExplicitTodoCreationIntent(userMessage)) {
       add(
         '- create_todo: {"action":"create_todo","todos":[{"title":"标题","remark":"备注","timeMode":"unscheduled|dateOnly|deadline","dueDate":null,"groupId":null,"reminderMinutes":5,"recurrence":"none|daily|weekly|monthly|yearly|weekdays|customDays","customIntervalDays":null,"recurrenceEndDate":null}]}；多个事项分别作为数组条目，每条独立填写标题和备注。用户明确说“备注是六月”等内容时，remark原样写“六月”，不得改写成“截止时间：六月”或把它当dueDate；只有明确要求截止日期/时间时才设置dueDate，否则timeMode="unscheduled"且dueDate=null',
       );
@@ -399,7 +430,7 @@ class AiTodoContextBuilder {
       }
     }
     if (requestsFinanceAction) {
-      if (!readOnlyRequest) {
+      if (!readOnlyRequest && financeDraftIntent) {
         add(
           '- 记账草案：回复正文末尾追加 [FINANCE_START]...[FINANCE_END]，其中必须是JSON数组；每笔使用 {"type":"expense|income|refund","amount":28.50,"amount_minor":"2850","category":"餐饮","categoryUuid":null,"merchant":"午餐","date":"YYYY-MM-DD","paymentMethod":"微信","paymentMethodUuid":null,"note":"备注"}；amount单位为元，amount_minor是人民币分的十进制整数文本且优先于amount，金额需要精确到分时填写amount_minor；缺失的可选字段用null；若提供本地记账目录，UUID只能复制目录中的真实值；只生成草案并告知用户在应用显示的“待确认记账”卡片中核对后点击“编辑并保存”；聊天中的“确认/确定”不会保存账单，不得承诺收到文字确认后代为保存，也不得声称已保存',
         );
@@ -411,7 +442,7 @@ class AiTodoContextBuilder {
       add(
         '- finance_summary / finance_list：查询已有账单时使用 [FINANCE_ACTION_START]...[FINANCE_ACTION_END]，分别输出 {"action":"finance_summary","from":"YYYY-MM-DD","to":"YYYY-MM-DD"} 或 {"action":"finance_list","from":"YYYY-MM-DD","to":"YYYY-MM-DD","keyword":null,"type":null,"limit":20}；上下文已有汇总和明细时，正文要直接回答用户，不要假装执行了写入',
       );
-      if (!readOnlyRequest) {
+      if (!readOnlyRequest && financeMutationIntent) {
         add(
           '- update_finance：只允许引用记账上下文里的真实transactionId，使用 {"action":"update_finance","transactionId":"真实ID","type":"expense|income|refund","amount":28.50,"amount_minor":"2850","category":"餐饮","merchant":"商家","date":"YYYY-MM-DD","paymentMethod":"微信","note":"备注"}；amount单位为元，amount_minor是人民币分的十进制整数文本且优先于amount，金额需要精确到分时填写amount_minor；只填写用户要改的字段，先生成待确认修改，不得直接保存',
         );
@@ -487,15 +518,40 @@ class AiTodoContextBuilder {
     }
     if (!readOnlyRequest) {
       final countdownActions = explicitCountdownActionNames(userMessage);
+      if (pendingCountdownTitleSuffix != null) {
+        countdownActions.add('create_countdown');
+      }
       if (countdownActions.contains('create_countdown')) {
         add(
           '- create_countdown: {"action":"create_countdown","countdowns":[{"title":"事件","dueDate":"YYYY-MM-DD HH:mm"}]}',
         );
+        add(
+          '- create_countdown 团队归属：用户明确指定团队时，先按本地团队上下文匹配唯一现有团队，并将其规范名称写入每条对应倒计时的teamName；重发已有待确认草案时保留原teamName，除非用户本轮明确更改团队。团队名只放teamName字段，不得拼入title；不得新造或使用未匹配团队。',
+        );
+        if (pendingCountdownTitleSuffix != null) {
+          final teamReplacementRule = requestedCountdownTeam != null
+              ? '本轮用户还明确指定了本地团队「${requestedCountdownTeam.name}」，所有替换草案都必须设置为该团队的teamName，覆盖旧teamName。'
+              : hasRequestedCountdownTeam
+              ? '本轮用户指定的团队无法在本地团队列表中唯一匹配，不得伪造或保留该团队绑定；应说明无法匹配并请用户从本地团队中选择。'
+              : '逐条保留原teamName和原团队绑定。';
+          add(
+            '- create_countdown 待确认草案标题修订：用户要求批量给未保存草案的标题追加“$pendingCountdownTitleSuffix”。读取$pendingCountdownDraftsContextMarker中的全部草案，以propose_cdt_actions调用create_countdown重发完整替换集合；每条保留原dueDate，只在原标题末尾追加该文字（已包含时不要重复追加）；$teamReplacementRule 这是替换待确认草案，不是创建额外事项；不得使用需要真实countdownId的update_countdown。只有工具成功返回并由应用生成了完整新草案卡后，才能说标题已经更新。',
+          );
+        }
       }
       if (countdownActions.contains('update_countdown')) {
         add(
           '- update_countdown: {"action":"update_countdown","updates":[{"countdownId":"倒计时ID","title":"新标题","dueDate":"YYYY-MM-DD HH:mm"}]}',
         );
+        add(
+          '- update_countdown字段规则：只修改用户明确指定的字段；只改标题时仅填写title，不使用titleSnapshot，不填写dueDate或startTime，也不改teamName。',
+        );
+        if (userMessage.contains('未定') &&
+            _matchesAny(userMessage, const ['标题前面', '标题开头'])) {
+          add(
+            '- update_countdown标题规则：用户要求将标题末尾的“未定”移到开头并加连字符时，每条title设为“未定-”加原标题删除末尾“未定”后的文本；已经以“未定-”开头时不要重复添加。',
+          );
+        }
       }
       if (countdownActions.contains('complete_countdown')) {
         add(
@@ -683,6 +739,7 @@ JSON操作块必须且只能使用以下协议：
 - start_pomodoro: {"action":"start_pomodoro","title":"专注内容","todoId":"可选待办ID","durationMinutes":25,"tagUuids":[]}
 - stop_pomodoro: {"action":"stop_pomodoro","status":"completed"}
 - create_countdown: {"action":"create_countdown","countdowns":[{"title":"事件","dueDate":"YYYY-MM-DD HH:mm"}]}
+- 倒计时团队归属：用户明确说“这些都是X的/属于X/绑定到X团队”等时，将X原名写入每条对应倒计时的teamName；团队名只放teamName字段，不得拼入title。只有上下文中的现有团队可绑定；未明确指定时省略teamName。
 - update_countdown: {"action":"update_countdown","updates":[{"countdownId":"ID","title":"新标题","dueDate":"YYYY-MM-DD HH:mm"}]}
 - complete_countdown: {"action":"complete_countdown","updates":[{"countdownId":"ID"}]}
 - delete_countdown: {"action":"delete_countdown","updates":[{"countdownId":"ID"}]}
@@ -802,10 +859,13 @@ $_dynamicSuggestionRules
         );
     final injectTeamContext =
         _matchesAny(userMessage, _teamKeywords) ||
+        _mentionsAvailableTeam(userMessage, teams) ||
         _shouldInheritContext(
           userMessage,
           previousUserMessage,
-          (text) => _matchesAny(text, _teamKeywords),
+          (text) =>
+              _matchesAny(text, _teamKeywords) ||
+              _mentionsAvailableTeam(text, teams),
         );
 
     if (injectCourseContext && courses.isNotEmpty) {
@@ -990,10 +1050,13 @@ ${sections.join('\n')}
         );
     final injectTeamContext =
         _matchesAny(userMessage, _teamKeywords) ||
+        _mentionsAvailableTeam(userMessage, teams) ||
         _shouldInheritContext(
           userMessage,
           previousUserMessage,
-          (text) => _matchesAny(text, _teamKeywords),
+          (text) =>
+              _matchesAny(text, _teamKeywords) ||
+              _mentionsAvailableTeam(text, teams),
         );
 
     if (injectCourseContext && courses.isNotEmpty) {
@@ -1111,8 +1174,17 @@ ${sections.join('\n')}
     return keywords.any((k) => text.contains(k));
   }
 
+  static bool _mentionsAvailableTeam(String text, List<Team> teams) =>
+      teams.any(
+        (team) => team.name.trim().isNotEmpty && text.contains(team.name.trim()),
+      );
+
   static bool _isReadOnlyRequest(String text) {
     if (isExplicitTodoCreationRequest(text)) return false;
+    if (isExplicitHabitCreationRequest(text)) return false;
+    if (isExplicitHabitMutationRequest(text)) return false;
+    if (isExplicitScheduleMutationRequest(text)) return false;
+    if (isExplicitCountdownMutationRequest(text)) return false;
     if (hasExplicitFinanceUpdateIntent(text)) return false;
     if (isExplicitFinanceDraftRequest(text)) return false;
     if (isExplicitFocusMutationRequest(text)) return false;
@@ -1198,6 +1270,8 @@ ${sections.join('\n')}
       '新建',
       '新增',
       '添加',
+      '加个',
+      '加一个',
       '记下',
       '记一下',
       '记录',
@@ -1206,7 +1280,26 @@ ${sections.join('\n')}
       '加入',
       '加到',
       '安排',
+      '加一场',
+      '排一场',
       '预约',
+      '预订',
+      '预定',
+      '订一场',
+      '订个',
+      '订一个',
+      '订一下',
+      '订下',
+      '定一场',
+      '定个',
+      '定一个',
+      '定一下',
+      '定下',
+      '约一场',
+      '约个',
+      '约一个',
+      '约一下',
+      '约',
     ];
     const updateVerbs = [
       '修改',
@@ -1220,7 +1313,7 @@ ${sections.join('\n')}
       '改期',
     ];
     const cancelVerbs = ['取消', '撤销'];
-    const deleteVerbs = ['删除', '删掉', '移除', '清掉'];
+    const deleteVerbs = ['删除', '删掉', '删', '移除', '清掉'];
     final actions = <String>{};
     final targets = [..._fixedScheduleEventKeywords, '日程', '日历'];
     final clauses = text.split(RegExp(r'[，。；！？,;]|然后|并且|同时'));
@@ -1265,9 +1358,13 @@ ${sections.join('\n')}
       '添加',
       '安排',
       '排一下',
+      '排个',
+      '排一个',
       '排时间',
       '排进',
       '排入',
+      '加个',
+      '加一个',
       '制定',
       '生成',
       '创建',
@@ -1283,7 +1380,7 @@ ${sections.join('\n')}
       '调整时间',
       '改时间',
     ];
-    const deleteVerbs = ['删除', '删掉', '移除', '清掉', '取消'];
+    const deleteVerbs = ['删除', '删掉', '删', '移除', '清掉', '取消'];
     const skipVerbs = ['跳过', '略过'];
     const startVerbs = ['开始', '启动'];
     final actions = <String>{};
@@ -1453,15 +1550,104 @@ ${sections.join('\n')}
   }
 
   static bool _hasExplicitTodoCreationIntent(String text) {
-    if (isExplicitTodoCreationRequest(text)) return true;
-    if (!_matchesAny(text.toLowerCase(), const ['待办', '任务', 'todo'])) {
-      return false;
+    const todoTargets = ['待办', '任务', 'todo'];
+    const implicitTodoVerbs = ['提醒我', '记得'];
+    const explicitCreateVerbs = [
+      '新建',
+      '新增',
+      '创建',
+      '添加',
+      '加个',
+      '加一个',
+      '加条',
+      '加一条',
+      '加几条',
+      '设个',
+      '设一个',
+      '记个',
+      '记一个',
+      '记一条',
+      '写个',
+      '写一个',
+      '写一条',
+      '登记',
+      '录入',
+      '加入',
+    ];
+    const otherTargets = [
+      '分类',
+      '文件夹',
+      '分组',
+      '标签',
+      '习惯',
+      '日程',
+      '会议',
+      '课程',
+      '倒计时',
+      '专注',
+      '提醒',
+    ];
+    final clauses = text.split(RegExp(r'[，。；！？,;]|然后|并且|同时|并|再'));
+    for (final clause in clauses) {
+      if (isExplicitTodoCreationRequest(clause)) return true;
+      for (final verb in implicitTodoVerbs) {
+        if (isExplicitlyRequested(clause, verb) &&
+            _hasExplicitActionPrefix(clause, verb)) {
+          return true;
+        }
+      }
+      if (!_matchesAny(clause.toLowerCase(), todoTargets)) continue;
+      for (final verb in explicitCreateVerbs) {
+        if (!isExplicitlyRequested(clause, verb) ||
+            !_hasExplicitActionPrefix(clause, verb)) {
+          continue;
+        }
+        final verbIndex = clause.indexOf(verb);
+        final before = clause.substring(0, verbIndex);
+        final after = clause.substring(verbIndex + verb.length);
+        var todoAfterIndex = -1;
+        for (final target in todoTargets) {
+          final index = after.toLowerCase().indexOf(target);
+          if (index >= 0 && (todoAfterIndex < 0 || index < todoAfterIndex)) {
+            todoAfterIndex = index;
+          }
+        }
+        if (todoAfterIndex >= 0) {
+          if (RegExp(r'^(?:待办|任务)(?:事项)?(?:分类|文件夹|分组)')
+              .hasMatch(after.substring(todoAfterIndex))) {
+            continue;
+          }
+          var otherBeforeTodoIndex = -1;
+          String? otherBeforeTodo;
+          for (final target in otherTargets) {
+            final index = after.indexOf(target);
+            if (index >= 0 &&
+                index < todoAfterIndex &&
+                (otherBeforeTodoIndex < 0 || index < otherBeforeTodoIndex)) {
+              otherBeforeTodoIndex = index;
+              otherBeforeTodo = target;
+            }
+          }
+          if (otherBeforeTodoIndex < 0) return true;
+          final coordination = after.substring(
+            otherBeforeTodoIndex + otherBeforeTodo!.length,
+            todoAfterIndex,
+          );
+          if (RegExp(r'^(?:和|与|及)(?:(?:一个|一条|一项|几个|几条|两条|三条))?$')
+              .hasMatch(coordination)) {
+            return true;
+          }
+          continue;
+        }
+        if (!_matchesAny(before.toLowerCase(), todoTargets) ||
+            after.trim().isEmpty ||
+            _matchesAny(after, otherTargets)) {
+          continue;
+        }
+        return true;
+      }
     }
-    return _createTodoKeywords.any(
-      (verb) =>
-          isExplicitlyRequested(text, verb) &&
-          _hasExplicitActionPrefix(text, verb),
-    );
+    return false;
   }
 
   static bool _isExplicitManagementRequest(
@@ -1476,6 +1662,12 @@ ${sections.join('\n')}
       '添加',
       '建立',
       '建',
+      '建个',
+      '建一个',
+      '加个',
+      '加一个',
+      '设个',
+      '设一个',
       '修改',
       '更新',
       '更名',
@@ -1483,6 +1675,10 @@ ${sections.join('\n')}
       '重命名',
       '删除',
       '删掉',
+      '删一下',
+      '删个',
+      '删一个',
+      '删',
       '移除',
       '清掉',
     ];
@@ -1493,6 +1689,10 @@ ${sections.join('\n')}
     );
   }
 
+  static bool isExplicitTodoGroupManagementRequest(String text) {
+    return _isExplicitManagementRequest(text, _groupKeywords);
+  }
+
   /// Recognizes common spoken commands such as "帮我记两个待办" and
   /// "我要写两条任务" without treating how-to questions as write requests.
   static bool isExplicitTodoCreationRequest(String text) {
@@ -1501,16 +1701,322 @@ ${sections.join('\n')}
         .hasMatch(text)) {
       return false;
     }
-    return RegExp(
+    final startsTodoRecord = RegExp(
       r'^(?:(?:请|帮我|帮忙|麻烦(?:你)?|给我|替我|我想|我要|直接)\s*)*'
       r'(?:分开|分别|单独|各自)?\s*'
-      r'(?:记(?:下|一下|上)?|记录|登记|录入|写(?:一下|一份|一个)?)',
+      r'(?:记(?:下|一下|上)?|记录|登记|录入|写(?:一下|一份|一个)?|'
+      r'加(?:个|一个|条|一条|几条))',
     ).hasMatch(text.trim());
+    if (!startsTodoRecord) return false;
+
+    // Phrases such as "帮我写一个待办分类" create a category, not a todo.
+    final todoTarget = RegExp(r'待办|任务').firstMatch(text);
+    if (todoTarget == null) return false;
+    final afterTarget = text.substring(todoTarget.end);
+    if (RegExp(r'^(?:事项)?(?:分类|文件夹|分组|标签)').hasMatch(afterTarget)) {
+      return false;
+    }
+    return true;
   }
 
-  /// Disambiguates duration-bearing focus writes from the generic read words
-  /// "记录" and "分钟" without turning focus questions into mutations.
+  static int? explicitTodoCreationCount(String text) {
+    if (!_matchesAny(text, const ['待办', '任务', 'todo'])) return null;
+    final explicitlyCreatesTodo =
+        isExplicitTodoCreationRequest(text) ||
+        const ['提醒我', '新建', '新增', '创建', '添加'].any(
+          (verb) => isExplicitlyRequested(text, verb),
+        );
+    if (!explicitlyCreatesTodo) return null;
+
+    final match = RegExp(
+      r'(\d+|[一二两三四五六七八九十]+)\s*(?:个|条|份|项|件)?\s*(?:待办|任务)',
+    ).firstMatch(text);
+    final rawCount = match?.group(1);
+    if (rawCount == null) return null;
+    return _parseExplicitCount(rawCount);
+  }
+
+  /// Recognizes a requested number of new ledger entries, such as "记两笔
+  /// 支出" or "新增3笔账单". Count validation only runs for explicit write
+  /// requests so a read-only statement about existing entries is unaffected.
+  static int? explicitFinanceDraftCount(String text) {
+    if (!shouldOfferFinanceDraftProposal(text)) return null;
+    const count = r'(\d+|[一二两三四五六七八九十]+)';
+    final beforeTarget = RegExp(
+      '$count\\s*(?:笔|份|条)?\\s*(?:账单|账|支出|收入|退款|交易|消费)',
+    ).firstMatch(text);
+    final afterVerb = RegExp(
+      '(?:记|记录|新增|添加|录入)\\s*(?:账单|账|支出|收入|退款|交易|消费)?\\s*'
+      '$count\\s*笔',
+    ).firstMatch(text);
+    final rawCount = beforeTarget?.group(1) ?? afterVerb?.group(1);
+    if (rawCount == null) return null;
+    return _parseExplicitCount(rawCount);
+  }
+
+  static int? _parseExplicitCount(String rawCount) {
+    final numeric = int.tryParse(rawCount);
+    if (numeric != null) return numeric > 0 ? numeric : null;
+
+    const digits = {
+      '一': 1,
+      '二': 2,
+      '两': 2,
+      '三': 3,
+      '四': 4,
+      '五': 5,
+      '六': 6,
+      '七': 7,
+      '八': 8,
+      '九': 9,
+      '十': 10,
+    };
+    final tenIndex = rawCount.indexOf('十');
+    if (tenIndex == -1) return digits[rawCount];
+    final tensText = rawCount.substring(0, tenIndex);
+    final onesText = rawCount.substring(tenIndex + 1);
+    final tens = tensText.isEmpty ? 1 : digits[tensText];
+    final ones = onesText.isEmpty ? 0 : digits[onesText];
+    if (tens == null || ones == null) return null;
+    return tens * 10 + ones;
+  }
+
+  static bool isExplicitHabitCreationRequest(String text) {
+    if (!_matchesAny(text, _habitKeywords)) return false;
+    const createVerbs = [
+      '创建',
+      '新建',
+      '新增',
+      '添加',
+      '建立',
+      '建',
+      '加个',
+      '加一个',
+      '做个',
+      '做一个',
+      '设个',
+      '设一个',
+      '设置',
+      '设定',
+      '养成',
+      '坚持',
+      '记录',
+      '记录一下',
+      '记下',
+      '记个',
+      '记一个',
+      '记一条',
+    ];
+    return createVerbs.any(
+          (verb) =>
+              isExplicitlyRequested(text, verb) &&
+              _hasExplicitActionPrefix(text, verb),
+        ) ||
+        _habitCreationKeywords.any(
+          (verb) =>
+              isExplicitlyRequested(text, verb) &&
+              _hasExplicitActionPrefix(text, verb),
+        );
+  }
+
+  static bool isExplicitHabitMutationRequest(String text) {
+    if (!_matchesAny(text, _habitKeywords)) return false;
+    final mutationVerbs = [..._habitUpdateKeywords, ..._habitDeleteKeywords];
+    return mutationVerbs.any(
+      (verb) =>
+          isExplicitlyRequested(text, verb) &&
+          _hasExplicitActionPrefix(text, verb),
+    );
+  }
+
+  static Set<String> explicitHabitActionNames(
+    String text, {
+    String previousAssistantMessage = '',
+  }) {
+    final actions = <String>{};
+    if (isExplicitHabitCreationRequest(text) ||
+        _isHabitCreationFollowUp(text, previousAssistantMessage)) {
+      actions.add('create_habit');
+    }
+    if (_isHabitMutationFollowUp(
+      text,
+      previousAssistantMessage,
+      verbs: _habitUpdateKeywords,
+    )) {
+      actions.add('update_habit');
+    }
+    if (_isHabitMutationFollowUp(
+      text,
+      previousAssistantMessage,
+      verbs: _habitDeleteKeywords,
+    )) {
+      actions.add('delete_habit');
+    }
+    for (final clause in text.split(RegExp(r'[，。；！？,;]|然后|并且|同时'))) {
+      if (!_matchesAny(clause, _habitTypeKeywords)) continue;
+      if (_habitUpdateKeywords.any(
+        (verb) =>
+            isExplicitlyRequested(clause, verb) &&
+            _hasExplicitActionPrefix(clause, verb),
+      )) {
+        actions.add('update_habit');
+      }
+      if (_habitDeleteKeywords.any(
+        (verb) =>
+            isExplicitlyRequested(clause, verb) &&
+            _hasExplicitActionPrefix(clause, verb),
+      )) {
+        actions.add('delete_habit');
+      }
+    }
+    return actions;
+  }
+
+  /// Identifies concrete CDT action types explicitly requested in the current
+  /// turn so a mixed request cannot be marked complete after only one action.
+  static Set<String> requiredExplicitCdtActionNames(
+    String text, {
+    String previousUserMessage = '',
+    String previousAssistantMessage = '',
+  }) {
+    final actions = <String>{};
+    if (isExplicitTodoCreationRequest(text) ||
+        _hasExplicitTodoCreationIntent(text)) {
+      actions.add('create_todo');
+    }
+    actions.addAll(
+      explicitHabitActionNames(
+        text,
+        previousAssistantMessage: previousAssistantMessage,
+      ),
+    );
+    actions.addAll(explicitScheduleActionNames(text));
+    actions.addAll(explicitPlanningActionNames(text));
+    actions.addAll(explicitFocusActionNames(text));
+    actions.addAll(explicitCountdownActionNames(text));
+    if (pendingCountdownTitleSuffixForRequest(
+          text,
+          previousUserMessage: previousUserMessage,
+          previousAssistantMessage: previousAssistantMessage,
+        ) !=
+        null) {
+      actions.add('create_countdown');
+    }
+    actions.addAll(
+      _explicitManagementActionNames(text, _groupKeywords).map(
+        (action) => '${action}_todo_group',
+      ),
+    );
+    final targetsTodoTag =
+        _matchesAny(text, const ['待办', '任务', 'todo']) &&
+        !_matchesAny(text, const ['番茄', '专注']);
+    final requestsPomodoroTagManagement =
+        !targetsTodoTag &&
+        (_matchesAny(text, _tagManagementKeywords) ||
+            _isExplicitManagementRequest(
+              text,
+              const ['番茄标签', '专注标签', '番茄 tag', 'pomodoro tag'],
+            ));
+    if (requestsPomodoroTagManagement) {
+      actions.addAll(
+        _explicitManagementActionNames(text, const [
+          '标签',
+          '番茄标签',
+          '专注标签',
+          '番茄 tag',
+          'pomodoro tag',
+        ]).map((action) => '${action}_pomodoro_tag'),
+      );
+    }
+
+    const todoTargets = ['待办', '任务', 'todo'];
+    const todoUpdateVerbs = ['修改', '更新', '编辑', '更改', '改成', '改为', '调成', '调为'];
+    const todoDeleteVerbs = ['删除', '删掉', '删了', '删', '清空', '清掉', '清除', '去掉', '取消'];
+    const todoScheduleVerbs = [
+      '延期',
+      '改期',
+      '改到',
+      '移到',
+      '挪到',
+      '调到',
+      '调整到',
+      '提前到',
+      '推迟到',
+      '延到',
+      '顺延',
+      '往后推',
+      '往前调',
+    ];
+    const todoCategorizeVerbs = ['分类', '归类', '分个类', '移出文件夹'];
+    for (final clause in text.split(RegExp(r'[，。；！？,;]|然后|并且|同时'))) {
+      if (!_matchesAny(clause.toLowerCase(), todoTargets)) continue;
+      bool requested(List<String> verbs) => verbs.any(
+        (verb) =>
+            isExplicitlyRequested(clause, verb) &&
+            _hasExplicitActionPrefix(clause, verb),
+      );
+
+      if (requested(todoCompletionMutationKeywords)) {
+        actions.add('complete_todo');
+      }
+      if (requested(todoDeleteVerbs)) actions.add('delete_todo');
+      if (requested(todoUpdateVerbs)) actions.add('update_todo');
+      if (requested(todoScheduleVerbs)) actions.add('reschedule_todo');
+      if (requested(todoCategorizeVerbs)) actions.add('categorize_todo');
+      if (requested(const ['拆分'])) actions.add('split_todo');
+      if (requested(const ['合并'])) actions.add('merge_todos');
+    }
+    return actions;
+  }
+
+  static Set<String> _explicitManagementActionNames(
+    String text,
+    List<String> targets,
+  ) {
+    if (!_isExplicitManagementRequest(text, targets)) return const {};
+    const createVerbs = [
+      '创建',
+      '新建',
+      '新增',
+      '添加',
+      '建立',
+      '建',
+      '建个',
+      '建一个',
+      '加个',
+      '加一个',
+      '设个',
+      '设一个',
+    ];
+    const updateVerbs = ['修改', '更新', '更名', '改名', '重命名'];
+    const deleteVerbs = [
+      '删除',
+      '删掉',
+      '删一下',
+      '删个',
+      '删一个',
+      '删',
+      '移除',
+      '清掉',
+    ];
+    bool requested(List<String> verbs) => verbs.any(
+      (verb) =>
+          isExplicitlyRequested(text, verb) &&
+          _hasExplicitActionPrefix(text, verb),
+    );
+
+    return {
+      if (requested(createVerbs)) 'create',
+      if (requested(updateVerbs)) 'update',
+      if (requested(deleteVerbs)) 'delete',
+    };
+  }
+
+  /// Keeps explicit focus writes out of the generic read-only route for
+  /// "记录", while leaving questions on the query path.
   static bool isExplicitFocusMutationRequest(String text) {
+    if (explicitFocusActionNames(text).isNotEmpty) return true;
+
     const mutationVerbs = ['记录', '补记', '补录', '新增', '创建', '添加'];
     const readOnlyWords = [
       '查看',
@@ -1571,11 +2077,19 @@ ${sections.join('\n')}
       '记录',
       '记下',
       '记一下',
+      '记个',
+      '记一个',
+      '记一条',
+      '记一段',
       '补记',
       '补录',
+      '补个',
+      '补一条',
       '新增',
       '创建',
       '添加',
+      '加个',
+      '加一个',
     ];
     const logUpdateVerbs = [
       '修改',
@@ -1586,7 +2100,7 @@ ${sections.join('\n')}
       '改为',
       '改到',
     ];
-    const logDeleteVerbs = ['删除', '删掉', '移除', '清掉'];
+    const logDeleteVerbs = ['删除', '删掉', '删', '移除', '清掉'];
     const pomodoroStartVerbs = ['开始', '启动', '开启'];
     const pomodoroStopVerbs = ['停止', '结束'];
     final actions = <String>{};
@@ -1613,10 +2127,41 @@ ${sections.join('\n')}
   }
 
   static Set<String> explicitCountdownActionNames(String text) {
-    const createVerbs = ['创建', '新建', '新增', '添加', '设置', '设定', '建立', '建'];
-    const updateVerbs = ['修改', '更新', '更改', '调整', '改到', '改成', '改为'];
+    const createVerbs = [
+      '创建',
+      '新建',
+      '新增',
+      '添加',
+      '加个',
+      '加一个',
+      '设置',
+      '设定',
+      '设个',
+      '设一个',
+      '弄个',
+      '弄一个',
+      '记录',
+      '记下',
+      '记一下',
+      '记个',
+      '记一个',
+      '建立',
+      '建',
+    ];
+    const updateVerbs = [
+      '修改',
+      '更新',
+      '更改',
+      '调整',
+      '改到',
+      '改成',
+      '改为',
+      '挪到',
+      '移到',
+      '移动到',
+    ];
     const completeVerbs = ['完成', '办完', '标记完成', '做完'];
-    const deleteVerbs = ['删除', '删掉', '移除', '清掉', '取消'];
+    const deleteVerbs = ['删除', '删掉', '删', '移除', '清掉', '取消'];
     final actions = <String>{};
     final targets = [..._countdownKeywords, 'countdown'];
     final clauses = text.split(RegExp(r'[，。；！？,;]|然后|并且|同时'));
@@ -1639,6 +2184,100 @@ ${sections.join('\n')}
     }
     return actions;
   }
+
+  /// Returns the exact suffix requested for every title in a pending
+  /// countdown draft set. Follow-up corrections may refer to the immediately
+  /// preceding request, but only when the app has supplied pending draft data.
+  static String? pendingCountdownTitleSuffixForRequest(
+    String text, {
+    String previousUserMessage = '',
+    String previousAssistantMessage = '',
+  }) {
+    if (!previousAssistantMessage.contains(
+      pendingCountdownDraftsContextMarker,
+    )) {
+      return null;
+    }
+
+    final requestedSuffix = _requestedAllTitleSuffix(text);
+    if (requestedSuffix != null) return requestedSuffix;
+
+    final isTitleSuffixCorrection = RegExp(
+      r'(?:实际.{0,8})?(?:标题|名称).{0,16}(?:没|没有|未|并没有).{0,12}(?:加上|带上|追加|补上|添加)|'
+      r'(?:没|没有|未|并没有).{0,12}(?:加上|带上|追加|补上|添加).{0,12}(?:标题|名称)',
+    ).hasMatch(text);
+    return isTitleSuffixCorrection
+        ? _requestedAllTitleSuffix(previousUserMessage)
+        : null;
+  }
+
+  /// Serializes pending countdowns as model context, not as an executable
+  /// command. The model must return a new proposal through the normal tool.
+  static String pendingCountdownDraftContext(List<AiTodoAction> actions) {
+    final countdowns = actions
+        .where(
+          (action) =>
+              action.type == AiTodoActionType.createCountdown &&
+              !action.isAdded &&
+              !action.isIgnored,
+        )
+        .map((action) {
+          final item = <String, dynamic>{
+            'title': action.title,
+            'dueDate': action.dueDate,
+          };
+          final teamName = action.teamName?.trim();
+          if (teamName?.isNotEmpty == true) item['teamName'] = teamName;
+          return item;
+        })
+        .toList(growable: false);
+    if (countdowns.isEmpty) return '';
+    return '$pendingCountdownDraftsContextMarker\n'
+        '${jsonEncode({'action': 'create_countdown', 'countdowns': countdowns})}\n'
+        '[/APP_PENDING_COUNTDOWN_DRAFTS]\n'
+        '以上是应用中尚未保存的倒计时草案数据，只作为待修改对象上下文。';
+  }
+
+  static String extractPendingCountdownDraftContext(String text) {
+    final start = text.indexOf(pendingCountdownDraftsContextMarker);
+    if (start < 0) return '';
+    const closingMarker = '[/APP_PENDING_COUNTDOWN_DRAFTS]';
+    final closing = text.indexOf(closingMarker, start);
+    if (closing < 0) return '';
+    return text.substring(start, closing + closingMarker.length);
+  }
+
+  static String? _requestedAllTitleSuffix(String text) {
+    final targetsAllTitles = RegExp(
+      r'(?:所有|全部|每个|每条|这些)(?:的)?[^，。；！？\n]{0,10}(?:标题|名称)|(?:标题|名称)[^，。；！？\n]{0,10}(?:都|全部)',
+    ).hasMatch(text);
+    if (!targetsAllTitles) return null;
+    const suffixInstruction =
+        r'(?:加上|带上|追加|补上|添加|加个|加一个)(?:后缀|标记|文字)?\s*';
+    final bracketed = RegExp(
+      '$suffixInstruction([（(][^()（）\r\n]{1,32}[）)])',
+    ).firstMatch(text);
+    if (bracketed != null) return bracketed.group(1);
+
+    final quoted = RegExp(
+      '$suffixInstruction[“‘「『]([^”’」』\r\n]{1,24})[”’」』]',
+    ).firstMatch(text);
+    if (quoted != null) return quoted.group(1)?.trim();
+
+    return RegExp(
+      '$suffixInstruction([^\\s，。；！？,;]{1,16})',
+    ).firstMatch(text)?.group(1)?.replaceFirst(
+      RegExp(r'(?:吧|一下|即可|就行|了)$'),
+      '',
+    );
+  }
+
+  static bool isExplicitCountdownMutationRequest(String text) {
+    return explicitCountdownActionNames(text).isNotEmpty;
+  }
+
+  static bool isExplicitlyTargetingTodo(String text) =>
+      _matchesAny(text, _todoTypeKeywords);
 
   static bool _hasExplicitActionPrefix(String clause, String verb) {
     final verbIndex = clause.indexOf(verb);
@@ -1665,6 +2304,7 @@ ${sections.join('\n')}
       '添加一笔',
       '消费了',
       '花了',
+      '记',
       '买了',
       '购买了',
       '进账',
@@ -1715,6 +2355,164 @@ ${sections.join('\n')}
       }
     }
     return false;
+  }
+
+  /// Only expose the ledger-write proposal for an explicit transaction request
+  /// or a concise amount-bearing entry. Financial planning amounts such as a
+  /// budget, loan, balance, or investment are not transactions by themselves.
+  static bool shouldOfferFinanceDraftProposal(String text) {
+    final withoutReminderNegation = text.replaceAll(
+      RegExp(r'(?:别|不要)忘(?:了|记)?'),
+      '',
+    );
+    if (RegExp(
+      r'(?:不要|别|不必|无需|不用)(?:再|帮我|帮忙|替我|给我)?'
+      r'(?:记|记录|新增|添加|消费|花|买|进账|收款)',
+    ).hasMatch(withoutReminderNegation)) {
+      return false;
+    }
+    const clearDraftVerbs = [
+      '记一笔',
+      '记录一笔',
+      '新增一笔',
+      '添加一笔',
+      '消费了',
+      '花了',
+      '买了',
+      '购买了',
+      '进账',
+      '收款',
+      '消费',
+      '记',
+    ];
+    if (clearDraftVerbs.any(
+      (verb) => isExplicitlyRequested(text, verb),
+    )) {
+      return true;
+    }
+
+    const nonTransactionFinanceContexts = [
+      '预算',
+      '额度',
+      '贷款',
+      '借款',
+      '还款计划',
+      '欠款',
+      '储蓄',
+      '存款',
+      '存钱',
+      '余额',
+      '投资',
+      '理财',
+      '本金',
+      '利息',
+      '成本',
+      '报价',
+      '估价',
+      '预计花费',
+      '预计支出',
+      '计划金额',
+      '目标金额',
+      '钱包',
+      '账户',
+      '银行卡',
+      '卡里',
+      '支付宝里',
+      '微信里',
+      '现金余额',
+    ];
+    if (_matchesAny(text, nonTransactionFinanceContexts)) return false;
+    if (isExplicitFinanceDraftRequest(text)) return true;
+
+    const ambiguousDraftVerbs = ['花费', '购买', '记账草案'];
+    final mentionsAmbiguousDraftVerb = ambiguousDraftVerbs.any(text.contains);
+    if (mentionsAmbiguousDraftVerb) {
+      return ambiguousDraftVerbs.any(
+        (verb) => isExplicitlyRequested(text, verb),
+      );
+    }
+
+    final hasAmount = RegExp(
+      r'\d+(?:\.\d+)?\s*(?:元|块(?:钱)?|人民币|¥|￥)',
+    ).hasMatch(text);
+    if (!hasAmount) return false;
+
+    final amountMatch = RegExp(
+      r'\d+(?:\.\d+)?\s*(?:元|块(?:钱)?|人民币|¥|￥)',
+    ).firstMatch(text);
+    if (amountMatch == null) return false;
+    var descriptor =
+        '${text.substring(0, amountMatch.start)} '
+        '${text.substring(amountMatch.end)}';
+    const genericEntryWords = [
+      '帮忙',
+      '帮我',
+      '给我',
+      '替我',
+      '麻烦',
+      '请问',
+      '请',
+      '我',
+      '有',
+      '还有',
+      '还剩',
+      '剩下',
+      '今天',
+      '昨天',
+      '明天',
+      '刚才',
+      '大约',
+      '大概',
+      '预计',
+      '金额',
+      '记一笔',
+      '记录一笔',
+      '记账',
+      '记录',
+      '新增',
+      '添加',
+      '消费了',
+      '消费',
+      '花了',
+      '花费',
+      '买了',
+      '购买',
+      '进账',
+      '收款',
+      '记',
+      '一笔',
+      '人民币',
+      '元',
+      '块钱',
+      '块',
+      '¥',
+      '￥',
+    ];
+    for (final word in genericEntryWords) {
+      descriptor = descriptor.replaceAll(word, ' ');
+    }
+    return descriptor.trim().runes.length >= 2;
+  }
+
+  static bool hasExplicitFinanceDeleteIntent(String text) {
+    if (!_matchesAny(text, _financeKeywords)) return false;
+    const deleteVerbs = [
+      '删除',
+      '删除掉',
+      '删掉',
+      '删了',
+      '清掉',
+      '移除',
+      '去掉',
+      '清除',
+      '撤销',
+      '取消',
+    ];
+    return deleteVerbs.any(
+      (verb) =>
+          isExplicitlyRequested(text, verb) &&
+          _hasExplicitActionPrefix(text, verb),
+    );
   }
 
   static bool hasExplicitFinanceUpdateIntent(String text) {
@@ -1805,19 +2603,56 @@ ${sections.join('\n')}
         index + trigger.length,
         suffixBoundary == -1 ? text.length : suffixBoundary,
       );
+      final politeWriteRequest = RegExp(
+        r'^(?:(?:请问|麻烦|请|直接)\s*)?(?:能不能|可不可以|能否|可否|可以)'
+        r'(?:(?:请|直接)?(?:帮我|帮忙|替我|给我)(?:把[^，。；！？,;]{0,16})?|'
+        r'把[^，。；！？,;]{0,16})?$',
+      ).hasMatch(prefix.trim());
+      final hasExplicitCommandPrefix =
+          RegExp(
+            r'(?:请|麻烦|帮我|帮忙|把|将|给我|替我)[^，。；！？,;]*$',
+          ).hasMatch(prefix) &&
+          !RegExp(
+            r'(?:查询|查看|看看|看下|查下|查一下|查找|检索|统计|汇总|分析|列出|了解|问问)',
+          ).hasMatch(prefix);
       final mutationStatus = RegExp(r'(?:已|已经|已被|已经被|需要|应该|尚未|未|待|没|没有|被)\s*$')
           .hasMatch(prefix);
       final mutationQuestion =
-          RegExp(r'(?:哪些|什么|多少|哪几|几个|几项|几条|几件|是否|有没有|有无)[^，。；！？,;]*$')
-              .hasMatch(prefix) ||
-          RegExp(
-            r'^(?:(?:了|过|的|得)?)(?:哪些|什么|多少|哪几|几个|几项|几条|几件|吗|呢|情况|状态|明细|详情|得怎么样|得如何|是否|有没有|有无)',
-          ).hasMatch(suffix) ||
-          RegExp(r'^[^，。；！？,;]{1,10}(?:有哪些|有多少|是什么|什么情况|什么状态|吗|呢)$')
-              .hasMatch(suffix);
-      final hasExplicitCommandPrefix = RegExp(
-        r'(?:请|麻烦|帮我|帮忙|把|将|给我|替我)[^，。；！？,;]*$',
-      ).hasMatch(prefix);
+          !hasExplicitCommandPrefix &&
+          ((!politeWriteRequest &&
+                  RegExp(
+                    r'(?:哪些|什么|多少|多久|多长时间|几天|几周|几个月|哪几|几个|几项|几条|几件|'
+                    r'几点|几时|何时|哪天|几号|几日|何日|是否|有没有|有无|要不要|需不需要|'
+                    r'该不该|应不应|应不应该|是否应该|是否需要|有没有必要|是不是要|是不是该|'
+                    r'是不是应该|想不想|会不会|能否|可否)[^，。；！？,;]*$',
+                  )
+                      .hasMatch(prefix)) ||
+              RegExp(
+                r'^(?:(?:了|过|的|得)?)(?:哪些|什么|多少|哪几|几个|几项|几条|几件|吗|呢|情况|状态|明细|详情|得怎么样|得如何|是否|有没有|有无)',
+              ).hasMatch(suffix) ||
+              RegExp(
+                r'^(?:什么|哪些|多少|多久|多长时间|怎么|如何|怎样|为什么|是什么|是什么意思|'
+                r'有哪些|有什么|有多少|几点|几时|何时|哪天|几号|几日|什么时候|什么时间|'
+                r'什么情况|情况如何|状态如何|进度如何|是否|有没有|有无|要不要|需不需要|'
+                r'会不会|能不能|可不可以|能否|可否)[^，。；！？,;]{0,24}$',
+              ).hasMatch(suffix) ||
+              RegExp(
+                r'^[^，。；！？,;]{1,24}(?:需要什么|需要哪些|需要多少|要什么|要哪些|'
+                r'怎么|如何|怎样|为什么|是否|有没有|有无|几点|几时|何时|哪天|几号|几日|'
+                r'什么时候|什么时间|多久|多长时间)[^，。；！？,;]{0,16}$',
+              ).hasMatch(suffix) ||
+              RegExp(
+                r'^[^，。；！？,;]{1,16}(?:有哪些(?:好处|意义|作用|用途|区别|要求|条件|方法|原因|注意事项)|'
+                r'有什么(?:好处|意义|作用|用途|功能|区别|要求|条件|方法|原因|注意事项|需要注意)|'
+                r'是什么(?:原因|情况|状态|含义|意思|定义|功能)|是什么意思|'
+                r'(?:意义|作用|用途|含义|意思|定义|目的)是什么|'
+                r'有哪些|有什么|有多少|是什么|为什么|怎么|如何|怎样|'
+                r'多久|多长时间|几天|几周|几个月|几点|几时|何时|哪天|几号|几日|何日|'
+                r'什么时候|什么时间|什么情况|什么状态|情况如何|状态如何|进度如何|'
+                r'有什么影响|会有什么影响|会不会影响|是否会|有何影响|有无影响|'
+                r'造成什么影响|影响吗|有影响|会不会|会怎样|会如何|能不能|可不可以|'
+                r'能否|可否|是否|有没有|有无|要不要|需不需要|该不该|吗|呢)$',
+              ).hasMatch(suffix));
       final firstPersonReport = RegExp(r'^(?:我|本人)(?!想|要|希望|需要|请|麻烦|让你|帮我)')
           .hasMatch(prefix);
       final reportedMutation =
@@ -1830,8 +2665,10 @@ ${sections.join('\n')}
               .hasMatch(text.substring(index + trigger.length));
       final descriptiveStatus = RegExp(r'(?:哪些|什么|需要|应该|尚未|未|待)\s*$')
           .hasMatch(prefix);
-      final howToQuestion = RegExp(r'(?:为什么|怎么|如何|怎样|是否|能不能|可不可以)[^，。；！？,;]*$')
-          .hasMatch(prefix);
+      final howToQuestion =
+          !politeWriteRequest &&
+          RegExp(r'(?:为什么|怎么|如何|怎样|是否|能不能|可不可以)[^，。；！？,;]*$')
+              .hasMatch(prefix);
       if (mutationStatus ||
           mutationQuestion ||
           reportedMutation ||
@@ -2044,7 +2881,21 @@ ${sections.join('\n')}
     '待办规划',
     '今日计划',
   ];
-  static const _createTodoKeywords = ['提醒我', '记得', '新建', '新增', '创建', '添加'];
+  static const _createTodoKeywords = [
+    '提醒我',
+    '记得',
+    '新建',
+    '新增',
+    '创建',
+    '添加',
+    '加个',
+    '加一个',
+    '加条',
+    '加一条',
+    '加几条',
+    '设个',
+    '设一个',
+  ];
   static const _habitKeywords = [
     '习惯',
     '打卡',
@@ -2079,6 +2930,7 @@ ${sections.join('\n')}
   static const _habitDeleteKeywords = [
     '删除',
     '删掉',
+    '删',
     '移除',
     '清除',
     '清空',
@@ -2123,6 +2975,7 @@ ${sections.join('\n')}
     ...todoCompletionMutationKeywords,
     '删掉',
     '删除',
+    '删',
     '清空',
     '清掉',
     '清除',
@@ -2224,6 +3077,10 @@ ${sections.join('\n')}
     '删掉',
     '删掉了',
     '删了',
+    '删一下',
+    '删个',
+    '删一个',
+    '删',
     '清掉',
     '去掉',
     '清除',

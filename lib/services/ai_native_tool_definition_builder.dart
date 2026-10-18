@@ -1,9 +1,14 @@
+import '../models.dart';
 import 'ai_todo_context_builder.dart';
 
 class AiNativeToolDefinitionBuilder {
   static const Map<String, dynamic> _nativeCdtRecordProperties = {
     'action': {'type': 'string'},
     'title': {'type': 'string'},
+    'teamName': {
+      'type': ['string', 'null'],
+      'description': '仅用于create_countdown；新建时仅在用户明确要求绑定且本地团队列表唯一匹配后填写规范团队名；重发待确认草案时保留原teamName，除非用户本轮明确更改团队。不要编造团队名或填写团队ID；团队名不得拼入title。',
+    },
     'titleSnapshot': {'type': 'string'},
     'name': {'type': 'string'},
     'remark': {
@@ -23,7 +28,7 @@ class AiNativeToolDefinitionBuilder {
     },
     'dueDate': {
       'type': ['string', 'null'],
-      'description': 'yyyy-MM-dd HH:mm；仅用户明确要求的截止日期或时间。用户说“备注是六月”时不要据此填写dueDate。',
+      'description': 'yyyy-MM-dd HH:mm；新建倒计时等记录时仅用户明确要求的截止日期或时间。重发倒计时待确认草案时逐字保留原dueDate，即使本轮只修改标题。用户说“备注是六月”时不要据此填写dueDate。',
     },
     'endTime': {
       'type': ['string', 'null'],
@@ -205,206 +210,6 @@ class AiNativeToolDefinitionBuilder {
         (tool['function'] as Map)['name']?.toString() ?? '',
   }..remove('');
 
-  /// Keeps read tools available for lookups and existing-record changes while
-  /// avoiding query choices for requests that only create new records.
-  static bool shouldExposeQueryTools(
-    String userMessage, {
-    String previousUserMessage = '',
-    String previousAssistantMessage = '',
-  }) {
-    final message = resolvePlanningRequest(
-      userMessage,
-      previousUserMessage: previousUserMessage,
-      previousAssistantMessage: previousAssistantMessage,
-    );
-    const readQueryWords = [
-      '查询',
-      '查一下',
-      '查找',
-      '检索',
-      '查看',
-      '看看',
-      '列出',
-      '有哪些',
-      '有什么',
-      '什么',
-      '统计',
-      '汇总',
-      '分析',
-      '排行',
-      '占比',
-      '多少',
-      '多久',
-      '明细',
-      '情况',
-      '趋势',
-      '进度',
-      '达标率',
-      '完成度',
-      '打卡率',
-      '影响',
-      '效果',
-      '是否',
-      '有没有',
-      '待办清单',
-      '我的待办',
-      '全部待办',
-      '所有待办',
-      '待办列表',
-      '我的日程',
-      '日程列表',
-      '专注记录',
-      '时间记录',
-      '消费记录',
-      '账单记录',
-      '习惯',
-      '习惯目标',
-      '习惯追踪',
-      '打卡',
-      '达标率',
-      '完成度',
-      '打卡率',
-      '下一页',
-      '下一个',
-      '再查',
-      '继续查',
-      '更多',
-      '剩下',
-      '还有',
-      '继续',
-      '接着',
-      '其中',
-    ];
-    if (_matchesAny(message, readQueryWords)) return true;
-
-    final hasTimeScope =
-        _matchesAny(message, const [
-          '今天',
-          '今日',
-          '明天',
-          '明日',
-          '昨天',
-          '昨日',
-          '本周',
-          '这周',
-          '上周',
-          '本月',
-          '这个月',
-          '上个月',
-          '最近',
-          '过去',
-          '未来',
-          '本季度',
-          '今年',
-          '去年',
-        ]) ||
-        RegExp(r'(?:周|星期|礼拜)[一二三四五六日天末]').hasMatch(message) ||
-        RegExp(r'\d{4}[-/.]\d{1,2}[-/.]\d{1,2}').hasMatch(message);
-    final mentionsDataDomain = _matchesAny(message, const [
-      '待办',
-      '任务',
-      '日程',
-      '计划',
-      '账单',
-      '支出',
-      '收入',
-      '消费',
-      '专注',
-      '番茄',
-      '倒计时',
-      '课程',
-      '课表',
-      '习惯',
-      '打卡',
-      '冲突',
-      '团队',
-    ]);
-    final explicitlyCreates = const [
-      '提醒我',
-      '记得',
-      '新建',
-      '新增',
-      '创建',
-      '添加',
-      '记录',
-      '记一笔',
-      '消费了',
-      '花了',
-      '买了',
-      '购买了',
-      '进账',
-      '收款',
-      '开始',
-    ].any((verb) => AiTodoContextBuilder.isExplicitlyRequested(message, verb));
-    if (hasTimeScope && mentionsDataDomain && !explicitlyCreates) return true;
-
-    const existingObjectMutationWords = [
-      '修改',
-      '更新',
-      '编辑',
-      '更正',
-      '更改',
-      '调整',
-      '改成',
-      '改为',
-      '调成',
-      '调为',
-      '改名',
-      '重命名',
-      ...AiTodoContextBuilder.todoCompletionMutationKeywords,
-      '删除',
-      '删掉',
-      '删了',
-      '移除',
-      '清空',
-      '清掉',
-      '清除',
-      '去掉',
-      '取消',
-      '撤销',
-      '延期',
-      '改期',
-      '改到',
-      '移到',
-      '挪到',
-      '调到',
-      '提前到',
-      '推迟到',
-      '延到',
-      '顺延',
-      '往后推',
-      '往前调',
-      '分类',
-      '归类',
-      '分组',
-      '移出文件夹',
-      '拆分',
-      '合并',
-      '重排',
-      '停止',
-      '结束',
-    ];
-    if (existingObjectMutationWords.any(
-      (word) => AiTodoContextBuilder.isExplicitlyRequested(message, word),
-    )) {
-      return true;
-    }
-    return _matchesAny(message, const [
-      '规划',
-      '计划',
-      '帮我安排',
-      '计划块',
-      '时间块',
-      '待办规划',
-      '今日计划',
-      '排一下',
-      '排时间',
-      '排进',
-      '排入',
-      'plan block',
-    ]);
-  }
-
   static Set<String> allowedCdtActionNames(List<Map<String, dynamic>>? tools) =>
       _actionEnumForTool(tools, 'propose_cdt_actions');
 
@@ -466,6 +271,14 @@ class AiNativeToolDefinitionBuilder {
     'categorize_todo',
   };
 
+  static const Set<String> _todoScopedActionNames = {
+    'create_todo',
+    ..._todoUpdateContainerActions,
+    'split_todo',
+    'merge_todos',
+    'create_plan_block',
+  };
+
   static const Set<String> _updatesContainerActions = {
     ..._todoUpdateContainerActions,
     'update_schedule',
@@ -489,14 +302,35 @@ class AiNativeToolDefinitionBuilder {
     'delete_habit',
   };
 
+  static const Map<String, Set<String>> _nativeCdtArrayActionNames = {
+    'todos': {'create_todo', 'split_todo'},
+    'updates': _updatesContainerActions,
+    'schedules': {'create_schedule'},
+    'blocks': {'create_plan_block'},
+    'logs': {'create_time_log'},
+    'habits': {'create_habit'},
+    'countdowns': {'create_countdown'},
+    'groups': {'create_todo_group'},
+    'tags': {'create_pomodoro_tag'},
+  };
+
+  static String? _requiredArrayFieldForSingleAction(Set<String> actions) {
+    if (actions.length != 1) return null;
+    final action = actions.single;
+    for (final entry in _nativeCdtArrayActionNames.entries) {
+      if (entry.value.contains(action)) return entry.key;
+    }
+    return null;
+  }
+
   /// Keep risky actions out of the function schema unless the user explicitly
   /// asks for that operation in this turn. Confirmation cards remain the
   /// second safety barrier after model output is parsed.
   static const Map<String, List<String>> _explicitCdtActionTriggers = {
     'complete_todo': AiTodoContextBuilder.todoCompletionMutationKeywords,
-    'delete_todo': ['删除', '删掉', '删了', '移除', '清空', '清掉', '清除', '去掉', '取消'],
+    'delete_todo': ['删除', '删掉', '删了', '删', '移除', '清空', '清掉', '清除', '去掉', '取消'],
     'cancel_schedule': ['取消', '撤销'],
-    'delete_schedule': ['删除', '删掉', '移除', '清掉'],
+    'delete_schedule': ['删除', '删掉', '删', '移除', '清掉'],
     'update_plan_block': ['修改', '更新', '更改', '调整'],
     'reschedule_plan_blocks': [
       '改期',
@@ -507,21 +341,31 @@ class AiNativeToolDefinitionBuilder {
       '调整时间',
       '改时间',
     ],
-    'delete_plan_block': ['删除', '删掉', '移除', '清掉', '取消'],
+    'delete_plan_block': ['删除', '删掉', '删', '移除', '清掉', '取消'],
     'skip_plan_block': ['跳过', '略过'],
     'start_plan_block_pomodoro': ['开始', '启动'],
-    'delete_time_log': ['删除', '删掉', '移除', '清掉'],
-    'update_todo_group': [
-      '修改分类',
-      '更新分类',
-      '重命名分类',
-      '修改文件夹',
-      '更新文件夹',
-      '重命名文件夹',
-      '修改分组',
-      '更新分组',
-      '重命名分组',
+    'delete_time_log': ['删除', '删掉', '删', '移除', '清掉'],
+    'create_todo_group': [
+      '创建',
+      '新建',
+      '新增',
+      '添加',
+      '建立',
+      '建个',
+      '建一个',
+      '加个',
+      '加一个',
+      '设个',
+      '设一个',
     ],
+    'update_todo_group': [
+      '修改',
+      '更新',
+      '更名',
+      '改名',
+      '重命名',
+    ],
+    'delete_todo_group': ['删除', '删掉', '删一下', '删', '移除', '清掉'],
     'stop_pomodoro': ['停止番茄钟', '停止专注', '结束番茄钟', '结束专注'],
     'update_countdown': [
       '修改倒计时',
@@ -531,6 +375,9 @@ class AiNativeToolDefinitionBuilder {
       '改到',
       '改成',
       '改为',
+      '挪到',
+      '移到',
+      '移动到',
     ],
     'complete_countdown': ['完成倒计时', '办完倒计时', '标记完成', '做完倒计时'],
     'delete_countdown': [
@@ -538,21 +385,27 @@ class AiNativeToolDefinitionBuilder {
       '取消倒计时',
       '删除',
       '删掉',
+      '删',
       '移除',
       '清掉',
     ],
-    'update_pomodoro_tag': [
-      '修改番茄标签',
-      '更新番茄标签',
-      '重命名番茄标签',
-      '修改专注标签',
-      '更新专注标签',
-      '重命名专注标签',
+    'create_pomodoro_tag': [
+      '创建',
+      '新建',
+      '新增',
+      '添加',
+      '建立',
+      '建个',
+      '建一个',
+      '加个',
+      '加一个',
+      '设个',
+      '设一个',
     ],
+    'update_pomodoro_tag': ['修改', '更新', '更名', '改名', '重命名'],
     'split_todo': ['拆分待办', '拆分任务', '拆分'],
     'merge_todos': ['合并待办', '合并任务', '合并'],
-    'delete_todo_group': ['删除分类', '删除分组', '删除文件夹', '清掉'],
-    'delete_pomodoro_tag': ['删除番茄标签', '删除标签', '清掉'],
+    'delete_pomodoro_tag': ['删除', '删掉', '删一下', '删', '移除', '清掉'],
     'update_habit': [
       '修改',
       '更新',
@@ -562,7 +415,7 @@ class AiNativeToolDefinitionBuilder {
       '改名',
       '重命名',
     ],
-    'delete_habit': ['删除', '删掉', '移除', '清除', '清空'],
+    'delete_habit': ['删除', '删掉', '删', '移除', '清除', '清空'],
   };
 
   /// Builds OpenAI-compatible function tools for the actions relevant to one
@@ -572,6 +425,7 @@ class AiNativeToolDefinitionBuilder {
     String userMessage, {
     String previousUserMessage = '',
     String previousAssistantMessage = '',
+    List<Team> availableTeams = const [],
   }) {
     // A short assent can continue a planning discussion. Keep this scoped to
     // planning; it must not reactivate old delete/complete requests.
@@ -596,6 +450,7 @@ class AiNativeToolDefinitionBuilder {
       message,
       previousUserMessage: previousUserMessage,
       previousAssistantMessage: previousAssistantMessage,
+      availableTeams: availableTeams,
     );
     final actionSectionEnd = actionPrompt.indexOf('动作块格式');
     final actionSection = actionSectionEnd == -1
@@ -651,6 +506,10 @@ class AiNativeToolDefinitionBuilder {
     final isReadOnlyQuery =
         _matchesAny(message, readOnlyWords) &&
         !AiTodoContextBuilder.isExplicitTodoCreationRequest(message) &&
+        !AiTodoContextBuilder.isExplicitHabitCreationRequest(message) &&
+        !AiTodoContextBuilder.isExplicitHabitMutationRequest(message) &&
+        !AiTodoContextBuilder.isExplicitScheduleMutationRequest(message) &&
+        !AiTodoContextBuilder.isExplicitCountdownMutationRequest(message) &&
         !_matchesAny(message, writeWords) &&
         !AiTodoContextBuilder.isExplicitFocusMutationRequest(message) &&
         !AiTodoContextBuilder.isExplicitFinanceDraftRequest(message) &&
@@ -664,6 +523,7 @@ class AiNativeToolDefinitionBuilder {
     final isTodoCategorizationRequest =
         _matchesAny(message, ['分类', '归类', '分组', '分个类', '移出文件夹']) &&
         _matchesAny(message, ['待办', '任务']) &&
+        !AiTodoContextBuilder.isExplicitTodoGroupManagementRequest(message) &&
         !_matchesAny(message, [
           '有哪些',
           '哪些',
@@ -680,8 +540,15 @@ class AiNativeToolDefinitionBuilder {
           '删除文件夹',
         ]);
 
+    final countdownOnlyMutationRequest =
+        AiTodoContextBuilder.isExplicitCountdownMutationRequest(message) &&
+        !AiTodoContextBuilder.isExplicitlyTargetingTodo(message);
     final protocolActionNames = _extractProtocolActionNames(actionSection)
         .where((action) {
+          if (countdownOnlyMutationRequest &&
+              _todoScopedActionNames.contains(action)) {
+            return false;
+          }
           final triggers = _explicitCdtActionTriggers[action];
           return triggers == null ||
               triggers.any(
@@ -718,6 +585,17 @@ class AiNativeToolDefinitionBuilder {
         availableUpdateActions.every(
           (action) => action == 'update_habit' || action == 'delete_habit',
         );
+    final updatesContainOnlyCountdownMutations =
+        availableUpdateActions.isNotEmpty &&
+        availableUpdateActions.every(
+          (action) =>
+              action == 'update_countdown' ||
+              action == 'complete_countdown' ||
+              action == 'delete_countdown',
+        );
+    final requiredArrayField = _requiredArrayFieldForSingleAction(
+      availableActions.toSet(),
+    );
     final actionProperties = isTodoCategorizationRequest
         ? <String, dynamic>{
             'action': {
@@ -747,9 +625,26 @@ class AiNativeToolDefinitionBuilder {
         : <String, dynamic>{
             'action': {'type': 'string', 'enum': availableActions},
             for (final field in _nativeCdtArrayFields)
+              if (_nativeCdtArrayActionNames[field]?.any(
+                    availableActions.contains,
+                  ) ??
+                  false)
               field: _recordArraySchema(
                 requiredFields: field == 'todos'
                     ? const ['title']
+                    : field == 'schedules'
+                    ? const ['title', 'date']
+                    : field == 'logs'
+                    ? const ['title', 'startTime']
+                    : field == 'habits'
+                    ? const ['name', 'sourceType', 'periodType']
+                    : field == 'countdowns'
+                    ? const ['title', 'dueDate']
+                    : field == 'updates' &&
+                          updatesContainOnlyCountdownMutations
+                    ? const ['countdownId']
+                    : field == 'groups' || field == 'tags'
+                    ? const ['name']
                     : field == 'updates' && updatesContainOnlyTodoMutations
                     ? const ['todoId']
                     : field == 'updates' && updatesContainOnlyHabitMutations
@@ -816,7 +711,10 @@ class AiNativeToolDefinitionBuilder {
                   'properties': actionProperties,
                   'required': isTodoCategorizationRequest
                       ? ['action', 'updates']
-                      : ['action'],
+                      : [
+                          'action',
+                          ?requiredArrayField,
+                        ],
                   'additionalProperties': false,
                 },
               },
@@ -828,8 +726,6 @@ class AiNativeToolDefinitionBuilder {
       });
     }
 
-    final hasFinanceAmount = RegExp(r'\d+(?:\.\d+)?\s*(?:元|块(?:钱)?|人民币|¥|￥)')
-        .hasMatch(message);
     final financeUpdateVerbs = [
       '修改',
       '更新',
@@ -894,11 +790,16 @@ class AiNativeToolDefinitionBuilder {
     final hasOnlyNegatedFinanceDraftIntent =
         _matchesAny(message, financeDraftTriggers) &&
         !explicitlyWantsFinanceDraft;
+    final financeDraftIntent =
+        AiTodoContextBuilder.shouldOfferFinanceDraftProposal(message);
+    final hasExplicitFinanceDraftIntent =
+        explicitlyWantsFinanceDraft ||
+        AiTodoContextBuilder.isExplicitFinanceDraftRequest(message);
     final wantsFinanceDraft =
         !isReadOnlyQuery &&
         !hasOnlyNegatedFinanceDraftIntent &&
-        (explicitlyWantsFinanceDraft ||
-            (hasFinanceAmount && !wantsFinanceMutation));
+        financeDraftIntent &&
+        (!wantsFinanceMutation || hasExplicitFinanceDraftIntent);
 
     if (wantsFinanceDraft) {
       tools.add({
@@ -1196,12 +1097,27 @@ class AiNativeToolDefinitionBuilder {
     return actions;
   }
 
-  static const _createTodoKeywords = ['提醒我', '记得', '新建', '新增', '创建', '添加'];
+  static const _createTodoKeywords = [
+    '提醒我',
+    '记得',
+    '新建',
+    '新增',
+    '创建',
+    '添加',
+    '加个',
+    '加一个',
+    '加条',
+    '加一条',
+    '加几条',
+    '设个',
+    '设一个',
+  ];
   static const _existingTodoKeywords = [
     '修改',
     '更新',
     '完成',
     '删除',
+    '删',
     '延期',
     '改期',
     '分类',

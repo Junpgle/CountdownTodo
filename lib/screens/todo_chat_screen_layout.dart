@@ -149,7 +149,7 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
         IconButton(
           key: _settingsKey,
           icon: const Icon(Icons.tune_rounded, size: 22),
-          onPressed: _showPromptSettings,
+          onPressed: () => _showPromptSettingsFromSource(_settingsKey),
           tooltip: 'AI 助手设置',
         ),
         const SizedBox(width: 4),
@@ -369,7 +369,7 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
                                 ),
                                 const SizedBox(width: 6),
                                 Text(
-                                  '下一步建议',
+                                  'AI生成的下一步建议',
                                   style: TextStyle(
                                     fontSize: 13,
                                     fontWeight: FontWeight.w700,
