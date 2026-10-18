@@ -21,6 +21,26 @@ enum FinanceEntrySource { manual, import, ai, automation }
 /// platform and in JSON/SQLite storage.
 const int maxFinanceAmountMinor = 9007199254740991;
 
+final _financeInterestRateDisplayPattern = RegExp(r'\.?0+$');
+final _financeInterestRateInputPattern = RegExp(r'^\d+(\.\d{0,2})?$');
+final _financeDisplayWhitespacePattern = RegExp(r'\s+');
+final _financePaymentLeadingPunctuationPattern = RegExp(
+  r'^[^\u4e00-\u9fffA-Za-z0-9]+',
+);
+final _financeDraftTransactionDatePattern = RegExp(
+  r'^(\d{4})-(\d{1,2})-(\d{1,2})(?=$|[Tt ])',
+);
+final _financeDraftAmountLeadingCurrencyPattern = RegExp(r'^[¥￥$€£]');
+final _financeDraftAmountTrailingUnitPattern = RegExp(
+  r'\s*(?:元|块|人民币|CNY)\s*$',
+  caseSensitive: false,
+);
+final _financeDraftAmountPattern = RegExp(r'^([+-]?)(\d*)(?:\.(\d*))?$');
+final _financeYearlyGenerationPeriodPattern = RegExp(r'^\d{4}$');
+final _financeMonthlyGenerationPeriodPattern = RegExp(
+  r'^\d{4}-(0[1-9]|1[0-2])$',
+);
+
 bool isSafeFinanceAmountMinor(int amountMinor) =>
     amountMinor >= 0 && amountMinor <= maxFinanceAmountMinor;
 
@@ -584,13 +604,13 @@ class FinanceLoanOverview {
 
 String formatFinanceInterestRate(int basisPoints) {
   final value = (basisPoints / 100).toStringAsFixed(2);
-  return '${value.replaceFirst(RegExp(r'\.?0+$'), '')}%';
+  return '${value.replaceFirst(_financeInterestRateDisplayPattern, '')}%';
 }
 
 /// 解析百分比形式的年利率，例如 12、12.5、12.50%。
 int? parseFinanceInterestRate(String raw) {
   final input = raw.trim().replaceAll('%', '').replaceAll(',', '');
-  if (!RegExp(r'^\d+(\.\d{0,2})?$').hasMatch(input)) return null;
+  if (!_financeInterestRateInputPattern.hasMatch(input)) return null;
   final parts = input.split('.');
   final whole = int.tryParse(parts.first);
   if (whole == null) return null;
@@ -1473,7 +1493,7 @@ String financeCategorySiblingDisplayName(
 }
 
 String _normalizeFinanceCategoryName(String value) =>
-    value.replaceAll(RegExp(r'\s+'), '').trim().toLowerCase();
+    value.replaceAll(_financeDisplayWhitespacePattern, '').trim().toLowerCase();
 
 class FinancePaymentMethod {
   String uuid;
@@ -1606,8 +1626,8 @@ Map<String, String> financePaymentMethodDisplayNames(
 
 String _normalizeFinancePaymentMethodName(String value) {
   return value
-      .replaceAll(RegExp(r'^[^\u4e00-\u9fffA-Za-z0-9]+'), '')
-      .replaceAll(RegExp(r'\s+'), '')
+      .replaceAll(_financePaymentLeadingPunctuationPattern, '')
+      .replaceAll(_financeDisplayWhitespacePattern, '')
       .trim()
       .toLowerCase();
 }
@@ -1961,8 +1981,7 @@ class FinanceEntryDraft {
         .replaceAll('日', '')
         .replaceAll('/', '-')
         .replaceAll('.', '-');
-    final match = RegExp(r'^(\d{4})-(\d{1,2})-(\d{1,2})(?=$|[Tt ])')
-        .firstMatch(normalized);
+    final match = _financeDraftTransactionDatePattern.firstMatch(normalized);
     if (match == null) return fallback;
 
     final year = int.parse(match.group(1)!);
@@ -1979,13 +1998,9 @@ class FinanceEntryDraft {
     final normalized = (value is num ? value.toString() : value?.toString())
         ?.trim()
         .replaceAll(',', '')
-        .replaceAll(RegExp(r'^[¥￥$€£]'), '')
-        .replaceAll(
-          RegExp(r'\s*(?:元|块|人民币|CNY)\s*$', caseSensitive: false),
-          '',
-        );
-    final match = RegExp(r'^([+-]?)(\d*)(?:\.(\d*))?$')
-        .firstMatch(normalized ?? '');
+        .replaceAll(_financeDraftAmountLeadingCurrencyPattern, '')
+        .replaceAll(_financeDraftAmountTrailingUnitPattern, '');
+    final match = _financeDraftAmountPattern.firstMatch(normalized ?? '');
     if (match == null) return 0;
     final wholeText = match.group(2) ?? '';
     final fraction = match.group(3) ?? '';
@@ -2300,9 +2315,9 @@ class FinanceRecurringRule {
     final period = lastGeneratedPeriod;
     if (period == null) return null;
     final pattern = frequency == FinanceRecurringFrequency.yearly
-        ? r'^\d{4}$'
-        : r'^\d{4}-(0[1-9]|1[0-2])$';
-    return RegExp(pattern).hasMatch(period)
+        ? _financeYearlyGenerationPeriodPattern
+        : _financeMonthlyGenerationPeriodPattern;
+    return pattern.hasMatch(period)
         ? period
         : generationPeriodBefore(
             DateTime.fromMillisecondsSinceEpoch(updatedAt),
@@ -2609,7 +2624,6 @@ Map<String, String> financeEntryTemplateDisplayNames(
   return namesByUuid;
 }
 
-final _financeDisplayWhitespacePattern = RegExp(r'\s+');
 String _normalizeFinanceDisplayName(String value) =>
     value.replaceAll(_financeDisplayWhitespacePattern, '').trim().toLowerCase();
 
