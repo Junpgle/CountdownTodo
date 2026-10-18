@@ -9,6 +9,7 @@ import 'package:countdown_todo/widgets/countdown_section_widget.dart';
 import 'package:countdown_todo/widgets/share_readonly_widgets.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'management_pages_test.dart' show pumpManagementPage, tapVisible;
@@ -385,6 +386,14 @@ void main() {
     await pumpManagementPage(tester, messagePage());
     expect(find.text('全部 3'), findsOneWidget);
     expect(find.text('待处理 1'), findsOneWidget);
+    expect(
+      find.text(
+        DateFormat('yyyy-MM-dd HH:mm').format(
+          DateTime.fromMillisecondsSinceEpoch(1788000000000),
+        ),
+      ),
+      findsOneWidget,
+    );
     await tapVisible(tester, find.text('待处理 1'));
     expect(find.text('小夏已退出团队'), findsNothing);
     expect(find.text('同意入队'), findsOneWidget);

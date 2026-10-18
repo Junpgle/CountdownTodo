@@ -33,6 +33,15 @@ class _TeamMessageCenterScreenState extends State<TeamMessageCenterScreen> {
   String? _loadError;
   bool _pendingOnly = false;
   final _searchController = TextEditingController();
+  final Map<(String?, String), DateFormat> _dateFormatters = {};
+
+  DateFormat _cachedDateFormat(String pattern) {
+    final locale = Intl.defaultLocale;
+    return _dateFormatters.putIfAbsent(
+      (locale, pattern),
+      () => DateFormat(pattern, locale),
+    );
+  }
 
   @override
   void dispose() {
@@ -240,7 +249,7 @@ class _TeamMessageCenterScreenState extends State<TeamMessageCenterScreen> {
   Widget _buildMessageCard(dynamic msg) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final time = DateFormat('yyyy-MM-dd HH:mm')
+    final time = _cachedDateFormat('yyyy-MM-dd HH:mm')
         .format(DateTime.fromMillisecondsSinceEpoch(_asInt(msg['timestamp'])));
     final (icon, title) = switch (msg['type']) {
       'JOIN_REQUEST' => (Icons.person_add_outlined, '入队申请'),
