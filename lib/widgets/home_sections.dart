@@ -114,18 +114,28 @@ class _ShimmerGradientPainter extends CustomPainter {
   final BorderRadius borderRadius;
   late final List<Color> _colors = [baseColor, highlightColor, baseColor];
   final Paint _paint = Paint()..isAntiAlias = true;
+  Size? _cachedSize;
+  Rect? _cachedRect;
+  RRect? _cachedRRect;
 
   @override
   void paint(Canvas canvas, Size size) {
     if (size.isEmpty) return;
-    final rect = Offset.zero & size;
+
+    if (_cachedSize != size) {
+      final rect = Offset.zero & size;
+      _cachedSize = size;
+      _cachedRect = rect;
+      _cachedRRect = borderRadius.toRRect(rect);
+    }
+
     _paint.shader = LinearGradient(
       begin: Alignment(animation.value, 0),
       end: Alignment(animation.value + 0.5, 0),
       colors: _colors,
       stops: const [0.0, 0.5, 1.0],
-    ).createShader(rect);
-    canvas.drawRRect(borderRadius.toRRect(rect), _paint);
+    ).createShader(_cachedRect!);
+    canvas.drawRRect(_cachedRRect!, _paint);
   }
 
   @override
@@ -300,13 +310,23 @@ class _ScreenTimeCardState extends State<ScreenTimeCard>
       aggregatedApps[appName] = (aggregatedApps[appName] ?? 0) + duration;
     }
 
-    final sortedApps = aggregatedApps.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
+    final topApps = <MapEntry<String, int>>[];
+    for (final entry in aggregatedApps.entries) {
+      var insertAt = 0;
+      while (insertAt < topApps.length &&
+          topApps[insertAt].value >= entry.value) {
+        insertAt++;
+      }
+      if (insertAt >= 3) continue;
+
+      topApps.insert(insertAt, entry);
+      if (topApps.length > 3) topApps.removeLast();
+    }
     final appMap = <String, int>{};
     var topSum = 0;
-    for (var i = 0; i < math.min(3, sortedApps.length); i++) {
-      appMap[sortedApps[i].key] = sortedApps[i].value;
-      topSum += sortedApps[i].value;
+    for (final entry in topApps) {
+      appMap[entry.key] = entry.value;
+      topSum += entry.value;
     }
     if (totalTime > topSum) {
       appMap['其他'] = totalTime - topSum;
@@ -625,6 +645,9 @@ class PieChartPainter extends CustomPainter {
 
   late final List<Color> _colors;
   late final List<MapEntry<String, int>> _chartEntries;
+  late final List<double> _fullSweepAngles = _chartEntries
+      .map((entry) => (entry.value / total) * 2 * math.pi)
+      .toList(growable: false);
 
   // 缓存 TextPainter，避免每帧重复创建
   late final List<TextPainter> _labelPainters;
@@ -699,8 +722,7 @@ class PieChartPainter extends CustomPainter {
     _paint.strokeWidth = dynamicStrokeWidth;
 
     for (var i = 0; i < _chartEntries.length; i++) {
-      final entry = _chartEntries[i];
-      final fullSweepAngle = (entry.value / total) * 2 * math.pi;
+      final fullSweepAngle = _fullSweepAngles[i];
       final sweepAngle = fullSweepAngle * currentSweepProgress;
       _paint.color = _colors[i % _colors.length];
 

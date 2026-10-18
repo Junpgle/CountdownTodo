@@ -284,6 +284,8 @@ class _HomeAgendaCardState extends State<HomeAgendaCard> {
                                   ? (plan!.status == 6 ? '漏做' : '已结束待确认')
                                   : item.completed
                                   ? '已完成'
+                                  : item.isFocusing
+                                  ? '正在专注'
                                   : '时段进行中${item.fixed?.isEndTimeTbd == true ? ' · 结束待定' : ''}',
                               style: TextStyle(
                                 fontSize: 10.5,

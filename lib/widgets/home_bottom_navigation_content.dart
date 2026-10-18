@@ -184,6 +184,7 @@ class _FloatingBottomNavigationContentState
 
   final GlobalKey _indicatorBackgroundKey = GlobalKey();
 
+  bool _hasLongPressActions = false;
   late final SingleSpringController _positionSpring;
   late final SingleSpringController _interactionSpring;
   late final SingleSpringController _stretchSpring;
@@ -198,7 +199,7 @@ class _FloatingBottomNavigationContentState
   int _motionEpoch = 0;
   FloatingBottomNavigationItem? _heldItem;
 
-  bool get _hasLongPress => widget.items.any(
+  bool _itemsHaveLongPressActions() => widget.items.any(
     (item) => item.onLongPress != null || item.onLongPressStart != null,
   );
 
@@ -229,6 +230,7 @@ class _FloatingBottomNavigationContentState
   @override
   void initState() {
     super.initState();
+    _hasLongPressActions = _itemsHaveLongPressActions();
     _positionSpring = SingleSpringController(
       vsync: this,
       spring: GlassSpring.interactive(
@@ -266,6 +268,7 @@ class _FloatingBottomNavigationContentState
   @override
   void didUpdateWidget(covariant FloatingBottomNavigationContent oldWidget) {
     super.didUpdateWidget(oldWidget);
+    _hasLongPressActions = _itemsHaveLongPressActions();
     if (oldWidget.onDragStretchChanged != widget.onDragStretchChanged) {
       widget.onDragStretchChanged?.call(_stretchSpring.value);
     }
@@ -687,13 +690,17 @@ class _FloatingBottomNavigationContentState
                 _finishSelectionDrag(details, constraints.maxWidth),
             onHorizontalDragCancel: _cancelSelectionDrag,
             onTapUp: (details) => _handleBarTap(details, constraints.maxWidth),
-            onLongPressStart: _hasLongPress
+            onLongPressStart: _hasLongPressActions
                 ? (details) =>
                       _handleBarLongPress(details, constraints.maxWidth)
                 : null,
-            onLongPressMoveUpdate: _hasLongPress ? _moveBarLongPress : null,
-            onLongPressEnd: _hasLongPress ? _endBarLongPress : null,
-            onLongPressCancel: _hasLongPress ? _cancelBarLongPress : null,
+            onLongPressMoveUpdate: _hasLongPressActions
+                ? _moveBarLongPress
+                : null,
+            onLongPressEnd: _hasLongPressActions ? _endBarLongPress : null,
+            onLongPressCancel: _hasLongPressActions
+                ? _cancelBarLongPress
+                : null,
             child: Stack(
               fit: StackFit.expand,
               clipBehavior: Clip.none,
@@ -815,13 +822,17 @@ class _FloatingBottomNavigationContentState
             key: ValueKey<String>(_keyName('navigation-gesture-layer')),
             behavior: HitTestBehavior.translucent,
             onTapUp: (details) => _handleBarTap(details, constraints.maxWidth),
-            onLongPressStart: _hasLongPress
+            onLongPressStart: _hasLongPressActions
                 ? (details) =>
                       _handleBarLongPress(details, constraints.maxWidth)
                 : null,
-            onLongPressMoveUpdate: _hasLongPress ? _moveBarLongPress : null,
-            onLongPressEnd: _hasLongPress ? _endBarLongPress : null,
-            onLongPressCancel: _hasLongPress ? _cancelBarLongPress : null,
+            onLongPressMoveUpdate: _hasLongPressActions
+                ? _moveBarLongPress
+                : null,
+            onLongPressEnd: _hasLongPressActions ? _endBarLongPress : null,
+            onLongPressCancel: _hasLongPressActions
+                ? _cancelBarLongPress
+                : null,
             child: SizedBox.expand(
               child: _buildNavigationRow(context, selectedLayer: false),
             ),

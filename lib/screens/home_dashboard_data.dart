@@ -386,6 +386,7 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
       final loadFixedSchedules = requestedDomains.contains(
         DataRefreshDomain.fixedSchedules,
       );
+      final conflictInputsChanged = loadTodos || loadGroups || loadCountdowns;
       final requestedTasks = [
         loadTodos,
         loadGroups,
@@ -429,7 +430,10 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
         if (loadPlanBlocks)
           _loadDataTask(
             "PlanBlocks",
-            StorageService.getPlanBlocks(widget.username),
+            StorageService.getDashboardPlanBlocks(
+              widget.username,
+              now: DateTime.now(),
+            ),
           )
         else
           Future<dynamic>.value(_planBlocks),
@@ -440,6 +444,10 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
           )
         else
           Future<dynamic>.value(_fixedSchedules),
+        if (conflictInputsChanged)
+          StorageService.getConflictDetectionEnabled()
+        else
+          Future<dynamic>.value(false),
       ]);
 
       const resultDomains = [
@@ -451,33 +459,34 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
         DataRefreshDomain.planBlocks,
         DataRefreshDomain.fixedSchedules,
       ];
-      for (var index = 0; index < results.length; index++) {
+      for (var index = 0; index < requestedTasks.length; index++) {
         if (requestedTasks[index] && results[index] == null) {
           failedDomains.add(resultDomains[index]);
         }
       }
       hadTaskFailure = failedDomains.isNotEmpty;
+      if (loadCourses && results[4] != null) {
+        _dashboardCourseDataRefreshRevision++;
+      }
 
-      final List<TodoItem> allTodos = _mergePendingTodoSnapshots(
-        (results[0] == null
-                ? List<TodoItem>.from(_todos)
-                : _safeListResult<TodoItem>(results[0]))
-            .where((t) => !t.isDeleted)
-            .toList(),
-      );
-      final List<TodoGroup> allGroups =
-          (results[1] == null
-                  ? List<TodoGroup>.from(_todoGroups)
-                  : _safeListResult<TodoGroup>(results[1]))
-              .where((g) => !g.isDeleted)
-              .toList();
-      final List<CountdownItem> allCountdowns = _safeListResult<CountdownItem>(
-        results[2] ?? _countdowns,
-      ).where((c) => !c.isDeleted).toList();
-      final conflictInputsChanged = loadTodos || loadGroups || loadCountdowns;
-      final conflictDetectionEnabled = conflictInputsChanged
-          ? await StorageService.getConflictDetectionEnabled()
-          : false;
+      final loadedTodos = results[0] == null
+          ? _todos
+          : _safeListResult<TodoItem>(results[0]);
+      final List<TodoItem> allTodos = _mergePendingTodoSnapshots(loadedTodos);
+      final groupSource = loadGroups
+          ? _safeListResult<TodoGroup>(results[1] ?? _todoGroups)
+          : _todoGroups;
+      final List<TodoGroup> allGroups = groupSource.any((g) => g.isDeleted)
+          ? groupSource.where((g) => !g.isDeleted).toList()
+          : groupSource;
+      final countdownSource = loadCountdowns
+          ? _safeListResult<CountdownItem>(results[2] ?? _countdowns)
+          : _countdowns;
+      final List<CountdownItem> allCountdowns =
+          countdownSource.any((c) => c.isDeleted)
+          ? countdownSource.where((c) => !c.isDeleted).toList()
+          : countdownSource;
+      final conflictDetectionEnabled = results[7] as bool;
 
       final bool hasTeamConflict = !conflictInputsChanged
           ? _hasTeamConflictDot
@@ -488,17 +497,21 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
                   countdowns: allCountdowns,
                 );
 
-      final Map<String, dynamic> mathStats = results[3] == null
-          ? Map<String, dynamic>.from(_mathStats)
+      final Map<String, dynamic> mathStats =
+          !loadMath || results[3] == null
+          ? _mathStats
           : Map<String, dynamic>.from(results[3] as Map);
-      final Map<String, dynamic> courseData = results[4] == null
-          ? Map<String, dynamic>.from(_dashboardCourseData)
+      final Map<String, dynamic> courseData =
+          !loadCourses || results[4] == null
+          ? _dashboardCourseData
           : Map<String, dynamic>.from(results[4] as Map);
-      final List<TodoPlanBlock> allPlanBlocks = results[5] == null
-          ? List<TodoPlanBlock>.from(_planBlocks)
+      final List<TodoPlanBlock> allPlanBlocks =
+          !loadPlanBlocks || results[5] == null
+          ? _planBlocks
           : _safeListResult<TodoPlanBlock>(results[5]);
-      final List<FixedScheduleItem> allFixedSchedules = results[6] == null
-          ? List<FixedScheduleItem>.from(_fixedSchedules)
+      final List<FixedScheduleItem> allFixedSchedules =
+          !loadFixedSchedules || results[6] == null
+          ? _fixedSchedules
           : _safeListResult<FixedScheduleItem>(results[6]);
       final activityInputsChanged =
           loadTodos ||
@@ -553,6 +566,7 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
         }
         if (countdownsChanged) {
           _countdowns = allCountdowns;
+          _countdownsDataRevision++;
           _countdownsNotifier.value = allCountdowns;
         }
         if (mathChanged) {
@@ -908,10 +922,14 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
   }
 
   Future<void> _rescheduleAlarms() async {
-    final courses = await CourseService.getAllCourses(widget.username);
     await ReminderScheduleService.scheduleAll(
       todos: _todos,
-      courses: courses,
+      courses: const <CourseItem>[],
+      loadCourses: (from, to) => CourseService.getCoursesForDateRange(
+        widget.username,
+        from: from,
+        to: to,
+      ),
       expectedUsername: widget.username,
     );
   }
@@ -975,14 +993,18 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
     if (!needsSync) return;
     _reminderScheduleDebouncer = Timer(const Duration(milliseconds: 800), () {
       if (!mounted) return;
-      CourseService.getAllCourses(widget.username).then((allCourses) {
-        if (!mounted) return;
+      unawaited(
         ReminderScheduleService.scheduleAll(
           todos: _todos,
-          courses: allCourses,
+          courses: const <CourseItem>[],
+          loadCourses: (from, to) => CourseService.getCoursesForDateRange(
+            widget.username,
+            from: from,
+            to: to,
+          ),
           expectedUsername: widget.username,
-        );
-      });
+        ),
+      );
     });
   }
 }

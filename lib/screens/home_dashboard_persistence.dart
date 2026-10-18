@@ -20,9 +20,15 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
       _persistingTodosSnapshot,
       _pendingTodosToPersist,
     ].whereType<List<TodoItem>>();
-    if (snapshots.isEmpty) return loadedTodos;
+    if (snapshots.isEmpty) {
+      if (!loadedTodos.any((todo) => todo.isDeleted)) return loadedTodos;
+      return loadedTodos.where((todo) => !todo.isDeleted).toList();
+    }
 
-    final byId = {for (final todo in loadedTodos) todo.id: todo};
+    final byId = <String, TodoItem>{};
+    for (final todo in loadedTodos) {
+      if (!todo.isDeleted) byId[todo.id] = todo;
+    }
     for (final snapshot in snapshots) {
       for (final pending in snapshot) {
         final existing = byId[pending.id];
@@ -101,6 +107,16 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
     _persistingTodosSnapshot = todosSnapshot;
     final allTodos = await StorageService.getTodos(widget.username);
     try {
+      final todosToPersistById = <String, TodoItem>{};
+      for (final todo in allTodos) {
+        if (todo.recurrence != RecurrenceType.none &&
+            (todo.recurrenceSeriesId == null ||
+                todo.recurrenceSeriesId!.isEmpty)) {
+          todo.recurrenceSeriesId = todo.id;
+          todosToPersistById[todo.id] = todo;
+        }
+      }
+
       final todoIndicesById = <String, int>{};
       for (var index = 0; index < allTodos.length; index++) {
         final id = allTodos[index].id;
@@ -113,13 +129,19 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
         if (index != null) {
           if (newTodo.updatedAt >= allTodos[index].updatedAt) {
             allTodos[index] = newTodo;
+            todosToPersistById[newTodo.id] = newTodo;
           }
         } else {
           todoIndicesById[newTodo.id] = allTodos.length;
           allTodos.add(newTodo);
+          todosToPersistById[newTodo.id] = newTodo;
         }
       }
-      await StorageService.saveTodos(widget.username, allTodos);
+      await StorageService.saveTodos(
+        widget.username,
+        todosToPersistById.values.toList(growable: false),
+        bandSyncSnapshot: allTodos,
+      );
       await _saveTodosToSharedFile(allTodos);
 
       FloatWindowService.triggerReminderCheck();

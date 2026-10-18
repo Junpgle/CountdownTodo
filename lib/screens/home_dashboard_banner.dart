@@ -2,6 +2,11 @@ part of 'home_dashboard.dart';
 
 // ignore_for_file: annotate_overrides
 
+typedef _DashboardTodoCandidate = ({
+  TodoItem todo,
+  String specialType,
+});
+
 String _formatDashboardPomodoroTimeInfo(
   int secondsRemaining, {
   required bool countUp,
@@ -43,6 +48,99 @@ DateFormat _dashboardDateFormat(String pattern) {
 }
 
 mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
+  List<TodoItem>? _dashboardTodoCandidateSource;
+  int? _dashboardTodoCandidateRevision;
+  List<_DashboardTodoCandidate> _dashboardTodoCandidateCache = const [];
+  Map<String, dynamic>? _upcomingCourseDataSource;
+  List<CourseItem>? _upcomingCourseCache;
+  DateTime? _upcomingCourseCacheDate;
+  DateTime? _upcomingCourseRefreshAt;
+  String? _upcomingCourseCacheUsername;
+  int? _upcomingCourseCacheRevision;
+
+  List<_DashboardTodoCandidate> _dashboardTodoCandidatesForCurrentRevision() {
+    final source = _todos;
+    final revision = _todoDataRevision;
+    if (identical(source, _dashboardTodoCandidateSource) &&
+        revision == _dashboardTodoCandidateRevision) {
+      return _dashboardTodoCandidateCache;
+    }
+
+    final candidates = <_DashboardTodoCandidate>[];
+    for (final todo in source) {
+      if (todo.isDone || todo.dueDate == null) continue;
+      candidates.add((
+        todo: todo,
+        specialType: ItemSemanticsService.specialTodoTypeForTitle(todo.title),
+      ));
+    }
+
+    _dashboardTodoCandidateSource = source;
+    _dashboardTodoCandidateRevision = revision;
+    return _dashboardTodoCandidateCache = candidates;
+  }
+
+  Future<List<CourseItem>> _coursesForUpcomingNotifications(DateTime now) async {
+    final today = DateUtils.dateOnly(now);
+    final cachedCourses = _upcomingCourseCache;
+    final refreshAt = _upcomingCourseRefreshAt;
+    if (cachedCourses != null &&
+        _upcomingCourseCacheDate == today &&
+        _upcomingCourseCacheUsername == widget.username &&
+        _upcomingCourseCacheRevision ==
+            _dashboardCourseDataRefreshRevision &&
+        identical(_upcomingCourseDataSource, _dashboardCourseData) &&
+        (refreshAt == null || now.isBefore(refreshAt))) {
+      return cachedCourses;
+    }
+
+    final source = _dashboardCourseData;
+    final revision = _dashboardCourseDataRefreshRevision;
+    final dashboardData = await CourseService.getDashboardCourses(
+      widget.username,
+    );
+    final courses =
+        (dashboardData['courses'] as List?)?.cast<CourseItem>() ?? [];
+
+    _upcomingCourseDataSource = source;
+    _upcomingCourseCache = courses;
+    _upcomingCourseCacheDate = today;
+    _upcomingCourseCacheUsername = widget.username;
+    _upcomingCourseCacheRevision = revision;
+    _upcomingCourseRefreshAt = _nextUpcomingCourseRefreshAt(
+      dashboardData['title']?.toString(),
+      courses,
+      now,
+    );
+    return courses;
+  }
+
+  DateTime _nextUpcomingCourseRefreshAt(
+    String? title,
+    List<CourseItem> courses,
+    DateTime now,
+  ) {
+    final nextDay = DateTime(now.year, now.month, now.day + 1);
+    if (title != '今日课程') return nextDay;
+
+    DateTime? lastCourseEnd;
+    for (final course in courses) {
+      final day = _resolveCourseDay(course, now);
+      if (day.year != now.year || day.month != now.month || day.day != now.day) {
+        continue;
+      }
+      final end = _resolveCourseTimeOnDay(course, day, course.endTime);
+      if (end != null &&
+          (lastCourseEnd == null || end.isAfter(lastCourseEnd))) {
+        lastCourseEnd = end;
+      }
+    }
+
+    return lastCourseEnd != null && lastCourseEnd.isAfter(now)
+        ? lastCourseEnd
+        : nextDay;
+  }
+
   Widget _buildChallengeParticipationBanner(bool isLight) {
     final scheme = Theme.of(context).colorScheme;
     final isLandscape =
@@ -807,90 +905,89 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
       }
     }
 
-    // 3. 待办只遍历一次；先分桶再按原顺序加入事件，保持同优先级顺序。
+    // 3. 待办候选项只遍历一次；先分桶再按原顺序加入事件。
     final specialTodoEvents = <HomeBannerEvent>[];
     final regularTodoEvents = <HomeBannerEvent>[];
-    forEachEligibleHomeBannerTodo(
-      todos: _todos,
-      classifyTodoType: IslandSlotProvider.detectTodoType,
-      visit: (todo, specialType) {
-        if (specialType != 'default') {
-          if (!AppTimeFormats.isSameDay(todo.dueDate!.toLocal(), now)) {
-            return;
-          }
-
-          specialTodoEvents.add(
-            HomeBannerEvent(
-              type: 'special_todo',
-              title: todo.title,
-              subtitle: todo.remark,
-              label: _specialTodoBannerLabel(specialType),
-              timeInfo: _specialTodoBannerTimeInfo(todo, now),
-              baseColor: _specialTodoBannerColor(specialType),
-              icon: _specialTodoBannerIcon(specialType),
-              priority: 2,
-              isTeam: todo.teamUuid != null,
-              onTap: () => _openTodoEditor(todo),
-            ),
-          );
-          return;
+    for (final candidate in _dashboardTodoCandidatesForCurrentRevision()) {
+      final todo = candidate.todo;
+      if (todo.isDeleted) continue;
+      final specialType = candidate.specialType;
+      if (specialType != 'default') {
+        if (!AppTimeFormats.isSameDay(todo.dueDate!.toLocal(), now)) {
+          continue;
         }
 
-        final startMs = todo.createdDate ?? todo.createdAt;
-        final startTime = DateTime.fromMillisecondsSinceEpoch(
-          startMs,
-        ).toLocal();
-        final endTime = todo.dueDate!.toLocal();
+        specialTodoEvents.add(
+          HomeBannerEvent(
+            type: 'special_todo',
+            title: todo.title,
+            subtitle: todo.remark,
+            label: _specialTodoBannerLabel(specialType),
+            timeInfo: _specialTodoBannerTimeInfo(todo, now),
+            baseColor: _specialTodoBannerColor(specialType),
+            icon: _specialTodoBannerIcon(specialType),
+            priority: 2,
+            isTeam: todo.teamUuid != null,
+            onTap: () => _openTodoEditor(todo),
+          ),
+        );
+        continue;
+      }
 
-        // 判定全天任务或跨天任务
-        bool isAllDay =
-            startTime.hour == 0 &&
-            startTime.minute == 0 &&
-            endTime.hour == 23 &&
-            endTime.minute == 59;
-        bool isCrossDay =
-            startTime.year != endTime.year ||
-            startTime.month != endTime.month ||
-            startTime.day != endTime.day;
-        if (isAllDay || isCrossDay) return;
+      final startMs = todo.createdDate ?? todo.createdAt;
+      final startTime = DateTime.fromMillisecondsSinceEpoch(
+        startMs,
+      ).toLocal();
+      final endTime = todo.dueDate!.toLocal();
 
-        final diffStart = startTime.difference(now).inMinutes;
-        final isOngoing = now.isAfter(startTime) && now.isBefore(endTime);
+      // 判定全天任务或跨天任务
+      final isAllDay =
+          startTime.hour == 0 &&
+          startTime.minute == 0 &&
+          endTime.hour == 23 &&
+          endTime.minute == 59;
+      final isCrossDay =
+          startTime.year != endTime.year ||
+          startTime.month != endTime.month ||
+          startTime.day != endTime.day;
+      if (isAllDay || isCrossDay) continue;
 
-        if (isOngoing) {
-          final remaining = endTime.difference(now).inMinutes;
-          regularTodoEvents.add(
-            HomeBannerEvent(
-              type: 'todo',
-              title: todo.title,
-              subtitle: todo.remark,
-              label: '📌 正在进行的任务',
-              timeInfo: '剩 ${remaining}m',
-              baseColor: Colors.amber[700]!,
-              icon: '📝',
-              priority: 3,
-              isTeam: todo.teamUuid != null,
-              onTap: () => _openTodoEditor(todo),
-            ),
-          );
-        } else if (diffStart >= 0 && diffStart <= 30) {
-          regularTodoEvents.add(
-            HomeBannerEvent(
-              type: 'todo',
-              title: todo.title,
-              subtitle: todo.remark,
-              label: '⏰ 即将开始的任务',
-              timeInfo: '${diffStart}m 后开始',
-              baseColor: Colors.orange,
-              icon: '📝',
-              priority: 5,
-              isTeam: todo.teamUuid != null,
-              onTap: () => _openTodoEditor(todo),
-            ),
-          );
-        }
-      },
-    );
+      final diffStart = startTime.difference(now).inMinutes;
+      final isOngoing = now.isAfter(startTime) && now.isBefore(endTime);
+
+      if (isOngoing) {
+        final remaining = endTime.difference(now).inMinutes;
+        regularTodoEvents.add(
+          HomeBannerEvent(
+            type: 'todo',
+            title: todo.title,
+            subtitle: todo.remark,
+            label: '📌 正在进行的任务',
+            timeInfo: '剩 ${remaining}m',
+            baseColor: Colors.amber[700]!,
+            icon: '📝',
+            priority: 3,
+            isTeam: todo.teamUuid != null,
+            onTap: () => _openTodoEditor(todo),
+          ),
+        );
+      } else if (diffStart >= 0 && diffStart <= 30) {
+        regularTodoEvents.add(
+          HomeBannerEvent(
+            type: 'todo',
+            title: todo.title,
+            subtitle: todo.remark,
+            label: '⏰ 即将开始的任务',
+            timeInfo: '${diffStart}m 后开始',
+            baseColor: Colors.orange,
+            icon: '📝',
+            priority: 5,
+            isTeam: todo.teamUuid != null,
+            onTap: () => _openTodoEditor(todo),
+          ),
+        );
+      }
+    }
     events
       ..addAll(specialTodoEvents)
       ..addAll(regularTodoEvents);
@@ -1087,11 +1184,7 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
     // ── 课程通知 ────────────────────────────────────────────────
     const int courseNotificationId = 12347;
 
-    final dashboardData = await CourseService.getDashboardCourses(
-      widget.username,
-    );
-    List<CourseItem> courses =
-        (dashboardData['courses'] as List?)?.cast<CourseItem>() ?? [];
+    final courses = await _coursesForUpcomingNotifications(now);
 
     bool hasUpcomingCourse = false;
     String? activeCourseKey;
@@ -1155,13 +1248,12 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
     final specialTodosToday = <TodoItem>[];
     final upcomingRegularTodos = <TodoItem>[];
     final allDayTodos = <TodoItem>[];
-    for (final todo in _todos) {
+    for (final candidate in _dashboardTodoCandidatesForCurrentRevision()) {
+      final todo = candidate.todo;
       final dueDate = todo.dueDate;
       if (todo.isDone || dueDate == null) continue;
 
-      final todoType = ItemSemanticsService.specialTodoTypeForTitle(
-        todo.title,
-      );
+      final todoType = candidate.specialType;
       final isSpecialTodo = todoType != 'default';
       final localDueDate = dueDate.toLocal();
       final isDueToday = AppTimeFormats.isSameDay(localDueDate, now);

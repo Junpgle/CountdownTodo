@@ -230,20 +230,36 @@ mixin _HomeDashboardAiMixin on _HomeDashboardStateBase {
       inserted,
       updated,
     );
+    await StorageService.saveTodos(widget.username, nextTodos);
     if (!mounted) return;
     setState(() {
       _todos = nextTodos;
       _todoDataRevision++;
     });
-    await StorageService.saveTodos(widget.username, nextTodos);
-    await _saveTodosToSharedFile(nextTodos);
-    _timelineRevision.value++;
-    FloatWindowService.triggerReminderCheck();
-    FloatWindowService.invalidateSlotCache();
-    FloatWindowService.update();
-    _syncTodoNotification();
-    _rescheduleAlarms();
-    await WidgetService.updateTodoWidget(nextTodos);
+    try {
+      await _saveTodosToSharedFile(nextTodos);
+    } catch (error) {
+      debugPrint('AI todo shared-file refresh failed after save: $error');
+    }
+    try {
+      _timelineRevision.value++;
+      FloatWindowService.triggerReminderCheck();
+      FloatWindowService.invalidateSlotCache();
+      FloatWindowService.update();
+      _syncTodoNotification();
+    } catch (error) {
+      debugPrint('AI todo UI refresh failed after save: $error');
+    }
+    try {
+      await _rescheduleAlarms();
+    } catch (error) {
+      debugPrint('AI todo alarm refresh failed after save: $error');
+    }
+    try {
+      await WidgetService.updateTodoWidget(nextTodos);
+    } catch (error) {
+      debugPrint('AI todo widget refresh failed after save: $error');
+    }
   }
 
   // === 初始化与生命周期 ===

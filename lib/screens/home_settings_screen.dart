@@ -694,10 +694,14 @@ class _SettingsPageState extends State<SettingsPage> {
     }
     try {
       final todos = await StorageService.getTodos(_username);
-      final courses = await CourseService.getAllCourses(_username);
       await ReminderScheduleService.scheduleAll(
         todos: todos,
-        courses: courses,
+        courses: const [],
+        loadCourses: (from, to) => CourseService.getCoursesForDateRange(
+          _username,
+          from: from,
+          to: to,
+        ),
         expectedUsername: _username,
       );
     } catch (e) {

@@ -17,11 +17,10 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:palette_generator/palette_generator.dart';
+import 'package:palette_generator_plus/palette_generator_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../services/search_service.dart';
-import '../utils/home_banner_todo_iterator.dart';
 import '../utils/page_transitions.dart';
 
 // 引入服务和模型
@@ -52,7 +51,6 @@ import '../services/pomodoro_sync_service.dart';
 import '../services/focus_do_not_disturb_service.dart';
 import '../services/reminder_schedule_service.dart';
 import '../services/float_window_service.dart';
-import '../services/island_slot_provider.dart';
 import '../services/item_semantics_service.dart';
 import '../services/storage/app_settings_storage.dart';
 import '../services/conflict_visibility_service.dart';
@@ -161,6 +159,7 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
   final GitHubResourceService _githubResourceService = GitHubResourceService();
   // === 状态变量 ===
   List<CountdownItem> _countdowns = [];
+  int _countdownsDataRevision = 0;
   List<TodoItem> _todos = [];
   List<TodoGroup> _todoGroups = [];
   List<ConflictInfo> _latestSyncConflicts = [];
@@ -170,6 +169,7 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
     'title': '课程提醒',
     'courses': <CourseItem>[],
   };
+  int _dashboardCourseDataRefreshRevision = 0;
 
   bool _hasUsagePermission = true;
   bool _isSyncing = false;
@@ -258,7 +258,7 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
     ImageProvider provider,
     String url,
   ) async {
-    if (_extractedWallpaperUrl == url) return;
+    if (_extractedWallpaperUrl == url || _wallpaperUrl != url) return;
     _extractedWallpaperUrl = url;
     try {
       // 缩小图片尺寸可大幅提升解析速度，防止卡顿和 OOM 取色失败
@@ -266,7 +266,15 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
       final palette = await PaletteGenerator.fromImageProvider(
         resizedProvider,
         maximumColorCount: 16,
+        // 保持与原版 palette_generator 一致的取色结果。
+        quantizer: const LegacyQuantizer(),
       );
+      if (!mounted || _wallpaperUrl != url) {
+        if (mounted && _extractedWallpaperUrl == url) {
+          _extractedWallpaperUrl = null;
+        }
+        return;
+      }
       if (mounted) {
         setState(() {
           // 增加多级降级策略，确保一定能取到颜色
@@ -285,6 +293,10 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
       // debugPrint("Failed to extract color: $e");
     }
   }
+
+  ImageProvider<Object>? _localWallpaperProviderFor(String url);
+
+  void _scheduleWallpaperColorExtraction(ImageProvider provider, String url);
 
   int _selectedTabIndex = 0;
   bool _focusTabVisited = false;

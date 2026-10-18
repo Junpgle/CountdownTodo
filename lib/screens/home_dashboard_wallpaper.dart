@@ -2,10 +2,44 @@ part of 'home_dashboard.dart';
 // ignore_for_file: annotate_overrides
 
 mixin _HomeDashboardWallpaperMixin on _HomeDashboardStateBase {
+  String? _scheduledWallpaperColorExtractionUrl;
+  String? _localWallpaperProviderUrl;
+  ImageProvider<Object>? _localWallpaperProvider;
+
   bool _isLocalFilePath(String path) {
     return !path.startsWith('http://') &&
         !path.startsWith('https://') &&
         !path.startsWith('assets/');
+  }
+
+  ImageProvider<Object>? _localWallpaperProviderFor(String url) {
+    final cachedProvider = _localWallpaperProvider;
+    if (_localWallpaperProviderUrl == url && cachedProvider != null) {
+      return cachedProvider;
+    }
+
+    // localImageProvider performs a synchronous file-existence check. Keep
+    // successful providers so ordinary dashboard rebuilds do not hit disk.
+    final provider = localImageProvider(url);
+    _localWallpaperProviderUrl = provider == null ? null : url;
+    _localWallpaperProvider = provider;
+    return provider;
+  }
+
+  void _scheduleWallpaperColorExtraction(ImageProvider provider, String url) {
+    if (_wallpaperDominantColor != null ||
+        _extractedWallpaperUrl == url ||
+        _scheduledWallpaperColorExtractionUrl == url) {
+      return;
+    }
+
+    _scheduledWallpaperColorExtractionUrl = url;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _wallpaperUrl != url || _wallpaperDominantColor != null) {
+        return;
+      }
+      _extractColorFromProvider(provider, url);
+    });
   }
 
   void _handleWallpaperError() {

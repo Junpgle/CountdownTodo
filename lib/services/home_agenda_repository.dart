@@ -41,18 +41,25 @@ class HomeAgendaItem {
   final DeviceCalendarEvent? calendar;
   final TodoItem? todo;
 
+  bool get isFocusing => plan?.status == TodoPlanStatus.focusing.index;
   bool needsAttention(DateTime now) =>
       plan != null &&
       !completed &&
+      !isFocusing &&
       (plan!.status == TodoPlanStatus.missed.index || !end.isAfter(now));
   bool isCurrent(DateTime now) =>
       !allDay &&
       !completed &&
-      !needsAttention(now) &&
-      !start.isAfter(now) &&
-      end.isAfter(now);
+      (isFocusing ||
+          (!needsAttention(now) &&
+              !start.isAfter(now) &&
+              end.isAfter(now)));
   bool isUpcoming(DateTime now) =>
-      !allDay && !completed && !needsAttention(now) && start.isAfter(now);
+      !allDay &&
+      !completed &&
+      !isFocusing &&
+      !needsAttention(now) &&
+      start.isAfter(now);
 }
 
 class HomeAgendaSnapshot {
@@ -154,16 +161,19 @@ class HomeAgendaSnapshot {
     }
 
     for (final item in items) {
+      final isFocusing = item.isFocusing;
       final needsAttention = item.needsAttention(instant);
       if (needsAttention) attention.add(item);
       if (item.allDay) allDay.add(item);
 
       if (!item.allDay && !item.completed && !needsAttention) {
-        if (!item.start.isAfter(instant) && item.end.isAfter(instant)) {
+        // The outer guards already establish the non-focus and attention
+        // conditions used by the item getters, so classify directly here.
+        if (isFocusing ||
+            (!item.start.isAfter(instant) && item.end.isAfter(instant))) {
           current.add(item);
           if (item.plan == null) currentNonPlanCount++;
-        }
-        if (item.start.isAfter(instant)) {
+        } else if (item.start.isAfter(instant)) {
           upcoming.add(item);
           if (item.plan == null) upcomingNonPlanCount++;
         }
@@ -210,10 +220,22 @@ class HomeAgendaSnapshot {
       attentionCount +
       endedCount +
       allDay.length;
-  late final List<HomeAgendaItem> visible = [
-    ...current,
-    ...upcoming,
-  ].take(attentionCount > 0 ? 4 : 5).toList();
+  late final List<HomeAgendaItem> visible = _buildVisibleItems();
+
+  List<HomeAgendaItem> _buildVisibleItems() {
+    final limit = attentionCount > 0 ? 4 : 5;
+    final result = <HomeAgendaItem>[];
+    for (final item in current) {
+      if (result.length == limit) break;
+      result.add(item);
+    }
+    for (final item in upcoming) {
+      if (result.length == limit) break;
+      result.add(item);
+    }
+    return result;
+  }
+
   late final int hiddenCurrent =
       currentCount - visible.where((i) => i.isCurrent(instant)).length;
   late final DateTime nextBoundary = _buckets.nextBoundary;
@@ -246,6 +268,11 @@ class _HomeAgendaBuckets {
 typedef HomeAgendaCourseLoader = Future<List<CourseItem>> Function(
   String username,
 );
+typedef HomeAgendaCourseRangeLoader = Future<List<CourseItem>> Function(
+  String username, {
+  required DateTime from,
+  required DateTime to,
+});
 typedef HomeAgendaFixedLoader = Future<List<FixedScheduleItem>> Function(
   String username,
   DateTime day,
@@ -256,14 +283,18 @@ typedef HomeAgendaCalendarLoader = Future<List<DeviceCalendarEvent>> Function(
 
 /// Independent source failures are visible and retryable. No business writes.
 class HomeAgendaRepository {
-  const HomeAgendaRepository({
+  HomeAgendaRepository({
     required this.plans,
-    this.courseLoader = CourseService.getAllCourses,
+    HomeAgendaCourseLoader? courseLoader,
+    HomeAgendaCourseRangeLoader? courseRangeLoader,
     this.fixedLoader = StorageService.getFixedSchedulesByDay,
     this.calendarLoader = _readCalendar,
-  });
+  })  : courseLoader = courseLoader ?? CourseService.getAllCourses,
+        courseRangeLoader = courseRangeLoader ??
+            (courseLoader == null ? CourseService.getCoursesForDateRange : null);
   final PlanReviewRepository plans;
   final HomeAgendaCourseLoader courseLoader;
+  final HomeAgendaCourseRangeLoader? courseRangeLoader;
   final HomeAgendaFixedLoader fixedLoader;
   final HomeAgendaCalendarLoader calendarLoader;
 
@@ -272,6 +303,66 @@ class HomeAgendaRepository {
         start: DeviceCalendarReadService.monthGridStart(day),
         end: DeviceCalendarReadService.monthGridEnd(day),
       );
+
+  Future<List<HomeAgendaItem>> _loadCourseItems(
+    String username,
+    DateTime day,
+  ) async {
+    final parsedDates = <String, DateTime?>{};
+    final items = <HomeAgendaItem>[];
+    final rangeLoader = courseRangeLoader;
+    final courses = rangeLoader == null
+        ? await courseLoader(username)
+        : await rangeLoader(
+            username,
+            from: day,
+            to: DateTime(day.year, day.month, day.day + 1),
+          );
+    for (final course in courses) {
+      if (course.isDeleted) continue;
+      final courseDay = parsedDates.putIfAbsent(
+        course.date,
+        () => DateTime.tryParse(course.date),
+      );
+      if (courseDay != day) continue;
+
+      final roomName = course.roomName;
+      final teacherName = course.teacherName;
+      final hasRoom = roomName.trim().isNotEmpty;
+      final hasTeacher = teacherName.trim().isNotEmpty;
+      final detail = hasRoom
+          ? hasTeacher
+                ? '$roomName · $teacherName'
+                : roomName
+          : hasTeacher
+          ? teacherName
+          : '';
+
+      final item = HomeAgendaItem(
+        id: 'course:${course.uuid}',
+        title: course.courseName,
+        sourceLabel: '课程',
+        start: DateTime(
+          day.year,
+          day.month,
+          day.day,
+          course.startTime ~/ 100,
+          course.startTime % 100,
+        ),
+        end: DateTime(
+          day.year,
+          day.month,
+          day.day,
+          course.endTime ~/ 100,
+          course.endTime % 100,
+        ),
+        detail: detail,
+        course: course,
+      );
+      if (item.end.isAfter(item.start)) items.add(item);
+    }
+    return items;
+  }
 
   Future<HomeAgendaSnapshot> read(
     String username, {
@@ -336,36 +427,7 @@ class HomeAgendaRepository {
       if (includeSchedules) ...[
         load(
           HomeAgendaSource.courses,
-          () async => (await courseLoader(username))
-              .where((c) => !c.isDeleted && DateTime.tryParse(c.date) == day)
-              .map(
-                (c) => HomeAgendaItem(
-                  id: 'course:${c.uuid}',
-                  title: c.courseName,
-                  sourceLabel: '课程',
-                  start: DateTime(
-                    day.year,
-                    day.month,
-                    day.day,
-                    c.startTime ~/ 100,
-                    c.startTime % 100,
-                  ),
-                  end: DateTime(
-                    day.year,
-                    day.month,
-                    day.day,
-                    c.endTime ~/ 100,
-                    c.endTime % 100,
-                  ),
-                  detail: [
-                    c.roomName,
-                    c.teacherName,
-                  ].where((s) => s.trim().isNotEmpty).join(' · '),
-                  course: c,
-                ),
-              )
-              .where((i) => i.end.isAfter(i.start))
-              .toList(),
+          () => _loadCourseItems(username, day),
         ),
         load(
           HomeAgendaSource.fixed,
@@ -405,10 +467,7 @@ class HomeAgendaRepository {
                   start: e.start,
                   end: e.end,
                   allDay: e.allDay,
-                  detail: [
-                    if (e.location != null) e.location!,
-                    '只读',
-                  ].join(' · '),
+                  detail: e.location == null ? '只读' : '${e.location} · 只读',
                   calendar: e,
                 ),
               )

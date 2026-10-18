@@ -34,6 +34,11 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
     bool isDarkMode = Theme.of(context).brightness == Brightness.dark;
     bool showWallpaper = !isDarkMode && _wallpaperShow && _wallpaperUrl != null;
     bool isLight = showWallpaper;
+    final wallpaperUrl = _wallpaperUrl;
+    final localWallpaperProvider =
+        showWallpaper && wallpaperUrl != null && _isLocalFilePath(wallpaperUrl)
+        ? _localWallpaperProviderFor(wallpaperUrl)
+        : null;
     final double screenWidth = MediaQuery.sizeOf(context).width;
     final bool isTablet = screenWidth >= 768;
     final double drawerWidth = homeDrawerSlideWidthFor(
@@ -54,43 +59,34 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
           : Theme.of(context).colorScheme.surface,
       body: Stack(
         children: [
-          if (showWallpaper)
+          if (showWallpaper && wallpaperUrl != null)
             Positioned.fill(
               child: RepaintBoundary(
                 // Darken the image in its draw pass. A separate full-screen
                 // scrim adds another alpha-blended pass on every GPU frame.
-                child: _wallpaperUrl!.startsWith('assets/')
+                child: wallpaperUrl.startsWith('assets/')
                     ? Builder(
                         builder: (context) {
-                          WidgetsBinding.instance.addPostFrameCallback((_) {
-                            if (_wallpaperDominantColor == null) {
-                              _extractColorFromProvider(
-                                AssetImage(_wallpaperUrl!),
-                                _wallpaperUrl!,
-                              );
-                            }
-                          });
+                          _scheduleWallpaperColorExtraction(
+                            AssetImage(wallpaperUrl),
+                            wallpaperUrl,
+                          );
                           return Image.asset(
-                            _wallpaperUrl!,
+                            wallpaperUrl,
                             fit: BoxFit.cover,
                             color: const Color(0x66000000),
                             colorBlendMode: BlendMode.srcOver,
                           );
                         },
                       )
-                    : _isLocalFilePath(_wallpaperUrl!) &&
-                          localImageProvider(_wallpaperUrl!) != null
+                    : localWallpaperProvider != null
                     ? Builder(
                         builder: (context) {
-                          final provider = localImageProvider(_wallpaperUrl!)!;
-                          WidgetsBinding.instance.addPostFrameCallback((_) {
-                            if (_wallpaperDominantColor == null) {
-                              _extractColorFromProvider(
-                                provider,
-                                _wallpaperUrl!,
-                              );
-                            }
-                          });
+                          final provider = localWallpaperProvider;
+                          _scheduleWallpaperColorExtraction(
+                            provider,
+                            wallpaperUrl,
+                          );
                           return Image(
                             image: provider,
                             fit: BoxFit.cover,
@@ -238,7 +234,7 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                               : LayoutBuilder(
                                   builder: (context, constraints) {
                                     // ... (rest of section definitions)
-                                    Widget countdownSection =
+                                    Widget buildCountdown() =>
                                         ValueListenableBuilder<
                                           List<CountdownItem>
                                         >(
@@ -248,6 +244,8 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                                 historyKey:
                                                     _countdownHistoryKey,
                                                 countdowns: countdowns,
+                                                dataRevision:
+                                                    _countdownsDataRevision,
                                                 username: widget.username,
                                                 isLight: isLight,
                                                 addKey: _addCountdownKey,
@@ -262,7 +260,7 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                                 },
                                               ),
                                         );
-                                    Widget todoSection = AnimatedBuilder(
+                                    Widget buildTodo() => AnimatedBuilder(
                                       animation: _todoSectionListenable,
                                       builder: (context, _) {
                                         return TodoSectionWidget(
@@ -297,17 +295,28 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                                 await StorageService.getTodoGroups(
                                                   widget.username,
                                                 );
-                                            for (var g in newGroups) {
-                                              int idx = allGroups.indexWhere(
-                                                (x) => x.id == g.id,
+                                            final groupIndexById =
+                                                <String, int>{};
+                                            for (
+                                              var index = 0;
+                                              index < allGroups.length;
+                                              index++
+                                            ) {
+                                              groupIndexById.putIfAbsent(
+                                                allGroups[index].id,
+                                                () => index,
                                               );
-                                              if (idx != -1) {
-                                                if (g.updatedAt >=
-                                                    allGroups[idx].updatedAt) {
-                                                  allGroups[idx] = g;
-                                                }
-                                              } else {
-                                                allGroups.add(g);
+                                            }
+                                            for (final group in newGroups) {
+                                              final index =
+                                                  groupIndexById[group.id];
+                                              if (index == null) {
+                                                groupIndexById[group.id] =
+                                                    allGroups.length;
+                                                allGroups.add(group);
+                                              } else if (group.updatedAt >=
+                                                  allGroups[index].updatedAt) {
+                                                allGroups[index] = group;
                                               }
                                             }
                                             await StorageService.saveTodoGroups(
@@ -339,7 +348,7 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                         );
                                       },
                                     );
-                                    Widget screenTimeSection = RepaintBoundary(
+                                    Widget buildScreenTime() => RepaintBoundary(
                                       child: KeyedSubtree(
                                         key: _screenTimeCardKey,
                                         child: Column(
@@ -389,7 +398,7 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                         ),
                                       ),
                                     );
-                                    Widget mathSection =
+                                    Widget buildMath() =>
                                         ValueListenableBuilder<
                                           Map<String, dynamic>
                                         >(
@@ -437,7 +446,7 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                                 ),
                                               ),
                                         );
-                                    Widget timelineSection = KeyedSubtree(
+                                    Widget buildTimeline() => KeyedSubtree(
                                       key: _timelineCardKey,
                                       child: ValueListenableBuilder<int>(
                                         valueListenable: _timelineRevision,
@@ -451,7 +460,7 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                       ),
                                     );
 
-                                    Widget pomodoroSection = RepaintBoundary(
+                                    Widget buildPomodoro() => RepaintBoundary(
                                       child: ValueListenableBuilder<int>(
                                         valueListenable: _pomodoroRevision,
                                         builder: (context, trigger, _) {
@@ -480,7 +489,7 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                       ),
                                     );
 
-                                    Widget agendaSection = RepaintBoundary(
+                                    Widget buildAgenda() => RepaintBoundary(
                                       child: AnimatedBuilder(
                                         animation: _agendaSectionListenable,
                                         builder: (context, _) {
@@ -562,7 +571,7 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                         },
                                       ),
                                     );
-                                    Widget financeSection = RepaintBoundary(
+                                    Widget buildFinance() => RepaintBoundary(
                                       child: KeyedSubtree(
                                         key: _financeCardKey,
                                         child: FinanceTodaySection(
@@ -585,21 +594,22 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                       ),
                                     );
 
-                                    Map<String, Widget> sectionsMap = {
-                                      'banners': AnimatedBuilder(
+                                    Map<String, Widget Function()>
+                                    sectionBuilders = {
+                                      'banners': () => AnimatedBuilder(
                                         animation: _bannerSectionListenable,
                                         builder: (_, _) =>
                                             _buildUniversalBanner(isLight),
                                       ),
-                                      'agenda': agendaSection,
-                                      'countdowns': countdownSection,
-                                      'todos': todoSection,
-                                      'screenTime': screenTimeSection,
-                                      'math': mathSection,
-                                      'pomodoro': pomodoroSection,
-                                      'timeline': timelineSection,
-                                      'finance': financeSection,
-                                      'habits': RepaintBoundary(
+                                      'agenda': buildAgenda,
+                                      'countdowns': buildCountdown,
+                                      'todos': buildTodo,
+                                      'screenTime': buildScreenTime,
+                                      'math': buildMath,
+                                      'pomodoro': buildPomodoro,
+                                      'timeline': buildTimeline,
+                                      'finance': buildFinance,
+                                      'habits': () => RepaintBoundary(
                                         child: KeyedSubtree(
                                           key: _habitsCardKey,
                                           child: ValueListenableBuilder<int>(
@@ -636,10 +646,6 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                     };
 
                                     if (!isTablet) {
-                                      List<String> tab1Order =
-                                          List<String>.from(
-                                            _mobileHomeSections,
-                                          );
                                       Widget buildScrollableSection(
                                         String key,
                                       ) {
@@ -652,39 +658,35 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                               padding: const EdgeInsets.only(
                                                 bottom: 24.0,
                                               ),
-                                              child: sectionsMap[key]!,
+                                              child: sectionBuilders[key]!(),
                                             ),
                                           ),
                                         );
                                       }
 
-                                      List<Widget> tab1Widgets = tab1Order
-                                          .where(
-                                            (key) =>
-                                                (_sectionVisibility[key] ??
-                                                    true) &&
-                                                sectionsMap.containsKey(key),
-                                          )
-                                          .map(buildScrollableSection)
-                                          .toList();
-
-                                      List<String> tab3WidgetsConfig =
-                                          List<String>.from(
-                                            _mobileFocusSections,
-                                          );
-
-                                      List<Widget> tab3Widgets =
-                                          tab3WidgetsConfig
+                                      final tab1SectionKeys =
+                                          _mobileHomeSections
                                               .where(
                                                 (key) =>
                                                     (_sectionVisibility[key] ??
                                                         true) &&
-                                                    sectionsMap.containsKey(
+                                                    sectionBuilders.containsKey(
                                                       key,
                                                     ),
                                               )
-                                              .map(buildScrollableSection)
-                                              .toList();
+                                              .toList(growable: false);
+
+                                      final tab3SectionKeys =
+                                          _mobileFocusSections
+                                              .where(
+                                                (key) =>
+                                                    (_sectionVisibility[key] ??
+                                                        true) &&
+                                                    sectionBuilders.containsKey(
+                                                      key,
+                                                    ),
+                                              )
+                                              .toList(growable: false);
 
                                       final showFocusTab =
                                           _selectedTabIndex ==
@@ -697,9 +699,9 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                         bool focusPage,
                                         double listHeaderExtent,
                                       ) {
-                                        final widgets = focusPage
-                                            ? tab3Widgets
-                                            : tab1Widgets;
+                                        final sectionKeys = focusPage
+                                            ? tab3SectionKeys
+                                            : tab1SectionKeys;
                                         return RepaintBoundary(
                                           key: ValueKey<String>(
                                             focusPage
@@ -720,23 +722,27 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                                 16,
                                               ),
                                               itemCount:
-                                                  widgets.length +
+                                                  sectionKeys.length +
                                                   (hasCopyright ? 1 : 0) +
                                                   1,
                                               findChildIndexCallback: (key) {
-                                                final index = widgets
-                                                    .indexWhere(
-                                                      (widget) =>
-                                                          widget.key == key,
-                                                    );
+                                                if (key is! ValueKey<String>) {
+                                                  return null;
+                                                }
+                                                final index = sectionKeys
+                                                    .indexOf(key.value);
                                                 return index < 0 ? null : index;
                                               },
                                               itemBuilder: (context, index) {
-                                                if (index < widgets.length) {
-                                                  return widgets[index];
+                                                if (index <
+                                                    sectionKeys.length) {
+                                                  return buildScrollableSection(
+                                                    sectionKeys[index],
+                                                  );
                                                 }
                                                 if (hasCopyright &&
-                                                    index == widgets.length) {
+                                                    index ==
+                                                        sectionKeys.length) {
                                                   return _buildWallpaperCopyright(
                                                     isLight,
                                                   );
@@ -845,12 +851,8 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                     }
 
                                     // Tablet Layout
-                                    List<String> currentLeft = List.from(
-                                      _leftSections,
-                                    );
-                                    List<String> currentRight = List.from(
-                                      _rightSections,
-                                    );
+                                    final currentLeft = _leftSections;
+                                    final currentRight = _rightSections;
 
                                     List<Widget> buildColumnWidgets(
                                       List<String> keys,
@@ -860,10 +862,13 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                             (key) =>
                                                 (_sectionVisibility[key] ??
                                                     true) &&
-                                                sectionsMap.containsKey(key),
+                                                sectionBuilders.containsKey(
+                                                  key,
+                                                ),
                                           )
                                           .map((key) {
-                                            final section = sectionsMap[key]!;
+                                            final section =
+                                                sectionBuilders[key]!();
                                             final isolateTabletSection =
                                                 isTablet &&
                                                 const <String>{
