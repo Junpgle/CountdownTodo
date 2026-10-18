@@ -2,6 +2,7 @@ import 'dart:collection';
 
 import 'package:countdown_todo/models.dart';
 import 'package:countdown_todo/utils/home_banner_todo_iterator.dart';
+import 'package:countdown_todo/utils/pomodoro_display_tick_schedule.dart';
 import 'package:countdown_todo/widgets/home_dashboard_banner_layout.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -20,6 +21,37 @@ class _CountingTodoIterable extends IterableBase<TodoItem> {
 }
 
 void main() {
+  test('schedules count-up refresh at the next displayed minute', () {
+    expect(dashboardPomodoroDisplayTickDelaySeconds(61, countUp: true), 59);
+    expect(dashboardPomodoroDisplayTickDelaySeconds(120, countUp: true), 60);
+  });
+
+  test(
+    'keeps whole-minute countdown changes and second-level final minute',
+    () {
+      expect(dashboardPomodoroDisplayTickDelaySeconds(1500, countUp: false), 1);
+      expect(
+        dashboardPomodoroDisplayTickDelaySeconds(1499, countUp: false),
+        60,
+      );
+      expect(dashboardPomodoroDisplayTickDelaySeconds(61, countUp: false), 1);
+      expect(dashboardPomodoroDisplayTickDelaySeconds(60, countUp: false), 1);
+      expect(dashboardPomodoroDisplayTickDelaySeconds(0, countUp: false), 1);
+    },
+  );
+
+  test('keeps the local stop control boundary observable', () {
+    expect(
+      dashboardPomodoroDisplayTickDelaySeconds(
+        1801,
+        countUp: false,
+        includeStopControlBoundary: true,
+      ),
+      1,
+    );
+    expect(dashboardPomodoroDisplayTickDelaySeconds(1801, countUp: false), 2);
+  });
+
   testWidgets('Pomodoro ticks rebuild only the Pomodoro banner', (
     tester,
   ) async {
