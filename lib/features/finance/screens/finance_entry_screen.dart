@@ -45,6 +45,10 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
   static final RegExp _optionNameWhitespacePattern = RegExp(r'\s+');
   static final RegExp _expressionOperatorPattern = RegExp(r'[+\-*/()]');
   static final RegExp _expressionLineBreakPattern = RegExp(r'\r?\n');
+  static final List<TextInputFormatter> _installmentCountInputFormatters =
+      List<TextInputFormatter>.unmodifiable([
+        FilteringTextInputFormatter.digitsOnly,
+      ]);
 
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _amountController;
@@ -2177,7 +2181,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
                 controller: _installmentCountController,
                 enabled: !_isSaving,
                 keyboardType: TextInputType.number,
-                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                inputFormatters: _installmentCountInputFormatters,
                 decoration: _fieldDecoration(
                   colorScheme,
                   labelText: '分期月数',
