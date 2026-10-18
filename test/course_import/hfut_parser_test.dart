@@ -30,4 +30,30 @@ void main() {
     expect(mathCourses.first.startTime, 800);
     expect(englishCourses.first.startTime, 900);
   });
+
+  test('parses repeated EAMS5 TaskActivity records', () {
+    const input = '''
+actTeacherName.push("张老师");
+new TaskActivity("张老师", 0, "高等数学", 0, "原教室", "011000000000000000000");
+room = { name: "教室101" }; activities[2][1] = 1;
+actTeacherName.push('李老师');
+new TaskActivity("李老师", 0, "大学英语", 0, "原教室", "011000000000000000000");
+room = { name: "教室202" }; activities[3][2] = 1;
+''';
+
+    final courses = HfutScheduleParser.parse(input);
+    final mathCourses = courses
+        .where((course) => course.courseName == '高等数学')
+        .toList();
+    final englishCourses = courses
+        .where((course) => course.courseName == '大学英语')
+        .toList();
+
+    expect(mathCourses, hasLength(2));
+    expect(englishCourses, hasLength(2));
+    expect(mathCourses.first.teacherName, '张老师');
+    expect(mathCourses.first.roomName, '教室101');
+    expect(englishCourses.first.teacherName, '李老师');
+    expect(englishCourses.first.weekday, 3);
+  });
 }

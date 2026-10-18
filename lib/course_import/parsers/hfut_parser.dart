@@ -38,6 +38,24 @@ class HfutScheduleParser {
     'top': RegExp(r'top:\s*(\d+)px'),
     'height': RegExp(r'height:\s*(\d+)px'),
   };
+  static final RegExp _taskActivityStartPattern =
+      RegExp(r'new\s+TaskActivity\s*\(');
+  static final RegExp _teacherPushPattern = RegExp(
+    r'''actTeacherName\.push\(\s*(?:"([^"]+)"|'([^']+)')\s*\)''',
+  );
+  static final RegExp _teacherAssignmentPattern = RegExp(r'teachers\s*=');
+  static final RegExp _teacherObjectNamePattern =
+      RegExp(r'''name\s*:\s*(?:"([^"]+)"|'([^']+)')''');
+  static final RegExp _teachersArrayNamePattern = RegExp(
+    r'''teachers\s*:\s*\[\s*\{\s*[^}]*name\s*:\s*(?:"([^"]+)"|'([^']+)')''',
+  );
+  static final RegExp _binaryWeekPattern = RegExp(r'^[01]+$');
+  static final RegExp _courseNamePrefixPattern = RegExp(r'^\(.*?\)\s*');
+  static final RegExp _roomAssignmentPattern = RegExp(
+    r'''room\s*=\s*\{[^}]*name\s*:\s*(?:"([^"]+)"|'([^']+)')''',
+  );
+  static final RegExp _activityAssignmentPattern =
+      RegExp(r'activities\s*\[(\d+)\]\s*\[(\d+)\]');
 
   /// 校验传入的字符串（JSON或HTML）是否符合课表格式
   static bool isValid(String rawInput) {
@@ -445,7 +463,7 @@ class HfutScheduleParser {
   }
 
   static List<CourseItem>? _parseEams5TaskActivity(String input) {
-    final parts = input.split(RegExp(r'new\s+TaskActivity\s*\('));
+    final parts = input.split(_taskActivityStartPattern);
     if (parts.length < 2) return null;
 
     List<CourseItem> courses = [];
@@ -454,19 +472,16 @@ class HfutScheduleParser {
       String currentPart = parts[i];
       String teacherName = '未知教师';
       List<String> names = [];
-      final pushRegex =
-          RegExp(r'''actTeacherName\.push\(\s*(?:"([^"]+)"|'([^']+)')\s*\)''');
-      final pushMatches = pushRegex.allMatches(prevPart);
+      final pushMatches = _teacherPushPattern.allMatches(prevPart);
       for (var m in pushMatches) {
         String? n = m.group(1) ?? m.group(2);
         if (n != null && n.isNotEmpty && !names.contains(n)) names.add(n);
       }
       if (names.isEmpty) {
-        int teacherIdx = prevPart.lastIndexOf(RegExp(r'teachers\s*='));
+        int teacherIdx = prevPart.lastIndexOf(_teacherAssignmentPattern);
         if (teacherIdx != -1) {
           String teacherBlock = prevPart.substring(teacherIdx);
-          final nameRegex = RegExp(r'''name\s*:\s*(?:"([^"]+)"|'([^']+)')''');
-          final nameMatches = nameRegex.allMatches(teacherBlock);
+          final nameMatches = _teacherObjectNamePattern.allMatches(teacherBlock);
           for (var m in nameMatches) {
             String? n = m.group(1) ?? m.group(2);
             if (n != null && n.isNotEmpty && !names.contains(n)) names.add(n);
@@ -477,9 +492,7 @@ class HfutScheduleParser {
         teacherName = names.join(',');
       } else {
         // 🚀 进一步尝试：匹配 `teachers : [ { id:..., name:"XXX" } ]` 或类似结构
-        final teachersArrayRegex = RegExp(
-            r'''teachers\s*:\s*\[\s*\{\s*[^}]*name\s*:\s*(?:"([^"]+)"|'([^']+)')''');
-        final teachersMatch = teachersArrayRegex.firstMatch(prevPart);
+        final teachersMatch = _teachersArrayNamePattern.firstMatch(prevPart);
         if (teachersMatch != null) {
           teacherName =
               teachersMatch.group(1) ?? teachersMatch.group(2) ?? '未知教师';
@@ -492,7 +505,7 @@ class HfutScheduleParser {
       String argsStr = currentPart.substring(0, endArgsIdx);
       List<String> args = _extractArgs(argsStr);
       int weekIdx = args
-          .indexWhere((s) => s.length >= 20 && s.contains(RegExp(r'^[01]+$')));
+          .indexWhere((s) => s.length >= 20 && s.contains(_binaryWeekPattern));
       if (weekIdx == -1) continue;
 
       String validWeeks = args[weekIdx];
@@ -517,13 +530,13 @@ class HfutScheduleParser {
           teacherName = fallbackTeacher;
         }
       }
-      courseName = courseName.replaceFirst(RegExp(r'^\(.*?\)\s*'), '').trim();
+      courseName = courseName
+          .replaceFirst(_courseNamePrefixPattern, '')
+          .trim();
       if (courseName.isEmpty && weekIdx >= 3) courseName = args[weekIdx - 3];
 
       String assignmentsStr = currentPart.substring(endArgsIdx);
-      final roomRegex =
-          RegExp(r'''room\s*=\s*\{[^}]*name\s*:\s*(?:"([^"]+)"|'([^']+)')''');
-      final roomMatch = roomRegex.firstMatch(assignmentsStr);
+      final roomMatch = _roomAssignmentPattern.firstMatch(assignmentsStr);
       if (roomMatch != null) {
         String parsedRoom = roomMatch.group(1) ?? roomMatch.group(2) ?? '';
         if (parsedRoom.isNotEmpty && parsedRoom != 'null') {
@@ -531,8 +544,7 @@ class HfutScheduleParser {
         }
       }
 
-      final activityRegex = RegExp(r'activities\s*\[(\d+)\]\s*\[(\d+)\]');
-      final actMatches = activityRegex.allMatches(assignmentsStr);
+      final actMatches = _activityAssignmentPattern.allMatches(assignmentsStr);
       Map<int, List<int>> dayToUnits = {};
       for (var m in actMatches) {
         int day = int.tryParse(m.group(1) ?? '') ?? 0;
