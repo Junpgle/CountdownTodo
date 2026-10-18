@@ -228,10 +228,14 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
     }
     try {
       final todos = await StorageService.getTodos(_username);
-      final courses = await CourseService.getAllCourses(_username);
       await ReminderScheduleService.scheduleAll(
         todos: todos,
-        courses: courses,
+        courses: const <CourseItem>[],
+        loadCourses: (from, to) => CourseService.getCoursesForDateRange(
+          _username,
+          from: from,
+          to: to,
+        ),
         expectedUsername: _username,
         force: true,
       );

@@ -74,7 +74,7 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
 
   String _getWeekLabel() {
     if (_viewMode == 2) {
-      return DateFormat('yyyy年M月').format(_selectedMonth);
+      return _cachedDateFormat('yyyy年M月').format(_selectedMonth);
     }
     if (_semesterMonday == null || _semesters.isEmpty) {
       return '第 $_currentWeek 周';
@@ -94,7 +94,7 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
     }
 
     final sunday = CalendarDateMath.addDays(currentWeekMonday, 6);
-    return '${DateFormat('M/d').format(currentWeekMonday)}-${DateFormat('M/d').format(sunday)}';
+    return '${_cachedDateFormat('M/d').format(currentWeekMonday)}-${_cachedDateFormat('M/d').format(sunday)}';
   }
 
   String _getBiWeekLabel() {
@@ -116,7 +116,7 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
         final relativeWeek = _relativeWeekForDate(date, semester);
         return '${semester.name} 第$relativeWeek周';
       }
-      return DateFormat('M/d').format(date);
+      return _cachedDateFormat('M/d').format(date);
     }
 
     String label1 = getSemesterWeekLabel(w1Monday);
@@ -226,7 +226,7 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
   }
 
   List<dynamic> _dayDetailItems(DateTime day) {
-    final String dStr = DateFormat('yyyy-MM-dd').format(day);
+    final String dStr = _cachedDateFormat('yyyy-MM-dd').format(day);
     final List<dynamic> items = [];
     final weekMonday = _getMondayOfCurrentWeek();
     final weekStart = weekMonday == null
@@ -270,16 +270,18 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
       }
 
       if (_activeDataViews.contains('fixedSchedules')) {
-        final fixedSchedules =
-            _monthFixedScheduleMap[dStr] ??
-            _allFixedSchedules
-                .where(
-                  (item) =>
-                      _fixedScheduleDate(item) ==
-                      DateTime(day.year, day.month, day.day),
-                )
-                .toList();
-        items.addAll(fixedSchedules);
+        final fixedSchedules = _monthFixedScheduleMap[dStr];
+        if (fixedSchedules != null) {
+          items.addAll(fixedSchedules);
+        } else if (!_monthDataPrepared) {
+          items.addAll(
+            _allFixedSchedules.where(
+              (item) =>
+                  _fixedScheduleDate(item) ==
+                  DateTime(day.year, day.month, day.day),
+            ),
+          );
+        }
       }
 
       if (_activeDataViews.contains('todos')) {
@@ -310,58 +312,64 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
       }
     }
 
-    items.sort((a, b) {
-      int getStartTime(dynamic item) {
-        if (item is CourseItem) return item.startTime;
-        if (item is TodoItem) {
-          if (item.dueDate == null) return 0;
-          return item.dueDate!.hour * 100 + item.dueDate!.minute;
-        }
-        if (item is TimeLogItem) {
-          final dt = DateTime.fromMillisecondsSinceEpoch(
-            item.startTime,
-            isUtc: true,
-          ).toLocal();
-          return dt.hour * 100 + dt.minute;
-        }
-        if (item is TodoPlanBlock) {
-          final dt = DateTime.fromMillisecondsSinceEpoch(item.startTime)
-              .toLocal();
-          return dt.hour * 100 + dt.minute;
-        }
-        if (item is PomodoroRecord) {
-          final dt = DateTime.fromMillisecondsSinceEpoch(
-            item.startTime,
-            isUtc: true,
-          ).toLocal();
-          return dt.hour * 100 + dt.minute;
-        }
-        if (item is DeviceCalendarEvent) {
-          return item.start.hour * 100 + item.start.minute;
-        }
-        if (item is FixedScheduleItem) {
-          if (item.startTime == null) return 0;
-          final start = DateTime.fromMillisecondsSinceEpoch(item.startTime!);
-          return start.hour * 100 + start.minute;
-        }
-        return 9999;
+    int getStartTime(dynamic item) {
+      if (item is CourseItem) return item.startTime;
+      if (item is TodoItem) {
+        if (item.dueDate == null) return 0;
+        return item.dueDate!.hour * 100 + item.dueDate!.minute;
       }
-
-      final int timeA = getStartTime(a);
-      final int timeB = getStartTime(b);
-      if (timeA != timeB) return timeA.compareTo(timeB);
-
-      int getPriority(dynamic item) {
-        if (item is CourseItem) return 0;
-        if (item is TodoItem || item is FixedScheduleItem) return 1;
-        if (item is TimeLogItem) return 2;
-        if (item is TodoPlanBlock) return 3;
-        if (item is PomodoroRecord) return 4;
-        return 5;
+      if (item is TimeLogItem) {
+        final dt = DateTime.fromMillisecondsSinceEpoch(
+          item.startTime,
+          isUtc: true,
+        ).toLocal();
+        return dt.hour * 100 + dt.minute;
       }
+      if (item is TodoPlanBlock) {
+        final dt = DateTime.fromMillisecondsSinceEpoch(item.startTime)
+            .toLocal();
+        return dt.hour * 100 + dt.minute;
+      }
+      if (item is PomodoroRecord) {
+        final dt = DateTime.fromMillisecondsSinceEpoch(
+          item.startTime,
+          isUtc: true,
+        ).toLocal();
+        return dt.hour * 100 + dt.minute;
+      }
+      if (item is DeviceCalendarEvent) {
+        return item.start.hour * 100 + item.start.minute;
+      }
+      if (item is FixedScheduleItem) {
+        if (item.startTime == null) return 0;
+        final start = DateTime.fromMillisecondsSinceEpoch(item.startTime!);
+        return start.hour * 100 + start.minute;
+      }
+      return 9999;
+    }
 
-      return getPriority(a).compareTo(getPriority(b));
-    });
+    int getPriority(dynamic item) {
+      if (item is CourseItem) return 0;
+      if (item is TodoItem || item is FixedScheduleItem) return 1;
+      if (item is TimeLogItem) return 2;
+      if (item is TodoPlanBlock) return 3;
+      if (item is PomodoroRecord) return 4;
+      return 5;
+    }
+
+    if (items.length > 1) {
+      final sortKeys = HashMap<dynamic, (int, int)>.identity();
+      for (final item in items) {
+        sortKeys[item] = (getStartTime(item), getPriority(item));
+      }
+      items.sort((a, b) {
+        final keyA = sortKeys[a]!;
+        final keyB = sortKeys[b]!;
+        final timeComparison = keyA.$1.compareTo(keyB.$1);
+        if (timeComparison != 0) return timeComparison;
+        return keyA.$2.compareTo(keyB.$2);
+      });
+    }
     return items;
   }
 
@@ -383,7 +391,7 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
     String keyScope = 'sidebar',
   }) {
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
-    final String dateStr = DateFormat('yyyy年M月d日').format(day);
+    final String dateStr = _cachedDateFormat('yyyy年M月d日').format(day);
     final String weekdayStr = [
       '周一',
       '周二',
@@ -393,7 +401,7 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
       '周六',
       '周日',
     ][day.weekday - 1];
-    final sourceDate = DateFormat('yyyy-MM-dd').format(day);
+    final sourceDate = _cachedDateFormat('yyyy-MM-dd').format(day);
 
     final items = dayItems ?? _dayDetailItems(day);
 
@@ -586,7 +594,7 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
         subtitle: Text(
           (item.teamUuid != null ? '${item.teamName ?? '团队'} · ' : '') +
               (item.dueDate != null
-                  ? '截止: ${DateFormat('HH:mm').format(item.dueDate!)}'
+                  ? '截止: ${_cachedDateFormat('HH:mm').format(item.dueDate!)}'
                   : '无截止时间') +
               (item.remark != null && item.remark!.isNotEmpty
                   ? ' · ${item.remark}'
@@ -625,7 +633,7 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
           style: const TextStyle(fontSize: 15),
         ),
         subtitle: Text(
-          '${DateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(item.startTime, isUtc: true).toLocal())} - ${DateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(item.endTime, isUtc: true).toLocal())}',
+          '${_cachedDateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(item.startTime, isUtc: true).toLocal())} - ${_cachedDateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(item.endTime, isUtc: true).toLocal())}',
           style: const TextStyle(fontSize: 12),
         ),
         onTap: () => _openSidebarDetailFromRect(
@@ -667,7 +675,7 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
           style: const TextStyle(fontSize: 15),
         ),
         subtitle: Text(
-          '${DateFormat('HH:mm').format(start)} - ${DateFormat('HH:mm').format(end)} · 计划 ${item.plannedMinutes} 分钟',
+          '${_cachedDateFormat('HH:mm').format(start)} - ${_cachedDateFormat('HH:mm').format(end)} · 计划 ${item.plannedMinutes} 分钟',
           style: const TextStyle(fontSize: 12),
         ),
         onTap: () => _openSidebarDetailFromRect(
@@ -744,7 +752,8 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
       final color = item.colorValue == null
           ? colorScheme.tertiary
           : Color(item.colorValue!);
-      final dateKey = sourceDate ?? DateFormat('yyyy-MM-dd').format(item.start);
+      final dateKey =
+          sourceDate ?? _cachedDateFormat('yyyy-MM-dd').format(item.start);
       final sourceKey = _getDeviceCalendarCardKey(
         item.id,
         dateKey,
@@ -764,7 +773,7 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
         subtitle: Text(
           item.allDay
               ? '全天 · 手机日历（只读）'
-              : '${DateFormat('HH:mm').format(item.start)} - ${DateFormat('HH:mm').format(item.end)} · 手机日历（只读）',
+              : '${_cachedDateFormat('HH:mm').format(item.start)} - ${_cachedDateFormat('HH:mm').format(item.end)} · 手机日历（只读）',
           style: const TextStyle(fontSize: 12),
         ),
         onTap: () =>

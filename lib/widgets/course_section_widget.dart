@@ -273,6 +273,7 @@ class _TodayScheduleList extends StatefulWidget {
 class _TodayScheduleListState extends State<_TodayScheduleList> {
   List<TodoPlanBlock> _blocks = [];
   List<TodoPlanBlock> _tomorrowBlocks = [];
+  Set<String> _plannedTodoIds = <String>{};
   List<FixedScheduleItem> _todayFixedSchedules = [];
   List<FixedScheduleItem> _tomorrowFixedSchedules = [];
   List<CourseItem> _todayCourses = [];
@@ -362,10 +363,21 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
       await StorageService.savePlanBlocks(widget.username, missed);
     }
 
+    final visibleBlocks = blocks.where((block) => !block.isDeleted).toList();
+    final visibleTomorrowBlocks =
+        tomorrowBlocks.where((block) => !block.isDeleted).toList();
+    final plannedTodoIds = <String>{
+      for (final block in visibleBlocks)
+        if (block.todoId.isNotEmpty) block.todoId,
+      for (final block in visibleTomorrowBlocks)
+        if (block.todoId.isNotEmpty) block.todoId,
+    };
+
     if (!mounted) return;
     setState(() {
-      _blocks = blocks.where((b) => !b.isDeleted).toList();
-      _tomorrowBlocks = tomorrowBlocks.where((b) => !b.isDeleted).toList();
+      _blocks = visibleBlocks;
+      _tomorrowBlocks = visibleTomorrowBlocks;
+      _plannedTodoIds = plannedTodoIds;
       _todayFixedSchedules = todayFixedSchedules
           .where(
             (item) =>
@@ -461,22 +473,11 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
     final todayCourses = _todayCourses.isNotEmpty
         ? _todayCourses
         : (_loading ? fallbackCourses : <CourseItem>[]);
-    final allPlannedTodoIds = <String>{};
-    for (final block in _blocks) {
-      if (!block.isDeleted && block.todoId.isNotEmpty) {
-        allPlannedTodoIds.add(block.todoId);
-      }
-    }
-    for (final block in _tomorrowBlocks) {
-      if (!block.isDeleted && block.todoId.isNotEmpty) {
-        allPlannedTodoIds.add(block.todoId);
-      }
-    }
     final timedTodosByDay = _timedTodosForTodayAndTomorrow(
       widget.todos,
       DateTime.now(),
       AppTimeFormats.localDayStartOffset(now, 1),
-      excludeTodoIds: allPlannedTodoIds,
+      excludeTodoIds: _plannedTodoIds,
     );
     final todayTimedTodos = timedTodosByDay.today;
     final tomorrowTimedTodos = timedTodosByDay.tomorrow;

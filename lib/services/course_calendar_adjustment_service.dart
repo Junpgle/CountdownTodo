@@ -378,16 +378,28 @@ class CourseCalendarAdjustmentService {
   }
 
   static Future<List<CourseItem>> applyToCourses(
-    List<CourseItem> rawCourses,
-  ) async {
-    final adjustment = await load();
-    if (adjustment.holidayDates.isEmpty && adjustment.transfers.isEmpty) {
+    List<CourseItem> rawCourses, {
+    CourseCalendarAdjustment? adjustment,
+    List<CourseItem>? fallbackCourses,
+  }) async {
+    final resolvedAdjustment = adjustment ?? await load();
+    if (resolvedAdjustment.holidayDates.isEmpty &&
+        resolvedAdjustment.transfers.isEmpty) {
       return rawCourses;
     }
 
-    final fallbackSemesterMonday =
-        await _resolveFallbackSemesterMonday(rawCourses);
+    DateTime? fallbackSemesterMonday;
+    var fallbackSemesterMondayResolved = false;
     final semesterMondayCache = <String, DateTime?>{};
+
+    Future<DateTime?> resolveFallbackSemesterMonday() async {
+      if (!fallbackSemesterMondayResolved) {
+        fallbackSemesterMonday =
+            await _resolveFallbackSemesterMonday(fallbackCourses ?? rawCourses);
+        fallbackSemesterMondayResolved = true;
+      }
+      return fallbackSemesterMonday;
+    }
 
     Future<DateTime?> semesterMondayFor(CourseItem course) async {
       final semesterId = course.semesterId;
@@ -399,25 +411,30 @@ class CourseCalendarAdjustmentService {
           ? await StorageService.getSemesterStartById(semesterId)
           : null;
       final monday = start == null
-          ? fallbackSemesterMonday
+          ? await resolveFallbackSemesterMonday()
           : CourseScheduleSemantics.mondayOf(start);
       semesterMondayCache[semesterId] = monday;
       return monday;
     }
 
+    final transferSourceDates = resolvedAdjustment.transfers
+        .map((transfer) => transfer.fromDate)
+        .toSet();
     final byDate = <String, List<CourseItem>>{};
-    for (final course in rawCourses) {
-      final date = course.date.trim();
-      if (date.isEmpty) continue;
-      byDate.putIfAbsent(date, () => []).add(course);
+    if (transferSourceDates.isNotEmpty) {
+      for (final course in rawCourses) {
+        final date = course.date.trim();
+        if (date.isEmpty || !transferSourceDates.contains(date)) continue;
+        byDate.putIfAbsent(date, () => []).add(course);
+      }
     }
 
     final adjusted = rawCourses
-        .where((course) => !adjustment.holidayDates.contains(course.date))
+        .where((course) => !resolvedAdjustment.holidayDates.contains(course.date))
         .map((course) => course)
         .toList();
 
-    for (final transfer in adjustment.transfers) {
+    for (final transfer in resolvedAdjustment.transfers) {
       final sourceCourses = byDate[transfer.fromDate] ?? const <CourseItem>[];
       if (sourceCourses.isEmpty) continue;
       final targetDate = _df.parseStrict(transfer.toDate);

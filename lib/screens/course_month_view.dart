@@ -7,6 +7,21 @@ import '../services/pomodoro_service.dart';
 import '../utils/app_color_utils.dart';
 import '../utils/calendar_date_math.dart';
 
+String? _courseMonthDateLocale;
+final _courseMonthDateFormatters = <String, DateFormat>{};
+
+DateFormat _courseMonthDateFormat(String pattern) {
+  final locale = Intl.defaultLocale;
+  if (_courseMonthDateLocale != locale) {
+    _courseMonthDateLocale = locale;
+    _courseMonthDateFormatters.clear();
+  }
+  return _courseMonthDateFormatters.putIfAbsent(
+    pattern,
+    () => DateFormat(pattern, locale),
+  );
+}
+
 class _GanttTodoInterval {
   final TodoItem todo;
   final DateTime start;
@@ -17,6 +32,334 @@ class _GanttTodoInterval {
     required this.start,
     required this.end,
   });
+}
+
+class _CourseMonthDerivedKey {
+  const _CourseMonthDerivedKey({
+    required this.courseMap,
+    required this.todoMap,
+    required this.crossDayTodoMap,
+    required this.logMap,
+    required this.pomMap,
+    required this.fixedScheduleMap,
+    required this.deviceCalendarMap,
+    required this.pomodoroTags,
+    required this.allTodos,
+    required this.startDateMicros,
+    required this.showDays,
+    required this.viewMode,
+    required this.viewFlags,
+    required this.timeZoneOffsetSeconds,
+    required this.locale,
+  });
+
+  final Object courseMap;
+  final Object todoMap;
+  final Object crossDayTodoMap;
+  final Object logMap;
+  final Object pomMap;
+  final Object fixedScheduleMap;
+  final Object deviceCalendarMap;
+  final Object pomodoroTags;
+  final Object allTodos;
+  final int startDateMicros;
+  final int showDays;
+  final int viewMode;
+  final int viewFlags;
+  final int timeZoneOffsetSeconds;
+  final String? locale;
+
+  bool matches(_CourseMonthDerivedKey other) =>
+      identical(courseMap, other.courseMap) &&
+      identical(todoMap, other.todoMap) &&
+      identical(crossDayTodoMap, other.crossDayTodoMap) &&
+      identical(logMap, other.logMap) &&
+      identical(pomMap, other.pomMap) &&
+      identical(fixedScheduleMap, other.fixedScheduleMap) &&
+      identical(deviceCalendarMap, other.deviceCalendarMap) &&
+      identical(pomodoroTags, other.pomodoroTags) &&
+      identical(allTodos, other.allTodos) &&
+      startDateMicros == other.startDateMicros &&
+      showDays == other.showDays &&
+      viewMode == other.viewMode &&
+      viewFlags == other.viewFlags &&
+      timeZoneOffsetSeconds == other.timeZoneOffsetSeconds &&
+      locale == other.locale;
+}
+
+class _CourseMonthDerivedData {
+  _CourseMonthDerivedData({
+    required this.weeks,
+    required this.weekDateKeys,
+    required this.densityMap,
+    required this.ganttTodosByWeek,
+    required this.tagIndexByUuid,
+  });
+
+  final List<List<DateTime>> weeks;
+  final List<List<String>> weekDateKeys;
+  final Map<String, int> densityMap;
+  final List<List<_GanttTodoInterval>> ganttTodosByWeek;
+  final Map<String, int> tagIndexByUuid;
+  final Map<int, List<List<Map<String, dynamic>>>> clusteredRowsByWeek = {};
+}
+
+typedef _CourseMonthDerivedBuilder = Widget Function(
+  BuildContext context,
+  _CourseMonthDerivedData data,
+);
+
+class _CourseMonthDerivedView extends StatefulWidget {
+  const _CourseMonthDerivedView({
+    required this.selectedMonth,
+    required this.courseMap,
+    required this.todoMap,
+    required this.crossDayTodoMap,
+    required this.logMap,
+    required this.pomMap,
+    required this.fixedScheduleMap,
+    required this.deviceCalendarMap,
+    required this.pomodoroTags,
+    required this.activeDataViews,
+    required this.allTodos,
+    required this.viewMode,
+    required this.currentWeekMonday,
+    required this.builder,
+  });
+
+  final DateTime selectedMonth;
+  final Map<String, List<CourseItem>> courseMap;
+  final Map<String, List<TodoItem>> todoMap;
+  final Map<String, List<TodoItem>> crossDayTodoMap;
+  final Map<String, List<TimeLogItem>> logMap;
+  final Map<String, List<PomodoroRecord>> pomMap;
+  final Map<String, List<FixedScheduleItem>> fixedScheduleMap;
+  final Map<String, List<DeviceCalendarEvent>> deviceCalendarMap;
+  final List<PomodoroTag> pomodoroTags;
+  final Set<String> activeDataViews;
+  final List<TodoItem> allTodos;
+  final int viewMode;
+  final DateTime? currentWeekMonday;
+  final _CourseMonthDerivedBuilder builder;
+
+  @override
+  State<_CourseMonthDerivedView> createState() =>
+      _CourseMonthDerivedViewState();
+}
+
+class _CourseMonthDerivedViewState extends State<_CourseMonthDerivedView> {
+  _CourseMonthDerivedKey? _cachedKey;
+  _CourseMonthDerivedData? _cachedData;
+
+  _CourseMonthDerivedData _dataForCurrentInputs() {
+    final DateTime startDate;
+    final int showDays;
+    if (widget.viewMode == 2) {
+      final firstDayOfMonth = DateTime(
+        widget.selectedMonth.year,
+        widget.selectedMonth.month,
+        1,
+      );
+      final daysBefore = firstDayOfMonth.weekday - 1;
+      startDate = CalendarDateMath.addDays(firstDayOfMonth, -daysBefore);
+      showDays =
+          daysBefore +
+          DateTime(
+            widget.selectedMonth.year,
+            widget.selectedMonth.month + 1,
+            0,
+          ).day;
+    } else {
+      startDate = CalendarDateMath.dateOnly(
+        widget.currentWeekMonday ?? widget.selectedMonth,
+      );
+      showDays = 14;
+    }
+
+    const viewFlagNames = [
+      'courses',
+      'todos',
+      'timeLogs',
+      'pomodoros',
+      'fixedSchedules',
+      'deviceCalendar',
+      'hideCrossDay',
+    ];
+    var viewFlags = 0;
+    for (var index = 0; index < viewFlagNames.length; index++) {
+      if (widget.activeDataViews.contains(viewFlagNames[index])) {
+        viewFlags |= 1 << index;
+      }
+    }
+    final key = _CourseMonthDerivedKey(
+      courseMap: widget.courseMap,
+      todoMap: widget.todoMap,
+      crossDayTodoMap: widget.crossDayTodoMap,
+      logMap: widget.logMap,
+      pomMap: widget.pomMap,
+      fixedScheduleMap: widget.fixedScheduleMap,
+      deviceCalendarMap: widget.deviceCalendarMap,
+      pomodoroTags: widget.pomodoroTags,
+      allTodos: widget.allTodos,
+      startDateMicros: startDate.microsecondsSinceEpoch,
+      showDays: showDays,
+      viewMode: widget.viewMode,
+      viewFlags: viewFlags,
+      timeZoneOffsetSeconds: DateTime.now().timeZoneOffset.inSeconds,
+      locale: Intl.defaultLocale,
+    );
+    final cachedKey = _cachedKey;
+    final cachedData = _cachedData;
+    if (cachedKey != null && cachedData != null && cachedKey.matches(key)) {
+      return cachedData;
+    }
+
+    final dateKeyFormat = _courseMonthDateFormat('yyyy-MM-dd');
+    final rowCount = (showDays / 7).ceil();
+    final weeks = List.generate(
+      rowCount,
+      (weekIndex) => List.generate(
+        7,
+        (dayIndex) =>
+            CalendarDateMath.addDays(startDate, weekIndex * 7 + dayIndex),
+      ),
+    );
+    final weekDateKeys = [
+      for (final week in weeks)
+        [for (final day in week) dateKeyFormat.format(day)],
+    ];
+
+    final tagIndexByUuid = <String, int>{};
+    if (widget.activeDataViews.contains('timeLogs') ||
+        widget.activeDataViews.contains('pomodoros')) {
+      for (var index = 0; index < widget.pomodoroTags.length; index++) {
+        tagIndexByUuid.putIfAbsent(
+          widget.pomodoroTags[index].uuid,
+          () => index,
+        );
+      }
+    }
+
+    final densityMap = <String, int>{};
+    void addDensity(String dateKey, int weight) {
+      if (weight != 0) {
+        densityMap[dateKey] = (densityMap[dateKey] ?? 0) + weight;
+      }
+    }
+
+    final showCourses = widget.activeDataViews.contains('courses');
+    final showTodos = widget.activeDataViews.contains('todos');
+    final showTimeLogs = widget.activeDataViews.contains('timeLogs');
+    final showPomodoros = widget.activeDataViews.contains('pomodoros');
+    final showFixedSchedules = widget.activeDataViews.contains(
+      'fixedSchedules',
+    );
+    final showDeviceCalendar = widget.activeDataViews.contains(
+      'deviceCalendar',
+    );
+    for (final weekKeys in weekDateKeys) {
+      for (final dateKey in weekKeys) {
+        if (showCourses) {
+          addDensity(dateKey, 3 * (widget.courseMap[dateKey]?.length ?? 0));
+        }
+        if (showTodos) {
+          addDensity(dateKey, widget.todoMap[dateKey]?.length ?? 0);
+          addDensity(dateKey, widget.crossDayTodoMap[dateKey]?.length ?? 0);
+        }
+        if (showTimeLogs) {
+          addDensity(dateKey, 2 * (widget.logMap[dateKey]?.length ?? 0));
+        }
+        if (showPomodoros) {
+          addDensity(dateKey, 2 * (widget.pomMap[dateKey]?.length ?? 0));
+        }
+        if (showFixedSchedules) {
+          addDensity(
+            dateKey,
+            3 * (widget.fixedScheduleMap[dateKey]?.length ?? 0),
+          );
+        }
+        if (showDeviceCalendar) {
+          addDensity(
+            dateKey,
+            2 * (widget.deviceCalendarMap[dateKey]?.length ?? 0),
+          );
+        }
+      }
+    }
+
+    final ganttTodos = <_GanttTodoInterval>[];
+    if (showTodos) {
+      final hideCrossDay = widget.activeDataViews.contains('hideCrossDay');
+      for (final todo in widget.allTodos) {
+        final dueDate = todo.dueDate;
+        if (todo.isDeleted || dueDate == null) continue;
+
+        final start = DateTime.fromMillisecondsSinceEpoch(
+          todo.createdDate ?? todo.createdAt,
+        ).toLocal();
+        final isCrossDay = !DateUtils.isSameDay(start, dueDate);
+        if (isCrossDay && hideCrossDay) continue;
+        ganttTodos.add(
+          _GanttTodoInterval(todo: todo, start: start, end: dueDate),
+        );
+      }
+    }
+    final ganttTodosByWeek = List<List<_GanttTodoInterval>>.generate(
+      weeks.length,
+      (_) => <_GanttTodoInterval>[],
+    );
+    if (ganttTodos.isNotEmpty) {
+      final weekStarts = [for (final week in weeks) week.first];
+      final weekEnds = [
+        for (final week in weeks)
+          CalendarDateMath.addDays(
+            week.last,
+            1,
+          ).subtract(const Duration(microseconds: 1)),
+      ];
+      for (final interval in ganttTodos) {
+        if (DateUtils.isSameDay(interval.start, interval.end)) continue;
+
+        var low = 0;
+        var high = weekEnds.length;
+        while (low < high) {
+          final middle = (low + high) ~/ 2;
+          if (weekEnds[middle].isBefore(interval.start)) {
+            low = middle + 1;
+          } else {
+            high = middle;
+          }
+        }
+        for (
+          var weekIndex = low;
+          weekIndex < weekStarts.length &&
+              !weekStarts[weekIndex].isAfter(interval.end);
+          weekIndex++
+        ) {
+          if (interval.start.isAfter(weekEnds[weekIndex]) ||
+              interval.end.isBefore(weekStarts[weekIndex])) {
+            continue;
+          }
+          ganttTodosByWeek[weekIndex].add(interval);
+        }
+      }
+    }
+
+    final data = _CourseMonthDerivedData(
+      weeks: weeks,
+      weekDateKeys: weekDateKeys,
+      densityMap: densityMap,
+      ganttTodosByWeek: ganttTodosByWeek,
+      tagIndexByUuid: tagIndexByUuid,
+    );
+    _cachedKey = key;
+    _cachedData = data;
+    return data;
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      widget.builder(context, _dataForCurrentInputs());
 }
 
 class CourseMonthView extends StatelessWidget {
@@ -65,319 +408,238 @@ class CourseMonthView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    bool isDark = Theme.of(context).brightness == Brightness.dark;
-    final dateKeyFormat = DateFormat('yyyy-MM-dd');
-    final tagIndexByUuid = <String, int>{};
-    if (activeDataViews.contains('timeLogs') ||
-        activeDataViews.contains('pomodoros')) {
-      for (var index = 0; index < pomodoroTags.length; index++) {
-        tagIndexByUuid.putIfAbsent(pomodoroTags[index].uuid, () => index);
-      }
-    }
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     DateFormat? eventTimeFormat;
     DateFormat getEventTimeFormat() =>
-        eventTimeFormat ??= DateFormat('HH:mm');
+        eventTimeFormat ??= _courseMonthDateFormat('HH:mm');
 
-    // 1. 确定起始日期与天数
-    final DateTime startDate;
-    int showDays;
-    if (viewMode == 2) {
-      final firstDayOfMonth = DateTime(
-        selectedMonth.year,
-        selectedMonth.month,
-        1,
-      );
-      final daysBefore = firstDayOfMonth.weekday - 1;
-      startDate = CalendarDateMath.addDays(firstDayOfMonth, -daysBefore);
-      showDays =
-          daysBefore +
-          DateTime(selectedMonth.year, selectedMonth.month + 1, 0).day;
-    } else {
-      startDate = CalendarDateMath.dateOnly(currentWeekMonday ?? selectedMonth);
-      showDays = 14;
-    }
-    final int rowCount = (showDays / 7).ceil();
-    final List<List<DateTime>> weeks = List.generate(
-      rowCount,
-      (w) => List.generate(
-        7,
-        (d) => CalendarDateMath.addDays(startDate, w * 7 + d),
+    return _CourseMonthDerivedView(
+      selectedMonth: selectedMonth,
+      courseMap: courseMap,
+      todoMap: todoMap,
+      crossDayTodoMap: crossDayTodoMap,
+      logMap: logMap,
+      pomMap: pomMap,
+      fixedScheduleMap: fixedScheduleMap,
+      deviceCalendarMap: deviceCalendarMap,
+      pomodoroTags: pomodoroTags,
+      activeDataViews: activeDataViews,
+      allTodos: allTodos,
+      viewMode: viewMode,
+      currentWeekMonday: currentWeekMonday,
+      builder: (context, data) => Column(
+        children: [
+          _buildWeekdayHeader(context),
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final availableHeight = constraints.maxHeight;
+                final rowHeight = (availableHeight / data.weeks.length).clamp(
+                  110.0,
+                  1000.0,
+                );
+                return ListView.builder(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: data.weeks.length,
+                  itemBuilder: (context, weekIndex) {
+                    return _buildWeekRow(
+                      context,
+                      data.weeks[weekIndex],
+                      data.weekDateKeys[weekIndex],
+                      data.ganttTodosByWeek[weekIndex],
+                      data.densityMap,
+                      isDark,
+                      rowHeight,
+                      getEventTimeFormat,
+                      data.tagIndexByUuid,
+                      data,
+                      weekIndex,
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
+  }
 
-    // 2. 预计算所有全局数据 (应用筛选逻辑)
-    final Map<String, int> densityMap = {};
-    void addDensity(String dStr, int weight) {
-      if (weight != 0) {
-        densityMap[dStr] = (densityMap[dStr] ?? 0) + weight;
-      }
-    }
+  List<List<Map<String, dynamic>>> _clusteredRowsForWeek(
+    _CourseMonthDerivedData derivedData,
+    int weekIndex,
+    List<DateTime> weekDays,
+    List<String> weekDateKeys,
+    List<_GanttTodoInterval> weekGanttTodos,
+    DateFormat Function() getEventTimeFormat,
+    Map<String, int> tagIndexByUuid,
+  ) {
+    return derivedData.clusteredRowsByWeek.putIfAbsent(weekIndex, () {
+      final weekBars = <Map<String, dynamic>>[];
+      final weekStart = weekDays.first;
+      final weekEnd = CalendarDateMath.addDays(
+        weekDays.last,
+        1,
+      ).subtract(const Duration(microseconds: 1));
 
-    final showCourses = activeDataViews.contains('courses');
-    final showTodos = activeDataViews.contains('todos');
-    final showTimeLogs = activeDataViews.contains('timeLogs');
-    final showPomodoros = activeDataViews.contains('pomodoros');
-    final showFixedSchedules = activeDataViews.contains('fixedSchedules');
-    final showDeviceCalendar = activeDataViews.contains('deviceCalendar');
-    for (final week in weeks) {
-      for (final day in week) {
-        final dateKey = dateKeyFormat.format(day);
-        if (showCourses) {
-          addDensity(dateKey, 3 * (courseMap[dateKey]?.length ?? 0));
-        }
-        if (showTodos) {
-          addDensity(dateKey, todoMap[dateKey]?.length ?? 0);
-          addDensity(dateKey, crossDayTodoMap[dateKey]?.length ?? 0);
-        }
-        if (showTimeLogs) {
-          addDensity(dateKey, 2 * (logMap[dateKey]?.length ?? 0));
-        }
-        if (showPomodoros) {
-          addDensity(dateKey, 2 * (pomMap[dateKey]?.length ?? 0));
-        }
-        if (showFixedSchedules) {
-          addDensity(dateKey, 3 * (fixedScheduleMap[dateKey]?.length ?? 0));
-        }
-        if (showDeviceCalendar) {
-          addDensity(dateKey, 2 * (deviceCalendarMap[dateKey]?.length ?? 0));
-        }
-      }
-    }
+      // 1. 收集课程和单日待办 (按天遍历)
+      for (var i = 0; i < weekDays.length; i++) {
+        final dateKey = weekDateKeys[i];
 
-    final ganttTodos = <_GanttTodoInterval>[];
-    if (activeDataViews.contains('todos')) {
-      final hideCrossDay = activeDataViews.contains('hideCrossDay');
-      for (final todo in allTodos) {
-        final dueDate = todo.dueDate;
-        if (todo.isDeleted || dueDate == null) continue;
-
-        final start = DateTime.fromMillisecondsSinceEpoch(
-          todo.createdDate ?? todo.createdAt,
-        ).toLocal();
-        final isCrossDay = !DateUtils.isSameDay(start, dueDate);
-        if (isCrossDay && hideCrossDay) continue;
-
-        ganttTodos.add(
-          _GanttTodoInterval(todo: todo, start: start, end: dueDate),
-        );
-      }
-    }
-    final ganttTodosByWeek = List<List<_GanttTodoInterval>>.generate(
-      weeks.length,
-      (_) => <_GanttTodoInterval>[],
-    );
-    if (ganttTodos.isNotEmpty) {
-      final weekStarts = [for (final week in weeks) week.first];
-      final weekEnds = [
-        for (final week in weeks)
-          CalendarDateMath.addDays(week.last, 1).subtract(
-            const Duration(microseconds: 1),
-          ),
-      ];
-      for (final interval in ganttTodos) {
-        if (DateUtils.isSameDay(interval.start, interval.end)) continue;
-
-        var low = 0;
-        var high = weekEnds.length;
-        while (low < high) {
-          final middle = (low + high) ~/ 2;
-          if (weekEnds[middle].isBefore(interval.start)) {
-            low = middle + 1;
-          } else {
-            high = middle;
+        if (activeDataViews.contains('courses')) {
+          for (final course in courseMap[dateKey] ?? const <CourseItem>[]) {
+            weekBars.add({
+              'course': course,
+              'start': i,
+              'end': i,
+              'title': course.courseName,
+            });
           }
         }
-        for (var weekIndex = low;
-            weekIndex < weekStarts.length &&
-                !weekStarts[weekIndex].isAfter(interval.end);
-            weekIndex++) {
-          if (interval.start.isAfter(weekEnds[weekIndex]) ||
-              interval.end.isBefore(weekStarts[weekIndex])) {
-            continue;
+
+        if (activeDataViews.contains('fixedSchedules')) {
+          for (final schedule
+              in fixedScheduleMap[dateKey] ?? const <FixedScheduleItem>[]) {
+            weekBars.add({
+              'fixedSchedule': schedule,
+              'start': i,
+              'end': i,
+              'title': schedule.title,
+            });
           }
-          ganttTodosByWeek[weekIndex].add(interval);
+        }
+
+        if (activeDataViews.contains('todos')) {
+          for (final todo in todoMap[dateKey] ?? const <TodoItem>[]) {
+            // 只添加非跨周任务，跨周任务统一在下面处理
+            final start = DateTime.fromMillisecondsSinceEpoch(
+              todo.createdDate ?? todo.createdAt,
+            ).toLocal();
+            final end = todo.dueDate ?? start;
+            if (DateUtils.isSameDay(start, end)) {
+              weekBars.add({
+                'todo': todo,
+                'start': i,
+                'end': i,
+                'title': todo.title,
+              });
+            }
+          }
+        }
+
+        if (activeDataViews.contains('timeLogs')) {
+          for (final log in logMap[dateKey] ?? const <TimeLogItem>[]) {
+            final tag = _firstTag(log.tagUuids, tagIndexByUuid);
+            weekBars.add({
+              'timeLog': log,
+              'start': i,
+              'end': i,
+              'title': log.title.isNotEmpty ? log.title : tag?.name ?? '时间日志',
+              '_tagColor': tag == null ? null : _hexToColor(tag.color),
+            });
+          }
+        }
+
+        if (activeDataViews.contains('pomodoros')) {
+          for (final pomodoro in pomMap[dateKey] ?? const <PomodoroRecord>[]) {
+            final tag = _firstTag(pomodoro.tagUuids, tagIndexByUuid);
+            weekBars.add({
+              'pomodoro': pomodoro,
+              'start': i,
+              'end': i,
+              'title': tag?.name ?? '番茄钟',
+              '_tagColor': tag == null ? null : _hexToColor(tag.color),
+            });
+          }
+        }
+
+        if (activeDataViews.contains('deviceCalendar')) {
+          for (final event
+              in deviceCalendarMap[dateKey] ?? const <DeviceCalendarEvent>[]) {
+            weekBars.add({
+              'deviceCalendar': event,
+              'start': i,
+              'end': i,
+              'title': _deviceCalendarTitle(event, getEventTimeFormat),
+            });
+          }
         }
       }
-    }
 
-    return Column(
-      children: [
-        _buildWeekdayHeader(context),
-        Expanded(
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              double availableHeight = constraints.maxHeight;
-              double rowHeight = (availableHeight / weeks.length).clamp(
-                110.0,
-                1000.0,
-              );
-              return ListView.builder(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: weeks.length,
-                itemBuilder: (context, weekIdx) {
-                  return _buildWeekRow(
-                    context,
-                    weeks[weekIdx],
-                    ganttTodosByWeek[weekIdx],
-                    densityMap,
-                    isDark,
-                    rowHeight,
-                    dateKeyFormat,
-                    getEventTimeFormat,
-                    tagIndexByUuid,
-                  );
-                },
-              );
-            },
-          ),
-        ),
-      ],
-    );
+      // 2. 收集跨周/跨天待办 (区间判定)
+      if (activeDataViews.contains('todos')) {
+        for (final interval in weekGanttTodos) {
+          final todo = interval.todo;
+          final start = interval.start;
+          final end = interval.end;
+
+          // 计算在本周内的显示范围 (0-6)
+          final startIndex = start.isBefore(weekStart)
+              ? 0
+              : CalendarDateMath.daysBetween(weekStart, start);
+          final endIndex = end.isAfter(weekEnd)
+              ? 6
+              : CalendarDateMath.daysBetween(weekStart, end);
+
+          weekBars.add({
+            'todo': todo,
+            'start': startIndex.clamp(0, 6),
+            'end': endIndex.clamp(0, 6),
+            'title': todo.title,
+          });
+        }
+      }
+
+      // 3. 排序 (未完成待办优先，然后课程、时间日志、番茄钟、已完成待办)
+      final cacheSortPriorities = weekBars.length > 4;
+      if (cacheSortPriorities) {
+        for (final bar in weekBars) {
+          bar['_sortPriority'] = _barPriority(bar);
+        }
+      }
+      weekBars.sort((a, b) {
+        final priorityA = cacheSortPriorities
+            ? a['_sortPriority'] as int
+            : _barPriority(a);
+        final priorityB = cacheSortPriorities
+            ? b['_sortPriority'] as int
+            : _barPriority(b);
+        if (priorityA != priorityB) return priorityA.compareTo(priorityB);
+
+        final lengthA = (a['end'] as int) - (a['start'] as int);
+        final lengthB = (b['end'] as int) - (b['start'] as int);
+        if (lengthA != lengthB) return lengthB.compareTo(lengthA);
+
+        return (a['start'] as int).compareTo(b['start'] as int);
+      });
+
+      return _clusterBars(weekBars);
+    });
   }
 
   Widget _buildWeekRow(
     BuildContext context,
     List<DateTime> weekDays,
+    List<String> weekDateKeys,
     List<_GanttTodoInterval> weekGanttTodos,
     Map<String, int> densityMap,
     bool isDark,
     double cellHeight,
-    DateFormat dateKeyFormat,
     DateFormat Function() getEventTimeFormat,
     Map<String, int> tagIndexByUuid,
+    _CourseMonthDerivedData derivedData,
+    int weekIndex,
   ) {
-    final List<Map<String, dynamic>> weekBars = [];
-    final DateTime weekStart = weekDays.first;
-    final DateTime weekEnd = CalendarDateMath.addDays(
-      weekDays.last,
-      1,
-    ).subtract(const Duration(microseconds: 1));
-
-    // 1. 收集课程和单日待办 (按天遍历)
-    for (int i = 0; i < weekDays.length; i++) {
-      final day = weekDays[i];
-      final dStr = dateKeyFormat.format(day);
-
-      if (activeDataViews.contains('courses')) {
-        for (var c in (courseMap[dStr] ?? [])) {
-          weekBars.add({
-            'course': c,
-            'start': i,
-            'end': i,
-            'title': c.courseName,
-          });
-        }
-      }
-
-      if (activeDataViews.contains('fixedSchedules')) {
-        for (final schedule in (fixedScheduleMap[dStr] ?? [])) {
-          weekBars.add({
-            'fixedSchedule': schedule,
-            'start': i,
-            'end': i,
-            'title': schedule.title,
-          });
-        }
-      }
-
-      if (activeDataViews.contains('todos')) {
-        for (var t in (todoMap[dStr] ?? [])) {
-          // 只添加非跨周任务，跨周任务统一在下面处理
-          DateTime start = DateTime.fromMillisecondsSinceEpoch(
-            t.createdDate ?? t.createdAt,
-          ).toLocal();
-          DateTime end = t.dueDate ?? start;
-          if (DateUtils.isSameDay(start, end)) {
-            weekBars.add({'todo': t, 'start': i, 'end': i, 'title': t.title});
-          }
-        }
-      }
-
-      if (activeDataViews.contains('timeLogs')) {
-        for (var l in (logMap[dStr] ?? [])) {
-          final tag = _firstTag(l.tagUuids, tagIndexByUuid);
-          weekBars.add({
-            'timeLog': l,
-            'start': i,
-            'end': i,
-            'title': l.title.isNotEmpty ? l.title : tag?.name ?? '时间日志',
-            '_tagColor': tag == null ? null : _hexToColor(tag.color),
-          });
-        }
-      }
-
-      if (activeDataViews.contains('pomodoros')) {
-        for (var p in (pomMap[dStr] ?? [])) {
-          final tag = _firstTag(p.tagUuids, tagIndexByUuid);
-          weekBars.add({
-            'pomodoro': p,
-            'start': i,
-            'end': i,
-            'title': tag?.name ?? '番茄钟',
-            '_tagColor': tag == null ? null : _hexToColor(tag.color),
-          });
-        }
-      }
-
-      if (activeDataViews.contains('deviceCalendar')) {
-        for (final event in (deviceCalendarMap[dStr] ?? [])) {
-          weekBars.add({
-            'deviceCalendar': event,
-            'start': i,
-            'end': i,
-            'title': _deviceCalendarTitle(event, getEventTimeFormat),
-          });
-        }
-      }
-    }
-
-    // 2. 收集跨周/跨天待办 (区间判定)
-    if (activeDataViews.contains('todos')) {
-      for (final interval in weekGanttTodos) {
-        final t = interval.todo;
-        final tStart = interval.start;
-        final tEnd = interval.end;
-
-        // 计算在本周内的显示范围 (0-6)
-        int startIdx = tStart.isBefore(weekStart)
-            ? 0
-            : CalendarDateMath.daysBetween(weekStart, tStart);
-        int endIdx = tEnd.isAfter(weekEnd)
-            ? 6
-            : CalendarDateMath.daysBetween(weekStart, tEnd);
-
-        weekBars.add({
-          'todo': t,
-          'start': startIdx.clamp(0, 6),
-          'end': endIdx.clamp(0, 6),
-          'title': t.title,
-        });
-      }
-    }
-
-    // 3. 排序 (未完成待办优先，然后课程、时间日志、番茄钟、已完成待办)
-    final cacheSortPriorities = weekBars.length > 4;
-    if (cacheSortPriorities) {
-      for (final bar in weekBars) {
-        bar['_sortPriority'] = _barPriority(bar);
-      }
-    }
-    weekBars.sort((a, b) {
-      final priorityA = cacheSortPriorities
-          ? a['_sortPriority'] as int
-          : _barPriority(a);
-      final priorityB = cacheSortPriorities
-          ? b['_sortPriority'] as int
-          : _barPriority(b);
-      if (priorityA != priorityB) return priorityA.compareTo(priorityB);
-
-      int lenA = (a['end'] as int) - (a['start'] as int);
-      int lenB = (b['end'] as int) - (b['start'] as int);
-      if (lenA != lenB) return lenB.compareTo(lenA);
-
-      return (a['start'] as int).compareTo(b['start'] as int);
-    });
+    final clusteredRows = _clusteredRowsForWeek(
+      derivedData,
+      weekIndex,
+      weekDays,
+      weekDateKeys,
+      weekGanttTodos,
+      getEventTimeFormat,
+      tagIndexByUuid,
+    );
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -389,8 +651,9 @@ class CourseMonthView extends StatelessWidget {
             children: [
               // 背景层：热力图
               Row(
-                children: weekDays.map((day) {
-                  final dStr = dateKeyFormat.format(day);
+                children: List.generate(weekDays.length, (dayIndex) {
+                  final day = weekDays[dayIndex];
+                  final dStr = weekDateKeys[dayIndex];
                   int count = densityMap[dStr] ?? 0;
                   Color? heatColor;
                   if (count > 0) {
@@ -439,7 +702,7 @@ class CourseMonthView extends StatelessWidget {
                       ),
                     ),
                   );
-                }).toList(),
+                }),
               ),
 
               // 甘特图层
@@ -450,7 +713,6 @@ class CourseMonthView extends StatelessWidget {
                 bottom: viewMode == 2 ? 12 : 4,
                 child: LayoutBuilder(
                   builder: (context, ganttConstraints) {
-                    final clusteredRows = _clusterBars(weekBars);
                     if (clusteredRows.isEmpty) return const SizedBox.shrink();
 
                     final bool isHalfMonthView = viewMode != 2;
@@ -495,8 +757,7 @@ class CourseMonthView extends StatelessWidget {
                                         as DeviceCalendarEvent?;
                                 final int start = bar['start'];
                                 final int end = bar['end'];
-                                final String dateKey =
-                                    dateKeyFormat.format(weekDays[start]);
+                                final String dateKey = weekDateKeys[start];
                                 final sourceKey = deviceCalendarEvent == null
                                     ? null
                                     : deviceCalendarCardKeyBuilder?.call(
@@ -763,23 +1024,8 @@ class CourseMonthView extends StatelessWidget {
     // Small dots and the detailed timeline honor the cross-day visibility setting.
     final showDetailedTodos = viewMode == 1 && height > 150;
     final showTodoMiniDot = viewMode == 2;
-    final hideCrossDay = activeDataViews.contains('hideCrossDay');
-    bool isVisibleTodo(TodoItem todo) {
-      final dueDate = todo.dueDate;
-      if (dueDate == null) return true;
-      final start = DateTime.fromMillisecondsSinceEpoch(
-        todo.createdDate ?? todo.createdAt,
-      ).toLocal();
-      return DateUtils.isSameDay(start, dueDate);
-    }
-
-    final filteredTodos = !showDetailedTodos
-        ? const <TodoItem>[]
-        : hideCrossDay
-        ? todos.where(isVisibleTodo).toList()
-        : todos;
-    final hasVisibleTodos = showTodoMiniDot &&
-        (hideCrossDay ? todos.any(isVisibleTodo) : todos.isNotEmpty);
+    final filteredTodos = showDetailedTodos ? todos : const <TodoItem>[];
+    final hasVisibleTodos = showTodoMiniDot && todos.isNotEmpty;
 
     return Container(
       decoration: BoxDecoration(

@@ -1,6 +1,26 @@
 part of 'course_screens.dart';
 // ignore_for_file: annotate_overrides, unused_element, unused_element_parameter
 
+class _IdentityIndexCache<T extends Object> {
+  Object? _source;
+  Map<T, int>? _indices;
+
+  Map<T, int> indicesFor(Object source, Iterable<T> items) {
+    if (identical(_source, source)) return _indices!;
+
+    final indices = HashMap<T, int>.identity();
+    var index = 0;
+    for (final item in items) {
+      if (!indices.containsKey(item)) indices[item] = index;
+      index++;
+    }
+
+    _source = source;
+    _indices = indices;
+    return indices;
+  }
+}
+
 class _PlanPomodoroProgressIndex {
   _PlanPomodoroProgressIndex(this.records) {
     for (var index = 0; index < records.length; index++) {
@@ -31,8 +51,6 @@ class _PlanPomodoroProgressIndex {
   final _recordsByTodoId = <String, List<int>>{};
   final _progressByPlan =
       HashMap<TodoPlanBlock, Map<String, dynamic>>.identity();
-
-  void clearProgressCache() => _progressByPlan.clear();
 
   Map<String, dynamic> progressFor(TodoPlanBlock plan) =>
       _progressByPlan.putIfAbsent(plan, () {
@@ -180,6 +198,14 @@ class _PomodoroPlanDayAssociationIndex {
 
 mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
   _PlanPomodoroProgressIndex? _cachedPlanPomodoroProgressIndex;
+  Map<int, List<TodoPlanBlock>>? _visiblePlansSource;
+  Map<TodoPlanBlock, int> _cachedVisiblePlanIndices = const {};
+  List<_HiddenTimeRange>? _hiddenTimeRangesSource;
+  List<double> _hiddenRangeDurationPrefix = const [0.0];
+  final _todoIndexCache = _IdentityIndexCache<TodoItem>();
+  final _timeLogIndexCache = _IdentityIndexCache<TimeLogItem>();
+  final _pomodoroIndexCache = _IdentityIndexCache<PomodoroRecord>();
+  final _courseIndexCache = _IdentityIndexCache<CourseItem>();
 
   @override
   void _invalidatePlanPomodoroProgressIndex() {
@@ -187,17 +213,16 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
   }
 
   _PlanPomodoroProgressIndex? _planPomodoroProgressIndexFor(
-    List<TodoPlanBlock> visiblePlans,
+    int uniquePlanCount,
   ) {
-    if (visiblePlans.length <= 1 ||
-        visiblePlans.length * _allPomodoroRecords.length <= 128) {
+    if (uniquePlanCount <= 1 ||
+        uniquePlanCount * _allPomodoroRecords.length <= 128) {
       _cachedPlanPomodoroProgressIndex = null;
       return null;
     }
 
     final cached = _cachedPlanPomodoroProgressIndex;
     if (cached != null && identical(cached.records, _allPomodoroRecords)) {
-      cached.clearProgressCache();
       return cached;
     }
     final index = _PlanPomodoroProgressIndex(_allPomodoroRecords);
@@ -205,26 +230,72 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
     return index;
   }
 
-  Map<T, int> _identityIndices<T extends Object>(Iterable<T> items) {
-    final indices = HashMap<T, int>.identity();
+  void _prepareVisiblePlanCache() {
+    final source = _planBlocksPerDay;
+    if (identical(_visiblePlansSource, source)) return;
+
+    final indices = HashMap<TodoPlanBlock, int>.identity();
     var index = 0;
-    for (final item in items) {
-      if (!indices.containsKey(item)) indices[item] = index;
-      index++;
+    for (final dayPlans in source.values) {
+      for (final plan in dayPlans) {
+        if (!indices.containsKey(plan)) indices[plan] = index;
+        index++;
+      }
     }
-    return indices;
+
+    _visiblePlansSource = source;
+    _cachedVisiblePlanIndices = indices;
   }
 
-  double get _totalHiddenMinutes =>
-      _hiddenTimeRanges.fold(0.0, (sum, range) => sum + range.duration);
+  void _prepareHiddenTimeRangeIndex() {
+    final source = _hiddenTimeRanges;
+    if (identical(_hiddenTimeRangesSource, source)) return;
+
+    final durationPrefix = List<double>.filled(source.length + 1, 0.0);
+    for (var index = 0; index < source.length; index++) {
+      durationPrefix[index + 1] =
+          durationPrefix[index] + source[index].duration;
+    }
+
+    _hiddenTimeRangesSource = source;
+    _hiddenRangeDurationPrefix = durationPrefix;
+  }
+
+  int _hiddenRangeUpperBound(double minute) {
+    var low = 0;
+    var high = _hiddenTimeRanges.length;
+    while (low < high) {
+      final middle = low + ((high - low) >> 1);
+      if (_hiddenTimeRanges[middle].startMinute <= minute) {
+        low = middle + 1;
+      } else {
+        high = middle;
+      }
+    }
+    return low;
+  }
+
+  double get _totalHiddenMinutes {
+    _prepareHiddenTimeRangeIndex();
+    return _hiddenRangeDurationPrefix.last;
+  }
 
   double _mapTimeToVirtualMinutes(int hour, int minute) {
     double m = (hour * 60 + minute).toDouble();
     final startMinute = startHour * 60.0;
     if (m < startMinute) return 0;
 
-    final hiddenBefore = _hiddenTimeRanges.fold(
-        0.0, (sum, range) => sum + range.hiddenBefore(m));
+    _prepareHiddenTimeRangeIndex();
+    final upperBound = _hiddenRangeUpperBound(m);
+    var hiddenBefore = _hiddenRangeDurationPrefix[upperBound];
+    if (upperBound > 0) {
+      final range = _hiddenTimeRanges[upperBound - 1];
+      if (m < range.endMinute) {
+        hiddenBefore =
+            _hiddenRangeDurationPrefix[upperBound - 1] +
+                (m - range.startMinute);
+      }
+    }
     double virtualM = m - startMinute - hiddenBefore;
     return virtualM < 0 ? 0 : virtualM;
   }
@@ -735,7 +806,10 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
 
   bool _isHourCollapsed(int hour) {
     double m = hour * 60.0;
-    return _hiddenTimeRanges.any((range) => range.contains(m));
+    _prepareHiddenTimeRangeIndex();
+    final upperBound = _hiddenRangeUpperBound(m);
+    if (upperBound == 0) return false;
+    return _hiddenTimeRanges[upperBound - 1].contains(m);
   }
 
   String _formatMinute(double minute) {
@@ -757,6 +831,28 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
           .add('${_formatMinute(rangeEnd - post)}-${_formatMinute(rangeEnd)}');
     }
     return ranges.join(' & ');
+  }
+
+  bool _timelineColumnOverlaps(
+    List<_TimelineEvent> column,
+    _TimelineEvent event,
+  ) {
+    var low = 0;
+    var high = column.length;
+    while (low < high) {
+      final middle = low + ((high - low) >> 1);
+      if (column[middle].top < event.collisionBottom) {
+        low = middle + 1;
+      } else {
+        high = middle;
+      }
+    }
+
+    // Events in a column are appended in start-time order and never overlap,
+    // so only the last event starting before this interval's end can overlap.
+    final candidateIndex = low - 1;
+    return candidateIndex >= 0 &&
+        column[candidateIndex].collisionBottom > event.top;
   }
 
   Widget _buildGrid(double cellWidth, double minuteHeight) {
@@ -790,11 +886,13 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
           : _pomodoroTags[firstIndex];
     }
 
-    final visiblePlans = _activeDataViews.contains('plans')
-        ? _planBlocksPerDay.values.expand((items) => items).toList()
-        : const <TodoPlanBlock>[];
+    final hasVisiblePlans = _activeDataViews.contains('plans');
+    if (hasVisiblePlans) _prepareVisiblePlanCache();
+    final planIndices = hasVisiblePlans
+        ? _cachedVisiblePlanIndices
+        : const <TodoPlanBlock, int>{};
     final planPomodoroProgressIndex =
-        _planPomodoroProgressIndexFor(visiblePlans);
+        _planPomodoroProgressIndexFor(planIndices.length);
 
     for (int hour = startHour; hour <= endHour; hour++) {
       // 🚀 自适应时间隐藏：如果该小时正点落于本周的合并收窄区间中，跳过不绘制
@@ -935,7 +1033,8 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
     };
 
     if (_activeDataViews.contains('todos')) {
-      final todoIndices = _identityIndices(
+      final todoIndices = _todoIndexCache.indicesFor(
+        _intraDayTodosPerDay,
         _intraDayTodosPerDay.values.expand((items) => items),
       );
       final collisionMap = <String, int>{};
@@ -1140,7 +1239,8 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
     }
 
     if (_activeDataViews.contains('timeLogs')) {
-      final logIndices = _identityIndices(
+      final logIndices = _timeLogIndexCache.indicesFor(
+        _timeLogsPerDay,
         _timeLogsPerDay.values.expand((items) => items),
       );
       for (int weekday = 1; weekday <= 7; weekday++) {
@@ -1291,7 +1391,6 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
     }
 
     if (_activeDataViews.contains('plans')) {
-      final planIndices = _identityIndices(visiblePlans);
       for (int weekday = 1; weekday <= 7; weekday++) {
         for (var plan in _planBlocksPerDay[weekday] ?? <TodoPlanBlock>[]) {
           final start =
@@ -1671,7 +1770,8 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
     }
 
     if (_activeDataViews.contains('pomodoros')) {
-      final pomodoroIndices = _identityIndices(
+      final pomodoroIndices = _pomodoroIndexCache.indicesFor(
+        _pomodorosPerDay,
         _pomodorosPerDay.values.expand((items) => items),
       );
       for (int weekday = 1; weekday <= 7; weekday++) {
@@ -1998,7 +2098,10 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
     }
 
     if (_activeDataViews.contains('courses')) {
-      final courseIndices = _identityIndices(_weekCourses);
+      final courseIndices = _courseIndexCache.indicesFor(
+        _weekCourses,
+        _weekCourses,
+      );
       for (var course in _weekCourses) {
         int sh = course.startTime ~/ 100;
         int sm = course.startTime % 100;
@@ -2147,15 +2250,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
             e.maxColumns = columns.length;
             e.colSpan = 1;
             for (int i = e.columnIndex + 1; i < columns.length; i++) {
-              bool overlap = false;
-              for (var other in columns[i]) {
-                if (other.top < e.collisionBottom &&
-                    other.collisionBottom > e.top) {
-                  overlap = true;
-                  break;
-                }
-              }
-              if (overlap) break;
+              if (_timelineColumnOverlaps(columns[i], e)) break;
               e.colSpan++;
             }
           }
@@ -2188,15 +2283,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
         e.maxColumns = columns.length;
         e.colSpan = 1;
         for (int i = e.columnIndex + 1; i < columns.length; i++) {
-          bool overlap = false;
-          for (var other in columns[i]) {
-            if (other.top < e.collisionBottom &&
-                other.collisionBottom > e.top) {
-              overlap = true;
-              break;
-            }
-          }
-          if (overlap) break;
+          if (_timelineColumnOverlaps(columns[i], e)) break;
           e.colSpan++;
         }
       }
