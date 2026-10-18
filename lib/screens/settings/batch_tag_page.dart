@@ -306,6 +306,17 @@ class _BatchTagPageState extends State<BatchTagPage>
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final useFloatingBottomBar = floatingBottomBarShouldFloat(context);
+    final tabBar = TabBar(
+      controller: _tabController,
+      tabs: const [
+        Tab(text: '番茄钟', icon: Icon(Icons.timer_outlined)),
+        Tab(text: '时间日志', icon: Icon(Icons.schedule_outlined)),
+      ],
+    );
+    final topBarHeight = floatingGlassTopBarHeight(
+      context,
+      bottom: tabBar,
+    );
 
     return Scaffold(
       extendBody: useFloatingBottomBar,
@@ -342,26 +353,17 @@ class _BatchTagPageState extends State<BatchTagPage>
                     ),
                   ),
               ],
-        bottom: TabBar(
-          controller: _tabController,
-          tabs: const [
-            Tab(text: '番茄钟', icon: Icon(Icons.timer_outlined)),
-            Tab(text: '时间日志', icon: Icon(Icons.schedule_outlined)),
-          ],
-        ),
+        bottom: tabBar,
       ),
       body: floatingGlassSettingsBody(
         context,
         standalone: !widget.isEmbedded,
-        topBarHeight: kToolbarHeight + kTextTabBarHeight,
+        topBarHeight: topBarHeight,
         child: _isLoading
             ? const Center(child: CircularProgressIndicator())
             : Padding(
                 padding: EdgeInsets.only(
-                  top: widget.isEmbedded
-                      ? 0
-                      : floatingGlassSettingsContentTopInset(context) +
-                            kTextTabBarHeight,
+                  top: widget.isEmbedded ? 0 : topBarHeight,
                 ),
                 child: Column(
                   children: [
@@ -548,47 +550,60 @@ class _BatchTagPageState extends State<BatchTagPage>
       children: [
         _buildSelectAllBar(true, filtered.length),
         Expanded(
-          child: ListView.builder(
-            itemCount: filtered.length,
-            itemBuilder: (ctx, i) {
-              final pom = filtered[i];
-              final isSelected = _selectedPomodoros.contains(pom.uuid);
-              final startTime = DateTime.fromMillisecondsSinceEpoch(
-                pom.startTime,
-              );
-              final endTime = pom.endTime != null
-                  ? DateTime.fromMillisecondsSinceEpoch(pom.endTime!)
-                  : startTime.add(Duration(seconds: pom.effectiveDuration));
-              final duration = pom.effectiveDuration ~/ 60;
+          child: Builder(
+            builder: (context) {
+              final listPadding = MediaQuery.paddingOf(
+                context,
+              ).copyWith(top: 0);
+              return ListView.builder(
+                padding: listPadding,
+                itemCount: filtered.length,
+                itemBuilder: (ctx, i) {
+                  final pom = filtered[i];
+                  final isSelected = _selectedPomodoros.contains(pom.uuid);
+                  final startTime = DateTime.fromMillisecondsSinceEpoch(
+                    pom.startTime,
+                  );
+                  final endTime = pom.endTime != null
+                      ? DateTime.fromMillisecondsSinceEpoch(pom.endTime!)
+                      : startTime.add(
+                          Duration(seconds: pom.effectiveDuration),
+                        );
+                  final duration = pom.effectiveDuration ~/ 60;
 
-              return ListTile(
-                leading: Checkbox(
-                  value: isSelected,
-                  onChanged: (v) {
-                    setState(() {
-                      if (v == true) {
-                        _selectedPomodoros.add(pom.uuid);
-                      } else {
-                        _selectedPomodoros.remove(pom.uuid);
-                      }
-                    });
-                  },
-                ),
-                title: Text(
-                  pom.todoTitle ?? '番茄钟',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                subtitle: Text(
-                  '${startDateFormat.format(startTime)} → ${endTimeFormat.format(endTime)}  ${duration}min',
-                  style: const TextStyle(fontSize: 11),
-                ),
-                trailing: pom.tagUuids.isNotEmpty
-                    ? _buildTagChips(pom.tagUuids)
-                    : const Text(
-                        '无标签',
-                        style: TextStyle(fontSize: 11, color: Colors.grey),
-                      ),
+                  return ListTile(
+                    leading: Checkbox(
+                      value: isSelected,
+                      onChanged: (v) {
+                        setState(() {
+                          if (v == true) {
+                            _selectedPomodoros.add(pom.uuid);
+                          } else {
+                            _selectedPomodoros.remove(pom.uuid);
+                          }
+                        });
+                      },
+                    ),
+                    title: Text(
+                      pom.todoTitle ?? '番茄钟',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    subtitle: Text(
+                      '${startDateFormat.format(startTime)} → ${endTimeFormat.format(endTime)}  ${duration}min',
+                      style: const TextStyle(fontSize: 11),
+                    ),
+                    trailing: pom.tagUuids.isNotEmpty
+                        ? _buildTagChips(pom.tagUuids)
+                        : const Text(
+                            '无标签',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.grey,
+                            ),
+                          ),
+                  );
+                },
               );
             },
           ),
@@ -612,45 +627,58 @@ class _BatchTagPageState extends State<BatchTagPage>
       children: [
         _buildSelectAllBar(false, filtered.length),
         Expanded(
-          child: ListView.builder(
-            itemCount: filtered.length,
-            itemBuilder: (ctx, i) {
-              final log = filtered[i];
-              final isSelected = _selectedTimeLogs.contains(log.id);
-              final startTime = DateTime.fromMillisecondsSinceEpoch(
-                log.startTime,
-              );
-              final endTime = DateTime.fromMillisecondsSinceEpoch(log.endTime);
-              final duration = (log.endTime - log.startTime) ~/ 60000;
+          child: Builder(
+            builder: (context) {
+              final listPadding = MediaQuery.paddingOf(
+                context,
+              ).copyWith(top: 0);
+              return ListView.builder(
+                padding: listPadding,
+                itemCount: filtered.length,
+                itemBuilder: (ctx, i) {
+                  final log = filtered[i];
+                  final isSelected = _selectedTimeLogs.contains(log.id);
+                  final startTime = DateTime.fromMillisecondsSinceEpoch(
+                    log.startTime,
+                  );
+                  final endTime = DateTime.fromMillisecondsSinceEpoch(
+                    log.endTime,
+                  );
+                  final duration = (log.endTime - log.startTime) ~/ 60000;
 
-              return ListTile(
-                leading: Checkbox(
-                  value: isSelected,
-                  onChanged: (v) {
-                    setState(() {
-                      if (v == true) {
-                        _selectedTimeLogs.add(log.id);
-                      } else {
-                        _selectedTimeLogs.remove(log.id);
-                      }
-                    });
-                  },
-                ),
-                title: Text(
-                  log.title.isNotEmpty ? log.title : '时间日志',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                subtitle: Text(
-                  '${startDateFormat.format(startTime)} → ${endTimeFormat.format(endTime)}  ${duration}min',
-                  style: const TextStyle(fontSize: 11),
-                ),
-                trailing: log.tagUuids.isNotEmpty
-                    ? _buildTagChips(log.tagUuids)
-                    : const Text(
-                        '无标签',
-                        style: TextStyle(fontSize: 11, color: Colors.grey),
-                      ),
+                  return ListTile(
+                    leading: Checkbox(
+                      value: isSelected,
+                      onChanged: (v) {
+                        setState(() {
+                          if (v == true) {
+                            _selectedTimeLogs.add(log.id);
+                          } else {
+                            _selectedTimeLogs.remove(log.id);
+                          }
+                        });
+                      },
+                    ),
+                    title: Text(
+                      log.title.isNotEmpty ? log.title : '时间日志',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    subtitle: Text(
+                      '${startDateFormat.format(startTime)} → ${endTimeFormat.format(endTime)}  ${duration}min',
+                      style: const TextStyle(fontSize: 11),
+                    ),
+                    trailing: log.tagUuids.isNotEmpty
+                        ? _buildTagChips(log.tagUuids)
+                        : const Text(
+                            '无标签',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.grey,
+                            ),
+                          ),
+                  );
+                },
               );
             },
           ),
