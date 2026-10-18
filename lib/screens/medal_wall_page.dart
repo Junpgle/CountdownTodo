@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
+import '../utils/time_utils.dart';
 import '../services/medal_recommendation_service.dart';
 import '../services/timeline_service.dart';
 import '../widgets/floating_glass_control.dart';
 import '../utils/app_dialogs.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
-import 'package:intl/intl.dart';
 
 /// 完整勋章墙页面
 class MedalWallPage extends StatefulWidget {
@@ -866,8 +866,10 @@ class _MedalWallPageState extends State<MedalWallPage>
                                       context,
                                       '首次获得',
                                       medal.firstEarnedAt != null
-                                          ? DateFormat('yyyy-MM-dd')
-                                              .format(medal.firstEarnedAt!)
+                                          ? AppTimeFormats.format(
+                                              medal.firstEarnedAt!,
+                                              'yyyy-MM-dd',
+                                            )
                                           : '暂无数据',
                                       Icons.calendar_today_rounded,
                                     ),
@@ -927,8 +929,10 @@ class _MedalWallPageState extends State<MedalWallPage>
                                 context,
                                 '首次获得',
                                 medal.firstEarnedAt != null
-                                    ? DateFormat('yyyy-MM-dd')
-                                        .format(medal.firstEarnedAt!)
+                                    ? AppTimeFormats.format(
+                                        medal.firstEarnedAt!,
+                                        'yyyy-MM-dd',
+                                      )
                                     : '暂无数据',
                                 Icons.calendar_today_rounded,
                               ),

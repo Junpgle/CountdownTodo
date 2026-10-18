@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../../utils/time_utils.dart';
 import '../../../widgets/floating_glass_control.dart';
 import '../models/finance_models.dart';
 import '../services/ai_usage_cost_service.dart';
@@ -461,7 +462,7 @@ class _AiUsageCostScreenState extends State<AiUsageCostScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '${DateFormat('yyyy年M月').format(_month)} API 调用概览',
+              '${AppTimeFormats.format(_month, 'yyyy年M月')} API 调用概览',
               style: Theme.of(context).textTheme.titleMedium,
             ),
             const SizedBox(height: 10),
@@ -605,7 +606,7 @@ class _AiUsageCostScreenState extends State<AiUsageCostScreen> {
               onPressed: _pickMonth,
               icon: const Icon(Icons.calendar_month_outlined),
               label: Text(
-                DateFormat('yyyy年M月').format(_month),
+                AppTimeFormats.format(_month, 'yyyy年M月'),
                 style: Theme.of(context).textTheme.titleMedium,
               ),
             ),

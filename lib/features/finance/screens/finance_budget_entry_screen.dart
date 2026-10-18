@@ -2,13 +2,13 @@ import 'dart:async';
 
 import '../../../widgets/floating_glass_control.dart';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../models/finance_models.dart';
 import '../services/finance_repository.dart';
 import '../services/finance_storage.dart';
 import '../widgets/finance_management_widgets.dart';
 import '../../../utils/app_dialogs.dart';
+import '../../../utils/time_utils.dart';
 
 class FinanceBudgetEntryScreen extends StatefulWidget {
   final DateTime month;
@@ -491,8 +491,10 @@ class _FinanceBudgetEntryScreenState extends State<FinanceBudgetEntryScreen> {
                                           contentPadding: EdgeInsets.zero,
                                           title: Text(_useSaveTime
                                               ? '保存时刻（现在）'
-                                              : DateFormat('yyyy年M月d日 HH:mm')
-                                                  .format(_balanceTime!)),
+                                              : AppTimeFormats.format(
+                                                  _balanceTime!,
+                                                  'yyyy年M月d日 HH:mm',
+                                                )),
                                           subtitle: const Text('点击选择日期和时刻'),
                                           trailing: const Icon(
                                               Icons.chevron_right_rounded),
