@@ -5,9 +5,109 @@ import 'ai_settings_navigation_service.dart';
 import 'ai_tool_result_context.dart';
 
 class AiActionParser {
+  static const Set<String> _genericSuggestionTerms = {
+    '帮我',
+    '请问',
+    '可以',
+    '是否',
+    '如何',
+    '怎么',
+    '能否',
+    '要不要',
+    '什么',
+    '哪些',
+    '今天',
+    '明天',
+    '昨天',
+    '最近',
+    '这周',
+    '本周',
+    '下周',
+    '还有',
+    '多少',
+    '多久',
+    '一下',
+    '需要',
+    '帮忙',
+    '使用',
+    '深度',
+    '规划',
+    '待办',
+    '任务',
+    '课程',
+    '节课',
+    '效率',
+    '紧急',
+    '分析',
+    '统计',
+    '查询',
+    '查看',
+    '安排',
+    '处理',
+    '创建',
+    '修改',
+    '调整',
+    '添加',
+    '删除',
+    '保存',
+    '开始',
+    '继续',
+    '更新',
+    '生成',
+    '完成',
+    '的',
+    '了',
+    '是',
+    '我',
+    '你',
+    '您',
+    '有',
+    '在',
+    '呢',
+    '吗',
+    '吧',
+    '和',
+    '或',
+    '这',
+    '那',
+    '看',
+    '问',
+    '课程表',
+    '上周',
+    '每天',
+    '每周',
+    '周末',
+    '本月',
+    '本学期',
+    '建议',
+    '后续',
+    '相关',
+    '接下来',
+    '预测',
+    'help',
+    'please',
+    'how',
+    'what',
+    'can',
+    'could',
+    'show',
+    'list',
+    'today',
+    'tomorrow',
+    'week',
+    'plan',
+    'task',
+    'todo',
+    'course',
+    'analyze',
+    'analysis',
+  };
+
   static const String _actionTypes =
       'create_todo|update_todo|complete_todo|'
       'create_habit|create_habit_goal|habit_create|'
+      'update_habit|update_habit_goal|habit_update|'
+      'delete_habit|delete_habit_goal|habit_delete|'
       'delete_todo|reschedule_todo|bulk_reschedule|bulk_reschedule_todo|'
       'create_schedule|update_schedule|cancel_schedule|delete_schedule|'
       'create_fixed_schedule|update_fixed_schedule|cancel_fixed_schedule|'
@@ -35,10 +135,34 @@ class AiActionParser {
     required String originalText,
     Map<String, String> existingTodoTitles = const {},
     Map<String, String> existingScheduleTitles = const {},
+    Set<String>? allowedActionNames,
   }) {
     content = AiToolResultContext.withoutHistory(content);
     final actions = <AiTodoAction>[];
     final planningIntent = _looksLikePlanningIntent(originalText);
+
+    void processAction(Map<String, dynamic> actionData) {
+      final inferredAction = _withInferredAction(
+        actionData,
+        planningIntent: planningIntent,
+      );
+      if (allowedActionNames != null) {
+        final actionName = _canonicalActionName(
+          inferredAction['action']?.toString(),
+        );
+        if (actionName == null || !allowedActionNames.contains(actionName)) {
+          return;
+        }
+      }
+      actions.addAll(
+        _processActionMap(
+          inferredAction,
+          existingTodoTitles,
+          existingScheduleTitles,
+          planningIntent: planningIntent,
+        ),
+      );
+    }
 
     void parseAndProcess(String jsonStr) {
       if (jsonStr.trim().isEmpty) return;
@@ -51,36 +175,15 @@ class AiActionParser {
               (data['version'] == 2 ||
                   data['protocol']?.toString() == 'cdt.actions')) {
             for (final item in envelopeActions.whereType<Map>()) {
-              actions.addAll(
-                _processActionMap(
-                  Map<String, dynamic>.from(item),
-                  existingTodoTitles,
-                  existingScheduleTitles,
-                  planningIntent: planningIntent,
-                ),
-              );
+              processAction(Map<String, dynamic>.from(item));
             }
           } else {
-            actions.addAll(
-              _processActionMap(
-                data,
-                existingTodoTitles,
-                existingScheduleTitles,
-                planningIntent: planningIntent,
-              ),
-            );
+            processAction(data);
           }
         } else if (data is List) {
           for (final item in data) {
             if (item is Map<String, dynamic>) {
-              actions.addAll(
-                _processActionMap(
-                  item,
-                  existingTodoTitles,
-                  existingScheduleTitles,
-                  planningIntent: planningIntent,
-                ),
-              );
+              processAction(item);
             }
           }
         }
@@ -160,23 +263,77 @@ class AiActionParser {
     return cleaned.trim();
   }
 
-  static List<String> extractSuggestions(String content) {
-    final suggestions = <String>[];
+  static List<String> extractSuggestions(
+    String content, {
+    Iterable<String> previouslyShown = const [],
+    String? contextText,
+  }) {
     final regex = RegExp(
       r'\[SUGGEST_START\](.*?)\[SUGGEST_END\]',
       dotAll: true,
     );
-    for (final match in regex.allMatches(content)) {
-      try {
-        final jsonStr = match.group(1)!.trim();
-        final list = jsonDecode(jsonStr) as List;
-        for (final item in list) {
-          final suggestion = item.toString().trim();
-          if (suggestion.isNotEmpty) suggestions.add(suggestion);
+    final matches = regex.allMatches(content).toList();
+    if (matches.isEmpty) return const [];
+    try {
+      final jsonStr = matches.last.group(1)!.trim();
+      final list = jsonDecode(jsonStr) as List;
+      final suggestions = <String>[];
+      final seen = previouslyShown
+          .map((suggestion) => suggestion.trim().toLowerCase())
+          .where((suggestion) => suggestion.isNotEmpty)
+          .toSet();
+      for (final item in list) {
+        if (item is! String) continue;
+        final suggestion = item.trim();
+        if (suggestion.isEmpty ||
+            suggestion.runes.length > 15 ||
+            !seen.add(suggestion.toLowerCase()) ||
+            (contextText != null &&
+                !_isGroundedInContext(suggestion, contextText))) {
+          continue;
         }
-      } catch (_) {}
+        suggestions.add(suggestion);
+        if (suggestions.length == 4) return suggestions;
+      }
+      return suggestions;
+    } catch (_) {
+      return const [];
     }
-    return suggestions;
+  }
+
+  static bool _isGroundedInContext(String suggestion, String contextText) {
+    if (contextText.trim().isEmpty) return false;
+    final suggestionTerms = _meaningfulSuggestionTerms(suggestion);
+    if (suggestionTerms.isEmpty) return false;
+    final contextTerms = _meaningfulSuggestionTerms(contextText);
+    return suggestionTerms.any(contextTerms.contains);
+  }
+
+  static Set<String> _meaningfulSuggestionTerms(String text) {
+    final terms = <String>{};
+    var normalized = text.toLowerCase();
+    final genericTerms = _genericSuggestionTerms.toList()
+      ..sort((a, b) => b.length.compareTo(a.length));
+    for (final genericTerm in genericTerms) {
+      normalized = normalized.replaceAll(genericTerm, ' ');
+    }
+    for (final match in RegExp(
+      r'[\u4E00-\u9FFF]{2,}|[a-zA-Z][a-zA-Z0-9_-]*',
+    ).allMatches(normalized)) {
+      final word = match.group(0)!;
+      if (RegExp(r'^[a-z]').hasMatch(word)) {
+        if (word.length >= 3) terms.add(word);
+        continue;
+      }
+      final runes = word.runes.toList(growable: false);
+      for (var length = 2; length <= 3 && length <= runes.length; length++) {
+        for (var start = 0; start + length <= runes.length; start++) {
+          final term = String.fromCharCodes(runes.skip(start).take(length));
+          terms.add(term);
+        }
+      }
+    }
+    return terms;
   }
 
   static List<AiTodoAction> _processActionMap(
@@ -192,8 +349,12 @@ class AiActionParser {
     switch (actionData['action']) {
       case 'create_todo':
         return _listFromOrSelf(actionData, actionData['todos']).map((todo) {
+          final normalizedTodo = Map<String, dynamic>.from(todo)
+            ..remove('date')
+            ..remove('startTime')
+            ..remove('endTime');
           return AiTodoAction.fromJson({
-            ...todo,
+            ...normalizedTodo,
             'action': actionData['action'],
           });
         }).toList();
@@ -210,6 +371,56 @@ class AiActionParser {
           return AiTodoAction.fromJson({
             ...habit,
             'title': habit['title'] ?? habit['name'],
+            'action': actionData['action'],
+          });
+        }).toList();
+      case 'update_habit':
+      case 'update_habit_goal':
+      case 'habit_update':
+      case 'delete_habit':
+      case 'delete_habit_goal':
+      case 'habit_delete':
+        return _listFromOrSelf(actionData, actionData['updates']).map((habit) {
+          final updateFields = <String, dynamic>{
+            for (final key in const [
+              'name',
+              'icon',
+              'displayMode',
+              'defaultFocusMinutes',
+              'targetValue',
+              'unit',
+              'durationMinutes',
+              'targetTimeMinute',
+              'timeComparison',
+              'timeToleranceMinutes',
+              'periodType',
+              'weekdaysMask',
+              'customIntervalDays',
+              'dayBoundaryMinute',
+              'quickValues',
+              'reminderPolicy',
+              'effectiveFromOption',
+            ])
+              if (habit.containsKey(key)) key: habit[key],
+          };
+          final existingMetadata = habit['metadata'] is Map
+              ? Map<String, dynamic>.from(habit['metadata'] as Map)
+              : <String, dynamic>{};
+          return AiTodoAction.fromJson({
+            ...habit,
+            'habitUuid':
+                habit['habitUuid'] ??
+                habit['habit_uuid'] ??
+                habit['habitId'] ??
+                habit['habit_id'] ??
+                habit['id'],
+            'title': habit['title'] ?? habit['name'] ?? habit['habitName'],
+            'metadata': {
+              ...existingMetadata,
+              if (actionData['action'] == 'update_habit' &&
+                  updateFields.isNotEmpty)
+                'habitUpdateFields': updateFields,
+            },
             'action': actionData['action'],
           });
         }).toList();
@@ -496,23 +707,37 @@ class AiActionParser {
     Map<String, dynamic> data,
     Map<String, String> existingTodoTitles,
   ) {
-    final sourceTodoId =
-        data['sourceTodoId']?.toString() ??
-        data['todoId']?.toString() ??
-        data['source_id']?.toString();
-    final actions = _listFrom(data['todos']).map((todo) {
+    final sourceTodoId = [
+      data['sourceTodoId'],
+      data['todoId'],
+      data['source_id'],
+    ].map((value) => value?.toString().trim() ?? '').firstWhere(
+      (value) => value.isNotEmpty,
+      orElse: () => '',
+    );
+    final splitTodos = _listFrom(data['todos']);
+    if (sourceTodoId.isEmpty ||
+        !existingTodoTitles.containsKey(sourceTodoId) ||
+        splitTodos.isEmpty ||
+        splitTodos.any(
+          (todo) => todo['title']?.toString().trim().isNotEmpty != true,
+        )) {
+      return [];
+    }
+    final deleteSource =
+        data['deleteSource'] == true ||
+        data['deleteSourceTodos'] == true ||
+        data['deleteSources'] == true;
+    final actions = splitTodos.map((todo) {
       return AiTodoAction.fromJson({
         ...todo,
         'action': 'split_todo',
         'sourceTodoId': sourceTodoId,
-        'deleteSourceTodos': data['deleteSource'] == true,
+        'deleteSourceTodos': deleteSource,
       });
     }).toList();
 
-    if (data['deleteSource'] == true &&
-        sourceTodoId != null &&
-        existingTodoTitles.containsKey(sourceTodoId) &&
-        actions.isNotEmpty) {
+    if (deleteSource && actions.isNotEmpty) {
       actions.add(
         AiTodoAction(
           type: AiTodoActionType.deleteTodo,
@@ -529,25 +754,38 @@ class AiActionParser {
     Map<String, dynamic> data,
     Map<String, String> existingTodoTitles,
   ) {
-    final sourceTodoIds = _stringList(data['sourceTodoIds'] ?? data['todoIds'])
+    final rawSourceTodoIds = _stringList(
+      data['sourceTodoIds'] ?? data['todoIds'],
+    )
         .map((id) => id.trim())
-        .where(existingTodoTitles.containsKey)
+        .where((id) => id.isNotEmpty)
         .toSet()
         .toList();
     final todo = data['todo'];
-    final actions = <AiTodoAction>[];
-    if (todo is Map) {
-      actions.add(
-        AiTodoAction.fromJson({
-          ...Map<String, dynamic>.from(todo),
-          'action': 'merge_todos',
-          'sourceTodoIds': sourceTodoIds,
-          'deleteSourceTodos': data['deleteSources'] == true,
-        }),
-      );
+    final deleteSources =
+        data['deleteSources'] == true ||
+        data['deleteSourceTodos'] == true ||
+        data['deleteSource'] == true;
+    if (rawSourceTodoIds.length < 2 ||
+        rawSourceTodoIds.any(
+          (id) => !existingTodoTitles.containsKey(id),
+        ) ||
+        todo is! Map ||
+        todo['title']?.toString().trim().isNotEmpty != true) {
+      return [];
     }
+    final sourceTodoIds = rawSourceTodoIds;
+    final actions = <AiTodoAction>[];
+    actions.add(
+      AiTodoAction.fromJson({
+        ...Map<String, dynamic>.from(todo),
+        'action': 'merge_todos',
+        'sourceTodoIds': sourceTodoIds,
+        'deleteSourceTodos': deleteSources,
+      }),
+    );
 
-    if (data['deleteSources'] == true && todo is Map) {
+    if (deleteSources) {
       for (final id in sourceTodoIds) {
         actions.add(
           AiTodoAction(
@@ -618,6 +856,51 @@ class AiActionParser {
       return {...data, 'action': 'create_pomodoro_tag'};
     }
     return data;
+  }
+
+  static String? _canonicalActionName(String? action) {
+    if (action == null || action.trim().isEmpty) return null;
+    switch (action.trim()) {
+      case 'create_habit_goal':
+      case 'habit_create':
+        return 'create_habit';
+      case 'update_habit_goal':
+      case 'habit_update':
+        return 'update_habit';
+      case 'delete_habit_goal':
+      case 'habit_delete':
+        return 'delete_habit';
+      case 'create_fixed_schedule':
+        return 'create_schedule';
+      case 'update_fixed_schedule':
+        return 'update_schedule';
+      case 'cancel_fixed_schedule':
+        return 'cancel_schedule';
+      case 'delete_fixed_schedule':
+        return 'delete_schedule';
+      case 'plan_todos':
+      case 'create_todo_plan_block':
+      case 'schedule_todo_block':
+        return 'create_plan_block';
+      case 'reschedule_plan_block':
+        return 'reschedule_plan_blocks';
+      case 'bulk_reschedule_todo':
+        return 'bulk_reschedule';
+      case 'create_group':
+      case 'create_category':
+      case 'create_folder':
+        return 'create_todo_group';
+      case 'update_group':
+      case 'update_category':
+      case 'update_folder':
+        return 'update_todo_group';
+      case 'delete_group':
+      case 'delete_category':
+      case 'delete_folder':
+        return 'delete_todo_group';
+      default:
+        return action.trim();
+    }
   }
 
   static bool _looksLikePlanningIntent(String text) {

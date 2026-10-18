@@ -22,11 +22,11 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
 
     String formatDateTime(DateTime dt, bool showDate, bool showTime) {
       if (showDate && showTime) {
-        return DateFormat('MM/dd HH:mm').format(dt);
+        return _todoChatDateFormat('MM/dd HH:mm').format(dt);
       } else if (showDate) {
-        return DateFormat('MM/dd').format(dt);
+        return _todoChatDateFormat('MM/dd').format(dt);
       } else {
-        return DateFormat('HH:mm').format(dt);
+        return _todoChatDateFormat('HH:mm').format(dt);
       }
     }
 
@@ -36,21 +36,27 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
 
     if (isAllDay) {
       if (start != null && end != null && sameDay(start, end)) {
-        return '全天 ${DateFormat('MM/dd').format(start)}';
+        return '全天 ${_todoChatDateFormat('MM/dd').format(start)}';
       } else if (start != null && end != null) {
-        return '全天 ${DateFormat('MM/dd').format(start)} ~ ${DateFormat('MM/dd').format(end)}';
+        final dateFormat = _todoChatDateFormat('MM/dd');
+        return '全天 ${dateFormat.format(start)} ~ ${dateFormat.format(end)}';
       } else if (start != null) {
-        return '全天 ${DateFormat('MM/dd').format(start)}';
+        return '全天 ${_todoChatDateFormat('MM/dd').format(start)}';
       } else if (end != null) {
-        return '全天 ${DateFormat('MM/dd').format(end)}';
+        return '全天 ${_todoChatDateFormat('MM/dd').format(end)}';
       }
     }
 
     if (start != null && end != null) {
       if (sameDay(start, end)) {
-        return '${DateFormat('MM/dd').format(start)} ${DateFormat('HH:mm').format(start)} ~ ${DateFormat('HH:mm').format(end)}';
+        final dateText = _todoChatDateFormat('MM/dd').format(start);
+        final timeFormat = _todoChatDateFormat('HH:mm');
+        final startText = timeFormat.format(start);
+        final endText = timeFormat.format(end);
+        return '$dateText $startText ~ $endText';
       } else {
-        return '${DateFormat('MM/dd HH:mm').format(start)} ~ ${DateFormat('MM/dd HH:mm').format(end)}';
+        final dateTimeFormat = _todoChatDateFormat('MM/dd HH:mm');
+        return '${dateTimeFormat.format(start)} ~ ${dateTimeFormat.format(end)}';
       }
     } else if (start != null) {
       final showTime = start.hour != 0 || start.minute != 0;
@@ -91,14 +97,143 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
         ? date!
         : start == null
         ? '日期待定'
-        : DateFormat('yyyy-MM-dd').format(start);
+        : _todoChatDateFormat('yyyy-MM-dd').format(start);
     if (start == null) return '$day 时间待定';
-    final startText = DateFormat('HH:mm').format(start);
+    final startText = _todoChatDateFormat('HH:mm').format(start);
     if (end == null) return '$day $startText（结束待定）';
-    return '$day $startText-${DateFormat('HH:mm').format(end)}';
+    return '$day $startText-${_todoChatDateFormat('HH:mm').format(end)}';
   }
 
   String _formatHabitActionSummary(AiTodoAction action) {
+    if (action.type == AiTodoActionType.deleteHabit) {
+      return '软删除习惯目标及其规则';
+    }
+    if (action.type == AiTodoActionType.updateHabit) {
+      final rawFields = action.metadata['habitUpdateFields'];
+      if (rawFields is! Map || rawFields.isEmpty) return '修改习惯目标';
+      final fields = Map<String, dynamic>.from(rawFields);
+      final changes = <String>[];
+      if (fields.containsKey('name')) changes.add('名称：${fields['name']}');
+      if (fields.containsKey('icon')) changes.add('图标：${fields['icon']}');
+      if (fields.containsKey('displayMode')) {
+        changes.add('展示：${_habitDisplayModeLabel(fields['displayMode'])}');
+      }
+      if (fields.containsKey('defaultFocusMinutes')) {
+        changes.add('默认专注：${fields['defaultFocusMinutes']} 分钟');
+      }
+      if (fields.containsKey('targetValue')) {
+        final unit = fields['unit']?.toString().trim();
+        changes.add(
+          '目标：${fields['targetValue']}${unit?.isNotEmpty == true ? ' $unit' : ''}',
+        );
+      } else if (fields.containsKey('unit')) {
+        changes.add('单位：${fields['unit']}');
+      }
+      if (fields.containsKey('durationMinutes')) {
+        changes.add('时长：${fields['durationMinutes']} 分钟');
+      }
+      if (fields.containsKey('targetTimeMinute')) {
+        final minute = int.tryParse(fields['targetTimeMinute'].toString());
+        final time = minute == null
+            ? fields['targetTimeMinute'].toString()
+            : '${(minute ~/ 60).toString().padLeft(2, '0')}:${(minute % 60).toString().padLeft(2, '0')}';
+        final comparison = fields['timeComparison'] == 'after'
+            ? '之后'
+            : fields['timeComparison'] == 'before'
+            ? '之前'
+            : '';
+        changes.add('目标时间：$time$comparison');
+      }
+      if (fields.containsKey('timeComparison') &&
+          !fields.containsKey('targetTimeMinute')) {
+        changes.add(
+          '比较规则：${fields['timeComparison'] == 'after' ? '之后' : '之前'}',
+        );
+      }
+      if (fields.containsKey('timeToleranceMinutes')) {
+        changes.add('容差：${fields['timeToleranceMinutes']} 分钟');
+      }
+      if (fields.containsKey('periodType')) {
+        changes.add('周期：${_habitPeriodLabel(fields['periodType'])}');
+      }
+      if (fields.containsKey('weekdaysMask')) {
+        final mask = int.tryParse(fields['weekdaysMask'].toString()) ?? 0;
+        const weekdays = ['一', '二', '三', '四', '五', '六', '日'];
+        final selectedDays = [
+          for (var index = 0; index < weekdays.length; index++)
+            if ((mask & (1 << index)) != 0) '周${weekdays[index]}',
+        ];
+        changes.add(
+          '星期：${selectedDays.isEmpty ? '未指定' : selectedDays.join('、')}',
+        );
+      }
+      if (fields.containsKey('customIntervalDays')) {
+        changes.add('间隔：每${fields['customIntervalDays']}天');
+      }
+      if (fields.containsKey('dayBoundaryMinute')) {
+        changes.add('日界：${fields['dayBoundaryMinute']} 分钟');
+      }
+      if (fields.containsKey('quickValues')) {
+        final values = fields['quickValues'];
+        changes.add('快捷值：${values is List ? values.join('、') : values}');
+      }
+      if (fields.containsKey('reminderPolicy')) {
+        final policy = fields['reminderPolicy'];
+        if (policy is Map) {
+          final details = <String>[];
+          final fixedTimes = policy['fixedTimes'] ?? policy['fixed_times'];
+          if (fixedTimes is List) {
+            final times = fixedTimes.map((value) {
+              final minute = int.tryParse(value.toString());
+              if (minute == null) return value.toString();
+              return '${(minute ~/ 60).toString().padLeft(2, '0')}:${(minute % 60).toString().padLeft(2, '0')}';
+            }).join('、');
+            details.add('时间 ${times.isEmpty ? '清空' : times}');
+          }
+          for (final entry in const {
+            'progressReminder': '进度提醒',
+            'nearEndReminder': '临近结束提醒',
+            'dailySummaryReminder': '每日汇总提醒',
+          }.entries) {
+            final snakeKey = entry.key.replaceAllMapped(
+              RegExp(r'[A-Z]'),
+              (match) => '_${match.group(0)!.toLowerCase()}',
+            );
+            final value = policy.containsKey(entry.key)
+                ? policy[entry.key]
+                : policy[snakeKey];
+            if (value != null) {
+              details.add('${entry.value}${value == true ? '开' : '关'}');
+            }
+          }
+          changes.add(
+            details.isEmpty ? '更新提醒规则' : '提醒：${details.join('、')}',
+          );
+        } else {
+          changes.add('更新提醒规则');
+        }
+      }
+      if (fields.containsKey('effectiveFromOption')) {
+        changes.add('生效范围：${_habitEffectiveFromLabel(fields['effectiveFromOption'])}');
+      } else if (const {
+        'targetValue',
+        'unit',
+        'durationMinutes',
+        'targetTimeMinute',
+        'timeComparison',
+        'timeToleranceMinutes',
+        'periodType',
+        'weekdaysMask',
+        'customIntervalDays',
+        'dayBoundaryMinute',
+        'quickValues',
+        'reminderPolicy',
+      }.any(fields.containsKey)) {
+        changes.add('生效范围：今天（默认）');
+      }
+      return changes.isEmpty ? '修改习惯目标' : changes.join(' · ');
+    }
+
     final period = switch (action.habitPeriodType?.toLowerCase()) {
       'weekly' => '每周',
       'weekdays' => '工作日',
@@ -140,6 +275,54 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
     }
     return '$period · $target';
   }
+
+  String _actionCardTitle(AiTodoAction action) {
+    if (action.type == AiTodoActionType.updateHabit ||
+        action.type == AiTodoActionType.deleteHabit) {
+      final habitUuid = action.habitUuid?.trim();
+      if (habitUuid == null || habitUuid.isEmpty) {
+        return '习惯目标缺少ID';
+      }
+      for (final goal in _habitGoals) {
+        if (goal.uuid == habitUuid && !goal.isDeleted) return goal.name;
+      }
+      return '无法核对的习惯目标';
+    }
+    final title = action.title?.trim();
+    if (title?.isNotEmpty == true) return title!;
+    if (action.isHabitAction) {
+      return switch (action.type) {
+        AiTodoActionType.deleteHabit => '删除习惯',
+        AiTodoActionType.updateHabit => '修改习惯',
+        _ => '未命名习惯',
+      };
+    }
+    if (action.isFixedScheduleAction) return '未命名日程';
+    return '未命名待办';
+  }
+
+  String _habitDisplayModeLabel(Object? value) => switch (value?.toString()) {
+    'habitOnly' => '仅习惯',
+    'todoOnly' => '仅待办',
+    'both' => '习惯与待办',
+    _ => value?.toString() ?? '未指定',
+  };
+
+  String _habitPeriodLabel(Object? value) => switch (value?.toString()) {
+    'daily' => '每天',
+    'weekly' => '每周',
+    'weekdays' => '工作日',
+    'monthly' => '每月',
+    'custom' => '自定义周期',
+    _ => value?.toString() ?? '未指定',
+  };
+
+  String _habitEffectiveFromLabel(Object? value) => switch (value?.toString()) {
+    'today' => '今天',
+    'nextPeriod' => '下个周期',
+    'all' => '全部历史规则',
+    _ => value?.toString() ?? '未指定',
+  };
 
   String _getTodoCurrentFolderName(String? todoId) {
     if (todoId == null) return '未知';
@@ -815,6 +998,9 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
       (t) => t.isFixedScheduleAction,
     );
     final hasHabitActions = activeActions.any((t) => t.isHabitAction);
+    final onlyCreatingHabits = activeActions
+        .where((t) => t.isHabitAction)
+        .every((t) => t.type == AiTodoActionType.createHabit);
     final hasPlanActions = activeActions.any((t) => t.isPlanBlockAction);
 
     final colorScheme = Theme.of(context).colorScheme;
@@ -854,7 +1040,9 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
                       hasPlanActions
                           ? '待确认规划操作'
                           : hasHabitActions
-                          ? '建议创建习惯'
+                          ? onlyCreatingHabits
+                                ? '建议创建习惯'
+                                : '建议管理习惯'
                           : hasPomodoroActions
                           ? '建议操作番茄钟'
                           : hasScheduleActions
@@ -932,12 +1120,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
                                     _buildActionBadge(todo),
                                     Expanded(
                                       child: Text(
-                                        todo.title ??
-                                            (todo.isHabitAction
-                                                ? '未命名习惯'
-                                                : todo.isFixedScheduleAction
-                                                ? '未命名日程'
-                                                : '未命名待办'),
+                                        _actionCardTitle(todo),
                                         style: const TextStyle(
                                           fontSize: 14,
                                           fontWeight: FontWeight.w600,
@@ -1289,6 +1472,14 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
         color = Colors.deepPurple;
         label = '习惯';
         break;
+      case AiTodoActionType.updateHabit:
+        color = Colors.deepPurple;
+        label = '改习惯';
+        break;
+      case AiTodoActionType.deleteHabit:
+        color = Colors.red;
+        label = '删习惯';
+        break;
       case AiTodoActionType.completeTodo:
         color = Theme.of(context).colorScheme.primary;
         label = '完成';
@@ -1518,6 +1709,8 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
     final idCtrl = TextEditingController(
       text: action.isFixedScheduleAction
           ? action.scheduleId ?? ''
+          : action.isHabitAction
+          ? action.habitUuid ?? ''
           : action.todoId ?? '',
     );
     final dateCtrl = TextEditingController(text: action.date ?? '');
@@ -1552,6 +1745,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
     final initialStartText = startCtrl.text;
     final initialDueText = dueCtrl.text;
     final initialReminderText = reminderCtrl.text;
+    final initialTitleText = titleCtrl.text;
 
     await showAppDialog<void>(
       context: context,
@@ -1692,10 +1886,31 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
                 setState(() {
                   if (action.isFixedScheduleAction) {
                     action.scheduleId = _nullIfBlank(idCtrl.text);
+                  } else if (action.isHabitAction) {
+                    action.habitUuid = _nullIfBlank(idCtrl.text);
                   } else {
                     action.todoId = _nullIfBlank(idCtrl.text);
                   }
-                  action.title = _nullIfBlank(titleCtrl.text);
+                  if (_usesTitle(action)) {
+                    action.title = _nullIfBlank(titleCtrl.text);
+                  }
+                  if (action.type == AiTodoActionType.updateHabit) {
+                    final fields = Map<String, dynamic>.from(
+                      action.metadata['habitUpdateFields'] is Map
+                          ? action.metadata['habitUpdateFields'] as Map
+                          : const <String, dynamic>{},
+                    );
+                    if (fields.containsKey('name') ||
+                        titleCtrl.text != initialTitleText) {
+                      final name = _nullIfBlank(titleCtrl.text);
+                      if (name == null) {
+                        fields.remove('name');
+                      } else {
+                        fields['name'] = name;
+                      }
+                    }
+                    action.metadata['habitUpdateFields'] = fields;
+                  }
                   action.remark = _nullIfBlank(remarkCtrl.text);
                   action.date = _nullIfBlank(dateCtrl.text);
                   action.location = _nullIfBlank(locationCtrl.text);
@@ -1800,7 +2015,8 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
       action.type != AiTodoActionType.completeCountdown &&
       action.type != AiTodoActionType.deleteCountdown &&
       action.type != AiTodoActionType.deleteTodoGroup &&
-      action.type != AiTodoActionType.deletePomodoroTag;
+      action.type != AiTodoActionType.deletePomodoroTag &&
+      action.type != AiTodoActionType.deleteHabit;
 
   bool _usesRemark(AiTodoAction action) =>
       action.isTodoAction ||
@@ -1840,6 +2056,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
       action.isTimeLogAction || action.isPomodoroAction;
 
   String _idFieldLabel(AiTodoAction action) {
+    if (action.isHabitAction) return '习惯UUID';
     if (action.isFixedScheduleAction) return '日程ID';
     if (action.isTimeLogAction) return '专注记录ID';
     if (action.isCountdownAction) return '倒计时ID';
@@ -1948,6 +2165,10 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
         return '删除番茄标签';
       case AiTodoActionType.createHabit:
         return '新增习惯目标';
+      case AiTodoActionType.updateHabit:
+        return '更新习惯目标';
+      case AiTodoActionType.deleteHabit:
+        return '软删除习惯目标';
       case AiTodoActionType.createTodo:
       case AiTodoActionType.unknown:
         return '';
@@ -1957,6 +2178,14 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
   Widget _buildChangeSummary(AiTodoAction action) {
     if (action.isFixedScheduleAction) {
       return _buildFixedScheduleChangeSummary(action);
+    }
+    if (action.type == AiTodoActionType.updateHabit) {
+      final rawFields = action.metadata['habitUpdateFields'];
+      if (rawFields is! Map || rawFields.isEmpty) {
+        return const SizedBox.shrink();
+      }
+      final rows = _formatHabitActionSummary(action).split(' · ');
+      return _buildMutationRowsSummary(rows);
     }
     if (!action.mutatesExistingItem || !action.isTodoAction) {
       return const SizedBox.shrink();
@@ -2017,6 +2246,11 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
       rows.add(action.appliesToFutureOccurrences ? '范围: 本期及以后' : '范围: 仅本期');
     }
 
+    if (rows.isEmpty) return const SizedBox.shrink();
+    return _buildMutationRowsSummary(rows);
+  }
+
+  Widget _buildMutationRowsSummary(List<String> rows) {
     if (rows.isEmpty) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.only(left: 28, top: 6),
@@ -2156,6 +2390,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
         action.type == AiTodoActionType.completeCountdown ||
         action.type == AiTodoActionType.deleteTodoGroup ||
         action.type == AiTodoActionType.deletePomodoroTag ||
+        action.type == AiTodoActionType.deleteHabit ||
         action.type == AiTodoActionType.deletePlanBlock ||
         action.type == AiTodoActionType.skipPlanBlock ||
         (action.type == AiTodoActionType.splitTodo &&
@@ -2190,6 +2425,8 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
         return '将删除待办分类，执行前请确认';
       case AiTodoActionType.deletePomodoroTag:
         return '将删除番茄标签，执行前请确认';
+      case AiTodoActionType.deleteHabit:
+        return '将软删除此习惯及其规则版本，执行前请确认';
       case AiTodoActionType.deletePlanBlock:
         return '将删除规划块，执行前请确认';
       case AiTodoActionType.skipPlanBlock:
@@ -2207,6 +2444,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
       case AiTodoActionType.reschedulePlanBlocks:
       case AiTodoActionType.startPlanBlockPomodoro:
       case AiTodoActionType.createHabit:
+      case AiTodoActionType.updateHabit:
       case AiTodoActionType.unknown:
       case AiTodoActionType.createTimeLog:
       case AiTodoActionType.updateTimeLog:
@@ -2229,6 +2467,19 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
     if (!_executingMessageIds.add(msg.id)) return;
     try {
       await _executeMessageActions(msg);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {});
+      try {
+        await _saveHistorySilently();
+      } catch (historyError) {
+        debugPrint('AI action recovery state could not be saved: $historyError');
+      }
+      if (!mounted) return;
+      AppSnackBars.error(
+        context,
+        '操作执行中断；已成功保存的操作已完成，未完成的操作仍保留在确认卡中：$error',
+      );
     } finally {
       _executingMessageIds.remove(msg.id);
     }
@@ -2287,12 +2538,26 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
     final hasPlanningActions = msg.todoActions!.any(
       (action) => action.isPlanBlockAction,
     );
-    final existingTodos = hasPlanningActions
+    final needsCurrentTodoCatalog =
+        hasPlanningActions ||
+        pendingActions.any(
+          (action) =>
+              (action.isTodoAction && action.mutatesExistingItem) ||
+              action.type == AiTodoActionType.splitTodo ||
+              action.type == AiTodoActionType.mergeTodos,
+        );
+    final existingTodos = needsCurrentTodoCatalog
         ? [
             for (final todo in await StorageService.getTodos(widget.username))
               {...todo.toJson(), 'title': todo.title},
           ]
         : widget.todos;
+    final needsCurrentTimeLogCatalog = pendingActions.any(
+      (action) => action.isTimeLogAction && action.mutatesExistingItem,
+    );
+    final existingTimeLogs = needsCurrentTimeLogCatalog
+        ? await StorageService.getTimeLogs(widget.username)
+        : widget.timeLogs;
 
     final existingCountdowns = widget.countdowns.isNotEmpty
         ? widget.countdowns
@@ -2304,7 +2569,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
     final result = AiTodoActionExecutor.execute(
       actions: msg.todoActions!,
       existingTodos: existingTodos,
-      existingTimeLogs: widget.timeLogs,
+      existingTimeLogs: existingTimeLogs,
       existingCountdowns: existingCountdowns,
       existingTodoGroups: widget.todoGroups,
       existingPomodoroTags: existingTags,
@@ -2328,10 +2593,12 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
             blocks: result.newPlanBlocks,
           );
         } catch (error) {
-          for (final action in pendingActions) {
-            if (action.isAdded) {
-              action.isAdded = false;
-              if (action.newTodoTitle != null) action.todoId = null;
+          for (final action in result.actionsForWriteGroup(
+            AiTodoActionWriteGroup.newPlanBlocks,
+          )) {
+            if (action.newTodoTitle != null &&
+                plannedNewTodos.any((todo) => todo.id == action.todoId)) {
+              action.todoId = null;
             }
           }
           if (mounted) {
@@ -2340,26 +2607,48 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
           }
           return;
         }
+        result.markWriteGroupAdded(AiTodoActionWriteGroup.newPlanBlocks);
+        await _saveHistorySilently();
       }
-      final createdHabits = await AiTodoActionExecutor.saveHabitActions(
+      final changedHabits = await AiTodoActionExecutor.saveHabitActions(
         username: widget.username,
         actions: result.newHabitActions,
+        onActionSaved: _saveHistorySilently,
       );
       if (widget.onTodosBatchAction != null) {
-        await widget.onTodosBatchAction!(result.newTodos, result.updatedTodos);
+        if (result.newTodos.isNotEmpty || result.updatedTodos.isNotEmpty) {
+          await widget.onTodosBatchAction!(result.newTodos, result.updatedTodos);
+          result.markWriteGroupAdded(AiTodoActionWriteGroup.newTodos);
+          result.markWriteGroupAdded(AiTodoActionWriteGroup.updatedTodos);
+          await _saveHistorySilently();
+        }
       } else {
         // Fallback to separate calls
-        if (result.newTodos.isNotEmpty) {
+        final standaloneNewTodos = result.newTodos
+            .where(
+              (todo) => !plannedNewTodos.any((planned) => planned.id == todo.id),
+            )
+            .toList();
+        if (standaloneNewTodos.isNotEmpty) {
           if (widget.onTodosBatchInserted != null) {
-            await widget.onTodosBatchInserted!(result.newTodos);
+            await widget.onTodosBatchInserted!(standaloneNewTodos);
           } else if (widget.onTodoInserted != null) {
-            for (final t in result.newTodos) {
+            for (final t in standaloneNewTodos) {
               await widget.onTodoInserted!(t);
             }
+          } else {
+            throw StateError('当前页面没有待办保存回调');
           }
+          result.markWriteGroupAdded(AiTodoActionWriteGroup.newTodos);
+          await _saveHistorySilently();
         }
-        if (result.updatedTodos.isNotEmpty && widget.onTodosUpdated != null) {
+        if (result.updatedTodos.isNotEmpty) {
+          if (widget.onTodosUpdated == null) {
+            throw StateError('当前页面没有待办更新回调');
+          }
           await widget.onTodosUpdated!(result.updatedTodos);
+          result.markWriteGroupAdded(AiTodoActionWriteGroup.updatedTodos);
+          await _saveHistorySilently();
         }
       }
 
@@ -2371,6 +2660,8 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
           result.updatedTimeLogs,
         );
         await StorageService.saveTimeLogs(widget.username, merged, sync: true);
+        result.markWriteGroupAdded(AiTodoActionWriteGroup.timeLogs);
+        await _saveHistorySilently();
       }
 
       if (result.newCountdowns.isNotEmpty ||
@@ -2388,6 +2679,8 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
           merged,
           sync: true,
         );
+        result.markWriteGroupAdded(AiTodoActionWriteGroup.countdowns);
+        await _saveHistorySilently();
       }
 
       if (result.newTodoGroups.isNotEmpty ||
@@ -2406,7 +2699,13 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
           merged,
           sync: true,
         );
-        widget.onTodoGroupsChanged?.call(merged);
+        result.markWriteGroupAdded(AiTodoActionWriteGroup.todoGroups);
+        await _saveHistorySilently();
+        try {
+          widget.onTodoGroupsChanged?.call(merged);
+        } catch (error) {
+          debugPrint('AI todo-group UI refresh failed after save: $error');
+        }
       }
 
       if (result.newPomodoroTags.isNotEmpty ||
@@ -2418,6 +2717,8 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
           result.updatedPomodoroTags,
         );
         await PomodoroService.saveTags(merged);
+        result.markWriteGroupAdded(AiTodoActionWriteGroup.pomodoroTags);
+        await _saveHistorySilently();
       }
 
       if (result.newPlanBlocks.isNotEmpty ||
@@ -2435,6 +2736,11 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
           ...result.newPlanBlocks,
           ...result.updatedPlanBlocks,
         ];
+        if (plannedNewTodos.isEmpty) {
+          result.markWriteGroupAdded(AiTodoActionWriteGroup.newPlanBlocks);
+        }
+        result.markWriteGroupAdded(AiTodoActionWriteGroup.updatedPlanBlocks);
+        await _saveHistorySilently();
       }
 
       if (result.newFixedSchedules.isNotEmpty ||
@@ -2443,42 +2749,77 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
           ...result.newFixedSchedules,
           ...result.updatedFixedSchedules,
         ], sync: true);
+        result.markWriteGroupAdded(AiTodoActionWriteGroup.fixedSchedules);
+        await _saveHistorySilently();
         _fixedSchedules = AiTodoActionExecutor.mergeFixedScheduleUpdates(
           _fixedSchedules,
           result.newFixedSchedules,
           result.updatedFixedSchedules,
         );
-        widget.onFixedSchedulesChanged?.call(_fixedSchedules);
-        await ReminderScheduleService.scheduleFromStorage(
-          widget.username,
-          force: true,
-        );
+        try {
+          widget.onFixedSchedulesChanged?.call(_fixedSchedules);
+          await ReminderScheduleService.scheduleFromStorage(
+            widget.username,
+            force: true,
+          );
+        } catch (error) {
+          debugPrint('AI fixed-schedule refresh failed after save: $error');
+        }
       }
 
+      var executedPomodoroActions = 0;
+      var skippedPomodoroActions = 0;
       for (final action in result.pomodoroActions) {
-        await _executePomodoroAction(action);
+        bool executed;
+        try {
+          executed = await _executePomodoroAction(action);
+        } catch (_) {
+          executed = false;
+        }
+        action.isAdded = executed;
+        if (executed) {
+          executedPomodoroActions++;
+          await _saveHistorySilently();
+        } else {
+          skippedPomodoroActions++;
+        }
+      }
+
+      if (skippedPomodoroActions > 0 &&
+          executedPomodoroActions == 0 &&
+          !result.hasNonPomodoroChanges) {
+        if (mounted) {
+          AppSnackBars.showSnackBar(
+            context,
+            const SnackBar(
+              content: Text('番茄钟操作未执行（目标不可用或运行状态冲突），操作卡已保留，可检查后重试。'),
+            ),
+          );
+        }
+        return;
       }
 
       if (!mounted) return;
       setState(() {});
-      _saveHistorySilently();
+      await _saveHistorySilently();
+      if (!mounted) return;
 
       AppSnackBars.showSnackBar(
         context,
         SnackBar(
           content: Text(
-            '已执行所选操作 (新待办: ${result.newTodos.length}, 新习惯: ${createdHabits.length}, 整理待办: ${result.updatedTodos.length}, 日程: ${result.newFixedSchedules.length + result.updatedFixedSchedules.length}, 规划: ${result.newPlanBlocks.length + result.updatedPlanBlocks.length}, 专注记录: ${result.newTimeLogs.length + result.updatedTimeLogs.length}, 倒计时: ${result.newCountdowns.length + result.updatedCountdowns.length}, 分类: ${result.newTodoGroups.length + result.updatedTodoGroups.length}, 标签: ${result.newPomodoroTags.length + result.updatedPomodoroTags.length}, 番茄钟: ${result.pomodoroActions.length})',
+            '已执行所选操作 (新待办: ${result.newTodos.length}, 习惯操作: ${changedHabits.length}, 整理待办: ${result.updatedTodos.length}, 日程: ${result.newFixedSchedules.length + result.updatedFixedSchedules.length}, 规划: ${result.newPlanBlocks.length + result.updatedPlanBlocks.length}, 专注记录: ${result.newTimeLogs.length + result.updatedTimeLogs.length}, 倒计时: ${result.newCountdowns.length + result.updatedCountdowns.length}, 分类: ${result.newTodoGroups.length + result.updatedTodoGroups.length}, 标签: ${result.newPomodoroTags.length + result.updatedPomodoroTags.length}, 番茄钟: $executedPomodoroActions)${skippedPomodoroActions > 0 ? '；$skippedPomodoroActions 项番茄钟操作未执行，确认卡仍保留。' : ''}',
           ),
         ),
       );
     }
   }
 
-  Future<void> _executePomodoroAction(AiTodoAction action) async {
+  Future<bool> _executePomodoroAction(AiTodoAction action) async {
     switch (action.type) {
       case AiTodoActionType.startPlanBlockPomodoro:
         final blockId = action.planBlockId;
-        if (blockId == null || blockId.isEmpty) return;
+        if (blockId == null || blockId.isEmpty) return false;
         final blocks = _planBlocks.isNotEmpty
             ? _planBlocks
             : await StorageService.getPlanBlocks(widget.username);
@@ -2489,12 +2830,12 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
             break;
           }
         }
-        if (block == null) return;
+        if (block == null) return false;
         final existing = await PomodoroService.loadRunState();
         if (existing != null &&
             existing.phase != PomodoroPhase.idle &&
             existing.phase != PomodoroPhase.finished) {
-          return;
+          return false;
         }
         final settings = await PomodoroService.getSettings();
         TodoItem? boundTodo;
@@ -2512,25 +2853,38 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
           id: block.todoId,
           title: block.titleSnapshot ?? '规划任务',
         );
+        final previousStatus = block.status;
         block.status = TodoPlanStatus.focusing;
         block.markAsChanged();
-        await StorageService.savePlanBlocks(widget.username, [block]);
-        await PomodoroControlService.startFocus(
-          settings: settings,
-          boundTodo: boundTodo,
-          durationMinutes: block.pomodoroRounds > 0
-              ? block.pomodoroMinutes * block.pomodoroRounds
-              : math.max(1, block.plannedMinutes),
-          planBlockId: block.uuid,
-          ensureSyncConnection: true,
-        );
-        break;
+        try {
+          await StorageService.savePlanBlocks(widget.username, [block]);
+          await PomodoroControlService.startFocus(
+            settings: settings,
+            boundTodo: boundTodo,
+            durationMinutes: block.pomodoroRounds > 0
+                ? block.pomodoroMinutes * block.pomodoroRounds
+                : math.max(1, block.plannedMinutes),
+            planBlockId: block.uuid,
+            ensureSyncConnection: true,
+            deferSideEffects: true,
+          );
+        } catch (_) {
+          block.status = previousStatus;
+          block.markAsChanged();
+          try {
+            await StorageService.savePlanBlocks(widget.username, [block]);
+          } catch (_) {
+            // Keep the in-memory plan state unchanged if storage is unavailable.
+          }
+          rethrow;
+        }
+        return true;
       case AiTodoActionType.startPomodoro:
         final existing = await PomodoroService.loadRunState();
         if (existing != null &&
             existing.phase != PomodoroPhase.idle &&
             existing.phase != PomodoroPhase.finished) {
-          return;
+          return false;
         }
         final settings = await PomodoroService.getSettings();
         TodoItem? boundTodo;
@@ -2554,10 +2908,11 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
           tagUuids: action.tagUuids,
           durationMinutes: action.durationMinutes,
           ensureSyncConnection: true,
+          deferSideEffects: true,
         );
-        break;
+        return true;
       case AiTodoActionType.stopPomodoro:
-        await PomodoroControlService.stopCurrentFocus(
+        return PomodoroControlService.stopCurrentFocus(
           username: widget.username,
           status: action.status == 'completed'
               ? PomodoroRecordStatus.completed
@@ -2565,7 +2920,6 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
           markTodoComplete: action.status == 'completed',
           ensureSyncConnection: true,
         );
-        break;
       case AiTodoActionType.createTodo:
       case AiTodoActionType.updateTodo:
       case AiTodoActionType.completeTodo:
@@ -2599,8 +2953,10 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
       case AiTodoActionType.updatePomodoroTag:
       case AiTodoActionType.deletePomodoroTag:
       case AiTodoActionType.createHabit:
+      case AiTodoActionType.updateHabit:
+      case AiTodoActionType.deleteHabit:
       case AiTodoActionType.unknown:
-        break;
+        return false;
     }
   }
 

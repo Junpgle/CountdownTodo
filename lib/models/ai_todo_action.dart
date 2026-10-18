@@ -1,6 +1,8 @@
 enum AiTodoActionType {
   createTodo,
   createHabit,
+  updateHabit,
+  deleteHabit,
   updateTodo,
   completeTodo,
   deleteTodo,
@@ -64,6 +66,7 @@ class AiTodoAction {
     this.tagUuids = const [],
     this.icon,
     this.habitSourceType,
+    this.habitUuid,
     this.habitPeriodType,
     this.targetValue,
     this.unit,
@@ -144,8 +147,10 @@ class AiTodoAction {
   List<String> tagUuids;
   String? icon;
 
-  /// 习惯创建动作字段。它们只在 [AiTodoActionType.createHabit] 中生效。
+  /// 习惯动作字段；更新专用字段通过 [metadata] 中的
+  /// `habitUpdateFields` 保存。
   String? habitSourceType;
+  String? habitUuid;
   String? habitPeriodType;
   double? targetValue;
   String? unit;
@@ -206,7 +211,10 @@ class AiTodoAction {
       type == AiTodoActionType.bulkRescheduleTodo ||
       type == AiTodoActionType.categorizeTodo;
 
-  bool get isHabitAction => type == AiTodoActionType.createHabit;
+  bool get isHabitAction =>
+      type == AiTodoActionType.createHabit ||
+      type == AiTodoActionType.updateHabit ||
+      type == AiTodoActionType.deleteHabit;
 
   bool get isTimeLogAction =>
       type == AiTodoActionType.createTimeLog ||
@@ -264,6 +272,8 @@ class AiTodoAction {
       type == AiTodoActionType.deleteCountdown ||
       type == AiTodoActionType.updateTodoGroup ||
       type == AiTodoActionType.deleteTodoGroup ||
+      type == AiTodoActionType.updateHabit ||
+      type == AiTodoActionType.deleteHabit ||
       type == AiTodoActionType.updatePomodoroTag ||
       type == AiTodoActionType.deletePomodoroTag ||
       type == AiTodoActionType.updatePlanBlock ||
@@ -271,7 +281,8 @@ class AiTodoAction {
       type == AiTodoActionType.reschedulePlanBlocks ||
       type == AiTodoActionType.skipPlanBlock;
 
-  String get legacyType => createsTodo || isHabitAction ? 'create' : 'update';
+  String get legacyType =>
+      createsTodo || type == AiTodoActionType.createHabit ? 'create' : 'update';
 
   Map<String, dynamic> toJson() => {
     'actionType': type.name,
@@ -299,6 +310,7 @@ class AiTodoAction {
     'tagUuids': tagUuids,
     'icon': icon,
     'habitSourceType': habitSourceType,
+    'habitUuid': habitUuid,
     'habitPeriodType': habitPeriodType,
     'targetValue': targetValue,
     'unit': unit,
@@ -409,6 +421,16 @@ class AiTodoAction {
       durationMinutes: _parseInt(json['durationMinutes'] ?? json['minutes']),
       tagUuids: _parseStringList(json['tagUuids'] ?? json['tagIds']),
       icon: json['icon']?.toString(),
+      habitUuid:
+          (json['habitUuid'] ??
+                  json['habit_uuid'] ??
+                  json['habitId'] ??
+                  json['habit_id'] ??
+                  ((parsedType == AiTodoActionType.updateHabit ||
+                          parsedType == AiTodoActionType.deleteHabit)
+                      ? json['id']
+                      : null))
+              ?.toString(),
       habitSourceType:
           (json['sourceType'] ?? json['habitSourceType'] ?? json['source_type'])
               ?.toString(),
@@ -520,6 +542,14 @@ class AiTodoAction {
       case 'create_habit_goal':
       case 'habit_create':
         return AiTodoActionType.createHabit;
+      case 'update_habit':
+      case 'update_habit_goal':
+      case 'habit_update':
+        return AiTodoActionType.updateHabit;
+      case 'delete_habit':
+      case 'delete_habit_goal':
+      case 'habit_delete':
+        return AiTodoActionType.deleteHabit;
       case 'update_todo':
         return AiTodoActionType.updateTodo;
       case 'complete_todo':

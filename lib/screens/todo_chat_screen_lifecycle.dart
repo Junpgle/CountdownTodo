@@ -146,6 +146,9 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
     );
     _inputCtrl.dispose();
     _scrollCtrl.dispose();
+    _streamingBubbleRevision.dispose();
+    _inputPreviewTimer?.cancel();
+    _inputAreaRevision.dispose();
     super.dispose();
   }
 
@@ -157,20 +160,30 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
   void _handleInputChanged() {
     final text = _inputCtrl.text.trim();
     final hasText = text.isNotEmpty;
-    final preview = _buildSmartContextPreview(text);
-    final actionPreview = _buildActionProtocolPreview(text);
-    final estimatedTokens = _estimateTokensForPendingInput(text);
-    if (hasText == _inputHasText &&
-        preview == _liveSmartContextPreview &&
-        actionPreview == _liveActionProtocolPreview &&
-        estimatedTokens == _liveEstimatedTokens) {
-      return;
-    }
-    setState(() {
+    if (hasText != _inputHasText) {
       _inputHasText = hasText;
+      _notifyInputAreaChanged();
+    }
+
+    _inputPreviewTimer?.cancel();
+    _inputPreviewTimer = Timer(const Duration(milliseconds: 180), () {
+      _inputPreviewTimer = null;
+      if (!mounted) return;
+
+      final latestText = _inputCtrl.text.trim();
+      final preview = _buildSmartContextPreview(latestText);
+      final actionPreview = _buildActionProtocolPreview(latestText);
+      final estimatedTokens = _estimateTokensForPendingInput(latestText);
+      if (preview == _liveSmartContextPreview &&
+          actionPreview == _liveActionProtocolPreview &&
+          estimatedTokens == _liveEstimatedTokens) {
+        return;
+      }
+
       _liveSmartContextPreview = preview;
       _liveActionProtocolPreview = actionPreview;
       _liveEstimatedTokens = estimatedTokens;
+      _notifyInputAreaChanged();
     });
   }
 
@@ -250,12 +263,7 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
     final prompt = AiTodoContextBuilder.buildActionProtocolPrompt(
       userText,
       previousUserMessage: _latestUserTextFromHistory(),
-      previousAssistantMessage:
-          _messages.reversed
-              .where((message) => message.role == ChatRole.assistant)
-              .firstOrNull
-              ?.content ??
-          '',
+      previousAssistantMessage: _latestAssistantMessageForActionRouting(),
     );
     final categories = <String>[];
     void addIf(bool cond, String label) {
@@ -463,10 +471,30 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
   Future<void> _loadHistory() async {
     final history = await ChatStorageService.loadHistory(_activeSessionId);
     if (mounted) {
-      setState(() => _messages = history);
+      setState(() {
+        _messages = history;
+        _suggestions = _suggestionsForHistory(history);
+      });
       _injectInitialCategorizationSuggestion();
       _scrollToBottom();
     }
+  }
+
+  List<String> _suggestionsForHistory(List<ChatMessage> history) {
+    if (history.isEmpty || history.last.role != ChatRole.assistant) {
+      return const [];
+    }
+    final latestAssistant = history.last;
+    final source = latestAssistant.rawContent.trim().isNotEmpty
+        ? latestAssistant.rawContent
+        : latestAssistant.content;
+    return AiActionParser.extractSuggestions(
+      source,
+      previouslyShown: _recentAssistantSuggestions(
+        history.take(history.length - 1),
+      ),
+      contextText: _suggestionContext(history, extraText: source),
+    );
   }
 
   void _injectInitialCategorizationSuggestion() {
@@ -641,11 +669,7 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
       excludingMessageId: currentUserMessageId,
     );
     final previousAssistantMessage =
-        _messages.reversed
-            .where((message) => message.role == ChatRole.assistant)
-            .firstOrNull
-            ?.content ??
-        '';
+        _latestAssistantMessageForActionRouting();
     if (protocolSourceText.isNotEmpty && !nativeToolCalls) {
       apiMessages.add({
         'role': 'system',
@@ -768,6 +792,21 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
       }
     }
     return '';
+  }
+
+  String _latestAssistantMessageForActionRouting() {
+    final message = _messages.reversed
+        .where((item) => item.role == ChatRole.assistant)
+        .firstOrNull;
+    if (message == null) return '';
+    final hasWriteProposal =
+        (message.todoActions?.isNotEmpty ?? false) ||
+        (message.financeDrafts?.isNotEmpty ?? false) ||
+        (message.financeActions?.any((action) => action.isMutation) ?? false) ||
+        (message.recognition?.todoResults.isNotEmpty ?? false);
+    return hasWriteProposal
+        ? '${message.content}\n${AiTodoContextBuilder.pendingWriteProposalContextMarker}'
+        : message.content;
   }
 
   /// 根据最后一条用户消息的关键词，按需注入课程/时间日志/冲突/团队上下文。

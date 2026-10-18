@@ -5,7 +5,7 @@ part of 'todo_chat_screen.dart';
 mixin _TodoChatMessages on _TodoChatScreenStateBase {
   Widget _buildMessageBubble(ChatMessage msg, bool isDark) {
     final isUser = msg.role == ChatRole.user;
-    final timeStr = DateFormat('HH:mm').format(msg.timestamp);
+    final timeStr = _todoChatDateFormat('HH:mm').format(msg.timestamp);
     final colorScheme = Theme.of(context).colorScheme;
     final maxBubbleWidth = MediaQuery.of(context).size.width >= 900
         ? (isUser ? 560.0 : 720.0)
@@ -687,6 +687,13 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
   }
 
   Widget _buildInputArea(ColorScheme colorScheme) {
+    return ValueListenableBuilder<int>(
+      valueListenable: _inputAreaRevision,
+      builder: (context, _, _) => _buildInputAreaContent(colorScheme),
+    );
+  }
+
+  Widget _buildInputAreaContent(ColorScheme colorScheme) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final useFloating = floatingBottomBarShouldFloat(context);
     final keyboardVisible = MediaQuery.viewInsetsOf(context).bottom > 0;
@@ -826,7 +833,10 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
                         _customInjectStart != null &&
                         _customInjectEnd != null)
                       Text(
-                        '自定义范围: ${DateFormat('yyyy-MM-dd').format(_customInjectStart!)} 至 ${DateFormat('yyyy-MM-dd').format(_customInjectEnd!)}',
+                        _formatTodoChatDateRange(
+                          _customInjectStart!,
+                          _customInjectEnd!,
+                        ),
                         style: TextStyle(
                           fontSize: 11,
                           color: colorScheme.onSurface.withValues(alpha: 0.6),

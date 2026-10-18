@@ -12,14 +12,14 @@ class AiNativeToolDefinitionBuilder {
     },
     'date': {
       'type': ['string', 'null'],
-      'description': 'yyyy-MM-dd',
+      'description': 'yyyy-MM-dd；仅用于日程等对应动作，普通待办请勿使用此旧字段。',
     },
     'location': {
       'type': ['string', 'null'],
     },
     'startTime': {
       'type': ['string', 'null'],
-      'description': 'yyyy-MM-dd HH:mm；普通待办不要填写开始时间，只使用timeMode和dueDate。',
+      'description': 'yyyy-MM-dd HH:mm；仅用于日程、规划块等对应动作。普通待办禁止使用，只使用timeMode和dueDate。',
     },
     'dueDate': {
       'type': ['string', 'null'],
@@ -27,7 +27,7 @@ class AiNativeToolDefinitionBuilder {
     },
     'endTime': {
       'type': ['string', 'null'],
-      'description': 'yyyy-MM-dd HH:mm',
+      'description': 'yyyy-MM-dd HH:mm；仅用于日程、规划块等对应动作。普通待办禁止使用。',
     },
     'timeMode': {
       'type': ['string', 'null'],
@@ -78,6 +78,11 @@ class AiNativeToolDefinitionBuilder {
     'logId': {'type': 'string'},
     'countdownId': {'type': 'string'},
     'tagId': {'type': 'string'},
+    'habitUuid': {
+      'type': 'string',
+      'description': '习惯更新或删除必须使用query_habits返回的真实习惯UUID。',
+    },
+    'habitId': {'type': 'string'},
     'groupId': {'type': 'string'},
     'id': {'type': 'string'},
     'reminderMinutes': {
@@ -156,6 +161,11 @@ class AiNativeToolDefinitionBuilder {
     },
     'habitDisplayMode': {'type': 'string'},
     'defaultFocusMinutes': {'type': 'integer'},
+    'effectiveFromOption': {
+      'type': 'string',
+      'enum': ['today', 'nextPeriod', 'all'],
+      'description': '规则修改默认today；仅用户明确要求下周期或全部历史时使用nextPeriod或all。',
+    },
     'sourceIds': {
       'type': 'array',
       'items': {'type': 'string'},
@@ -228,6 +238,10 @@ class AiNativeToolDefinitionBuilder {
       '明细',
       '情况',
       '趋势',
+      '进度',
+      '达标率',
+      '完成度',
+      '打卡率',
       '影响',
       '效果',
       '是否',
@@ -243,6 +257,13 @@ class AiNativeToolDefinitionBuilder {
       '时间记录',
       '消费记录',
       '账单记录',
+      '习惯',
+      '习惯目标',
+      '习惯追踪',
+      '打卡',
+      '达标率',
+      '完成度',
+      '打卡率',
       '下一页',
       '下一个',
       '再查',
@@ -293,6 +314,8 @@ class AiNativeToolDefinitionBuilder {
       '倒计时',
       '课程',
       '课表',
+      '习惯',
+      '打卡',
       '冲突',
       '团队',
     ]);
@@ -462,6 +485,8 @@ class AiNativeToolDefinitionBuilder {
     'delete_todo_group',
     'update_pomodoro_tag',
     'delete_pomodoro_tag',
+    'update_habit',
+    'delete_habit',
   };
 
   /// Keep risky actions out of the function schema unless the user explicitly
@@ -472,16 +497,72 @@ class AiNativeToolDefinitionBuilder {
     'delete_todo': ['删除', '删掉', '删了', '移除', '清空', '清掉', '清除', '去掉', '取消'],
     'cancel_schedule': ['取消', '撤销'],
     'delete_schedule': ['删除', '删掉', '移除', '清掉'],
-    'delete_plan_block': ['删除', '删掉', '移除', '清掉'],
+    'update_plan_block': ['修改', '更新', '更改', '调整'],
+    'reschedule_plan_blocks': [
+      '改期',
+      '重排',
+      '重新安排',
+      '改到',
+      '改成',
+      '调整时间',
+      '改时间',
+    ],
+    'delete_plan_block': ['删除', '删掉', '移除', '清掉', '取消'],
     'skip_plan_block': ['跳过', '略过'],
+    'start_plan_block_pomodoro': ['开始', '启动'],
     'delete_time_log': ['删除', '删掉', '移除', '清掉'],
+    'update_todo_group': [
+      '修改分类',
+      '更新分类',
+      '重命名分类',
+      '修改文件夹',
+      '更新文件夹',
+      '重命名文件夹',
+      '修改分组',
+      '更新分组',
+      '重命名分组',
+    ],
     'stop_pomodoro': ['停止番茄钟', '停止专注', '结束番茄钟', '结束专注'],
-    'complete_countdown': ['完成倒计时'],
-    'delete_countdown': ['删除倒计时', '删除', '删掉', '移除', '清掉'],
+    'update_countdown': [
+      '修改倒计时',
+      '更新倒计时',
+      '更改倒计时',
+      '调整倒计时',
+      '改到',
+      '改成',
+      '改为',
+    ],
+    'complete_countdown': ['完成倒计时', '办完倒计时', '标记完成', '做完倒计时'],
+    'delete_countdown': [
+      '删除倒计时',
+      '取消倒计时',
+      '删除',
+      '删掉',
+      '移除',
+      '清掉',
+    ],
+    'update_pomodoro_tag': [
+      '修改番茄标签',
+      '更新番茄标签',
+      '重命名番茄标签',
+      '修改专注标签',
+      '更新专注标签',
+      '重命名专注标签',
+    ],
     'split_todo': ['拆分待办', '拆分任务', '拆分'],
     'merge_todos': ['合并待办', '合并任务', '合并'],
     'delete_todo_group': ['删除分类', '删除分组', '删除文件夹', '清掉'],
     'delete_pomodoro_tag': ['删除番茄标签', '删除标签', '清掉'],
+    'update_habit': [
+      '修改',
+      '更新',
+      '调整',
+      '改成',
+      '改为',
+      '改名',
+      '重命名',
+    ],
+    'delete_habit': ['删除', '删掉', '移除', '清除', '清空'],
   };
 
   /// Builds OpenAI-compatible function tools for the actions relevant to one
@@ -500,8 +581,13 @@ class AiNativeToolDefinitionBuilder {
       previousAssistantMessage: previousAssistantMessage,
     );
     if (resolvedMessage.isEmpty) return const [];
-    final message = _inheritFinanceWriteClarification(
+    final financeClarifiedMessage = _inheritFinanceWriteClarification(
       resolvedMessage,
+      previousUserMessage: previousUserMessage,
+      previousAssistantMessage: previousAssistantMessage,
+    );
+    final message = AiTodoContextBuilder.inheritExplicitCreationClarification(
+      financeClarifiedMessage,
       previousUserMessage: previousUserMessage,
       previousAssistantMessage: previousAssistantMessage,
     );
@@ -627,6 +713,11 @@ class AiNativeToolDefinitionBuilder {
     final updatesContainOnlyTodoMutations =
         availableUpdateActions.isNotEmpty &&
         availableUpdateActions.every(_todoUpdateContainerActions.contains);
+    final updatesContainOnlyHabitMutations =
+        availableUpdateActions.isNotEmpty &&
+        availableUpdateActions.every(
+          (action) => action == 'update_habit' || action == 'delete_habit',
+        );
     final actionProperties = isTodoCategorizationRequest
         ? <String, dynamic>{
             'action': {
@@ -661,6 +752,8 @@ class AiNativeToolDefinitionBuilder {
                     ? const ['title']
                     : field == 'updates' && updatesContainOnlyTodoMutations
                     ? const ['todoId']
+                    : field == 'updates' && updatesContainOnlyHabitMutations
+                    ? const ['habitUuid', 'title']
                     : const [],
               ),
             'title': {'type': 'string'},
@@ -990,6 +1083,9 @@ class AiNativeToolDefinitionBuilder {
     required String previousUserMessage,
     required String previousAssistantMessage,
   }) {
+    if (AiTodoContextBuilder.isExplicitOperationDecline(userMessage)) {
+      return userMessage;
+    }
     final previousRequest = previousUserMessage.trim();
     final assistantReply = previousAssistantMessage.trim();
     if (previousRequest.isEmpty || assistantReply.isEmpty) return userMessage;
@@ -1056,6 +1152,8 @@ class AiNativeToolDefinitionBuilder {
     'split_todo',
     'merge_todos',
     'create_habit',
+    'update_habit',
+    'delete_habit',
     'create_schedule',
     'update_schedule',
     'cancel_schedule',

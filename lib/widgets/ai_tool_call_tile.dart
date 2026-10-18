@@ -5,22 +5,61 @@ import 'package:flutter/material.dart';
 import '../models/chat_message.dart';
 
 /// Shows the exact function, submitted arguments, and actual app response.
-class AiToolCallTile extends StatelessWidget {
+class AiToolCallTile extends StatefulWidget {
   const AiToolCallTile({super.key, required this.call});
 
   final ChatNativeToolCall call;
 
-  Map<String, dynamic> get _arguments {
-    try {
-      final value = jsonDecode(call.arguments);
-      return value is Map ? Map<String, dynamic>.from(value) : {};
-    } catch (_) {
-      return {};
+  @override
+  State<AiToolCallTile> createState() => _AiToolCallTileState();
+}
+
+class _AiToolCallTileState extends State<AiToolCallTile> {
+  ChatNativeToolCall get call => widget.call;
+
+  String? _parsedArgumentsSource;
+  ({Map<String, dynamic> arguments, String prettyText})?
+  _parsedArgumentsCache;
+  ChatNativeToolCall? _prettyResultSource;
+  String? _prettyResultCache;
+
+  ({Map<String, dynamic> arguments, String prettyText}) _parseArguments() {
+    final raw = call.arguments;
+    if (_parsedArgumentsSource == raw && _parsedArgumentsCache != null) {
+      return _parsedArgumentsCache!;
     }
+
+    late final ({Map<String, dynamic> arguments, String prettyText}) parsed;
+    try {
+      final value = jsonDecode(raw);
+      parsed = (
+        arguments: value is Map ? Map<String, dynamic>.from(value) : {},
+        prettyText: const JsonEncoder.withIndent('  ').convert(value),
+      );
+    } catch (_) {
+      parsed = (
+        arguments: <String, dynamic>{},
+        prettyText: raw.isEmpty ? '（暂无参数）' : raw,
+      );
+    }
+    _parsedArgumentsSource = raw;
+    return _parsedArgumentsCache = parsed;
   }
 
+  String _prettyResultFor() {
+    if (identical(_prettyResultSource, call) && _prettyResultCache != null) {
+      return _prettyResultCache!;
+    }
+    _prettyResultSource = call;
+    return _prettyResultCache = const JsonEncoder.withIndent('  ').convert(
+      call.result,
+    );
+  }
+
+  static final RegExp _dateOnlyPattern = RegExp(r'^\d{4}-\d{2}-\d{2}$');
+
   static DateTime? _date(Object? value) {
-    if (value is! String || !RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(value)) {
+    if (value is! String || !_dateOnlyPattern.hasMatch(value)) {
       return null;
     }
     final parsed = DateTime.tryParse(value);
@@ -45,8 +84,7 @@ class AiToolCallTile extends StatelessWidget {
     return '${start == end ? start : '$start–$end'}${months ? '月' : ''}';
   }
 
-  String get _title {
-    final args = _arguments;
+  String _titleFor(Map<String, dynamic> args) {
     if (!call.name.startsWith('query_')) {
       return switch (call.name) {
         'propose_settings_navigation' => '查找应用设置入口',
@@ -158,16 +196,9 @@ class AiToolCallTile extends StatelessWidget {
     return '$verb${range.isEmpty ? '' : '$range的'}$target$page';
   }
 
-  static String _pretty(String value) {
-    try {
-      return const JsonEncoder.withIndent('  ').convert(jsonDecode(value));
-    } catch (_) {
-      return value.isEmpty ? '（暂无参数）' : value;
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
+    final parsedArguments = _parseArguments();
     final colors = Theme.of(context).colorScheme;
     Widget dataBlock(String text, double maxHeight) => Container(
       width: double.infinity,
@@ -201,7 +232,7 @@ class AiToolCallTile extends StatelessWidget {
         color: colors.primary,
       ),
       title: Text(
-        _title,
+        _titleFor(parsedArguments.arguments),
         maxLines: 2,
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
@@ -239,7 +270,7 @@ class AiToolCallTile extends StatelessWidget {
         const SizedBox(height: 6),
         const Align(alignment: Alignment.centerLeft, child: Text('模型提交的参数')),
         const SizedBox(height: 4),
-        dataBlock(_pretty(call.arguments), 160),
+        dataBlock(parsedArguments.prettyText, 160),
         if (call.result != null) ...[
           const SizedBox(height: 8),
           const Align(
@@ -248,7 +279,7 @@ class AiToolCallTile extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           dataBlock(
-            const JsonEncoder.withIndent('  ').convert(call.result),
+            _prettyResultFor(),
             260,
           ),
         ] else if (call.resultSummary.isNotEmpty) ...[

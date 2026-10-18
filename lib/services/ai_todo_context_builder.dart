@@ -6,8 +6,20 @@ import 'pomodoro_service.dart';
 import 'ai_settings_navigation_service.dart';
 
 class AiTodoContextBuilder {
+  static const pendingWriteProposalContextMarker =
+      '[APP_PENDING_WRITE_PROPOSAL]';
+
   static const int actionProtocolVersion = 2;
   static const int smartContextProtocolVersion = 2;
+  static const String _dynamicSuggestionRules = '''
+【AI动态下一步建议】
+建议只由模型结合本轮用户请求、助手最终回复和实际查询结果即时生成；应用没有固定建议清单，不得把功能目录或通用开场问题当作建议栏内容。
+先判断本轮是否确有自然、具体且有帮助的后续；每条建议都必须明确承接本轮提到的事项、对象、数据或结果，输出1-4条，每条不超过15字。
+不要输出功能菜单、通用引导、欢迎语或与本轮无关的查询；不要按照固定主题轮流填充建议栏。只从本轮结果中挑选可继续处理的具体事项，或提出与当前操作卡直接相关的调整。
+已有待确认操作卡时，只能建议调整卡片中与本轮有关的具体字段；不要建议用户在聊天里回复“确认”来保存，也不要用通用问题填充建议栏。
+没有合适后续时完全省略建议块，不要为了填充建议栏而提问。建议只在用户点击后发起下一轮请求，不能据此直接执行写操作；写操作仍须生成待确认操作卡并等待用户确认。
+格式：[SUGGEST_START]["建议1","建议2"][SUGGEST_END]
+''';
   static final RegExp _explicitIsoDateRangePattern = RegExp(
     r'(\d{4}-\d{2}-\d{2})\s*(?:至|到|-|~)\s*(\d{4}-\d{2}-\d{2})',
   );
@@ -172,13 +184,15 @@ class AiTodoContextBuilder {
 待办表示待完成的结果；规划块是可调整的执行时段；课程、会议、预约等外部约束是固定日程。没有日期和具体时间时不要默认今天全天。
 重复是周期机制，不等于习惯；周期事项未明确选择习惯或循环待办时先询问。循环修改默认只作用于本期，只有用户明确要求才作用于本期及以后。
 当本轮提供了与用户明确写入请求匹配的propose_*工具且信息完整时，必须调用对应工具生成待确认草案；不得只用自然语言声称已完成。工具调用只生成待确认草案，不直接保存或删除。query_*工具用于只读查询，可按需调用。不确定对象或缺少关键信息时先查询或追问，不得伪造参数。
-用户已要求生成规划或已同意方案时，必须调用propose_cdt_actions生成实际确认卡，Markdown表格不等于草案。只要时间范围和任务已明确，时长、顺序等偏好可给出可编辑建议，不必反复要求用户确认后才生成草案。保存只能由用户点击App确认卡完成，聊天回复“确认/要的/可以”只表达方案意图，绝不保存，也不要要求用户继续回复确认以保存。'''
+原生函数调用模式下，正文不得输出[ACTION_START]、[FINANCE_START]、[FINANCE_ACTION_START]或[SETTINGS_START]协议块；所有操作只能通过本轮开放的函数工具提交。
+用户已要求生成规划或已同意方案时，必须调用propose_cdt_actions生成实际确认卡，Markdown表格不等于草案。只要时间范围和任务已明确，时长、顺序等偏好可给出可编辑建议，不必反复要求用户确认后才生成草案。保存只能由用户点击App确认卡完成，聊天回复“确认/要的/可以”只表达方案意图，绝不保存，也不要要求用户继续回复确认以保存。
+'''
         : '''【时间规则】
 所有上下文时间均为本地时间，格式为yyyy-MM-dd HH:mm。判断今天、昨天、明天时必须以当前基准时间和括号中的时区为准，不要按UTC重新换算。
 
 【动作输出规则】
 当用户明确要求管理数据时，按本轮动作协议输出对应操作块；只按用户明确意图生成，信息不足时先追问。具体动作、字段和确认要求按本轮协议执行。''';
-    return '$resolvedBasePrompt\n\n$sharedRules\n\n'
+    return '$resolvedBasePrompt\n\n$sharedRules\n\n$_dynamicSuggestionRules\n\n'
         '历史消息中的READ_ONLY_TOOL_HISTORY等上下文块只供参考，不要在回复中复述其标记或JSON。'
         '只有实际输出操作调用或操作块后才能说已生成待确认草案。'
         '${settingsNavigation ? '\n\n${AiSettingsNavigationService.buildPrompt(nativeToolCalls: nativeToolCalls)}' : ''}';
@@ -195,14 +209,32 @@ class AiTodoContextBuilder {
     String previousUserMessage = '',
     String previousAssistantMessage = '',
   }) {
+    final resolvedCreationRequest = inheritExplicitCreationClarification(
+      userMessage,
+      previousUserMessage: previousUserMessage,
+      previousAssistantMessage: previousAssistantMessage,
+    );
+    final isCreationClarificationFollowUp =
+        resolvedCreationRequest != userMessage.trim();
+    userMessage = resolvedCreationRequest;
     final actions = <String>[];
     void add(String line) {
       if (!actions.contains(line)) actions.add(line);
     }
 
+    if (isCreationClarificationFollowUp) {
+      add(
+        '- 创建澄清续答：本轮是在补充上一轮明确创建请求的参数；继续使用同一创建类型解释字段并生成草案，不要把日期、时长、频率等答复误分类成其他操作。',
+      );
+    }
+
     final isPlanningRequest =
         _matchesAny(userMessage, _planKeywords) ||
-        _matchesAny(userMessage, _planningKeywords);
+        _matchesAny(userMessage, _planningKeywords) ||
+        (_matchesAny(userMessage, const ['安排']) &&
+            (_matchesAny(userMessage, const ['待办', '任务']) ||
+                _matchesAny(userMessage, _planningTimeKeywords)) &&
+            !_matchesAny(userMessage, _fixedScheduleEventKeywords));
     final explicitlyCreatesTodo =
         _matchesAny(userMessage, _createTodoKeywords) ||
         isExplicitTodoCreationRequest(userMessage);
@@ -210,17 +242,45 @@ class AiTodoContextBuilder {
       userMessage,
       previousAssistantMessage,
     );
+    final habitUpdateFollowUp = _isHabitMutationFollowUp(
+      userMessage,
+      previousAssistantMessage,
+      verbs: _habitUpdateKeywords,
+    );
+    final habitDeleteFollowUp = _isHabitMutationFollowUp(
+      userMessage,
+      previousAssistantMessage,
+      verbs: _habitDeleteKeywords,
+    );
     final mentionsHabit =
         _matchesAny(userMessage, _habitKeywords) ||
         userMessage.toLowerCase().contains('habit') ||
-        habitCreationFollowUp;
+        habitCreationFollowUp ||
+        habitUpdateFollowUp ||
+        habitDeleteFollowUp;
     final explicitlyTargetsHabit =
         _matchesAny(userMessage, _habitTypeKeywords) ||
         userMessage.toLowerCase().contains('habit') ||
-        habitCreationFollowUp;
+        habitCreationFollowUp ||
+        habitUpdateFollowUp ||
+        habitDeleteFollowUp;
     final explicitlyTargetsTodo = _matchesAny(userMessage, _todoTypeKeywords);
+    final habitUpdateRequested =
+        habitUpdateFollowUp ||
+        (mentionsHabit &&
+            _habitUpdateKeywords.any(
+              (word) => isExplicitlyRequested(userMessage, word),
+            ));
+    final habitDeleteRequested =
+        habitDeleteFollowUp ||
+        (mentionsHabit &&
+            _habitDeleteKeywords.any(
+              (word) => isExplicitlyRequested(userMessage, word),
+            ));
     final requestsHabitAction =
         habitCreationFollowUp ||
+        habitUpdateRequested ||
+        habitDeleteRequested ||
         (mentionsHabit &&
             (explicitlyCreatesTodo ||
                 _matchesAny(userMessage, _habitCreationKeywords)));
@@ -241,7 +301,12 @@ class AiTodoContextBuilder {
           _shouldInjectTodoContext,
         ) &&
         _matchesAny(userMessage, _existingTodoKeywords);
-    final readOnlyRequest = _isReadOnlyRequest(userMessage);
+    final declinedOperation = isExplicitOperationDecline(userMessage);
+    final readOnlyRequest =
+        declinedOperation || _isReadOnlyRequest(userMessage);
+    final planningActions = declinedOperation || !isPlanningRequest
+        ? <String>{}
+        : explicitPlanningActionNames(userMessage);
     final requestsTodoAction =
         !readOnlyRequest &&
         (!requestsHabitAction ||
@@ -256,15 +321,15 @@ class AiTodoContextBuilder {
             _matchesAny(userMessage, _recurrenceKeywords) ||
             userMessage.contains('待办') ||
             userMessage.contains('任务'));
-    final requestsScheduleAction = isPlanningRequest
-        ? _matchesAny(userMessage, _fixedScheduleEventKeywords)
-        : _shouldInjectFixedScheduleContext(userMessage) ||
-              _matchesAny(userMessage, _fixedScheduleKeywords);
-    final requestsFinanceAction =
-        _matchesAny(userMessage, _financeKeywords) ||
-        userMessage.contains('#记账') ||
-        userMessage.contains('账单') ||
-        RegExp(r'\d+(?:\.\d+)?\s*(?:元|块(?:钱)?|人民币|¥|￥)').hasMatch(userMessage);
+    final scheduleActions = declinedOperation
+        ? <String>{}
+        : explicitScheduleActionNames(userMessage);
+    final requestsFinanceAction = !declinedOperation &&
+        (_matchesAny(userMessage, _financeKeywords) ||
+            userMessage.contains('#记账') ||
+            userMessage.contains('账单') ||
+            RegExp(r'\d+(?:\.\d+)?\s*(?:元|块(?:钱)?|人民币|¥|￥)')
+                .hasMatch(userMessage));
     if (requestsTodoAction && (!isPlanningRequest || explicitlyCreatesTodo)) {
       add(
         '- create_todo: {"action":"create_todo","todos":[{"title":"标题","remark":"备注","timeMode":"unscheduled|dateOnly|deadline","dueDate":null,"groupId":null,"reminderMinutes":5,"recurrence":"none|daily|weekly|monthly|yearly|weekdays|customDays","customIntervalDays":null,"recurrenceEndDate":null}]}；多个事项分别作为数组条目，每条独立填写标题和备注。用户明确说“备注是六月”等内容时，remark原样写“六月”，不得改写成“截止时间：六月”或把它当dueDate；只有明确要求截止日期/时间时才设置dueDate，否则timeMode="unscheduled"且dueDate=null',
@@ -282,15 +347,27 @@ class AiTodoContextBuilder {
       add('- split_todo / merge_todos: 拆分合并需 sourceTodoId/sourceTodoIds');
     }
     if (requestsHabitAction && !readOnlyRequest) {
-      add(
-        '- create_habit: {"action":"create_habit","habits":[{"name":"习惯名称","icon":"🎯","sourceType":"quantityCheckIn|timeCheckIn|durationCheckIn|pomodoroTag|recurringTodo","periodType":"daily|weekly|weekdays|monthly|custom","targetValue":1600,"unit":"ml","durationMinutes":30,"targetTimeMinute":420,"timeComparison":"before|after","timeToleranceMinutes":0,"weekdaysMask":127,"customIntervalDays":null,"dayBoundaryMinute":0,"quickValues":[200,500],"sourceIds":[],"displayMode":"habitOnly|todoOnly|both","defaultFocusMinutes":25,"reminderPolicy":{"fixedTimes":[480],"progressReminder":false,"nearEndReminder":false,"dailySummaryReminder":false}}]}',
-      );
-      add(
-        '- 习惯创建规则：明确创建习惯时必须使用create_habit，不能用普通待办动作代替。数量目标使用quantityCheckIn并填写targetValue/unit；时间点目标使用timeCheckIn并填写targetTimeMinute（分钟数）和timeComparison；时长目标使用durationCheckIn并填写durationMinutes；只有上下文提供真实番茄标签UUID时才使用pomodoroTag并填写sourceIds，否则使用durationCheckIn；完成一次型目标使用recurringTodo，sourceIds为空时由应用创建并绑定循环待办。periodType为weekdays时用weekdaysMask（周一bit0至周日bit6），custom时必须填写customIntervalDays。',
-      );
-      if (habitCreationFollowUp) {
+      if (!habitUpdateRequested && !habitDeleteRequested) {
         add(
-          '- 习惯草案续答：上一条助手正在收集创建习惯的参数，本轮是该习惯的补充信息；不要转成一次性的专注记录或普通待办。',
+          '- create_habit: {"action":"create_habit","habits":[{"name":"习惯名称","icon":"🎯","sourceType":"quantityCheckIn|timeCheckIn|durationCheckIn|pomodoroTag|recurringTodo","periodType":"daily|weekly|weekdays|monthly|custom","targetValue":1600,"unit":"ml","durationMinutes":30,"targetTimeMinute":420,"timeComparison":"before|after","timeToleranceMinutes":0,"weekdaysMask":127,"customIntervalDays":null,"dayBoundaryMinute":0,"quickValues":[200,500],"sourceIds":[],"displayMode":"habitOnly|todoOnly|both","defaultFocusMinutes":25,"reminderPolicy":{"fixedTimes":[480],"progressReminder":false,"nearEndReminder":false,"dailySummaryReminder":false}}]}',
+        );
+        add(
+          '- 习惯创建规则：明确创建习惯时必须使用create_habit，不能用普通待办动作代替。数量目标使用quantityCheckIn并填写targetValue/unit；时间点目标使用timeCheckIn并填写targetTimeMinute（分钟数）和timeComparison；时长目标使用durationCheckIn并填写durationMinutes；只有上下文提供真实番茄标签UUID时才使用pomodoroTag并填写sourceIds，否则使用durationCheckIn；完成一次型目标使用recurringTodo，sourceIds为空时由应用创建并绑定循环待办。periodType为weekdays时用weekdaysMask（周一bit0至周日bit6），custom时必须填写customIntervalDays。',
+        );
+        if (habitCreationFollowUp) {
+          add(
+            '- 习惯草案续答：上一条助手正在收集创建习惯的参数，本轮是该习惯的补充信息；不要转成一次性的专注记录或普通待办。',
+          );
+        }
+      }
+      if (habitUpdateRequested) {
+        add(
+          '- update_habit: {"action":"update_habit","updates":[{"habitUuid":"必须复制query_habits返回的真实ID","title":"现有习惯名称，仅用于确认卡标识","name":"新名称","icon":"🎯","displayMode":"habitOnly|todoOnly|both","defaultFocusMinutes":25,"targetValue":2000,"unit":"ml","durationMinutes":30,"targetTimeMinute":420,"timeComparison":"before|after","timeToleranceMinutes":0,"periodType":"daily|weekly|weekdays|monthly|custom","weekdaysMask":127,"customIntervalDays":3,"dayBoundaryMinute":0,"quickValues":[200,500],"reminderPolicy":{"fixedTimes":[480],"progressReminder":false,"nearEndReminder":false,"dailySummaryReminder":false},"effectiveFromOption":"today|nextPeriod|all"}]}。title用于确认卡标识，若不改名请填写query_habits返回的现有名称；name才是要修改的新名称。只传用户明确要改的字段；规则默认today生效，只有用户明确要求下周期或覆盖全部历史目标时才用nextPeriod或all。修改已有习惯前先用query_habits读取真实ID和规则，不要更换习惯来源类型。',
+        );
+      }
+      if (habitDeleteRequested) {
+        add(
+          '- delete_habit: {"action":"delete_habit","updates":[{"habitUuid":"必须复制query_habits返回的真实ID","title":"query_habits返回的习惯名称，仅用于确认卡标识"}]}。只删除用户明确指定的习惯；这是软删除习惯目标和规则，不会删除其来源待办或专注记录。',
         );
       }
     }
@@ -299,16 +376,27 @@ class AiTodoContextBuilder {
         '- 创建类型不明确：用户只描述了周期性事项但没有说明要创建为习惯还是待办。先询问“要创建成习惯，还是循环待办？”，不要输出任何创建动作。',
       );
     }
-    if (requestsScheduleAction && !readOnlyRequest) {
-      add(
-        '- create_schedule: {"action":"create_schedule","schedules":[{"title":"日程名","date":"YYYY-MM-DD","startTime":"YYYY-MM-DD HH:mm或null","endTime":"YYYY-MM-DD HH:mm或null","location":null,"remark":null,"reminderMinutes":[15],"recurrence":"none|daily|weekly|monthly|yearly|weekdays|customDays","customIntervalDays":null,"recurrenceEndDate":null}]}',
-      );
-      add(
-        '- update_schedule: {"action":"update_schedule","updates":[{"scheduleId":"真实期次ID","recurrenceSeriesId":"可选系列ID","recurrenceScope":"occurrence|future","title":"新标题","date":"YYYY-MM-DD","startTime":null,"endTime":null,"location":null,"remark":null,"reminderMinutes":[],"recurrence":"none|daily|weekly|monthly|yearly|weekdays|customDays","customIntervalDays":null,"recurrenceEndDate":null}]}。字段缺省=保持，null=清空；startTime=null同时清空结束时间，表示时间待定；修改重复规则必须使用future',
-      );
-      add(
-        '- cancel_schedule / delete_schedule: 必须带scheduleId；默认只操作本期，只有用户明确说本期及以后时才用recurrenceScope="future"',
-      );
+    if (!readOnlyRequest) {
+      if (scheduleActions.contains('create_schedule')) {
+        add(
+          '- create_schedule: {"action":"create_schedule","schedules":[{"title":"日程名","date":"YYYY-MM-DD","startTime":"YYYY-MM-DD HH:mm或null","endTime":"YYYY-MM-DD HH:mm或null","location":null,"remark":null,"reminderMinutes":[15],"recurrence":"none|daily|weekly|monthly|yearly|weekdays|customDays","customIntervalDays":null,"recurrenceEndDate":null}]}',
+        );
+      }
+      if (scheduleActions.contains('update_schedule')) {
+        add(
+          '- update_schedule: {"action":"update_schedule","updates":[{"scheduleId":"真实期次ID","recurrenceSeriesId":"可选系列ID","recurrenceScope":"occurrence|future","title":"新标题","date":"YYYY-MM-DD","startTime":null,"endTime":null,"location":null,"remark":null,"reminderMinutes":[],"recurrence":"none|daily|weekly|monthly|yearly|weekdays|customDays","customIntervalDays":null,"recurrenceEndDate":null}]}。字段缺省=保持，null=清空；startTime=null同时清空结束时间，表示时间待定；修改重复规则必须使用future',
+        );
+      }
+      if (scheduleActions.contains('cancel_schedule')) {
+        add(
+          '- cancel_schedule: 必须带真实scheduleId；默认只取消本期，只有用户明确说本期及以后时才用recurrenceScope="future"',
+        );
+      }
+      if (scheduleActions.contains('delete_schedule')) {
+        add(
+          '- delete_schedule: 必须带真实scheduleId；默认只删除本期，只有用户明确说本期及以后时才用recurrenceScope="future"',
+        );
+      }
     }
     if (requestsFinanceAction) {
       if (!readOnlyRequest) {
@@ -335,7 +423,7 @@ class AiTodoContextBuilder {
         );
       }
     }
-    if (isPlanningRequest && !readOnlyRequest) {
+    if (!readOnlyRequest && planningActions.contains('create_plan_block')) {
       add(
         '- 规划优先规则：把上下文中已有待办安排到可调整执行时段时，必须使用create_plan_block；禁止用create_todo复制已有待办。每个已有待办都要使用真实todoId',
       );
@@ -345,47 +433,84 @@ class AiTodoContextBuilder {
       add(
         '- create_plan_block: {"action":"create_plan_block","blocks":[{"todoId":"已有待办ID（新事项省略此字段并填写newTodoTitle）","newTodoTitle":"仅无对应待办时的待建标题","title":"规划标题","startTime":"YYYY-MM-DD HH:mm","dueDate":"YYYY-MM-DD HH:mm","durationMinutes":60,"reminderMinutes":5}]}',
       );
+    }
+    if (!readOnlyRequest && planningActions.contains('update_plan_block')) {
       add(
-        '- update_plan_block / reschedule_plan_blocks / delete_plan_block / skip_plan_block / start_plan_block_pomodoro: 必须带 planBlockId',
+        '- update_plan_block: 必须带真实planBlockId，只修改用户明确指定的字段',
       );
     }
+    if (!readOnlyRequest && planningActions.contains('reschedule_plan_blocks')) {
+      add(
+        '- reschedule_plan_blocks: 必须带真实planBlockId；仅按用户明确指定的时间改期',
+      );
+    }
+    if (!readOnlyRequest && planningActions.contains('delete_plan_block')) {
+      add('- delete_plan_block: 必须带真实planBlockId，只删除用户明确指定的规划块');
+    }
+    if (!readOnlyRequest && planningActions.contains('skip_plan_block')) {
+      add('- skip_plan_block: 必须带真实planBlockId，只跳过用户明确指定的规划块');
+    }
+    if (!readOnlyRequest &&
+        planningActions.contains('start_plan_block_pomodoro')) {
+      add(
+        '- start_plan_block_pomodoro: 必须带真实planBlockId，只能启动用户明确指定的规划块',
+      );
+    }
+    final focusActions = explicitFocusActionNames(userMessage);
     if (!readOnlyRequest &&
         (!habitCreationFollowUp ||
-            isExplicitFocusMutationRequest(userMessage)) &&
-        (_matchesAny(userMessage, _timeLogActionKeywords) ||
-            _looksLikeFocusQuery(userMessage))) {
-      add(
-        '- create_time_log: {"action":"create_time_log","logs":[{"title":"专注内容","startTime":"YYYY-MM-DD HH:mm","dueDate":"YYYY-MM-DD HH:mm","durationMinutes":60,"remark":"备注","tagUuids":[]}]}',
-      );
-      add(
-        '- update_time_log: {"action":"update_time_log","updates":[{"logId":"日志ID","title":"新标题","startTime":"YYYY-MM-DD HH:mm","dueDate":"YYYY-MM-DD HH:mm","durationMinutes":60,"remark":"备注","tagUuids":[]}]}',
-      );
-      add(
-        '- delete_time_log: {"action":"delete_time_log","updates":[{"logId":"日志ID"}]}',
-      );
-      add(
-        '- start_pomodoro: {"action":"start_pomodoro","title":"专注内容","todoId":"可选待办ID","durationMinutes":25,"tagUuids":[]}',
-      );
-      add('- stop_pomodoro: {"action":"stop_pomodoro","status":"completed"}');
+            focusActions.isNotEmpty ||
+            isExplicitFocusMutationRequest(userMessage))) {
+      if (focusActions.contains('create_time_log')) {
+        add(
+          '- create_time_log: {"action":"create_time_log","logs":[{"title":"专注内容","startTime":"YYYY-MM-DD HH:mm","dueDate":"YYYY-MM-DD HH:mm","durationMinutes":60,"remark":"备注","tagUuids":[]}]}',
+        );
+      }
+      if (focusActions.contains('update_time_log')) {
+        add(
+          '- update_time_log: {"action":"update_time_log","updates":[{"logId":"日志ID","title":"新标题","startTime":"YYYY-MM-DD HH:mm","dueDate":"YYYY-MM-DD HH:mm","durationMinutes":60,"remark":"备注","tagUuids":[]}]}',
+        );
+      }
+      if (focusActions.contains('delete_time_log')) {
+        add(
+          '- delete_time_log: {"action":"delete_time_log","updates":[{"logId":"日志ID"}]}',
+        );
+      }
+      if (focusActions.contains('start_pomodoro')) {
+        add(
+          '- start_pomodoro: {"action":"start_pomodoro","title":"专注内容","todoId":"可选待办ID","durationMinutes":25,"tagUuids":[]}',
+        );
+      }
+      if (focusActions.contains('stop_pomodoro')) {
+        add('- stop_pomodoro: {"action":"stop_pomodoro","status":"completed"}');
+      }
+    }
+    if (!readOnlyRequest) {
+      final countdownActions = explicitCountdownActionNames(userMessage);
+      if (countdownActions.contains('create_countdown')) {
+        add(
+          '- create_countdown: {"action":"create_countdown","countdowns":[{"title":"事件","dueDate":"YYYY-MM-DD HH:mm"}]}',
+        );
+      }
+      if (countdownActions.contains('update_countdown')) {
+        add(
+          '- update_countdown: {"action":"update_countdown","updates":[{"countdownId":"倒计时ID","title":"新标题","dueDate":"YYYY-MM-DD HH:mm"}]}',
+        );
+      }
+      if (countdownActions.contains('complete_countdown')) {
+        add(
+          '- complete_countdown: {"action":"complete_countdown","updates":[{"countdownId":"倒计时ID"}]}',
+        );
+      }
+      if (countdownActions.contains('delete_countdown')) {
+        add(
+          '- delete_countdown: {"action":"delete_countdown","updates":[{"countdownId":"倒计时ID"}]}',
+        );
+      }
     }
     if (!readOnlyRequest &&
-        (_matchesAny(userMessage, _countdownKeywords) ||
-            _looksLikeCountdownQuery(userMessage))) {
-      add(
-        '- create_countdown: {"action":"create_countdown","countdowns":[{"title":"事件","dueDate":"YYYY-MM-DD HH:mm"}]}',
-      );
-      add(
-        '- update_countdown: {"action":"update_countdown","updates":[{"countdownId":"倒计时ID","title":"新标题","dueDate":"YYYY-MM-DD HH:mm"}]}',
-      );
-      add(
-        '- complete_countdown: {"action":"complete_countdown","updates":[{"countdownId":"倒计时ID"}]}',
-      );
-      add(
-        '- delete_countdown: {"action":"delete_countdown","updates":[{"countdownId":"倒计时ID"}]}',
-      );
-    }
-    if (!readOnlyRequest &&
-        _matchesAny(userMessage, _groupManagementKeywords)) {
+        (_matchesAny(userMessage, _groupManagementKeywords) ||
+            _isExplicitManagementRequest(userMessage, _groupKeywords))) {
       add(
         '- create_todo_group: {"action":"create_todo_group","groups":[{"name":"分类名"}]}',
       );
@@ -401,7 +526,11 @@ class AiTodoContextBuilder {
         !_matchesAny(userMessage, const ['番茄', '专注']);
     if (!readOnlyRequest &&
         !targetsTodoTag &&
-        _matchesAny(userMessage, _tagManagementKeywords)) {
+        (_matchesAny(userMessage, _tagManagementKeywords) ||
+            _isExplicitManagementRequest(
+              userMessage,
+              const ['番茄标签', '专注标签', '番茄 tag', 'pomodoro tag'],
+            ))) {
       add(
         '- create_pomodoro_tag: {"action":"create_pomodoro_tag","tags":[{"name":"标签名","color":"#607D8B"}]}',
       );
@@ -492,6 +621,8 @@ $financeActionProtocol
 
     return '''$resolvedBasePrompt
 
+$_dynamicSuggestionRules
+
 【用户当前固定日程】
 $scheduleList
 
@@ -564,8 +695,7 @@ JSON操作块必须且只能使用以下协议：
 
 可组合多种操作：[ACTION_START]{"protocol":"cdt.actions","version":2,"actions":[{"action":"create_plan_block","blocks":[...]},{"action":"start_pomodoro","title":"专注内容","durationMinutes":25}]}[ACTION_END]
 
-【后续建议】
-每次回复末尾附3-4个简短建议后续问题（≤15字），格式：[SUGGEST_START]["追问1","追问2","追问3"][SUGGEST_END]
+$_dynamicSuggestionRules
 
 【核心规则】
 1. 意图判定：先区分习惯目标、待办结果、外部固定日程和可调整规划块，再选择创建/修改/取消/完成/删除/改期/分类/拆分/合并等动作；习惯创建只用create_habit。周期性事项没有明确类型时先追问，不生成创建动作
@@ -999,13 +1129,205 @@ ${sections.join('\n')}
     );
   }
 
+  /// Prevents short cancellations and declines from inheriting an earlier
+  /// write request or exposing unrelated proposal tools.
+  static bool isExplicitOperationDecline(String text) {
+    final message = text
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[\s，。！？,.!?；;]'), '');
+    if (message.isEmpty) return false;
+
+    const exactDeclines = {
+      '算了',
+      '那算了',
+      '那就算了',
+      '不用了',
+      '不需要了',
+      '暂时不用',
+      '暂时不用了',
+      '先不用',
+      '先不用了',
+      '取消',
+      '取消吧',
+      '撤销',
+      '撤销吧',
+      '放弃',
+      '放弃吧',
+      '不要了',
+      '不做了',
+      '先不做',
+      '先不做了',
+      '先不弄',
+      '先不弄了',
+      '不继续了',
+      '不要继续了',
+    };
+    if (exactDeclines.contains(message)) return true;
+
+    final cancelsCurrentOperation = RegExp(
+      r'^(?:我)?(?:先|暂时)?(?:算了|取消|撤销|放弃)'
+      r'(?:(?:这次|本次|这个|它|这件事|这项操作|刚才那个))*'
+      r'(?:吧|了|好了)?$',
+    );
+    if (cancelsCurrentOperation.hasMatch(message)) return true;
+
+    final cancelsProposedWrite = RegExp(
+      r'^(?:我)?(?:先|暂时)?(?:取消|撤销|放弃)'
+      r'(?:再|继续)?(?:我|给我|帮我|替我)?'
+      r'(?:创建|新建|新增|添加|记录|记账|生成|执行|建)'
+      r'(?:(?:这次|本次|这个|它|习惯|待办|任务|专注|番茄|倒计时|分类|标签|账单|日程|时间块|了|吧|一下))*$',
+    );
+    if (cancelsProposedWrite.hasMatch(message)) return true;
+
+    return RegExp(
+      r'^(?:我)?(?:先|暂时)?(?:不需要|不用|不要|不想|不打算|不准备|不|别)'
+      r'(?:再|继续)?(?:我|给我|帮我|替我)?(?:现在|以后)?'
+      r'(?:创建|新建|新增|添加|记录|记账|安排|规划|计划|做|弄|执行|生成|建)?'
+      r'(?:(?:这次|本次|这个|它|习惯|待办|任务|专注|番茄|倒计时|分类|标签|账单|日程|时间块|了|吧|一下))*$',
+    ).hasMatch(message);
+  }
+
+  static bool isExplicitScheduleMutationRequest(String text) {
+    return explicitScheduleActionNames(text).isNotEmpty;
+  }
+
+  static Set<String> explicitScheduleActionNames(String text) {
+    const createVerbs = [
+      '创建',
+      '新建',
+      '新增',
+      '添加',
+      '记下',
+      '记一下',
+      '记录',
+      '写进',
+      '记入',
+      '加入',
+      '加到',
+      '安排',
+      '预约',
+    ];
+    const updateVerbs = [
+      '修改',
+      '更新',
+      '更改',
+      '调整',
+      '改到',
+      '改为',
+      '改成',
+      '调到',
+      '改期',
+    ];
+    const cancelVerbs = ['取消', '撤销'];
+    const deleteVerbs = ['删除', '删掉', '移除', '清掉'];
+    final actions = <String>{};
+    final targets = [..._fixedScheduleEventKeywords, '日程', '日历'];
+    final clauses = text.split(RegExp(r'[，。；！？,;]|然后|并且|同时'));
+    for (final clause in clauses) {
+      if (!_matchesAny(clause, targets)) continue;
+      void addWhenExplicit(List<String> verbs, String action) {
+        for (final verb in verbs) {
+          if (isExplicitlyRequested(clause, verb) &&
+              _hasExplicitActionPrefix(clause, verb)) {
+            actions.add(action);
+            return;
+          }
+        }
+      }
+
+      addWhenExplicit(createVerbs, 'create_schedule');
+      addWhenExplicit(updateVerbs, 'update_schedule');
+      addWhenExplicit(cancelVerbs, 'cancel_schedule');
+      addWhenExplicit(deleteVerbs, 'delete_schedule');
+    }
+    return actions;
+  }
+
+  static Set<String> explicitPlanningActionNames(String text) {
+    const planningTargets = [
+      '规划',
+      '计划',
+      '待办',
+      '任务',
+      '规划块',
+      '计划块',
+      '时间块',
+      '排时间',
+      'plan block',
+    ];
+    const blockTargets = ['规划块', '计划块', '时间块', 'plan block'];
+    const createVerbs = [
+      '规划',
+      '计划',
+      '新建',
+      '新增',
+      '添加',
+      '安排',
+      '排一下',
+      '排时间',
+      '排进',
+      '排入',
+      '制定',
+      '生成',
+      '创建',
+      '建立',
+    ];
+    const updateVerbs = ['修改', '更新', '更改', '调整'];
+    const rescheduleVerbs = [
+      '改期',
+      '重排',
+      '重新安排',
+      '改到',
+      '改成',
+      '调整时间',
+      '改时间',
+    ];
+    const deleteVerbs = ['删除', '删掉', '移除', '清掉', '取消'];
+    const skipVerbs = ['跳过', '略过'];
+    const startVerbs = ['开始', '启动'];
+    final actions = <String>{};
+    final clauses = text.split(RegExp(r'[，。；！？,;]|然后|并且|同时'));
+    for (final clause in clauses) {
+      void addWhenExplicit(List<String> verbs, String action) {
+        for (final verb in verbs) {
+          if (isExplicitlyRequested(clause, verb) &&
+              _hasExplicitActionPrefix(clause, verb)) {
+            actions.add(action);
+            return;
+          }
+        }
+      }
+
+      final hasPlanningTarget =
+          _matchesAny(clause.toLowerCase(), planningTargets) ||
+          (_matchesAny(clause, _planningTimeKeywords) &&
+              !_matchesAny(clause, _fixedScheduleEventKeywords));
+      if (hasPlanningTarget) {
+        addWhenExplicit(createVerbs, 'create_plan_block');
+      }
+      if (!_matchesAny(clause.toLowerCase(), blockTargets)) continue;
+      addWhenExplicit(updateVerbs, 'update_plan_block');
+      addWhenExplicit(rescheduleVerbs, 'reschedule_plan_blocks');
+      addWhenExplicit(deleteVerbs, 'delete_plan_block');
+      addWhenExplicit(skipVerbs, 'skip_plan_block');
+      addWhenExplicit(startVerbs, 'start_plan_block_pomodoro');
+    }
+    return actions;
+  }
+
   static bool _isHabitCreationFollowUp(
     String userMessage,
     String previousAssistantMessage,
   ) {
     final message = userMessage.trim();
     final previous = previousAssistantMessage.trim();
-    if (message.isEmpty || previous.isEmpty) return false;
+    if (message.isEmpty ||
+        previous.isEmpty ||
+        previous.contains(pendingWriteProposalContextMarker) ||
+        isExplicitOperationDecline(message)) {
+      return false;
+    }
 
     final answersHabitTypeChoice = RegExp(
       r'^(?:那就|就|选择|选|创建成|按|我要|我选)?\s*习惯(?:打卡)?(?:吧|就行|也行|即可)?[。！!\s]*$',
@@ -1041,6 +1363,134 @@ ${sections.join('\n')}
         isExplicitFinanceDraftRequest(message) ||
         hasExplicitFinanceUpdateIntent(message);
     return !explicitlyTargetsOtherWrite && !_isReadOnlyRequest(message);
+  }
+
+  static bool _isHabitMutationFollowUp(
+    String userMessage,
+    String previousAssistantMessage, {
+    required List<String> verbs,
+  }) {
+    final message = userMessage.trim();
+    final previous = previousAssistantMessage.trim();
+    if (message.isEmpty ||
+        previous.isEmpty ||
+        previous.contains(pendingWriteProposalContextMarker) ||
+        isExplicitOperationDecline(message) ||
+        isExplicitTodoCreationRequest(message) ||
+        _matchesAny(message, const ['待办', '任务', '日程', '账单', '专注记录'])) {
+      return false;
+    }
+    final askedAboutHabitMutation =
+        _matchesAny(previous, _habitKeywords) &&
+        verbs.any((verb) => _matchesAny(previous, [verb])) &&
+        (RegExp(r'[？?]').hasMatch(previous) ||
+            RegExp(r'请告诉|请提供|还差|补充|选择|哪个|哪一个').hasMatch(previous));
+    if (!askedAboutHabitMutation) return false;
+    return !_looksLikeInformationQuestion(message);
+  }
+
+  /// Carries only an explicit creation request across an assistant's parameter
+  /// clarification. Short answers such as a title, date, or duration otherwise
+  /// lose the action type and can be routed to an unrelated tool.
+  static String inheritExplicitCreationClarification(
+    String userMessage, {
+    required String previousUserMessage,
+    required String previousAssistantMessage,
+  }) {
+    final message = userMessage.trim();
+    final previousRequest = previousUserMessage.trim();
+    final assistantReply = previousAssistantMessage.trim();
+    final isIndependentQuestionOrLookup = RegExp(
+      r'[？?]|^(?:为什么|怎么|如何|怎样|有没有|有哪些|有什么|查看|查询|查一下|列出|统计|汇总|分析一下|帮我查|帮我分析)',
+    ).hasMatch(message);
+    if (message.isEmpty ||
+        previousRequest.isEmpty ||
+        assistantReply.isEmpty ||
+        assistantReply.contains(pendingWriteProposalContextMarker) ||
+        message.contains(previousRequest) ||
+        isExplicitOperationDecline(message) ||
+        isIndependentQuestionOrLookup ||
+        _isHabitCreationFollowUp(message, assistantReply) ||
+        _hasExplicitCreationIntent(message)) {
+      return message;
+    }
+
+    final assistantAlreadyGeneratedProposal = RegExp(
+      r'(?:已生成|已经生成|已创建|已经创建|已保存|已经保存).{0,16}(?:草案|确认卡|操作卡|待办|习惯|日程|账单)?',
+    ).hasMatch(assistantReply);
+    if (assistantAlreadyGeneratedProposal ||
+        !_hasExplicitCreationIntent(previousRequest)) {
+      return message;
+    }
+
+    final assistantRequestsDetails = RegExp(
+      r'请提供|请补充|请告诉|告诉我|还需要|还差|缺少|需要你提供|需要补充|请问',
+    ).hasMatch(assistantReply) ||
+        (RegExp(r'[？?]').hasMatch(assistantReply) &&
+            RegExp(r'标题|名称|备注|时间|日期|时长|频率|提醒|颜色|分类|地点|截止|星期|哪天|几次|多久')
+                .hasMatch(assistantReply));
+    if (!assistantRequestsDetails) return message;
+
+    return '$previousRequest\n$message';
+  }
+
+  static bool _hasExplicitCreationIntent(String text) {
+    if (_hasExplicitTodoCreationIntent(text) ||
+        explicitScheduleActionNames(text).contains('create_schedule') ||
+        explicitPlanningActionNames(text).contains('create_plan_block') ||
+        explicitFocusActionNames(text).any(
+          (action) => action == 'create_time_log' || action == 'start_pomodoro',
+        ) ||
+        explicitCountdownActionNames(text).contains('create_countdown') ||
+        _isExplicitManagementRequest(text, _groupKeywords) ||
+        _isExplicitManagementRequest(
+          text,
+          const ['番茄标签', '专注标签', '番茄 tag', 'pomodoro tag'],
+        )) {
+      return true;
+    }
+    return false;
+  }
+
+  static bool _hasExplicitTodoCreationIntent(String text) {
+    if (isExplicitTodoCreationRequest(text)) return true;
+    if (!_matchesAny(text.toLowerCase(), const ['待办', '任务', 'todo'])) {
+      return false;
+    }
+    return _createTodoKeywords.any(
+      (verb) =>
+          isExplicitlyRequested(text, verb) &&
+          _hasExplicitActionPrefix(text, verb),
+    );
+  }
+
+  static bool _isExplicitManagementRequest(
+    String text,
+    List<String> targets,
+  ) {
+    if (!_matchesAny(text.toLowerCase(), targets)) return false;
+    const verbs = [
+      '创建',
+      '新建',
+      '新增',
+      '添加',
+      '建立',
+      '建',
+      '修改',
+      '更新',
+      '更名',
+      '改名',
+      '重命名',
+      '删除',
+      '删掉',
+      '移除',
+      '清掉',
+    ];
+    return verbs.any(
+      (verb) =>
+          isExplicitlyRequested(text, verb) &&
+          _hasExplicitActionPrefix(text, verb),
+    );
   }
 
   /// Recognizes common spoken commands such as "帮我记两个待办" and
@@ -1114,6 +1564,95 @@ ${sections.join('\n')}
       }
     }
     return false;
+  }
+
+  static Set<String> explicitFocusActionNames(String text) {
+    const logCreateVerbs = [
+      '记录',
+      '记下',
+      '记一下',
+      '补记',
+      '补录',
+      '新增',
+      '创建',
+      '添加',
+    ];
+    const logUpdateVerbs = [
+      '修改',
+      '更新',
+      '更正',
+      '调整',
+      '改成',
+      '改为',
+      '改到',
+    ];
+    const logDeleteVerbs = ['删除', '删掉', '移除', '清掉'];
+    const pomodoroStartVerbs = ['开始', '启动', '开启'];
+    const pomodoroStopVerbs = ['停止', '结束'];
+    final actions = <String>{};
+    final clauses = text.split(RegExp(r'[，。；！？,;]|然后|并且|同时'));
+    for (final clause in clauses) {
+      if (!_matchesAny(clause, _timeLogActionKeywords)) continue;
+      void addWhenExplicit(List<String> verbs, String action) {
+        for (final verb in verbs) {
+          if (isExplicitlyRequested(clause, verb) &&
+              _hasExplicitActionPrefix(clause, verb)) {
+            actions.add(action);
+            return;
+          }
+        }
+      }
+
+      addWhenExplicit(logCreateVerbs, 'create_time_log');
+      addWhenExplicit(logUpdateVerbs, 'update_time_log');
+      addWhenExplicit(logDeleteVerbs, 'delete_time_log');
+      addWhenExplicit(pomodoroStartVerbs, 'start_pomodoro');
+      addWhenExplicit(pomodoroStopVerbs, 'stop_pomodoro');
+    }
+    return actions;
+  }
+
+  static Set<String> explicitCountdownActionNames(String text) {
+    const createVerbs = ['创建', '新建', '新增', '添加', '设置', '设定', '建立', '建'];
+    const updateVerbs = ['修改', '更新', '更改', '调整', '改到', '改成', '改为'];
+    const completeVerbs = ['完成', '办完', '标记完成', '做完'];
+    const deleteVerbs = ['删除', '删掉', '移除', '清掉', '取消'];
+    final actions = <String>{};
+    final targets = [..._countdownKeywords, 'countdown'];
+    final clauses = text.split(RegExp(r'[，。；！？,;]|然后|并且|同时'));
+    for (final clause in clauses) {
+      if (!_matchesAny(clause.toLowerCase(), targets)) continue;
+      void addWhenExplicit(List<String> verbs, String action) {
+        for (final verb in verbs) {
+          if (isExplicitlyRequested(clause, verb) &&
+              _hasExplicitActionPrefix(clause, verb)) {
+            actions.add(action);
+            return;
+          }
+        }
+      }
+
+      addWhenExplicit(createVerbs, 'create_countdown');
+      addWhenExplicit(updateVerbs, 'update_countdown');
+      addWhenExplicit(completeVerbs, 'complete_countdown');
+      addWhenExplicit(deleteVerbs, 'delete_countdown');
+    }
+    return actions;
+  }
+
+  static bool _hasExplicitActionPrefix(String clause, String verb) {
+    final verbIndex = clause.indexOf(verb);
+    if (verbIndex < 0) return false;
+    final prefix = clause.substring(0, verbIndex);
+    if (prefix.trim().isEmpty) return true;
+    if (RegExp(
+      r'^(?:(?:今天|明天|后天|本周[一二三四五六日天]?|这周|下周[一二三四五六日天]?|周[一二三四五六日天]|周末|上午|下午|晚上|早上|中午|今晚|明晚|\d{1,2}月\d{1,2}日)\s*)+$',
+    ).hasMatch(prefix.trim())) {
+      return true;
+    }
+    return RegExp(
+      r'(?:请|麻烦|帮我|帮忙|给我|替我|我要|我想|我来|把|将|直接|先)[^，。；！？,;]*$',
+    ).hasMatch(prefix);
   }
 
   /// Disambiguates an amount-bearing transaction record from finance queries
@@ -1527,6 +2066,23 @@ ${sections.join('\n')}
     '习惯打卡',
     '打卡计划',
   ];
+  static const _habitUpdateKeywords = [
+    '修改',
+    '更新',
+    '调整',
+    '改成',
+    '改为',
+    '设为',
+    '改名',
+    '重命名',
+  ];
+  static const _habitDeleteKeywords = [
+    '删除',
+    '删掉',
+    '移除',
+    '清除',
+    '清空',
+  ];
   static const _recurrenceKeywords = [
     '循环',
     '重复',
@@ -1904,7 +2460,8 @@ ${sections.join('\n')}
       ..writeln(
         '必须遵守 system 中的所有规则；如果需要创建、修改、规划或删除待办等数据，必须输出 [ACTION_START] JSON 操作块；如果需要新增记账，输出 [FINANCE_START]；如果需要查询、修改或删除已有账单，输出 [FINANCE_ACTION_START]。',
       )
-      ..writeln('不要解释这些包装文本，不要使用 Markdown 代码块包裹操作 JSON。');
+      ..writeln('不要解释这些包装文本，不要使用 Markdown 代码块包裹操作 JSON。')
+      ..writeln(_dynamicSuggestionRules);
 
     for (final message in messages) {
       final role = (message['role'] ?? 'user').toUpperCase();
@@ -1927,6 +2484,10 @@ ${sections.join('\n')}
     final scoped = _scopeTodosByTime(todos, userMessage: userMessage, now: now);
     if (scoped.isEmpty) return '待办列表: 暂无匹配时间范围的待办';
     final displayed = scoped.take(80).toList();
+    final groupNameById = <String, String>{};
+    for (final group in todoGroups) {
+      groupNameById.putIfAbsent(group.id, () => group.name);
+    }
     return '待办列表（按时间范围筛选，展示 ${displayed.length}/${scoped.length} 条）:\n${displayed.map((t) {
       final id = t['id'] ?? 'unknown';
       final title = t['title'] ?? '';
@@ -1948,8 +2509,8 @@ ${sections.join('\n')}
       final reminderMinutes = t['reminderMinutes'] ?? 5;
       final gid = t['groupId'] ?? '';
       var folderName = '';
-      if (gid.toString().isNotEmpty) {
-        folderName = todoGroups.firstWhere((g) => g.id == gid, orElse: () => TodoGroup(name: '')).name;
+      if (gid is String && gid.isNotEmpty) {
+        folderName = groupNameById[gid] ?? '';
       }
 
       final recurrenceText = recurrenceSeriesId.isEmpty ? ' | 循环: none' : ' | 系列ID: $recurrenceSeriesId | 期次角色: $recurrenceRole | 系列规则: $recurrenceRule${recurrenceRule == 'customDays' ? '(${customIntervalDays ?? 1}天)' : ''}${recurrenceEndDate.isNotEmpty ? ' | 系列结束: $recurrenceEndDate' : ''}${recurrence != recurrenceRule ? ' | 本期存储规则: $recurrence' : ''}';
@@ -2014,10 +2575,18 @@ ${sections.join('\n')}
       priorityRange: priorityRange,
     );
 
+    final todoTitleById = <String, String>{};
+    for (final todo in todos) {
+      final id = todo['id']?.toString();
+      if (id == null) continue;
+      todoTitleById.putIfAbsent(
+        id,
+        () => todo['title']?.toString() ?? '',
+      );
+    }
+
     String todoTitle(String id) {
-      final match = todos.where((t) => t['id']?.toString() == id).toList();
-      if (match.isEmpty) return id;
-      final title = match.first['title']?.toString();
+      final title = todoTitleById[id];
       return title == null || title.isEmpty ? id : title;
     }
 

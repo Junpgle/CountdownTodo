@@ -139,7 +139,7 @@ class _QuickVoiceChatSheetState extends State<QuickVoiceChatSheet>
   Future<void>? _recorderCleanup;
   _VoicePhase _phase = _VoicePhase.starting;
   Timer? _timer;
-  int _seconds = 0;
+  final ValueNotifier<int> _seconds = ValueNotifier<int>(0);
   String _error = '';
   bool _permissionDenied = false;
   bool _closing = false;
@@ -204,7 +204,7 @@ class _QuickVoiceChatSheetState extends State<QuickVoiceChatSheet>
   Future<void> _start() async {
     _timer?.cancel();
     _audio = null;
-    _seconds = 0;
+    _seconds.value = 0;
     _permissionDenied = false;
     try {
       await _recorder.start();
@@ -213,8 +213,8 @@ class _QuickVoiceChatSheetState extends State<QuickVoiceChatSheet>
       if (widget.gesture != null && !_reduceMotion) _pulse.repeat();
       _timer = Timer.periodic(const Duration(seconds: 1), (_) {
         if (!mounted || _closing) return;
-        setState(() => _seconds++);
-        if (_seconds >= 60) {
+        _seconds.value++;
+        if (_seconds.value >= 60) {
           if (_target == QuickVoiceTarget.cancel) {
             _cancel();
           } else {
@@ -325,6 +325,7 @@ class _QuickVoiceChatSheetState extends State<QuickVoiceChatSheet>
     _timer?.cancel();
     widget.gesture?.removeListener(_handleGesture);
     _pulse.dispose();
+    _seconds.dispose();
     _asr.dispose();
     // Permission and recorder startup may still be pending when the sheet closes.
     // Wait for that operation before releasing the microphone.
@@ -386,16 +387,19 @@ class _QuickVoiceChatSheetState extends State<QuickVoiceChatSheet>
                   child: CircularProgressIndicator(),
                 ),
               const SizedBox(height: 16),
-              Text(
-                switch (_phase) {
-                  _VoicePhase.starting => '正在准备麦克风…',
-                  _VoicePhase.recording => '正在聆听 · ${_seconds}s / 60s',
-                  _VoicePhase.transcribing => '正在识别语音…',
-                  _VoicePhase.failed => _error,
-                },
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: failed ? colors.error : colors.onSurface,
+              ValueListenableBuilder<int>(
+                valueListenable: _seconds,
+                builder: (context, seconds, _) => Text(
+                  switch (_phase) {
+                    _VoicePhase.starting => '正在准备麦克风…',
+                    _VoicePhase.recording => '正在聆听 · ${seconds}s / 60s',
+                    _VoicePhase.transcribing => '正在识别语音…',
+                    _VoicePhase.failed => _error,
+                  },
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: failed ? colors.error : colors.onSurface,
+                  ),
                 ),
               ),
               const SizedBox(height: 8),
@@ -499,9 +503,12 @@ class _QuickVoiceChatSheetState extends State<QuickVoiceChatSheet>
                   ),
                 ),
                 const SizedBox(height: 10),
-                Text(
-                  recording ? '${_seconds}s / 60s' : '请稍候',
-                  style: TextStyle(color: colors.onSurfaceVariant),
+                ValueListenableBuilder<int>(
+                  valueListenable: _seconds,
+                  builder: (context, seconds, _) => Text(
+                    recording ? '${seconds}s / 60s' : '请稍候',
+                    style: TextStyle(color: colors.onSurfaceVariant),
+                  ),
                 ),
                 const SizedBox(height: 18),
                 if (recording)

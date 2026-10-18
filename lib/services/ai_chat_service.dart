@@ -227,13 +227,14 @@ class AiChatService {
       'mimo' =>
         host == 'api.xiaomimimo.com' &&
             const {
+              // Keep native tools limited to model IDs currently documented
+              // by MiMo's Chat Completions API. Legacy IDs use the text
+              // compatibility protocol instead of an unverified tool shape.
               'mimo-v2.6-flash',
               'mimo-v2.6-pro',
               'mimo-v2.6-pro-ultraspeed',
               'mimo-v2.5',
               'mimo-v2.5-pro',
-              'mimo-v2-flash',
-              'mimo-v2-omni',
             }.contains(normalizedModel),
       mimoTokenPlanProvider =>
         host == 'token-plan-cn.xiaomimimo.com' &&
@@ -250,9 +251,14 @@ class AiChatService {
 
   static String resolveChatUrl(String provider, String apiUrl) {
     final effective = effectiveProvider(provider, apiUrl);
-    if (effective == 'nvidia_nim' || effective == mimoTokenPlanProvider) {
+    if (effective == 'mimo' ||
+        effective == 'nvidia_nim' ||
+        effective == mimoTokenPlanProvider) {
+      final fallbackBaseUrl = providerBaseUrls[effective];
       final base = trimSlash(
-        apiUrl.isNotEmpty ? apiUrl : providerBaseUrls[effective]!,
+        apiUrl.trim().isNotEmpty
+            ? apiUrl.trim()
+            : fallbackBaseUrl ?? defaultApiUrl,
       );
       if (base.endsWith('/chat/completions')) return base;
       return '$base/chat/completions';
@@ -408,7 +414,13 @@ class AiChatService {
       }
     } else {
       body[isMimo ? 'max_completion_tokens' : 'max_tokens'] = maxTokens;
-      body['stream_options'] = {'include_usage': true};
+      // MiMo documents usage as part of streaming chunks but does not list
+      // OpenAI's stream_options request field. Avoid sending that undocumented
+      // field to its first-party endpoint; other OpenAI-compatible providers
+      // still use it to request a trailing usage chunk.
+      if (effective != 'mimo') {
+        body['stream_options'] = {'include_usage': true};
+      }
       body['thinking'] = {
         'type': isMimo && tools != null && tools.isNotEmpty
             ? 'disabled'
@@ -443,9 +455,10 @@ class AiChatService {
     var emittedCount = 0;
     var lastError = '';
     var cancelled = false;
+    var sawToolCallDelta = false;
+    var malformedToolCallStream = false;
     AiTokenUsage? streamUsage;
     final toolCallBuffers = <int, _AiChatFunctionCallBuffer>{};
-    var lastToolCallIndex = 0;
 
     try {
       if (cancelToken?.isCompleted == true) return;
@@ -547,18 +560,51 @@ class AiChatService {
           final reasoningContent = delta['reasoning_content'] as String? ?? '';
           final toolCallDeltas = <AiChatFunctionCallDelta>[];
           final rawToolCallDeltas = delta['tool_calls'];
+          if (delta.containsKey('tool_calls') &&
+              rawToolCallDeltas != null &&
+              rawToolCallDeltas is! List) {
+            sawToolCallDelta = true;
+            malformedToolCallStream = true;
+          }
           if (rawToolCallDeltas is List) {
-            for (final rawToolCall in rawToolCallDeltas.whereType<Map>()) {
+            sawToolCallDelta = sawToolCallDelta || rawToolCallDeltas.isNotEmpty;
+            for (final rawToolCall in rawToolCallDeltas) {
+              if (rawToolCall is! Map) {
+                malformedToolCallStream = true;
+                continue;
+              }
               final toolCall = Map<String, dynamic>.from(rawToolCall);
-              final index =
-                  int.tryParse(toolCall['index']?.toString() ?? '') ??
-                  lastToolCallIndex;
-              lastToolCallIndex = index;
+              final rawIndex = toolCall['index'];
+              final index = rawIndex is int
+                  ? rawIndex
+                  : int.tryParse(rawIndex?.toString() ?? '');
+              if (index == null || index < 0) {
+                // Never merge an unindexed delta into the previous call: that
+                // could turn two writes into one malformed draft.
+                malformedToolCallStream = true;
+                continue;
+              }
+              final id = toolCall['id']?.toString();
+              final existingBuffer = toolCallBuffers[index];
+              final idConflictsWithIndex =
+                  id != null &&
+                  id.isNotEmpty &&
+                  existingBuffer?.id.isNotEmpty == true &&
+                  existingBuffer!.id != id;
+              final idAlreadyBelongsToAnotherIndex =
+                  id != null &&
+                  id.isNotEmpty &&
+                  toolCallBuffers.entries.any(
+                    (entry) => entry.key != index && entry.value.id == id,
+                  );
+              if (idConflictsWithIndex || idAlreadyBelongsToAnotherIndex) {
+                malformedToolCallStream = true;
+                continue;
+              }
               final callBuffer = toolCallBuffers.putIfAbsent(
                 index,
                 _AiChatFunctionCallBuffer.new,
               );
-              final id = toolCall['id']?.toString();
               if (id != null && id.isNotEmpty) callBuffer.id = id;
               var nameDelta = '';
               var argumentsDelta = '';
@@ -631,16 +677,24 @@ class AiChatService {
         }
       }
 
-      if (!cancelled && toolCallBuffers.isNotEmpty) {
+      if (!cancelled && sawToolCallDelta) {
         final completedCalls = toolCallBuffers.entries.toList()
           ..sort((a, b) => a.key.compareTo(b.key));
-        final toolCalls = completedCalls
-            .map((entry) => entry.value.toFunctionCall())
-            .whereType<AiChatFunctionCall>()
-            .toList(growable: false);
-        if (toolCalls.isNotEmpty) {
+        if (malformedToolCallStream ||
+            completedCalls.any((entry) => !entry.value.isComplete)) {
           emittedCount++;
-          yield AiChatStreamChunk(toolCalls: toolCalls);
+          yield AiChatStreamChunk(
+            content: '模型函数调用响应不完整，未生成待确认操作卡，请重试。',
+          );
+        } else {
+          final toolCalls = completedCalls
+              .map((entry) => entry.value.toFunctionCall())
+              .whereType<AiChatFunctionCall>()
+              .toList(growable: false);
+          if (toolCalls.isNotEmpty) {
+            emittedCount++;
+            yield AiChatStreamChunk(toolCalls: toolCalls);
+          }
         }
       }
 
@@ -831,8 +885,13 @@ class _AiChatFunctionCallBuffer {
   String name = '';
   String arguments = '';
 
+  bool get isComplete =>
+      id.trim().isNotEmpty &&
+      name.trim().isNotEmpty &&
+      arguments.trim().isNotEmpty;
+
   AiChatFunctionCall? toFunctionCall() {
-    if (name.isEmpty || arguments.isEmpty) return null;
+    if (!isComplete) return null;
     return AiChatFunctionCall(id: id, name: name, arguments: arguments);
   }
 }

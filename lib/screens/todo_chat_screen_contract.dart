@@ -5,6 +5,9 @@ part of 'todo_chat_screen.dart';
 abstract class _TodoChatScreenStateBase extends State<TodoChatScreen> {
   final TextEditingController _inputCtrl = TextEditingController();
   final ScrollController _scrollCtrl = ScrollController();
+  final ValueNotifier<int> _streamingBubbleRevision = ValueNotifier<int>(0);
+  final ValueNotifier<int> _inputAreaRevision = ValueNotifier<int>(0);
+  Timer? _inputPreviewTimer;
   List<ChatMessage> _messages = [];
   bool _isLoading = false;
   String _streamingContent = '';
@@ -58,6 +61,14 @@ abstract class _TodoChatScreenStateBase extends State<TodoChatScreen> {
   Completer<void>? _cancelGeneration;
   bool _classificationSuggestionInjected = false;
 
+  void _notifyStreamingBubbleChanged() {
+    _streamingBubbleRevision.value++;
+  }
+
+  void _notifyInputAreaChanged() {
+    _inputAreaRevision.value++;
+  }
+
   FinanceDateRange? _financeContextDateRangeOverride() {
     final range = AiTodoContextBuilder.resolveCustomInjectionDateRange(
       customStart: _useCustomInjectRange ? _customInjectStart : null,
@@ -73,15 +84,17 @@ abstract class _TodoChatScreenStateBase extends State<TodoChatScreen> {
   bool _actionRailCollapsed = false;
   bool get _isWide => MediaQuery.of(context).size.width >= 900;
   bool get _hasPendingActionMessages => _pendingActionMessages.isNotEmpty;
-  int get _pendingActionCount => _pendingActionMessages.fold<int>(
-    0,
-    (sum, msg) =>
-        sum +
-        (msg.todoActions
-                ?.where((action) => !action.isAdded && !action.isIgnored)
-                .length ??
-            0),
-  );
+  int get _pendingActionCount {
+    var count = 0;
+    for (final msg in _messages) {
+      final actions = msg.todoActions;
+      if (actions == null) continue;
+      for (final action in actions) {
+        if (!action.isAdded && !action.isIgnored) count++;
+      }
+    }
+    return count;
+  }
   bool get _hasActionRailSpace {
     final width = MediaQuery.of(context).size.width;
     const actionRailWidth = 344.0;
@@ -92,6 +105,51 @@ abstract class _TodoChatScreenStateBase extends State<TodoChatScreen> {
   bool get _shouldDetachActions =>
       _hasActionRailSpace && _hasPendingActionMessages;
   bool get _usesActionRail => _shouldDetachActions && !_actionRailCollapsed;
+
+  List<String> _extractFreshSuggestions(String source) =>
+      AiActionParser.extractSuggestions(
+        source,
+        previouslyShown: _recentAssistantSuggestions(_messages),
+        contextText: _suggestionContext(_messages, extraText: source),
+      );
+
+  String _suggestionContext(
+    Iterable<ChatMessage> messages, {
+    String extraText = '',
+  }) {
+    final latestUserRequest = messages
+        .toList(growable: false)
+        .reversed
+        .firstWhere(
+          (message) => message.role == ChatRole.user,
+          orElse: () => ChatMessage(role: ChatRole.user, content: ''),
+        )
+        .content
+        .trim();
+    final cleanExtraText = AiActionParser.cleanActionContent(extraText);
+    return [latestUserRequest, cleanExtraText]
+        .where((content) => content.trim().isNotEmpty)
+        .join('\n');
+  }
+
+  List<String> _recentAssistantSuggestions(
+    Iterable<ChatMessage> messages,
+  ) {
+    final assistants = messages
+        .where((message) => message.role == ChatRole.assistant)
+        .toList(growable: false);
+    return assistants.reversed
+        .take(3)
+        .expand((message) {
+          final source = message.rawContent.trim().isNotEmpty
+              ? message.rawContent
+              : message.content;
+          return AiActionParser.extractSuggestions(source);
+        })
+        .toSet()
+        .toList(growable: false);
+  }
+
   void initState();
   void _checkCoachMarks();
   Future<void> _loadCategoryDefaults();
@@ -134,6 +192,7 @@ abstract class _TodoChatScreenStateBase extends State<TodoChatScreen> {
     bool? queryTools,
   });
   String _latestUserTextFromHistory();
+  String _latestAssistantMessageForActionRouting();
   String _injectContext(
     List<Map<String, dynamic>> apiMessages, {
     bool? enabled,
@@ -186,7 +245,6 @@ abstract class _TodoChatScreenStateBase extends State<TodoChatScreen> {
   Future<void> _useGlobalModel();
   Future<void> _openLlmConfigPage();
   Future<void> _showModelConfig();
-  List<String> _getSmartSuggestions();
   String _formatTodoTimeRange(
     String? startTime,
     String? dueDate,

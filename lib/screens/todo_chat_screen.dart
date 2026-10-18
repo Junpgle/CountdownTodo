@@ -78,6 +78,23 @@ part 'todo_chat_screen_actions.dart';
 part 'todo_chat_screen_messages.dart';
 part 'todo_chat_screen_widgets.dart';
 
+final Map<(String?, String), DateFormat> _todoChatDateFormats = {};
+
+DateFormat _todoChatDateFormat(String pattern) {
+  final locale = Intl.defaultLocale;
+  return _todoChatDateFormats.putIfAbsent(
+    (locale, pattern),
+    () => DateFormat(pattern, locale),
+  );
+}
+
+String _formatTodoChatDateRange(DateTime start, DateTime end) {
+  final dateFormat = _todoChatDateFormat('yyyy-MM-dd');
+  final startText = dateFormat.format(start);
+  final endText = dateFormat.format(end);
+  return '自定义范围: $startText 至 $endText';
+}
+
 class TodoChatScreen extends StatefulWidget {
   /// A voice transcript prepared after session, settings, and context are ready.
   final String? initialMessage;

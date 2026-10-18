@@ -264,11 +264,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
     final requestText = userMsg.content;
     final previousUserMessage = _latestUserTextFromHistory();
     final previousAssistantMessage =
-        _messages.reversed
-            .where((message) => message.role == ChatRole.assistant)
-            .firstOrNull
-            ?.content ??
-        '';
+        _latestAssistantMessageForActionRouting();
     final useQueryTools =
         _smartContext &&
         _contextMode == AiContextMode.functionCalling &&
@@ -286,6 +282,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
       _streamingToolCalls = [];
       _queryToolResults.clear();
       _streamingFinishReason = null;
+      _suggestions = [];
       _isLoading = true;
       _pendingAttachment = null;
     });
@@ -360,12 +357,88 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
           ),
         );
       }
+      final proposalToolDefinitions = nativeToolMode
+          ? nativeTools
+          : fallbackWriteTools;
       final allowedNativeToolNames =
           AiNativeToolDefinitionBuilder.allowedToolNames(nativeTools);
-      final allowedNativeCdtActions =
-          AiNativeToolDefinitionBuilder.allowedCdtActionNames(nativeTools);
-      final allowedNativeFinanceActions =
-          AiNativeToolDefinitionBuilder.allowedFinanceActionNames(nativeTools);
+      final allowedCdtActionNames =
+          AiNativeToolDefinitionBuilder.allowedCdtActionNames(
+            proposalToolDefinitions,
+          );
+      final allowedFinanceActionNames =
+          AiNativeToolDefinitionBuilder.allowedFinanceActionNames(
+            proposalToolDefinitions,
+          );
+      final allowedProposalToolNames =
+          AiNativeToolDefinitionBuilder.allowedToolNames(
+            proposalToolDefinitions,
+          );
+      const actionsRequiringKnownTodoIds = {
+        'update_todo',
+        'complete_todo',
+        'delete_todo',
+        'reschedule_todo',
+        'bulk_reschedule',
+        'categorize_todo',
+        'split_todo',
+        'merge_todos',
+        'create_plan_block',
+        'start_pomodoro',
+      };
+      final needsKnownTodoReferences = allowedCdtActionNames.any(
+        actionsRequiringKnownTodoIds.contains,
+      );
+      final knownTodoTitlesForToolValidation =
+          nativeToolMode && needsKnownTodoReferences
+          ? await _existingTodoTitleMap(allowedCdtActionNames)
+          : null;
+      const actionsRequiringKnownHabitIds = {
+        'update_habit',
+        'delete_habit',
+      };
+      final needsKnownHabitReferences = allowedCdtActionNames.any(
+        actionsRequiringKnownHabitIds.contains,
+      );
+      final knownHabitIdsForToolValidation =
+          nativeToolMode && needsKnownHabitReferences
+          ? (await HabitRepository.getGoals())
+                .map((goal) => goal.uuid)
+                .toSet()
+          : null;
+      final financeTransactionIds = RegExp(
+        r'\[transactionId:\s*([^\]\s]+)\]',
+      ).allMatches(financeContext).map((match) => match.group(1)!).toSet();
+      final knownFinanceTransactionIdsForToolValidation =
+          nativeToolMode && financeTransactionIds.isNotEmpty
+          ? financeTransactionIds
+          : null;
+      Map<String, Set<String>>? knownFinanceCatalogIdsByKindForToolValidation;
+      if (nativeToolMode &&
+          allowedProposalToolNames.any(
+            const {
+              'propose_finance_drafts',
+              'propose_finance_actions',
+            }.contains,
+          )) {
+        try {
+          final categories = await FinanceRepository.getCategories();
+          final paymentMethods = await FinanceRepository.getPaymentMethods();
+          knownFinanceCatalogIdsByKindForToolValidation = {
+            'category': categories.map((item) => item.uuid).toSet(),
+            'payment_method': paymentMethods.map((item) => item.uuid).toSet(),
+          };
+        } catch (_) {
+          // Fail closed for supplied references without interrupting the chat.
+          knownFinanceCatalogIdsByKindForToolValidation = const {
+            'category': <String>{},
+            'payment_method': <String>{},
+          };
+        }
+      }
+      final knownReferenceIdsByDomain = nativeToolMode
+          ? await _loadKnownReferenceIdsByDomain(allowedCdtActionNames)
+          : const <String, Set<String>>{};
       final includeReasoningContent =
           nativeToolMode &&
           AiChatService.effectiveProvider(provider, apiUrl) == 'deepseek';
@@ -450,12 +523,19 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
               cancelToken: _cancelGeneration,
               includeReasoningContent: includeReasoningContent,
               planningRequestText: requestText,
+              knownTodoIds: knownTodoTitlesForToolValidation?.keys.toSet(),
+              knownHabitIds: knownHabitIdsForToolValidation,
+              knownFinanceTransactionIds:
+                  knownFinanceTransactionIdsForToolValidation,
+              knownFinanceCatalogIdsByKind:
+                  knownFinanceCatalogIdsByKindForToolValidation,
+              knownReferenceIdsByDomain: knownReferenceIdsByDomain,
               requirePlanningProposal:
                   (RegExp(r'生成|确认|确定|^可以|^要的|^好的|^需要').hasMatch(requestText) ||
                       AiNativeToolDefinitionBuilder.isMissingActionCardReport(
                         requestText,
                       )) &&
-                  allowedNativeCdtActions.contains('create_plan_block'),
+                  allowedCdtActionNames.contains('create_plan_block'),
             )
           : streamRound(apiMessages, nativeTools ?? []);
       await for (final chunk in responseStream) {
@@ -466,17 +546,15 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
         _queryToolResults.addAll(chunk.toolResults);
         if (chunk.finishReason != null && chunk.finishReason!.isNotEmpty) {
           if (mounted) {
-            setState(() {
-              _streamingFinishReason = chunk.finishReason;
-            });
+            _streamingFinishReason = chunk.finishReason;
+            _notifyStreamingBubbleChanged();
           }
         }
         if (chunk.reasoningContent.isNotEmpty) {
           reasoningContent += chunk.reasoningContent;
           if (mounted) {
-            setState(() {
-              _streamingReasoning = reasoningContent;
-            });
+            _streamingReasoning = reasoningContent;
+            _notifyStreamingBubbleChanged();
             _scrollToBottom();
           }
         }
@@ -499,31 +577,113 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
           final completeIds = nativeToolCalls.map((call) => call.id).toSet();
           final progressEntries = toolCallProgress.entries.toList()
             ..sort((a, b) => a.key.compareTo(b.key));
-          setState(() {
-            _streamingToolCalls = [
-              for (final call in nativeToolCalls)
-                ChatNativeToolCall(
-                  id: call.id,
-                  name: call.name,
-                  arguments: call.arguments,
-                  result: _queryToolResults[call.id],
-                  resultSummary: _queryToolResults.containsKey(call.id)
-                      ? _queryResultSummary(_queryToolResults[call.id])
-                      : '',
-                ),
-              for (final entry in progressEntries)
-                if (!completeIds.contains(entry.value.id)) entry.value,
-            ];
-          });
+          _streamingToolCalls = [
+            for (final call in nativeToolCalls)
+              ChatNativeToolCall(
+                id: call.id,
+                name: call.name,
+                arguments: call.arguments,
+                result: _queryToolResults[call.id],
+                resultSummary: _queryToolResults.containsKey(call.id)
+                    ? _queryResultSummary(_queryToolResults[call.id])
+                    : '',
+              ),
+            for (final entry in progressEntries)
+              if (!completeIds.contains(entry.value.id)) entry.value,
+          ];
+          _notifyStreamingBubbleChanged();
           _scrollToBottom();
         }
         if (chunk.content.isNotEmpty) {
           fullContent += chunk.content;
           if (mounted) {
-            setState(() {
-              _streamingContent = fullContent;
-            });
+            _streamingContent = fullContent;
+            _notifyStreamingBubbleChanged();
             _scrollToBottom();
+          }
+        }
+      }
+
+      Set<String> missingFallbackProposalBlocks(String content) {
+        bool hasBlock(String start, String end) =>
+            RegExp('${RegExp.escape(start)}[\\s\\S]*?${RegExp.escape(end)}')
+                .hasMatch(content);
+
+        return {
+          if (allowedProposalToolNames.contains('propose_cdt_actions') &&
+              !hasBlock('[ACTION_START]', '[ACTION_END]'))
+            'propose_cdt_actions',
+          if (allowedProposalToolNames.contains('propose_finance_drafts') &&
+              !hasBlock('[FINANCE_START]', '[FINANCE_END]'))
+            'propose_finance_drafts',
+          if (allowedProposalToolNames.contains('propose_finance_actions') &&
+              !hasBlock('[FINANCE_ACTION_START]', '[FINANCE_ACTION_END]'))
+            'propose_finance_actions',
+        };
+      }
+
+      String fallbackProposalLabel(String name) => switch (name) {
+        'propose_cdt_actions' => '待办、习惯、日程或规划操作卡',
+        'propose_finance_drafts' => '新增账单确认卡',
+        'propose_finance_actions' => '账单修改确认卡',
+        _ => name,
+      };
+
+      if (!nativeToolMode &&
+          _cancelGeneration?.isCompleted != true &&
+          fallbackWriteTools.isNotEmpty &&
+          allowedProposalToolNames.isNotEmpty &&
+          missingFallbackProposalBlocks(fullContent).length ==
+              allowedProposalToolNames.length &&
+          !AiToolChatRunner.isLikelyClarification(fullContent)) {
+        final missing = missingFallbackProposalBlocks(fullContent);
+        final missingLabels = missing.map(fallbackProposalLabel).join('、');
+        final retryMessages = [
+          ...apiMessages,
+          {'role': 'assistant', 'content': fullContent},
+          {
+            'role': 'system',
+            'content':
+                '上一轮没有输出以下操作协议块：$missingLabels。应用尚未生成这些确认卡，也没有写入数据。'
+                '请根据当前用户请求按动作协议输出一份完整回复和完整操作块；若缺少必需信息或对象不明确，只向用户提出必要问题。'
+                '不要只用自然语言声称已操作或已保存。',
+          },
+        ];
+        final retryContent = StringBuffer();
+        final retryReasoning = StringBuffer();
+        if (mounted) {
+          _streamingContent = '';
+          _streamingReasoning = '';
+          _notifyStreamingBubbleChanged();
+        }
+        await for (final chunk in streamRound(retryMessages, const [])) {
+          if (chunk.usageSummary != null) {
+            usageSummaries.add(chunk.usageSummary!);
+            usageSummary = ChatUsageSummary.combine(usageSummaries);
+          }
+          if (chunk.reasoningContent.isNotEmpty) {
+            retryReasoning.write(chunk.reasoningContent);
+            if (mounted) {
+              _streamingReasoning = retryReasoning.toString();
+              _notifyStreamingBubbleChanged();
+            }
+          }
+          if (chunk.content.isNotEmpty) {
+            retryContent.write(chunk.content);
+            if (mounted) {
+              _streamingContent = retryContent.toString();
+              _notifyStreamingBubbleChanged();
+              _scrollToBottom();
+            }
+          }
+          if (chunk.finishReason != null && chunk.finishReason!.isNotEmpty) {
+            if (mounted) _streamingFinishReason = chunk.finishReason;
+          }
+        }
+        if (retryContent.isNotEmpty) {
+          fullContent = retryContent.toString();
+          if (retryReasoning.isNotEmpty) {
+            reasoningContent = retryReasoning.toString();
           }
         }
       }
@@ -532,8 +692,8 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
         fullContent,
         nativeToolCalls,
         allowedToolNames: allowedNativeToolNames,
-        allowedCdtActionNames: allowedNativeCdtActions,
-        allowedFinanceActionNames: allowedNativeFinanceActions,
+        allowedCdtActionNames: allowedCdtActionNames,
+        allowedFinanceActionNames: allowedFinanceActionNames,
       );
       final settingsTargets =
           AiNativeToolDefinitionBuilder.isMissingActionCardReport(
@@ -546,17 +706,9 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
         fullContent,
         nativeToolCalls,
       );
-      final parsingTodos = actionContent.contains('create_plan_block')
-          ? [
-              for (final todo in await StorageService.getTodos(widget.username))
-                {'id': todo.id, 'title': todo.title},
-            ]
-          : widget.todos;
-      final existingTodoTitles = {
-        for (final todo in parsingTodos)
-          if (todo['id'] != null)
-            todo['id'].toString(): '${todo['title'] ?? ''}',
-      };
+      final existingTodoTitles = await _existingTodoTitleMap(
+        allowedCdtActionNames,
+      );
 
       // 用户主动打断：保存已有内容为部分回复
       if (_cancelGeneration?.isCompleted == true) {
@@ -572,13 +724,19 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
             originalText: requestText,
             existingTodoTitles: existingTodoTitles,
             existingScheduleTitles: existingScheduleTitles,
+            allowedActionNames: allowedCdtActionNames,
           );
-          final financeDrafts = FinanceTextParser.extractAssistantDrafts(
-            actionContent,
-          );
+          final financeDrafts = allowedProposalToolNames.contains(
+                'propose_finance_drafts',
+              )
+              ? FinanceTextParser.extractAssistantDrafts(actionContent)
+              : <FinanceEntryDraft>[];
           final financeActions = FinanceTextParser.extractAssistantActions(
             actionContent,
-          );
+          ).where((action) {
+            return !action.isMutation ||
+                allowedFinanceActionNames.contains(action.actionName);
+          }).toList();
           final nativeToolCallRecords = _buildNativeToolCallRecords(
             calls: nativeToolCalls,
             todoActions: todoActions,
@@ -658,16 +816,20 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
         originalText: requestText,
         existingTodoTitles: existingTodoTitles,
         existingScheduleTitles: existingScheduleTitles,
+        allowedActionNames: allowedCdtActionNames,
       );
-      final inlineSuggestions = AiActionParser.extractSuggestions(
-        actionContent,
-      );
-      final financeDrafts = FinanceTextParser.extractAssistantDrafts(
-        actionContent,
-      );
+      final inlineSuggestions = _extractFreshSuggestions(actionContent);
+      final financeDrafts = allowedProposalToolNames.contains(
+            'propose_finance_drafts',
+          )
+          ? FinanceTextParser.extractAssistantDrafts(actionContent)
+          : <FinanceEntryDraft>[];
       final financeActions = FinanceTextParser.extractAssistantActions(
         actionContent,
-      );
+      ).where((action) {
+        return !action.isMutation ||
+            allowedFinanceActionNames.contains(action.actionName);
+      }).toList();
       final nativeToolCallRecords = _buildNativeToolCallRecords(
         calls: nativeToolCalls,
         todoActions: todoActions,
@@ -677,27 +839,60 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
       final cleanContent = FinanceTextParser.cleanAssistantContent(
         AiActionParser.cleanActionContent(actionContent),
       );
-      final assistantContent = financeDrafts.isNotEmpty
-          ? _financeDraftSummary(financeDrafts.length)
-          : todoActions.any((action) => action.isPlanBlockAction)
-          ? _planningDraftSummary(todoActions)
-          : allowedNativeCdtActions.contains('create_plan_block') &&
-                nativeToolCalls.any(
-                  (call) => call.name == 'propose_cdt_actions',
-                ) &&
-                todoActions.isEmpty
-          ? '规划工具返回的草案未通过校验，没有生成可执行卡片，也未保存任何数据。请重新生成规划。'
-          : cleanContent.isNotEmpty
-          ? cleanContent
-          : todoActions.isNotEmpty
-          ? '已生成待确认操作草案，请核对后添加。'
-          : financeActions.isNotEmpty
-          ? '已生成账单操作草案，请在确认卡中核对。'
-          : settingsTargets.isNotEmpty
-          ? '已找到相关设置，点击卡片即可前往调整。'
-          : nativeToolCalls.isNotEmpty
-          ? '工具调用已记录；应用没有自动修改数据。请查看调用详情和处理结果。'
-          : cleanContent;
+      final missingFallbackWrites = !nativeToolMode
+          ? missingFallbackProposalBlocks(fullContent)
+          : const <String>{};
+      final hasAnyFallbackWriteCard =
+          todoActions.isNotEmpty ||
+          financeDrafts.isNotEmpty ||
+          financeActions.any((action) => action.isMutation);
+      final nativeWriteProposalUnresolved =
+          nativeToolMode &&
+          nativeToolCalls.any(
+            (call) => const {
+              'propose_cdt_actions',
+              'propose_finance_drafts',
+              'propose_finance_actions',
+            }.contains(call.name),
+          ) &&
+          !hasAnyFallbackWriteCard &&
+          !AiToolChatRunner.isLikelyClarification(cleanContent);
+      final fallbackWriteIncomplete =
+          !nativeToolMode &&
+          fallbackWriteTools.isNotEmpty &&
+          (missingFallbackWrites.isNotEmpty || !hasAnyFallbackWriteCard) &&
+          !AiToolChatRunner.isLikelyClarification(cleanContent);
+      final fallbackWriteWarning = !fallbackWriteIncomplete
+          ? null
+          : hasAnyFallbackWriteCard
+          ? '已生成部分待确认操作卡，但还缺少${missingFallbackWrites.map(fallbackProposalLabel).join('、')}；应用没有写入缺失操作，请核对现有卡片并重试。'
+          : '本轮未生成有效的待确认操作卡，应用没有写入数据。请补充信息或重试。';
+      final assistantContent =
+          fallbackWriteWarning ??
+          (nativeWriteProposalUnresolved
+              ? '模型函数调用未能解析成有效操作卡，本地数据没有更改。请补充具体对象或信息后重试。'
+              : null) ??
+          (financeDrafts.isNotEmpty
+              ? _financeDraftSummary(financeDrafts.length)
+              : todoActions.any((action) => action.isPlanBlockAction)
+              ? _planningDraftSummary(todoActions)
+              : allowedCdtActionNames.contains('create_plan_block') &&
+                    nativeToolCalls.any(
+                      (call) => call.name == 'propose_cdt_actions',
+                    ) &&
+                    todoActions.isEmpty
+              ? '规划工具返回的草案未通过校验，没有生成可执行卡片，也未保存任何数据。请重新生成规划。'
+              : cleanContent.isNotEmpty
+              ? cleanContent
+              : todoActions.isNotEmpty
+              ? '已生成待确认操作草案，请核对后添加。'
+              : financeActions.isNotEmpty
+              ? '已生成账单操作草案，请在确认卡中核对。'
+              : settingsTargets.isNotEmpty
+              ? '已找到相关设置，点击卡片即可前往调整。'
+              : nativeToolCalls.isNotEmpty
+              ? '工具调用已记录；应用没有自动修改数据。请查看调用详情和处理结果。'
+              : cleanContent);
 
       final assistantMsg = ChatMessage(
         role: ChatRole.assistant,
@@ -729,9 +924,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
         _streamingFinishReason = null;
         _isLoading = false;
         _cancelGeneration = null;
-        _suggestions = inlineSuggestions.isNotEmpty
-            ? inlineSuggestions
-            : _getSmartSuggestions();
+        _suggestions = inlineSuggestions;
         if (todoActions.isNotEmpty) {
           _actionRailCollapsed = false;
         }
@@ -1184,7 +1377,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
     setState(() {
       _messages.addAll([userMsg, assistantMsg]);
       _inputCtrl.clear();
-      _suggestions = _getSmartSuggestions();
+      _suggestions = [];
     });
     await ChatStorageService.addMessage(userMsg, sessionId: sessionId);
     await ChatStorageService.addMessage(assistantMsg, sessionId: sessionId);
@@ -1268,7 +1461,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
     setState(() {
       _messages.addAll([userMessage, assistantMessage]);
       _inputCtrl.clear();
-      _suggestions = _getSmartSuggestions();
+      _suggestions = [];
     });
     await ChatStorageService.addMessage(userMessage, sessionId: sessionId);
     await ChatStorageService.addMessage(assistantMessage, sessionId: sessionId);
@@ -1460,10 +1653,30 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
               ? _inputCtrl.text.trim()
               : _lastUserContent());
     final smartContext = _pendingManualSmartContext;
-    final existingTodoTitles = {
-      for (final todo in widget.todos)
-        if (todo['id'] != null) todo['id'].toString(): '${todo['title'] ?? ''}',
-    };
+    final previousUserMessage = _latestUserTextFromHistory();
+    final previousAssistantMessage =
+        _latestAssistantMessageForActionRouting();
+    final manualProposalToolDefinitions =
+        AiNativeToolDefinitionBuilder.buildNativeToolDefinitions(
+          originalText,
+          previousUserMessage: previousUserMessage,
+          previousAssistantMessage: previousAssistantMessage,
+        );
+    final allowedManualCdtActions =
+        AiNativeToolDefinitionBuilder.allowedCdtActionNames(
+          manualProposalToolDefinitions,
+        );
+    final allowedManualFinanceActions =
+        AiNativeToolDefinitionBuilder.allowedFinanceActionNames(
+          manualProposalToolDefinitions,
+        );
+    final allowedManualProposalToolNames =
+        AiNativeToolDefinitionBuilder.allowedToolNames(
+          manualProposalToolDefinitions,
+        );
+    final existingTodoTitles = await _existingTodoTitleMap(
+      allowedManualCdtActions,
+    );
     final existingScheduleTitles = {
       for (final schedule in _fixedSchedules) schedule.id: schedule.title,
     };
@@ -1472,16 +1685,24 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
       originalText: originalText,
       existingTodoTitles: existingTodoTitles,
       existingScheduleTitles: existingScheduleTitles,
+      allowedActionNames: allowedManualCdtActions,
     );
     final settingsTargets =
         AiSettingsNavigationService.shouldOfferForRequest(originalText)
         ? AiSettingsNavigationService.extractTargets(fullContent)
         : const <String>[];
-    final inlineSuggestions = AiActionParser.extractSuggestions(fullContent);
-    final financeDrafts = FinanceTextParser.extractAssistantDrafts(fullContent);
+    final inlineSuggestions = _extractFreshSuggestions(fullContent);
+    final financeDrafts = allowedManualProposalToolNames.contains(
+          'propose_finance_drafts',
+        )
+        ? FinanceTextParser.extractAssistantDrafts(fullContent)
+        : <FinanceEntryDraft>[];
     final financeActions = FinanceTextParser.extractAssistantActions(
       fullContent,
-    );
+    ).where((action) {
+      return !action.isMutation ||
+          allowedManualFinanceActions.contains(action.actionName);
+    }).toList();
     final cleanContent = FinanceTextParser.cleanAssistantContent(
       AiActionParser.cleanActionContent(fullContent),
     );
@@ -1525,9 +1746,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
       _streamingFinishReason = null;
       _isLoading = false;
       _cancelGeneration = null;
-      _suggestions = inlineSuggestions.isNotEmpty
-          ? inlineSuggestions
-          : _getSmartSuggestions();
+      _suggestions = inlineSuggestions;
       if (todoActions.isNotEmpty) {
         _actionRailCollapsed = false;
       }
@@ -1543,6 +1762,118 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
     if (supersededDraftsIgnored) await _saveHistorySilently();
     _scrollToBottom();
     _generateSessionTitle(sessionId: sessionId);
+  }
+
+  Future<Map<String, String>> _existingTodoTitleMap(
+    Set<String> allowedActionNames,
+  ) async {
+    const actionsRequiringCurrentTodoIds = {
+      'update_todo',
+      'complete_todo',
+      'delete_todo',
+      'reschedule_todo',
+      'bulk_reschedule',
+      'categorize_todo',
+      'split_todo',
+      'merge_todos',
+      'create_plan_block',
+      'start_pomodoro',
+    };
+    final titles = <String, String>{
+      for (final todo in widget.todos)
+        if (todo['id'] != null)
+          todo['id'].toString(): '${todo['title'] ?? ''}',
+    };
+    if (!allowedActionNames.any(actionsRequiringCurrentTodoIds.contains)) {
+      return titles;
+    }
+
+    // The screen may receive only pending todos (for example from the home
+    // dashboard), while a query tool can return completed todos too. Build the
+    // resolver from local storage so valid queried IDs still reach a card.
+    final currentTodos = await StorageService.getTodos(widget.username);
+    for (final todo in currentTodos) {
+      titles.putIfAbsent(todo.id, () => todo.title);
+    }
+    return titles;
+  }
+
+  Future<Map<String, Set<String>>> _loadKnownReferenceIdsByDomain(
+    Set<String> allowedActionNames,
+  ) async {
+    final referenceActionsByDomain = <String, Set<String>>{
+      'fixed_schedules': {
+        'update_schedule',
+        'cancel_schedule',
+        'delete_schedule',
+      },
+      'plan_blocks': {
+        'update_plan_block',
+        'reschedule_plan_blocks',
+        'delete_plan_block',
+        'skip_plan_block',
+        'start_plan_block_pomodoro',
+      },
+      'time_logs': {'update_time_log', 'delete_time_log'},
+      'countdowns': {
+        'update_countdown',
+        'complete_countdown',
+        'delete_countdown',
+      },
+      'todo_groups': {
+        'update_todo_group',
+        'delete_todo_group',
+        'create_todo',
+        'update_todo',
+        'categorize_todo',
+      },
+      'pomodoro_tags': {
+        'update_pomodoro_tag',
+        'delete_pomodoro_tag',
+        'create_time_log',
+        'create_habit',
+        'update_time_log',
+        'start_pomodoro',
+      },
+      'recurring_todo_series': {'create_habit'},
+    };
+    final result = <String, Set<String>>{};
+    for (final entry in referenceActionsByDomain.entries) {
+      if (!allowedActionNames.any(entry.value.contains)) continue;
+      final ids = switch (entry.key) {
+        'fixed_schedules' => (await StorageService.getFixedSchedules(
+          widget.username,
+        )).map((item) => item.id),
+        'plan_blocks' => (await StorageService.getPlanBlocks(
+          widget.username,
+        )).map((item) => item.id),
+        'time_logs' => (await StorageService.getTimeLogs(
+          widget.username,
+        )).map((item) => item.id),
+        'countdowns' => (await StorageService.getCountdowns(
+          widget.username,
+        )).map((item) => item.id),
+        'todo_groups' => (await StorageService.getTodoGroups(
+          widget.username,
+        )).map((item) => item.id),
+        'pomodoro_tags' => (await PomodoroService.getTags()).map(
+          (item) => item.uuid,
+        ),
+        'recurring_todo_series' => (await StorageService.getTodos(
+          widget.username,
+        ))
+            .where(
+              (todo) =>
+                  !todo.isDeleted && todo.recurrence != RecurrenceType.none,
+            )
+            .map((todo) => todo.recurrenceSeriesId?.trim().isNotEmpty == true
+                ? todo.recurrenceSeriesId!.trim()
+                : todo.id),
+        _ => const <String>[],
+      };
+      result[entry.key] = ids.where((id) => id.trim().isNotEmpty).toSet();
+    }
+    return result;
   }
 
   String _lastUserContent() {

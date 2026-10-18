@@ -1,12 +1,14 @@
 import 'dart:convert';
 
+import 'ai_action_parser.dart';
 import 'ai_chat_service.dart';
 import 'ai_settings_navigation_service.dart';
 import 'ai_tool_result_context.dart';
 
 /// Converts native function calls into the internal action containers consumed
-/// by the existing parsers and confirmation cards. The model never emits these
-/// textual wrappers; they are an in-process compatibility format only.
+/// by the existing parsers and confirmation cards. Text protocol blocks remain
+/// available as a compatibility path when the matching native tool was not
+/// called; both paths still produce drafts that require user confirmation.
 abstract final class AiNativeToolCallParser {
   static String formatRawReply(
     String assistantText,
@@ -36,6 +38,57 @@ abstract final class AiNativeToolCallParser {
     required Set<String> allowedFinanceActionNames,
   }) {
     assistantText = AiToolResultContext.withoutHistory(assistantText);
+    final suggestions = AiActionParser.extractSuggestions(assistantText);
+    final fallbackTextBlocks = <String>[];
+
+    void retainFallbackTextBlock(
+      String pattern, {
+      required bool nativeToolWasCalled,
+    }) {
+      if (nativeToolWasCalled) return;
+      final blockPattern = RegExp(pattern, dotAll: true);
+      fallbackTextBlocks.addAll(
+        blockPattern.allMatches(assistantText).map((match) => match.group(0)!),
+      );
+      assistantText = assistantText.replaceAll(blockPattern, '');
+    }
+
+    retainFallbackTextBlock(
+      r'\[ACTION_START\][\s\S]*?\[ACTION_END\]',
+      nativeToolWasCalled: calls.any(
+        (call) => call.name == 'propose_cdt_actions',
+      ),
+    );
+    retainFallbackTextBlock(
+      r'\[FINANCE_START\][\s\S]*?\[FINANCE_END\]',
+      nativeToolWasCalled: calls.any(
+        (call) => call.name == 'propose_finance_drafts',
+      ),
+    );
+    retainFallbackTextBlock(
+      r'\[FINANCE_ACTION_START\][\s\S]*?\[FINANCE_ACTION_END\]',
+      nativeToolWasCalled: calls.any(
+        (call) => call.name == 'propose_finance_actions',
+      ),
+    );
+    retainFallbackTextBlock(
+      r'\[SETTINGS_START\][\s\S]*?\[SETTINGS_END\]',
+      nativeToolWasCalled: calls.any(
+        (call) => call.name == AiSettingsNavigationService.toolName,
+      ),
+    );
+    assistantText = AiActionParser.cleanActionContent(assistantText)
+        .replaceAll(
+          RegExp(r'\[FINANCE_START\][\s\S]*?(?:\[FINANCE_END\]|$)'),
+          '',
+        )
+        .replaceAll(
+          RegExp(
+            r'\[FINANCE_ACTION_START\][\s\S]*?(?:\[FINANCE_ACTION_END\]|$)',
+          ),
+          '',
+        )
+        .trim();
     final settingsTargets = <String>[];
     final cdtActions = <Map<String, dynamic>>[];
     final financeDrafts = <Map<String, dynamic>>[];
@@ -100,10 +153,16 @@ abstract final class AiNativeToolCallParser {
       );
     }
 
-    if (blocks.isEmpty) return assistantText;
+    final combinedBlocks = <String>[
+      ...fallbackTextBlocks,
+      ...blocks,
+      if (suggestions.isNotEmpty)
+        '[SUGGEST_START]${jsonEncode(suggestions)}[SUGGEST_END]',
+    ];
+    if (combinedBlocks.isEmpty) return assistantText;
     return [
       assistantText.trim(),
-      ...blocks,
+      ...combinedBlocks,
     ].where((part) => part.isNotEmpty).join('\n\n');
   }
 
