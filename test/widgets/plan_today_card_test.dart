@@ -165,6 +165,7 @@ void main() {
       await action(t, key('plan-today-edit-p'));
       await action(t, find.byTooltip('更多操作'));
       await action(t, find.text('确认规划已完成'));
+      expect(find.text('10月8日 09:00 — 10月8日 10:00'), findsOneWidget);
       await action(t, key('plan-manual-confirm'));
       expect(find.byType(PlanBlockEditorSheet), findsNothing);
       expect(key('plan-manual-undo'), findsOneWidget);

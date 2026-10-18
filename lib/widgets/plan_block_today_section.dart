@@ -830,7 +830,7 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection>
     if (!mounted || !_active || route?.isCurrent == false) return;
 
     final block = request.block;
-    final format = DateFormat('M月d日 HH:mm');
+    final format = _planTodayDateFormat('M月d日 HH:mm');
     final confirmed = await showAppDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
