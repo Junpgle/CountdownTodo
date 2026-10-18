@@ -434,6 +434,10 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
     final isDark = theme.brightness == Brightness.dark;
     // Icon and accent color syncs with urgency
     final statusColor = allDone ? Colors.green : urgencyColor;
+    // These progress inputs stay fixed while the fill animation ticks.
+    final effectiveProgress = groupFillProgress < 0.1 && progress > 0
+        ? progress * 0.4
+        : groupFillProgress;
 
     // Main card row; the whole folder shares one glass surface above.
     return GestureDetector(
@@ -452,12 +456,6 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
               child: AnimatedBuilder(
                 animation: _progressController,
                 builder: (context, child) {
-                  // 如果紧急度(时间进度)为0，则显示一点点完成度进度，确保用户能看到动画效果
-                  double effectiveProgress = groupFillProgress;
-                  if (effectiveProgress < 0.1 && progress > 0) {
-                    effectiveProgress = progress * 0.4; // 弱化显示的完成进度
-                  }
-
                   final curveValue = Curves.easeOutQuart.transform(
                     _progressController.value,
                   );
