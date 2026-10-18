@@ -41,6 +41,16 @@ class _RebindTagPageState extends State<RebindTagPage>
   final Set<String> _selectedPomodoros = {};
   final Set<String> _selectedTimeLogs = {};
 
+  final Map<(String?, String), DateFormat> _dateFormatters = {};
+
+  DateFormat _cachedDateFormat(String pattern) {
+    final locale = Intl.defaultLocale;
+    return _dateFormatters.putIfAbsent(
+      (locale, pattern),
+      () => DateFormat(pattern, locale),
+    );
+  }
+
   final TextEditingController _searchController = TextEditingController();
 
   @override
@@ -550,6 +560,7 @@ class _RebindTagPageState extends State<RebindTagPage>
   }
 
   Widget _buildFilterToolbar(ColorScheme colorScheme) {
+    final dateFormat = _cachedDateFormat('MM/dd');
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: Row(
@@ -571,7 +582,7 @@ class _RebindTagPageState extends State<RebindTagPage>
               icon: const Icon(Icons.calendar_today, size: 16),
               label: Text(
                 _dateRange != null
-                    ? '${DateFormat('MM/dd').format(_dateRange!.start)} - ${DateFormat('MM/dd').format(_dateRange!.end)}'
+                    ? '${dateFormat.format(_dateRange!.start)} - ${dateFormat.format(_dateRange!.end)}'
                     : '时间范围',
                 style: const TextStyle(fontSize: 12),
               ),
@@ -667,6 +678,7 @@ class _RebindTagPageState extends State<RebindTagPage>
         ),
       );
     }
+    final recordDateFormat = _cachedDateFormat('yyyy-MM-dd HH:mm');
 
     return Column(
       children: [
@@ -739,7 +751,7 @@ class _RebindTagPageState extends State<RebindTagPage>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      DateFormat('yyyy-MM-dd HH:mm').format(
+                      recordDateFormat.format(
                         DateTime.fromMillisecondsSinceEpoch(record.startTime),
                       ),
                       style: TextStyle(
@@ -830,6 +842,7 @@ class _RebindTagPageState extends State<RebindTagPage>
         ),
       );
     }
+    final recordDateFormat = _cachedDateFormat('yyyy-MM-dd HH:mm');
 
     return Column(
       children: [
@@ -907,7 +920,7 @@ class _RebindTagPageState extends State<RebindTagPage>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      DateFormat('yyyy-MM-dd HH:mm').format(
+                      recordDateFormat.format(
                         DateTime.fromMillisecondsSinceEpoch(log.startTime),
                       ),
                       style: TextStyle(
