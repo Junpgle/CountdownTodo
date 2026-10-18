@@ -35,6 +35,16 @@ String _safeHashTag(String value) {
   return sanitized.isEmpty ? '我的挑战' : sanitized;
 }
 
+final Map<(String?, String), DateFormat> _challengeDateFormats = {};
+
+DateFormat _challengeDateFormat(String pattern) {
+  final locale = Intl.defaultLocale;
+  return _challengeDateFormats.putIfAbsent(
+    (locale, pattern),
+    () => DateFormat(pattern, locale),
+  );
+}
+
 class ThirtyDayChallengeScreen extends StatefulWidget {
   const ThirtyDayChallengeScreen({
     super.key,
@@ -2253,8 +2263,9 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
     final imageCount = state.tasks
         .where((task) => task.imageBase64?.isNotEmpty == true)
         .length;
-    final generatedAt = DateFormat('yyyy年M月d日').format(DateTime.now());
-    final startedAt = DateFormat('yyyy年M月d日').format(state.startedAt);
+    final reportDateFormat = _challengeDateFormat('yyyy年M月d日');
+    final generatedAt = reportDateFormat.format(DateTime.now());
+    final startedAt = reportDateFormat.format(state.startedAt);
 
     return Container(
       width: 1080,
@@ -2645,7 +2656,7 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
 
   String _formatReportDate(DateTime? date) {
     if (date == null) return '日期未知';
-    return DateFormat('yyyy年M月d日').format(date);
+    return _challengeDateFormat('yyyy年M月d日').format(date);
   }
 }
 
@@ -3678,7 +3689,7 @@ class _ChallengeTaskCardState extends State<_ChallengeTaskCard> {
 
   String _formatDate(DateTime? date) {
     if (date == null) return '日期未知';
-    return DateFormat('M月d日').format(date);
+    return _challengeDateFormat('M月d日').format(date);
   }
 
   Widget _buildFeelingPreview(
