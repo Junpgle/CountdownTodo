@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'dart:ui';
-import 'package:intl/intl.dart';
 import '../services/timeline_service.dart';
 import '../screens/personal_timeline_screen.dart';
 import '../utils/page_transitions.dart';
+import '../utils/time_utils.dart';
 import 'optional_liquid_glass_surface.dart';
 import 'platform_backdrop_filter.dart';
 
@@ -200,7 +200,7 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
         color: Colors.teal,
         title: '搜索记录',
         content:
-            '搜索了 ${_summary!.searchCount} 次${_summary!.lastSearchTime != null ? '，最近 ${DateFormat('HH:mm').format(_summary!.lastSearchTime!)}' : ''}',
+            '搜索了 ${_summary!.searchCount} 次${_summary!.lastSearchTime != null ? '，最近 ${AppTimeFormats.clock(_summary!.lastSearchTime!)}' : ''}',
         subColor: subColor,
         textColor: textColor,
       ));
