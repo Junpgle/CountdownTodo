@@ -956,14 +956,14 @@ packages:
       url: "https://pub.flutter-io.cn"
     source: hosted
     version: "4.1.0"
-  palette_generator:
+  palette_generator_plus:
     dependency: "direct main"
     description:
-      name: palette_generator
-      sha256: "4420f7ccc3f0a4a906144e73f8b6267cd940b64f57a7262e95cb8cec3a8ae0ed"
+      name: palette_generator_plus
+      sha256: "083850a7a8e06ca1b02c791642ebbc949685372797519c840d817b0ec750aa64"
       url: "https://pub.flutter-io.cn"
     source: hosted
-    version: "0.3.3+7"
+    version: "1.0.0"
   path:
     dependency: "direct main"
     description:
@@ -1317,7 +1317,7 @@ packages:
     source: hosted
     version: "2.5.6"
   shared_preferences_android:
-    dependency: transitive
+    dependency: "direct overridden"
     description:
       name: shared_preferences_android
       sha256: "1e12aafe408aa50da80edfd679a2a6bf63ba7ab37c7fa98286da459a757b3399"
@@ -1328,10 +1328,10 @@ packages:
     dependency: transitive
     description:
       name: shared_preferences_foundation
-      sha256: "2ec3934efa51e46117f23031cc141b8fc878e8525b94ec1ea4f7f586cf1b47ea"
+      sha256: c2c02dd59bd7b3bb6bfb77aa7ad4a7886b24ee40e95dcaea754b83274b567ff5
       url: "https://pub.flutter-io.cn"
     source: hosted
-    version: "2.5.7"
+    version: "2.6.0"
   shared_preferences_linux:
     dependency: transitive
     description:
