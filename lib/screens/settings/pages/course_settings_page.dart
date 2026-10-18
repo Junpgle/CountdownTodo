@@ -35,6 +35,16 @@ class CourseSettingsPage extends StatefulWidget {
 }
 
 class _CourseSettingsPageState extends State<CourseSettingsPage> {
+  final Map<(String?, String), DateFormat> _dateFormatters = {};
+
+  DateFormat _cachedDateFormat(String pattern) {
+    final locale = Intl.defaultLocale;
+    return _dateFormatters.putIfAbsent(
+      (locale, pattern),
+      () => DateFormat(pattern, locale),
+    );
+  }
+
   final Map<String, GlobalKey> _itemKeys = {
     'no_course_behavior': GlobalKey(),
     'webview_import': GlobalKey(),
@@ -1403,7 +1413,7 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
-                        '开学: ${DateFormat('yyyy/MM/dd').format(semester.startDate)}',
+                        '开学: ${_cachedDateFormat('yyyy/MM/dd').format(semester.startDate)}',
                         style: TextStyle(
                           fontSize: 13,
                           color: Colors.grey.shade600,
@@ -1424,7 +1434,7 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
                       const SizedBox(width: 6),
                       Expanded(
                         child: Text(
-                          '放假: ${DateFormat('yyyy/MM/dd').format(semester.endDate!)}',
+                          '放假: ${_cachedDateFormat('yyyy/MM/dd').format(semester.endDate!)}',
                           style: TextStyle(
                             fontSize: 13,
                             color: Colors.grey.shade600,
@@ -1624,7 +1634,7 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
                         child: OutlinedButton.icon(
                           icon: const Icon(Icons.calendar_month),
                           label: Text(
-                            '开学日期: ${DateFormat('yyyy/MM/dd').format(startDate!)}',
+                            '开学日期: ${_cachedDateFormat('yyyy/MM/dd').format(startDate!)}',
                           ),
                           onPressed: () async {
                             final picked = await showAppDatePicker(
@@ -1649,7 +1659,7 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
                           icon: const Icon(Icons.calendar_month_outlined),
                           label: Text(
                             endDate != null
-                                ? '放假日期: ${DateFormat('yyyy/MM/dd').format(endDate!)}'
+                                ? '放假日期: ${_cachedDateFormat('yyyy/MM/dd').format(endDate!)}'
                                 : '选择放假日期 (可选)',
                           ),
                           onPressed: () async {
@@ -1858,7 +1868,7 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
                           icon: const Icon(Icons.calendar_month),
                           label: Text(
                             startDate != null
-                                ? '开学日期: ${DateFormat('yyyy/MM/dd').format(startDate!)}'
+                                ? '开学日期: ${_cachedDateFormat('yyyy/MM/dd').format(startDate!)}'
                                 : '选择开学日期',
                           ),
                           onPressed: () async {
@@ -1890,7 +1900,7 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
                           icon: const Icon(Icons.calendar_month_outlined),
                           label: Text(
                             endDate != null
-                                ? '放假日期: ${DateFormat('yyyy/MM/dd').format(endDate!)}'
+                                ? '放假日期: ${_cachedDateFormat('yyyy/MM/dd').format(endDate!)}'
                                 : '选择放假日期 (可选)',
                           ),
                           onPressed: () async {
@@ -2043,7 +2053,7 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
-                                  '开学: ${DateFormat('yyyy/MM/dd').format(semester.startDate)}',
+                                  '开学: ${_cachedDateFormat('yyyy/MM/dd').format(semester.startDate)}',
                                   style: TextStyle(
                                     fontSize: 12,
                                     color: colorScheme.onSurfaceVariant,
