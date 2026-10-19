@@ -121,25 +121,27 @@ class StrictFocusSensorService {
     _registerPowerSaveListener();
     _detector = StrictFocusPoseDetector();
     _lastSampleAt = null;
-    _emit(const StrictFocusSensorEvent(
-      StrictFocusSensorState.waitingForFaceUp,
-    ));
+    _emit(
+      const StrictFocusSensorEvent(StrictFocusSensorState.waitingForFaceUp),
+    );
 
     try {
       _listenToAccelerometer();
       _noSampleTimer = Timer(const Duration(seconds: 3), () {
         if (_running && _lastSampleAt == null) {
-          _emit(const StrictFocusSensorEvent(
-            StrictFocusSensorState.unavailable,
-          ));
+          _emit(
+            const StrictFocusSensorEvent(StrictFocusSensorState.unavailable),
+          );
         }
       });
       return true;
     } catch (error) {
-      _emit(StrictFocusSensorEvent(
-        StrictFocusSensorState.unavailable,
-        error: error,
-      ));
+      _emit(
+        StrictFocusSensorEvent(
+          StrictFocusSensorState.unavailable,
+          error: error,
+        ),
+      );
       await stop();
       return false;
     }
@@ -157,28 +159,31 @@ class StrictFocusSensorService {
   }
 
   void _listenToAccelerometer() {
-    _accelerometerSubscription = accelerometerEventStream(
-      samplingPeriod: AndroidEnergyPolicy.strictFocusSensorPeriod,
-    ).listen(
-      (event) {
-        if (!_running) return;
-        _lastSampleAt = DateTime.now();
-        final next = _detector.addSample(
-          x: event.x,
-          y: event.y,
-          z: event.z,
-          timestamp: _lastSampleAt,
+    _accelerometerSubscription =
+        accelerometerEventStream(
+          samplingPeriod: AndroidEnergyPolicy.strictFocusSensorPeriod,
+        ).listen(
+          (event) {
+            if (!_running) return;
+            _lastSampleAt = DateTime.now();
+            final next = _detector.addSample(
+              x: event.x,
+              y: event.y,
+              z: event.z,
+              timestamp: _lastSampleAt,
+            );
+            if (next != null) _emit(next);
+          },
+          onError: (Object error) {
+            _emit(
+              StrictFocusSensorEvent(
+                StrictFocusSensorState.unavailable,
+                error: error,
+              ),
+            );
+          },
+          cancelOnError: true,
         );
-        if (next != null) _emit(next);
-      },
-      onError: (Object error) {
-        _emit(StrictFocusSensorEvent(
-          StrictFocusSensorState.unavailable,
-          error: error,
-        ));
-      },
-      cancelOnError: true,
-    );
   }
 
   void _registerPowerSaveListener() {
@@ -189,8 +194,9 @@ class StrictFocusSensorService {
 
   void _unregisterPowerSaveListener() {
     if (!_powerSaveListenerRegistered) return;
-    PowerSaveModeService.enabledListenable
-        .removeListener(_onPowerSaveModeChanged);
+    PowerSaveModeService.enabledListenable.removeListener(
+      _onPowerSaveModeChanged,
+    );
     _powerSaveListenerRegistered = false;
   }
 
@@ -205,20 +211,24 @@ class StrictFocusSensorService {
     try {
       await previous?.cancel();
     } catch (error) {
-      _emit(StrictFocusSensorEvent(
-        StrictFocusSensorState.unavailable,
-        error: error,
-      ));
+      _emit(
+        StrictFocusSensorEvent(
+          StrictFocusSensorState.unavailable,
+          error: error,
+        ),
+      );
     }
     if (!_running || revision != _samplingRevision) return;
 
     try {
       _listenToAccelerometer();
     } catch (error) {
-      _emit(StrictFocusSensorEvent(
-        StrictFocusSensorState.unavailable,
-        error: error,
-      ));
+      _emit(
+        StrictFocusSensorEvent(
+          StrictFocusSensorState.unavailable,
+          error: error,
+        ),
+      );
     }
   }
 

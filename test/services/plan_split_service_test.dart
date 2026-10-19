@@ -192,11 +192,10 @@ void main() {
         DateTime.utc(2026, 3, 8, 12, 45).toLocal(),
       ),
     ];
-    final currentOffsets = PlanSplitDraft(
-      query,
-      slots,
-      const ['first', 'second'],
-    ).currentZoneOffsets;
+    final currentOffsets = PlanSplitDraft(query, slots, const [
+      'first',
+      'second',
+    ]).currentZoneOffsets;
     final firstOffset = currentOffsets[query.days + 1];
     final currentLaterOffset = currentOffsets[currentOffsets.length - 2];
     final savedLaterOffset = currentLaterOffset == firstOffset
@@ -206,20 +205,14 @@ void main() {
     savedOffsets[query.days] = savedLaterOffset;
     savedOffsets[currentOffsets.length - 2] = savedLaterOffset;
     savedOffsets[currentOffsets.length - 1] = savedLaterOffset;
-    final draft = PlanSplitDraft(
-      query,
-      slots,
-      const ['first', 'second'],
-      savedZoneOffsets: savedOffsets,
-    );
+    final draft = PlanSplitDraft(query, slots, const [
+      'first',
+      'second',
+    ], savedZoneOffsets: savedOffsets);
     expect(savedOffsets[query.days + 1], firstOffset);
     expect(savedOffsets.last, isNot(currentOffsets.last));
     expect(draft.timeZoneChanged, isTrue);
-    final restored = PlanSplitDraft.fromJson(
-      draft.toJson(),
-      'default',
-      'todo',
-    );
+    final restored = PlanSplitDraft.fromJson(draft.toJson(), 'default', 'todo');
     expect(restored.timeZoneChanged, isTrue);
   });
   test('incomplete computation is distinguished from no free time', () {

@@ -1,12 +1,15 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+
 import 'dart:ui' as ui;
 import 'dart:math' as math;
+
 import '../utils/app_dialogs.dart';
 import '../models.dart';
 import '../services/browser_file_service.dart';
@@ -19,6 +22,7 @@ import '../services/medal_recommendation_service.dart';
 import '../services/timeline_ml_service.dart';
 import '../services/timeline_statistics_service.dart';
 import '../utils/app_platform.dart';
+import '../utils/app_image_filters.dart';
 import '../utils/page_transitions.dart';
 import '../widgets/floating_bottom_bar.dart';
 import '../widgets/floating_glass_control.dart';
@@ -34,6 +38,25 @@ import 'medal_wall_page.dart';
 enum TimelineDimension { daily, weekly, monthly, yearly }
 
 enum _TimelinePosterAction { share, save }
+
+typedef _FinanceCardMetrics = ({
+  Map<String, FinanceCategory> categoryByUuid,
+  List<MapEntry<String, int>> topCategories,
+  int maxCategory,
+  int spendingDays,
+  MapEntry<String, int>? peakDay,
+  int expenseCount,
+  int incomeCount,
+  int refundCount,
+});
+
+final Map<(String?, String), DateFormat> _timelineDateFormatters = {};
+
+DateFormat _timelineDateFormat(String pattern, [String? locale]) {
+  final effectiveLocale = locale ?? Intl.defaultLocale;
+  final key = (effectiveLocale, pattern);
+  return _timelineDateFormatters[key] ??= DateFormat(pattern, effectiveLocale);
+}
 
 @visibleForTesting
 ({DateTime start, DateTime end}) timelineDateRange(
@@ -79,10 +102,10 @@ class PersonalTimelineScreen extends StatefulWidget {
   State<PersonalTimelineScreen> createState() => _PersonalTimelineScreenState();
 }
 
-class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
-    with SingleTickerProviderStateMixin {
-  static const MethodChannel _nativeChannel =
-      MethodChannel('com.math_quiz.junpgle.com.math_quiz_app/notifications');
+class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
+  static const MethodChannel _nativeChannel = MethodChannel(
+    'com.math_quiz.junpgle.com.math_quiz_app/notifications',
+  );
 
   TimelineDimension _dimension = TimelineDimension.daily;
   DateTime _selectedDate = DateTime.now();
@@ -91,10 +114,10 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
   bool _isLoadingAllTimeMedals = false;
   int _loadGeneration = 0;
   Timer? _financeOccurrenceRefreshTimer;
-  late AnimationController _animationController;
   late final ScrollController _timelineScrollController;
-  final ValueNotifier<double> _timelineTitleProgress =
-      ValueNotifier<double>(0.0);
+  final ValueNotifier<double> _timelineTitleProgress = ValueNotifier<double>(
+    0.0,
+  );
 
   // Data points
   List<TimelineEvent> _events = [];
@@ -135,14 +158,24 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
   // Finance data is loaded separately from the timeline summary so an older
   // database without the finance tables can never hide the rest of the page.
   FinanceSummary _financeSummary = const FinanceSummary();
-  List<FinanceTransaction> _financeTransactions = const [];
-  List<FinanceCategory> _financeCategories = const [];
+  _FinanceCardMetrics _financeCardMetrics = (
+    categoryByUuid: const {},
+    topCategories: const [],
+    maxCategory: 1,
+    spendingDays: 0,
+    peakDay: null,
+    expenseCount: 0,
+    incomeCount: 0,
+    refundCount: 0,
+  );
 
   // ML Medal Recommendation System
   TimelineSummary? _allTimeSummary;
   MedalRecommendation? _allTimeRecommendation;
   MedalRecommendation? _medalRecommendation; // Range-specific
   List<MedalProgress> _earnedThisSession = [];
+  MedalRecommendation? _allTimeMedalIndexSource;
+  Map<String, MedalProgress> _allTimeMedalProgressById = const {};
 
   // ML Timeline Insights
   List<TimelineMLInsight> _mlInsights = [];
@@ -152,10 +185,6 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
     super.initState();
     _dimension = widget.initialDimension;
     _selectedDate = widget.initialDate ?? DateTime.now();
-    _animationController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1000),
-    );
     _timelineScrollController = ScrollController()
       ..addListener(_handleTimelineScroll);
     FinanceStorage.revision.addListener(_onFinanceChanged);
@@ -168,7 +197,6 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
     _financeOccurrenceRefreshTimer?.cancel();
     _timelineScrollController.dispose();
     _timelineTitleProgress.dispose();
-    _animationController.dispose();
     super.dispose();
   }
 
@@ -192,13 +220,18 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
 
     try {
       // 1. Get Timeline Summary for Range
-      final summary = await TimelineService.instance
-          .getSummaryForRange(widget.username, start, end);
+      final summary = await TimelineService.instance.getSummaryForRange(
+        widget.username,
+        start,
+        end,
+      );
 
       // 2. Get detailed events for Daily only (too many for others)
       if (_dimension == TimelineDimension.daily) {
-        _events = await TimelineService.instance
-            .getEventsForDay(widget.username, day);
+        _events = await TimelineService.instance.getEventsForDay(
+          widget.username,
+          day,
+        );
       } else {
         _events = []; // Or maybe fetch "Major" events
       }
@@ -207,6 +240,16 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
       List<FinanceTransaction> financeTransactions = const [];
       List<FinanceTransaction> allFinanceTransactions = const [];
       List<FinanceCategory> financeCategories = const [];
+      _FinanceCardMetrics financeCardMetrics = (
+        categoryByUuid: const {},
+        topCategories: const [],
+        maxCategory: 1,
+        spendingDays: 0,
+        peakDay: null,
+        expenseCount: 0,
+        incomeCount: 0,
+        refundCount: 0,
+      );
       DateTime? financeAsOf;
       try {
         final financeData = await Future.wait<dynamic>([
@@ -222,21 +265,40 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
           now: financeAsOf,
         );
         financeSummary = FinanceSummary.fromTransactions(financeTransactions);
+        financeCardMetrics = _createFinanceCardMetrics(
+          summary: financeSummary,
+          transactions: financeTransactions,
+          categories: financeCategories,
+        );
       } catch (error) {
         debugPrint('❌ get timeline finance data error: $error');
       }
 
       // 3. Get Focus Time
       final records = await PomodoroService.getRecordsInRange(start, end);
-      final timeLogs = await StorageService.getTimeLogs(widget.username);
-      final planBlocks = await StorageService.getPlanBlocks(widget.username);
+      final timeLogs = await StorageService.getTimeLogs(
+        widget.username,
+        from: start,
+        to: end,
+      );
+      final planBlocks = await StorageService.getPlanBlocks(
+        widget.username,
+        from: start,
+        to: end,
+      );
       final tags = await PomodoroService.getAllTagsIncludingDeleted();
 
       // 4. Get Top Category (Simplified)
-      final screenStats = await StorageService.getScreenTimeHistory();
+      final screenTimeDateFormat = _timelineDateFormat('yyyy-MM-dd');
+      final screenStats = await StorageService.getScreenTimeHistory(
+        username: widget.username,
+        fromDate: screenTimeDateFormat.format(start),
+        toDate: screenTimeDateFormat.format(end),
+      );
       final appMappings = await StorageService.getAppMappings();
       Map<String, int> catUsage = {};
       Map<String, int> appUsage = {};
+      final categoryCache = <(String, String, String?), String>{};
       int screenTotal = 0;
       int productiveScreen = 0;
       int distractionScreen = 0;
@@ -244,19 +306,24 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
       // Iterate through days in range
       DateTime cursor = start;
       while (cursor.isBefore(end)) {
-        final dateStr = DateFormat('yyyy-MM-dd').format(cursor);
+        final dateStr = screenTimeDateFormat.format(cursor);
         final stats = screenStats[dateStr] ?? [];
         for (var item in stats) {
-          final appName = item['app_name']?.toString() ??
+          final appName =
+              item['app_name']?.toString() ??
               item['package_name']?.toString() ??
               '未知应用';
           final packageName = item['package_name']?.toString() ?? '';
+          final backendCategory = item['category']?.toString();
           final duration = (item['duration'] as num?)?.toInt() ?? 0;
-          final cat = _getScreenCategoryForApp(
-            appName: appName,
-            packageName: packageName,
-            backendCategory: item['category']?.toString(),
-            mappings: appMappings,
+          final cat = categoryCache.putIfAbsent(
+            (appName, packageName, backendCategory),
+            () => _getScreenCategoryForApp(
+              appName: appName,
+              packageName: packageName,
+              backendCategory: backendCategory,
+              mappings: appMappings,
+            ),
           );
           catUsage[cat] = (catUsage[cat] ?? 0) + duration;
           appUsage[appName] = (appUsage[appName] ?? 0) + duration;
@@ -267,46 +334,51 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
         cursor = AppTimeFormats.localDayStartOffset(cursor, 1);
       }
 
-      final todos = await StorageService.getTodos(widget.username);
+      final todos = await StorageService.getTodosForTimelineRange(
+        widget.username,
+        from: start,
+        to: end,
+      );
       final habitOnlyRecurringSeriesIds =
           await HabitRepository.getHabitOnlyRecurringTodoSeriesIds();
-      final completedTodos = todos.where((todo) {
-        return !todo.isDeleted &&
-            todo.isDone &&
-            todo.updatedAt >= start.millisecondsSinceEpoch &&
-            todo.updatedAt < end.millisecondsSinceEpoch;
-      }).toList();
-      final plannedTodos = todos.where((todo) {
-        if (todo.isDeleted) return false;
-        final createdInRange = todo.createdAt >= start.millisecondsSinceEpoch &&
-            todo.createdAt < end.millisecondsSinceEpoch;
-        final dueEnd = _effectiveTodoDueEnd(todo);
-        final dueInRange = todo.dueDate != null &&
+      final startMs = start.millisecondsSinceEpoch;
+      final endMs = end.millisecondsSinceEpoch;
+      var regularCompletedCount = 0;
+      var regularPlannedCount = 0;
+      var sprintCount = 0;
+      var earlyCount = 0;
+      for (final todo in todos) {
+        if (todo.isDeleted) continue;
+        final completedInRange =
+            todo.isDone && todo.updatedAt >= startMs && todo.updatedAt < endMs;
+        final createdInRange =
+            todo.createdAt >= startMs && todo.createdAt < endMs;
+        DateTime? dueEnd;
+        if (todo.dueDate != null) {
+          dueEnd = _effectiveTodoDueEnd(todo);
+        }
+        final dueInRange =
+            todo.dueDate != null &&
             dueEnd != null &&
             !dueEnd.isBefore(start) &&
             dueEnd.isBefore(end);
-        final completedInRange = todo.isDone &&
-            todo.updatedAt >= start.millisecondsSinceEpoch &&
-            todo.updatedAt < end.millisecondsSinceEpoch;
-        return createdInRange || dueInRange || completedInRange;
-      }).toList();
-      final regularCompletedTodos =
-          completedTodos.where((todo) => !_isRecurringTodo(todo)).toList();
-      final regularPlannedTodos =
-          plannedTodos.where((todo) => !_isRecurringTodo(todo)).toList();
-      final sprintCount = regularCompletedTodos.where((todo) {
-        final due = _effectiveTodoDueEnd(todo);
-        if (due == null) return false;
-        final doneAt = DateTime.fromMillisecondsSinceEpoch(todo.updatedAt);
-        final diff = due.difference(doneAt);
-        return !diff.isNegative && diff.inHours <= 24;
-      }).length;
-      final earlyCount = regularCompletedTodos.where((todo) {
-        final due = _effectiveTodoDueEnd(todo);
-        if (due == null) return false;
-        final doneAt = DateTime.fromMillisecondsSinceEpoch(todo.updatedAt);
-        return due.difference(doneAt).inHours >= 24;
-      }).length;
+        final plannedInRange = createdInRange || dueInRange || completedInRange;
+        if (!plannedInRange || _isRecurringTodo(todo)) continue;
+
+        regularPlannedCount++;
+        if (completedInRange) {
+          regularCompletedCount++;
+          final completionDue = todo.dueDate == null
+              ? _effectiveTodoDueEnd(todo)
+              : dueEnd;
+          if (completionDue != null) {
+            final doneAt = DateTime.fromMillisecondsSinceEpoch(todo.updatedAt);
+            final diff = completionDue.difference(doneAt);
+            if (!diff.isNegative && diff.inHours <= 24) sprintCount++;
+            if (diff.inHours >= 24) earlyCount++;
+          }
+        }
+      }
 
       final rangeStatistics = TimelineStatisticsService.calculate(
         start: start,
@@ -319,20 +391,27 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
         excludedRecurrenceSeriesIds: habitOnlyRecurringSeriesIds,
       );
       final totalSecs = rangeStatistics.totalFocusSeconds;
-      final regularTotalCount = regularPlannedTodos.isEmpty
-          ? regularCompletedTodos.length
-          : regularPlannedTodos.length;
-      final medalCompletedCount = regularCompletedTodos.length +
-          rangeStatistics.recurringCompletedCount;
+      final regularTotalCount = regularPlannedCount == 0
+          ? regularCompletedCount
+          : regularPlannedCount;
+      final medalCompletedCount =
+          regularCompletedCount + rangeStatistics.recurringCompletedCount;
       final medalTotalCount =
           regularTotalCount + rangeStatistics.recurringScheduledCount;
 
-      final courses = await CourseService.getAllCourses(widget.username);
+      final courses = await CourseService.getCoursesForDateRange(
+        widget.username,
+        from: start,
+        to: end,
+      );
       final Map<String, int> coursesByDay = {};
+      var courseCount = 0;
+      var maxDailyCourseCount = 0;
+      final courseDateFormat = _timelineDateFormat('yyyy-MM-dd');
       for (final course in courses) {
         DateTime? courseDay;
         try {
-          courseDay = DateFormat('yyyy-MM-dd').parseStrict(course.date);
+          courseDay = courseDateFormat.parseStrict(course.date);
         } catch (_) {
           courseDay = null;
         }
@@ -341,13 +420,19 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
             !courseDay.isBefore(end)) {
           continue;
         }
-        coursesByDay[course.date] = (coursesByDay[course.date] ?? 0) + 1;
+        final dayCount = (coursesByDay[course.date] ?? 0) + 1;
+        coursesByDay[course.date] = dayCount;
+        courseCount++;
+        if (dayCount > maxDailyCourseCount) {
+          maxDailyCourseCount = dayCount;
+        }
       }
 
       String? topCat;
       if (catUsage.isNotEmpty) {
-        topCat =
-            catUsage.entries.reduce((a, b) => a.value > b.value ? a : b).key;
+        topCat = catUsage.entries
+            .reduce((a, b) => a.value > b.value ? a : b)
+            .key;
       }
 
       if (mounted && loadGeneration == _loadGeneration) {
@@ -368,17 +453,15 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
             }
           }
           _topAppCategory = displayCat ?? '学习';
-          _completedCount = regularCompletedTodos.length;
+          _completedCount = regularCompletedCount;
           _totalCount = regularTotalCount;
           _screenTimeSeconds = screenTotal;
           _productiveScreenSeconds = productiveScreen;
           _distractionScreenSeconds = distractionScreen;
           _deadlineSprintCount = sprintCount;
           _earlyCompletionCount = earlyCount;
-          _courseCount = coursesByDay.values.fold(0, (sum, v) => sum + v);
-          _maxDailyCourseCount = coursesByDay.values.isEmpty
-              ? 0
-              : coursesByDay.values.reduce(math.max);
+          _courseCount = courseCount;
+          _maxDailyCourseCount = maxDailyCourseCount;
           _topScreenApps = appUsage.entries.toList()
             ..sort((a, b) => b.value.compareTo(a.value));
           _topScreenApps = _topScreenApps.take(5).toList();
@@ -403,8 +486,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
           _recurringLongestStreak = rangeStatistics.recurringLongestStreak;
           _topFocusTags = rangeStatistics.topFocusTags;
           _financeSummary = financeSummary;
-          _financeTransactions = financeTransactions;
-          _financeCategories = financeCategories;
+          _financeCardMetrics = financeCardMetrics;
 
           // Calculate ML Medal Recommendations
           _medalRecommendation = MedalRecommendationService.getRecommendations(
@@ -414,10 +496,8 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
             medalTotalCount,
             earlyCount,
             sprintCount,
-            coursesByDay.values.fold(0, (sum, v) => sum + v),
-            coursesByDay.values.isEmpty
-                ? 0
-                : coursesByDay.values.reduce(math.max),
+            courseCount,
+            maxDailyCourseCount,
             screenTotal,
             productiveScreen,
             distractionScreen,
@@ -440,30 +520,30 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
         // Async ML insights generation
         TimelineMLService.instance
             .generateInsights(
-          username: widget.username,
-          summary: summary,
-          totalFocusMinutes: totalSecs ~/ 60,
-          completedCount: regularCompletedTodos.length,
-          totalCount: regularPlannedTodos.isEmpty
-              ? regularCompletedTodos.length
-              : regularPlannedTodos.length,
-          screenTimeSeconds: screenTotal,
-          productiveScreenSeconds: productiveScreen,
-          distractionScreenSeconds: distractionScreen,
-          earlyCompletionCount: earlyCount,
-          deadlineSprintCount: sprintCount,
-          startDate: start,
-          endDate: end,
-        )
+              username: widget.username,
+              summary: summary,
+              totalFocusMinutes: totalSecs ~/ 60,
+              completedCount: regularCompletedCount,
+              totalCount: regularPlannedCount == 0
+                  ? regularCompletedCount
+                  : regularPlannedCount,
+              screenTimeSeconds: screenTotal,
+              productiveScreenSeconds: productiveScreen,
+              distractionScreenSeconds: distractionScreen,
+              earlyCompletionCount: earlyCount,
+              deadlineSprintCount: sprintCount,
+              startDate: start,
+              endDate: end,
+            )
             .then((insights) {
-          if (mounted &&
-              loadGeneration == _loadGeneration &&
-              insights.isNotEmpty) {
-            setState(() {
-              _mlInsights = insights;
+              if (mounted &&
+                  loadGeneration == _loadGeneration &&
+                  insights.isNotEmpty) {
+                setState(() {
+                  _mlInsights = insights;
+                });
+              }
             });
-          }
-        });
 
         // Async ML enhancement for range-specific recommendations
         final allMedals = _medalRecommendation?.allMedals;
@@ -472,10 +552,10 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
             allMedals,
             summary,
             totalSecs ~/ 60,
-            regularCompletedTodos.length,
-            regularPlannedTodos.isEmpty
-                ? regularCompletedTodos.length
-                : regularPlannedTodos.length,
+            regularCompletedCount,
+            regularPlannedCount == 0
+                ? regularCompletedCount
+                : regularPlannedCount,
             earlyCount,
             sprintCount,
             screenTotal,
@@ -496,8 +576,6 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
         if (_allTimeRecommendation == null) {
           _loadAllTimeMedalData();
         }
-
-        _animationController.forward(from: 0.0);
       }
     } catch (e) {
       // debugPrint('Error loading insight data: $e');
@@ -520,8 +598,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
     int? nextEventAt;
     for (final transaction in transactions) {
       final eventAt = transaction.balanceEventAt();
-      if (eventAt > nowAt &&
-          (nextEventAt == null || eventAt < nextEventAt)) {
+      if (eventAt > nowAt && (nextEventAt == null || eventAt < nextEventAt)) {
         nextEventAt = eventAt;
       }
     }
@@ -530,20 +607,15 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
     final delayMs = (nextEventAt - nowAt + 1)
         .clamp(1, const Duration(days: 24).inMilliseconds)
         .toInt();
-    _financeOccurrenceRefreshTimer = Timer(
-      Duration(milliseconds: delayMs),
-      () {
-        _financeOccurrenceRefreshTimer = null;
-        if (mounted) unawaited(_loadData());
-      },
-    );
+    _financeOccurrenceRefreshTimer = Timer(Duration(milliseconds: delayMs), () {
+      _financeOccurrenceRefreshTimer = null;
+      if (mounted) unawaited(_loadData());
+    });
   }
 
   Future<void> _openFinanceEntry() async {
     final saved = await Navigator.of(context).push<FinanceTransaction>(
-      PageTransitions.material(
-        builder: (_) => const FinanceEntryScreen(),
-      ),
+      PageTransitions.material(builder: (_) => const FinanceEntryScreen()),
     );
     if (saved != null && mounted) await _loadData();
   }
@@ -576,15 +648,24 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
       final end = AppTimeFormats.localDayStartOffset(DateTime.now(), 1);
 
       // 1. Get Global Timeline Summary
-      final summary = await TimelineService.instance
-          .getSummaryForRange(widget.username, start, end);
+      final summary = await TimelineService.instance.getSummaryForRange(
+        widget.username,
+        start,
+        end,
+      );
 
       // 2. Get Global Focus Time (Pomodoro + manually recorded time logs)
       final totalSecs = summary.totalFocusMinutes * 60;
 
       // 3. Screen Time
-      final screenStats = await StorageService.getScreenTimeHistory();
+      final allTimeScreenTimeDateFormat = _timelineDateFormat('yyyy-MM-dd');
+      final screenStats = await StorageService.getScreenTimeHistory(
+        username: widget.username,
+        fromDate: allTimeScreenTimeDateFormat.format(start),
+        toDate: allTimeScreenTimeDateFormat.format(end),
+      );
       final appMappings = await StorageService.getAppMappings();
+      final categoryCache = <(String, String, String?), String>{};
       int screenTotal = 0;
       int productiveScreen = 0;
       int distractionScreen = 0;
@@ -594,11 +675,15 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
           final appName = item['app_name']?.toString() ?? '未知应用';
           final packageName = item['package_name']?.toString() ?? '';
           final duration = (item['duration'] as num?)?.toInt() ?? 0;
-          final cat = _getScreenCategoryForApp(
-            appName: appName,
-            packageName: packageName,
-            backendCategory: item['category']?.toString(),
-            mappings: appMappings,
+          final backendCategory = item['category']?.toString();
+          final cat = categoryCache.putIfAbsent(
+            (appName, packageName, backendCategory),
+            () => _getScreenCategoryForApp(
+              appName: appName,
+              packageName: packageName,
+              backendCategory: backendCategory,
+              mappings: appMappings,
+            ),
           );
           screenTotal += duration;
           if (_isProductiveScreenCategory(cat)) productiveScreen += duration;
@@ -608,39 +693,45 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
 
       // 4. Todos
       final todos = await StorageService.getTodos(widget.username);
-      final completedTodos =
-          todos.where((t) => !t.isDeleted && t.isDone).toList();
-      final plannedTodos = todos.where((t) => !t.isDeleted).toList();
-      final sprintCount = completedTodos.where((todo) {
+      var completedTodoCount = 0;
+      var plannedTodoCount = 0;
+      var sprintCount = 0;
+      var earlyCount = 0;
+      for (final todo in todos) {
+        if (todo.isDeleted) continue;
+        plannedTodoCount++;
+        if (!todo.isDone) continue;
+        completedTodoCount++;
+
         final due = _effectiveTodoDueEnd(todo);
-        if (due == null) return false;
+        if (due == null) continue;
         final doneAt = DateTime.fromMillisecondsSinceEpoch(todo.updatedAt);
         final diff = due.difference(doneAt);
-        return !diff.isNegative && diff.inHours <= 24;
-      }).length;
-      final earlyCount = completedTodos.where((todo) {
-        final due = _effectiveTodoDueEnd(todo);
-        if (due == null) return false;
-        final doneAt = DateTime.fromMillisecondsSinceEpoch(todo.updatedAt);
-        return due.difference(doneAt).inHours >= 24;
-      }).length;
+        if (!diff.isNegative && diff.inHours <= 24) sprintCount++;
+        if (diff.inHours >= 24) earlyCount++;
+      }
 
       // 5. Courses
       final courses = await CourseService.getAllCourses(widget.username);
       final Map<String, int> coursesByDay = {};
+      var maxDailyCourseCount = 0;
       for (final course in courses) {
-        coursesByDay[course.date] = (coursesByDay[course.date] ?? 0) + 1;
+        final dayCount = (coursesByDay[course.date] ?? 0) + 1;
+        coursesByDay[course.date] = dayCount;
+        if (dayCount > maxDailyCourseCount) {
+          maxDailyCourseCount = dayCount;
+        }
       }
 
       final recommendation = MedalRecommendationService.getRecommendations(
         summary,
         totalSecs ~/ 60,
-        completedTodos.length,
-        plannedTodos.length,
+        completedTodoCount,
+        plannedTodoCount,
         earlyCount,
         sprintCount,
         courses.length,
-        coursesByDay.values.isEmpty ? 0 : coursesByDay.values.reduce(math.max),
+        maxDailyCourseCount,
         screenTotal,
         productiveScreen,
         distractionScreen,
@@ -658,8 +749,8 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
         recommendation.allMedals,
         summary,
         totalSecs ~/ 60,
-        completedTodos.length,
-        plannedTodos.length,
+        completedTodoCount,
+        plannedTodoCount,
         earlyCount,
         sprintCount,
         screenTotal,
@@ -810,7 +901,8 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
     if (due == null) return null;
 
     final localDue = due.toLocal();
-    final looksDateOnly = localDue.hour == 0 &&
+    final looksDateOnly =
+        localDue.hour == 0 &&
         localDue.minute == 0 &&
         localDue.second == 0 &&
         localDue.millisecond == 0;
@@ -830,228 +922,233 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
   Future<void> _chooseAndExportTimelinePoster() async {
     if (_summary == null || _isExportingPoster) return;
 
-    final choice = await showAppModalBottomSheet<
-        ({
-          TimelineDimension dimension,
-          DateTime date,
-          bool includeMedals,
-          _TimelinePosterAction action
-        })>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (context) {
-        final cs = Theme.of(context).colorScheme;
-        var selectedDimension = _dimension;
-        var selectedDate = _selectedDate;
-        var includeMedals = true;
-        var action = _TimelinePosterAction.save;
+    final choice =
+        await showAppModalBottomSheet<
+          ({
+            TimelineDimension dimension,
+            DateTime date,
+            bool includeMedals,
+            _TimelinePosterAction action,
+          })
+        >(
+          context: context,
+          isScrollControlled: true,
+          showDragHandle: true,
+          builder: (context) {
+            final cs = Theme.of(context).colorScheme;
+            var selectedDimension = _dimension;
+            var selectedDate = _selectedDate;
+            var includeMedals = true;
+            var action = _TimelinePosterAction.save;
 
-        return StatefulBuilder(
-          builder: (context, setModalState) {
-            Future<void> pickPeriod() async {
-              final picked = await showAppDatePicker(
-                context: context,
-                initialDate: selectedDate,
-                firstDate: DateTime(2020),
-                lastDate: DateTime.now().add(const Duration(days: 365)),
-                helpText: '选择${_getDimensionFullName(selectedDimension)}报告时段',
-              );
-              if (picked != null) {
-                setModalState(() => selectedDate = picked);
-              }
-            }
+            return StatefulBuilder(
+              builder: (context, setModalState) {
+                Future<void> pickPeriod() async {
+                  final picked = await showAppDatePicker(
+                    context: context,
+                    initialDate: selectedDate,
+                    firstDate: DateTime(2020),
+                    lastDate: DateTime.now().add(const Duration(days: 365)),
+                    helpText:
+                        '选择${_getDimensionFullName(selectedDimension)}报告时段',
+                  );
+                  if (picked != null) {
+                    setModalState(() => selectedDate = picked);
+                  }
+                }
 
-            return SafeArea(
-              child: Padding(
-                padding: EdgeInsets.fromLTRB(
-                  20,
-                  8,
-                  20,
-                  20 + MediaQuery.of(context).viewInsets.bottom,
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '导出报告长图',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w900,
-                        color: cs.onSurface,
-                      ),
+                return SafeArea(
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      20,
+                      8,
+                      20,
+                      20 + MediaQuery.of(context).viewInsets.bottom,
                     ),
-                    const SizedBox(height: 16),
-                    _buildPosterChoiceSection(
-                      '报告维度',
-                      Icons.tune_rounded,
-                      cs,
-                      SegmentedButton<TimelineDimension>(
-                        showSelectedIcon: false,
-                        segments: TimelineDimension.values
-                            .map(
-                              (d) => ButtonSegment(
-                                value: d,
-                                label: Text(_getDimensionName(d)),
-                              ),
-                            )
-                            .toList(),
-                        selected: {selectedDimension},
-                        onSelectionChanged: (value) {
-                          setModalState(() {
-                            selectedDimension = value.first;
-                          });
-                        },
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    _buildPosterChoiceSection(
-                      '具体时段',
-                      Icons.event_rounded,
-                      cs,
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: cs.surfaceContainerHighest
-                              .withValues(alpha: 0.42),
-                          borderRadius: BorderRadius.circular(18),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '导出报告长图',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                            color: cs.onSurface,
+                          ),
                         ),
-                        child: Row(
-                          children: [
-                            IconButton.filledTonal(
-                              tooltip: '上一个时段',
-                              onPressed: () => setModalState(() {
-                                selectedDate = _shiftTimelineDate(
-                                  selectedDate,
-                                  selectedDimension,
-                                  -1,
-                                );
-                              }),
-                              icon: const Icon(Icons.chevron_left_rounded),
-                            ),
-                            Expanded(
-                              child: InkWell(
-                                borderRadius: BorderRadius.circular(14),
-                                onTap: pickPeriod,
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 10,
+                        const SizedBox(height: 16),
+                        _buildPosterChoiceSection(
+                          '报告维度',
+                          Icons.tune_rounded,
+                          cs,
+                          SegmentedButton<TimelineDimension>(
+                            showSelectedIcon: false,
+                            segments: TimelineDimension.values
+                                .map(
+                                  (d) => ButtonSegment(
+                                    value: d,
+                                    label: Text(_getDimensionName(d)),
                                   ),
-                                  child: Column(
-                                    children: [
-                                      Text(
-                                        _formatTimelinePeriod(
-                                          selectedDimension,
-                                          selectedDate,
-                                        ),
-                                        textAlign: TextAlign.center,
-                                        style: TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w800,
-                                          color: cs.onSurface,
-                                        ),
+                                )
+                                .toList(),
+                            selected: {selectedDimension},
+                            onSelectionChanged: (value) {
+                              setModalState(() {
+                                selectedDimension = value.first;
+                              });
+                            },
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        _buildPosterChoiceSection(
+                          '具体时段',
+                          Icons.event_rounded,
+                          cs,
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: cs.surfaceContainerHighest.withValues(
+                                alpha: 0.42,
+                              ),
+                              borderRadius: BorderRadius.circular(18),
+                            ),
+                            child: Row(
+                              children: [
+                                IconButton.filledTonal(
+                                  tooltip: '上一个时段',
+                                  onPressed: () => setModalState(() {
+                                    selectedDate = _shiftTimelineDate(
+                                      selectedDate,
+                                      selectedDimension,
+                                      -1,
+                                    );
+                                  }),
+                                  icon: const Icon(Icons.chevron_left_rounded),
+                                ),
+                                Expanded(
+                                  child: InkWell(
+                                    borderRadius: BorderRadius.circular(14),
+                                    onTap: pickPeriod,
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                        vertical: 10,
                                       ),
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        '点击选择',
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: cs.onSurfaceVariant,
-                                        ),
+                                      child: Column(
+                                        children: [
+                                          Text(
+                                            _formatTimelinePeriod(
+                                              selectedDimension,
+                                              selectedDate,
+                                            ),
+                                            textAlign: TextAlign.center,
+                                            style: TextStyle(
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.w800,
+                                              color: cs.onSurface,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            '点击选择',
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: cs.onSurfaceVariant,
+                                            ),
+                                          ),
+                                        ],
                                       ),
-                                    ],
+                                    ),
                                   ),
                                 ),
+                                IconButton.filledTonal(
+                                  tooltip: '下一个时段',
+                                  onPressed: () => setModalState(() {
+                                    selectedDate = _shiftTimelineDate(
+                                      selectedDate,
+                                      selectedDimension,
+                                      1,
+                                    );
+                                  }),
+                                  icon: const Icon(Icons.chevron_right_rounded),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        _buildPosterChoiceSection(
+                          '勋章墙',
+                          Icons.emoji_events_outlined,
+                          cs,
+                          SegmentedButton<bool>(
+                            showSelectedIcon: false,
+                            segments: const [
+                              ButtonSegment(value: true, label: Text('带上')),
+                              ButtonSegment(value: false, label: Text('不带')),
+                            ],
+                            selected: {includeMedals},
+                            onSelectionChanged: (value) {
+                              setModalState(() => includeMedals = value.first);
+                            },
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        _buildPosterChoiceSection(
+                          '导出方式',
+                          Icons.outbox_rounded,
+                          cs,
+                          SegmentedButton<_TimelinePosterAction>(
+                            showSelectedIcon: false,
+                            segments: const [
+                              ButtonSegment(
+                                value: _TimelinePosterAction.save,
+                                icon: Icon(Icons.photo_library_outlined),
+                                label: Text('保存到相册'),
                               ),
-                            ),
-                            IconButton.filledTonal(
-                              tooltip: '下一个时段',
-                              onPressed: () => setModalState(() {
-                                selectedDate = _shiftTimelineDate(
-                                  selectedDate,
-                                  selectedDimension,
-                                  1,
-                                );
-                              }),
-                              icon: const Icon(Icons.chevron_right_rounded),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    _buildPosterChoiceSection(
-                      '勋章墙',
-                      Icons.emoji_events_outlined,
-                      cs,
-                      SegmentedButton<bool>(
-                        showSelectedIcon: false,
-                        segments: const [
-                          ButtonSegment(value: true, label: Text('带上')),
-                          ButtonSegment(value: false, label: Text('不带')),
-                        ],
-                        selected: {includeMedals},
-                        onSelectionChanged: (value) {
-                          setModalState(() => includeMedals = value.first);
-                        },
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    _buildPosterChoiceSection(
-                      '导出方式',
-                      Icons.outbox_rounded,
-                      cs,
-                      SegmentedButton<_TimelinePosterAction>(
-                        showSelectedIcon: false,
-                        segments: const [
-                          ButtonSegment(
-                            value: _TimelinePosterAction.save,
-                            icon: Icon(Icons.photo_library_outlined),
-                            label: Text('保存到相册'),
-                          ),
-                          ButtonSegment(
-                            value: _TimelinePosterAction.share,
-                            icon: Icon(Icons.ios_share_rounded),
-                            label: Text('分享'),
-                          ),
-                        ],
-                        selected: {action},
-                        onSelectionChanged: (value) {
-                          setModalState(() => action = value.first);
-                        },
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton.icon(
-                        onPressed: () => Navigator.pop(
-                          context,
-                          (
-                            dimension: selectedDimension,
-                            date: selectedDate,
-                            includeMedals: includeMedals,
-                            action: action,
+                              ButtonSegment(
+                                value: _TimelinePosterAction.share,
+                                icon: Icon(Icons.ios_share_rounded),
+                                label: Text('分享'),
+                              ),
+                            ],
+                            selected: {action},
+                            onSelectionChanged: (value) {
+                              setModalState(() => action = value.first);
+                            },
                           ),
                         ),
-                        icon: Icon(action == _TimelinePosterAction.save
-                            ? Icons.photo_library_outlined
-                            : Icons.ios_share_rounded),
-                        label: Text(action == _TimelinePosterAction.save
-                            ? '保存到相册'
-                            : '打开分享面板'),
-                      ),
+                        const SizedBox(height: 20),
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton.icon(
+                            onPressed: () => Navigator.pop(context, (
+                              dimension: selectedDimension,
+                              date: selectedDate,
+                              includeMedals: includeMedals,
+                              action: action,
+                            )),
+                            icon: Icon(
+                              action == _TimelinePosterAction.save
+                                  ? Icons.photo_library_outlined
+                                  : Icons.ios_share_rounded,
+                            ),
+                            label: Text(
+                              action == _TimelinePosterAction.save
+                                  ? '保存到相册'
+                                  : '打开分享面板',
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-              ),
+                  ),
+                );
+              },
             );
           },
         );
-      },
-    );
 
     if (choice == null) return;
     if (choice.dimension != _dimension ||
@@ -1141,16 +1238,16 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
     final day = DateTime(date.year, date.month, date.day);
     switch (dimension) {
       case TimelineDimension.daily:
-        return DateFormat('yyyy年MM月dd日').format(day);
+        return _timelineDateFormat('yyyy年MM月dd日').format(day);
       case TimelineDimension.weekly:
         final start = AppTimeFormats.localDayStartOffset(
           day,
           -(day.weekday - 1),
         );
         final end = AppTimeFormats.localDayStartOffset(start, 6);
-        return '${DateFormat('MM/dd').format(start)} - ${DateFormat('MM/dd').format(end)}';
+        return '${_timelineDateFormat('MM/dd').format(start)} - ${_timelineDateFormat('MM/dd').format(end)}';
       case TimelineDimension.monthly:
-        return DateFormat('yyyy年MM月').format(day);
+        return _timelineDateFormat('yyyy年MM月').format(day);
       case TimelineDimension.yearly:
         return '${day.year}年';
     }
@@ -1235,8 +1332,9 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
       await WidgetsBinding.instance.endOfFrame;
       await Future<void>.delayed(const Duration(milliseconds: 80));
 
-      final boundary = posterKey.currentContext?.findRenderObject()
-          as RenderRepaintBoundary?;
+      final boundary =
+          posterKey.currentContext?.findRenderObject()
+              as RenderRepaintBoundary?;
       if (boundary == null) {
         throw StateError('分享长图渲染失败');
       }
@@ -1248,7 +1346,8 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
       }
 
       final safePeriod = _getPeriodName();
-      final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+      final timestamp = _timelineDateFormat('yyyyMMdd_HHmmss')
+          .format(DateTime.now());
       final fileName = 'CountDownTodo_${safePeriod}_timeline_$timestamp.png';
       final pngBytes = bytes.buffer.asUint8List();
       final filePath = await BrowserFileService.saveBytesFile(
@@ -1287,9 +1386,9 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
         AppSnackBars.showSnackBarFromMessenger(
           messenger,
           SnackBar(
-            content: Text(!kIsWeb && AppPlatform.isAndroid
-                ? '长图已保存到相册'
-                : '长图已保存：$filePath'),
+            content: Text(
+              !kIsWeb && AppPlatform.isAndroid ? '长图已保存到相册' : '长图已保存：$filePath',
+            ),
             action: !kIsWeb
                 ? SnackBarAction(
                     label: '打开',
@@ -1350,7 +1449,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
                 ),
               ),
               Text(
-                DateFormat('yyyy.MM.dd HH:mm').format(DateTime.now()),
+                _timelineDateFormat('yyyy.MM.dd HH:mm').format(DateTime.now()),
                 style: TextStyle(
                   fontSize: 15,
                   color: cs.onSurfaceVariant,
@@ -1466,17 +1565,15 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
     final isWide = MediaQuery.of(context).size.width > 900;
     final topPadding = MediaQuery.paddingOf(context).top;
     final topBarHeight = floatingGlassTopBarHeight(context);
-    final bottomContentPadding =
-        floatingBottomNavigationContentPaddingFor(context);
+    final bottomContentPadding = floatingBottomNavigationContentPaddingFor(
+      context,
+    );
     return Scaffold(
       extendBody: true,
       bottomNavigationBar: FloatingBottomNavigationBar(
         mobilePortraitOnly: false,
         items: const [
-          FloatingBottomNavigationItem(
-            icon: Icons.today_outlined,
-            label: '日',
-          ),
+          FloatingBottomNavigationItem(icon: Icons.today_outlined, label: '日'),
           FloatingBottomNavigationItem(
             icon: Icons.date_range_outlined,
             label: '周',
@@ -1506,9 +1603,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
               physics: const BouncingScrollPhysics(),
               slivers: [
                 _buildAppBar(context),
-                SliverToBoxAdapter(
-                  child: _buildGreeting(colorScheme),
-                ),
+                SliverToBoxAdapter(child: _buildGreeting(colorScheme)),
                 SliverToBoxAdapter(
                   child: Center(
                     child: Container(
@@ -1524,22 +1619,23 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
                             switchOutCurve: Curves.easeInQuart,
                             transitionBuilder:
                                 (Widget child, Animation<double> animation) {
-                              return FadeTransition(
-                                opacity: animation,
-                                child: SlideTransition(
-                                  position: Tween<Offset>(
-                                    begin: const Offset(0, 0.02),
-                                    end: Offset.zero,
-                                  ).animate(animation),
-                                  child: child,
-                                ),
-                              );
-                            },
+                                  return FadeTransition(
+                                    opacity: animation,
+                                    child: SlideTransition(
+                                      position: Tween<Offset>(
+                                        begin: const Offset(0, 0.02),
+                                        end: Offset.zero,
+                                      ).animate(animation),
+                                      child: child,
+                                    ),
+                                  );
+                                },
                             child: _isLoading
                                 ? _buildSkeleton(colorScheme)
                                 : Column(
                                     key: ValueKey(
-                                        'content_${_dimension}_${_selectedDate.millisecondsSinceEpoch}'),
+                                      'content_${_dimension}_${_selectedDate.millisecondsSinceEpoch}',
+                                    ),
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
                                     children: [
@@ -1558,40 +1654,51 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
                                                     CrossAxisAlignment.start,
                                                 children: [
                                                   _buildSectionTitle(
-                                                      '概览回顾',
-                                                      Icons.insights_rounded,
-                                                      colorScheme),
+                                                    '概览回顾',
+                                                    Icons.insights_rounded,
+                                                    colorScheme,
+                                                  ),
                                                   const SizedBox(height: 16),
                                                   _buildRangeSummary(
-                                                      colorScheme, isWide),
+                                                    colorScheme,
+                                                    isWide,
+                                                  ),
                                                   _buildOverviewInsightPanels(
-                                                      colorScheme, isWide),
+                                                    colorScheme,
+                                                    isWide,
+                                                  ),
                                                   if (_mlInsights
                                                       .isNotEmpty) ...[
                                                     const SizedBox(height: 36),
                                                     _buildSectionTitle(
-                                                        'AI 深度洞察',
-                                                        Icons
-                                                            .auto_awesome_rounded,
-                                                        colorScheme),
+                                                      'AI 深度洞察',
+                                                      Icons
+                                                          .auto_awesome_rounded,
+                                                      colorScheme,
+                                                    ),
                                                     const SizedBox(height: 16),
                                                     _buildMLInsightsSection(
-                                                        colorScheme),
+                                                      colorScheme,
+                                                    ),
                                                   ],
                                                   _buildMedalWall(
-                                                      colorScheme, isWide),
+                                                    colorScheme,
+                                                    isWide,
+                                                  ),
                                                   if (_dimension ==
                                                       TimelineDimension
                                                           .daily) ...[
                                                     const SizedBox(height: 40),
                                                     _buildSectionTitle(
-                                                        '时光足迹',
-                                                        Icons
-                                                            .auto_stories_outlined,
-                                                        colorScheme),
+                                                      '时光足迹',
+                                                      Icons
+                                                          .auto_stories_outlined,
+                                                      colorScheme,
+                                                    ),
                                                     const SizedBox(height: 16),
                                                     _buildTimelineFlow(
-                                                        colorScheme),
+                                                      colorScheme,
+                                                    ),
                                                   ],
                                                 ],
                                               ),
@@ -1605,17 +1712,20 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
                                                     CrossAxisAlignment.start,
                                                 children: [
                                                   _buildSectionTitle(
-                                                      '数据深度洞察',
-                                                      Icons.analytics_outlined,
-                                                      colorScheme),
+                                                    '数据深度洞察',
+                                                    Icons.analytics_outlined,
+                                                    colorScheme,
+                                                  ),
                                                   const SizedBox(height: 20),
                                                   _buildSideHighlights(
-                                                      colorScheme),
+                                                    colorScheme,
+                                                  ),
                                                   const SizedBox(height: 40),
                                                   _buildSectionTitle(
-                                                      '感悟与思考',
-                                                      Icons.edit_note_rounded,
-                                                      colorScheme),
+                                                    '感悟与思考',
+                                                    Icons.edit_note_rounded,
+                                                    colorScheme,
+                                                  ),
                                                   const SizedBox(height: 16),
                                                   _buildReflection(colorScheme),
                                                 ],
@@ -1626,22 +1736,25 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
                                       else ...[
                                         // Mobile Layout (Existing)
                                         _buildSectionTitle(
-                                            _dimension ==
-                                                    TimelineDimension.daily
-                                                ? '概览回顾'
-                                                : '阶段回顾',
-                                            Icons.insights_rounded,
-                                            colorScheme),
+                                          _dimension == TimelineDimension.daily
+                                              ? '概览回顾'
+                                              : '阶段回顾',
+                                          Icons.insights_rounded,
+                                          colorScheme,
+                                        ),
                                         const SizedBox(height: 16),
                                         _buildRangeSummary(colorScheme, isWide),
                                         _buildOverviewInsightPanels(
-                                            colorScheme, isWide),
+                                          colorScheme,
+                                          isWide,
+                                        ),
                                         if (_mlInsights.isNotEmpty) ...[
                                           const SizedBox(height: 36),
                                           _buildSectionTitle(
-                                              'AI 深度洞察',
-                                              Icons.auto_awesome_rounded,
-                                              colorScheme),
+                                            'AI 深度洞察',
+                                            Icons.auto_awesome_rounded,
+                                            colorScheme,
+                                          ),
                                           const SizedBox(height: 16),
                                           _buildMLInsightsSection(colorScheme),
                                         ],
@@ -1650,24 +1763,27 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
                                             TimelineDimension.daily) ...[
                                           const SizedBox(height: 40),
                                           _buildSectionTitle(
-                                              '时光足迹',
-                                              Icons.auto_stories_outlined,
-                                              colorScheme),
+                                            '时光足迹',
+                                            Icons.auto_stories_outlined,
+                                            colorScheme,
+                                          ),
                                           const SizedBox(height: 16),
                                           _buildTimelineFlow(colorScheme),
                                         ],
                                         const SizedBox(height: 40),
                                         _buildSectionTitle(
-                                            '数据深度洞察',
-                                            Icons.analytics_outlined,
-                                            colorScheme),
+                                          '数据深度洞察',
+                                          Icons.analytics_outlined,
+                                          colorScheme,
+                                        ),
                                         const SizedBox(height: 16),
                                         _buildSideHighlights(colorScheme),
                                         const SizedBox(height: 40),
                                         _buildSectionTitle(
-                                            '感悟与思考',
-                                            Icons.edit_note_rounded,
-                                            colorScheme),
+                                          '感悟与思考',
+                                          Icons.edit_note_rounded,
+                                          colorScheme,
+                                        ),
                                         const SizedBox(height: 16),
                                         _buildReflection(colorScheme),
                                       ],
@@ -1720,18 +1836,19 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
         ),
         const SizedBox(height: 40),
         ...List.generate(
-            3,
-            (i) => Padding(
-                  padding: const EdgeInsets.only(bottom: 16),
-                  child: Container(
-                    height: 90,
-                    width: double.infinity,
-                    decoration: BoxDecoration(
-                      color: cs.onSurface.withValues(alpha: 0.02),
-                      borderRadius: BorderRadius.circular(24),
-                    ),
-                  ),
-                )),
+          3,
+          (i) => Padding(
+            padding: const EdgeInsets.only(bottom: 16),
+            child: Container(
+              height: 90,
+              width: double.infinity,
+              decoration: BoxDecoration(
+                color: cs.onSurface.withValues(alpha: 0.02),
+                borderRadius: BorderRadius.circular(24),
+              ),
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -1753,9 +1870,10 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
       child: Stack(
         children: [
           Positioned(
-              bottom: 100,
-              left: -100,
-              child: _buildBlob(cs.secondary.withValues(alpha: 0.03), 400)),
+            bottom: 100,
+            left: -100,
+            child: _buildBlob(cs.secondary.withValues(alpha: 0.03), 400),
+          ),
         ],
       ),
     );
@@ -1772,7 +1890,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
       child: AppPlatform.isAndroid
           ? const SizedBox.shrink()
           : BackdropFilter(
-              filter: ui.ImageFilter.blur(sigmaX: 80, sigmaY: 80),
+              filter: AppImageFilters.blur80,
               child: Container(color: Colors.transparent),
             ),
     );
@@ -1905,23 +2023,31 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
               mainAxisAlignment: MainAxisAlignment.end,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(sub,
-                    style: TextStyle(
-                        fontSize: 14,
-                        color: cs.primary,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 1.2)),
+                Text(
+                  sub,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: cs.primary,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 1.2,
+                  ),
+                ),
                 const SizedBox(height: 4),
-                Text(label,
-                    style: const TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold,
-                        fontFamily: 'Serif')),
+                Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                    fontFamily: 'Serif',
+                  ),
+                ),
                 if (_dimension != TimelineDimension.daily) ...[
                   const SizedBox(height: 6),
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 3,
+                    ),
                     decoration: BoxDecoration(
                       color: cs.surfaceContainerHighest.withValues(alpha: 0.35),
                       borderRadius: BorderRadius.circular(10),
@@ -1944,9 +2070,10 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                      fontSize: 12,
-                      color: cs.onSurfaceVariant.withValues(alpha: 0.6),
-                      fontStyle: FontStyle.italic),
+                    fontSize: 12,
+                    color: cs.onSurfaceVariant.withValues(alpha: 0.6),
+                    fontStyle: FontStyle.italic,
+                  ),
                 ),
               ],
             ),
@@ -1966,16 +2093,16 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
   String _timelinePeriodLabel() {
     switch (_dimension) {
       case TimelineDimension.daily:
-        return DateFormat('yyyy年MM月dd日').format(_selectedDate);
+        return _timelineDateFormat('yyyy年MM月dd日').format(_selectedDate);
       case TimelineDimension.weekly:
         final start = AppTimeFormats.localDayStartOffset(
           AppTimeFormats.dayStart(_selectedDate),
           -(_selectedDate.weekday - 1),
         );
         final end = AppTimeFormats.localDayStartOffset(start, 6);
-        return '${DateFormat('MM/dd').format(start)} - ${DateFormat('MM/dd').format(end)}';
+        return '${_timelineDateFormat('MM/dd').format(start)} - ${_timelineDateFormat('MM/dd').format(end)}';
       case TimelineDimension.monthly:
-        return DateFormat('yyyy年MM月').format(_selectedDate);
+        return _timelineDateFormat('yyyy年MM月').format(_selectedDate);
       case TimelineDimension.yearly:
         return '${_selectedDate.year}年';
     }
@@ -1984,7 +2111,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
   String _timelinePeriodSubtitle() {
     switch (_dimension) {
       case TimelineDimension.daily:
-        return DateFormat('EEEE', 'zh_CN').format(_selectedDate);
+        return _timelineDateFormat('EEEE', 'zh_CN').format(_selectedDate);
       case TimelineDimension.weekly:
         return '本周回顾';
       case TimelineDimension.monthly:
@@ -2025,8 +2152,11 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
           );
           break;
         case TimelineDimension.monthly:
-          _selectedDate =
-              DateTime(_selectedDate.year, _selectedDate.month + direction, 1);
+          _selectedDate = DateTime(
+            _selectedDate.year,
+            _selectedDate.month + direction,
+            1,
+          );
           break;
         case TimelineDimension.yearly:
           _selectedDate = DateTime(_selectedDate.year + direction, 1, 1);
@@ -2053,34 +2183,37 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
     if (_summary != null &&
         _summary!.actualStartTime != null &&
         _summary!.actualEndTime != null) {
-      return '${DateFormat('yyyy.MM.dd').format(_summary!.actualStartTime!)} - ${DateFormat('yyyy.MM.dd').format(_summary!.actualEndTime!)}';
+      return '${_timelineDateFormat('yyyy.MM.dd').format(_summary!.actualStartTime!)} - ${_timelineDateFormat('yyyy.MM.dd').format(_summary!.actualEndTime!)}';
     }
 
     DateTime start;
     DateTime end;
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final day =
-        DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day);
+    final day = DateTime(
+      _selectedDate.year,
+      _selectedDate.month,
+      _selectedDate.day,
+    );
 
     switch (_dimension) {
       case TimelineDimension.daily:
-        return DateFormat('yyyy.MM.dd').format(day);
+        return _timelineDateFormat('yyyy.MM.dd').format(day);
       case TimelineDimension.weekly:
         start = AppTimeFormats.localDayStartOffset(day, -(day.weekday - 1));
         end = AppTimeFormats.localDayStartOffset(start, 6);
         final displayEnd = end.isAfter(today) ? today : end;
-        return '${DateFormat('yyyy.MM.dd').format(start)} - ${DateFormat('yyyy.MM.dd').format(displayEnd)}';
+        return '${_timelineDateFormat('yyyy.MM.dd').format(start)} - ${_timelineDateFormat('yyyy.MM.dd').format(displayEnd)}';
       case TimelineDimension.monthly:
         start = DateTime(day.year, day.month, 1);
         end = DateTime(day.year, day.month + 1, 0);
         final displayEnd = end.isAfter(today) ? today : end;
-        return '${DateFormat('yyyy.MM.dd').format(start)} - ${DateFormat('yyyy.MM.dd').format(displayEnd)}';
+        return '${_timelineDateFormat('yyyy.MM.dd').format(start)} - ${_timelineDateFormat('yyyy.MM.dd').format(displayEnd)}';
       case TimelineDimension.yearly:
         start = DateTime(day.year, 1, 1);
         end = DateTime(day.year, 12, 31);
         final displayEnd = end.isAfter(today) ? today : end;
-        return '${DateFormat('yyyy.MM.dd').format(start)} - ${DateFormat('yyyy.MM.dd').format(displayEnd)}';
+        return '${_timelineDateFormat('yyyy.MM.dd').format(start)} - ${_timelineDateFormat('yyyy.MM.dd').format(displayEnd)}';
     }
   }
 
@@ -2089,11 +2222,13 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
     if (summary == null) return const SizedBox();
 
     final focusTimeStr = _formatMinutes(_totalFocusMinutes);
-    final completionRate =
-        _totalCount > 0 ? _completedCount / _totalCount : 0.0;
+    final completionRate = _totalCount > 0
+        ? _completedCount / _totalCount
+        : 0.0;
     final focusSessionCount = _pomodoroCount + _timeLogCount;
-    final planAchievementRate =
-        _plannedMinutes > 0 ? _planActualSeconds / (_plannedMinutes * 60) : 0.0;
+    final planAchievementRate = _plannedMinutes > 0
+        ? _planActualSeconds / (_plannedMinutes * 60)
+        : 0.0;
     final screenConversion = _screenTimeSeconds > 0
         ? (_totalFocusMinutes * 60) / _screenTimeSeconds
         : 0.0;
@@ -2103,13 +2238,15 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
     final keywordText = _buildKeywordText(summary);
     final habitSummary = summary.habitSummary;
     final financeSummary = _financeSummary;
-    final financeAccent =
-        financeSummary.netExpenseMinor > 0 ? cs.error : cs.primary;
+    final financeAccent = financeSummary.netExpenseMinor > 0
+        ? cs.error
+        : cs.primary;
     final qualityLine = focusSessionCount > 0
         ? '平均每段 ${summary.avgPomodoroMinutes.toStringAsFixed(0)} 分钟，深度投入占 ${_formatPercent(summary.deepWorkCount / focusSessionCount)}。'
         : '暂时没有可统计的专注质量数据。';
-    final consecutiveLabel =
-        _buildConsecutiveActiveLabel(summary.consecutiveActiveDays);
+    final consecutiveLabel = _buildConsecutiveActiveLabel(
+      summary.consecutiveActiveDays,
+    );
     final achievements = <String>[
       if (_completedCount > 0 || _recurringCompletedCount == 0)
         '完成 $_completedCount 个任务',
@@ -2131,7 +2268,8 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(
-                alpha: cs.brightness == Brightness.dark ? 0.18 : 0.04),
+              alpha: cs.brightness == Brightness.dark ? 0.18 : 0.04,
+            ),
             blurRadius: 24,
             offset: const Offset(0, 12),
           ),
@@ -2163,43 +2301,71 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
             spacing: 10,
             runSpacing: 10,
             children: [
-              _buildInsightPill('完成率 ${_formatPercent(completionRate)}',
-                  Icons.check_circle_outline_rounded, cs.primary, cs),
+              _buildInsightPill(
+                '完成率 ${_formatPercent(completionRate)}',
+                Icons.check_circle_outline_rounded,
+                cs.primary,
+                cs,
+              ),
               if (_planBlockCount > 0)
-                _buildInsightPill('规划达成 ${_formatPercent(planAchievementRate)}',
-                    Icons.event_available_outlined, cs.tertiary, cs),
-              _buildInsightPill(consecutiveLabel,
-                  Icons.local_fire_department_outlined, Colors.deepOrange, cs),
+                _buildInsightPill(
+                  '规划达成 ${_formatPercent(planAchievementRate)}',
+                  Icons.event_available_outlined,
+                  cs.tertiary,
+                  cs,
+                ),
+              _buildInsightPill(
+                consecutiveLabel,
+                Icons.local_fire_department_outlined,
+                Colors.deepOrange,
+                cs,
+              ),
               if (_recurringScheduledCount > 0)
                 _buildInsightPill(
-                    '重复完成 ${_formatPercent(_recurringResolvedCount > 0 ? _recurringCompletedCount / _recurringResolvedCount : 0)}',
-                    Icons.repeat_rounded,
-                    cs.secondary,
-                    cs),
+                  '重复完成 ${_formatPercent(_recurringResolvedCount > 0 ? _recurringCompletedCount / _recurringResolvedCount : 0)}',
+                  Icons.repeat_rounded,
+                  cs.secondary,
+                  cs,
+                ),
               if (habitSummary.habitCount > 0)
                 _buildInsightPill(
-                    '习惯完成 ${_formatPercent(habitSummary.completionRate)}',
-                    Icons.self_improvement_outlined,
-                    cs.tertiary,
-                    cs),
+                  '习惯完成 ${_formatPercent(habitSummary.completionRate)}',
+                  Icons.self_improvement_outlined,
+                  cs.tertiary,
+                  cs,
+                ),
               if (_pauseCount > 0)
                 _buildInsightPill(
-                    '暂停 $_pauseCount 次 · ${_formatSecondsCompact(_pauseSeconds)}',
-                    Icons.pause_circle_outline_rounded,
-                    cs.error,
-                    cs),
-              _buildInsightPill('转化率 ${_formatPercent(screenConversion)}',
-                  Icons.desktop_windows_outlined, Colors.teal, cs),
-              _buildInsightPill('屏幕偏好 ${_topAppCategory ?? '学习办公'}',
-                  Icons.category_outlined, Colors.orange, cs),
+                  '暂停 $_pauseCount 次 · ${_formatSecondsCompact(_pauseSeconds)}',
+                  Icons.pause_circle_outline_rounded,
+                  cs.error,
+                  cs,
+                ),
+              _buildInsightPill(
+                '转化率 ${_formatPercent(screenConversion)}',
+                Icons.desktop_windows_outlined,
+                Colors.teal,
+                cs,
+              ),
+              _buildInsightPill(
+                '屏幕偏好 ${_topAppCategory ?? '学习办公'}',
+                Icons.category_outlined,
+                Colors.orange,
+                cs,
+              ),
               if (financeSummary.transactionCount > 0)
                 _buildInsightPill(
-                    '净支出 ${formatFinanceAmount(financeSummary.netExpenseMinor)}',
-                    Icons.account_balance_wallet_outlined,
-                    financeAccent,
-                    cs),
+                  '净支出 ${formatFinanceAmount(financeSummary.netExpenseMinor)}',
+                  Icons.account_balance_wallet_outlined,
+                  financeAccent,
+                  cs,
+                ),
               _buildInsightPill(
-                  '关键词 $keywordText', Icons.sell_outlined, Colors.indigo, cs),
+                '关键词 $keywordText',
+                Icons.sell_outlined,
+                Colors.indigo,
+                cs,
+              ),
             ],
           ),
         ],
@@ -2214,22 +2380,53 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
           mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: [
             _buildStatItem(
-                '总投入', focusTimeStr, '', Icons.spa_outlined, cs.primary, cs),
-            _buildStatItem('任务完成', '$_completedCount/$_totalCount', '',
-                Icons.task_alt_rounded, cs.secondary, cs),
-            _buildStatItem('完成率', _formatPercent(completionRate), '',
-                Icons.pie_chart_outline_rounded, Colors.green, cs),
+              '总投入',
+              focusTimeStr,
+              '',
+              Icons.spa_outlined,
+              cs.primary,
+              cs,
+            ),
             _buildStatItem(
-                '平均投入',
-                summary.avgPomodoroMinutes.toStringAsFixed(0),
-                'min',
-                Icons.psychology_outlined,
-                Colors.purple,
-                cs),
-            _buildStatItem('DDL冲刺', '$_deadlineSprintCount', '次',
-                Icons.auto_graph_rounded, Colors.redAccent, cs),
-            _buildStatItem('最强主题', subjectName, '', Icons.category_outlined,
-                Colors.orange, cs),
+              '任务完成',
+              '$_completedCount/$_totalCount',
+              '',
+              Icons.task_alt_rounded,
+              cs.secondary,
+              cs,
+            ),
+            _buildStatItem(
+              '完成率',
+              _formatPercent(completionRate),
+              '',
+              Icons.pie_chart_outline_rounded,
+              Colors.green,
+              cs,
+            ),
+            _buildStatItem(
+              '平均投入',
+              summary.avgPomodoroMinutes.toStringAsFixed(0),
+              'min',
+              Icons.psychology_outlined,
+              Colors.purple,
+              cs,
+            ),
+            _buildStatItem(
+              'DDL冲刺',
+              '$_deadlineSprintCount',
+              '次',
+              Icons.auto_graph_rounded,
+              Colors.redAccent,
+              cs,
+            ),
+            _buildStatItem(
+              '最强主题',
+              subjectName,
+              '',
+              Icons.category_outlined,
+              Colors.orange,
+              cs,
+            ),
           ],
         ),
       );
@@ -2241,12 +2438,30 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
-                _buildStatItem('总投入', focusTimeStr, '', Icons.spa_outlined,
-                    cs.primary, cs),
-                _buildStatItem('任务完成', '$_completedCount/$_totalCount', '',
-                    Icons.task_alt_rounded, cs.secondary, cs),
-                _buildStatItem('完成率', _formatPercent(completionRate), '',
-                    Icons.pie_chart_outline_rounded, Colors.green, cs),
+                _buildStatItem(
+                  '总投入',
+                  focusTimeStr,
+                  '',
+                  Icons.spa_outlined,
+                  cs.primary,
+                  cs,
+                ),
+                _buildStatItem(
+                  '任务完成',
+                  '$_completedCount/$_totalCount',
+                  '',
+                  Icons.task_alt_rounded,
+                  cs.secondary,
+                  cs,
+                ),
+                _buildStatItem(
+                  '完成率',
+                  _formatPercent(completionRate),
+                  '',
+                  Icons.pie_chart_outline_rounded,
+                  Colors.green,
+                  cs,
+                ),
               ],
             ),
             const SizedBox(height: 24),
@@ -2254,16 +2469,29 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
                 _buildStatItem(
-                    '平均投入',
-                    summary.avgPomodoroMinutes.toStringAsFixed(0),
-                    'min',
-                    Icons.psychology_outlined,
-                    Colors.purple,
-                    cs),
-                _buildStatItem('DDL冲刺', '$_deadlineSprintCount', '次',
-                    Icons.auto_graph_rounded, Colors.redAccent, cs),
-                _buildStatItem('最强主题', subjectName, '', Icons.category_outlined,
-                    Colors.orange, cs),
+                  '平均投入',
+                  summary.avgPomodoroMinutes.toStringAsFixed(0),
+                  'min',
+                  Icons.psychology_outlined,
+                  Colors.purple,
+                  cs,
+                ),
+                _buildStatItem(
+                  'DDL冲刺',
+                  '$_deadlineSprintCount',
+                  '次',
+                  Icons.auto_graph_rounded,
+                  Colors.redAccent,
+                  cs,
+                ),
+                _buildStatItem(
+                  '最强主题',
+                  subjectName,
+                  '',
+                  Icons.category_outlined,
+                  Colors.orange,
+                  cs,
+                ),
               ],
             ),
           ],
@@ -2284,7 +2512,11 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
   }
 
   Widget _buildInsightPill(
-      String text, IconData icon, Color color, ColorScheme cs) {
+    String text,
+    IconData icon,
+    Color color,
+    ColorScheme cs,
+  ) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
@@ -2297,11 +2529,14 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
         children: [
           Icon(icon, size: 15, color: color),
           const SizedBox(width: 6),
-          Text(text,
-              style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: cs.onSurface)),
+          Text(
+            text,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: cs.onSurface,
+            ),
+          ),
         ],
       ),
     );
@@ -2343,12 +2578,17 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(badge.title,
-                      style: const TextStyle(
-                          fontSize: 12, fontWeight: FontWeight.w800)),
-                  Text(badge.desc,
-                      style:
-                          TextStyle(fontSize: 10, color: cs.onSurfaceVariant)),
+                  Text(
+                    badge.title,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  Text(
+                    badge.desc,
+                    style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant),
+                  ),
                 ],
               ),
             ],
@@ -2359,65 +2599,88 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
   }
 
   List<
-      ({
-        String title,
-        String desc,
-        DateTime? earnedAt,
-        IconData icon,
-        Color color
-      })> _earnedMedals() {
+    ({
+      String title,
+      String desc,
+      DateTime? earnedAt,
+      IconData icon,
+      Color color,
+    })
+  >
+  _earnedMedals() {
     // 这里的预览只展示当前时段内“第一次获得”的新勋章
     final rangeTarget = _medalRecommendation;
     final allTimeTarget = _allTimeRecommendation;
-    if (rangeTarget == null) return const [];
+    if (rangeTarget == null || rangeTarget.earnedMedals.isEmpty) {
+      return const [];
+    }
 
-    return rangeTarget.earnedMedals.where((p) {
-      // 如果全记录数据还没好，先展示当前的（保底逻辑）
-      if (allTimeTarget == null) return true;
+    final allTimeProgressById = allTimeTarget == null
+        ? null
+        : _allTimeMedalIndexFor(allTimeTarget);
+    final rangeStart = allTimeTarget == null ? null : _medalRangeStart();
 
-      // 在全记录中查找对应的勋章
-      final allTimeProgress = allTimeTarget.allMedals.firstWhere(
-        (mp) => mp.medal.id == p.medal.id,
-        orElse: () => p,
-      );
+    return rangeTarget.earnedMedals
+        .where((p) {
+          // 如果全记录数据还没好，先展示当前的（保底逻辑）
+          if (allTimeTarget == null) return true;
 
-      // 计算当前时段的开始时间
-      DateTime rangeStart;
-      switch (_dimension) {
-        case TimelineDimension.daily:
-          rangeStart = DateTime(
-              _selectedDate.year, _selectedDate.month, _selectedDate.day);
-          break;
-        case TimelineDimension.weekly:
-          rangeStart = AppTimeFormats.localDayStartOffset(
-            AppTimeFormats.dayStart(_selectedDate),
-            -(_selectedDate.weekday - 1),
+          final allTimeProgress = allTimeProgressById![p.medal.id] ?? p;
+
+          // 如果全量统计显示这个勋章是在当前选定时段之前获得的，就不要在预览里重复展示了
+          if (allTimeProgress.earned && allTimeProgress.firstEarnedAt != null) {
+            if (allTimeProgress.firstEarnedAt!.isBefore(rangeStart!)) {
+              return false;
+            }
+          }
+          return true;
+        })
+        .map((p) {
+          return (
+            title: p.medal.title,
+            desc: p.medal.description,
+            earnedAt: p.earnedAt ?? p.firstEarnedAt,
+            icon: p.medal.icon,
+            color: p.medal.color,
           );
-          break;
-        case TimelineDimension.monthly:
-          rangeStart = DateTime(_selectedDate.year, _selectedDate.month, 1);
-          break;
-        case TimelineDimension.yearly:
-          rangeStart = DateTime(_selectedDate.year, 1, 1);
-          break;
-      }
+        })
+        .toList();
+  }
 
-      // 如果全量统计显示这个勋章是在当前选定时段之前获得的，就不要在预览里重复展示了
-      if (allTimeProgress.earned && allTimeProgress.firstEarnedAt != null) {
-        if (allTimeProgress.firstEarnedAt!.isBefore(rangeStart)) {
-          return false;
-        }
-      }
-      return true;
-    }).map((p) {
-      return (
-        title: p.medal.title,
-        desc: p.medal.description,
-        earnedAt: p.earnedAt ?? p.firstEarnedAt,
-        icon: p.medal.icon,
-        color: p.medal.color,
-      );
-    }).toList();
+  Map<String, MedalProgress> _allTimeMedalIndexFor(
+    MedalRecommendation recommendation,
+  ) {
+    if (identical(_allTimeMedalIndexSource, recommendation)) {
+      return _allTimeMedalProgressById;
+    }
+
+    final progressById = <String, MedalProgress>{};
+    for (final progress in recommendation.allMedals) {
+      progressById.putIfAbsent(progress.medal.id, () => progress);
+    }
+    _allTimeMedalIndexSource = recommendation;
+    _allTimeMedalProgressById = progressById;
+    return progressById;
+  }
+
+  DateTime _medalRangeStart() {
+    switch (_dimension) {
+      case TimelineDimension.daily:
+        return DateTime(
+          _selectedDate.year,
+          _selectedDate.month,
+          _selectedDate.day,
+        );
+      case TimelineDimension.weekly:
+        return AppTimeFormats.localDayStartOffset(
+          AppTimeFormats.dayStart(_selectedDate),
+          -(_selectedDate.weekday - 1),
+        );
+      case TimelineDimension.monthly:
+        return DateTime(_selectedDate.year, _selectedDate.month, 1);
+      case TimelineDimension.yearly:
+        return DateTime(_selectedDate.year, 1, 1);
+    }
   }
 
   Widget _buildMedalWall(ColorScheme cs, bool isWide) {
@@ -2455,8 +2718,11 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
               ),
               child: Column(
                 children: [
-                  Icon(Icons.emoji_events_outlined,
-                      size: 48, color: cs.outline),
+                  Icon(
+                    Icons.emoji_events_outlined,
+                    size: 48,
+                    color: cs.outline,
+                  ),
                   const SizedBox(height: 12),
                   Text(
                     '继续努力，您即将获得第一个勋章！',
@@ -2484,7 +2750,8 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
                     color: cs.surfaceContainerLow,
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(
-                        color: cs.outlineVariant.withValues(alpha: 0.3)),
+                      color: cs.outlineVariant.withValues(alpha: 0.3),
+                    ),
                   ),
                   child: Row(
                     children: [
@@ -2530,8 +2797,9 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
                                 fontSize: 10,
-                                color:
-                                    cs.onSurfaceVariant.withValues(alpha: 0.64),
+                                color: cs.onSurfaceVariant.withValues(
+                                  alpha: 0.64,
+                                ),
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
@@ -2552,17 +2820,23 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
     if (time == null) return _getDateRangeString();
     switch (_dimension) {
       case TimelineDimension.daily:
-        return DateFormat('HH:mm').format(time);
+        return _timelineDateFormat('HH:mm').format(time);
       case TimelineDimension.weekly:
       case TimelineDimension.monthly:
-        return DateFormat('MM/dd HH:mm').format(time);
+        return _timelineDateFormat('MM/dd HH:mm').format(time);
       case TimelineDimension.yearly:
-        return DateFormat('yyyy/MM/dd').format(time);
+        return _timelineDateFormat('yyyy/MM/dd').format(time);
     }
   }
 
-  Widget _buildStatItem(String label, String value, String unit, IconData icon,
-      Color color, ColorScheme cs) {
+  Widget _buildStatItem(
+    String label,
+    String value,
+    String unit,
+    IconData icon,
+    Color color,
+    ColorScheme cs,
+  ) {
     return Expanded(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -2576,23 +2850,32 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
               crossAxisAlignment: CrossAxisAlignment.baseline,
               textBaseline: TextBaseline.alphabetic,
               children: [
-                Text(value,
-                    style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                        color: cs.onSurface)),
+                Text(
+                  value,
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: cs.onSurface,
+                  ),
+                ),
                 if (unit.isNotEmpty)
-                  Text(' $unit',
-                      style: TextStyle(
-                          fontSize: 10,
-                          color: cs.onSurfaceVariant.withValues(alpha: 0.5))),
+                  Text(
+                    ' $unit',
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: cs.onSurfaceVariant.withValues(alpha: 0.5),
+                    ),
+                  ),
               ],
             ),
           ),
-          Text(label,
-              style: TextStyle(
-                  fontSize: 11,
-                  color: cs.onSurfaceVariant.withValues(alpha: 0.7))),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              color: cs.onSurfaceVariant.withValues(alpha: 0.7),
+            ),
+          ),
         ],
       ),
     );
@@ -2610,9 +2893,9 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
       _recurringCompletedCount + _recurringMissedCount;
 
   int get _recurringEndingStreak => _recurrenceSeries.fold<int>(
-        0,
-        (longest, series) => math.max(longest, series.endingStreak),
-      );
+    0,
+    (longest, series) => math.max(longest, series.endingStreak),
+  );
 
   String _formatSecondsCompact(int seconds) => formatDurationCompact(seconds);
 
@@ -2682,7 +2965,8 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
   Widget _buildTimelineFlow(ColorScheme cs) {
     if (_events.isEmpty) return _buildEmptyState(cs);
     return Column(
-        children: _events.map((e) => _buildJournalEntry(e, cs)).toList());
+      children: _events.map((e) => _buildJournalEntry(e, cs)).toList(),
+    );
   }
 
   Widget _buildEmptyState(ColorScheme cs) {
@@ -2702,8 +2986,9 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
   }
 
   Widget _buildJournalEntry(TimelineEvent event, ColorScheme cs) {
-    final timeStr = DateFormat('HH:mm').format(event.timestamp);
-    final isImportant = event.type == TimelineEventType.pomodoroEnd ||
+    final timeStr = _timelineDateFormat('HH:mm').format(event.timestamp);
+    final isImportant =
+        event.type == TimelineEventType.pomodoroEnd ||
         event.type == TimelineEventType.todoCompleted ||
         event.type == TimelineEventType.timeLog ||
         event.type == TimelineEventType.planBlock ||
@@ -2725,11 +3010,14 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(timeStr,
-                  style: TextStyle(
-                      fontSize: 12,
-                      fontFamily: 'monospace',
-                      color: cs.onSurfaceVariant.withValues(alpha: 0.5))),
+              Text(
+                timeStr,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontFamily: 'monospace',
+                  color: cs.onSurfaceVariant.withValues(alpha: 0.5),
+                ),
+              ),
               const SizedBox(width: 20),
               if (event.type == TimelineEventType.financeTransaction) ...[
                 Icon(
@@ -2743,19 +3031,24 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(_formatEventTitle(event),
-                        style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: isImportant
-                                ? FontWeight.w600
-                                : FontWeight.normal,
-                            color: cs.onSurface)),
+                    Text(
+                      _formatEventTitle(event),
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: isImportant
+                            ? FontWeight.w600
+                            : FontWeight.normal,
+                        color: cs.onSurface,
+                      ),
+                    ),
                     if (event.subtitle != null)
-                      Text(event.subtitle!,
-                          style: TextStyle(
-                              fontSize: 13,
-                              color:
-                                  cs.onSurfaceVariant.withValues(alpha: 0.7))),
+                      Text(
+                        event.subtitle!,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: cs.onSurfaceVariant.withValues(alpha: 0.7),
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -2790,11 +3083,19 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
         extraItems: [
           const SizedBox(height: 8),
           _buildRankItem(
-              0, '番茄专注', _formatSecondsCompact(_pomodoroFocusSeconds), cs),
+            0,
+            '番茄专注',
+            _formatSecondsCompact(_pomodoroFocusSeconds),
+            cs,
+          ),
           _buildRankItem(0, '手动日志', _formatSecondsCompact(_timeLogSeconds), cs),
           if (_pauseCount > 0)
-            _buildRankItem(0, '暂停损耗',
-                '$_pauseCount次 · ${_formatSecondsCompact(_pauseSeconds)}', cs),
+            _buildRankItem(
+              0,
+              '暂停损耗',
+              '$_pauseCount次 · ${_formatSecondsCompact(_pauseSeconds)}',
+              cs,
+            ),
         ],
       ),
       _buildStatCard(
@@ -2808,20 +3109,23 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
         cs,
         extraItems: _summary!.topFocusSessions.length > 1
             ? _summary!.topFocusSessions
-                .skip(1)
-                .take(4)
-                .toList()
-                .asMap()
-                .entries
-                .map((e) {
-                final session = e.value;
-                final dur = (session['actual_duration'] as num? ?? 0).toInt();
-                return _buildRankItem(
-                    e.key + 2,
-                    session['todo_title'] as String? ?? '无题',
-                    '${dur ~/ 60}m',
-                    cs);
-              }).toList()
+                  .skip(1)
+                  .take(4)
+                  .toList()
+                  .asMap()
+                  .entries
+                  .map((e) {
+                    final session = e.value;
+                    final dur = (session['actual_duration'] as num? ?? 0)
+                        .toInt();
+                    return _buildRankItem(
+                      e.key + 2,
+                      session['todo_title'] as String? ?? '无题',
+                      '${dur ~/ 60}m',
+                      cs,
+                    );
+                  })
+                  .toList()
             : null,
       ),
       _buildStatCard(
@@ -2834,8 +3138,12 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
         extraItems: [
           const SizedBox(height: 8),
           _buildRankItem(0, '深度心流', '${_summary!.deepWorkCount}次', cs),
-          _buildRankItem(0, '平均时长',
-              '${_summary!.avgPomodoroMinutes.toStringAsFixed(0)}m', cs),
+          _buildRankItem(
+            0,
+            '平均时长',
+            '${_summary!.avgPomodoroMinutes.toStringAsFixed(0)}m',
+            cs,
+          ),
           _buildRankItem(0, '暂停次数', '$_pauseCount次', cs),
         ],
       ),
@@ -2880,21 +3188,23 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
               ),
             ],
             ..._recurrenceSeries
-                .where((series) =>
-                    series.seriesId != _bestRecurrenceSeries?.seriesId)
+                .where(
+                  (series) =>
+                      series.seriesId != _bestRecurrenceSeries?.seriesId,
+                )
                 .take(2)
                 .toList()
                 .asMap()
                 .entries
                 .map((entry) {
-              final series = entry.value;
-              return _buildRankItem(
-                entry.key + 2,
-                series.title,
-                '${series.completedCount}/${series.resolvedCount}期',
-                cs,
-              );
-            }),
+                  final series = entry.value;
+                  return _buildRankItem(
+                    entry.key + 2,
+                    series.title,
+                    '${series.completedCount}/${series.resolvedCount}期',
+                    cs,
+                  );
+                }),
           ],
         ),
       if (summary.habitSummary.habitCount > 0)
@@ -2924,9 +3234,11 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
       if (_planBlockCount > 0)
         _buildStatCard(
           '规划达成',
-          _formatPercent(_plannedMinutes > 0
-              ? _planActualSeconds / (_plannedMinutes * 60)
-              : 0),
+          _formatPercent(
+            _plannedMinutes > 0
+                ? _planActualSeconds / (_plannedMinutes * 60)
+                : 0,
+          ),
           '计划 ${_formatMinutes(_plannedMinutes)} · 实际 ${_formatSecondsCompact(_planActualSeconds)}',
           Icons.event_available_outlined,
           cs.tertiary,
@@ -2934,7 +3246,11 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
           extraItems: [
             const SizedBox(height: 8),
             _buildRankItem(
-                0, '达成规划块', '$_planCompletedCount/$_planBlockCount', cs),
+              0,
+              '达成规划块',
+              '$_planCompletedCount/$_planBlockCount',
+              cs,
+            ),
             _buildRankItem(0, '漏做', '$_planMissedCount个', cs),
             _buildRankItem(0, '跳过/取消', '$_planSkippedCount个', cs),
           ],
@@ -2950,14 +3266,20 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
           extraItems: _topFocusTags.asMap().entries.map((entry) {
             final tag = entry.value;
             return _buildRankItem(
-                entry.key + 1, tag.key, _formatSecondsCompact(tag.value), cs);
+              entry.key + 1,
+              tag.key,
+              _formatSecondsCompact(tag.value),
+              cs,
+            );
           }).toList(),
         ),
       _buildStatCard(
         '屏幕时间转化',
-        _formatPercent(_screenTimeSeconds > 0
-            ? (_totalFocusMinutes * 60) / _screenTimeSeconds
-            : 0),
+        _formatPercent(
+          _screenTimeSeconds > 0
+              ? (_totalFocusMinutes * 60) / _screenTimeSeconds
+              : 0,
+        ),
         '屏幕使用 ${_formatSecondsCompact(_screenTimeSeconds)}，专注 ${_formatMinutes(_totalFocusMinutes)}',
         Icons.monitor_heart_outlined,
         Colors.teal,
@@ -2965,18 +3287,29 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
         extraItems: [
           const SizedBox(height: 8),
           _buildRankItem(
-              0,
-              '生产力应用',
-              _formatPercent(_screenTimeSeconds > 0
+            0,
+            '生产力应用',
+            _formatPercent(
+              _screenTimeSeconds > 0
                   ? _productiveScreenSeconds / _screenTimeSeconds
-                  : 0),
-              cs),
+                  : 0,
+            ),
+            cs,
+          ),
           _buildRankItem(
-              0, '分心应用', _formatSecondsCompact(_distractionScreenSeconds), cs),
+            0,
+            '分心应用',
+            _formatSecondsCompact(_distractionScreenSeconds),
+            cs,
+          ),
           ..._topScreenApps.take(3).toList().asMap().entries.map((e) {
             final app = e.value;
             return _buildRankItem(
-                e.key + 1, app.key, _formatSecondsCompact(app.value), cs);
+              e.key + 1,
+              app.key,
+              _formatSecondsCompact(app.value),
+              cs,
+            );
           }),
         ],
       ),
@@ -2990,9 +3323,10 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
         extraItems: [
           const SizedBox(height: 8),
           _buildMiniBarChart(
-              _summary!.hourlyDistribution.map((v) => v.toDouble()).toList(),
-              cs.primary,
-              cs),
+            _summary!.hourlyDistribution.map((v) => v.toDouble()).toList(),
+            cs.primary,
+            cs,
+          ),
         ],
       ),
       if (_courseCount > 0)
@@ -3031,14 +3365,21 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text(e.key,
-                            style: TextStyle(
-                                fontSize: 10, color: cs.onSurfaceVariant)),
-                        Text('${e.value}次',
-                            style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                                color: cs.onSurface)),
+                        Text(
+                          e.key,
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: cs.onSurfaceVariant,
+                          ),
+                        ),
+                        Text(
+                          '${e.value}次',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            color: cs.onSurface,
+                          ),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 4),
@@ -3046,8 +3387,9 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
                       borderRadius: BorderRadius.circular(2),
                       child: LinearProgressIndicator(
                         value: maxVal > 0 ? e.value / maxVal : 0,
-                        backgroundColor:
-                            Colors.redAccent.withValues(alpha: 0.1),
+                        backgroundColor: Colors.redAccent.withValues(
+                          alpha: 0.1,
+                        ),
                         color: Colors.redAccent,
                         minHeight: 4,
                       ),
@@ -3073,10 +3415,15 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
             .asMap()
             .entries
             .map((e) {
-          final q = e.value;
-          return _buildRankItem(
-              e.key + 1, q['query'] as String? ?? '', '${q['freq']}x', cs);
-        }).toList(),
+              final q = e.value;
+              return _buildRankItem(
+                e.key + 1,
+                q['query'] as String? ?? '',
+                '${q['freq']}x',
+                cs,
+              );
+            })
+            .toList(),
       ),
       _buildStatCard(
         '任务构成',
@@ -3095,18 +3442,18 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
                 height: 48,
                 width: 48,
                 child: CustomPaint(
-                  painter: _DonutPainter([
-                    MapEntry('HW', _summary!.homeworkRatio),
-                    MapEntry('EX', _summary!.examRatio),
-                    MapEntry(
+                  painter: _DonutPainter(
+                    [
+                      MapEntry('HW', _summary!.homeworkRatio),
+                      MapEntry('EX', _summary!.examRatio),
+                      MapEntry(
                         'OT',
                         (1.0 - _summary!.homeworkRatio - _summary!.examRatio)
-                            .clamp(0.0, 1.0)),
-                  ], [
-                    cs.primary,
-                    cs.secondary,
-                    cs.outlineVariant
-                  ]),
+                            .clamp(0.0, 1.0),
+                      ),
+                    ],
+                    [cs.primary, cs.secondary, cs.outlineVariant],
+                  ),
                 ),
               ),
               const SizedBox(width: 12),
@@ -3114,17 +3461,26 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
                 child: Column(
                   children: [
                     _buildRankItem(
-                        0, '作业类', _formatPercent(_summary!.homeworkRatio), cs),
+                      0,
+                      '作业类',
+                      _formatPercent(_summary!.homeworkRatio),
+                      cs,
+                    ),
                     _buildRankItem(
-                        0, '备考类', _formatPercent(_summary!.examRatio), cs),
+                      0,
+                      '备考类',
+                      _formatPercent(_summary!.examRatio),
+                      cs,
+                    ),
                     _buildRankItem(
-                        0,
-                        '其他主题',
-                        _formatPercent((1.0 -
-                                _summary!.homeworkRatio -
-                                _summary!.examRatio)
-                            .clamp(0.0, 1.0)),
-                        cs),
+                      0,
+                      '其他主题',
+                      _formatPercent(
+                        (1.0 - _summary!.homeworkRatio - _summary!.examRatio)
+                            .clamp(0.0, 1.0),
+                      ),
+                      cs,
+                    ),
                   ],
                 ),
               ),
@@ -3134,8 +3490,9 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
       ),
     ];
 
-    final int colCount =
-        isWide ? (MediaQuery.of(context).size.width > 1200 ? 4 : 3) : 2;
+    final int colCount = isWide
+        ? (MediaQuery.of(context).size.width > 1200 ? 4 : 3)
+        : 2;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -3149,43 +3506,23 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
 
   Widget _buildFinanceSummaryCard(ColorScheme cs) {
     final summary = _financeSummary;
-    final categoryMap = {
-      for (final category in _financeCategories) category.uuid: category,
-    };
-    final topCategories = summary.expenseByCategory.entries
-        .where((entry) => entry.value > 0)
-        .toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-    final maxCategory = topCategories.isEmpty ? 1 : topCategories.first.value;
-    final spendingDays =
-        summary.expenseByDate.values.where((value) => value > 0).length;
-    final averagePerDay =
-        spendingDays == 0 ? 0 : summary.netExpenseMinor ~/ spendingDays;
-    final peakDay = summary.expenseByDate.entries
-        .where((entry) => entry.value > 0)
-        .fold<MapEntry<String, int>?>(
-          null,
-          (best, entry) =>
-              best == null || entry.value > best.value ? entry : best,
-        );
-    final expenseCount = _financeTransactions
-        .where(
-            (transaction) => transaction.type == FinanceTransactionType.expense)
-        .length;
-    final incomeCount = _financeTransactions
-        .where(
-            (transaction) => transaction.type == FinanceTransactionType.income)
-        .length;
-    final refundCount = _financeTransactions
-        .where(
-            (transaction) => transaction.type == FinanceTransactionType.refund)
-        .length;
-    final outflowTransactionCount = expenseCount + refundCount;
+    final metrics = _financeCardMetrics;
+    final categoryMap = metrics.categoryByUuid;
+    final topCategories = metrics.topCategories;
+    final maxCategory = metrics.maxCategory;
+    final averagePerDay = metrics.spendingDays == 0
+        ? 0
+        : summary.netExpenseMinor ~/ metrics.spendingDays;
+    final outflowTransactionCount = metrics.expenseCount + metrics.refundCount;
     final averagePerTransaction = outflowTransactionCount == 0
         ? 0
         : summary.netExpenseMinor ~/ outflowTransactionCount;
     final hasTransactions = summary.transactionCount > 0;
     final financeAccent = summary.netExpenseMinor > 0 ? cs.error : cs.primary;
+    final peakDay = metrics.peakDay;
+    final expenseCount = metrics.expenseCount;
+    final incomeCount = metrics.incomeCount;
+    final refundCount = metrics.refundCount;
 
     String categoryLabel(String uuid) {
       final category = categoryMap[uuid];
@@ -3256,10 +3593,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
             const SizedBox(height: 2),
             Text(
               '净支出 · ${_getPeriodName()}',
-              style: TextStyle(
-                fontSize: 11,
-                color: cs.onSurfaceVariant,
-              ),
+              style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
             ),
             const SizedBox(height: 14),
             Row(
@@ -3306,7 +3640,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
               _buildRankItem(
                 0,
                 '最高支出日',
-                '${DateFormat('MM/dd').format(dateFromKey(peakDay.key))} · '
+                '${_timelineDateFormat('MM/dd').format(dateFromKey(peakDay.key))} · '
                     '${formatFinanceAmount(peakDay.value)}',
                 cs,
               ),
@@ -3343,8 +3677,10 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
                 style: FilledButton.styleFrom(
                   minimumSize: const Size(0, 38),
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 9,
+                  ),
                 ),
               ),
               OutlinedButton.icon(
@@ -3354,14 +3690,64 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
                 style: OutlinedButton.styleFrom(
                   minimumSize: const Size(0, 38),
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 9,
+                  ),
                 ),
               ),
             ],
           ),
         ],
       ),
+    );
+  }
+
+  _FinanceCardMetrics _createFinanceCardMetrics({
+    required FinanceSummary summary,
+    required List<FinanceTransaction> transactions,
+    required List<FinanceCategory> categories,
+  }) {
+    final categoryByUuid = <String, FinanceCategory>{
+      for (final category in categories) category.uuid: category,
+    };
+    final topCategories =
+        summary.expenseByCategory.entries
+            .where((entry) => entry.value > 0)
+            .toList()
+          ..sort((a, b) => b.value.compareTo(a.value));
+
+    var spendingDays = 0;
+    MapEntry<String, int>? peakDay;
+    for (final entry in summary.expenseByDate.entries) {
+      if (entry.value <= 0) continue;
+      spendingDays++;
+      if (peakDay == null || entry.value > peakDay.value) peakDay = entry;
+    }
+
+    var expenseCount = 0;
+    var incomeCount = 0;
+    var refundCount = 0;
+    for (final transaction in transactions) {
+      switch (transaction.type) {
+        case FinanceTransactionType.expense:
+          expenseCount++;
+        case FinanceTransactionType.income:
+          incomeCount++;
+        case FinanceTransactionType.refund:
+          refundCount++;
+      }
+    }
+
+    return (
+      categoryByUuid: categoryByUuid,
+      topCategories: topCategories,
+      maxCategory: topCategories.isEmpty ? 1 : topCategories.first.value,
+      spendingDays: spendingDays,
+      peakDay: peakDay,
+      expenseCount: expenseCount,
+      incomeCount: incomeCount,
+      refundCount: refundCount,
     );
   }
 
@@ -3473,15 +3859,18 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
       children: [
         for (int rowIndex = 0; rowIndex < rows.length; rowIndex++)
           Padding(
-            padding:
-                EdgeInsets.only(bottom: rowIndex == rows.length - 1 ? 0 : 12),
+            padding: EdgeInsets.only(
+              bottom: rowIndex == rows.length - 1 ? 0 : 12,
+            ),
             child: IntrinsicHeight(
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  for (int colIndex = 0;
-                      colIndex < rows[rowIndex].length;
-                      colIndex++)
+                  for (
+                    int colIndex = 0;
+                    colIndex < rows[rowIndex].length;
+                    colIndex++
+                  )
                     Expanded(
                       child: Padding(
                         padding: EdgeInsets.only(
@@ -3505,29 +3894,39 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
     if (max == 0) return const SizedBox();
 
     return SizedBox(
-        height: 38,
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: data
-              .map((v) => Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 0.5),
-                      child: Container(
-                        height: math.max(3, (v / max) * 38),
-                        decoration: BoxDecoration(
-                          color: color.withValues(alpha: 0.4),
-                          borderRadius: BorderRadius.circular(1),
-                        ),
-                      ),
+      height: 38,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: data
+            .map(
+              (v) => Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 0.5),
+                  child: Container(
+                    height: math.max(3, (v / max) * 38),
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: 0.4),
+                      borderRadius: BorderRadius.circular(1),
                     ),
-                  ))
-              .toList(),
-        ));
+                  ),
+                ),
+              ),
+            )
+            .toList(),
+      ),
+    );
   }
 
-  Widget _buildTrendCard(String title, String content, String subtitle,
-      IconData icon, Color color, ColorScheme cs,
-      {List<double>? trend, List<Widget>? extraItems}) {
+  Widget _buildTrendCard(
+    String title,
+    String content,
+    String subtitle,
+    IconData icon,
+    Color color,
+    ColorScheme cs, {
+    List<double>? trend,
+    List<Widget>? extraItems,
+  }) {
     return OptionalLiquidGlassCard(
       padding: const EdgeInsets.all(16),
       borderRadius: 24,
@@ -3546,13 +3945,17 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
               Icon(icon, color: color, size: 16),
               const SizedBox(width: 8),
               Expanded(
-                  child: Text(title,
-                      style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: cs.onSurfaceVariant),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis)),
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: cs.onSurfaceVariant,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 12),
@@ -3566,20 +3969,26 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
             ),
             const SizedBox(height: 8),
           ],
-          Text(content,
-              style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: -0.5),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis),
+          Text(
+            content,
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              letterSpacing: -0.5,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
           const SizedBox(height: 2),
-          Text(subtitle,
-              style: TextStyle(
-                  fontSize: 10,
-                  color: cs.onSurfaceVariant.withValues(alpha: 0.7)),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis),
+          Text(
+            subtitle,
+            style: TextStyle(
+              fontSize: 10,
+              color: cs.onSurfaceVariant.withValues(alpha: 0.7),
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
           if (extraItems != null && extraItems.isNotEmpty) ...[
             const Divider(height: 16, thickness: 0.5),
             ...extraItems,
@@ -3589,9 +3998,15 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
     );
   }
 
-  Widget _buildStatCard(String title, String content, String subtitle,
-      IconData icon, Color color, ColorScheme cs,
-      {List<Widget>? extraItems}) {
+  Widget _buildStatCard(
+    String title,
+    String content,
+    String subtitle,
+    IconData icon,
+    Color color,
+    ColorScheme cs, {
+    List<Widget>? extraItems,
+  }) {
     return OptionalLiquidGlassCard(
       padding: const EdgeInsets.all(16),
       borderRadius: 24,
@@ -3610,30 +4025,40 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
               Icon(icon, color: color, size: 16),
               const SizedBox(width: 8),
               Expanded(
-                  child: Text(title,
-                      style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: cs.onSurfaceVariant),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis)),
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: cs.onSurfaceVariant,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 12),
-          Text(content,
-              style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: -0.5),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis),
+          Text(
+            content,
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              letterSpacing: -0.5,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
           const SizedBox(height: 2),
-          Text(subtitle,
-              style: TextStyle(
-                  fontSize: 10,
-                  color: cs.onSurfaceVariant.withValues(alpha: 0.7)),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis),
+          Text(
+            subtitle,
+            style: TextStyle(
+              fontSize: 10,
+              color: cs.onSurfaceVariant.withValues(alpha: 0.7),
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
           if (extraItems != null && extraItems.isNotEmpty) ...[
             const Divider(height: 16, thickness: 0.5),
             ...extraItems,
@@ -3657,25 +4082,34 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
                 color: cs.onSurfaceVariant.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(3),
               ),
-              child: Text('$rank',
-                  style: TextStyle(
-                      fontSize: 8,
-                      fontWeight: FontWeight.bold,
-                      color: cs.onSurfaceVariant)),
+              child: Text(
+                '$rank',
+                style: TextStyle(
+                  fontSize: 8,
+                  fontWeight: FontWeight.bold,
+                  color: cs.onSurfaceVariant,
+                ),
+              ),
             ),
             const SizedBox(width: 6),
           ],
           Expanded(
-              child: Text(label,
-                  style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis)),
+            child: Text(
+              label,
+              style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
           const SizedBox(width: 4),
-          Text(value,
-              style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                  color: cs.onSurface)),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              color: cs.onSurface,
+            ),
+          ),
         ],
       ),
     );
@@ -3713,8 +4147,9 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
           children: [
             for (int i = 0; i < panels.length; i++)
               Padding(
-                padding:
-                    EdgeInsets.only(bottom: i == panels.length - 1 ? 0 : 16),
+                padding: EdgeInsets.only(
+                  bottom: i == panels.length - 1 ? 0 : 16,
+                ),
                 child: panels[i],
               ),
           ],
@@ -3778,8 +4213,9 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
   Widget _buildQualitySnapshot(ColorScheme cs, {bool fillHeight = false}) {
     final summary = _summary!;
     final focusSessionCount = _pomodoroCount + _timeLogCount;
-    final deepRatio =
-        focusSessionCount > 0 ? summary.deepWorkCount / focusSessionCount : 0.0;
+    final deepRatio = focusSessionCount > 0
+        ? summary.deepWorkCount / focusSessionCount
+        : 0.0;
     return OptionalLiquidGlassCard(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
@@ -3796,21 +4232,36 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
             : MainAxisAlignment.start,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildRankItem(0, '平均投入时长',
-              '${summary.avgPomodoroMinutes.toStringAsFixed(0)}分钟', cs),
+          _buildRankItem(
+            0,
+            '平均投入时长',
+            '${summary.avgPomodoroMinutes.toStringAsFixed(0)}分钟',
+            cs,
+          ),
           _buildRankItem(0, '深度专注占比', _formatPercent(deepRatio), cs),
           _buildRankItem(
-              0, '中断率', _formatPercent(summary.interruptionRate), cs),
+            0,
+            '中断率',
+            _formatPercent(summary.interruptionRate),
+            cs,
+          ),
           _buildRankItem(
-              0, '最长单段投入', '${summary.longestPomodoroMinutes}分钟', cs),
+            0,
+            '最长单段投入',
+            '${summary.longestPomodoroMinutes}分钟',
+            cs,
+          ),
           if (_planBlockCount > 0)
             _buildRankItem(
-                0,
-                '规划达成率',
-                _formatPercent(_plannedMinutes > 0
+              0,
+              '规划达成率',
+              _formatPercent(
+                _plannedMinutes > 0
                     ? _planActualSeconds / (_plannedMinutes * 60)
-                    : 0),
-                cs),
+                    : 0,
+              ),
+              cs,
+            ),
           const SizedBox(height: 10),
           Text(
             summary.interruptionRate <= 0.15
@@ -3839,9 +4290,10 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
           borderRadius: BorderRadius.circular(28),
           border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.3)),
         ),
-        child: Text('暂无屏幕使用数据',
-            style:
-                TextStyle(color: cs.onSurfaceVariant.withValues(alpha: 0.6))),
+        child: Text(
+          '暂无屏幕使用数据',
+          style: TextStyle(color: cs.onSurfaceVariant.withValues(alpha: 0.6)),
+        ),
       );
     }
 
@@ -3862,25 +4314,39 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _buildRankItem(
-              0, '屏幕总时长', _formatSecondsCompact(_screenTimeSeconds), cs),
+            0,
+            '屏幕总时长',
+            _formatSecondsCompact(_screenTimeSeconds),
+            cs,
+          ),
           _buildRankItem(
-              0,
-              '专注转化率',
-              _formatPercent((_totalFocusMinutes * 60) / _screenTimeSeconds),
-              cs),
+            0,
+            '专注转化率',
+            _formatPercent((_totalFocusMinutes * 60) / _screenTimeSeconds),
+            cs,
+          ),
           _buildRankItem(
-              0,
-              '生产力应用占比',
-              _formatPercent(_productiveScreenSeconds / _screenTimeSeconds),
-              cs),
-          _buildRankItem(0, '分心应用时长',
-              _formatSecondsCompact(_distractionScreenSeconds), cs),
+            0,
+            '生产力应用占比',
+            _formatPercent(_productiveScreenSeconds / _screenTimeSeconds),
+            cs,
+          ),
+          _buildRankItem(
+            0,
+            '分心应用时长',
+            _formatSecondsCompact(_distractionScreenSeconds),
+            cs,
+          ),
           if (_topScreenApps.isNotEmpty) ...[
             const Divider(height: 18, thickness: 0.5),
             ..._topScreenApps.take(3).toList().asMap().entries.map((e) {
               final app = e.value;
               return _buildRankItem(
-                  e.key + 1, app.key, _formatSecondsCompact(app.value), cs);
+                e.key + 1,
+                app.key,
+                _formatSecondsCompact(app.value),
+                cs,
+              );
             }),
           ],
         ],
@@ -3894,9 +4360,10 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
       return Container(
         height: 160,
         alignment: Alignment.center,
-        child: Text('暂无分类数据',
-            style:
-                TextStyle(color: cs.onSurfaceVariant.withValues(alpha: 0.5))),
+        child: Text(
+          '暂无分类数据',
+          style: TextStyle(color: cs.onSurfaceVariant.withValues(alpha: 0.5)),
+        ),
       );
     }
 
@@ -3939,16 +4406,18 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
                       Text(
                         '${_pomodoroCount + _timeLogCount}',
                         style: const TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
-                            letterSpacing: -1),
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: -1,
+                        ),
                       ),
                       Text(
                         '投入段',
                         style: TextStyle(
-                            fontSize: 10,
-                            color: cs.onSurfaceVariant,
-                            fontWeight: FontWeight.w600),
+                          fontSize: 10,
+                          color: cs.onSurfaceVariant,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ],
                   ),
@@ -3977,7 +4446,9 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
                   Text(
                     '${e.key} ${(e.value * 100).toStringAsFixed(0)}%',
                     style: const TextStyle(
-                        fontSize: 11, fontWeight: FontWeight.w600),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ],
               );
@@ -3996,7 +4467,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
         gradient: LinearGradient(
           colors: [
             cs.primary.withValues(alpha: 0.1),
-            cs.secondary.withValues(alpha: 0.1)
+            cs.secondary.withValues(alpha: 0.1),
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -4021,28 +4492,37 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
             children: [
               Icon(Icons.auto_awesome_rounded, color: cs.primary, size: 24),
               const SizedBox(height: 8),
-              Text('${_getPeriodName()}黄金活跃期',
-                  style: TextStyle(
-                      fontSize: 13,
-                      color: cs.onSurfaceVariant,
-                      fontWeight: FontWeight.w600)),
+              Text(
+                '${_getPeriodName()}黄金活跃期',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: cs.onSurfaceVariant,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
               const SizedBox(height: 10),
               chart,
               const SizedBox(height: 10),
-              Text('${_summary!.peakHour}:00 为巅峰时刻',
-                  style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                      color: cs.primary)),
+              Text(
+                '${_summary!.peakHour}:00 为巅峰时刻',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: cs.primary,
+                ),
+              ),
               const SizedBox(height: 6),
-              Text('该时段活动最密集，适合安排高难任务',
-                  textAlign: TextAlign.center,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                      fontSize: 11,
-                      color: cs.onSurfaceVariant.withValues(alpha: 0.6),
-                      height: 1.4)),
+              Text(
+                '该时段活动最密集，适合安排高难任务',
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: cs.onSurfaceVariant.withValues(alpha: 0.6),
+                  height: 1.4,
+                ),
+              ),
             ],
           );
         },
@@ -4050,8 +4530,12 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
     );
   }
 
-  Widget _buildHourlyChart(List<int> distribution, int peakHour, ColorScheme cs,
-      {double height = 82}) {
+  Widget _buildHourlyChart(
+    List<int> distribution,
+    int peakHour,
+    ColorScheme cs, {
+    double height = 82,
+  }) {
     if (distribution.isEmpty) return SizedBox(height: height);
 
     final int maxVal = distribution.reduce((a, b) => a > b ? a : b);
@@ -4102,8 +4586,9 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
                     color: i == peakHour
                         ? cs.primary
                         : cs.onSurfaceVariant.withValues(alpha: 0.48),
-                    fontWeight:
-                        i == peakHour ? FontWeight.w700 : FontWeight.w500,
+                    fontWeight: i == peakHour
+                        ? FontWeight.w700
+                        : FontWeight.w500,
                   ),
                 ),
               );
@@ -4134,8 +4619,8 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
     final confidenceColor = insight.confidence >= 0.7
         ? Colors.green
         : insight.confidence >= 0.5
-            ? Colors.orange
-            : Colors.grey;
+        ? Colors.orange
+        : Colors.grey;
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -4184,10 +4669,10 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
                       insight.category == 'focus'
                           ? '专注分析'
                           : insight.category == 'completion'
-                              ? '完成分析'
-                              : insight.category == 'efficiency'
-                                  ? '效率分析'
-                                  : '模式分析',
+                          ? '完成分析'
+                          : insight.category == 'efficiency'
+                          ? '效率分析'
+                          : '模式分析',
                       maxLines: 1,
                       style: TextStyle(
                         fontSize: 10,
@@ -4241,7 +4726,10 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
         Text(
           title,
           style: const TextStyle(
-              fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 0.5),
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 0.5,
+          ),
         ),
       ],
     );
@@ -4271,8 +4759,11 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
       ),
       child: Column(
         children: [
-          Icon(Icons.format_quote_rounded,
-              color: cs.primary.withValues(alpha: 0.3), size: 40),
+          Icon(
+            Icons.format_quote_rounded,
+            color: cs.primary.withValues(alpha: 0.3),
+            size: 40,
+          ),
           const SizedBox(height: 16),
           Text(
             _getReflectionText(),
@@ -4286,11 +4777,14 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
             ),
           ),
           const SizedBox(height: 24),
-          Text('— 时光记录员',
-              style: TextStyle(
-                  fontSize: 12,
-                  color: cs.primary.withValues(alpha: 0.5),
-                  letterSpacing: 2)),
+          Text(
+            '— 时光记录员',
+            style: TextStyle(
+              fontSize: 12,
+              color: cs.primary.withValues(alpha: 0.5),
+              letterSpacing: 2,
+            ),
+          ),
         ],
       ),
     );
@@ -4305,15 +4799,18 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
     // Keyword detection
     final bool isHomework =
         sub.contains('作业') || sub.contains('练习') || sub.contains('刷题');
-    final bool isExam = sub.contains('考试') ||
+    final bool isExam =
+        sub.contains('考试') ||
         sub.contains('测验') ||
         sub.contains('考证') ||
         sub.contains('竞赛');
-    final bool isReview = sub.contains('复习') ||
+    final bool isReview =
+        sub.contains('复习') ||
         sub.contains('总结') ||
         sub.contains('整理') ||
         sub.contains('笔记');
-    final bool isReading = sub.contains('阅读') ||
+    final bool isReading =
+        sub.contains('阅读') ||
         sub.contains('看书') ||
         sub.contains('读书') ||
         sub.contains('文献');
@@ -4321,19 +4818,34 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
     switch (event.type) {
       case TimelineEventType.pomodoroStart:
         if (isHomework) {
-          return pick(
-              ['开启作业攻坚模式', '开始在题海中远航', '正在消灭今日作业', '笔尖下的专注力', '让作业也变成享受']);
+          return pick([
+            '开启作业攻坚模式',
+            '开始在题海中远航',
+            '正在消灭今日作业',
+            '笔尖下的专注力',
+            '让作业也变成享受',
+          ]);
         }
         if (isExam) {
-          return pick(
-              ['进入考前冲刺状态', '模拟实战，严阵以待', '为了那个目标，出发', '正在构建知识盔甲', '考场如战场，此刻亮剑']);
+          return pick([
+            '进入考前冲刺状态',
+            '模拟实战，严阵以待',
+            '为了那个目标，出发',
+            '正在构建知识盔甲',
+            '考场如战场，此刻亮剑',
+          ]);
         }
         if (isReview) {
           return pick(['温故而知新', '梳理凌乱的思想', '搭建知识的脚手架', '让记忆变得更深邃', '正在进行深度总结']);
         }
         if (isReading) {
-          return pick(
-              ['潜入书香的世界', '跨越时空的对话', '在文字间寻找答案', '静心享受阅读时光', '开启心灵的洗礼']);
+          return pick([
+            '潜入书香的世界',
+            '跨越时空的对话',
+            '在文字间寻找答案',
+            '静心享受阅读时光',
+            '开启心灵的洗礼',
+          ]);
         }
         return pick([
           '开启了专注之旅',
@@ -4345,7 +4857,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
           '与目标同行',
           '听，是专注的声音',
           '开始雕琢时光',
-          '进入心流频道'
+          '进入心流频道',
         ]);
 
       case TimelineEventType.pomodoroEnd:
@@ -4355,7 +4867,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
             '笔耕不辍，收获满满',
             '又攻克了一道难题',
             '让作业见证你的成长',
-            '今日份作业能量注入完毕'
+            '今日份作业能量注入完毕',
           ]);
         }
         if (isExam) {
@@ -4364,7 +4876,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
             '多一分专注，多一分底气',
             '胜算在一点点积攒',
             '你的努力，必有回响',
-            '为了那张完美的答卷'
+            '为了那张完美的答卷',
           ]);
         }
         if (isReview) {
@@ -4373,12 +4885,17 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
             '思想变得更加清晰',
             '又完成了一次查漏补缺',
             '梳理，是为了更好的出发',
-            '收获了成长的复利'
+            '收获了成长的复利',
           ]);
         }
         if (isReading) {
-          return pick(
-              ['收获了文字的芬芳', '拓宽了生命的维度', '与作者共鸣的瞬间', '知识的种子正在发芽', '精神世界又丰盈了一些']);
+          return pick([
+            '收获了文字的芬芳',
+            '拓宽了生命的维度',
+            '与作者共鸣的瞬间',
+            '知识的种子正在发芽',
+            '精神世界又丰盈了一些',
+          ]);
         }
         return pick([
           '收获了专注的果实',
@@ -4390,7 +4907,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
           '让努力被看见',
           '合上专注的篇章',
           '达成一次深度连接',
-          '汗水凝结成光'
+          '汗水凝结成光',
         ]);
 
       case TimelineEventType.todoCreated:
@@ -4404,7 +4921,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
           '给未来一个交代',
           '新的旅程由此开始',
           '记录下这一刻的灵感',
-          '待办项+1'
+          '待办项+1',
         ]);
 
       case TimelineEventType.todoCompleted:
@@ -4423,12 +4940,17 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
             '作业清单-1，快乐值+1',
             '笔尖圆满收官',
             '让成就感在纸面跳跃',
-            '搞定，今晚可以睡个好觉'
+            '搞定，今晚可以睡个好觉',
           ]);
         }
         if (isExam) {
-          return pick(
-              ['这是一次漂亮的突围', '又翻过了一座大山', '离证书/高分又近了', '为这场博弈画上句号', '你是自己的冠军']);
+          return pick([
+            '这是一次漂亮的突围',
+            '又翻过了一座大山',
+            '离证书/高分又近了',
+            '为这场博弈画上句号',
+            '你是自己的冠军',
+          ]);
         }
         return pick([
           '达成了一个小目标',
@@ -4440,7 +4962,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
           '坚持终有回响',
           '实力证明了自己',
           '完成，是最好的奖励',
-          '给努力一个回馈'
+          '给努力一个回馈',
         ]);
 
       case TimelineEventType.courseStart:
@@ -4454,7 +4976,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
           '开启学术模式',
           '知识点正在加载',
           '拓宽认知的边界',
-          '在课堂遇见更好的自己'
+          '在课堂遇见更好的自己',
         ]);
       case TimelineEventType.searchQuery:
         return '探索：${event.subtitle}';
@@ -4479,7 +5001,8 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
   }
 
   String _getReflectionText() {
-    final int seed = _selectedDate.day +
+    final int seed =
+        _selectedDate.day +
         _selectedDate.month +
         _selectedDate.year +
         _dimension.index;
@@ -4500,7 +5023,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
         "慢下来，听听内心的声音。\n不焦虑，不盲从，\n在节奏中寻找平衡。",
         "生活不只有冲刺，还有漫步。\n愿你在休息中，\n发现平凡日子里的光。",
         "累了就停下，这并不代表放弃。\n在独处的时光里，\n你是自由且完整的。",
-        "收起行囊，在港湾里泊靠。\n愿明日的阳光，\n能照进你充满力量的梦。"
+        "收起行囊，在港湾里泊靠。\n愿明日的阳光，\n能照进你充满力量的梦。",
       ]);
     }
 
@@ -4515,7 +5038,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
         "不积跬步，无以至千里。\n你走的每一步，\n都有其不可替代的意义。",
         "愿这一份充实，\n能化作今晚香甜的睡眠。\n你值得所有的赞美。",
         "在这段旅程中，\n你既是行者，也是光。\n照亮了属于自己的坚持。",
-        "完成比完美更重要，\n而你今天做得如此出色。\n请继续保持这份热爱。"
+        "完成比完美更重要，\n而你今天做得如此出色。\n请继续保持这份热爱。",
       ]);
     }
 
@@ -4529,7 +5052,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
       "在变幻的世界里，\n守住了一份不变的坚持。\n你比想象中更加强大。",
       "愿这段时间的沉淀，\n能化作你厚积薄发的底气。\n未来已来，不惧挑战。",
       "每一次总结，都是为了更好的出发。\n整理好心情，\n去迎接下一场山海。",
-      "你的努力，藏在每一个被勾掉的待办里。\n它们聚沙成塔，\n终将铸就你的不凡。"
+      "你的努力，藏在每一个被勾掉的待办里。\n它们聚沙成塔，\n终将铸就你的不凡。",
     ]);
   }
 
@@ -4554,7 +5077,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
       "时间对每个人都是公平的，专注让它更有价值。",
       "既然选择了远方，便只顾风雨兼程。",
       "在这一秒，做最好的自己。",
-      "平凡的日常里，也藏着不凡的英雄梦想。"
+      "平凡的日常里，也藏着不凡的英雄梦想。",
     ]);
   }
 }
@@ -4616,8 +5139,13 @@ class _SparklinePainter extends CustomPainter {
       ..strokeJoin = StrokeJoin.round;
 
     final path = Path();
-    final double maxVal = data.reduce((a, b) => a > b ? a : b);
-    final double minVal = data.reduce((a, b) => a < b ? a : b);
+    var maxVal = data.first;
+    var minVal = data.first;
+    for (var index = 1; index < data.length; index++) {
+      final value = data[index];
+      maxVal = maxVal > value ? maxVal : value;
+      minVal = minVal < value ? minVal : value;
+    }
     final double range = (maxVal - minVal).clamp(1.0, double.infinity);
 
     final double stepX = size.width / (data.length - 1);

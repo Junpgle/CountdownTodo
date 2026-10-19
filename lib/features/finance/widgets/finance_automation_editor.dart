@@ -23,9 +23,9 @@ class FinanceAutomationEditor extends StatefulWidget {
     required this.categories,
     required this.paymentMethods,
     required Future<void> Function(FinanceRecurringRule) onSave,
-  })  : template = null,
-        onSaveRule = onSave,
-        onSaveTemplate = null;
+  }) : template = null,
+       onSaveRule = onSave,
+       onSaveTemplate = null;
 
   const FinanceAutomationEditor.template({
     super.key,
@@ -33,9 +33,9 @@ class FinanceAutomationEditor extends StatefulWidget {
     required this.categories,
     required this.paymentMethods,
     required Future<void> Function(FinanceEntryTemplate) onSave,
-  })  : rule = null,
-        onSaveTemplate = onSave,
-        onSaveRule = null;
+  }) : rule = null,
+       onSaveTemplate = onSave,
+       onSaveRule = null;
 
   @override
   State<FinanceAutomationEditor> createState() =>
@@ -43,6 +43,11 @@ class FinanceAutomationEditor extends StatefulWidget {
 }
 
 class _FinanceAutomationEditorState extends State<FinanceAutomationEditor> {
+  static final List<TextInputFormatter> _digitsOnlyInputFormatters =
+      List<TextInputFormatter>.unmodifiable([
+        FilteringTextInputFormatter.digitsOnly,
+      ]);
+
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _name;
   late final TextEditingController _amount;
@@ -72,16 +77,19 @@ class _FinanceAutomationEditorState extends State<FinanceAutomationEditor> {
     _name = TextEditingController(text: rule?.name ?? template?.name ?? '');
     final amount = rule?.amountMinor ?? template?.amountMinor;
     _amount = TextEditingController(
-        text: amount == null
-            ? ''
-            : formatFinanceAmount(amount, withSymbol: false));
-    _merchant =
-        TextEditingController(text: rule?.merchant ?? template?.merchant ?? '');
+      text: amount == null
+          ? ''
+          : formatFinanceAmount(amount, withSymbol: false),
+    );
+    _merchant = TextEditingController(
+      text: rule?.merchant ?? template?.merchant ?? '',
+    );
     _note = TextEditingController(text: rule?.note ?? template?.note ?? '');
     _day = TextEditingController(text: '${rule?.dayOfMonth ?? 1}');
     _month = TextEditingController(text: '${rule?.monthOfYear ?? 1}');
-    _start =
-        TextEditingController(text: rule?.startDate ?? dateKey(DateTime.now()));
+    _start = TextEditingController(
+      text: rule?.startDate ?? dateKey(DateTime.now()),
+    );
     _end = TextEditingController(text: rule?.endDate ?? '');
     _type = rule?.type ?? template?.type ?? FinanceTransactionType.expense;
     _frequency = rule?.frequency ?? FinanceRecurringFrequency.monthly;
@@ -101,7 +109,7 @@ class _FinanceAutomationEditorState extends State<FinanceAutomationEditor> {
       _day,
       _month,
       _start,
-      _end
+      _end,
     ]) {
       controller.dispose();
     }
@@ -123,7 +131,8 @@ class _FinanceAutomationEditorState extends State<FinanceAutomationEditor> {
             ? FinanceRecurringRule(
                 name: _name.text.trim(),
                 amountMinor: amount,
-                startDate: _start.text.trim())
+                startDate: _start.text.trim(),
+              )
             : FinanceRecurringRule.fromMap(old.toMap());
         result
           ..name = _name.text.trim()
@@ -176,8 +185,8 @@ class _FinanceAutomationEditorState extends State<FinanceAutomationEditor> {
     final current = isFinanceDateKey(controllerDate)
         ? dateFromKey(controllerDate)
         : isFinanceDateKey(startDate)
-            ? dateFromKey(startDate)
-            : DateTime.now();
+        ? dateFromKey(startDate)
+        : DateTime.now();
     final picked = await showAppDatePicker(
       context: context,
       initialDate: current,
@@ -204,102 +213,116 @@ class _FinanceAutomationEditorState extends State<FinanceAutomationEditor> {
             child: Form(
               key: _formKey,
               child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    FinanceSectionCard(
-                      child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  FinanceSectionCard(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 4,
                           children: [
-                            Wrap(spacing: 8, runSpacing: 4, children: [
-                              for (final type in [
-                                FinanceTransactionType.expense,
-                                FinanceTransactionType.income
-                              ])
-                                ChoiceChip(
-                                  key: ValueKey(
-                                      'finance-automation-type-${type.name}'),
-                                  selected: _type == type,
-                                  label: Text(type.label),
-                                  showCheckmark: false,
-                                  avatar: Icon(
-                                      type == FinanceTransactionType.expense
-                                          ? Icons.north_east_rounded
-                                          : Icons.south_west_rounded,
-                                      size: 17),
-                                  onSelected: (_) => setState(() {
-                                    if (_type != type) _categoryUuid = null;
-                                    _type = type;
-                                  }),
+                            for (final type in [
+                              FinanceTransactionType.expense,
+                              FinanceTransactionType.income,
+                            ])
+                              ChoiceChip(
+                                key: ValueKey(
+                                  'finance-automation-type-${type.name}',
                                 ),
-                            ]),
-                            const SizedBox(height: 16),
-                            TextFormField(
-                              key: const ValueKey('finance-automation-name'),
-                              controller: _name,
-                              maxLength: 60,
-                              textInputAction: TextInputAction.next,
-                              decoration: financeFieldDecoration(context,
-                                      label: _isRule ? '账单名称' : '模板名称',
-                                      hint:
-                                          _isRule ? '例如：每月房租、会员订阅' : '例如：工作日早餐')
-                                  .copyWith(counterText: ''),
-                              validator: (value) =>
-                                  value == null || value.trim().isEmpty
-                                      ? '请填写名称'
-                                      : null,
-                            ),
-                            const SizedBox(height: 16),
-                            FinanceAmountField(
-                                key:
-                                    const ValueKey('finance-automation-amount'),
-                                controller: _amount),
-                          ]),
+                                selected: _type == type,
+                                label: Text(type.label),
+                                showCheckmark: false,
+                                avatar: Icon(
+                                  type == FinanceTransactionType.expense
+                                      ? Icons.north_east_rounded
+                                      : Icons.south_west_rounded,
+                                  size: 17,
+                                ),
+                                onSelected: (_) => setState(() {
+                                  if (_type != type) _categoryUuid = null;
+                                  _type = type;
+                                }),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        TextFormField(
+                          key: const ValueKey('finance-automation-name'),
+                          controller: _name,
+                          maxLength: 60,
+                          textInputAction: TextInputAction.next,
+                          decoration: financeFieldDecoration(
+                            context,
+                            label: _isRule ? '账单名称' : '模板名称',
+                            hint: _isRule ? '例如：每月房租、会员订阅' : '例如：工作日早餐',
+                          ).copyWith(counterText: ''),
+                          validator: (value) =>
+                              value == null || value.trim().isEmpty
+                              ? '请填写名称'
+                              : null,
+                        ),
+                        const SizedBox(height: 16),
+                        FinanceAmountField(
+                          key: const ValueKey('finance-automation-amount'),
+                          controller: _amount,
+                        ),
+                      ],
                     ),
+                  ),
+                  const SizedBox(height: 14),
+                  FinanceSectionCard(
+                    title: '归类方式',
+                    icon: Icons.category_outlined,
+                    child: FinanceAdaptiveFields(
+                      children: [_categoryField(), _paymentField()],
+                    ),
+                  ),
+                  if (_isRule) ...[
                     const SizedBox(height: 14),
-                    FinanceSectionCard(
-                      title: '归类方式',
-                      icon: Icons.category_outlined,
-                      child: FinanceAdaptiveFields(
-                          children: [_categoryField(), _paymentField()]),
-                    ),
-                    if (_isRule) ...[
-                      const SizedBox(height: 14),
-                      _scheduleSection(),
-                      const SizedBox(height: 14),
-                      _behaviorSection(),
-                    ],
+                    _scheduleSection(),
                     const SizedBox(height: 14),
-                    FinanceSectionCard(
-                      child: ExpansionTile(
-                        tilePadding: EdgeInsets.zero,
-                        childrenPadding: const EdgeInsets.only(top: 12),
-                        initiallyExpanded:
-                            _merchant.text.isNotEmpty || _note.text.isNotEmpty,
-                        shape: const Border(),
-                        collapsedShape: const Border(),
-                        title: const Text('商家与备注'),
-                        subtitle: const Text('可选，记账时一起填入'),
-                        children: [
-                          TextFormField(
-                            controller: _merchant,
-                            maxLength: 80,
-                            decoration: financeFieldDecoration(context,
-                                label: '商家 / 对方',
-                                icon: Icons.storefront_outlined),
+                    _behaviorSection(),
+                  ],
+                  const SizedBox(height: 14),
+                  FinanceSectionCard(
+                    child: ExpansionTile(
+                      tilePadding: EdgeInsets.zero,
+                      childrenPadding: const EdgeInsets.only(top: 12),
+                      initiallyExpanded:
+                          _merchant.text.isNotEmpty || _note.text.isNotEmpty,
+                      shape: const Border(),
+                      collapsedShape: const Border(),
+                      title: const Text('商家与备注'),
+                      subtitle: const Text('可选，记账时一起填入'),
+                      children: [
+                        TextFormField(
+                          controller: _merchant,
+                          maxLength: 80,
+                          decoration: financeFieldDecoration(
+                            context,
+                            label: '商家 / 对方',
+                            icon: Icons.storefront_outlined,
                           ),
-                          const SizedBox(height: 12),
-                          TextFormField(
-                            controller: _note,
-                            maxLength: 200,
-                            minLines: 2,
-                            maxLines: 4,
-                            decoration: financeFieldDecoration(context,
-                                label: '备注', icon: Icons.notes_outlined),
+                        ),
+                        const SizedBox(height: 12),
+                        TextFormField(
+                          controller: _note,
+                          maxLength: 200,
+                          minLines: 2,
+                          maxLines: 4,
+                          decoration: financeFieldDecoration(
+                            context,
+                            label: '备注',
+                            icon: Icons.notes_outlined,
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
-                  ]),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -307,9 +330,11 @@ class _FinanceAutomationEditorState extends State<FinanceAutomationEditor> {
           if (_saveError != null)
             Text(_saveError!, style: TextStyle(color: colors.error)),
           TextButton(
-              onPressed:
-                  _isSaving ? null : () => Navigator.of(context).pop(false),
-              child: const Text('取消')),
+            onPressed: _isSaving
+                ? null
+                : () => Navigator.of(context).pop(false),
+            child: const Text('取消'),
+          ),
           FilledButton(
             key: const ValueKey('finance-automation-save'),
             onPressed: _isSaving ? null : _save,
@@ -325,10 +350,12 @@ class _FinanceAutomationEditorState extends State<FinanceAutomationEditor> {
         ? FinanceCategoryType.income
         : FinanceCategoryType.expense;
     final categories = widget.categories
-        .where((item) =>
-            !item.isDeleted &&
-            item.type == type &&
-            (!item.isArchived || item.uuid == _categoryUuid))
+        .where(
+          (item) =>
+              !item.isDeleted &&
+              item.type == type &&
+              (!item.isArchived || item.uuid == _categoryUuid),
+        )
         .toList();
     return DropdownButtonFormField<String>(
       key: ValueKey('finance-automation-category-$_type-$_categoryUuid'),
@@ -339,15 +366,18 @@ class _FinanceAutomationEditorState extends State<FinanceAutomationEditor> {
         const DropdownMenuItem(value: null, child: Text('未指定分类')),
         for (final category in categories)
           DropdownMenuItem(
-              value: category.uuid,
-              child: Text(
-                  '${category.icon} ${financeCategoryDisplayName(category, widget.categories)}${category.isArchived ? '（已归档）' : ''}',
-                  overflow: TextOverflow.ellipsis)),
+            value: category.uuid,
+            child: Text(
+              '${category.icon} ${financeCategoryDisplayName(category, widget.categories)}${category.isArchived ? '（已归档）' : ''}',
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
         if (_categoryUuid != null &&
             categories.every((item) => item.uuid != _categoryUuid))
           DropdownMenuItem(
-              value: _categoryUuid,
-              child: const Text('已归档或未知分类', overflow: TextOverflow.ellipsis)),
+            value: _categoryUuid,
+            child: const Text('已归档或未知分类', overflow: TextOverflow.ellipsis),
+          ),
       ],
       onChanged: (value) => setState(() => _categoryUuid = value),
     );
@@ -356,8 +386,11 @@ class _FinanceAutomationEditorState extends State<FinanceAutomationEditor> {
   Widget _paymentField() {
     final isIncome = _type == FinanceTransactionType.income;
     final methods = widget.paymentMethods
-        .where((item) =>
-            !item.isDeleted && (!item.isArchived || item.uuid == _paymentUuid))
+        .where(
+          (item) =>
+              !item.isDeleted &&
+              (!item.isArchived || item.uuid == _paymentUuid),
+        )
         .toList();
     return DropdownButtonFormField<String>(
       key: ValueKey('finance-automation-payment-$_paymentUuid'),
@@ -374,10 +407,12 @@ class _FinanceAutomationEditorState extends State<FinanceAutomationEditor> {
         ),
         for (final method in methods)
           DropdownMenuItem(
-              value: method.uuid,
-              child: Text(
-                  _paymentMethodOptionLabel(method, methods),
-                  overflow: TextOverflow.ellipsis)),
+            value: method.uuid,
+            child: Text(
+              _paymentMethodOptionLabel(method, methods),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
         if (_paymentUuid != null &&
             methods.every((item) => item.uuid != _paymentUuid))
           DropdownMenuItem(
@@ -406,53 +441,68 @@ class _FinanceAutomationEditorState extends State<FinanceAutomationEditor> {
       title: '重复安排',
       icon: Icons.event_repeat_outlined,
       description: '遇到当月没有的日期，会安排在月末。',
-      child: Column(children: [
-        DropdownButtonFormField<FinanceRecurringFrequency>(
-          initialValue: _frequency,
-          isExpanded: true,
-          decoration: financeFieldDecoration(context, label: '重复频率'),
-          items: [
-            for (final frequency in FinanceRecurringFrequency.values)
-              DropdownMenuItem(value: frequency, child: Text(frequency.label))
-          ],
-          onChanged: (value) {
-            if (value != null) setState(() => _frequency = value);
-          },
-        ),
-        const SizedBox(height: 14),
-        FinanceAdaptiveFields(children: [
-          if (_frequency == FinanceRecurringFrequency.yearly)
-            TextFormField(
-              key: const ValueKey('finance-automation-month'),
-              controller: _month,
-              keyboardType: TextInputType.number,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              decoration:
-                  financeFieldDecoration(context, label: '月份', suffix: '月'),
-              validator: (value) {
-                final n = int.tryParse(value ?? '');
-                return n == null || n < 1 || n > 12 ? '请输入 1–12 月' : null;
-              },
-            ),
-          TextFormField(
-            key: const ValueKey('finance-automation-day'),
-            controller: _day,
-            keyboardType: TextInputType.number,
-            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-            decoration:
-                financeFieldDecoration(context, label: '日期', suffix: '日'),
-            validator: (value) {
-              final n = int.tryParse(value ?? '');
-              return n == null || n < 1 || n > 31 ? '请输入 1–31 日' : null;
+      child: Column(
+        children: [
+          DropdownButtonFormField<FinanceRecurringFrequency>(
+            initialValue: _frequency,
+            isExpanded: true,
+            decoration: financeFieldDecoration(context, label: '重复频率'),
+            items: [
+              for (final frequency in FinanceRecurringFrequency.values)
+                DropdownMenuItem(
+                  value: frequency,
+                  child: Text(frequency.label),
+                ),
+            ],
+            onChanged: (value) {
+              if (value != null) setState(() => _frequency = value);
             },
           ),
-        ]),
-        const SizedBox(height: 14),
-        FinanceAdaptiveFields(children: [
-          _dateField(_start, '开始日期'),
-          _dateField(_end, '结束日期（可选）')
-        ]),
-      ]),
+          const SizedBox(height: 14),
+          FinanceAdaptiveFields(
+            children: [
+              if (_frequency == FinanceRecurringFrequency.yearly)
+                TextFormField(
+                  key: const ValueKey('finance-automation-month'),
+                  controller: _month,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: _digitsOnlyInputFormatters,
+                  decoration: financeFieldDecoration(
+                    context,
+                    label: '月份',
+                    suffix: '月',
+                  ),
+                  validator: (value) {
+                    final n = int.tryParse(value ?? '');
+                    return n == null || n < 1 || n > 12 ? '请输入 1–12 月' : null;
+                  },
+                ),
+              TextFormField(
+                key: const ValueKey('finance-automation-day'),
+                controller: _day,
+                keyboardType: TextInputType.number,
+                inputFormatters: _digitsOnlyInputFormatters,
+                decoration: financeFieldDecoration(
+                  context,
+                  label: '日期',
+                  suffix: '日',
+                ),
+                validator: (value) {
+                  final n = int.tryParse(value ?? '');
+                  return n == null || n < 1 || n > 31 ? '请输入 1–31 日' : null;
+                },
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          FinanceAdaptiveFields(
+            children: [
+              _dateField(_start, '开始日期'),
+              _dateField(_end, '结束日期（可选）'),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -460,17 +510,22 @@ class _FinanceAutomationEditorState extends State<FinanceAutomationEditor> {
     final isStart = controller == _start;
     return TextFormField(
       key: ValueKey(
-          isStart ? 'finance-automation-start' : 'finance-automation-end'),
+        isStart ? 'finance-automation-start' : 'finance-automation-end',
+      ),
       controller: controller,
       keyboardType: TextInputType.datetime,
-      decoration: financeFieldDecoration(context,
-              label: label, hint: isStart ? 'YYYY-MM-DD' : '留空表示长期有效')
-          .copyWith(
-        suffixIcon: IconButton(
-            tooltip: '选择${isStart ? '开始' : '结束'}日期',
-            onPressed: () => _pickDate(controller),
-            icon: const Icon(Icons.calendar_month_outlined)),
-      ),
+      decoration:
+          financeFieldDecoration(
+            context,
+            label: label,
+            hint: isStart ? 'YYYY-MM-DD' : '留空表示长期有效',
+          ).copyWith(
+            suffixIcon: IconButton(
+              tooltip: '选择${isStart ? '开始' : '结束'}日期',
+              onPressed: () => _pickDate(controller),
+              icon: const Icon(Icons.calendar_month_outlined),
+            ),
+          ),
       validator: (value) {
         final text = value?.trim() ?? '';
         if (!isStart && text.isEmpty) return null;
@@ -491,34 +546,39 @@ class _FinanceAutomationEditorState extends State<FinanceAutomationEditor> {
     return FinanceSectionCard(
       title: '到期如何处理',
       icon: Icons.notifications_none_outlined,
-      child: Column(children: [
-        LiquidGlassSwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          title: const Text('自动记账'),
-          subtitle: const Text('关闭后手动记账，提醒时间可单独设置'),
-          value: _autoGenerate,
-          onChanged: (value) => setState(() => _autoGenerate = value),
-        ),
-        const SizedBox(height: 12),
-        DropdownButtonFormField<int>(
-          initialValue: _reminderMinutes,
-          isExpanded: true,
-          decoration: financeFieldDecoration(context, label: '提醒时间'),
-          items: [
-            for (final minutes in values)
-              DropdownMenuItem(
+      child: Column(
+        children: [
+          LiquidGlassSwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('自动记账'),
+            subtitle: const Text('关闭后手动记账，提醒时间可单独设置'),
+            value: _autoGenerate,
+            onChanged: (value) => setState(() => _autoGenerate = value),
+          ),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<int>(
+            initialValue: _reminderMinutes,
+            isExpanded: true,
+            decoration: financeFieldDecoration(context, label: '提醒时间'),
+            items: [
+              for (final minutes in values)
+                DropdownMenuItem(
                   value: minutes,
-                  child: Text(minutes == 0
-                      ? '不提醒'
-                      : minutes % 1440 == 0
-                          ? '提前 ${minutes ~/ 1440} 天'
-                          : '提前 $minutes 分钟'))
-          ],
-          onChanged: (value) {
-            if (value != null) setState(() => _reminderMinutes = value);
-          },
-        ),
-      ]),
+                  child: Text(
+                    minutes == 0
+                        ? '不提醒'
+                        : minutes % 1440 == 0
+                        ? '提前 ${minutes ~/ 1440} 天'
+                        : '提前 $minutes 分钟',
+                  ),
+                ),
+            ],
+            onChanged: (value) {
+              if (value != null) setState(() => _reminderMinutes = value);
+            },
+          ),
+        ],
+      ),
     );
   }
 

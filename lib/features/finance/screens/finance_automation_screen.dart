@@ -88,10 +88,8 @@ class _FinanceAutomationScreenState extends State<FinanceAutomationScreen> {
         rule: rule,
         categories: _categories,
         paymentMethods: _paymentMethods,
-        onSave: (updatedRule) => FinanceRepository.saveRecurringRule(
-          updatedRule,
-          original: rule,
-        ),
+        onSave: (updatedRule) =>
+            FinanceRepository.saveRecurringRule(updatedRule, original: rule),
       ),
     );
     if (saved != true || !mounted) return false;
@@ -142,7 +140,8 @@ class _FinanceAutomationScreenState extends State<FinanceAutomationScreen> {
   Future<void> _useTemplate(FinanceEntryTemplate template) async {
     await Navigator.of(context).push(
       MaterialPageRoute(
-          builder: (_) => FinanceEntryScreen(initialTemplate: template)),
+        builder: (_) => FinanceEntryScreen(initialTemplate: template),
+      ),
     );
     if (mounted) await _load();
   }
@@ -161,11 +160,13 @@ class _FinanceAutomationScreenState extends State<FinanceAutomationScreen> {
             content: Text(message),
             actions: [
               TextButton(
-                  onPressed: () => Navigator.pop(context, false),
-                  child: const Text('取消')),
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('取消'),
+              ),
               FilledButton(
-                  onPressed: () => Navigator.pop(context, true),
-                  child: const Text('删除')),
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('删除'),
+              ),
             ],
           ),
         ) ??
@@ -182,7 +183,10 @@ class _FinanceAutomationScreenState extends State<FinanceAutomationScreen> {
         title: const Text('记账自动化'),
         actions: [
           IconButton(
-              tooltip: '刷新', onPressed: _load, icon: const Icon(Icons.refresh)),
+            tooltip: '刷新',
+            onPressed: _load,
+            icon: const Icon(Icons.refresh),
+          ),
         ],
       ),
       body: FloatingGlassTopBarContentFade(
@@ -190,37 +194,40 @@ class _FinanceAutomationScreenState extends State<FinanceAutomationScreen> {
         child: _isLoading
             ? const Center(child: CircularProgressIndicator())
             : _loadError != null
-                ? FinancePageList(topPadding: topBarHeight, children: [
-                    FinanceEmptyState(
-                      icon: Icons.error_outline_rounded,
-                      title: '自动化数据加载失败',
-                      description: '请重试，已有账单和模板不会丢失。',
-                      actionLabel: '重新加载',
-                      onAction: _load,
-                    ),
-                  ])
-                : RefreshIndicator(
-                    onRefresh: _load,
-                    child: FinanceAutomationManager(
-                      topPadding: topBarHeight,
-                      rules: _rules,
-                      templates: _templates,
-                      categories: _categories,
-                      paymentMethods: _paymentMethods,
-                      onAddRule: _openRuleEditor,
-                      onAddTemplate: _openTemplateEditor,
-                      onEditRule: (rule) async {
-                        await _openRuleEditor(rule);
-                      },
-                      onToggleRule: _toggleRule,
-                      onDeleteRule: _deleteRule,
-                      onEditTemplate: (template) async {
-                        await _openTemplateEditor(template);
-                      },
-                      onUseTemplate: _useTemplate,
-                      onDeleteTemplate: _deleteTemplate,
-                    ),
+            ? FinancePageList(
+                topPadding: topBarHeight,
+                children: [
+                  FinanceEmptyState(
+                    icon: Icons.error_outline_rounded,
+                    title: '自动化数据加载失败',
+                    description: '请重试，已有账单和模板不会丢失。',
+                    actionLabel: '重新加载',
+                    onAction: _load,
                   ),
+                ],
+              )
+            : RefreshIndicator(
+                onRefresh: _load,
+                child: FinanceAutomationManager(
+                  topPadding: topBarHeight,
+                  rules: _rules,
+                  templates: _templates,
+                  categories: _categories,
+                  paymentMethods: _paymentMethods,
+                  onAddRule: _openRuleEditor,
+                  onAddTemplate: _openTemplateEditor,
+                  onEditRule: (rule) async {
+                    await _openRuleEditor(rule);
+                  },
+                  onToggleRule: _toggleRule,
+                  onDeleteRule: _deleteRule,
+                  onEditTemplate: (template) async {
+                    await _openTemplateEditor(template);
+                  },
+                  onUseTemplate: _useTemplate,
+                  onDeleteTemplate: _deleteTemplate,
+                ),
+              ),
       ),
     );
   }

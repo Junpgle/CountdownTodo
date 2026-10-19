@@ -96,8 +96,10 @@ void main() {
 
     expect(result.start, DateTime(2026, 11, 1));
     expect(result.end, DateTime(2026, 11, 8));
-    expect(result.end.difference(result.start).inHours,
-        168 + (result.start.timeZoneOffset - result.end.timeZoneOffset).inHours);
+    expect(
+      result.end.difference(result.start).inHours,
+      168 + (result.start.timeZoneOffset - result.end.timeZoneOffset).inHours,
+    );
     expect(result.selections, hasLength(5));
     expect(result.selections.map((selection) => selection.query.date.day), [
       1,

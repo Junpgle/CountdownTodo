@@ -13,11 +13,11 @@ class AiMultimodalMessageBuilder {
   static const int maxDocumentBytes = 10 * 1024 * 1024;
 
   static int maxBytesFor(ChatAttachmentKind kind) => switch (kind) {
-        ChatAttachmentKind.image => maxImageBytes,
-        ChatAttachmentKind.audio => maxAudioBytes,
-        ChatAttachmentKind.video => maxVideoBytes,
-        ChatAttachmentKind.document => maxDocumentBytes,
-      };
+    ChatAttachmentKind.image => maxImageBytes,
+    ChatAttachmentKind.audio => maxAudioBytes,
+    ChatAttachmentKind.video => maxVideoBytes,
+    ChatAttachmentKind.document => maxDocumentBytes,
+  };
 
   static List<Map<String, dynamic>> buildContent({
     required String text,
@@ -25,8 +25,10 @@ class AiMultimodalMessageBuilder {
     required Uint8List bytes,
     required String provider,
   }) {
-    final normalizedText =
-        requestTextForAttachment(text: text, attachmentKind: attachment.kind);
+    final normalizedText = requestTextForAttachment(
+      text: text,
+      attachmentKind: attachment.kind,
+    );
     final encoded = base64Encode(bytes);
     final dataUrl = 'data:${attachment.mimeType};base64,$encoded';
     final content = <Map<String, dynamic>>[
@@ -65,17 +67,15 @@ class AiMultimodalMessageBuilder {
           final decoded = utf8.decode(bytes, allowMalformed: true);
           content.add({
             'type': 'text',
-            'text': '[ATTACHMENT_START name=${jsonEncode(attachment.name)} '
+            'text':
+                '[ATTACHMENT_START name=${jsonEncode(attachment.name)} '
                 'mime=${jsonEncode(attachment.mimeType)}]\n'
                 '$decoded\n[ATTACHMENT_END]',
           });
         } else {
           content.add({
             'type': 'file',
-            'file': {
-              'filename': attachment.name,
-              'file_data': dataUrl,
-            },
+            'file': {'filename': attachment.name, 'file_data': dataUrl},
           });
         }
         break;
@@ -97,12 +97,12 @@ class AiMultimodalMessageBuilder {
   }
 
   static String defaultPromptFor(ChatAttachmentKind? kind) => switch (kind) {
-        ChatAttachmentKind.image => '请分析图片内容，并提取重要信息、待办与建议。',
-        ChatAttachmentKind.audio => '请理解这段音频，并提取重要信息、待办与建议。',
-        ChatAttachmentKind.video => '请分析这段视频，并提取重要信息、待办与建议。',
-        ChatAttachmentKind.document => '请阅读这份文件，并提取重要信息、待办与建议。',
-        null => '',
-      };
+    ChatAttachmentKind.image => '请分析图片内容，并提取重要信息、待办与建议。',
+    ChatAttachmentKind.audio => '请理解这段音频，并提取重要信息、待办与建议。',
+    ChatAttachmentKind.video => '请分析这段视频，并提取重要信息、待办与建议。',
+    ChatAttachmentKind.document => '请阅读这份文件，并提取重要信息、待办与建议。',
+    null => '',
+  };
 
   static String _audioFormat(String mimeType) {
     final normalized = mimeType.toLowerCase();
@@ -119,7 +119,14 @@ class AiMultimodalMessageBuilder {
       return true;
     }
     final normalizedName = name.toLowerCase();
-    return const ['.txt', '.md', '.csv', '.json', '.xml', '.yaml', '.yml']
-        .any(normalizedName.endsWith);
+    return const [
+      '.txt',
+      '.md',
+      '.csv',
+      '.json',
+      '.xml',
+      '.yaml',
+      '.yml',
+    ].any(normalizedName.endsWith);
   }
 }

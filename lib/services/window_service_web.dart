@@ -10,10 +10,7 @@ class WindowService {
   static Future<void> configureMacIsland() async {}
 
   static Future<Map<String, dynamic>> getMacIslandBrowserSettings() async =>
-      <String, dynamic>{
-        'browsers': <Map<String, String>>[],
-        'selectedId': '',
-      };
+      <String, dynamic>{'browsers': <Map<String, String>>[], 'selectedId': ''};
 
   static Future<bool> setMacIslandDefaultBrowser(String browserId) async =>
       false;
@@ -24,6 +21,5 @@ class WindowService {
     required bool option,
     required bool control,
     required bool shift,
-  }) async =>
-      false;
+  }) async => false;
 }

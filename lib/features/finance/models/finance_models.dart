@@ -21,6 +21,26 @@ enum FinanceEntrySource { manual, import, ai, automation }
 /// platform and in JSON/SQLite storage.
 const int maxFinanceAmountMinor = 9007199254740991;
 
+final _financeInterestRateDisplayPattern = RegExp(r'\.?0+$');
+final _financeInterestRateInputPattern = RegExp(r'^\d+(\.\d{0,2})?$');
+final _financeDisplayWhitespacePattern = RegExp(r'\s+');
+final _financePaymentLeadingPunctuationPattern = RegExp(
+  r'^[^\u4e00-\u9fffA-Za-z0-9]+',
+);
+final _financeDraftTransactionDatePattern = RegExp(
+  r'^(\d{4})-(\d{1,2})-(\d{1,2})(?=$|[Tt ])',
+);
+final _financeDraftAmountLeadingCurrencyPattern = RegExp(r'^[¥￥$€£]');
+final _financeDraftAmountTrailingUnitPattern = RegExp(
+  r'\s*(?:元|块|人民币|CNY)\s*$',
+  caseSensitive: false,
+);
+final _financeDraftAmountPattern = RegExp(r'^([+-]?)(\d*)(?:\.(\d*))?$');
+final _financeYearlyGenerationPeriodPattern = RegExp(r'^\d{4}$');
+final _financeMonthlyGenerationPeriodPattern = RegExp(
+  r'^\d{4}-(0[1-9]|1[0-2])$',
+);
+
 bool isSafeFinanceAmountMinor(int amountMinor) =>
     amountMinor >= 0 && amountMinor <= maxFinanceAmountMinor;
 
@@ -268,8 +288,7 @@ abstract final class FinanceLoanCalculator {
   /// Round monthly interest in integer minor units. Multiplying large balances
   /// by a double rate can move a value across a half-cent boundary.
   static int _monthlyInterestMinor(int principalMinor, int annualRateBps) {
-    final numerator =
-        BigInt.from(principalMinor) * BigInt.from(annualRateBps);
+    final numerator = BigInt.from(principalMinor) * BigInt.from(annualRateBps);
     final rounded = _roundPositiveFractionHalfUp(
       numerator,
       BigInt.from(120000),
@@ -284,9 +303,7 @@ abstract final class FinanceLoanCalculator {
     final quotient = numerator ~/ denominator;
     final remainder = numerator % denominator;
     return quotient +
-        (remainder * BigInt.from(2) >= denominator
-            ? BigInt.one
-            : BigInt.zero);
+        (remainder * BigInt.from(2) >= denominator ? BigInt.one : BigInt.zero);
   }
 
   static DateTime _dueDate(
@@ -415,17 +432,18 @@ String financeLoanDisplayName(
   bool includeDeleted = false,
 }) {
   final normalizedName = _normalizeFinanceDisplayName(loan.name);
-  final sameNameLoans = loans
-      .where(
-        (item) =>
-            (includeDeleted || !item.isDeleted) &&
-            _normalizeFinanceDisplayName(item.name) == normalizedName,
-      )
-      .toList()
-    ..sort((left, right) {
-      final createdAt = left.createdAt.compareTo(right.createdAt);
-      return createdAt != 0 ? createdAt : left.uuid.compareTo(right.uuid);
-    });
+  final sameNameLoans =
+      loans
+          .where(
+            (item) =>
+                (includeDeleted || !item.isDeleted) &&
+                _normalizeFinanceDisplayName(item.name) == normalizedName,
+          )
+          .toList()
+        ..sort((left, right) {
+          final createdAt = left.createdAt.compareTo(right.createdAt);
+          return createdAt != 0 ? createdAt : left.uuid.compareTo(right.uuid);
+        });
   if (sameNameLoans.length < 2) return loan.name;
   final index = sameNameLoans.indexWhere((item) => item.uuid == loan.uuid);
   if (index < 0) return loan.name;
@@ -586,13 +604,13 @@ class FinanceLoanOverview {
 
 String formatFinanceInterestRate(int basisPoints) {
   final value = (basisPoints / 100).toStringAsFixed(2);
-  return '${value.replaceFirst(RegExp(r'\.?0+$'), '')}%';
+  return '${value.replaceFirst(_financeInterestRateDisplayPattern, '')}%';
 }
 
 /// 解析百分比形式的年利率，例如 12、12.5、12.50%。
 int? parseFinanceInterestRate(String raw) {
   final input = raw.trim().replaceAll('%', '').replaceAll(',', '');
-  if (!RegExp(r'^\d+(\.\d{0,2})?$').hasMatch(input)) return null;
+  if (!_financeInterestRateInputPattern.hasMatch(input)) return null;
   final parts = input.split('.');
   final whole = int.tryParse(parts.first);
   if (whole == null) return null;
@@ -1425,7 +1443,9 @@ String financeCategoryReferenceDisplayName(
   final normalizedUuid = categoryUuid?.trim();
   if (normalizedUuid == null || normalizedUuid.isEmpty) return '未分类';
   final allCategories = categories.toList();
-  final byUuid = {for (final category in allCategories) category.uuid: category};
+  final byUuid = {
+    for (final category in allCategories) category.uuid: category,
+  };
   var current = byUuid[normalizedUuid];
   if (current == null) return '分类已删除或不可用';
 
@@ -1452,19 +1472,20 @@ String financeCategorySiblingDisplayName(
 ) {
   final normalizedName = _normalizeFinanceCategoryName(category.name);
   final parentUuid = category.parentUuid?.trim() ?? '';
-  final siblings = categories
-      .where(
-        (item) =>
-            !item.isDeleted &&
-            item.type == category.type &&
-            (item.parentUuid?.trim() ?? '') == parentUuid &&
-            _normalizeFinanceCategoryName(item.name) == normalizedName,
-      )
-      .toList()
-    ..sort((left, right) {
-      final sortOrder = left.sortOrder.compareTo(right.sortOrder);
-      return sortOrder != 0 ? sortOrder : left.uuid.compareTo(right.uuid);
-    });
+  final siblings =
+      categories
+          .where(
+            (item) =>
+                !item.isDeleted &&
+                item.type == category.type &&
+                (item.parentUuid?.trim() ?? '') == parentUuid &&
+                _normalizeFinanceCategoryName(item.name) == normalizedName,
+          )
+          .toList()
+        ..sort((left, right) {
+          final sortOrder = left.sortOrder.compareTo(right.sortOrder);
+          return sortOrder != 0 ? sortOrder : left.uuid.compareTo(right.uuid);
+        });
   if (siblings.length < 2) return category.name;
   final index = siblings.indexWhere((item) => item.uuid == category.uuid);
   if (index < 0) return category.name;
@@ -1472,7 +1493,7 @@ String financeCategorySiblingDisplayName(
 }
 
 String _normalizeFinanceCategoryName(String value) =>
-    value.replaceAll(RegExp(r'\s+'), '').trim().toLowerCase();
+    value.replaceAll(_financeDisplayWhitespacePattern, '').trim().toLowerCase();
 
 class FinancePaymentMethod {
   String uuid;
@@ -1551,19 +1572,19 @@ String financePaymentMethodDisplayName(
   FinancePaymentMethod paymentMethod,
   Iterable<FinancePaymentMethod> paymentMethods,
 ) {
-  final normalizedName =
-      _normalizeFinancePaymentMethodName(paymentMethod.name);
-  final sameNameMethods = paymentMethods
-      .where(
-        (item) =>
-            !item.isDeleted &&
-            _normalizeFinancePaymentMethodName(item.name) == normalizedName,
-      )
-      .toList()
-    ..sort((left, right) {
-      final sortOrder = left.sortOrder.compareTo(right.sortOrder);
-      return sortOrder != 0 ? sortOrder : left.uuid.compareTo(right.uuid);
-    });
+  final normalizedName = _normalizeFinancePaymentMethodName(paymentMethod.name);
+  final sameNameMethods =
+      paymentMethods
+          .where(
+            (item) =>
+                !item.isDeleted &&
+                _normalizeFinancePaymentMethodName(item.name) == normalizedName,
+          )
+          .toList()
+        ..sort((left, right) {
+          final sortOrder = left.sortOrder.compareTo(right.sortOrder);
+          return sortOrder != 0 ? sortOrder : left.uuid.compareTo(right.uuid);
+        });
   if (sameNameMethods.length < 2) return paymentMethod.name;
   final index = sameNameMethods.indexWhere(
     (item) => item.uuid == paymentMethod.uuid,
@@ -1573,10 +1594,41 @@ String financePaymentMethodDisplayName(
   return '${paymentMethod.name}（同名账户 $duplicateNumber）';
 }
 
+/// Builds payment-method display names in one grouping pass.
+Map<String, String> financePaymentMethodDisplayNames(
+  Iterable<FinancePaymentMethod> paymentMethods,
+) {
+  final methodsByName = <String, List<FinancePaymentMethod>>{};
+  for (final method in paymentMethods) {
+    if (method.isDeleted) continue;
+    (methodsByName[_normalizeFinancePaymentMethodName(method.name)] ??= []).add(
+      method,
+    );
+  }
+
+  final namesByUuid = <String, String>{};
+  for (final sameNameMethods in methodsByName.values) {
+    if (sameNameMethods.length > 1) {
+      sameNameMethods.sort((left, right) {
+        final sortOrder = left.sortOrder.compareTo(right.sortOrder);
+        return sortOrder != 0 ? sortOrder : left.uuid.compareTo(right.uuid);
+      });
+    }
+    for (var index = 0; index < sameNameMethods.length; index++) {
+      final method = sameNameMethods[index];
+      final displayName = sameNameMethods.length < 2
+          ? method.name
+          : '${method.name}（同名账户 ${index + 1}/${sameNameMethods.length}）';
+      namesByUuid.putIfAbsent(method.uuid, () => displayName);
+    }
+  }
+  return namesByUuid;
+}
+
 String _normalizeFinancePaymentMethodName(String value) {
   return value
-      .replaceAll(RegExp(r'^[^\u4e00-\u9fffA-Za-z0-9]+'), '')
-      .replaceAll(RegExp(r'\s+'), '')
+      .replaceAll(_financePaymentLeadingPunctuationPattern, '')
+      .replaceAll(_financeDisplayWhitespacePattern, '')
       .trim()
       .toLowerCase();
 }
@@ -1683,9 +1735,10 @@ class FinanceTransaction {
       eventAt = createdAt > dateStartAt ? createdAt : dateStartAt;
     } else if (dateKey(occurred) != transactionDate) {
       final createdDate = dateKey(
-        DateTime.fromMillisecondsSinceEpoch(createdAt, isUtc: true).add(
-          Duration(minutes: timezoneOffsetMinutes),
-        ),
+        DateTime.fromMillisecondsSinceEpoch(
+          createdAt,
+          isUtc: true,
+        ).add(Duration(minutes: timezoneOffsetMinutes)),
       );
       final occurrencePredatesEntry =
           timestamp != null && timestamp < createdAt;
@@ -1929,9 +1982,7 @@ class FinanceEntryDraft {
         .replaceAll('日', '')
         .replaceAll('/', '-')
         .replaceAll('.', '-');
-    final match = RegExp(
-      r'^(\d{4})-(\d{1,2})-(\d{1,2})(?=$|[Tt ])',
-    ).firstMatch(normalized);
+    final match = _financeDraftTransactionDatePattern.firstMatch(normalized);
     if (match == null) return fallback;
 
     final year = int.parse(match.group(1)!);
@@ -1948,21 +1999,17 @@ class FinanceEntryDraft {
     final normalized = (value is num ? value.toString() : value?.toString())
         ?.trim()
         .replaceAll(',', '')
-        .replaceAll(RegExp(r'^[¥￥$€£]'), '')
-        .replaceAll(
-          RegExp(r'\s*(?:元|块|人民币|CNY)\s*$', caseSensitive: false),
-          '',
-        );
-    final match = RegExp(r'^([+-]?)(\d*)(?:\.(\d*))?$').firstMatch(
-      normalized ?? '',
-    );
+        .replaceAll(_financeDraftAmountLeadingCurrencyPattern, '')
+        .replaceAll(_financeDraftAmountTrailingUnitPattern, '');
+    final match = _financeDraftAmountPattern.firstMatch(normalized ?? '');
     if (match == null) return 0;
     final wholeText = match.group(2) ?? '';
     final fraction = match.group(3) ?? '';
     if (wholeText.isEmpty && fraction.isEmpty) return 0;
     final whole = BigInt.tryParse(wholeText.isEmpty ? '0' : wholeText);
     if (whole == null) return 0;
-    var amountMinor = whole * BigInt.from(100) +
+    var amountMinor =
+        whole * BigInt.from(100) +
         BigInt.tryParse(fraction.padRight(2, '0').substring(0, 2))!;
     if (fraction.length > 2 && fraction.codeUnitAt(2) >= 53) {
       amountMinor += BigInt.one;
@@ -2096,7 +2143,8 @@ class FinanceBudget {
     return [
       for (final entry in scopes.entries)
         if (!ancestors[entry.key]!.any(
-          (parent) => scopes.containsKey(parent) &&
+          (parent) =>
+              scopes.containsKey(parent) &&
               (!ancestors[parent]!.contains(entry.key) ||
                   parent.compareTo(entry.key) < 0),
         ))
@@ -2268,9 +2316,9 @@ class FinanceRecurringRule {
     final period = lastGeneratedPeriod;
     if (period == null) return null;
     final pattern = frequency == FinanceRecurringFrequency.yearly
-        ? r'^\d{4}$'
-        : r'^\d{4}-(0[1-9]|1[0-2])$';
-    return RegExp(pattern).hasMatch(period)
+        ? _financeYearlyGenerationPeriodPattern
+        : _financeMonthlyGenerationPeriodPattern;
+    return pattern.hasMatch(period)
         ? period
         : generationPeriodBefore(
             DateTime.fromMillisecondsSinceEpoch(updatedAt),
@@ -2370,21 +2418,52 @@ String financeRecurringRuleDisplayName(
   bool includeDeleted = false,
 }) {
   final normalizedName = _normalizeFinanceDisplayName(rule.name);
-  final sameNameRules = rules
-      .where(
-        (item) =>
-            (includeDeleted || !item.isDeleted) &&
-            _normalizeFinanceDisplayName(item.name) == normalizedName,
-      )
-      .toList()
-    ..sort((left, right) {
-      final createdAt = left.createdAt.compareTo(right.createdAt);
-      return createdAt != 0 ? createdAt : left.uuid.compareTo(right.uuid);
-    });
+  final sameNameRules =
+      rules
+          .where(
+            (item) =>
+                (includeDeleted || !item.isDeleted) &&
+                _normalizeFinanceDisplayName(item.name) == normalizedName,
+          )
+          .toList()
+        ..sort((left, right) {
+          final createdAt = left.createdAt.compareTo(right.createdAt);
+          return createdAt != 0 ? createdAt : left.uuid.compareTo(right.uuid);
+        });
   if (sameNameRules.length < 2) return rule.name;
   final index = sameNameRules.indexWhere((item) => item.uuid == rule.uuid);
   if (index < 0) return rule.name;
   return '${rule.name}（同名周期账单 ${index + 1}/${sameNameRules.length}）';
+}
+
+/// Builds the display names for a rule collection in one grouping pass.
+Map<String, String> financeRecurringRuleDisplayNames(
+  Iterable<FinanceRecurringRule> rules, {
+  bool includeDeleted = false,
+}) {
+  final rulesByName = <String, List<FinanceRecurringRule>>{};
+  for (final rule in rules) {
+    if (!includeDeleted && rule.isDeleted) continue;
+    (rulesByName[_normalizeFinanceDisplayName(rule.name)] ??= []).add(rule);
+  }
+
+  final namesByUuid = <String, String>{};
+  for (final sameNameRules in rulesByName.values) {
+    if (sameNameRules.length > 1) {
+      sameNameRules.sort((left, right) {
+        final createdAt = left.createdAt.compareTo(right.createdAt);
+        return createdAt != 0 ? createdAt : left.uuid.compareTo(right.uuid);
+      });
+    }
+    for (var index = 0; index < sameNameRules.length; index++) {
+      final rule = sameNameRules[index];
+      final displayName = sameNameRules.length < 2
+          ? rule.name
+          : '${rule.name}（同名周期账单 ${index + 1}/${sameNameRules.length}）';
+      namesByUuid.putIfAbsent(rule.uuid, () => displayName);
+    }
+  }
+  return namesByUuid;
 }
 
 /// 快捷记账模板。模板只保存默认字段，不会直接产生账单。
@@ -2494,17 +2573,18 @@ String financeEntryTemplateDisplayName(
   bool includeDeleted = false,
 }) {
   final normalizedName = _normalizeFinanceDisplayName(template.name);
-  final sameNameTemplates = templates
-      .where(
-        (item) =>
-            (includeDeleted || !item.isDeleted) &&
-            _normalizeFinanceDisplayName(item.name) == normalizedName,
-      )
-      .toList()
-    ..sort((left, right) {
-      final createdAt = left.createdAt.compareTo(right.createdAt);
-      return createdAt != 0 ? createdAt : left.uuid.compareTo(right.uuid);
-    });
+  final sameNameTemplates =
+      templates
+          .where(
+            (item) =>
+                (includeDeleted || !item.isDeleted) &&
+                _normalizeFinanceDisplayName(item.name) == normalizedName,
+          )
+          .toList()
+        ..sort((left, right) {
+          final createdAt = left.createdAt.compareTo(right.createdAt);
+          return createdAt != 0 ? createdAt : left.uuid.compareTo(right.uuid);
+        });
   if (sameNameTemplates.length < 2) return template.name;
   final index = sameNameTemplates.indexWhere(
     (item) => item.uuid == template.uuid,
@@ -2513,8 +2593,40 @@ String financeEntryTemplateDisplayName(
   return '${template.name}（同名模板 ${index + 1}/${sameNameTemplates.length}）';
 }
 
+/// Builds the display names for a template collection in one grouping pass.
+Map<String, String> financeEntryTemplateDisplayNames(
+  Iterable<FinanceEntryTemplate> templates, {
+  bool includeDeleted = false,
+}) {
+  final templatesByName = <String, List<FinanceEntryTemplate>>{};
+  for (final template in templates) {
+    if (!includeDeleted && template.isDeleted) continue;
+    (templatesByName[_normalizeFinanceDisplayName(template.name)] ??= []).add(
+      template,
+    );
+  }
+
+  final namesByUuid = <String, String>{};
+  for (final sameNameTemplates in templatesByName.values) {
+    if (sameNameTemplates.length > 1) {
+      sameNameTemplates.sort((left, right) {
+        final createdAt = left.createdAt.compareTo(right.createdAt);
+        return createdAt != 0 ? createdAt : left.uuid.compareTo(right.uuid);
+      });
+    }
+    for (var index = 0; index < sameNameTemplates.length; index++) {
+      final template = sameNameTemplates[index];
+      final displayName = sameNameTemplates.length < 2
+          ? template.name
+          : '${template.name}（同名模板 ${index + 1}/${sameNameTemplates.length}）';
+      namesByUuid.putIfAbsent(template.uuid, () => displayName);
+    }
+  }
+  return namesByUuid;
+}
+
 String _normalizeFinanceDisplayName(String value) =>
-    value.replaceAll(RegExp(r'\s+'), '').trim().toLowerCase();
+    value.replaceAll(_financeDisplayWhitespacePattern, '').trim().toLowerCase();
 
 class FinanceCumulativeBalanceEvent {
   final String transactionDate;
@@ -2630,6 +2742,63 @@ class FinanceSummary {
       }
     }
     return math.max(0, total);
+  }
+
+  /// Calculates several overall and category budget totals in one pass.
+  /// Category budgets share one category index and one ancestor traversal per
+  /// ledger category instead of rescanning the summary for every budget.
+  Map<String, int> spendingForBudgets(
+    Iterable<FinanceBudget> budgets,
+    Iterable<FinanceCategory> categories,
+  ) {
+    final spendingByBudget = <String, int>{};
+    final budgetUuidsByCategory = <String, Set<String>>{};
+    for (final budget in budgets) {
+      if (budget.isPaymentMethod) {
+        throw ArgumentError('账户余额应按余额快照计算');
+      }
+      if (budget.isOverall) {
+        spendingByBudget[budget.uuid] = math.max(0, netExpenseMinor);
+        continue;
+      }
+      spendingByBudget[budget.uuid] = 0;
+      final categoryUuid = budget.categoryUuid;
+      if (categoryUuid == null) continue;
+      (budgetUuidsByCategory[categoryUuid] ??= <String>{}).add(budget.uuid);
+    }
+    if (budgetUuidsByCategory.isEmpty) return spendingByBudget;
+
+    final categoryMap = {
+      for (final category in categories) category.uuid: category,
+    };
+    final totalsByBudget = <String, int>{};
+    for (final entry in expenseByCategory.entries) {
+      String? uuid = entry.key;
+      final visited = <String>{};
+      while (uuid != null && visited.add(uuid)) {
+        final matchingBudgets = budgetUuidsByCategory[uuid];
+        if (matchingBudgets != null) {
+          for (final budgetUuid in matchingBudgets) {
+            totalsByBudget[budgetUuid] =
+                (totalsByBudget[budgetUuid] ?? 0) + entry.value;
+          }
+        }
+        final category = categoryMap[uuid];
+        if (category == null || category.type != FinanceCategoryType.expense) {
+          break;
+        }
+        uuid = category.parentUuid;
+      }
+    }
+    for (final budgetUuids in budgetUuidsByCategory.values) {
+      for (final budgetUuid in budgetUuids) {
+        spendingByBudget[budgetUuid] = math.max(
+          0,
+          totalsByBudget[budgetUuid] ?? 0,
+        );
+      }
+    }
+    return spendingByBudget;
   }
 }
 

@@ -27,6 +27,11 @@ abstract final class FinanceAutomationService {
   static const int recurringNotificationBaseId = 52001;
   static const int recurringNotificationRange = 7999;
   static const int maxRecurringCatchUpPeriods = 12;
+  static final RegExp _monthPeriodPattern = RegExp(r'^\d{4}-(0[1-9]|1[0-2])$');
+  static final NumberFormat _reminderWholeAmountFormat = NumberFormat(
+    '#,##0',
+    'zh_CN',
+  );
   static final Set<String> _budgetAlertInFlight = {};
   static Timer? _autoGenerationTimer;
   static int _autoGenerationTimerRevision = 0;
@@ -35,11 +40,8 @@ abstract final class FinanceAutomationService {
   ///
   /// 账单统一按当地时间 09:00 发生；如果规则指定了 31 日而目标月份
   /// 没有 31 日，则自动落在该月最后一天。
-  static DateTime? dueDateFor(
-    FinanceRecurringRule rule,
-    int year,
-    int month,
-  ) => rule.dueDateFor(year, month);
+  static DateTime? dueDateFor(FinanceRecurringRule rule, int year, int month) =>
+      rule.dueDateFor(year, month);
 
   static String periodKeyFor(FinanceRecurringRule rule, DateTime dueAt) {
     return rule.frequency == FinanceRecurringFrequency.yearly
@@ -83,7 +85,7 @@ abstract final class FinanceAutomationService {
         var cursor = DateTime(now.year, now.month);
         final startMonth = DateTime(start.year, start.month);
         if (cursor.isBefore(startMonth)) cursor = startMonth;
-        if (RegExp(r'^\d{4}-(0[1-9]|1[0-2])$').hasMatch(lastGenerated ?? '')) {
+        if (_monthPeriodPattern.hasMatch(lastGenerated ?? '')) {
           final parts = lastGenerated!.split('-');
           final monthAfterLast = DateTime(
             int.parse(parts[0]),
@@ -170,11 +172,13 @@ abstract final class FinanceAutomationService {
     _autoGenerationTimer = Timer(Duration(milliseconds: delayMs), () {
       _autoGenerationTimer = null;
       if (revision != _autoGenerationTimerRevision) return;
-      unawaited(_runScheduledAutoGeneration(
-        revision,
-        clock: clock,
-        retryBaseDelay: retryBaseDelay,
-      ));
+      unawaited(
+        _runScheduledAutoGeneration(
+          revision,
+          clock: clock,
+          retryBaseDelay: retryBaseDelay,
+        ),
+      );
     });
   }
 
@@ -208,28 +212,24 @@ abstract final class FinanceAutomationService {
     } catch (_) {
       if (revision != _autoGenerationTimerRevision) return;
       if (retryAttempt < 3) {
-        _autoGenerationTimer = Timer(
-          retryBaseDelay * (1 << retryAttempt),
-          () {
-            _autoGenerationTimer = null;
-            if (revision != _autoGenerationTimerRevision) return;
-            unawaited(_runScheduledAutoGeneration(
+        _autoGenerationTimer = Timer(retryBaseDelay * (1 << retryAttempt), () {
+          _autoGenerationTimer = null;
+          if (revision != _autoGenerationTimerRevision) return;
+          unawaited(
+            _runScheduledAutoGeneration(
               revision,
               clock: clock,
               retryAttempt: retryAttempt + 1,
               retryBaseDelay: retryBaseDelay,
-            ));
-          },
-        );
+            ),
+          );
+        });
         return;
       }
       // Keep the current due period pending after transient failures. Scheduling
       // only the next future due here would otherwise skip this period until
       // the app is opened again.
-      _scheduleAutoGenerationRetry(
-        clock: clock,
-        delay: retryBaseDelay * 15,
-      );
+      _scheduleAutoGenerationRetry(clock: clock, delay: retryBaseDelay * 15);
       return;
     }
     if (revision != _autoGenerationTimerRevision) return;
@@ -282,18 +282,20 @@ abstract final class FinanceAutomationService {
       for (var year = firstYear; year <= current.year; year++) {
         final due = dueDateFor(rule, year, rule.monthOfYear);
         if (due != null && !due.isAfter(current)) {
-          result.add(FinanceRecurringDue(
-            rule: rule,
-            dueAt: due,
-            periodKey: periodKeyFor(rule, due),
-          ));
+          result.add(
+            FinanceRecurringDue(
+              rule: rule,
+              dueAt: due,
+              periodKey: periodKeyFor(rule, due),
+            ),
+          );
         }
       }
       return _latestCatchUpPeriods(result);
     }
 
     var cursor = DateTime(start.year, start.month);
-    if (RegExp(r'^\d{4}-(0[1-9]|1[0-2])$').hasMatch(lastPeriod)) {
+    if (_monthPeriodPattern.hasMatch(lastPeriod)) {
       final parts = lastPeriod.split('-');
       cursor = DateTime(int.parse(parts[0]), int.parse(parts[1]) + 1);
     }
@@ -301,11 +303,13 @@ abstract final class FinanceAutomationService {
     while (!cursor.isAfter(currentMonth)) {
       final due = dueDateFor(rule, cursor.year, cursor.month);
       if (due != null && !due.isAfter(current)) {
-        result.add(FinanceRecurringDue(
-          rule: rule,
-          dueAt: due,
-          periodKey: periodKeyFor(rule, due),
-        ));
+        result.add(
+          FinanceRecurringDue(
+            rule: rule,
+            dueAt: due,
+            periodKey: periodKeyFor(rule, due),
+          ),
+        );
       }
       cursor = DateTime(cursor.year, cursor.month + 1);
     }
@@ -445,7 +449,8 @@ abstract final class FinanceAutomationService {
       final hashedId = (reminder['notifId'] as num).toInt();
       final startOffset = hashedId - recurringNotificationBaseId;
       for (var probe = 0; probe < recurringNotificationRange; probe++) {
-        final candidate = recurringNotificationBaseId +
+        final candidate =
+            recurringNotificationBaseId +
             (startOffset + probe) % recurringNotificationRange;
         if (!assigned.add(candidate)) continue;
         reminder['notifId'] = candidate;
@@ -461,10 +466,12 @@ abstract final class FinanceAutomationService {
     required DateTime limit,
   }) {
     final usesCalendarDays = due.rule.reminderMinutes % 1440 == 0;
-    final calendarLeadDays =
-        usesCalendarDays ? due.rule.reminderMinutes ~/ 1440 : 0;
-    final remainingLeadMinutes =
-        usesCalendarDays ? 0 : due.rule.reminderMinutes;
+    final calendarLeadDays = usesCalendarDays
+        ? due.rule.reminderMinutes ~/ 1440
+        : 0;
+    final remainingLeadMinutes = usesCalendarDays
+        ? 0
+        : due.rule.reminderMinutes;
     final localTriggerAt = _calendarDateTimeOffset(
       due.dueAt,
       -calendarLeadDays,
@@ -475,9 +482,9 @@ abstract final class FinanceAutomationService {
     return {
       'triggerAtMs': triggerAt.toUtc().millisecondsSinceEpoch,
       'startAtMs': due.dueAt.toUtc().millisecondsSinceEpoch,
-      'title':
-          '💳 周期账单：${financeRecurringRuleDisplayName(due.rule, rules)}',
-      'text': '${dateKey(due.dueAt)} · ${_formatAmount(due.rule.amountMinor)}'
+      'title': '💳 周期账单：${financeRecurringRuleDisplayName(due.rule, rules)}',
+      'text':
+          '${dateKey(due.dueAt)} · ${_formatAmount(due.rule.amountMinor)}'
           '${due.rule.autoGenerate ? ' · 到期自动记账' : ' · 请确认是否记账'}',
       'notifId': notificationIdFor(due.rule.uuid, due.periodKey),
       'type': 'finance_recurring',
@@ -541,28 +548,34 @@ abstract final class FinanceAutomationService {
     final prefs = await SharedPreferences.getInstance();
     final accountKey =
         prefs.getString(StorageService.keyCurrentUser) ?? 'default';
+    final spendingByBudget = summary.spendingForBudgets(
+      budgets.where((budget) => !budget.isPaymentMethod),
+      categories,
+    );
 
     for (final budget in budgets) {
       if (budget.isPaymentMethod) continue;
-      final used = summary.spendingForBudget(budget, categories);
+      final used = spendingByBudget[budget.uuid] ?? 0;
       if (used <= 0 || budget.amountMinor <= 0) continue;
       final ratio = used / budget.amountMinor;
       final threshold = ratio >= 1
           ? 100
           : ratio >= .8
-              ? 80
-              : 0;
+          ? 80
+          : 0;
       if (threshold == 0) continue;
 
       final scopeKey = budget.categoryUuid ?? 'overall';
-      final alertKey = 'finance-budget-v2-$accountKey-${budget.uuid}-'
+      final alertKey =
+          'finance-budget-v2-$accountKey-${budget.uuid}-'
           '${budget.monthKey}-$scopeKey-${budget.amountMinor}-$threshold';
       if (prefs.getBool(alertKey) == true) continue;
 
       // Keep an already delivered v1 alert from firing again immediately
       // after upgrading. The current version matches only alerts sent for
       // the budget's current configuration in the old key format.
-      final legacyAlertKey = 'finance-budget-v1-$accountKey-${budget.uuid}-'
+      final legacyAlertKey =
+          'finance-budget-v1-$accountKey-${budget.uuid}-'
           '${budget.monthKey}-${budget.version}-$threshold';
       if (prefs.getBool(legacyAlertKey) == true) {
         await prefs.setBool(alertKey, true);
@@ -573,7 +586,8 @@ abstract final class FinanceAutomationService {
           ? '本月总支出'
           : '${categoryNames[budget.categoryUuid] ?? '分类'}支出';
       final title = threshold == 100 ? '预算已超支' : '预算已使用 80%';
-      final body = '$scope ${_formatAmount(used)} / '
+      final body =
+          '$scope ${_formatAmount(used)} / '
           '${_formatAmount(budget.amountMinor)}';
       try {
         final delivered = await NotificationService.showFinanceBudgetAlert(
@@ -604,7 +618,7 @@ abstract final class FinanceAutomationService {
 
   static String _formatAmount(int amountMinor) {
     final absolute = amountMinor.abs();
-    final whole = NumberFormat('#,##0', 'zh_CN').format(absolute ~/ 100);
+    final whole = _reminderWholeAmountFormat.format(absolute ~/ 100);
     final cents = (absolute % 100).toString().padLeft(2, '0');
     final sign = amountMinor < 0 ? '-' : '';
     return '¥$sign$whole.$cents';

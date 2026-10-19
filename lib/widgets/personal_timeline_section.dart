@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
-import 'dart:ui';
-import 'package:intl/intl.dart';
+
 import '../services/timeline_service.dart';
 import '../screens/personal_timeline_screen.dart';
+import '../utils/app_image_filters.dart';
 import '../utils/page_transitions.dart';
+import '../utils/time_utils.dart';
 import 'optional_liquid_glass_surface.dart';
 import 'platform_backdrop_filter.dart';
 
@@ -50,8 +51,9 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
       _isLoading = true;
       _loadingEpoch++;
     });
-    final summary =
-        await TimelineService.instance.getTodaySummary(widget.username);
+    final summary = await TimelineService.instance.getTodaySummary(
+      widget.username,
+    );
     if (mounted) {
       setState(() {
         _summary = summary;
@@ -93,26 +95,27 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
                 decoration: BoxDecoration(
                   color: widget.isLight
                       ? Colors.white.withValues(alpha: 0.15)
-                      : Theme.of(context)
-                          .colorScheme
-                          .primary
-                          .withValues(alpha: 0.15),
+                      : Theme.of(context).colorScheme.primary
+                            .withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: Icon(Icons.timeline_rounded,
-                    size: 20,
-                    color: widget.isLight
-                        ? Colors.white
-                        : Theme.of(context).colorScheme.primary),
+                child: Icon(
+                  Icons.timeline_rounded,
+                  size: 20,
+                  color: widget.isLight
+                      ? Colors.white
+                      : Theme.of(context).colorScheme.primary,
+                ),
               ),
               const SizedBox(width: 10),
               Text(
                 '个人时间轴',
                 style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 0.5,
-                    color: textColor),
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.5,
+                  color: textColor,
+                ),
               ),
               const Spacer(),
               Icon(Icons.chevron_right, size: 20, color: subColor),
@@ -127,16 +130,18 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
           child: ClipRRect(
             borderRadius: BorderRadius.circular(24),
             child: PlatformBackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+              filter: AppImageFilters.blur10,
               bypassWhenLiquidGlassEnabled: true,
               child: OptionalLiquidGlassCard(
                 padding: const EdgeInsets.all(20),
                 borderRadius: 24,
-                tint: (widget.isLight
-                        ? Theme.of(context).colorScheme.scrim
-                        : Theme.of(context).colorScheme.primary)
-                    .withValues(alpha: 0.16),
-                isDark: widget.isLight ||
+                tint:
+                    (widget.isLight
+                            ? Theme.of(context).colorScheme.scrim
+                            : Theme.of(context).colorScheme.primary)
+                        .withValues(alpha: 0.16),
+                isDark:
+                    widget.isLight ||
                     Theme.of(context).brightness == Brightness.dark,
                 fallbackDecoration: BoxDecoration(
                   color: widget.isLight
@@ -145,11 +150,12 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
                   borderRadius: BorderRadius.circular(24),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black
-                          .withValues(alpha: widget.isLight ? 0.1 : 0.05),
+                      color: Colors.black.withValues(
+                        alpha: widget.isLight ? 0.1 : 0.05,
+                      ),
                       blurRadius: 10,
                       offset: const Offset(0, 4),
-                    )
+                    ),
                   ],
                   border: Border.all(
                     color: widget.isLight
@@ -176,7 +182,8 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
                           // 🚀 核心修复：增加 refreshTrigger 使 Key 在每次加载后唯一，
                           // 彻底解决 AnimatedSwitcher 在快速加载时可能出现的 Duplicate Key 崩溃
                           key: ValueKey(
-                              'summary_${widget.refreshTrigger}_${_summaryContentKey()}'),
+                            'summary_${widget.refreshTrigger}_${_summaryContentKey()}',
+                          ),
                           child: _buildSummaryGrid(subColor, textColor),
                         ),
                 ),
@@ -195,15 +202,17 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
 
     // 1. 搜索
     if (_summary!.searchCount > 0) {
-      rows.add(_buildSummaryRow(
-        icon: Icons.search_rounded,
-        color: Colors.teal,
-        title: '搜索记录',
-        content:
-            '搜索了 ${_summary!.searchCount} 次${_summary!.lastSearchTime != null ? '，最近 ${DateFormat('HH:mm').format(_summary!.lastSearchTime!)}' : ''}',
-        subColor: subColor,
-        textColor: textColor,
-      ));
+      rows.add(
+        _buildSummaryRow(
+          icon: Icons.search_rounded,
+          color: Colors.teal,
+          title: '搜索记录',
+          content:
+              '搜索了 ${_summary!.searchCount} 次${_summary!.lastSearchTime != null ? '，最近 ${AppTimeFormats.clock(_summary!.lastSearchTime!)}' : ''}',
+          subColor: subColor,
+          textColor: textColor,
+        ),
+      );
     }
 
     // 2. 待办事项
@@ -221,29 +230,33 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
       if (_summary!.todoCompletedCount > 0) {
         parts.add('完成 ${_summary!.todoCompletedCount} 个');
       }
-      rows.add(_buildSummaryRow(
-        icon: Icons.task_alt_rounded,
-        color: Theme.of(context).colorScheme.primary,
-        title: '待办事项',
-        content: parts.join('、'),
-        subColor: subColor,
-        textColor: textColor,
-      ));
+      rows.add(
+        _buildSummaryRow(
+          icon: Icons.task_alt_rounded,
+          color: Theme.of(context).colorScheme.primary,
+          title: '待办事项',
+          content: parts.join('、'),
+          subColor: subColor,
+          textColor: textColor,
+        ),
+      );
     }
 
     // 2.5 习惯打卡
     final habitSummary = _summary!.habitSummary;
     if (habitSummary.habitCount > 0) {
       if (rows.isNotEmpty) rows.add(const Divider(height: 24, thickness: 0.5));
-      rows.add(_buildSummaryRow(
-        icon: Icons.self_improvement_outlined,
-        color: Theme.of(context).colorScheme.tertiary,
-        title: '习惯打卡',
-        content:
-            '完成 ${habitSummary.completedCount}/${habitSummary.plannedCount} 个周期，记录 ${habitSummary.recordedCount} 次',
-        subColor: subColor,
-        textColor: textColor,
-      ));
+      rows.add(
+        _buildSummaryRow(
+          icon: Icons.self_improvement_outlined,
+          color: Theme.of(context).colorScheme.tertiary,
+          title: '习惯打卡',
+          content:
+              '完成 ${habitSummary.completedCount}/${habitSummary.plannedCount} 个周期，记录 ${habitSummary.recordedCount} 次',
+          subColor: subColor,
+          textColor: textColor,
+        ),
+      );
     }
 
     // 3. 倒计时
@@ -261,40 +274,46 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
       if (_summary!.countdownCompletedCount > 0) {
         parts.add('完成 ${_summary!.countdownCompletedCount} 个');
       }
-      rows.add(_buildSummaryRow(
-        icon: Icons.timer_outlined,
-        color: Colors.redAccent,
-        title: '倒计时',
-        content: parts.join('、'),
-        subColor: subColor,
-        textColor: textColor,
-      ));
+      rows.add(
+        _buildSummaryRow(
+          icon: Icons.timer_outlined,
+          color: Colors.redAccent,
+          title: '倒计时',
+          content: parts.join('、'),
+          subColor: subColor,
+          textColor: textColor,
+        ),
+      );
     }
 
     // 4. 今日课程
     if (_summary!.attendedCourses.isNotEmpty) {
       if (rows.isNotEmpty) rows.add(const Divider(height: 24, thickness: 0.5));
-      rows.add(_buildSummaryRow(
-        icon: Icons.school_outlined,
-        color: Colors.indigo,
-        title: '今日课程',
-        content: '已上过：${_summary!.attendedCourses.join("、")}',
-        subColor: subColor,
-        textColor: textColor,
-      ));
+      rows.add(
+        _buildSummaryRow(
+          icon: Icons.school_outlined,
+          color: Colors.indigo,
+          title: '今日课程',
+          content: '已上过：${_summary!.attendedCourses.join("、")}',
+          subColor: subColor,
+          textColor: textColor,
+        ),
+      );
     }
 
     // 5. 番茄专注
     if (_summary!.pomodoroCount > 0) {
       if (rows.isNotEmpty) rows.add(const Divider(height: 24, thickness: 0.5));
-      rows.add(_buildSummaryRow(
-        icon: Icons.local_fire_department_rounded,
-        color: Colors.orange,
-        title: '番茄专注',
-        content: '今日已专注 ${_summary!.pomodoroCount} 次',
-        subColor: subColor,
-        textColor: textColor,
-      ));
+      rows.add(
+        _buildSummaryRow(
+          icon: Icons.local_fire_department_rounded,
+          color: Colors.orange,
+          title: '番茄专注',
+          content: '今日已专注 ${_summary!.pomodoroCount} 次',
+          subColor: subColor,
+          textColor: textColor,
+        ),
+      );
     }
 
     if (rows.isEmpty) {
@@ -303,11 +322,16 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
           padding: const EdgeInsets.symmetric(vertical: 20),
           child: Column(
             children: [
-              Icon(Icons.history_toggle_off_rounded,
-                  size: 32, color: subColor.withValues(alpha: 0.3)),
+              Icon(
+                Icons.history_toggle_off_rounded,
+                size: 32,
+                color: subColor.withValues(alpha: 0.3),
+              ),
               const SizedBox(height: 8),
-              Text('今日暂无变动，开启高效一天吧',
-                  style: TextStyle(color: subColor, fontSize: 13)),
+              Text(
+                '今日暂无变动，开启高效一天吧',
+                style: TextStyle(color: subColor, fontSize: 13),
+              ),
             ],
           ),
         ),

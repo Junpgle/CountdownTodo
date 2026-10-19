@@ -5,7 +5,7 @@ import 'dart:math' as math;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:intl/intl.dart';
+import 'package:intl/intl.dart' hide TextDirection;
 
 import '../models.dart';
 import '../models/ai_todo_action.dart';
@@ -15,6 +15,7 @@ import '../models/ai_context_mode.dart';
 import '../widgets/ai_chat_markdown.dart';
 import '../widgets/ai_chat_thinking_panel.dart';
 import '../widgets/ai_chat_composer.dart';
+import '../widgets/ai_water_border.dart';
 import '../services/ai_query_tool_service.dart';
 import '../services/ai_tool_result_context.dart';
 import '../services/ai_tool_chat_runner.dart';
@@ -29,6 +30,7 @@ import '../services/ai_native_tool_call_parser.dart';
 import '../services/ai_native_tool_definition_builder.dart';
 import '../services/ai_multimodal_message_builder.dart';
 import '../services/ai_todo_context_builder.dart';
+import '../services/ai_team_binding_resolver.dart';
 import '../services/ai_todo_action_executor.dart';
 import '../services/ai_plan_draft_repository.dart';
 import '../services/llm_service.dart';
@@ -38,6 +40,8 @@ import '../services/chat_storage_service.dart';
 import '../services/ai_recognition_chat_bridge.dart';
 import '../services/pomodoro_control_service.dart';
 import '../services/pomodoro_service.dart';
+import 'pomodoro/pomodoro_entry_intent.dart';
+import 'pomodoro_screen.dart';
 import '../services/power_save_mode_service.dart';
 import '../screens/ai_assistant_tutorial_screen.dart';
 import 'settings/pages/ai_assistant_settings_page.dart';
@@ -48,6 +52,7 @@ import '../utils/app_platform.dart';
 import '../utils/android_energy_policy.dart';
 import '../utils/image_input_data.dart';
 import '../utils/image_input_reader.dart';
+import '../utils/image_clipboard_reader.dart';
 import '../utils/local_image_provider.dart';
 import '../utils/persistent_image_storage.dart';
 import '../services/feature_tip_service.dart';
@@ -77,6 +82,23 @@ part 'todo_chat_screen_actions.dart';
 part 'todo_chat_screen_messages.dart';
 part 'todo_chat_screen_widgets.dart';
 
+final Map<(String?, String), DateFormat> _todoChatDateFormats = {};
+
+DateFormat _todoChatDateFormat(String pattern) {
+  final locale = Intl.defaultLocale;
+  return _todoChatDateFormats.putIfAbsent((
+    locale,
+    pattern,
+  ), () => DateFormat(pattern, locale));
+}
+
+String _formatTodoChatDateRange(DateTime start, DateTime end) {
+  final dateFormat = _todoChatDateFormat('yyyy-MM-dd');
+  final startText = dateFormat.format(start);
+  final endText = dateFormat.format(end);
+  return '自定义范围: $startText 至 $endText';
+}
+
 class TodoChatScreen extends StatefulWidget {
   /// A voice transcript prepared after session, settings, and context are ready.
   final String? initialMessage;
@@ -94,10 +116,13 @@ class TodoChatScreen extends StatefulWidget {
   final List<PomodoroTag> pomodoroTags;
   final List<FixedScheduleItem> fixedSchedules;
   final List<AiTodoAction> initialCategorizationActions;
-  final Function(TodoItem)? onTodoInserted;
-  final Function(List<TodoItem>)? onTodosBatchInserted;
-  final Function(List<TodoItem>)? onTodosUpdated;
-  final Function(List<TodoItem> inserted, List<TodoItem> updated)?
+  final FutureOr<void> Function(TodoItem)? onTodoInserted;
+  final FutureOr<void> Function(List<TodoItem>)? onTodosBatchInserted;
+  final FutureOr<void> Function(List<TodoItem>)? onTodosUpdated;
+  final FutureOr<void> Function(
+    List<TodoItem> inserted,
+    List<TodoItem> updated,
+  )?
   onTodosBatchAction;
   final Function(List<TodoGroup> groups)? onTodoGroupsChanged;
   final Function(List<FixedScheduleItem> schedules)? onFixedSchedulesChanged;

@@ -1,6 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+final Map<String?, DateFormat> _recurrenceDateFormats = {};
+
+DateFormat _recurrenceDateFormat() {
+  final locale = Intl.defaultLocale;
+  return _recurrenceDateFormats.putIfAbsent(
+    locale,
+    () => DateFormat('M/d', locale),
+  );
+}
+
 enum TodoRecurrenceNodeState {
   completed,
   overdue,
@@ -71,7 +81,8 @@ class _TodoRecurrenceProgressState extends State<TodoRecurrenceProgress> {
     final completionSummary = widget.totalCount == null
         ? '已完成 ${widget.completedCount} 期'
         : '已完成 ${widget.completedCount}/${widget.totalCount} 期';
-    final summary = completionSummary +
+    final summary =
+        completionSummary +
         (widget.overdueCount > 0 ? ' · ${widget.overdueCount} 逾期' : '');
 
     return Semantics(
@@ -120,8 +131,9 @@ class _TodoRecurrenceProgressState extends State<TodoRecurrenceProgress> {
                             ? Icons.expand_less_rounded
                             : Icons.expand_more_rounded,
                         size: 15,
-                        color: colorScheme.onSurfaceVariant
-                            .withValues(alpha: 0.65),
+                        color: colorScheme.onSurfaceVariant.withValues(
+                          alpha: 0.65,
+                        ),
                       ),
                     ],
                   ),
@@ -146,12 +158,14 @@ class _TodoRecurrenceProgressState extends State<TodoRecurrenceProgress> {
   }
 
   Widget _buildTimeline(ColorScheme colorScheme) {
+    late final DateTime now = DateTime.now();
+    late final DateTime today = DateTime(now.year, now.month, now.day);
     if (widget.nodes.length <= 7) {
       return Row(
         children: [
           for (var i = 0; i < widget.nodes.length; i++) ...[
             if (i > 0) Expanded(child: _buildDottedConnector(colorScheme)),
-            _buildNode(widget.nodes[i], colorScheme),
+            _buildNode(widget.nodes[i], colorScheme, today),
           ],
         ],
       );
@@ -163,11 +177,8 @@ class _TodoRecurrenceProgressState extends State<TodoRecurrenceProgress> {
         children: [
           for (var i = 0; i < widget.nodes.length; i++) ...[
             if (i > 0)
-              SizedBox(
-                width: 22,
-                child: _buildDottedConnector(colorScheme),
-              ),
-            _buildNode(widget.nodes[i], colorScheme),
+              SizedBox(width: 22, child: _buildDottedConnector(colorScheme)),
+            _buildNode(widget.nodes[i], colorScheme, today),
           ],
         ],
       ),
@@ -194,55 +205,60 @@ class _TodoRecurrenceProgressState extends State<TodoRecurrenceProgress> {
   Widget _buildNode(
     TodoRecurrenceProgressNode node,
     ColorScheme colorScheme,
+    DateTime today,
   ) {
-    final (Color background, Color foreground, IconData? icon, bool outlined) =
-        switch (node.state) {
+    final (
+      Color background,
+      Color foreground,
+      IconData? icon,
+      bool outlined,
+    ) = switch (node.state) {
       TodoRecurrenceNodeState.completed => (
-          colorScheme.primary,
-          colorScheme.onPrimary,
-          Icons.check_rounded,
-          false,
-        ),
+        colorScheme.primary,
+        colorScheme.onPrimary,
+        Icons.check_rounded,
+        false,
+      ),
       TodoRecurrenceNodeState.overdue => (
-          colorScheme.error,
-          colorScheme.onError,
-          Icons.priority_high_rounded,
-          false,
-        ),
+        colorScheme.error,
+        colorScheme.onError,
+        Icons.priority_high_rounded,
+        false,
+      ),
       TodoRecurrenceNodeState.current => (
-          colorScheme.secondary,
-          colorScheme.onSecondary,
-          Icons.circle,
-          false,
-        ),
+        colorScheme.secondary,
+        colorScheme.onSecondary,
+        Icons.circle,
+        false,
+      ),
       TodoRecurrenceNodeState.pending => (
-          colorScheme.tertiaryContainer,
-          colorScheme.onTertiaryContainer,
-          Icons.more_horiz_rounded,
-          false,
-        ),
+        colorScheme.tertiaryContainer,
+        colorScheme.onTertiaryContainer,
+        Icons.more_horiz_rounded,
+        false,
+      ),
       TodoRecurrenceNodeState.future => (
-          colorScheme.surfaceContainerHighest,
-          colorScheme.outline,
-          null,
-          true,
-        ),
+        colorScheme.surfaceContainerHighest,
+        colorScheme.outline,
+        null,
+        true,
+      ),
       TodoRecurrenceNodeState.neutral => (
-          colorScheme.surfaceContainer,
-          colorScheme.onSurfaceVariant,
-          Icons.remove_rounded,
-          true,
-        ),
+        colorScheme.surfaceContainer,
+        colorScheme.onSurfaceVariant,
+        Icons.remove_rounded,
+        true,
+      ),
     };
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
     final nodeDay = DateTime(node.date.year, node.date.month, node.date.day);
-    final label = node.label ??
-        (nodeDay == today ? '今天' : DateFormat('M/d').format(node.date));
+    final label =
+        node.label ??
+        (nodeDay == today ? '今天' : _recurrenceDateFormat().format(node.date));
 
     return Semantics(
       button: widget.onNodeTap != null,
-      label: '$label，${_stateLabel(node.state)}'
+      label:
+          '$label，${_stateLabel(node.state)}'
           '${node.occurrenceId != null && !node.isCurrent ? '，点击管理本期' : ''}',
       child: InkWell(
         key: ValueKey('recurrence_node_${node.key}'),
@@ -264,8 +280,9 @@ class _TodoRecurrenceProgressState extends State<TodoRecurrenceProgress> {
                   boxShadow: node.state == TodoRecurrenceNodeState.current
                       ? [
                           BoxShadow(
-                            color:
-                                colorScheme.secondary.withValues(alpha: 0.28),
+                            color: colorScheme.secondary.withValues(
+                              alpha: 0.28,
+                            ),
                             blurRadius: 5,
                             spreadRadius: 1,
                           ),
@@ -289,8 +306,9 @@ class _TodoRecurrenceProgressState extends State<TodoRecurrenceProgress> {
                 maxLines: 1,
                 style: TextStyle(
                   fontSize: 8.5,
-                  fontWeight:
-                      node.isCurrent ? FontWeight.bold : FontWeight.w500,
+                  fontWeight: node.isCurrent
+                      ? FontWeight.bold
+                      : FontWeight.w500,
                   color: node.isCurrent
                       ? colorScheme.secondary
                       : colorScheme.onSurfaceVariant.withValues(alpha: 0.72),
@@ -304,11 +322,11 @@ class _TodoRecurrenceProgressState extends State<TodoRecurrenceProgress> {
   }
 
   String _stateLabel(TodoRecurrenceNodeState state) => switch (state) {
-        TodoRecurrenceNodeState.completed => '已完成',
-        TodoRecurrenceNodeState.overdue => '已逾期',
-        TodoRecurrenceNodeState.current => '当前周期',
-        TodoRecurrenceNodeState.pending => '待完成',
-        TodoRecurrenceNodeState.future => '未来周期',
-        TodoRecurrenceNodeState.neutral => '已跳过或重复结束',
-      };
+    TodoRecurrenceNodeState.completed => '已完成',
+    TodoRecurrenceNodeState.overdue => '已逾期',
+    TodoRecurrenceNodeState.current => '当前周期',
+    TodoRecurrenceNodeState.pending => '待完成',
+    TodoRecurrenceNodeState.future => '未来周期',
+    TodoRecurrenceNodeState.neutral => '已跳过或重复结束',
+  };
 }

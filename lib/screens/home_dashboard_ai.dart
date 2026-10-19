@@ -1,4 +1,5 @@
 part of 'home_dashboard.dart';
+
 // ignore_for_file: annotate_overrides
 
 mixin _HomeDashboardAiMixin on _HomeDashboardStateBase {
@@ -22,7 +23,9 @@ mixin _HomeDashboardAiMixin on _HomeDashboardStateBase {
 
   void _cancelQuickVoiceGesture() => _quickVoiceGesture?.release(cancel: true);
 
-  Future<void> _openQuickVoiceChat({QuickVoiceGestureController? gesture}) async {
+  Future<void> _openQuickVoiceChat({
+    QuickVoiceGestureController? gesture,
+  }) async {
     if (_openingQuickVoice) return;
     _openingQuickVoice = true;
     try {
@@ -38,15 +41,19 @@ mixin _HomeDashboardAiMixin on _HomeDashboardStateBase {
         AppSnackBars.showSnackBar(
           context,
           SnackBar(
-            content: Text(!hasChatApi
-                ? '请先配置 AI 对话模型和 API Key'
-                : '语音识别需要普通小米 MiMo API Key，请在“模型与 API 配置”中填写'),
+            content: Text(
+              !hasChatApi
+                  ? '请先配置 AI 对话模型和 API Key'
+                  : '语音识别需要普通小米 MiMo API Key，请在“模型与 API 配置”中填写',
+            ),
             action: SnackBarAction(
               label: '配置',
               onPressed: () {
                 Navigator.push(
                   context,
-                  PageTransitions.material(builder: (_) => const LLMConfigPage()),
+                  PageTransitions.material(
+                    builder: (_) => const LLMConfigPage(),
+                  ),
                 );
               },
             ),
@@ -114,8 +121,9 @@ mixin _HomeDashboardAiMixin on _HomeDashboardStateBase {
   }
 
   Future<void> _openPendingRecognitionChat() async {
-    final sessionId =
-        _pendingTodoConfirm?['recognitionChatSessionId']?.toString().trim();
+    final sessionId = _pendingTodoConfirm?['recognitionChatSessionId']
+        ?.toString()
+        .trim();
     if (sessionId != null && sessionId.isNotEmpty) {
       await ChatStorageService.setActiveSessionId(sessionId);
       if (!mounted) return;
@@ -194,14 +202,13 @@ mixin _HomeDashboardAiMixin on _HomeDashboardStateBase {
         onTodoGroupsChanged: (groups) {
           unawaited(_handleAiTodoGroupsChanged(groups));
         },
-        onTodosBatchAction: (inserted, updated) {
-          unawaited(_handleAiTodosBatchAction(inserted, updated));
-        },
+        onTodosBatchAction: _handleAiTodosBatchAction,
         onFixedSchedulesChanged: (schedules) {
           if (!mounted) return;
           setState(() {
-            _fixedSchedules =
-                schedules.where((schedule) => !schedule.isDeleted).toList();
+            _fixedSchedules = schedules
+                .where((schedule) => !schedule.isDeleted)
+                .toList();
           });
         },
       );
@@ -216,7 +223,10 @@ mixin _HomeDashboardAiMixin on _HomeDashboardStateBase {
 
   Future<void> _handleAiTodoGroupsChanged(List<TodoGroup> groups) async {
     if (!mounted) return;
-    setState(() => _todoGroups = groups.where((g) => !g.isDeleted).toList());
+    setState(() {
+      _todoGroups = groups.where((g) => !g.isDeleted).toList();
+      _todoDataRevision++;
+    });
     await StorageService.saveTodoGroups(widget.username, groups, sync: true);
   }
 
@@ -229,18 +239,36 @@ mixin _HomeDashboardAiMixin on _HomeDashboardStateBase {
       inserted,
       updated,
     );
-    if (!mounted) return;
-    setState(() => _todos = nextTodos);
     await StorageService.saveTodos(widget.username, nextTodos);
-    await _saveTodosToSharedFile(nextTodos);
-    _timelineRevision.value++;
-    _todoUpdateSignalNotifier.value++;
-    FloatWindowService.triggerReminderCheck();
-    FloatWindowService.invalidateSlotCache();
-    FloatWindowService.update();
-    _syncTodoNotification();
-    _rescheduleAlarms();
-    await WidgetService.updateTodoWidget(nextTodos);
+    if (!mounted) return;
+    setState(() {
+      _todos = nextTodos;
+      _todoDataRevision++;
+    });
+    try {
+      await _saveTodosToSharedFile(nextTodos);
+    } catch (error) {
+      debugPrint('AI todo shared-file refresh failed after save: $error');
+    }
+    try {
+      _timelineRevision.value++;
+      FloatWindowService.triggerReminderCheck();
+      FloatWindowService.invalidateSlotCache();
+      FloatWindowService.update();
+      _syncTodoNotification();
+    } catch (error) {
+      debugPrint('AI todo UI refresh failed after save: $error');
+    }
+    try {
+      await _rescheduleAlarms();
+    } catch (error) {
+      debugPrint('AI todo alarm refresh failed after save: $error');
+    }
+    try {
+      await WidgetService.updateTodoWidget(nextTodos);
+    } catch (error) {
+      debugPrint('AI todo widget refresh failed after save: $error');
+    }
   }
 
   // === 初始化与生命周期 ===

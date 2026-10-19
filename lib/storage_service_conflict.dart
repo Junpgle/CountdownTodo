@@ -1,10 +1,9 @@
 part of 'storage_service.dart';
+
 // ignore_for_file: annotate_overrides, unused_element, unused_element_parameter
 
 mixin _StorageConflict on _StorageServiceBase {
-  bool recomputeLocalTodoScheduleConflictsForTest(
-    List<TodoItem> todos,
-  ) =>
+  bool recomputeLocalTodoScheduleConflictsForTest(List<TodoItem> todos) =>
       _recomputeLocalTodoScheduleConflicts(todos);
   bool _recomputeLocalTodoScheduleConflicts(
     List<TodoItem> todos, {
@@ -31,9 +30,9 @@ mixin _StorageConflict on _StorageServiceBase {
       if (startDay != endDay) continue;
       eligibleTodos.add(todo);
 
-      buckets.putIfAbsent(startDay, () => <_TodoInterval>[]).add(
-            _TodoInterval(todo: todo, startMs: startMs, endMs: endMs),
-          );
+      buckets
+          .putIfAbsent(startDay, () => <_TodoInterval>[])
+          .add(_TodoInterval(todo: todo, startMs: startMs, endMs: endMs));
     }
 
     onProgress?.call(
@@ -82,7 +81,8 @@ mixin _StorageConflict on _StorageServiceBase {
     var changed = false;
     for (final todo in todos) {
       final existing = todo.serverVersionData;
-      final isLocalScheduleConflict = _isLocalScheduleConflict(existing);
+      final isLocalScheduleConflict =
+          ConflictVisibilityService.isLocalScheduleConflictData(existing);
       if (todo.isDeleted) {
         if (isLocalScheduleConflict || todo.hasConflict) {
           todo.hasConflict = false;
@@ -100,25 +100,12 @@ mixin _StorageConflict on _StorageServiceBase {
       }
 
       if (peers != null && peers.isNotEmpty) {
-        if (!_hasVersionConflict(existing)) {
-          final bool isTeamTodo =
-              todo.teamUuid != null && todo.teamUuid!.isNotEmpty;
-          final relationType = _classifyScheduleRelation(
-              todo, peers.cast<Map<String, dynamic>>());
-          final data = {
-            'uuid': todo.id,
-            'id': todo.id,
-            'content': todo.title,
-            'team_uuid': todo.teamUuid,
-            'schedule_scope': isTeamTodo ? 'team' : 'personal',
-            'relation_type': relationType,
-            'conflict_kind': 'logic',
-            'conflict_type': 'local_schedule_conflict',
-            'source': 'local_detector',
-            'start_time': todo.createdDate ?? todo.createdAt,
-            'end_time': todo.dueDate?.millisecondsSinceEpoch,
-            'conflict_with': peers,
-          };
+        if (!ConflictVisibilityService.isVersionConflictData(existing)) {
+          final data = ConflictVisibilityService.scheduleConflictData(
+            todo: todo,
+            peers: peers,
+            source: 'local_detector',
+          );
           if (!todo.hasConflict || jsonEncode(existing) != jsonEncode(data)) {
             todo.hasConflict = true;
             todo.serverVersionData = data;
@@ -141,7 +128,11 @@ mixin _StorageConflict on _StorageServiceBase {
   bool _clearLocalTodoScheduleConflicts(List<TodoItem> todos) {
     var changed = false;
     for (final todo in todos) {
-      if (!_isLocalScheduleConflict(todo.serverVersionData)) continue;
+      if (!ConflictVisibilityService.isLocalScheduleConflictData(
+        todo.serverVersionData,
+      )) {
+        continue;
+      }
       todo.hasConflict = false;
       todo.serverVersionData = null;
       changed = true;
@@ -163,16 +154,21 @@ mixin _StorageConflict on _StorageServiceBase {
   }
 
   String? _scheduleConflictKeyFromPayload(
-      TodoItem item, Map<String, dynamic> peer) {
+    TodoItem item,
+    Map<String, dynamic> peer,
+  ) {
     if (_isSameRecurrenceSeriesPayload(item, peer)) return null;
     final itemEnd = item.dueDate?.millisecondsSinceEpoch;
     final peerId = (peer['uuid'] ?? peer['id'] ?? '').toString();
-    final peerStart = _parseMillis(peer['start_time'] ??
-        peer['created_date'] ??
-        peer['createdDate'] ??
-        peer['created_at']);
-    final peerEnd =
-        _parseMillis(peer['end_time'] ?? peer['due_date'] ?? peer['dueDate']);
+    final peerStart = _parseMillis(
+      peer['start_time'] ??
+          peer['created_date'] ??
+          peer['createdDate'] ??
+          peer['created_at'],
+    );
+    final peerEnd = _parseMillis(
+      peer['end_time'] ?? peer['due_date'] ?? peer['dueDate'],
+    );
     if (itemEnd == null ||
         peerId.isEmpty ||
         peerStart == null ||
@@ -224,20 +220,9 @@ mixin _StorageConflict on _StorageServiceBase {
         itemSeries == peerSeries;
   }
 
-  bool _hasVersionConflict(Map<String, dynamic>? data) {
-    if (data == null || data.isEmpty) return false;
-    final type = data['conflict_type']?.toString();
-    final kind = data['conflict_kind']?.toString();
-    final source = data['source']?.toString();
-    return type == 'version_conflict' ||
-        kind == 'version' ||
-        (type != 'local_schedule_conflict' && source != 'local_detector');
-  }
-
   List<TodoItem> clearResolvedRecurrenceMigrationConflictsForTest(
     List<TodoItem> todos,
-  ) =>
-      _clearResolvedRecurrenceMigrationConflicts(todos);
+  ) => _clearResolvedRecurrenceMigrationConflicts(todos);
   List<TodoItem> _clearResolvedRecurrenceMigrationConflicts(
     List<TodoItem> todos,
   ) {
@@ -245,8 +230,12 @@ mixin _StorageConflict on _StorageServiceBase {
     for (final todo in todos) {
       if (!todo.hasConflict ||
           todo.recurrenceSeriesId?.isNotEmpty != true ||
-          !_hasVersionConflict(todo.serverVersionData) ||
-          _isLocalScheduleConflict(todo.serverVersionData)) {
+          !ConflictVisibilityService.isVersionConflictData(
+            todo.serverVersionData,
+          ) ||
+          ConflictVisibilityService.isLocalScheduleConflictData(
+            todo.serverVersionData,
+          )) {
         continue;
       }
       final server = todo.serverVersionData!;
@@ -288,7 +277,7 @@ mixin _StorageConflict on _StorageServiceBase {
 
       todo.hasConflict = false;
       todo.serverVersionData = null;
-      todo.markAsChanged();
+      todo.markRecurrenceMaintenanceChanged();
       resolved.add(todo);
     }
     return resolved;
@@ -301,7 +290,8 @@ mixin _StorageConflict on _StorageServiceBase {
 
   bool _payloadHasVersionConflict(Map<String, dynamic> data) {
     if (!_payloadHasConflict(data)) return false;
-    final rawConflictData = data['conflict_data'] ??
+    final rawConflictData =
+        data['conflict_data'] ??
         data['conflictData'] ??
         data['serverVersionData'];
     Map<String, dynamic>? conflictData;
@@ -317,17 +307,12 @@ mixin _StorageConflict on _StorageServiceBase {
     } else if (rawConflictData is Map) {
       conflictData = Map<String, dynamic>.from(rawConflictData);
     }
-    return _hasVersionConflict(conflictData);
-  }
-
-  bool _isLocalScheduleConflict(Map<String, dynamic>? data) {
-    if (data == null || data.isEmpty) return false;
-    return data['conflict_type'] == 'local_schedule_conflict' ||
-        data['source'] == 'local_detector';
+    return ConflictVisibilityService.isVersionConflictData(conflictData);
   }
 
   Map<String, dynamic> _stripClientOnlyConflictForSync(
-      Map<String, dynamic> data) {
+    Map<String, dynamic> data,
+  ) {
     final result = Map<String, dynamic>.from(data);
     final rawConflictData =
         result['conflict_data'] ?? result['serverVersionData'];
@@ -345,7 +330,7 @@ mixin _StorageConflict on _StorageServiceBase {
       conflictData = Map<String, dynamic>.from(rawConflictData);
     }
 
-    if (_isLocalScheduleConflict(conflictData)) {
+    if (ConflictVisibilityService.isLocalScheduleConflictData(conflictData)) {
       result['has_conflict'] = 0;
       result.remove('conflict_data');
       result.remove('serverVersionData');
@@ -373,8 +358,7 @@ mixin _StorageConflict on _StorageServiceBase {
   Set<String> repairMissingRemoteRecurrenceSeriesIdsForTest(
     List<TodoItem> incoming,
     List<TodoItem> local,
-  ) =>
-      _repairMissingRemoteRecurrenceSeriesIds(incoming, local);
+  ) => _repairMissingRemoteRecurrenceSeriesIds(incoming, local);
   Set<String> _repairMissingRemoteRecurrenceSeriesIds(
     List<TodoItem> incoming,
     List<TodoItem> local,
@@ -395,8 +379,10 @@ mixin _StorageConflict on _StorageServiceBase {
           remoteSeriesId == localSeriesId) {
         continue;
       }
-      final resolvedRemoteSeriesId =
-          _resolveRecurrenceSeriesAlias(remoteSeriesId, localById);
+      final resolvedRemoteSeriesId = _resolveRecurrenceSeriesAlias(
+        remoteSeriesId,
+        localById,
+      );
       if (resolvedRemoteSeriesId == localSeriesId) {
         todo.recurrenceSeriesId = localSeriesId;
         repairedIds.add(todo.id);
@@ -428,6 +414,24 @@ mixin _StorageConflict on _StorageServiceBase {
       activeBySignature.putIfAbsent(signature, () => []).add(todo);
     }
 
+    final uniqueActiveSignatures = <String>{
+      for (final entry in activeBySignature.entries)
+        if (entry.value.length == 1) entry.key,
+    };
+    Map<String, List<TodoItem>>? candidatesByActiveSignature;
+    if (uniqueActiveSignatures.length > 1) {
+      final index = <String, List<TodoItem>>{};
+      for (final candidate in candidates) {
+        if (candidate.isDeleted) continue;
+        final signature = _remoteRecurrencePlanSignature(candidate);
+        if (signature == null || !uniqueActiveSignatures.contains(signature)) {
+          continue;
+        }
+        index.putIfAbsent(signature, () => []).add(candidate);
+      }
+      candidatesByActiveSignature = index;
+    }
+
     for (final entry in activeBySignature.entries) {
       // 两个配置完全相同的活动循环无法从旧云端数据可靠区分。
       if (entry.value.length != 1) {
@@ -441,24 +445,31 @@ mixin _StorageConflict on _StorageServiceBase {
       }
 
       final anchor = entry.value.single;
-      final matching = candidates.where((candidate) {
-        if (candidate.isDeleted ||
-            _remoteRecurrencePlanSignature(candidate) != entry.key) {
-          return false;
-        }
-        final candidateSeriesId = candidate.recurrenceSeriesId;
-        final anchorSeriesId = anchor.recurrenceSeriesId;
-        if (candidateSeriesId != null &&
-            candidateSeriesId.trim().isNotEmpty &&
-            anchorSeriesId != null &&
-            anchorSeriesId.trim().isNotEmpty &&
-            candidateSeriesId != anchorSeriesId) {
-          return false;
-        }
-        return _isRemoteOccurrenceOnRecurrence(anchor, candidate);
-      }).toList()
-        ..sort((a, b) => (a.createdDate ?? a.createdAt)
-            .compareTo(b.createdDate ?? b.createdAt));
+      final matchingCandidates = candidatesByActiveSignature == null
+          ? candidates
+          : candidatesByActiveSignature[entry.key] ?? const <TodoItem>[];
+      final matching =
+          matchingCandidates.where((candidate) {
+            if (candidate.isDeleted ||
+                (candidatesByActiveSignature == null &&
+                    _remoteRecurrencePlanSignature(candidate) != entry.key)) {
+              return false;
+            }
+            final candidateSeriesId = candidate.recurrenceSeriesId;
+            final anchorSeriesId = anchor.recurrenceSeriesId;
+            if (candidateSeriesId != null &&
+                candidateSeriesId.trim().isNotEmpty &&
+                anchorSeriesId != null &&
+                anchorSeriesId.trim().isNotEmpty &&
+                candidateSeriesId != anchorSeriesId) {
+              return false;
+            }
+            return _isRemoteOccurrenceOnRecurrence(anchor, candidate);
+          }).toList()..sort(
+            (a, b) => (a.createdDate ?? a.createdAt).compareTo(
+              b.createdDate ?? b.createdAt,
+            ),
+          );
 
       final knownSeriesIds = matching
           .map((todo) => todo.recurrenceSeriesId?.trim())
@@ -520,11 +531,7 @@ mixin _StorageConflict on _StorageServiceBase {
   Set<String> repairLocalRecurrenceSeriesAliasesFromHistoryForTest(
     List<TodoItem> todos,
     Map<String, List<String>> historicalSeriesByTodoId,
-  ) =>
-      _repairLocalRecurrenceSeriesAliases(
-        todos,
-        historicalSeriesByTodoId,
-      );
+  ) => _repairLocalRecurrenceSeriesAliases(todos, historicalSeriesByTodoId);
   Future<Set<String>> _repairLocalRecurrenceSeriesAliasesFromHistory(
     Database db,
     List<TodoItem> todos,
@@ -574,10 +581,7 @@ mixin _StorageConflict on _StorageServiceBase {
         }
       }
     }
-    return _repairLocalRecurrenceSeriesAliases(
-      todos,
-      historicalSeriesByTodoId,
-    );
+    return _repairLocalRecurrenceSeriesAliases(todos, historicalSeriesByTodoId);
   }
 
   Set<String> _repairLocalRecurrenceSeriesAliases(
@@ -596,8 +600,9 @@ mixin _StorageConflict on _StorageServiceBase {
           .map((seriesId) => seriesId.trim())
           .where((seriesId) => seriesId.isNotEmpty)
           .toList();
-      final currentSeriesCount =
-          history.where((seriesId) => seriesId == currentSeriesId).length;
+      final currentSeriesCount = history
+          .where((seriesId) => seriesId == currentSeriesId)
+          .length;
       final previousSeriesCounts = <String, int>{};
       for (final seriesId in history) {
         if (seriesId == currentSeriesId) continue;
@@ -640,8 +645,10 @@ mixin _StorageConflict on _StorageServiceBase {
   String? _remoteRecurrencePlanSignature(TodoItem todo) {
     final startMs = todo.createdDate;
     if (startMs == null || startMs <= 0) return null;
-    final start =
-        DateTime.fromMillisecondsSinceEpoch(startMs, isUtc: true).toLocal();
+    final start = DateTime.fromMillisecondsSinceEpoch(
+      startMs,
+      isUtc: true,
+    ).toLocal();
     final dueMs = todo.dueDate?.millisecondsSinceEpoch;
     final durationMs = dueMs == null ? null : dueMs - startMs;
     if (durationMs != null && durationMs < 0) return null;
@@ -676,15 +683,20 @@ mixin _StorageConflict on _StorageServiceBase {
     final candidateStartMs = candidate.createdDate;
     if (ruleStartMs == null || candidateStartMs == null) return false;
 
-    final ruleStart =
-        DateTime.fromMillisecondsSinceEpoch(ruleStartMs, isUtc: true).toLocal();
+    final ruleStart = DateTime.fromMillisecondsSinceEpoch(
+      ruleStartMs,
+      isUtc: true,
+    ).toLocal();
     final candidateStart = DateTime.fromMillisecondsSinceEpoch(
       candidateStartMs,
       isUtc: true,
     ).toLocal();
     final ruleDay = DateTime(ruleStart.year, ruleStart.month, ruleStart.day);
-    final candidateDay =
-        DateTime(candidateStart.year, candidateStart.month, candidateStart.day);
+    final candidateDay = DateTime(
+      candidateStart.year,
+      candidateStart.month,
+      candidateStart.day,
+    );
     if (ruleSource.recurrence == RecurrenceType.weekdays &&
         (candidateDay.weekday == DateTime.saturday ||
             candidateDay.weekday == DateTime.sunday)) {
@@ -724,31 +736,11 @@ mixin _StorageConflict on _StorageServiceBase {
       'recurrence_series_id': interval.todo.recurrenceSeriesId,
       'schedule_scope':
           (interval.todo.teamUuid != null && interval.todo.teamUuid!.isNotEmpty)
-              ? 'team'
-              : 'personal',
+          ? 'team'
+          : 'personal',
       'start_time': interval.startMs,
       'end_time': interval.endMs,
     };
-  }
-
-  String _classifyScheduleRelation(
-      TodoItem current, List<Map<String, dynamic>> peers) {
-    final currentIsTeam =
-        current.teamUuid != null && current.teamUuid!.isNotEmpty;
-    final hasTeamPeer = peers.any((peer) {
-      final teamUuid = peer['team_uuid']?.toString();
-      return teamUuid != null && teamUuid.isNotEmpty;
-    });
-    final hasPersonalPeer = peers.any((peer) {
-      final teamUuid = peer['team_uuid']?.toString();
-      return teamUuid == null || teamUuid.isEmpty;
-    });
-
-    if ((currentIsTeam && hasPersonalPeer) || (!currentIsTeam && hasTeamPeer)) {
-      return 'personal_team';
-    }
-    if (currentIsTeam) return 'team_team';
-    return 'personal_personal';
   }
 
   String _localDayKey(int ms) {

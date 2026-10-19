@@ -16,19 +16,56 @@ import 'api_service.dart';
 import 'chat_storage_service.dart';
 import 'database_helper.dart';
 
+final RegExp _searchMessagePreviewWhitespacePattern = RegExp(r'\s+');
+final Map<(String?, String), DateFormat> _globalSearchExtraDateFormats = {};
+
+DateFormat _globalSearchExtraDateFormat(String pattern) {
+  final locale = Intl.defaultLocale;
+  return _globalSearchExtraDateFormats.putIfAbsent((
+    locale,
+    pattern,
+  ), () => DateFormat(pattern, locale));
+}
+
+class _IndexedRemoteSearchResult {
+  _IndexedRemoteSearchResult(this.result) : recordDate = _recordDateFor(result);
+
+  final SearchResult result;
+  final DateTime? recordDate;
+  late final String searchableText = _searchableTextFor(result);
+
+  static DateTime? _recordDateFor(SearchResult result) {
+    final timestamp = result.extraData?['search_timestamp'] as int?;
+    return timestamp == null
+        ? null
+        : DateTime.fromMillisecondsSinceEpoch(timestamp);
+  }
+
+  static String _searchableTextFor(SearchResult result) {
+    final fields = result.extraData?['fields'] as Map? ?? const {};
+    return [
+      result.title,
+      result.subtitle,
+      ...fields.values,
+    ].where((value) => value != null).join(' ').toLowerCase();
+  }
+}
+
 /// Search adapters for user records maintained outside the original search
 /// tables. Every result has a stable id and enough data to open a detail page.
 abstract final class GlobalSearchExtraService {
   static String? _remoteUsername;
   static DateTime? _remoteLoadedAt;
   static Future<void>? _remoteLoading;
-  static List<SearchResult> _remoteRecords = const [];
+  static List<_IndexedRemoteSearchResult> _remoteRecords =
+      const <_IndexedRemoteSearchResult>[];
 
   static String _money(int minor, String currency) =>
       '$currency ${(minor / 100).toStringAsFixed(2)}';
 
-  static String _day(int millis) => DateFormat('yyyy-MM-dd HH:mm')
-      .format(DateTime.fromMillisecondsSinceEpoch(millis));
+  static String _day(int millis) =>
+      _globalSearchExtraDateFormat('yyyy-MM-dd HH:mm')
+          .format(DateTime.fromMillisecondsSinceEpoch(millis));
 
   static bool _matches(
     List<String> terms,
@@ -43,7 +80,29 @@ abstract final class GlobalSearchExtraService {
           targetDate.day == recordDate.day;
     }
     final text = values.where((value) => value != null).join(' ').toLowerCase();
-    return terms.every((term) => text.contains(term));
+    return _matchesNormalizedTerms(terms, text);
+  }
+
+  static bool _matchesIndexedRemote(
+    List<String> terms,
+    _IndexedRemoteSearchResult record, {
+    DateTime? targetDate,
+  }) {
+    final recordDate = record.recordDate;
+    if (targetDate != null) {
+      return recordDate != null &&
+          targetDate.year == recordDate.year &&
+          targetDate.month == recordDate.month &&
+          targetDate.day == recordDate.day;
+    }
+    return _matchesNormalizedTerms(terms, record.searchableText);
+  }
+
+  static bool _matchesNormalizedTerms(List<String> terms, String text) {
+    for (final term in terms) {
+      if (!text.contains(term)) return false;
+    }
+    return true;
   }
 
   static SearchResult _result({
@@ -56,23 +115,24 @@ abstract final class GlobalSearchExtraService {
     required Map<String, String> fields,
     Object? record,
     Map<String, dynamic> data = const {},
-  }) =>
-      SearchResult(
-        id: id,
-        title: title,
-        subtitle: subtitle,
-        icon: icon,
-        type: type,
-        extraData: {
-          'detail_label': label,
-          'fields': fields,
-          'record': ?record,
-          ...data,
-        },
-      );
+  }) => SearchResult(
+    id: id,
+    title: title,
+    subtitle: subtitle,
+    icon: icon,
+    type: type,
+    extraData: {
+      'detail_label': label,
+      'fields': fields,
+      'record': ?record,
+      ...data,
+    },
+  );
 
   static Future<List<T>> _safeList<T>(
-      Future<List<T>> source, String sourceName) async {
+    Future<List<T>> source,
+    String sourceName,
+  ) async {
     try {
       return await source;
     } catch (error) {
@@ -87,75 +147,180 @@ abstract final class GlobalSearchExtraService {
     DateTime? targetDate,
     SearchScope scope = SearchScope.all,
     SearchSourceObserver? onSourceQueried,
+    bool Function()? shouldContinue,
   }) async {
+    bool canContinue() => shouldContinue?.call() != false;
+
     Future<List<SearchResult>> run(
       String name,
       Future<List<SearchResult>> Function() search,
-    ) {
+    ) async {
+      if (!canContinue()) return const <SearchResult>[];
       onSourceQueried?.call(name);
-      return search();
+      final results = await search();
+      return canContinue() ? results : const <SearchResult>[];
     }
 
+    if (!canContinue()) return const <SearchResult>[];
     final sources = await Future.wait<List<SearchResult>>([
       if (scope.includes(SearchResultType.finance))
-        run('finance', () => searchFinance(terms, targetDate)),
+        run(
+          'finance',
+          () =>
+              searchFinance(terms, targetDate, shouldContinue: shouldContinue),
+        ),
       if (scope.includes(SearchResultType.journal))
-        run('journal', () => _journal(username, terms, targetDate)),
+        run(
+          'journal',
+          () => _journal(
+            username,
+            terms,
+            targetDate,
+            shouldContinue: shouldContinue,
+          ),
+        ),
       if (scope.includesAny(const [
         SearchResultType.fixedSchedule,
         SearchResultType.planBlock,
       ]))
-        _schedule(username, terms, targetDate, scope, onSourceQueried),
+        _schedule(
+          username,
+          terms,
+          targetDate,
+          scope,
+          onSourceQueried,
+          shouldContinue: shouldContinue,
+        ),
       if (scope.includes(SearchResultType.habitCheckIn))
-        run('habitCheckIns', () => _habitCheckIns(terms, targetDate)),
+        run(
+          'habitCheckIns',
+          () =>
+              _habitCheckIns(terms, targetDate, shouldContinue: shouldContinue),
+        ),
       if (scope.includes(SearchResultType.challengeTask))
-        run('challengeTasks', () => _challengeTasks(terms, targetDate)),
+        run(
+          'challengeTasks',
+          () => _challengeTasks(
+            terms,
+            targetDate,
+            shouldContinue: shouldContinue,
+          ),
+        ),
       if (scope.includes(SearchResultType.chat))
-        run('chat', () => _chat(terms, targetDate)),
+        run(
+          'chat',
+          () => _chat(terms, targetDate, shouldContinue: shouldContinue),
+        ),
       if (scope.includes(SearchResultType.team))
-        run('teams', () => _localTeams(username, terms, targetDate)),
+        run(
+          'teams',
+          () => _localTeams(
+            username,
+            terms,
+            targetDate,
+            shouldContinue: shouldContinue,
+          ),
+        ),
     ]);
+    if (!canContinue()) return const <SearchResult>[];
     final records = sources.expand((source) => source).toList();
     if (_remoteUsername == username) {
       records.addAll(
-        _remoteRecords.where((record) {
-          if (!scope.includes(record.type)) return false;
-          final data = record.extraData ?? const {};
-          final fields = data['fields'] as Map? ?? const {};
-          final timestamp = data['search_timestamp'] as int?;
-          return _matches(
-            terms,
-            [record.title, record.subtitle, ...fields.values],
-            targetDate: targetDate,
-            recordDate: timestamp == null
-                ? null
-                : DateTime.fromMillisecondsSinceEpoch(timestamp),
-          );
-        }),
+        _remoteRecords
+            .where((record) {
+              return scope.includes(record.result.type) &&
+                  _matchesIndexedRemote(terms, record, targetDate: targetDate);
+            })
+            .map((record) => record.result),
       );
     }
     return records.where((record) => scope.includes(record.type)).toList();
   }
 
   static Future<List<SearchResult>> searchFinance(
-      List<String> terms, DateTime? date) async {
+    List<String> terms,
+    DateTime? date, {
+    bool Function()? shouldContinue,
+  }) async {
     final results = <SearchResult>[];
+    if (shouldContinue?.call() == false) return results;
     try {
+      final transactionFrom = date == null
+          ? null
+          : DateTime(date.year, date.month, date.day);
+      final transactionTo = transactionFrom == null
+          ? null
+          : DateTime(
+              transactionFrom.year,
+              transactionFrom.month,
+              transactionFrom.day + 1,
+            );
+      final budgetMonth = date == null
+          ? null
+          : _globalSearchExtraDateFormat('yyyy-MM').format(date);
+      final installmentFromDate = transactionFrom == null
+          ? null
+          : _globalSearchExtraDateFormat('yyyy-MM-dd').format(transactionFrom);
+      final installmentToDate = transactionTo == null
+          ? null
+          : _globalSearchExtraDateFormat('yyyy-MM-dd').format(transactionTo);
+      final templatesFuture = date == null
+          ? FinanceRepository.getTemplates()
+          : Future.value(const <FinanceEntryTemplate>[]);
       final values = await Future.wait<dynamic>([
-        _safeList(FinanceRepository.getCategories(includeArchived: true),
-            'Finance categories'),
-        _safeList(FinanceRepository.getPaymentMethods(includeArchived: true),
-            'Finance payment methods'),
-        _safeList(FinanceRepository.getTransactions(), 'Finance transactions'),
-        _safeList(FinanceRepository.getBudgets(), 'Finance budgets'),
+        _safeList(
+          FinanceRepository.getCategories(includeArchived: true),
+          'Finance categories',
+        ),
+        _safeList(
+          FinanceRepository.getPaymentMethods(includeArchived: true),
+          'Finance payment methods',
+        ),
+        _safeList(
+          FinanceRepository.getTransactions(
+            from: transactionFrom,
+            to: transactionTo,
+          ),
+          'Finance transactions',
+        ),
+        _safeList(
+          FinanceRepository.getBudgets(monthKey: budgetMonth),
+          'Finance budgets',
+        ),
         _safeList(FinanceRepository.getRecurringRules(), 'Finance rules'),
-        _safeList(FinanceRepository.getTemplates(), 'Finance templates'),
+        _safeList(templatesFuture, 'Finance templates'),
         _safeList(FinanceRepository.getLoans(), 'Finance loans'),
       ]);
+      if (shouldContinue?.call() == false) return results;
       final categories = values[0] as List<FinanceCategory>;
       final payments = values[1] as List<FinancePaymentMethod>;
+      final loans = values[6] as List<FinanceLoan>;
       final categoryById = {for (final item in categories) item.uuid: item};
       final paymentById = {for (final item in payments) item.uuid: item};
+      var installmentsByLoan = <String, List<FinanceLoanInstallment>>{};
+      if (loans.isNotEmpty) {
+        try {
+          installmentsByLoan =
+              await FinanceRepository.getLoanInstallmentsForActiveLoans(
+                fromDueDate: installmentFromDate,
+                toDueDate: installmentToDate,
+              );
+          if (shouldContinue?.call() == false) return results;
+        } catch (error) {
+          debugPrint('Finance loan installment batch search failed: $error');
+          for (final loan in loans) {
+            if (shouldContinue?.call() == false) return results;
+            installmentsByLoan[loan.uuid] = await _safeList(
+              FinanceRepository.getLoanInstallments(
+                loan.uuid,
+                fromDueDate: installmentFromDate,
+                toDueDate: installmentToDate,
+              ),
+              'Finance loan installments',
+            );
+          }
+        }
+      }
 
       for (final item in values[2] as List<FinanceTransaction>) {
         final category = categoryById[item.categoryUuid];
@@ -165,215 +330,244 @@ abstract final class GlobalSearchExtraService {
             : category?.name ?? item.type.label;
         final amount = _money(item.amountMinor, item.currencyCode);
         if (!_matches(
-            terms,
-            [
-              title,
-              item.note,
-              category?.name,
-              payment?.name,
-              item.transactionDate,
-              amount,
-              item.type.label
-            ],
-            targetDate: date,
-            recordDate: DateTime.tryParse(item.transactionDate))) {
+          terms,
+          [
+            title,
+            item.note,
+            category?.name,
+            payment?.name,
+            item.transactionDate,
+            amount,
+            item.type.label,
+          ],
+          targetDate: date,
+          recordDate: DateTime.tryParse(item.transactionDate),
+        )) {
           continue;
         }
-        results.add(_result(
-          id: 'finance_transaction_${item.uuid}',
-          title: title,
-          subtitle: '${item.type.label} · $amount · ${item.transactionDate}',
-          icon: Icons.receipt_long_rounded,
-          type: SearchResultType.finance,
-          label: '账单详情',
-          record: item,
-          data: {'finance_category': category, 'finance_payment': payment},
-          fields: {
-            '金额': amount,
-            '日期': item.transactionDate,
-            '分类': category?.name ?? '未分类',
-            '付款方式': payment?.name ?? '未指定',
-            '备注': item.note ?? '',
-          },
-        ));
+        results.add(
+          _result(
+            id: 'finance_transaction_${item.uuid}',
+            title: title,
+            subtitle: '${item.type.label} · $amount · ${item.transactionDate}',
+            icon: Icons.receipt_long_rounded,
+            type: SearchResultType.finance,
+            label: '账单详情',
+            record: item,
+            data: {'finance_category': category, 'finance_payment': payment},
+            fields: {
+              '金额': amount,
+              '日期': item.transactionDate,
+              '分类': category?.name ?? '未分类',
+              '付款方式': payment?.name ?? '未指定',
+              '备注': item.note ?? '',
+            },
+          ),
+        );
       }
 
       for (final item in categories) {
-        if (!_matches(terms, [item.name, item.type.label, '记账分类', '分类'],
-            targetDate: date)) {
+        if (!_matches(terms, [
+          item.name,
+          item.type.label,
+          '记账分类',
+          '分类',
+        ], targetDate: date)) {
           continue;
         }
-        results.add(_result(
-          id: 'finance_category_${item.uuid}',
-          title: item.name,
-          subtitle:
-              '记账分类 · ${item.type.label}${item.isArchived ? ' · 已归档' : ''}',
-          icon: Icons.category_outlined,
-          type: SearchResultType.finance,
-          label: '记账分类',
-          fields: {
-            '名称': item.name,
-            '类型': item.type.label,
-            '状态': item.isArchived ? '已归档' : '使用中'
-          },
-        ));
+        results.add(
+          _result(
+            id: 'finance_category_${item.uuid}',
+            title: item.name,
+            subtitle:
+                '记账分类 · ${item.type.label}${item.isArchived ? ' · 已归档' : ''}',
+            icon: Icons.category_outlined,
+            type: SearchResultType.finance,
+            label: '记账分类',
+            fields: {
+              '名称': item.name,
+              '类型': item.type.label,
+              '状态': item.isArchived ? '已归档' : '使用中',
+            },
+          ),
+        );
       }
       for (final item in payments) {
         if (!_matches(terms, [item.name, '付款方式'], targetDate: date)) {
           continue;
         }
-        results.add(_result(
-          id: 'finance_payment_${item.uuid}',
-          title: item.name,
-          subtitle: '付款方式${item.isArchived ? ' · 已归档' : ''}',
-          icon: Icons.account_balance_wallet_outlined,
-          type: SearchResultType.finance,
-          label: '付款方式',
-          fields: {'名称': item.name, '状态': item.isArchived ? '已归档' : '使用中'},
-        ));
+        results.add(
+          _result(
+            id: 'finance_payment_${item.uuid}',
+            title: item.name,
+            subtitle: '付款方式${item.isArchived ? ' · 已归档' : ''}',
+            icon: Icons.account_balance_wallet_outlined,
+            type: SearchResultType.finance,
+            label: '付款方式',
+            fields: {'名称': item.name, '状态': item.isArchived ? '已归档' : '使用中'},
+          ),
+        );
       }
       for (final item in values[3] as List<FinanceBudget>) {
-        final scope = categoryById[item.categoryUuid]?.name ??
+        final scope =
+            categoryById[item.categoryUuid]?.name ??
             paymentById[item.paymentMethodUuid]?.name ??
             '总预算';
         final amount = _money(item.amountMinor, item.currencyCode);
-        final matchesMonth =
-            date != null && item.monthKey == DateFormat('yyyy-MM').format(date);
+        final matchesMonth = date != null && item.monthKey == budgetMonth;
         if (date != null
             ? !matchesMonth
-            : !_matches(
-                terms, [scope, item.note, item.monthKey, amount, '预算'])) {
+            : !_matches(terms, [
+                scope,
+                item.note,
+                item.monthKey,
+                amount,
+                '预算',
+              ])) {
           continue;
         }
-        results.add(_result(
-          id: 'finance_budget_${item.uuid}',
-          title: '$scope预算',
-          subtitle: '${item.monthKey} · $amount',
-          icon: Icons.savings_outlined,
-          type: SearchResultType.finance,
-          label: '预算',
-          record: item,
-          fields: {
-            '月份': item.monthKey,
-            '范围': scope,
-            '金额': amount,
-            '备注': item.note ?? ''
-          },
-        ));
+        results.add(
+          _result(
+            id: 'finance_budget_${item.uuid}',
+            title: '$scope预算',
+            subtitle: '${item.monthKey} · $amount',
+            icon: Icons.savings_outlined,
+            type: SearchResultType.finance,
+            label: '预算',
+            record: item,
+            fields: {
+              '月份': item.monthKey,
+              '范围': scope,
+              '金额': amount,
+              '备注': item.note ?? '',
+            },
+          ),
+        );
       }
       for (final item in values[4] as List<FinanceRecurringRule>) {
         final amount = _money(item.amountMinor, item.currencyCode);
         if (!_matches(
-            terms,
-            [
-              item.name,
-              item.merchant,
-              item.note,
-              categoryById[item.categoryUuid]?.name,
-              amount,
-              '周期账单',
-              '自动记账'
-            ],
-            targetDate: date,
-            recordDate: DateTime.tryParse(item.startDate))) {
+          terms,
+          [
+            item.name,
+            item.merchant,
+            item.note,
+            categoryById[item.categoryUuid]?.name,
+            amount,
+            '周期账单',
+            '自动记账',
+          ],
+          targetDate: date,
+          recordDate: DateTime.tryParse(item.startDate),
+        )) {
           continue;
         }
-        results.add(_result(
-          id: 'finance_rule_${item.uuid}',
-          title: item.name,
-          subtitle: '周期账单 · $amount',
-          icon: Icons.event_repeat_rounded,
-          type: SearchResultType.finance,
-          label: '周期账单',
-          fields: {
-            '金额': amount,
-            '开始日期': item.startDate,
-            '结束日期': item.endDate ?? '',
-            '商家': item.merchant ?? '',
-            '备注': item.note ?? '',
-            '状态': item.isEnabled ? '启用' : '停用'
-          },
-        ));
+        results.add(
+          _result(
+            id: 'finance_rule_${item.uuid}',
+            title: item.name,
+            subtitle: '周期账单 · $amount',
+            icon: Icons.event_repeat_rounded,
+            type: SearchResultType.finance,
+            label: '周期账单',
+            fields: {
+              '金额': amount,
+              '开始日期': item.startDate,
+              '结束日期': item.endDate ?? '',
+              '商家': item.merchant ?? '',
+              '备注': item.note ?? '',
+              '状态': item.isEnabled ? '启用' : '停用',
+            },
+          ),
+        );
       }
       for (final item in values[5] as List<FinanceEntryTemplate>) {
         final amount = _money(item.amountMinor, item.currencyCode);
-        if (!_matches(
-            terms,
-            [
-              item.name,
-              item.merchant,
-              item.note,
-              categoryById[item.categoryUuid]?.name,
-              amount,
-              '记账模板'
-            ],
-            targetDate: date)) {
+        if (!_matches(terms, [
+          item.name,
+          item.merchant,
+          item.note,
+          categoryById[item.categoryUuid]?.name,
+          amount,
+          '记账模板',
+        ], targetDate: date)) {
           continue;
         }
-        results.add(_result(
-          id: 'finance_template_${item.uuid}',
-          title: item.name,
-          subtitle: '记账模板 · $amount',
-          icon: Icons.bookmark_outline,
-          type: SearchResultType.finance,
-          label: '记账模板',
-          fields: {
-            '金额': amount,
-            '商家': item.merchant ?? '',
-            '备注': item.note ?? '',
-            '使用次数': '${item.useCount}'
-          },
-        ));
-      }
-      for (final loan in values[6] as List<FinanceLoan>) {
-        final amount = _money(loan.principalMinor, loan.currencyCode);
-        if (_matches(terms, [loan.name, loan.lender, loan.note, amount, '借款'],
-            targetDate: date, recordDate: DateTime.tryParse(loan.startDate))) {
-          results.add(_result(
-            id: 'finance_loan_${loan.uuid}',
-            title: loan.name,
-            subtitle: '借款 · $amount',
-            icon: Icons.account_balance_outlined,
+        results.add(
+          _result(
+            id: 'finance_template_${item.uuid}',
+            title: item.name,
+            subtitle: '记账模板 · $amount',
+            icon: Icons.bookmark_outline,
             type: SearchResultType.finance,
-            label: '借款',
-            record: loan,
+            label: '记账模板',
             fields: {
-              '本金': amount,
-              '借款方': loan.lender ?? '',
-              '开始日期': loan.startDate,
-              '备注': loan.note ?? ''
+              '金额': amount,
+              '商家': item.merchant ?? '',
+              '备注': item.note ?? '',
+              '使用次数': '${item.useCount}',
             },
-          ));
+          ),
+        );
+      }
+      for (final loan in loans) {
+        final amount = _money(loan.principalMinor, loan.currencyCode);
+        if (_matches(
+          terms,
+          [loan.name, loan.lender, loan.note, amount, '借款'],
+          targetDate: date,
+          recordDate: DateTime.tryParse(loan.startDate),
+        )) {
+          results.add(
+            _result(
+              id: 'finance_loan_${loan.uuid}',
+              title: loan.name,
+              subtitle: '借款 · $amount',
+              icon: Icons.account_balance_outlined,
+              type: SearchResultType.finance,
+              label: '借款',
+              record: loan,
+              fields: {
+                '本金': amount,
+                '借款方': loan.lender ?? '',
+                '开始日期': loan.startDate,
+                '备注': loan.note ?? '',
+              },
+            ),
+          );
         }
-        for (final installment in await _safeList(
-            FinanceRepository.getLoanInstallments(loan.uuid),
-            'Finance loan installments')) {
+        for (final installment
+            in installmentsByLoan[loan.uuid] ??
+                const <FinanceLoanInstallment>[]) {
           if (!_matches(
-              terms,
-              [
-                loan.name,
-                loan.lender,
-                installment.dueDate,
-                '还款',
-                '${installment.installmentIndex}'
-              ],
-              targetDate: date,
-              recordDate: DateTime.tryParse(installment.dueDate))) {
+            terms,
+            [
+              loan.name,
+              loan.lender,
+              installment.dueDate,
+              '还款',
+              '${installment.installmentIndex}',
+            ],
+            targetDate: date,
+            recordDate: DateTime.tryParse(installment.dueDate),
+          )) {
             continue;
           }
-          results.add(_result(
-            id: 'finance_installment_${installment.uuid}',
-            title: '${loan.name} · 第${installment.installmentIndex}期',
-            subtitle: '还款 · ${installment.dueDate}',
-            icon: Icons.payments_outlined,
-            type: SearchResultType.finance,
-            label: '还款计划',
-            fields: {
-              '到期日': installment.dueDate,
-              '应还': _money(installment.paymentMinor, loan.currencyCode),
-              '状态': installment.isPaid ? '已还' : '未还'
-            },
-          ));
+          results.add(
+            _result(
+              id: 'finance_installment_${installment.uuid}',
+              title: '${loan.name} · 第${installment.installmentIndex}期',
+              subtitle: '还款 · ${installment.dueDate}',
+              icon: Icons.payments_outlined,
+              type: SearchResultType.finance,
+              label: '还款计划',
+              fields: {
+                '到期日': installment.dueDate,
+                '应还': _money(installment.paymentMinor, loan.currencyCode),
+                '状态': installment.isPaid ? '已还' : '未还',
+              },
+            ),
+          );
         }
       }
     } catch (error) {
@@ -383,39 +577,66 @@ abstract final class GlobalSearchExtraService {
   }
 
   static Future<List<SearchResult>> _journal(
-      String username, List<String> terms, DateTime? date) async {
+    String username,
+    List<String> terms,
+    DateTime? date, {
+    bool Function()? shouldContinue,
+  }) async {
     final results = <SearchResult>[];
     try {
       const pageSize = 40;
-      final contentTerm =
-          terms.where((term) => term != '日记' && term != '私密日记').firstOrNull;
+      final contentTerms = date == null
+          ? terms
+                .where(
+                  (term) => term.isNotEmpty && term != '日记' && term != '私密日记',
+                )
+                .toSet()
+                .toList(growable: false)
+          : const <String>[];
+      final contentTerm = contentTerms.firstOrNull;
+      final additionalContentTerms = contentTerm == null
+          ? const <String>[]
+          : contentTerms.skip(1).toList(growable: false);
       var offset = 0;
       while (true) {
+        if (shouldContinue?.call() == false) return results;
         final page = await JournalStorage.instance.loadEntries(
           accountId: username,
           limit: pageSize,
           offset: offset,
-          searchQuery: date == null ? contentTerm : null,
+          searchQuery: contentTerm,
+          searchTerms: additionalContentTerms,
+          occurredOn: date,
         );
+        if (shouldContinue?.call() == false) return results;
         for (final item in page) {
-          if (!_matches(terms, [item.title, item.content, '日记 私密日记'],
-              targetDate: date, recordDate: item.occurredAt)) {
+          if (!_matches(
+            terms,
+            [item.title, item.content, '日记 私密日记'],
+            targetDate: date,
+            recordDate: item.occurredAt,
+          )) {
             continue;
           }
-          results.add(_result(
-            id: 'journal_${item.id}',
-            title:
-                item.title?.trim().isNotEmpty == true ? item.title! : '未命名日记',
-            subtitle: DateFormat('yyyy-MM-dd').format(item.occurredAt),
-            icon: Icons.auto_stories_outlined,
-            type: SearchResultType.journal,
-            label: '私密日记',
-            record: item,
-            fields: {
-              '日期': DateFormat('yyyy-MM-dd').format(item.occurredAt),
-              '正文': item.content
-            },
-          ));
+          results.add(
+            _result(
+              id: 'journal_${item.id}',
+              title: item.title?.trim().isNotEmpty == true
+                  ? item.title!
+                  : '未命名日记',
+              subtitle: _globalSearchExtraDateFormat('yyyy-MM-dd')
+                  .format(item.occurredAt),
+              icon: Icons.auto_stories_outlined,
+              type: SearchResultType.journal,
+              label: '私密日记',
+              record: item,
+              fields: {
+                '日期': _globalSearchExtraDateFormat('yyyy-MM-dd')
+                    .format(item.occurredAt),
+                '正文': item.content,
+              },
+            ),
+          );
         }
         if (page.length < pageSize) break;
         offset += pageSize;
@@ -431,13 +652,18 @@ abstract final class GlobalSearchExtraService {
     List<String> terms,
     DateTime? date,
     SearchScope scope,
-    SearchSourceObserver? onSourceQueried,
-  ) async {
+    SearchSourceObserver? onSourceQueried, {
+    bool Function()? shouldContinue,
+  }) async {
     final results = <SearchResult>[];
     try {
       if (scope.includes(SearchResultType.fixedSchedule)) {
+        if (shouldContinue?.call() == false) return results;
         onSourceQueried?.call('fixedSchedules');
-        final schedules = await StorageService.getFixedSchedules(username);
+        final schedules = date == null
+            ? await StorageService.getFixedSchedules(username)
+            : await StorageService.getFixedSchedulesByDay(username, date);
+        if (shouldContinue?.call() == false) return results;
         for (final item in schedules) {
           if (item.isDeleted ||
               !_matches(
@@ -468,8 +694,12 @@ abstract final class GlobalSearchExtraService {
         }
       }
       if (scope.includes(SearchResultType.planBlock)) {
+        if (shouldContinue?.call() == false) return results;
         onSourceQueried?.call('planBlocks');
-        final blocks = await StorageService.getPlanBlocks(username);
+        final blocks = date == null
+            ? await StorageService.getPlanBlocks(username)
+            : await StorageService.getPlanBlocksByDay(username, date);
+        if (shouldContinue?.call() == false) return results;
         for (final item in blocks) {
           if (item.isDeleted) continue;
           final start = DateTime.fromMillisecondsSinceEpoch(item.startTime);
@@ -510,36 +740,51 @@ abstract final class GlobalSearchExtraService {
   }
 
   static Future<List<SearchResult>> _habitCheckIns(
-      List<String> terms, DateTime? date) async {
+    List<String> terms,
+    DateTime? date, {
+    bool Function()? shouldContinue,
+  }) async {
     final results = <SearchResult>[];
     try {
       final goals = await HabitRepository.getGoals();
+      if (shouldContinue?.call() == false) return results;
       final names = {for (final goal in goals) goal.uuid: goal.name};
-      final checkIns = await HabitRepository.getCheckIns();
+      final dateKey = date == null
+          ? null
+          : _globalSearchExtraDateFormat('yyyy-MM-dd').format(date);
+      final checkIns = await HabitRepository.getCheckIns(
+        fromDate: dateKey,
+        toDate: dateKey,
+      );
+      if (shouldContinue?.call() == false) return results;
       for (final item in checkIns) {
         if (item.isDeleted) continue;
         final name = names[item.habitUuid] ?? '习惯';
         if (!_matches(
-            terms, [name, item.note, item.logicalDate, '${item.value}'],
-            targetDate: date,
-            recordDate: DateTime.tryParse(item.logicalDate))) {
+          terms,
+          [name, item.note, item.logicalDate, '${item.value}'],
+          targetDate: date,
+          recordDate: DateTime.tryParse(item.logicalDate),
+        )) {
           continue;
         }
-        results.add(_result(
-          id: 'habit_checkin_${item.uuid}',
-          title: '$name · 打卡',
-          subtitle: '${item.logicalDate} · ${item.value}',
-          icon: Icons.task_alt_rounded,
-          type: SearchResultType.habitCheckIn,
-          label: '习惯打卡',
-          fields: {
-            '习惯': name,
-            '日期': item.logicalDate,
-            '数值': '${item.value}',
-            '备注': item.note ?? ''
-          },
-          data: {'habit_uuid': item.habitUuid},
-        ));
+        results.add(
+          _result(
+            id: 'habit_checkin_${item.uuid}',
+            title: '$name · 打卡',
+            subtitle: '${item.logicalDate} · ${item.value}',
+            icon: Icons.task_alt_rounded,
+            type: SearchResultType.habitCheckIn,
+            label: '习惯打卡',
+            fields: {
+              '习惯': name,
+              '日期': item.logicalDate,
+              '数值': '${item.value}',
+              '备注': item.note ?? '',
+            },
+            data: {'habit_uuid': item.habitUuid},
+          ),
+        );
       }
     } catch (error) {
       debugPrint('Habit check-in global search failed: $error');
@@ -548,33 +793,45 @@ abstract final class GlobalSearchExtraService {
   }
 
   static Future<List<SearchResult>> _challengeTasks(
-      List<String> terms, DateTime? date) async {
+    List<String> terms,
+    DateTime? date, {
+    bool Function()? shouldContinue,
+  }) async {
     final results = <SearchResult>[];
     try {
       if (!await ThirtyDayChallengeRepository.hasStarted()) return results;
+      if (shouldContinue?.call() == false) return results;
       final state = await ThirtyDayChallengeRepository.load();
+      if (shouldContinue?.call() == false) return results;
       for (final task in state.tasks) {
-        if (!_matches(terms, [state.challengeTitle, task.title, task.feeling],
-            targetDate: date, recordDate: task.completedAt)) {
+        if (!_matches(
+          terms,
+          [state.challengeTitle, task.title, task.feeling],
+          targetDate: date,
+          recordDate: task.completedAt,
+        )) {
           continue;
         }
-        results.add(_result(
-          id: 'challenge_task_${task.id}',
-          title: task.title,
-          subtitle:
-              '${state.challengeTitle} · ${task.isCompleted ? '已完成' : '未完成'}',
-          icon: Icons.auto_awesome_outlined,
-          type: SearchResultType.challengeTask,
-          label: '挑战任务',
-          fields: {
-            '挑战': state.challengeTitle,
-            '状态': task.isCompleted ? '已完成' : '未完成',
-            '完成时间': task.completedAt == null
-                ? ''
-                : DateFormat('yyyy-MM-dd HH:mm').format(task.completedAt!),
-            '感受记录': task.feeling
-          },
-        ));
+        results.add(
+          _result(
+            id: 'challenge_task_${task.id}',
+            title: task.title,
+            subtitle:
+                '${state.challengeTitle} · ${task.isCompleted ? '已完成' : '未完成'}',
+            icon: Icons.auto_awesome_outlined,
+            type: SearchResultType.challengeTask,
+            label: '挑战任务',
+            fields: {
+              '挑战': state.challengeTitle,
+              '状态': task.isCompleted ? '已完成' : '未完成',
+              '完成时间': task.completedAt == null
+                  ? ''
+                  : _globalSearchExtraDateFormat('yyyy-MM-dd HH:mm')
+                        .format(task.completedAt!),
+              '感受记录': task.feeling,
+            },
+          ),
+        );
       }
     } catch (error) {
       debugPrint('Challenge task global search failed: $error');
@@ -583,54 +840,82 @@ abstract final class GlobalSearchExtraService {
   }
 
   static Future<List<SearchResult>> _chat(
-      List<String> terms, DateTime? date) async {
+    List<String> terms,
+    DateTime? date, {
+    bool Function()? shouldContinue,
+  }) async {
     final results = <SearchResult>[];
     try {
       final sessions = await ChatStorageService.loadSessions();
+      if (shouldContinue?.call() == false) return results;
       for (final session in sessions) {
+        if (shouldContinue?.call() == false) return results;
         final history = await _safeList(
-            ChatStorageService.loadHistory(session.id), 'AI chat history');
-        if (_matches(terms, [session.title, 'AI 对话'],
-            targetDate: date, recordDate: session.updatedAt)) {
-          results.add(_result(
-            id: 'chat_session_${session.id}',
-            title: session.title,
-            subtitle:
-                'AI 历史对话 · ${DateFormat('yyyy-MM-dd').format(session.updatedAt)}',
-            icon: Icons.chat_bubble_outline_rounded,
-            type: SearchResultType.chat,
-            label: 'AI 历史对话',
-            fields: {
-              '会话标题': session.title,
-              '更新时间': DateFormat('yyyy-MM-dd HH:mm').format(session.updatedAt),
-              '对话内容': history
-                  .map((message) => '${message.role.name}: ${message.content}')
-                  .join('\n\n'),
-            },
-            data: {'chat_session_id': session.id},
-          ));
+          ChatStorageService.loadHistory(session.id),
+          'AI chat history',
+        );
+        if (shouldContinue?.call() == false) return results;
+        if (_matches(
+          terms,
+          [session.title, 'AI 对话'],
+          targetDate: date,
+          recordDate: session.updatedAt,
+        )) {
+          results.add(
+            _result(
+              id: 'chat_session_${session.id}',
+              title: session.title,
+              subtitle:
+                  'AI 历史对话 · ${_globalSearchExtraDateFormat('yyyy-MM-dd').format(session.updatedAt)}',
+              icon: Icons.chat_bubble_outline_rounded,
+              type: SearchResultType.chat,
+              label: 'AI 历史对话',
+              fields: {
+                '会话标题': session.title,
+                '更新时间': _globalSearchExtraDateFormat('yyyy-MM-dd HH:mm')
+                    .format(session.updatedAt),
+                '对话内容': history
+                    .map(
+                      (message) => '${message.role.name}: ${message.content}',
+                    )
+                    .join('\n\n'),
+              },
+              data: {'chat_session_id': session.id},
+            ),
+          );
         }
         for (final message in history) {
-          if (!_matches(terms, [session.title, message.content],
-              targetDate: date, recordDate: message.timestamp)) {
+          if (!_matches(
+            terms,
+            [session.title, message.content],
+            targetDate: date,
+            recordDate: message.timestamp,
+          )) {
             continue;
           }
-          final preview = message.content.replaceAll(RegExp(r'\s+'), ' ');
-          results.add(_result(
-            id: 'chat_message_${session.id}_${message.id}',
-            title: session.title,
-            subtitle:
-                preview.length > 90 ? '${preview.substring(0, 90)}…' : preview,
-            icon: Icons.forum_outlined,
-            type: SearchResultType.chat,
-            label: 'AI 对话消息',
-            fields: {
-              '会话': session.title,
-              '时间': DateFormat('yyyy-MM-dd HH:mm').format(message.timestamp),
-              '内容': message.content
-            },
-            data: {'chat_session_id': session.id},
-          ));
+          final preview = message.content.replaceAll(
+            _searchMessagePreviewWhitespacePattern,
+            ' ',
+          );
+          results.add(
+            _result(
+              id: 'chat_message_${session.id}_${message.id}',
+              title: session.title,
+              subtitle: preview.length > 90
+                  ? '${preview.substring(0, 90)}…'
+                  : preview,
+              icon: Icons.forum_outlined,
+              type: SearchResultType.chat,
+              label: 'AI 对话消息',
+              fields: {
+                '会话': session.title,
+                '时间': _globalSearchExtraDateFormat('yyyy-MM-dd HH:mm')
+                    .format(message.timestamp),
+                '内容': message.content,
+              },
+              data: {'chat_session_id': session.id},
+            ),
+          );
         }
       }
     } catch (error) {
@@ -640,28 +925,38 @@ abstract final class GlobalSearchExtraService {
   }
 
   static Future<List<SearchResult>> _localTeams(
-      String username, List<String> terms, DateTime? date) async {
+    String username,
+    List<String> terms,
+    DateTime? date, {
+    bool Function()? shouldContinue,
+  }) async {
     final results = <SearchResult>[];
     try {
       final db = await DatabaseHelper.instance.databaseForUser(username);
       final rows = await db.query('teams');
+      if (shouldContinue?.call() == false) return results;
       for (final row in rows) {
         final team = Team.fromJson(row);
-        if (!_matches(terms, [team.name],
-            targetDate: date,
-            recordDate: DateTime.fromMillisecondsSinceEpoch(team.createdAt))) {
+        if (!_matches(
+          terms,
+          [team.name],
+          targetDate: date,
+          recordDate: DateTime.fromMillisecondsSinceEpoch(team.createdAt),
+        )) {
           continue;
         }
-        results.add(_result(
-          id: 'team_${team.uuid}',
-          title: team.name,
-          subtitle: '团队 · ${team.memberCount} 位成员',
-          icon: Icons.groups_rounded,
-          type: SearchResultType.team,
-          label: '团队',
-          fields: {'团队名称': team.name, '成员数': '${team.memberCount}'},
-          data: {'team_uuid': team.uuid},
-        ));
+        results.add(
+          _result(
+            id: 'team_${team.uuid}',
+            title: team.name,
+            subtitle: '团队 · ${team.memberCount} 位成员',
+            icon: Icons.groups_rounded,
+            type: SearchResultType.team,
+            label: '团队',
+            fields: {'团队名称': team.name, '成员数': '${team.memberCount}'},
+            data: {'team_uuid': team.uuid},
+          ),
+        );
       }
     } catch (error) {
       debugPrint('Local team global search failed: $error');
@@ -672,14 +967,15 @@ abstract final class GlobalSearchExtraService {
   /// Remote catalogs are loaded once per search opening. Local records remain
   /// searchable immediately; the overlay refreshes when this future finishes.
   static Future<void> warmupRemote(String username) {
-    final fresh = _remoteUsername == username &&
+    final fresh =
+        _remoteUsername == username &&
         _remoteLoadedAt != null &&
         DateTime.now().difference(_remoteLoadedAt!) <
             const Duration(minutes: 5);
     if (fresh) return Future.value();
     if (_remoteUsername != username) {
       _remoteUsername = username;
-      _remoteRecords = const [];
+      _remoteRecords = const <_IndexedRemoteSearchResult>[];
       _remoteLoading = null;
     }
     if (_remoteLoading != null) return _remoteLoading!;
@@ -710,19 +1006,21 @@ abstract final class GlobalSearchExtraService {
       final catalog = await cloud.loadCatalogForSearch();
       remoteSourceAvailable = true;
       for (final template in catalog.challenges) {
-        records.add(_result(
-          id: 'challenge_template_${template.id}',
-          title: template.title,
-          subtitle: '云端挑战模板 · ${template.description}',
-          icon: Icons.auto_awesome_motion_rounded,
-          type: SearchResultType.challengeTemplate,
-          label: '挑战模板',
-          fields: {
-            '简介': template.description,
-            '标签': template.tags.join('、'),
-            '任务': template.tasks.join('\n')
-          },
-        ));
+        records.add(
+          _result(
+            id: 'challenge_template_${template.id}',
+            title: template.title,
+            subtitle: '云端挑战模板 · ${template.description}',
+            icon: Icons.auto_awesome_motion_rounded,
+            type: SearchResultType.challengeTemplate,
+            label: '挑战模板',
+            fields: {
+              '简介': template.description,
+              '标签': template.tags.join('、'),
+              '任务': template.tasks.join('\n'),
+            },
+          ),
+        );
       }
     } catch (error) {
       debugPrint('Challenge catalog search warmup failed: $error');
@@ -738,83 +1036,103 @@ abstract final class GlobalSearchExtraService {
           .map((raw) => Team.fromJson(Map<String, dynamic>.from(raw)))
           .toList();
       for (final team in teams) {
-        records.add(_result(
-          id: 'team_${team.uuid}',
-          title: team.name,
-          subtitle: '团队 · ${team.memberCount} 位成员',
-          icon: Icons.groups_rounded,
-          type: SearchResultType.team,
-          label: '团队',
-          fields: {'团队名称': team.name, '成员数': '${team.memberCount}'},
-          data: {'team_uuid': team.uuid},
-        ));
-      }
-      final grouped = await Future.wait(teams.map((team) async {
-        final values = await Future.wait<dynamic>([
-          ApiService.fetchTeamAnnouncements(team.uuid)
-              .timeout(const Duration(seconds: 4), onTimeout: () => []),
-          _fetchAllTeamSystemMessages(team.uuid),
-        ]);
-        final entries = <SearchResult>[];
-        for (final raw in values[0] as List<dynamic>) {
-          if (raw is! Map) continue;
-          final item =
-              TeamAnnouncement.fromJson(Map<String, dynamic>.from(raw));
-          entries.add(_result(
-            id: 'team_announcement_${item.uuid}',
-            title: item.title,
-            subtitle: '${team.name} · 团队公告',
-            icon: Icons.campaign_outlined,
+        records.add(
+          _result(
+            id: 'team_${team.uuid}',
+            title: team.name,
+            subtitle: '团队 · ${team.memberCount} 位成员',
+            icon: Icons.groups_rounded,
             type: SearchResultType.team,
-            label: '团队公告',
-            fields: {
-              '团队': team.name,
-              '内容': item.content,
-              '发布者': item.creatorName ?? ''
-            },
-            data: {'team_uuid': team.uuid, 'search_timestamp': item.createdAt},
-          ));
-        }
-        final messages = values[1] as List<dynamic>;
-        if (messages.isNotEmpty) {
-          for (final raw in messages) {
+            label: '团队',
+            fields: {'团队名称': team.name, '成员数': '${team.memberCount}'},
+            data: {'team_uuid': team.uuid},
+          ),
+        );
+      }
+      final grouped = await Future.wait(
+        teams.map((team) async {
+          final values = await Future.wait<dynamic>([
+            ApiService.fetchTeamAnnouncements(team.uuid)
+                .timeout(const Duration(seconds: 4), onTimeout: () => []),
+            _fetchAllTeamSystemMessages(team.uuid),
+          ]);
+          final entries = <SearchResult>[];
+          for (final raw in values[0] as List<dynamic>) {
             if (raw is! Map) continue;
-            final map = Map<String, dynamic>.from(raw);
-            final title =
-                map['title']?.toString() ?? map['type']?.toString() ?? '团队消息';
-            final content =
-                map['content']?.toString() ?? map['message']?.toString() ?? '';
-            final identity =
-                map['uuid'] ?? map['id'] ?? map['timestamp'] ?? entries.length;
-            entries.add(_result(
-              id: 'team_message_${team.uuid}_$identity',
-              title: title,
-              subtitle: '${team.name} · $content',
-              icon: Icons.mark_chat_unread_outlined,
-              type: SearchResultType.team,
-              label: '团队消息',
-              fields: {
-                '团队': team.name,
-                '内容': content,
-                '类型': map['type']?.toString() ?? ''
-              },
-              data: {
-                'team_uuid': team.uuid,
-                'search_timestamp':
-                    int.tryParse(map['timestamp']?.toString() ?? '')
-              },
-            ));
+            final item = TeamAnnouncement.fromJson(
+              Map<String, dynamic>.from(raw),
+            );
+            entries.add(
+              _result(
+                id: 'team_announcement_${item.uuid}',
+                title: item.title,
+                subtitle: '${team.name} · 团队公告',
+                icon: Icons.campaign_outlined,
+                type: SearchResultType.team,
+                label: '团队公告',
+                fields: {
+                  '团队': team.name,
+                  '内容': item.content,
+                  '发布者': item.creatorName ?? '',
+                },
+                data: {
+                  'team_uuid': team.uuid,
+                  'search_timestamp': item.createdAt,
+                },
+              ),
+            );
           }
-        }
-        return entries;
-      }));
+          final messages = values[1] as List<dynamic>;
+          if (messages.isNotEmpty) {
+            for (final raw in messages) {
+              if (raw is! Map) continue;
+              final map = Map<String, dynamic>.from(raw);
+              final title =
+                  map['title']?.toString() ?? map['type']?.toString() ?? '团队消息';
+              final content =
+                  map['content']?.toString() ??
+                  map['message']?.toString() ??
+                  '';
+              final identity =
+                  map['uuid'] ??
+                  map['id'] ??
+                  map['timestamp'] ??
+                  entries.length;
+              entries.add(
+                _result(
+                  id: 'team_message_${team.uuid}_$identity',
+                  title: title,
+                  subtitle: '${team.name} · $content',
+                  icon: Icons.mark_chat_unread_outlined,
+                  type: SearchResultType.team,
+                  label: '团队消息',
+                  fields: {
+                    '团队': team.name,
+                    '内容': content,
+                    '类型': map['type']?.toString() ?? '',
+                  },
+                  data: {
+                    'team_uuid': team.uuid,
+                    'search_timestamp': int.tryParse(
+                      map['timestamp']?.toString() ?? '',
+                    ),
+                  },
+                ),
+              );
+            }
+          }
+          return entries;
+        }),
+      );
       records.addAll(grouped.expand((group) => group));
     } catch (error) {
       debugPrint('Team global search warmup failed: $error');
     }
     if (_remoteUsername == username) {
       if (remoteSourceAvailable) {
-        _remoteRecords = records;
+        _remoteRecords = records
+            .map(_IndexedRemoteSearchResult.new)
+            .toList(growable: false);
         _remoteLoadedAt = DateTime.now();
       } else {
         // Retain previously loaded results, but retry on the next search.
@@ -824,7 +1142,8 @@ abstract final class GlobalSearchExtraService {
   }
 
   static Future<List<dynamic>> _fetchAllTeamSystemMessages(
-      String teamUuid) async {
+    String teamUuid,
+  ) async {
     const pageSize = 100;
     final messages = <dynamic>[];
     final seenIds = <String>{};

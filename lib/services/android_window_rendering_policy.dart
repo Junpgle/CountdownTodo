@@ -86,7 +86,8 @@ class AndroidWindowRenderingPolicy {
       _isCompactWindow = _isInMultiWindowMode || _isFreeformWindow;
     }
 
-    final shouldDisable = _isAndroid17 &&
+    final shouldDisable =
+        _isAndroid17 &&
         (_isCompactWindow || _isInMultiWindowMode || _isFreeformWindow);
     if (disableShaderContentFade.value != shouldDisable) {
       disableShaderContentFade.value = shouldDisable;

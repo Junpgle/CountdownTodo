@@ -1,14 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+
 import 'dart:ui';
+
 import 'package:intl/intl.dart';
 import 'package:countdown_todo/models.dart';
 import 'package:countdown_todo/storage_service.dart';
 import 'package:countdown_todo/services/api_service.dart';
 import 'package:countdown_todo/screens/historical_countdowns_screen.dart';
 import 'package:countdown_todo/screens/app_board_screen.dart';
+
 import '../services/pomodoro_sync_service.dart';
 import '../services/power_save_mode_service.dart';
+import '../utils/app_image_filters.dart';
 import '../widgets/home_sections.dart';
 import '../widgets/floating_glass_control.dart';
 import '../utils/android_energy_policy.dart';
@@ -18,6 +22,114 @@ import 'platform_backdrop_filter.dart';
 import 'optional_liquid_glass_surface.dart';
 import 'version_history_sheet.dart';
 import '../utils/app_dialogs.dart';
+
+final Map<(String?, String), DateFormat> _countdownSectionDateFormats = {};
+
+DateFormat _countdownSectionDateFormat(String pattern) {
+  final locale = Intl.defaultLocale;
+  return _countdownSectionDateFormats.putIfAbsent((
+    locale,
+    pattern,
+  ), () => DateFormat(pattern, locale));
+}
+
+class _CountdownDerivedInput {
+  const _CountdownDerivedInput({
+    required this.item,
+    required this.id,
+    required this.teamUuid,
+    required this.teamName,
+    required this.targetDateMicros,
+    required this.targetDateIsUtc,
+    required this.targetDateYear,
+    required this.targetDateMonth,
+    required this.targetDateDay,
+    required this.targetDateHour,
+    required this.targetDateMinute,
+    required this.targetDateSecond,
+    required this.targetDateMillisecond,
+    required this.targetDateMicrosecond,
+    required this.targetDateOffsetSeconds,
+  });
+
+  factory _CountdownDerivedInput.from(CountdownItem item) {
+    final targetDate = item.targetDate;
+    return _CountdownDerivedInput(
+      item: item,
+      id: item.id,
+      teamUuid: item.teamUuid,
+      teamName: item.teamName,
+      targetDateMicros: targetDate.microsecondsSinceEpoch,
+      targetDateIsUtc: targetDate.isUtc,
+      targetDateYear: targetDate.year,
+      targetDateMonth: targetDate.month,
+      targetDateDay: targetDate.day,
+      targetDateHour: targetDate.hour,
+      targetDateMinute: targetDate.minute,
+      targetDateSecond: targetDate.second,
+      targetDateMillisecond: targetDate.millisecond,
+      targetDateMicrosecond: targetDate.microsecond,
+      targetDateOffsetSeconds: targetDate.timeZoneOffset.inSeconds,
+    );
+  }
+
+  final CountdownItem item;
+  final String id;
+  final String? teamUuid;
+  final String? teamName;
+  final int targetDateMicros;
+  final bool targetDateIsUtc;
+  final int targetDateYear;
+  final int targetDateMonth;
+  final int targetDateDay;
+  final int targetDateHour;
+  final int targetDateMinute;
+  final int targetDateSecond;
+  final int targetDateMillisecond;
+  final int targetDateMicrosecond;
+  final int targetDateOffsetSeconds;
+
+  bool matches(CountdownItem candidate) {
+    final targetDate = candidate.targetDate;
+    return identical(item, candidate) &&
+        id == candidate.id &&
+        teamUuid == candidate.teamUuid &&
+        teamName == candidate.teamName &&
+        targetDateMicros == targetDate.microsecondsSinceEpoch &&
+        targetDateIsUtc == targetDate.isUtc &&
+        targetDateYear == targetDate.year &&
+        targetDateMonth == targetDate.month &&
+        targetDateDay == targetDate.day &&
+        targetDateHour == targetDate.hour &&
+        targetDateMinute == targetDate.minute &&
+        targetDateSecond == targetDate.second &&
+        targetDateMillisecond == targetDate.millisecond &&
+        targetDateMicrosecond == targetDate.microsecond &&
+        targetDateOffsetSeconds == targetDate.timeZoneOffset.inSeconds;
+  }
+}
+
+class _CountdownHolidayClassification {
+  const _CountdownHolidayClassification({
+    required this.title,
+    required this.isHoliday,
+  });
+
+  final String title;
+  final bool isHoliday;
+}
+
+class _CountdownSectionData {
+  const _CountdownSectionData({
+    required this.teamUuids,
+    required this.teamNames,
+    required this.activeCountdowns,
+  });
+
+  final List<String> teamUuids;
+  final Map<String, String?> teamNames;
+  final List<CountdownItem> activeCountdowns;
+}
 
 /// Opens the shared important-day editor from any home entry point.
 ///
@@ -41,8 +153,10 @@ Future<void> showCountdownEditorDialog({
       editingItem?.targetDate ?? DateTime.now().add(const Duration(days: 1));
   String? selectedTeamName = editingItem?.teamName;
   if (!isEditing && selectedTeamUuid != null && selectedTeamName == null) {
-    selectedTeamName =
-        teams.where((t) => t.uuid == selectedTeamUuid).firstOrNull?.name;
+    selectedTeamName = teams
+        .where((t) => t.uuid == selectedTeamUuid)
+        .firstOrNull
+        ?.name;
   }
 
   if (!context.mounted) {
@@ -56,8 +170,9 @@ Future<void> showCountdownEditorDialog({
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
           title: Text(isEditing ? "编辑重要日" : "添加重要日"),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -76,7 +191,7 @@ Future<void> showCountdownEditorDialog({
                     side: BorderSide(color: Theme.of(context).dividerColor),
                   ),
                   title: Text(
-                    "目标日期: ${DateFormat('yyyy-MM-dd').format(selectedDate)}",
+                    "目标日期: ${_countdownSectionDateFormat('yyyy-MM-dd').format(selectedDate)}",
                     style: const TextStyle(fontSize: 14),
                   ),
                   trailing: const Icon(Icons.calendar_today, size: 20),
@@ -104,10 +219,10 @@ Future<void> showCountdownEditorDialog({
                   ),
                   items: [
                     const DropdownMenuItem(value: null, child: Text("仅自己可见")),
-                    ...teams.map((t) => DropdownMenuItem(
-                          value: t.uuid,
-                          child: Text(t.name),
-                        )),
+                    ...teams.map(
+                      (t) =>
+                          DropdownMenuItem(value: t.uuid, child: Text(t.name)),
+                    ),
                   ],
                   onChanged: (val) {
                     setDialogState(() {
@@ -132,7 +247,8 @@ Future<void> showCountdownEditorDialog({
                   final updatedList = List<CountdownItem>.from(countdowns);
                   if (editingItem != null) {
                     final idx = updatedList.indexWhere(
-                        (countdown) => countdown.id == editingItem.id);
+                      (countdown) => countdown.id == editingItem.id,
+                    );
                     if (idx != -1) {
                       updatedList[idx] = CountdownItem(
                         id: editingItem.id,
@@ -153,13 +269,15 @@ Future<void> showCountdownEditorDialog({
                       updatedList[idx].markAsChanged();
                     }
                   } else {
-                    updatedList.add(CountdownItem(
-                      title: titleCtrl.text,
-                      targetDate: selectedDate,
-                      teamUuid: selectedTeamUuid,
-                      teamName: selectedTeamName,
-                      creatorName: username,
-                    ));
+                    updatedList.add(
+                      CountdownItem(
+                        title: titleCtrl.text,
+                        targetDate: selectedDate,
+                        teamUuid: selectedTeamUuid,
+                        teamName: selectedTeamName,
+                        creatorName: username,
+                      ),
+                    );
                   }
                   await StorageService.saveCountdowns(username, updatedList);
                   if (!context.mounted || !ctx.mounted) return;
@@ -187,6 +305,7 @@ class CountdownSectionWidget extends StatefulWidget {
   final String username;
   final bool isLight;
   final VoidCallback onDataChanged;
+  final int? dataRevision;
   final Key? addKey; // 🚀 新增 addKey 用于高亮引导
   final GlobalKey? historyKey; // 用于历史页共享容器转场
   final DateTime Function()? now;
@@ -197,6 +316,7 @@ class CountdownSectionWidget extends StatefulWidget {
     required this.username,
     required this.isLight,
     required this.onDataChanged,
+    this.dataRevision,
     this.addKey,
     this.historyKey,
     this.now,
@@ -209,8 +329,16 @@ class CountdownSectionWidget extends StatefulWidget {
 class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
     with TickerProviderStateMixin {
   final Map<String, AnimationController> _pulseControllers = {};
+  final Map<String, _CountdownHolidayClassification>
+  _holidayClassificationsById = {};
   final GlobalKey _localHistoryKey = GlobalKey();
   String? _selectedTeamUuid; // 🚀 选中的团队视口
+  List<CountdownItem>? _derivedSource;
+  List<_CountdownDerivedInput>? _derivedInputs;
+  DateTime? _derivedToday;
+  String? _derivedTeamUuid;
+  int? _derivedDataRevision;
+  _CountdownSectionData? _cachedDerivedData;
 
   GlobalKey get _historySourceKey => widget.historyKey ?? _localHistoryKey;
 
@@ -237,6 +365,19 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
     return _holidayKeywords.any((kw) => lower.contains(kw));
   }
 
+  bool _isHolidayFor(CountdownItem item) {
+    final cached = _holidayClassificationsById[item.id];
+    if (cached != null && cached.title == item.title) {
+      return cached.isHoliday;
+    }
+    final isHoliday = _isHolidayKeyword(item.title);
+    _holidayClassificationsById[item.id] = _CountdownHolidayClassification(
+      title: item.title,
+      isHoliday: isHoliday,
+    );
+    return isHoliday;
+  }
+
   // 🚀 桌面端滑动优化：增加控制器
   late final ScrollController _listScrollController = ScrollController();
   late final ScrollController _tabsScrollController = ScrollController();
@@ -257,8 +398,9 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
 
   @override
   void dispose() {
-    PowerSaveModeService.enabledListenable
-        .removeListener(_onPowerSaveModeChanged);
+    PowerSaveModeService.enabledListenable.removeListener(
+      _onPowerSaveModeChanged,
+    );
     _listScrollController.dispose();
     _tabsScrollController.dispose();
     for (final controller in _pulseControllers.values) {
@@ -270,6 +412,72 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
   void _addCountdown() => _showCountdownDialog();
 
   void _editCountdown(CountdownItem item) => _showCountdownDialog(item: item);
+
+  _CountdownSectionData _derivedDataFor(DateTime today) {
+    final cachedInputs = _derivedInputs;
+    final cachedData = _cachedDerivedData;
+    if (identical(_derivedSource, widget.countdowns) &&
+        _derivedToday == today &&
+        _derivedTeamUuid == _selectedTeamUuid &&
+        cachedInputs != null &&
+        cachedData != null &&
+        cachedInputs.length == widget.countdowns.length) {
+      final dataRevision = widget.dataRevision;
+      if (dataRevision != null) {
+        if (_derivedDataRevision == dataRevision) return cachedData;
+      } else {
+        var inputsUnchanged = true;
+        for (var index = 0; index < widget.countdowns.length; index++) {
+          if (!cachedInputs[index].matches(widget.countdowns[index])) {
+            inputsUnchanged = false;
+            break;
+          }
+        }
+        if (inputsUnchanged) return cachedData;
+      }
+    }
+
+    final inputs = <_CountdownDerivedInput>[];
+    final teamUuids = <String>{};
+    final teamNames = <String, String?>{};
+    final activeCountdowns = <CountdownItem>[];
+    for (final item in widget.countdowns) {
+      inputs.add(_CountdownDerivedInput.from(item));
+      final teamUuid = item.teamUuid;
+      if (teamUuid != null) {
+        teamUuids.add(teamUuid);
+        teamNames.putIfAbsent(teamUuid, () => item.teamName);
+      }
+      if ((_selectedTeamUuid == null || teamUuid == _selectedTeamUuid) &&
+          CalendarDateMath.daysBetween(today, item.targetDate) >= 0) {
+        activeCountdowns.add(item);
+      }
+    }
+    activeCountdowns.sort((a, b) => a.targetDate.compareTo(b.targetDate));
+
+    final currentIds = activeCountdowns.map((item) => item.id).toSet();
+    for (final id in _pulseControllers.keys.toList(growable: false)) {
+      if (currentIds.contains(id)) continue;
+      _pulseControllers.remove(id)?.dispose();
+    }
+    for (final id in _holidayClassificationsById.keys.toList(growable: false)) {
+      if (currentIds.contains(id)) continue;
+      _holidayClassificationsById.remove(id);
+    }
+
+    final data = _CountdownSectionData(
+      teamUuids: teamUuids.toList(growable: false),
+      teamNames: teamNames,
+      activeCountdowns: activeCountdowns,
+    );
+    _derivedSource = widget.countdowns;
+    _derivedInputs = inputs;
+    _derivedToday = today;
+    _derivedTeamUuid = _selectedTeamUuid;
+    _derivedDataRevision = widget.dataRevision;
+    _cachedDerivedData = data;
+    return data;
+  }
 
   Future<void> _showCountdownDialog({CountdownItem? item}) {
     return showCountdownEditorDialog(
@@ -303,7 +511,9 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
             ),
             onPressed: () async {
               await StorageService.deleteCountdownGlobally(
-                  widget.username, itemToDelete.id);
+                widget.username,
+                itemToDelete.id,
+              );
               if (!mounted || !ctx.mounted) return;
               widget.onDataChanged();
               Navigator.pop(ctx);
@@ -321,11 +531,11 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
     final bool isDarkTheme = Theme.of(context).brightness == Brightness.dark;
     final bool useDarkUI = isDarkTheme || widget.isLight;
 
-    // 🚀 提取动态团队列表
-    final teams = <String>{};
-    for (var c in widget.countdowns) {
-      if (c.teamUuid != null) teams.add(c.teamUuid!);
-    }
+    final today = CalendarDateMath.dateOnly(
+      widget.now?.call() ?? DateTime.now(),
+    );
+    final derivedData = _derivedDataFor(today);
+    final teams = derivedData.teamUuids;
 
     return ScrollConfiguration(
       behavior: ScrollConfiguration.of(context).copyWith(
@@ -343,23 +553,29 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Expanded(
-                  child: SectionHeader(
-                      title: "重要日",
-                      icon: Icons.timer,
-                      onAdd: _addCountdown,
-                      addKey: widget.addKey, // 🚀 传递 addKey
-                      isLight: widget.isLight)),
+                child: SectionHeader(
+                  title: "重要日",
+                  icon: Icons.timer,
+                  onAdd: _addCountdown,
+                  addKey: widget.addKey, // 🚀 传递 addKey
+                  isLight: widget.isLight,
+                ),
+              ),
               if (MediaQuery.of(context).size.width >= 600)
                 IconButton(
                   style: floatingGlassPlainIconButtonStyle(),
-                  icon: Icon(Icons.dashboard_rounded,
-                      color: useDarkUI ? Colors.white70 : Colors.grey),
+                  icon: Icon(
+                    Icons.dashboard_rounded,
+                    color: useDarkUI ? Colors.white70 : Colors.grey,
+                  ),
                   tooltip: '看板',
                   onPressed: () async {
                     await Navigator.push(
-                        context,
-                        PageTransitions.slideHorizontal(
-                            AppBoardScreen(username: widget.username)));
+                      context,
+                      PageTransitions.slideHorizontal(
+                        AppBoardScreen(username: widget.username),
+                      ),
+                    );
                     widget.onDataChanged();
                   },
                 ),
@@ -367,8 +583,10 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
                 key: _historySourceKey,
                 child: IconButton(
                   style: floatingGlassPlainIconButtonStyle(),
-                  icon: Icon(Icons.history,
-                      color: useDarkUI ? Colors.white70 : Colors.grey),
+                  icon: Icon(
+                    Icons.history,
+                    color: useDarkUI ? Colors.white70 : Colors.grey,
+                  ),
                   onPressed: () async {
                     await PageTransitions.pushFromRect(
                       context: context,
@@ -393,10 +611,7 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
                 children: [
                   _buildTeamTab("全部", null, useDarkUI),
                   ...teams.map((uuid) {
-                    final name = widget.countdowns
-                            .firstWhere((c) => c.teamUuid == uuid)
-                            .teamName ??
-                        "团队项目";
+                    final name = derivedData.teamNames[uuid] ?? "团队项目";
                     return _buildTeamTab(name, uuid, useDarkUI);
                   }),
                 ],
@@ -404,7 +619,7 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
             ),
           ],
           const SizedBox(height: 12),
-          _buildList(),
+          _buildList(today, derivedData.activeCountdowns),
         ],
       ),
     );
@@ -438,297 +653,285 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
     );
   }
 
-  Widget _buildList() {
-    final today = CalendarDateMath.dateOnly(widget.now?.call() ?? DateTime.now());
-    final List<CountdownItem> activeCountdowns =
-        widget.countdowns.where((item) {
-      if (_selectedTeamUuid != null && item.teamUuid != _selectedTeamUuid) {
-        return false;
-      }
-      return CalendarDateMath.daysBetween(today, item.targetDate) >= 0;
-    }).toList()
-          ..sort((a, b) => a.targetDate.compareTo(b.targetDate));
-
-    // 清理已删除倒计时项的 pulse controller，防止内存泄漏
-    final currentIds = activeCountdowns.map((c) => c.id).toSet();
-    _pulseControllers.keys
-        .where((id) => !currentIds.contains(id))
-        .toList()
-        .forEach((id) {
-      _pulseControllers[id]?.dispose();
-      _pulseControllers.remove(id);
-    });
-
+  Widget _buildList(DateTime today, List<CountdownItem> activeCountdowns) {
     if (activeCountdowns.isEmpty) {
       return EmptyState(text: "暂无有效倒计时", isLight: widget.isLight);
     }
 
     return SizedBox(
-        height: 130, // 🚀 适度增加总高度，防止小屏幕溢出
-        child: ClipRect(
-          clipper: _HorizontalClipper(),
-          child: ListView.builder(
-            scrollCacheExtent: ScrollCacheExtent.pixels(1000),
-            controller: _listScrollController,
-            padding: const EdgeInsets.only(right: 12),
-            clipBehavior: Clip.none,
-            scrollDirection: Axis.horizontal,
-            itemCount: activeCountdowns.length,
-            itemBuilder: (context, index) {
-              final item = activeCountdowns[index];
-              final diff = CalendarDateMath.daysBetween(today, item.targetDate);
+      height: 130, // 🚀 适度增加总高度，防止小屏幕溢出
+      child: ClipRect(
+        clipper: _HorizontalClipper(),
+        child: ListView.builder(
+          scrollCacheExtent: ScrollCacheExtent.pixels(1000),
+          controller: _listScrollController,
+          padding: const EdgeInsets.only(right: 12),
+          clipBehavior: Clip.none,
+          scrollDirection: Axis.horizontal,
+          itemCount: activeCountdowns.length,
+          itemBuilder: (context, index) {
+            final item = activeCountdowns[index];
+            final diff = CalendarDateMath.daysBetween(today, item.targetDate);
 
-              final bool isUrgent = diff <= 3;
-              final bool isHoliday = _isHolidayKeyword(item.title);
+            final bool isUrgent = diff <= 3;
+            final bool isHoliday = _isHolidayFor(item);
 
-              if (isUrgent &&
-                  !isHoliday &&
-                  AndroidEnergyPolicy.shouldRunDecorativeMotion &&
-                  !_pulseControllers.containsKey(item.id)) {
-                final controller = AnimationController(
-                  duration: const Duration(milliseconds: 800),
-                  vsync: this,
-                )..repeat(
+            if (isUrgent &&
+                !isHoliday &&
+                AndroidEnergyPolicy.shouldRunDecorativeMotion &&
+                !_pulseControllers.containsKey(item.id)) {
+              final controller =
+                  AnimationController(
+                    duration: const Duration(milliseconds: 800),
+                    vsync: this,
+                  )..repeat(
                     reverse: true,
                     count: AndroidEnergyPolicy.decorativeRepeatCount(),
                   );
-                _pulseControllers[item.id] = controller;
-              } else if ((!isUrgent || isHoliday) &&
-                  _pulseControllers.containsKey(item.id)) {
-                _pulseControllers[item.id]?.dispose();
-                _pulseControllers.remove(item.id);
-              }
+              _pulseControllers[item.id] = controller;
+            } else if ((!isUrgent || isHoliday) &&
+                _pulseControllers.containsKey(item.id)) {
+              _pulseControllers[item.id]?.dispose();
+              _pulseControllers.remove(item.id);
+            }
 
-              // 核心修复：增加系统级别的深色模式检测
-              final bool isDarkTheme =
-                  Theme.of(context).brightness == Brightness.dark;
-              final bool useDarkUI = isDarkTheme || widget.isLight;
+            // 核心修复：增加系统级别的深色模式检测
+            final bool isDarkTheme =
+                Theme.of(context).brightness == Brightness.dark;
+            final bool useDarkUI = isDarkTheme || widget.isLight;
 
-              final Color bgColor = useDarkUI
-                  ? (isUrgent && isHoliday
+            final Color bgColor = useDarkUI
+                ? (isUrgent && isHoliday
                       ? Colors.greenAccent.withAlpha((0.18 * 255).round())
                       : isUrgent
-                          ? Colors.redAccent.withAlpha((0.25 * 255).round())
-                          : (widget.isLight
-                              ? Colors.white.withAlpha((0.1 * 255).round())
-                              : Theme.of(context)
+                      ? Colors.redAccent.withAlpha((0.25 * 255).round())
+                      : (widget.isLight
+                            ? Colors.white.withAlpha((0.1 * 255).round())
+                            : Theme.of(context)
                                   .colorScheme
                                   .surfaceContainerHighest
                                   .withAlpha((0.5 * 255).round())))
-                  : (isUrgent && isHoliday
+                : (isUrgent && isHoliday
                       ? Colors.green.shade50
                       : isUrgent
-                          ? Colors.red.shade50
-                          : Theme.of(context).colorScheme.surface);
+                      ? Colors.red.shade50
+                      : Theme.of(context).colorScheme.surface);
 
-              final borderColor = useDarkUI
-                  ? (isUrgent && isHoliday
+            final borderColor = useDarkUI
+                ? (isUrgent && isHoliday
                       ? Colors.greenAccent.withAlpha((0.5 * 255).round())
                       : isUrgent
-                          ? Colors.redAccent.withAlpha((0.5 * 255).round())
-                          : Colors.white.withAlpha((0.15 * 255).round()))
-                  : (isUrgent && isHoliday
+                      ? Colors.redAccent.withAlpha((0.5 * 255).round())
+                      : Colors.white.withAlpha((0.15 * 255).round()))
+                : (isUrgent && isHoliday
                       ? Colors.green.withAlpha((0.3 * 255).round())
                       : isUrgent
-                          ? Colors.redAccent.withAlpha((0.3 * 255).round())
-                          : Colors.black.withAlpha((0.05 * 255).round()));
+                      ? Colors.redAccent.withAlpha((0.3 * 255).round())
+                      : Colors.black.withAlpha((0.05 * 255).round()));
 
-              final textColor = useDarkUI
-                  ? Colors.white
-                  : Theme.of(context).colorScheme.onSurface;
+            final textColor = useDarkUI
+                ? Colors.white
+                : Theme.of(context).colorScheme.onSurface;
 
-              final subTextColor = useDarkUI
-                  ? Colors.white70
-                  : Theme.of(context).colorScheme.onSurfaceVariant;
+            final subTextColor = useDarkUI
+                ? Colors.white70
+                : Theme.of(context).colorScheme.onSurfaceVariant;
 
-              final accentColor = useDarkUI
-                  ? (isUrgent && isHoliday
+            final accentColor = useDarkUI
+                ? (isUrgent && isHoliday
                       ? Colors.greenAccent.shade100
                       : isUrgent
-                          ? Colors.redAccent.shade100
-                          : Colors.white)
-                  : (isUrgent && isHoliday
+                      ? Colors.redAccent.shade100
+                      : Colors.white)
+                : (isUrgent && isHoliday
                       ? Colors.green
                       : isUrgent
-                          ? Colors.redAccent
-                          : Theme.of(context).colorScheme.primary);
+                      ? Colors.redAccent
+                      : Theme.of(context).colorScheme.primary);
 
-              final closeBgColor = useDarkUI
-                  ? Colors.white.withAlpha((0.15 * 255).round())
-                  : Theme.of(context)
-                      .colorScheme
-                      .onSurface
+            final closeBgColor = useDarkUI
+                ? Colors.white.withAlpha((0.15 * 255).round())
+                : Theme.of(context).colorScheme.onSurface
                       .withAlpha((0.05 * 255).round());
 
-              return RepaintBoundary(
-                child: AnimatedBuilder(
-                  animation: _pulseControllers[item.id] ??
-                      const AlwaysStoppedAnimation(0.0),
-                  builder: (context, child) {
-                    if (!isUrgent || isHoliday) return child!;
-                    final pulse = _pulseControllers[item.id]?.value ?? 0.0;
-                    final glowOpacity = 0.3 + (pulse * 0.4);
-                    final glowSpread = 4.0 + (pulse * 8.0);
-                    return Container(
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(20),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.redAccent.withAlpha(
-                              (glowOpacity * 255).round(),
-                            ),
-                            blurRadius: glowSpread,
-                            spreadRadius: glowSpread * 0.3,
+            return RepaintBoundary(
+              child: AnimatedBuilder(
+                animation:
+                    _pulseControllers[item.id] ??
+                    const AlwaysStoppedAnimation(0.0),
+                builder: (context, child) {
+                  if (!isUrgent || isHoliday) return child!;
+                  final pulse = _pulseControllers[item.id]?.value ?? 0.0;
+                  final glowOpacity = 0.3 + (pulse * 0.4);
+                  final glowSpread = 4.0 + (pulse * 8.0);
+                  return Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.redAccent.withAlpha(
+                            (glowOpacity * 255).round(),
                           ),
-                        ],
-                      ),
-                      child: child,
-                    );
-                  },
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(20),
-                    child: PlatformBackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                      bypassWhenLiquidGlassEnabled: true,
-                      child: OptionalLiquidGlassCard(
-                        width: 130,
-                        margin: const EdgeInsets.only(right: 12, bottom: 8),
-                        borderRadius: 20,
-                        tint: accentColor.withValues(alpha: 0.18),
-                        isDark: useDarkUI,
-                        // 🚀 微调边距
-                        fallbackDecoration: BoxDecoration(
-                          color: bgColor,
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: borderColor),
-                          boxShadow: useDarkUI
-                              ? []
-                              : [
-                                  BoxShadow(
-                                    color: Colors.black
-                                        .withAlpha((0.04 * 255).round()),
-                                    blurRadius: 10,
-                                    offset: const Offset(0, 4),
-                                  )
-                                ],
+                          blurRadius: glowSpread,
+                          spreadRadius: glowSpread * 0.3,
                         ),
-                        child: Material(
-                          color: Colors.transparent,
-                          child: InkWell(
-                            borderRadius: BorderRadius.circular(20),
-                            onTap: () => _editCountdown(item),
-                            onLongPress: () => VersionHistorySheet.show(
-                                context, item.id, 'countdowns', item.title),
-                            child: Padding(
-                              padding: const EdgeInsets.all(12.0),
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
+                      ],
+                    ),
+                    child: child,
+                  );
+                },
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(20),
+                  child: PlatformBackdropFilter(
+                    filter: AppImageFilters.blur10,
+                    bypassWhenLiquidGlassEnabled: true,
+                    child: OptionalLiquidGlassCard(
+                      width: 130,
+                      margin: const EdgeInsets.only(right: 12, bottom: 8),
+                      borderRadius: 20,
+                      tint: accentColor.withValues(alpha: 0.18),
+                      isDark: useDarkUI,
+                      // 🚀 微调边距
+                      fallbackDecoration: BoxDecoration(
+                        color: bgColor,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: borderColor),
+                        boxShadow: useDarkUI
+                            ? []
+                            : [
+                                BoxShadow(
+                                  color: Colors.black.withAlpha(
+                                    (0.04 * 255).round(),
+                                  ),
+                                  blurRadius: 10,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                      ),
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(20),
+                          onTap: () => _editCountdown(item),
+                          onLongPress: () => VersionHistorySheet.show(
+                            context,
+                            item.id,
+                            'countdowns',
+                            item.title,
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(12.0),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        item.title,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          color: textColor,
+                                          fontWeight: FontWeight.w600,
+                                          fontSize: 13,
+                                          height: 1.2,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    InkWell(
+                                      onTap: () => _deleteCountdown(item),
+                                      borderRadius: BorderRadius.circular(12),
+                                      child: Container(
+                                        padding: const EdgeInsets.all(4),
+                                        decoration: BoxDecoration(
+                                          color: closeBgColor,
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: Icon(
+                                          Icons.close,
+                                          size: 12,
+                                          color: subTextColor,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                if (item.teamUuid != null) ...[
+                                  const SizedBox(height: 2), // 🚀 紧凑化
                                   Row(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
                                     children: [
+                                      Icon(
+                                        Icons.groups_rounded,
+                                        size: 10,
+                                        color: accentColor.withValues(
+                                          alpha: 0.6,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 3),
                                       Expanded(
                                         child: Text(
-                                          item.title,
-                                          maxLines: 2,
+                                          "${item.teamName ?? '团队'} · ${item.creatorName ?? '成员'}",
+                                          maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                           style: TextStyle(
-                                            color: textColor,
-                                            fontWeight: FontWeight.w600,
-                                            fontSize: 13,
-                                            height: 1.2,
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      InkWell(
-                                        onTap: () => _deleteCountdown(item),
-                                        borderRadius: BorderRadius.circular(12),
-                                        child: Container(
-                                          padding: const EdgeInsets.all(4),
-                                          decoration: BoxDecoration(
-                                            color: closeBgColor,
-                                            shape: BoxShape.circle,
-                                          ),
-                                          child: Icon(
-                                            Icons.close,
-                                            size: 12,
-                                            color: subTextColor,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  if (item.teamUuid != null) ...[
-                                    const SizedBox(height: 2), // 🚀 紧凑化
-                                    Row(
-                                      children: [
-                                        Icon(Icons.groups_rounded,
-                                            size: 10,
-                                            color: accentColor.withValues(
-                                                alpha: 0.6)),
-                                        const SizedBox(width: 3),
-                                        Expanded(
-                                          child: Text(
-                                            "${item.teamName ?? '团队'} · ${item.creatorName ?? '成员'}",
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: TextStyle(
-                                              fontSize: 8,
-                                              color: subTextColor.withValues(
-                                                  alpha: 0.8),
+                                            fontSize: 8,
+                                            color: subTextColor.withValues(
+                                              alpha: 0.8,
                                             ),
                                           ),
                                         ),
-                                      ],
-                                    ),
-                                  ] else ...[
-                                    const SizedBox(height: 12),
-                                    // 填补未绑定团队时的空白，保持与其他卡片高度一致 (2 + 10)
-                                  ],
-                                  const SizedBox(height: 6),
-                                  // 🚀 取代 Spacer()，提供稳定间距
-                                  Row(
-                                    crossAxisAlignment: CrossAxisAlignment.end,
-                                    children: [
-                                      Text(
-                                        "$diff",
-                                        style: TextStyle(
-                                          fontSize: 28, // 🚀 稍微缩小，防止垂直挤压
-                                          height: 1.0,
-                                          fontWeight: FontWeight.bold,
-                                          color: accentColor,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 4),
-                                      Padding(
-                                        padding:
-                                            const EdgeInsets.only(bottom: 4.0),
-                                        child: Text(
-                                          "天",
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            color: subTextColor,
-                                            fontWeight: FontWeight.w500,
-                                          ),
-                                        ),
                                       ),
                                     ],
                                   ),
-                                  const SizedBox(height: 2),
-                                  // 🚀 紧凑化
-                                  Text(
-                                    "目标日: ${DateFormat('yyyy-MM-dd').format(item.targetDate)}",
-                                    style: TextStyle(
-                                      fontSize: 9,
-                                      color: subTextColor,
-                                      letterSpacing: 0.2,
-                                    ),
-                                  ),
+                                ] else ...[
+                                  const SizedBox(height: 12),
+                                  // 填补未绑定团队时的空白，保持与其他卡片高度一致 (2 + 10)
                                 ],
-                              ),
+                                const SizedBox(height: 6),
+                                // 🚀 取代 Spacer()，提供稳定间距
+                                Row(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    Text(
+                                      "$diff",
+                                      style: TextStyle(
+                                        fontSize: 28, // 🚀 稍微缩小，防止垂直挤压
+                                        height: 1.0,
+                                        fontWeight: FontWeight.bold,
+                                        color: accentColor,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Padding(
+                                      padding: const EdgeInsets.only(
+                                        bottom: 4.0,
+                                      ),
+                                      child: Text(
+                                        "天",
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: subTextColor,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 2),
+                                // 🚀 紧凑化
+                                Text(
+                                  "目标日: ${_countdownSectionDateFormat('yyyy-MM-dd').format(item.targetDate)}",
+                                  style: TextStyle(
+                                    fontSize: 9,
+                                    color: subTextColor,
+                                    letterSpacing: 0.2,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ),
@@ -736,10 +939,12 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
                     ),
                   ),
                 ),
-              );
-            },
-          ),
-        ));
+              ),
+            );
+          },
+        ),
+      ),
+    );
   }
 }
 

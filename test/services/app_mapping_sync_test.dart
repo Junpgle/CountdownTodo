@@ -39,6 +39,14 @@ void main() {
     await server.close(force: true);
   });
 
+  test('sync namespace ignores a trailing slash in a custom endpoint', () {
+    ApiService.setBaseUrlOverride('https://custom.example');
+    final withoutSlash = ApiService.syncServerKey;
+    ApiService.setBaseUrlOverride('https://custom.example/');
+
+    expect(ApiService.syncServerKey, withoutSlash);
+  });
+
   test('successful empty mappings are cached for seven days', () async {
     await HttpOverrides.runWithHttpOverrides(() async {
       await StorageService.syncAppMappings();

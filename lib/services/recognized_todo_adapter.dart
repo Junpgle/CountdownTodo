@@ -25,11 +25,8 @@ class RecognizedTodoAdapter {
   }) {
     return results
         .map(
-          (result) => normalizeResult(
-            result,
-            now: now,
-            promoteSpecialTodo: true,
-          ),
+          (result) =>
+              normalizeResult(result, now: now, promoteSpecialTodo: true),
         )
         .toList();
   }
@@ -38,11 +35,7 @@ class RecognizedTodoAdapter {
     Map<String, dynamic> source, {
     DateTime? now,
   }) {
-    return normalizeResult(
-      source,
-      now: now,
-      promoteSpecialTodo: true,
-    );
+    return normalizeResult(source, now: now, promoteSpecialTodo: true);
   }
 
   static Map<String, dynamic> normalizeResult(
@@ -76,7 +69,8 @@ class RecognizedTodoAdapter {
     final declaredAllDay = parseBool(
       result['isAllDay'] ?? result['is_all_day'],
     );
-    final legacyDateOnlyRange = start != null &&
+    final legacyDateOnlyRange =
+        start != null &&
         due != null &&
         TodoItem.looksLikeLegacyDateOnlyRange(start, due);
     final isTodo = kind == null || kind.toLowerCase() == 'todo';
@@ -96,7 +90,8 @@ class RecognizedTodoAdapter {
       result['itemKind'] = _canonicalItemKind(kind);
     }
 
-    var isDateOnly = declaredAllDay ||
+    var isDateOnly =
+        declaredAllDay ||
         declaredMode == TodoTimeMode.dateOnly ||
         legacyDateOnlyRange;
 
@@ -105,7 +100,8 @@ class RecognizedTodoAdapter {
     // meant Android had no date window in which to put the item on the island.
     // Scope this compatibility promotion to image-recognized special todos;
     // normal text-created pickup todos keep the new unscheduled semantics.
-    final shouldPromoteSpecial = promoteSpecialTodo &&
+    final shouldPromoteSpecial =
+        promoteSpecialTodo &&
         isSpecial &&
         isTodo &&
         !isDateOnly &&
@@ -120,11 +116,7 @@ class RecognizedTodoAdapter {
       final sourceDate =
           start ?? due ?? (shouldPromoteSpecial ? effectiveNow : null);
       if (sourceDate != null) {
-        final day = DateTime(
-          sourceDate.year,
-          sourceDate.month,
-          sourceDate.day,
-        );
+        final day = DateTime(sourceDate.year, sourceDate.month, sourceDate.day);
         result['startTime'] = day.toIso8601String();
         result['endTime'] = DateTime(
           sourceDate.year,
@@ -195,8 +187,10 @@ class RecognizedTodoAdapter {
 
   static DateTime _fromEpoch(int value) {
     final milliseconds = value.abs() < 100000000000 ? value * 1000 : value;
-    return DateTime.fromMillisecondsSinceEpoch(milliseconds, isUtc: true)
-        .toLocal();
+    return DateTime.fromMillisecondsSinceEpoch(
+      milliseconds,
+      isUtc: true,
+    ).toLocal();
   }
 
   static bool _isSpecialTodo(String title, String? remark) {

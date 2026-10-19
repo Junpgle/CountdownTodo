@@ -4,10 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-enum LiquidGlassEffectMode {
-  standard,
-  enhanced,
-}
+enum LiquidGlassEffectMode { standard, enhanced }
 
 @immutable
 class LiquidGlassEffectConfiguration {
@@ -18,9 +15,9 @@ class LiquidGlassEffectConfiguration {
   });
 
   const LiquidGlassEffectConfiguration.disabled()
-      : enabled = false,
-        mode = LiquidGlassEffectMode.standard,
-        transparencyPercent = defaultTransparencyPercent;
+    : enabled = false,
+      mode = LiquidGlassEffectMode.standard,
+      transparencyPercent = defaultTransparencyPercent;
 
   /// Keeps existing glass colors unchanged until the user moves the slider.
   static const int defaultTransparencyPercent = 50;
@@ -74,7 +71,7 @@ class LiquidGlassEffectService {
   static const String _keyGuideOffered = 'liquid_glass_guide_offered';
 
   static final ValueNotifier<LiquidGlassEffectConfiguration>
-      _configurationNotifier = ValueNotifier(
+  _configurationNotifier = ValueNotifier(
     const LiquidGlassEffectConfiguration.disabled(),
   );
   static LiquidGlassEffectConfiguration _preferredConfiguration =
@@ -91,7 +88,7 @@ class LiquidGlassEffectService {
   static int _modeMutationRevision = 0;
 
   static ValueListenable<LiquidGlassEffectConfiguration>
-      get configurationListenable => _configurationNotifier;
+  get configurationListenable => _configurationNotifier;
 
   static LiquidGlassEffectConfiguration get configuration =>
       _configurationNotifier.value;
@@ -147,16 +144,18 @@ class LiquidGlassEffectService {
     _preferredConfiguration = LiquidGlassEffectConfiguration(
       enabled: enabled,
       mode: mode,
-      transparencyPercent: (prefs.getInt(_keyTransparency) ??
-              LiquidGlassEffectConfiguration.defaultTransparencyPercent)
-          .clamp(0, 100),
+      transparencyPercent:
+          (prefs.getInt(_keyTransparency) ??
+                  LiquidGlassEffectConfiguration.defaultTransparencyPercent)
+              .clamp(0, 100),
     );
     if (enabled && !_systemPowerSaveMode) {
       try {
         await _ensureRendererInitialized(mode: mode);
       } catch (error) {
         debugPrint(
-            '[LiquidGlass] Disabled after initialization failed: $error');
+          '[LiquidGlass] Disabled after initialization failed: $error',
+        );
         _preferredConfiguration = LiquidGlassEffectConfiguration(
           enabled: false,
           mode: mode,
@@ -181,8 +180,9 @@ class LiquidGlassEffectService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_keyEnabled, enabled);
       if (revision != _enabledMutationRevision) return;
-      _preferredConfiguration =
-          preferredConfiguration.copyWith(enabled: enabled);
+      _preferredConfiguration = preferredConfiguration.copyWith(
+        enabled: enabled,
+      );
       _publishEffectiveConfiguration();
     });
   }

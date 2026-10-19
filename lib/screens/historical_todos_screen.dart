@@ -1,10 +1,71 @@
 import '../widgets/floating_glass_control.dart';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+
 import '../models.dart';
 import '../storage_service.dart';
 import '../widgets/management_page.dart';
 import '../utils/app_dialogs.dart';
+
+class _HistoricalTodoDateHeader {
+  const _HistoricalTodoDateHeader(this.date, this.count);
+
+  final String date;
+  final int count;
+}
+
+class _HistoricalTodoListProjection {
+  const _HistoricalTodoListProjection({
+    required this.source,
+    required this.query,
+    required this.matchingItems,
+    required this.visibleCount,
+    required this.rows,
+  });
+
+  final List<TodoItem> source;
+  final String query;
+  final List<TodoItem> matchingItems;
+  final int visibleCount;
+  final List<Object> rows;
+}
+
+class _HistoricalTodoSearchFields {
+  const _HistoricalTodoSearchFields({
+    required this.sourceTitle,
+    required this.sourceRemark,
+    required this.title,
+    required this.remark,
+  });
+
+  final String sourceTitle;
+  final String? sourceRemark;
+  final String title;
+  final String remark;
+}
+
+class _HistoricalTodoDateLabel {
+  const _HistoricalTodoDateLabel({
+    required this.updatedAt,
+    required this.locale,
+    required this.value,
+  });
+
+  final int updatedAt;
+  final String? locale;
+  final String value;
+}
+
+final Map<(String?, String), DateFormat> _historicalTodoDateFormats = {};
+
+DateFormat _historicalTodoDateFormat(
+  String? locale, {
+  String pattern = 'yyyy-MM-dd',
+}) => _historicalTodoDateFormats.putIfAbsent((
+  locale,
+  pattern,
+), () => DateFormat(pattern, locale));
 
 class HistoricalTodosScreen extends StatefulWidget {
   final String username;
@@ -12,13 +73,14 @@ class HistoricalTodosScreen extends StatefulWidget {
   final Future<List<TodoGroup>> Function()? loadGroups;
   final Future<TodoItem?> Function(String username, String uuid)? loadTodoById;
   final Future<void> Function(String username, TodoItem todo)? saveTodo;
-  const HistoricalTodosScreen(
-      {super.key,
-      required this.username,
-      this.loadTodos,
-      this.loadGroups,
-      this.loadTodoById,
-      this.saveTodo});
+  const HistoricalTodosScreen({
+    super.key,
+    required this.username,
+    this.loadTodos,
+    this.loadGroups,
+    this.loadTodoById,
+    this.saveTodo,
+  });
 
   @override
   State<HistoricalTodosScreen> createState() => _HistoricalTodosScreenState();
@@ -30,7 +92,7 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
   List<TodoItem> _history = [];
   List<TodoItem> _deletedTodos = [];
   List<TodoItem> _orphanTodos = [];
-  List<TodoItem> _loadedTodos = [];
+  final Map<String, TodoItem> _loadedTodoById = {};
   bool _isLoading = true;
   bool _isLoadingMore = false;
   bool _hasMoreTodoPages = false;
@@ -38,6 +100,11 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
   String? _busyId;
   int _loadGeneration = 0;
   int _nextTodoOffset = 0;
+  final Map<int, _HistoricalTodoListProjection> _listProjections = {};
+  final Expando<_HistoricalTodoSearchFields> _searchFields =
+      Expando<_HistoricalTodoSearchFields>('historical todo search fields');
+  final Expando<_HistoricalTodoDateLabel> _dateLabels =
+      Expando<_HistoricalTodoDateLabel>('historical todo date label');
   final _searchController = TextEditingController();
   late TabController _tabController;
 
@@ -55,21 +122,14 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
     super.dispose();
   }
 
-  bool _isHistorical(TodoItem t) {
+  bool _isHistorical(TodoItem t, DateTime today) {
     if (!t.isDone) return false;
-    DateTime today = DateTime.now();
-    today = DateTime(today.year, today.month, today.day);
 
     if (t.dueDate != null) {
       DateTime d = DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day);
       return d.isBefore(today);
     } else {
-      DateTime cDate = DateTime.fromMillisecondsSinceEpoch(
-              t.createdDate ?? t.createdAt,
-              isUtc: true)
-          .toLocal();
-      DateTime c = DateTime(cDate.year, cDate.month, cDate.day);
-      return c.isBefore(today);
+      return (t.createdDate ?? t.createdAt) < today.millisecondsSinceEpoch;
     }
   }
 
@@ -84,6 +144,7 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
     }
     final generation = ++_loadGeneration;
     final offset = loadMore ? _nextTodoOffset : 0;
+    if (!loadMore) _loadedTodoById.clear();
     setState(() {
       if (loadMore) {
         _isLoadingMore = true;
@@ -92,7 +153,6 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
         _isLoadingMore = false;
         _hasMoreTodoPages = false;
         _nextTodoOffset = 0;
-        _loadedTodos = [];
         _history = [];
         _deletedTodos = [];
         _orphanTodos = [];
@@ -114,41 +174,51 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
 
       if (!mounted || generation != _loadGeneration) return;
       final pageTodos = results[0] as List<TodoItem>;
-      final mergedTodos = <String, TodoItem>{
-        if (loadMore) for (final todo in _loadedTodos) todo.id: todo,
-      };
       for (final todo in pageTodos) {
-        final previous = mergedTodos[todo.id];
+        final previous = _loadedTodoById[todo.id];
         if (previous == null || todo.updatedAt > previous.updatedAt) {
-          mergedTodos[todo.id] = todo;
+          _loadedTodoById[todo.id] = todo;
         }
       }
-      final allTodos = mergedTodos.values.toList();
+      final allTodos = _loadedTodoById.values.toList();
       final groups = results[1] as List<TodoGroup>;
-      final activeGroupIds =
-          groups.where((g) => !g.isDeleted).map((g) => g.id).toSet();
+      final activeGroupIds = groups
+          .where((g) => !g.isDeleted)
+          .map((g) => g.id)
+          .toSet();
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      final historyTodos = <TodoItem>[];
+      final deletedTodos = <TodoItem>[];
+      final orphanTodos = <TodoItem>[];
+      for (final todo in allTodos) {
+        if (todo.isDeleted) {
+          deletedTodos.add(todo);
+          continue;
+        }
+        if (todo.isDone) {
+          if (_isHistorical(todo, today)) historyTodos.add(todo);
+          continue;
+        }
+        final groupId = todo.groupId;
+        if (groupId != null &&
+            (groupId.isEmpty || !activeGroupIds.contains(groupId))) {
+          orphanTodos.add(todo);
+        }
+      }
+      historyTodos.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+      deletedTodos.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+      orphanTodos.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
 
       setState(() {
-        _loadedTodos = allTodos;
         // 1. 历史记录：已完成、日期在今天之前、未被逻辑删除
-        _history =
-            allTodos.where((t) => _isHistorical(t) && !t.isDeleted).toList();
-        _history.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+        _history = historyTodos;
 
         // 2. 回收站：逻辑删除的数据
-        _deletedTodos = allTodos.where((t) => t.isDeleted).toList();
-        _deletedTodos.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+        _deletedTodos = deletedTodos;
 
         // 3. 孤儿待办：未删除、未完成，且符合以下任一可见性异常条件的：
-        _orphanTodos = allTodos.where((t) {
-          if (t.isDeleted || t.isDone) return false;
-          if (t.groupId != null && t.groupId!.isEmpty) return true;
-          if (t.groupId != null && !activeGroupIds.contains(t.groupId)) {
-            return true;
-          }
-          return false;
-        }).toList();
-        _orphanTodos.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+        _orphanTodos = orphanTodos;
 
         _nextTodoOffset = offset + _todoPageSize;
         _hasMoreTodoPages =
@@ -173,10 +243,106 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
     }
   }
 
+  _HistoricalTodoListProjection _projectList(
+    List<TodoItem> items,
+    int section,
+    String query,
+  ) {
+    final cached = _listProjections[section];
+    if (cached != null &&
+        identical(cached.source, items) &&
+        cached.query == query) {
+      return cached;
+    }
+
+    final candidates =
+        cached != null &&
+            identical(cached.source, items) &&
+            query.startsWith(cached.query)
+        ? cached.matchingItems
+        : items;
+    final List<TodoItem> matchingItems;
+    if (query.isEmpty) {
+      matchingItems = candidates;
+    } else {
+      matchingItems = <TodoItem>[];
+      for (final item in candidates) {
+        final fields = _searchFieldsFor(item);
+        if (fields.title.contains(query) || fields.remark.contains(query)) {
+          matchingItems.add(item);
+        }
+      }
+    }
+
+    final groups = <String, List<TodoItem>>{};
+    for (final item in matchingItems) {
+      final date = _dateLabelFor(item);
+      groups.putIfAbsent(date, () => []).add(item);
+    }
+
+    final rows = <Object>[];
+    for (final group in groups.entries) {
+      rows.add(_HistoricalTodoDateHeader(group.key, group.value.length));
+      rows.addAll(group.value);
+    }
+
+    final projection = _HistoricalTodoListProjection(
+      source: items,
+      query: query,
+      matchingItems: matchingItems,
+      visibleCount: matchingItems.length,
+      rows: rows,
+    );
+    _listProjections[section] = projection;
+    return projection;
+  }
+
+  _HistoricalTodoSearchFields _searchFieldsFor(TodoItem item) {
+    final title = item.title;
+    final remark = item.remark;
+    final cached = _searchFields[item];
+    if (cached != null &&
+        identical(cached.sourceTitle, title) &&
+        identical(cached.sourceRemark, remark)) {
+      return cached;
+    }
+
+    final fields = _HistoricalTodoSearchFields(
+      sourceTitle: title,
+      sourceRemark: remark,
+      title: title.toLowerCase(),
+      remark: (remark ?? '').toLowerCase(),
+    );
+    _searchFields[item] = fields;
+    return fields;
+  }
+
+  String _dateLabelFor(TodoItem item) {
+    final updatedAt = item.updatedAt;
+    final locale = Intl.defaultLocale;
+    final cached = _dateLabels[item];
+    if (cached != null &&
+        cached.updatedAt == updatedAt &&
+        cached.locale == locale) {
+      return cached.value;
+    }
+
+    final value = _historicalTodoDateFormat(locale)
+        .format(DateTime.fromMillisecondsSinceEpoch(updatedAt).toLocal());
+    _dateLabels[item] = _HistoricalTodoDateLabel(
+      updatedAt: updatedAt,
+      locale: locale,
+      value: value,
+    );
+    return value;
+  }
+
   Future<void> _deleteItem(TodoItem item) async {
     try {
-      final current =
-          await StorageService.getTodoByUuid(widget.username, item.id);
+      final current = await StorageService.getTodoByUuid(
+        widget.username,
+        item.id,
+      );
       if (current == null) throw StateError('待办已不存在');
       current.isDeleted = true;
       current.markAsChanged();
@@ -199,32 +365,40 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
   }
 
   Future<void> _uncheckItem(TodoItem item) async {
-    final current =
-        await StorageService.getTodoByUuid(widget.username, item.id);
+    final current = await StorageService.getTodoByUuid(
+      widget.username,
+      item.id,
+    );
     if (current == null) throw StateError('待办已不存在');
     current.isDone = false;
     current.markAsChanged();
     await StorageService.updateSingleTodo(widget.username, current);
     await _loadData();
     if (mounted) {
-      AppSnackBars.showSnackBar(context,
-          const SnackBar(content: Text('待办已取消完成，并退回主页清单')));
+      AppSnackBars.showSnackBar(
+        context,
+        const SnackBar(content: Text('待办已取消完成，并退回主页清单')),
+      );
     }
   }
 
   Future<void> _restoreDeletedItem(TodoItem item) async {
-    final current = await (widget.loadTodoById?.call(widget.username, item.id) ??
-        StorageService.getTodoByUuid(widget.username, item.id));
+    final current =
+        await (widget.loadTodoById?.call(widget.username, item.id) ??
+            StorageService.getTodoByUuid(widget.username, item.id));
     if (current == null) throw StateError('待办已不存在');
     current.isDeleted = false;
     current.markAsChanged();
 
     // 🚀 核心修复：自动检测并修复“孤儿”状态
     // 如果该待办所属的分组已不存在，则将其设为未分组，确保其能直接在首页主列表显示
-    final groups = await (widget.loadGroups?.call() ??
-        StorageService.getTodoGroups(widget.username));
-    final activeGroupIds =
-        groups.where((group) => !group.isDeleted).map((group) => group.id).toSet();
+    final groups =
+        await (widget.loadGroups?.call() ??
+            StorageService.getTodoGroups(widget.username));
+    final activeGroupIds = groups
+        .where((group) => !group.isDeleted)
+        .map((group) => group.id)
+        .toSet();
 
     if (current.groupId != null &&
         current.groupId!.isNotEmpty &&
@@ -236,8 +410,10 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
         StorageService.updateSingleTodo(widget.username, current));
     await _loadData();
     if (mounted) {
-      AppSnackBars.showSnackBar(context,
-          const SnackBar(content: Text('待办已成功恢复，并退回首页清单')));
+      AppSnackBars.showSnackBar(
+        context,
+        const SnackBar(content: Text('待办已成功恢复，并退回首页清单')),
+      );
     }
   }
 
@@ -245,22 +421,28 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
     await StorageService.permanentlyDeleteTodo(widget.username, item.id);
     await _loadData();
     if (mounted) {
-      AppSnackBars.showSnackBar(context,
-          const SnackBar(content: Text('已彻底删除')));
+      AppSnackBars.showSnackBar(
+        context,
+        const SnackBar(content: Text('已彻底删除')),
+      );
     }
   }
 
   Future<void> _fixOrphan(TodoItem item) async {
-    final current =
-        await StorageService.getTodoByUuid(widget.username, item.id);
+    final current = await StorageService.getTodoByUuid(
+      widget.username,
+      item.id,
+    );
     if (current == null) throw StateError('待办已不存在');
     current.groupId = null; // 解绑无效的分组，让它回到首页主列表
     current.markAsChanged();
     await StorageService.updateSingleTodo(widget.username, current);
     await _loadData();
     if (mounted) {
-      AppSnackBars.showSnackBar(context,
-          const SnackBar(content: Text('已修复！待办已回到首页清单')));
+      AppSnackBars.showSnackBar(
+        context,
+        const SnackBar(content: Text('已修复！待办已回到首页清单')),
+      );
     }
   }
 
@@ -272,21 +454,26 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
             scrollable: true,
             icon: Icon(Icons.delete_forever_outlined, color: scheme.error),
             title: Text(item == null ? '清空全部回收站？' : '彻底删除这条待办？'),
-            content: Text(item == null
-                ? _hasMoreTodoPages
-                    ? '将永久删除回收站中的全部待办（当前已加载 ${_deletedTodos.length} 条，仍可能有尚未加载的记录），删除后无法恢复。'
-                    : '将永久删除回收站中的全部 ${_deletedTodos.length} 条待办（包括未显示的搜索结果），删除后无法恢复。'
-                : '“${item.title}”将被永久删除，删除后无法恢复。'),
+            content: Text(
+              item == null
+                  ? _hasMoreTodoPages
+                        ? '将永久删除回收站中的全部待办（当前已加载 ${_deletedTodos.length} 条，仍可能有尚未加载的记录），删除后无法恢复。'
+                        : '将永久删除回收站中的全部 ${_deletedTodos.length} 条待办（包括未显示的搜索结果），删除后无法恢复。'
+                  : '“${item.title}”将被永久删除，删除后无法恢复。',
+            ),
             actions: [
               TextButton(
-                  onPressed: () => Navigator.pop(ctx, false),
-                  child: const Text('取消')),
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('取消'),
+              ),
               FilledButton(
-                  onPressed: () => Navigator.pop(ctx, true),
-                  style: FilledButton.styleFrom(
-                      backgroundColor: scheme.error,
-                      foregroundColor: scheme.onError),
-                  child: const Text('确认删除')),
+                onPressed: () => Navigator.pop(ctx, true),
+                style: FilledButton.styleFrom(
+                  backgroundColor: scheme.error,
+                  foregroundColor: scheme.onError,
+                ),
+                child: const Text('确认删除'),
+              ),
             ],
           ),
         ) ??
@@ -300,8 +487,10 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
       await action();
     } catch (_) {
       if (mounted) {
-        AppSnackBars.showSnackBar(context,
-            const SnackBar(content: Text('操作失败，请稍后重试')));
+        AppSnackBars.showSnackBar(
+          context,
+          const SnackBar(content: Text('操作失败，请稍后重试')),
+        );
       }
     } finally {
       if (mounted) setState(() => _busyId = null);
@@ -327,17 +516,9 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final query = _searchController.text.trim().toLowerCase();
-    final visible = items
-        .where((item) =>
-            item.title.toLowerCase().contains(query) ||
-            (item.remark ?? '').toLowerCase().contains(query))
-        .toList();
-    final groups = <String, List<TodoItem>>{};
-    for (final item in visible) {
-      final date = DateFormat('yyyy-MM-dd').format(
-          DateTime.fromMillisecondsSinceEpoch(item.updatedAt).toLocal());
-      groups.putIfAbsent(date, () => []).add(item);
-    }
+    final projection = _projectList(items, section, query);
+    final visibleCount = projection.visibleCount;
+    final rows = projection.rows;
     const titles = ['完成的事，值得回顾', '删除后，仍有找回的机会', '让待办回到清单'];
     const descriptions = [
       '查看以前完成的待办，可取消完成或移至回收站。',
@@ -347,86 +528,106 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
     const icons = [
       Icons.task_alt_rounded,
       Icons.restore_from_trash_outlined,
-      Icons.folder_off_outlined
+      Icons.folder_off_outlined,
     ];
+    final headerChildren = <Widget>[
+      ManagementIntro(
+        icon: icons[section],
+        title: titles[section],
+        description: descriptions[section],
+      ),
+      ManagementSearchField(
+        controller: _searchController,
+        hintText: '搜索待办名称或备注',
+        onChanged: (_) => setState(() {}),
+      ),
+      const SizedBox(height: 16),
+      Wrap(
+        alignment: WrapAlignment.spaceBetween,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: 12,
+        runSpacing: 8,
+        children: [
+          Text(
+            query.isEmpty
+                ? _hasMoreTodoPages
+                      ? '已加载 ${items.length} 条待办'
+                      : '共 ${items.length} 条待办'
+                : '找到 $visibleCount 条待办${_hasMoreTodoPages ? '（当前已加载）' : ''}',
+            style: theme.textTheme.titleSmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+          if (section == 1 && items.isNotEmpty)
+            TextButton.icon(
+              onPressed: _busyId != null ? null : _clearRecycleBin,
+              style: TextButton.styleFrom(foregroundColor: scheme.error),
+              icon: const Icon(Icons.delete_sweep_outlined, size: 18),
+              label: const Text('清空全部'),
+            ),
+        ],
+      ),
+      if (visibleCount == 0)
+        ManagementEmptyState(
+          icon: icons[section],
+          title: query.isNotEmpty
+              ? '没有找到匹配的待办'
+              : ['没有历史待办', '回收站空空如也', '没有需要修复的待办'][section],
+          description: query.isNotEmpty
+              ? '试试其他关键词，或清空搜索。'
+              : [
+                  '以前完成的待办会出现在这里。',
+                  '已删除的待办会保留在这里，供你恢复。',
+                  '当前未发现文件夹关联异常。',
+                ][section],
+        ),
+    ];
+    final hasFooter = _isLoadingMore || _hasMoreTodoPages;
     return RefreshIndicator(
       onRefresh: () => _loadData(),
-      child: ManagementPage(
-          key: PageStorageKey('todo-history-$section'),
-          maxWidth: 900,
-          topPadding: topPadding,
-          children: [
-            ManagementIntro(
-                icon: icons[section],
-                title: titles[section],
-                description: descriptions[section]),
-            ManagementSearchField(
-                controller: _searchController,
-                hintText: '搜索待办名称或备注',
-                onChanged: (_) => setState(() {})),
-            const SizedBox(height: 16),
-            Wrap(
-                alignment: WrapAlignment.spaceBetween,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                spacing: 12,
-                runSpacing: 8,
-                children: [
-                  Text(
-                      query.isEmpty
-                          ? _hasMoreTodoPages
-                              ? '已加载 ${items.length} 条待办'
-                              : '共 ${items.length} 条待办'
-                          : '找到 ${visible.length} 条待办${_hasMoreTodoPages ? '（当前已加载）' : ''}',
-                      style: theme.textTheme.titleSmall
-                          ?.copyWith(color: scheme.onSurfaceVariant)),
-                  if (section == 1 && items.isNotEmpty)
-                    TextButton.icon(
-                        onPressed: _busyId != null ? null : _clearRecycleBin,
-                        style:
-                            TextButton.styleFrom(foregroundColor: scheme.error),
-                        icon: const Icon(Icons.delete_sweep_outlined, size: 18),
-                        label: const Text('清空全部')),
-                ]),
-            if (visible.isEmpty)
-              ManagementEmptyState(
-                  icon: icons[section],
-                  title: query.isNotEmpty
-                      ? '没有找到匹配的待办'
-                      : ['没有历史待办', '回收站空空如也', '没有需要修复的待办'][section],
-                  description: query.isNotEmpty
-                      ? '试试其他关键词，或清空搜索。'
-                      : [
-                          '以前完成的待办会出现在这里。',
-                          '已删除的待办会保留在这里，供你恢复。',
-                          '当前未发现文件夹关联异常。'
-                        ][section]),
-            for (final group in groups.entries) ...[
-              Padding(
-                  padding: const EdgeInsets.only(top: 16, bottom: 10),
-                  child: Text('${group.key} · ${group.value.length} 条',
-                      style: theme.textTheme.labelLarge
-                          ?.copyWith(color: scheme.onSurfaceVariant))),
-              ...group.value.map((item) => _buildCard(item, section)),
-            ],
-            if (_isLoadingMore)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 20),
-                child: Center(child: CircularProgressIndicator()),
-              )
-            else if (_hasMoreTodoPages)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                child: Center(
-                  child: TextButton.icon(
-                    onPressed: _isLoading || _busyId != null
-                        ? null
-                        : () => _loadData(loadMore: true),
-                    icon: const Icon(Icons.expand_more_rounded),
-                    label: const Text('加载更多待办'),
+      child: ManagementPage.builder(
+        key: PageStorageKey('todo-history-$section'),
+        maxWidth: 900,
+        topPadding: topPadding,
+        itemCount: headerChildren.length + rows.length + (hasFooter ? 1 : 0),
+        itemBuilder: (context, index) {
+          if (index < headerChildren.length) return headerChildren[index];
+          final rowIndex = index - headerChildren.length;
+          if (rowIndex < rows.length) {
+            final row = rows[rowIndex];
+            if (row is _HistoricalTodoDateHeader) {
+              return Padding(
+                padding: const EdgeInsets.only(top: 16, bottom: 10),
+                child: Text(
+                  '${row.date} · ${row.count} 条',
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    color: scheme.onSurfaceVariant,
                   ),
                 ),
+              );
+            }
+            return _buildCard(row as TodoItem, section);
+          }
+          if (_isLoadingMore) {
+            return const Padding(
+              padding: EdgeInsets.symmetric(vertical: 20),
+              child: Center(child: CircularProgressIndicator()),
+            );
+          }
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Center(
+              child: TextButton.icon(
+                onPressed: _isLoading || _busyId != null
+                    ? null
+                    : () => _loadData(loadMore: true),
+                icon: const Icon(Icons.expand_more_rounded),
+                label: const Text('加载更多待办'),
               ),
-          ]),
+            ),
+          );
+        },
+      ),
     );
   }
 
@@ -435,78 +636,105 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
     final scheme = theme.colorScheme;
     final busy = _busyId == item.id;
     final enabled = _busyId == null;
-    final time = DateFormat('HH:mm')
-        .format(DateTime.fromMillisecondsSinceEpoch(item.updatedAt).toLocal());
+    final time = _historicalTodoDateFormat(
+      Intl.defaultLocale,
+      pattern: 'HH:mm',
+    ).format(DateTime.fromMillisecondsSinceEpoch(item.updatedAt).toLocal());
     return ManagementCard(
       key: ValueKey(item.id),
       margin: const EdgeInsets.only(bottom: 10),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Icon(
-              section == 0
-                  ? Icons.check_circle_outline_rounded
-                  : section == 1
-                      ? Icons.delete_outline_rounded
-                      : Icons.folder_off_outlined,
-              color: scheme.primary),
-          const SizedBox(width: 12),
-          Expanded(
-              child: Column(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                section == 0
+                    ? Icons.check_circle_outline_rounded
+                    : section == 1
+                    ? Icons.delete_outline_rounded
+                    : Icons.folder_off_outlined,
+                color: scheme.primary,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                Text(item.title,
-                    style: theme.textTheme.titleMedium
-                        ?.copyWith(fontWeight: FontWeight.w700)),
-                const SizedBox(height: 6),
-                Text(section == 2 ? '所属文件夹已失效' : '最近更新 · $time',
-                    style: theme.textTheme.bodySmall
-                        ?.copyWith(color: scheme.onSurfaceVariant)),
-                if (item.remark?.trim().isNotEmpty == true) ...[
-                  const SizedBox(height: 8),
-                  Text(item.remark!,
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(color: scheme.onSurfaceVariant)),
-                ],
-              ])),
-        ]),
-        const SizedBox(height: 12),
-        if (busy) const LinearProgressIndicator(),
-        ManagementActionBar(children: [
-          if (section == 0) ...[
-            TextButton.icon(
-                onPressed: enabled
-                    ? () => _runAction(item.id, () => _deleteItem(item))
-                    : null,
-                icon: const Icon(Icons.delete_outline_rounded, size: 18),
-                label: const Text('移至回收站')),
-            FilledButton.tonalIcon(
-                onPressed: enabled
-                    ? () => _runAction(item.id, () => _uncheckItem(item))
-                    : null,
-                icon: const Icon(Icons.undo_rounded, size: 18),
-                label: const Text('取消完成')),
-          ] else if (section == 1) ...[
-            TextButton.icon(
-                onPressed: enabled ? () => _confirmDeleteItem(item) : null,
-                style: TextButton.styleFrom(foregroundColor: scheme.error),
-                icon: const Icon(Icons.delete_forever_outlined, size: 18),
-                label: const Text('彻底删除')),
-            FilledButton.tonalIcon(
-                onPressed: enabled
-                    ? () => _runAction(item.id, () => _restoreDeletedItem(item))
-                    : null,
-                icon: const Icon(Icons.restore_rounded, size: 18),
-                label: const Text('恢复待办')),
-          ] else
-            FilledButton.tonalIcon(
-                onPressed: enabled
-                    ? () => _runAction(item.id, () => _fixOrphan(item))
-                    : null,
-                icon: const Icon(Icons.auto_fix_high_rounded, size: 18),
-                label: const Text('恢复到独立待办')),
-        ]),
-      ]),
+                    Text(
+                      item.title,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      section == 2 ? '所属文件夹已失效' : '最近更新 · $time',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                    if (item.remark?.trim().isNotEmpty == true) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        item.remark!,
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: scheme.onSurfaceVariant),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (busy) const LinearProgressIndicator(),
+          ManagementActionBar(
+            children: [
+              if (section == 0) ...[
+                TextButton.icon(
+                  onPressed: enabled
+                      ? () => _runAction(item.id, () => _deleteItem(item))
+                      : null,
+                  icon: const Icon(Icons.delete_outline_rounded, size: 18),
+                  label: const Text('移至回收站'),
+                ),
+                FilledButton.tonalIcon(
+                  onPressed: enabled
+                      ? () => _runAction(item.id, () => _uncheckItem(item))
+                      : null,
+                  icon: const Icon(Icons.undo_rounded, size: 18),
+                  label: const Text('取消完成'),
+                ),
+              ] else if (section == 1) ...[
+                TextButton.icon(
+                  onPressed: enabled ? () => _confirmDeleteItem(item) : null,
+                  style: TextButton.styleFrom(foregroundColor: scheme.error),
+                  icon: const Icon(Icons.delete_forever_outlined, size: 18),
+                  label: const Text('彻底删除'),
+                ),
+                FilledButton.tonalIcon(
+                  onPressed: enabled
+                      ? () =>
+                            _runAction(item.id, () => _restoreDeletedItem(item))
+                      : null,
+                  icon: const Icon(Icons.restore_rounded, size: 18),
+                  label: const Text('恢复待办'),
+                ),
+              ] else
+                FilledButton.tonalIcon(
+                  onPressed: enabled
+                      ? () => _runAction(item.id, () => _fixOrphan(item))
+                      : null,
+                  icon: const Icon(Icons.auto_fix_high_rounded, size: 18),
+                  label: const Text('恢复到独立待办'),
+                ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -520,11 +748,10 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
         title: const Text('待办深度清理'),
         actions: [
           IconButton(
-              icon: const Icon(Icons.refresh_rounded),
-              tooltip: '重新扫描',
-              onPressed: _isLoading || _busyId != null
-                  ? null
-                  : () => _loadData())
+            icon: const Icon(Icons.refresh_rounded),
+            tooltip: '重新扫描',
+            onPressed: _isLoading || _busyId != null ? null : () => _loadData(),
+          ),
         ],
         bottom: TabBar(
           controller: _tabController,
@@ -533,7 +760,7 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
           tabs: [
             Tab(text: '历史记录 ${_history.length}'),
             Tab(text: '回收站 ${_deletedTodos.length}'),
-            Tab(text: '待修复 ${_orphanTodos.length}')
+            Tab(text: '待修复 ${_orphanTodos.length}'),
           ],
         ),
       ),
@@ -542,17 +769,24 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
         child: _isLoading
             ? const Center(child: CircularProgressIndicator())
             : _loadFailed
-                ? ManagementPage(topPadding: topBarHeight, children: [
-                    ManagementLoadError(
-                        title: '暂时无法加载待办',
-                        description: '请重试，已保存的待办不会受影响。',
-                        onRetry: () => _loadData()),
-                  ])
-                : TabBarView(controller: _tabController, children: [
-                    _buildList(_history, 0, topBarHeight),
-                    _buildList(_deletedTodos, 1, topBarHeight),
-                    _buildList(_orphanTodos, 2, topBarHeight)
-                  ]),
+            ? ManagementPage(
+                topPadding: topBarHeight,
+                children: [
+                  ManagementLoadError(
+                    title: '暂时无法加载待办',
+                    description: '请重试，已保存的待办不会受影响。',
+                    onRetry: () => _loadData(),
+                  ),
+                ],
+              )
+            : TabBarView(
+                controller: _tabController,
+                children: [
+                  _buildList(_history, 0, topBarHeight),
+                  _buildList(_deletedTodos, 1, topBarHeight),
+                  _buildList(_orphanTodos, 2, topBarHeight),
+                ],
+              ),
       ),
     );
   }

@@ -5,13 +5,12 @@ TodoItem todoWithRange({
   required DateTime start,
   DateTime? due,
   bool isAllDay = false,
-}) =>
-    TodoItem(
-      title: '测试待办',
-      createdDate: start.toUtc().millisecondsSinceEpoch,
-      dueDate: due,
-      isAllDay: isAllDay,
-    );
+}) => TodoItem(
+  title: '测试待办',
+  createdDate: start.toUtc().millisecondsSinceEpoch,
+  dueDate: due,
+  isAllDay: isAllDay,
+);
 
 void main() {
   group('TodoItem time semantics', () {
@@ -33,18 +32,21 @@ void main() {
       expect(todo.isAllDayTask, isTrue);
     });
 
-    test('a date-only due date remains valid through its final millisecond', () {
-      final todo = todoWithRange(
-        start: DateTime(2026, 7, 20),
-        due: DateTime(2026, 7, 20, 23, 59),
-        isAllDay: true,
-      );
+    test(
+      'a date-only due date remains valid through its final millisecond',
+      () {
+        final todo = todoWithRange(
+          start: DateTime(2026, 7, 20),
+          due: DateTime(2026, 7, 20, 23, 59),
+          isAllDay: true,
+        );
 
-      expect(
-        todo.effectiveDueAt,
-        DateTime(2026, 7, 21).subtract(const Duration(milliseconds: 1)),
-      );
-    });
+        expect(
+          todo.effectiveDueAt,
+          DateTime(2026, 7, 21).subtract(const Duration(milliseconds: 1)),
+        );
+      },
+    );
 
     test('overdue checks respect date-only and unscheduled semantics', () {
       final dateOnly = todoWithRange(

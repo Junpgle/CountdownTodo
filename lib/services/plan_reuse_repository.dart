@@ -4,6 +4,7 @@ import '../models.dart';
 import '../models/plan_availability.dart';
 import 'database_helper.dart';
 import 'plan_todo_guard.dart';
+import 'conflict_visibility_service.dart';
 
 /// Settings only: never carries the source plan's mutable execution metadata.
 class PlanReuseSettings {
@@ -122,7 +123,7 @@ class PlanReuseRepository {
         })..id = todoId;
         if (!candidate.isDone &&
             !candidate.isDeleted &&
-            !candidate.hasConflict &&
+            !ConflictVisibilityService.blocksTodoPlanning(candidate) &&
             candidate.title.trim().isNotEmpty) {
           todo = candidate;
         }

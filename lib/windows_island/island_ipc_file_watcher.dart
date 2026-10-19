@@ -51,9 +51,11 @@ class IslandIpcFileWatcher {
     _startFallbackTimer(fallbackInterval);
 
     try {
-      final events = watchDirectory?.call(target.parent) ??
+      final events =
+          watchDirectory?.call(target.parent) ??
           target.parent.watch(
-            events: FileSystemEvent.create |
+            events:
+                FileSystemEvent.create |
                 FileSystemEvent.modify |
                 FileSystemEvent.move,
           );
@@ -87,10 +89,7 @@ class IslandIpcFileWatcher {
   void _onDirectoryEvent(FileSystemEvent event) {
     if (!_running || !_matchesTarget(event)) return;
     _eventDebounceTimer?.cancel();
-    _eventDebounceTimer = Timer(
-      eventDebounce,
-      () => unawaited(_runCallback()),
-    );
+    _eventDebounceTimer = Timer(eventDebounce, () => unawaited(_runCallback()));
   }
 
   bool _matchesTarget(FileSystemEvent event) {
@@ -118,10 +117,7 @@ class IslandIpcFileWatcher {
 
   void _startFallbackTimer(Duration interval) {
     _fallbackTimer?.cancel();
-    _fallbackTimer = Timer.periodic(
-      interval,
-      (_) => unawaited(_runCallback()),
-    );
+    _fallbackTimer = Timer.periodic(interval, (_) => unawaited(_runCallback()));
   }
 
   Future<void> _runCallback() async {

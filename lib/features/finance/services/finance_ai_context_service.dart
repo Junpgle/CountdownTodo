@@ -28,10 +28,7 @@ typedef _ExplicitFinanceMonthToken = ({
   bool hasExplicitYear,
 });
 
-typedef _RecentFinanceQuery = ({
-  int count,
-  FinanceTransactionType? type,
-});
+typedef _RecentFinanceQuery = ({int count, FinanceTransactionType? type});
 
 /// Builds a small, query-scoped finance snapshot for the AI assistant.
 ///
@@ -274,12 +271,7 @@ abstract final class FinanceAiContextService {
     '上上个礼拜',
   ];
 
-  static const _halfYearPeriodWords = [
-    '上半年',
-    '上半年度',
-    '下半年',
-    '下半年度',
-  ];
+  static const _halfYearPeriodWords = ['上半年', '上半年度', '下半年', '下半年度'];
 
   static const _rollingHalfMonthPeriodWords = [
     '近半个月',
@@ -475,8 +467,7 @@ abstract final class FinanceAiContextService {
     if (_containsAny(text, ['余额'])) {
       return !_containsAny(text, ['预算']) || namesPaymentAccount;
     }
-    return namesPaymentAccount &&
-        _containsAny(text, _paymentBalancePhrases);
+    return namesPaymentAccount && _containsAny(text, _paymentBalancePhrases);
   }
 
   /// Returns whether the model needs the local finance catalog without
@@ -598,36 +589,44 @@ abstract final class FinanceAiContextService {
                 item.transactionDate.compareTo(toKey) < 0,
           )
           .toList(growable: false);
-      final transactions = recentQuery == null
-          ? periodTransactions
-          : (await FinanceRepository.getTransactions(
-                  to: _recentTransactionQueryEndDate(asOfAt),
-                  type: recentQuery.type,
-                ))
-                .where((item) => item.balanceEventAt() <= asOfAt)
-                .toList()
-            ..sort((left, right) {
-              final eventOrder = right
-                  .balanceEventAt()
-                  .compareTo(left.balanceEventAt());
-              if (eventOrder != 0) return eventOrder;
-              final dateOrder = right.transactionDate.compareTo(
-                left.transactionDate,
-              );
-              return dateOrder != 0
-                  ? dateOrder
-                  : right.updatedAt.compareTo(left.updatedAt);
-            });
-      final selectedTransactions = recentQuery == null
-          ? transactions
-          : transactions.take(recentQuery.count).toList(growable: false);
+      final List<FinanceTransaction> selectedTransactions;
+      if (recentQuery == null) {
+        selectedTransactions = periodTransactions;
+      } else {
+        final recentValues = await FinanceRepository.getTransactions(
+          to: _recentTransactionQueryEndDate(asOfAt),
+          type: recentQuery.type,
+        );
+        final recentEvents =
+            <({FinanceTransaction transaction, int eventAt})>[];
+        for (final transaction in recentValues) {
+          final eventAt = transaction.balanceEventAt();
+          if (eventAt <= asOfAt) {
+            recentEvents.add((transaction: transaction, eventAt: eventAt));
+          }
+        }
+        recentEvents.sort((left, right) {
+          final eventOrder = right.eventAt.compareTo(left.eventAt);
+          if (eventOrder != 0) return eventOrder;
+          final dateOrder = right.transaction.transactionDate.compareTo(
+            left.transaction.transactionDate,
+          );
+          return dateOrder != 0
+              ? dateOrder
+              : right.transaction.updatedAt.compareTo(
+                  left.transaction.updatedAt,
+                );
+        });
+        selectedTransactions = recentEvents
+            .take(recentQuery.count)
+            .map((entry) => entry.transaction)
+            .toList(growable: false);
+      }
       final allBudgets = values[1] as List<FinanceBudget>;
       Map<String, int>? paymentMethodBalances;
       if (needsPaymentBalances) {
         final snapshots = FinanceRepository.latestPaymentBalanceSnapshots(
-          allBudgets.where(
-            (budget) => budget.isPaymentMethod,
-          ),
+          allBudgets.where((budget) => budget.isPaymentMethod),
           asOfAt: balanceAsOfAt,
           nowAt: asOfAt,
         );
@@ -654,18 +653,13 @@ abstract final class FinanceAiContextService {
               .map((item) => item.interestTransactionUuid)
               .whereType<String>()
               .toSet();
-          for (final snapshot in snapshots) {
-            final paymentMethodUuid = snapshot.paymentMethodUuid!;
-            paymentMethodBalances[paymentMethodUuid] =
-                FinanceRepository.paymentMethodBalanceAt(
-                  snapshot: snapshot,
-                  transactions: balanceTransactions,
-                  loanRepayments: loanRepayments,
-                  loanInterestTransactionUuids:
-                      loanInterestTransactionUuids,
-                  asOfAt: balanceAsOfAt,
-                );
-          }
+          paymentMethodBalances = FinanceRepository.paymentMethodBalancesAt(
+            snapshots: snapshots,
+            transactions: balanceTransactions,
+            loanRepayments: loanRepayments,
+            loanInterestTransactionUuids: loanInterestTransactionUuids,
+            asOfAt: balanceAsOfAt,
+          );
         }
       }
       final budgets = allBudgets
@@ -679,22 +673,33 @@ abstract final class FinanceAiContextService {
       // Budget limits belong to full calendar months even when the ledger
       // question covers only one day/week or spans several different months.
       final currentMonthKey = financeMonthKey(nowValue);
+      final budgetMonthKeys = budgets.map((item) => item.monthKey).toSet();
+      final transactionsByBudgetMonth = <String, List<FinanceTransaction>>{};
+      if (budgetMonthKeys.isNotEmpty) {
+        for (final transaction in monthTransactions) {
+          final transactionDate = transaction.transactionDate;
+          if (transactionDate.length < 8 || transactionDate[7] != '-') {
+            continue;
+          }
+          final monthKey = transactionDate.substring(0, 7);
+          if (!budgetMonthKeys.contains(monthKey)) continue;
+          (transactionsByBudgetMonth[monthKey] ??= <FinanceTransaction>[]).add(
+            transaction,
+          );
+        }
+      }
       final budgetSummaries = {
-        for (final month in budgets.map((item) => item.monthKey).toSet())
+        for (final month in budgetMonthKeys)
           month: FinanceSummary.fromTransactions(
-            monthTransactions.where(
-              (item) => item.transactionDate.startsWith('$month-'),
-            ),
-            asOfAt: month.compareTo(currentMonthKey) > 0
-                ? null
-                : asOfAt,
+            transactionsByBudgetMonth[month] ?? const <FinanceTransaction>[],
+            asOfAt: month.compareTo(currentMonthKey) > 0 ? null : asOfAt,
           ),
       };
       final ledger = formatContext(
         range: range,
         summary: FinanceSummary.fromTransactions(
           selectedTransactions,
-          asOfAt: asOfAt,
+          asOfAt: recentQuery == null ? asOfAt : null,
         ),
         transactions: selectedTransactions,
         categories: catalogData.categories,
@@ -828,9 +833,7 @@ abstract final class FinanceAiContextService {
     ];
     if (mentionedTypes.length > 1) return null;
     return (
-      count: requestedCount
-          .clamp(1, _maxRecentTransactionQueryCount)
-          .toInt(),
+      count: requestedCount.clamp(1, _maxRecentTransactionQueryCount).toInt(),
       type: mentionedTypes.firstOrNull,
     );
   }
@@ -869,10 +872,7 @@ abstract final class FinanceAiContextService {
       '明年' || '下年' || '下一年' || '来年' => 1,
       _ => 0,
     };
-    final previousRange = resolveDateRange(
-      previousUserMessage,
-      now: now,
-    );
+    final previousRange = resolveDateRange(previousUserMessage, now: now);
     return FinanceDateRange(
       _shiftFinanceDateByYears(previousRange.from, yearOffset),
       _shiftFinanceDateByYears(previousRange.to, yearOffset),
@@ -1016,13 +1016,7 @@ abstract final class FinanceAiContextService {
       final from = financeCalendarDayOffset(current, -14);
       return FinanceDateRange(from, financeCalendarDayOffset(current, 1));
     }
-    if (_containsAny(text, [
-      '这一个月',
-      '最近一个月',
-      '过去一个月',
-      '近一个月',
-      '一个月内',
-    ])) {
+    if (_containsAny(text, ['这一个月', '最近一个月', '过去一个月', '近一个月', '一个月内'])) {
       final from = financeCalendarDayOffset(current, -29);
       return FinanceDateRange(from, financeCalendarDayOffset(current, 1));
     }
@@ -1093,14 +1087,7 @@ abstract final class FinanceAiContextService {
       );
       return FinanceDateRange(from, end);
     }
-    if (_containsAny(text, [
-      '上季度',
-      '上个季度',
-      '上一季度',
-      '上一个季度',
-      '前一季度',
-      '前一个季度',
-    ])) {
+    if (_containsAny(text, ['上季度', '上个季度', '上一季度', '上一个季度', '前一季度', '前一个季度'])) {
       final from = DateTime(
         currentQuarterStart.year,
         currentQuarterStart.month - 3,
@@ -1121,9 +1108,7 @@ abstract final class FinanceAiContextService {
       final from = DateTime(current.year - 2);
       return FinanceDateRange(from, DateTime(current.year - 1));
     }
-    if (text.contains('去年') ||
-        text.contains('上一年') ||
-        text.contains('前一年')) {
+    if (text.contains('去年') || text.contains('上一年') || text.contains('前一年')) {
       final from = DateTime(current.year - 1);
       return FinanceDateRange(from, DateTime(current.year));
     }
@@ -1179,10 +1164,7 @@ abstract final class FinanceAiContextService {
           : financePaymentMethodDisplayName(method, paymentMethods);
     }
 
-    String transactionAccountName(
-      String? uuid,
-      FinanceTransactionType type,
-    ) {
+    String transactionAccountName(String? uuid, FinanceTransactionType type) {
       final normalizedUuid = uuid?.trim();
       if (normalizedUuid == null || normalizedUuid.isEmpty) return '未指定';
       final method = paymentMap[normalizedUuid];
@@ -1219,13 +1201,14 @@ abstract final class FinanceAiContextService {
     ];
 
     if (paymentMethodBalances != null) {
-      final balanceMethodUuids = <String>{
-        ...paymentMethods.map((method) => method.uuid),
-        ...paymentMethodBalances.keys,
-      }.toList()..sort((left, right) {
-        final byName = paymentName(left).compareTo(paymentName(right));
-        return byName == 0 ? left.compareTo(right) : byName;
-      });
+      final balanceMethodUuids =
+          <String>{
+            ...paymentMethods.map((method) => method.uuid),
+            ...paymentMethodBalances.keys,
+          }.toList()..sort((left, right) {
+            final byName = paymentName(left).compareTo(paymentName(right));
+            return byName == 0 ? left.compareTo(right) : byName;
+          });
       lines.add(
         '关联账户实际余额（截至 '
         '${DateTime.fromMillisecondsSinceEpoch(paymentBalanceAsOfAt ?? asOfAt).toString()}，'
@@ -1237,9 +1220,7 @@ abstract final class FinanceAiContextService {
         for (final uuid in balanceMethodUuids) {
           final balance = paymentMethodBalances[uuid];
           if (balance == null) {
-            lines.add(
-              '- ${paymentName(uuid)}: 未录入余额快照，无法确定实际余额',
-            );
+            lines.add('- ${paymentName(uuid)}: 未录入余额快照，无法确定实际余额');
           } else {
             lines.add(
               '- ${paymentName(uuid)}: ${formatFinanceAmount(balance)}',
@@ -1285,14 +1266,26 @@ abstract final class FinanceAiContextService {
       final currentMonthKey = financeMonthKey(
         DateTime.fromMillisecondsSinceEpoch(asOfAt),
       );
-      for (final budget in budgets.take(_maxContextBudgetDetails)) {
+      final displayedBudgets = budgets
+          .take(_maxContextBudgetDetails)
+          .toList(growable: false);
+      final spendingByBudget = <String, int>{};
+      for (final monthKey
+          in displayedBudgets.map((budget) => budget.monthKey).toSet()) {
+        spendingByBudget.addAll(
+          (budgetSummaries[monthKey] ?? const FinanceSummary())
+              .spendingForBudgets(
+                displayedBudgets.where((budget) => budget.monthKey == monthKey),
+                categories,
+              ),
+        );
+      }
+      for (final budget in displayedBudgets) {
         if (displayedMonth != budget.monthKey) {
           displayedMonth = budget.monthKey;
           lines.add('预算（${budget.monthKey}，整月）:');
         }
-        final used =
-            (budgetSummaries[budget.monthKey] ?? const FinanceSummary())
-                .spendingForBudget(budget, categories);
+        final used = spendingByBudget[budget.uuid] ?? 0;
         final remaining = budget.amountMinor - used;
         final scope = budget.categoryUuid == null
             ? '整体'
@@ -1323,12 +1316,11 @@ abstract final class FinanceAiContextService {
 
     lines.add('账单明细（每条都有真实 transactionId，只能用于用户明确的修改/删除；禁止编造ID）:');
     if (transactions.isEmpty) {
-      lines.add(
-        recentQueryCount == null ? '- 当前范围没有账单' : '- 没有找到已发生的账单',
-      );
+      lines.add(recentQueryCount == null ? '- 当前范围没有账单' : '- 没有找到已发生的账单');
     } else {
-      for (final transaction
-          in transactions.take(_maxContextTransactionDetails)) {
+      for (final transaction in transactions.take(
+        _maxContextTransactionDetails,
+      )) {
         final signed =
             transaction.type.signedPrefix +
             formatFinanceAmount(transaction.amountMinor);
@@ -1458,13 +1450,12 @@ abstract final class FinanceAiContextService {
     if (explicitDateTokens.any((token) => token.date == null)) return true;
     if (explicitDateTokens.length == 1) {
       final suffix = text.substring(explicitDateTokens.single.end);
-      final abbreviatedEnd = _abbreviatedDateRangeEndPattern.firstMatch(
-        suffix,
-      );
+      final abbreviatedEnd = _abbreviatedDateRangeEndPattern.firstMatch(suffix);
       if (_explicitDateRangePrefix.hasMatch(suffix) && abbreviatedEnd == null) {
         return true;
       }
-      if (abbreviatedEnd != null && _resolveExplicitDateRange(text, now) == null) {
+      if (abbreviatedEnd != null &&
+          _resolveExplicitDateRange(text, now) == null) {
         return true;
       }
     }
@@ -1746,7 +1737,8 @@ abstract final class FinanceAiContextService {
     }
 
     final last = tokens.last;
-    if (last.month < 1 || last.month > 12 ||
+    if (last.month < 1 ||
+        last.month > 12 ||
         !_explicitDateRangeSeparator.hasMatch(
           text.substring(first.end, last.start),
         )) {
@@ -1810,22 +1802,20 @@ abstract final class FinanceAiContextService {
       ));
     }
     for (final match in _chineseMonthPattern.allMatches(text)) {
-      final isRollingMonth = _rollingMonthPeriodPattern.allMatches(text).any(
-        (rollingMonth) =>
-            match.start >= rollingMonth.start &&
-            match.end <= rollingMonth.end,
-      );
+      final isRollingMonth = _rollingMonthPeriodPattern
+          .allMatches(text)
+          .any(
+            (rollingMonth) =>
+                match.start >= rollingMonth.start &&
+                match.end <= rollingMonth.end,
+          );
       if (isRollingMonth) continue;
       final relativeYear = match.group(2);
       final explicitYear = int.tryParse(match.group(1) ?? '');
       tokens.add((
         start: match.start,
         end: match.end,
-        year: _resolveCalendarYear(
-          explicitYear,
-          relativeYear,
-          currentYear,
-        ),
+        year: _resolveCalendarYear(explicitYear, relativeYear, currentYear),
         month: _parseMonthNumber(match.group(3)!) ?? 0,
         hasExplicitYear: explicitYear != null || relativeYear != null,
       ));
@@ -1927,8 +1917,7 @@ abstract final class FinanceAiContextService {
     final count = _parseRollingPeriodCount(match.group(1)!);
     if (count == null || count < 1) return null;
     final unit = match.group(2)!;
-    final multiplier =
-        unit == '周' || unit == '星期' || unit == '礼拜' ? 7 : 1;
+    final multiplier = unit == '周' || unit == '星期' || unit == '礼拜' ? 7 : 1;
     if (count > 3650 ~/ multiplier) return null;
     return count * multiplier;
   }
@@ -1938,10 +1927,7 @@ abstract final class FinanceAiContextService {
 
   static DateTime _mondayOf(DateTime value) {
     final day = _day(value);
-    return financeCalendarDayOffset(
-      day,
-      DateTime.monday - day.weekday,
-    );
+    return financeCalendarDayOffset(day, DateTime.monday - day.weekday);
   }
 
   static String _shorten(String text, int maxLength) {

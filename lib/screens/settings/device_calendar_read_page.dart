@@ -6,7 +6,8 @@ import '../../widgets/floating_glass_control.dart';
 import '../../utils/app_dialogs.dart';
 
 Future<bool> showDeviceCalendarReadOnlyConfirmation(
-    BuildContext context) async {
+  BuildContext context,
+) async {
   return await showAppDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
@@ -69,7 +70,8 @@ class _GuideDeviceCalendarReadToggleState
     try {
       if (enabled) {
         if (!await showDeviceCalendarReadOnlyConfirmation(context)) return;
-        final granted = await DeviceCalendarReadService.checkPermission() ||
+        final granted =
+            await DeviceCalendarReadService.checkPermission() ||
             await DeviceCalendarReadService.requestPermission();
         if (!granted) {
           if (mounted) {
@@ -104,8 +106,8 @@ class _GuideDeviceCalendarReadToggleState
           _loading
               ? '正在检查本机日历访问状态…'
               : _permissionGranted
-                  ? '首页与周视图、半月/月视图会在打开时读取当前日程'
-                  : '默认关闭；开启后才会请求日历读取权限',
+              ? '首页与周视图、半月/月视图会在打开时读取当前日程'
+              : '默认关闭；开启后才会请求日历读取权限',
         ),
       ),
     );
@@ -159,7 +161,8 @@ class _DeviceCalendarReadPageState extends State<DeviceCalendarReadPage> {
     try {
       if (enabled) {
         if (!await showDeviceCalendarReadOnlyConfirmation(context)) return;
-        final granted = await DeviceCalendarReadService.checkPermission() ||
+        final granted =
+            await DeviceCalendarReadService.checkPermission() ||
             await DeviceCalendarReadService.requestPermission();
         if (!granted) {
           if (mounted) {
@@ -216,7 +219,8 @@ class _DeviceCalendarReadPageState extends State<DeviceCalendarReadPage> {
             Card(
               child: SwitchListTile.adaptive(
                 value: _enabled,
-                onChanged: _loading ||
+                onChanged:
+                    _loading ||
                         _changing ||
                         !DeviceCalendarReadService.isSupported
                     ? null
@@ -249,20 +253,21 @@ class _DeviceCalendarReadPageState extends State<DeviceCalendarReadPage> {
                 ..._sources.map(
                   (source) => ListTile(
                     contentPadding: const EdgeInsets.symmetric(horizontal: 8),
-                    leading: Icon(Icons.calendar_today_outlined,
-                        color: colors.primary),
+                    leading: Icon(
+                      Icons.calendar_today_outlined,
+                      color: colors.primary,
+                    ),
                     title: Text(source.name),
-                    subtitle:
-                        source.account == null ? null : Text(source.account!),
+                    subtitle: source.account == null
+                        ? null
+                        : Text(source.account!),
                   ),
                 ),
             ],
             if (AppPlatform.isIOS)
               const Padding(
                 padding: EdgeInsets.only(top: 12),
-                child: Text(
-                  'iOS 将显示系统提供的“完整日历访问”授权名称；本功能的代码仍只读取事件，不包含任何写入接口。',
-                ),
+                child: Text('iOS 将显示系统提供的“完整日历访问”授权名称；本功能的代码仍只读取事件，不包含任何写入接口。'),
               ),
           ],
         ),

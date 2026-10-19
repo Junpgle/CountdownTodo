@@ -213,13 +213,10 @@ void main() {
       );
 
       expect(reminders, hasLength(2));
-      expect(
-        reminders.map((reminder) => reminder['title']).toSet(),
-        {
-          '💳 周期账单：月度订阅（同名周期账单 1/3）',
-          '💳 周期账单：月度订阅（同名周期账单 2/3）',
-        },
-      );
+      expect(reminders.map((reminder) => reminder['title']).toSet(), {
+        '💳 周期账单：月度订阅（同名周期账单 1/3）',
+        '💳 周期账单：月度订阅（同名周期账单 2/3）',
+      });
     });
 
     test('周期账单提醒保留大额金额的分精度', () async {
@@ -1071,7 +1068,7 @@ void main() {
     final budget = (await FinanceStorage.getBudgets(monthKey: monthKey)).single;
     await prefs.setBool(
       'finance-budget-v1-$accountKey-${budget.uuid}-'
-          '${budget.monthKey}-${budget.version}-80',
+      '${budget.monthKey}-${budget.version}-80',
       true,
     );
 
@@ -1160,19 +1157,15 @@ void main() {
     final noteOnlyUpdate = FinanceBudget.fromMap(savedBudget.toMap())
       ..note = '仅修改备注'
       ..markAsChanged();
-    await FinanceRepository.saveBudget(
-      noteOnlyUpdate,
-      original: savedBudget,
-    );
+    await FinanceRepository.saveBudget(noteOnlyUpdate, original: savedBudget);
     expect(shownNotifications, 1);
 
     final noteUpdatedBudget = (await FinanceStorage.getBudgets(
       monthKey: monthKey,
     )).single;
-    final amountUpdatedBudget =
-        FinanceBudget.fromMap(noteUpdatedBudget.toMap())
-          ..amountMinor = 9000
-          ..markAsChanged();
+    final amountUpdatedBudget = FinanceBudget.fromMap(noteUpdatedBudget.toMap())
+      ..amountMinor = 9000
+      ..markAsChanged();
     await FinanceRepository.saveBudget(
       amountUpdatedBudget,
       original: noteUpdatedBudget,

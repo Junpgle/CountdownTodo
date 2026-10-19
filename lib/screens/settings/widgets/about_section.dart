@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+
 import '../../../update_service.dart';
 import '../../../utils/app_dialogs.dart';
 import '../../../utils/theme_color_tokens.dart';
@@ -95,7 +96,8 @@ class _AboutSectionState extends State<AboutSection> {
       final existingVersions = _changelogHistory
           .map((entry) => entry.versionName)
           .followedBy(
-              _archivedChangelogHistory.map((entry) => entry.versionName))
+            _archivedChangelogHistory.map((entry) => entry.versionName),
+          )
           .toSet();
       setState(() {
         _archivedChangelogHistory = [
@@ -132,7 +134,8 @@ class _AboutSectionState extends State<AboutSection> {
             ..._changelogHistory,
             ..._archivedChangelogHistory,
           ];
-          final canLoadArchive = _manifest?.changelogArchive.isAvailable ??
+          final canLoadArchive =
+              _manifest?.changelogArchive.isAvailable ??
               _archivedChangelogHistory.isEmpty;
 
           return AlertDialog(
@@ -144,7 +147,8 @@ class _AboutSectionState extends State<AboutSection> {
                 children: allHistory.isEmpty
                     ? const [Text('暂无更新日志，请稍后重试。')]
                     : allHistory
-                        .map((entry) => Padding(
+                          .map(
+                            (entry) => Padding(
                               padding: const EdgeInsets.only(bottom: 16),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -152,14 +156,16 @@ class _AboutSectionState extends State<AboutSection> {
                                   Text(
                                     'v${entry.versionName} ${entry.date}',
                                     style: const TextStyle(
-                                        fontWeight: FontWeight.bold),
+                                      fontWeight: FontWeight.bold,
+                                    ),
                                   ),
                                   const SizedBox(height: 8),
                                   ...entry.items.map((item) => Text('• $item')),
                                 ],
                               ),
-                            ))
-                        .toList(),
+                            ),
+                          )
+                          .toList(),
               ),
             ),
             actions: [

@@ -87,7 +87,9 @@ class HabitWaterTargetPicker extends StatelessWidget {
                     const SizedBox(height: 14),
                     Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 8),
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
                       decoration: BoxDecoration(
                         color: colorScheme.tertiaryContainer,
                         borderRadius: BorderRadius.circular(12),
@@ -95,8 +97,11 @@ class HabitWaterTargetPicker extends StatelessWidget {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.local_drink_outlined,
-                              size: 17, color: colorScheme.onTertiaryContainer),
+                          Icon(
+                            Icons.local_drink_outlined,
+                            size: 17,
+                            color: colorScheme.onTertiaryContainer,
+                          ),
                           const SizedBox(width: 6),
                           Text(
                             '约 ${(safeValue / 200).round()} 杯 × 200 ml',
@@ -152,8 +157,10 @@ class _WaterRuler extends StatelessWidget {
   void _update(Offset position, double width) {
     final horizontalPadding = 18.0;
     final usableWidth = math.max(1, width - horizontalPadding * 2);
-    final ratio =
-        ((position.dx - horizontalPadding) / usableWidth).clamp(0.0, 1.0);
+    final ratio = ((position.dx - horizontalPadding) / usableWidth).clamp(
+      0.0,
+      1.0,
+    );
     final raw = min + ((max - min) * ratio).round();
     final next = ((raw - min) / step).round() * step + min;
     onChanged(next.clamp(min, max));
@@ -310,7 +317,10 @@ class _WaterRulerPainter extends CustomPainter {
       ..strokeWidth = 3
       ..strokeCap = StrokeCap.round;
     canvas.drawLine(
-        Offset(left, lineY), Offset(size.width - right, lineY), line);
+      Offset(left, lineY),
+      Offset(size.width - right, lineY),
+      line,
+    );
 
     final totalSteps = (range / step).round();
     for (var i = 0; i <= totalSteps; i++) {

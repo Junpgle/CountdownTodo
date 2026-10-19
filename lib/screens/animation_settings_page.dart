@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+
 import '../services/animation_config_service.dart';
 import '../services/liquid_glass_effect_service.dart';
 import '../services/power_save_mode_service.dart';
@@ -69,8 +70,10 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
       }
       final position = _scrollController.position;
       _scrollController.jumpTo(
-        (position.pixels + position.viewportDimension * 0.8)
-            .clamp(0.0, position.maxScrollExtent),
+        (position.pixels + position.viewportDimension * 0.8).clamp(
+          0.0,
+          position.maxScrollExtent,
+        ),
       );
     }
   }
@@ -562,8 +565,8 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                       ),
                       onChanged:
                           powerSaveModeEnabled || _liquidGlassMutationPending
-                              ? null
-                              : _setLiquidGlassEnabled,
+                          ? null
+                          : _setLiquidGlassEnabled,
                     ),
                   ],
                 ),
@@ -618,10 +621,10 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                               selected: {_liquidGlassMode},
                               onSelectionChanged:
                                   !effectiveLiquidGlassEnabled ||
-                                          _liquidGlassMutationPending
-                                      ? null
-                                      : (selection) =>
-                                          _setLiquidGlassMode(selection.first),
+                                      _liquidGlassMutationPending
+                                  ? null
+                                  : (selection) =>
+                                        _setLiquidGlassMode(selection.first),
                             ),
                           ),
                           const SizedBox(height: 10),
@@ -672,14 +675,15 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                                     setState(
                                       () => _liquidGlassTransparency = next,
                                     );
-                                    LiquidGlassEffectService
-                                        .previewTransparency(next);
+                                    LiquidGlassEffectService.previewTransparency(
+                                      next,
+                                    );
                                   },
                             onChangeEnd: !_liquidGlassEnabled
                                 ? null
                                 : (value) => _saveLiquidGlassTransparency(
-                                      value.round(),
-                                    ),
+                                    value.round(),
+                                  ),
                           ),
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -725,36 +729,49 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                   ),
                 ),
                 Padding(
-                  padding:
-                      const EdgeInsets.only(left: 8.0, bottom: 8.0, top: 32.0),
-                  child: Text('参数微调',
-                      style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color: colorScheme.onSurfaceVariant)),
+                  padding: const EdgeInsets.only(
+                    left: 8.0,
+                    bottom: 8.0,
+                    top: 32.0,
+                  ),
+                  child: Text(
+                    '参数微调',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
                 ),
                 Card(
                   elevation: 1,
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                   child: Column(
                     children: [
                       Padding(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 16),
+                          horizontal: 16,
+                          vertical: 16,
+                        ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                const Text('动画时长',
-                                    style:
-                                        TextStyle(fontWeight: FontWeight.w600)),
-                                Text('${_animationDuration}ms',
-                                    style: TextStyle(
-                                        color: colorScheme.primary,
-                                        fontWeight: FontWeight.bold)),
+                                const Text(
+                                  '动画时长',
+                                  style: TextStyle(fontWeight: FontWeight.w600),
+                                ),
+                                Text(
+                                  '${_animationDuration}ms',
+                                  style: TextStyle(
+                                    color: colorScheme.primary,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
                               ],
                             ),
                             const SizedBox(height: 8),
@@ -766,26 +783,35 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                               label: '${_animationDuration}ms',
                               onChanged: (val) {
                                 setState(
-                                    () => _animationDuration = val.round());
+                                  () => _animationDuration = val.round(),
+                                );
                                 _update(duration: val.round());
                               },
                             ),
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Text('快',
-                                    style: TextStyle(
-                                        fontSize: 11,
-                                        color: colorScheme.onSurfaceVariant)),
-                                Text('慢',
-                                    style: TextStyle(
-                                        fontSize: 11,
-                                        color: colorScheme.onSurfaceVariant)),
+                                Text(
+                                  '快',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                                Text(
+                                  '慢',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
                               ],
                             ),
                             const SizedBox(height: 16),
-                            const Text('动画速度预设',
-                                style: TextStyle(fontWeight: FontWeight.w600)),
+                            const Text(
+                              '动画速度预设',
+                              style: TextStyle(fontWeight: FontWeight.w600),
+                            ),
                             const SizedBox(height: 8),
                             Wrap(
                               spacing: 8,
@@ -811,27 +837,36 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                       const Divider(height: 1, indent: 16, endIndent: 16),
                       Padding(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 16),
+                          horizontal: 16,
+                          vertical: 16,
+                        ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                const Text('层级深度',
-                                    style:
-                                        TextStyle(fontWeight: FontWeight.w600)),
-                                Text('$_pageLayerDepth%',
-                                    style: TextStyle(
-                                        color: colorScheme.primary,
-                                        fontWeight: FontWeight.bold)),
+                                const Text(
+                                  '层级深度',
+                                  style: TextStyle(fontWeight: FontWeight.w600),
+                                ),
+                                Text(
+                                  '$_pageLayerDepth%',
+                                  style: TextStyle(
+                                    color: colorScheme.primary,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
                               ],
                             ),
                             const SizedBox(height: 4),
-                            Text('控制背景页缩小、压暗和层级模糊强度',
-                                style: TextStyle(
-                                    fontSize: 12,
-                                    color: colorScheme.onSurfaceVariant)),
+                            Text(
+                              '控制背景页缩小、压暗和层级模糊强度',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: colorScheme.onSurfaceVariant,
+                              ),
+                            ),
                             const SizedBox(height: 8),
                             LiquidGlassSlider(
                               value: _pageLayerDepth.toDouble(),
@@ -848,14 +883,20 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Text('轻',
-                                    style: TextStyle(
-                                        fontSize: 11,
-                                        color: colorScheme.onSurfaceVariant)),
-                                Text('强',
-                                    style: TextStyle(
-                                        fontSize: 11,
-                                        color: colorScheme.onSurfaceVariant)),
+                                Text(
+                                  '轻',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                                Text(
+                                  '强',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
                               ],
                             ),
                           ],
@@ -864,27 +905,36 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                       const Divider(height: 1, indent: 16, endIndent: 16),
                       Padding(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 16),
+                          horizontal: 16,
+                          vertical: 16,
+                        ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                const Text('元素展开内容显现',
-                                    style:
-                                        TextStyle(fontWeight: FontWeight.w600)),
-                                Text('$_containerContentStart%',
-                                    style: TextStyle(
-                                        color: colorScheme.primary,
-                                        fontWeight: FontWeight.bold)),
+                                const Text(
+                                  '元素展开内容显现',
+                                  style: TextStyle(fontWeight: FontWeight.w600),
+                                ),
+                                Text(
+                                  '$_containerContentStart%',
+                                  style: TextStyle(
+                                    color: colorScheme.primary,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
                               ],
                             ),
                             const SizedBox(height: 4),
-                            Text('控制从卡片、按钮展开页面时内容出现的早晚',
-                                style: TextStyle(
-                                    fontSize: 12,
-                                    color: colorScheme.onSurfaceVariant)),
+                            Text(
+                              '控制从卡片、按钮展开页面时内容出现的早晚',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: colorScheme.onSurfaceVariant,
+                              ),
+                            ),
                             const SizedBox(height: 8),
                             LiquidGlassSlider(
                               value: _containerContentStart.toDouble(),
@@ -901,14 +951,20 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Text('早',
-                                    style: TextStyle(
-                                        fontSize: 11,
-                                        color: colorScheme.onSurfaceVariant)),
-                                Text('晚',
-                                    style: TextStyle(
-                                        fontSize: 11,
-                                        color: colorScheme.onSurfaceVariant)),
+                                Text(
+                                  '早',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                                Text(
+                                  '晚',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
                               ],
                             ),
                           ],
@@ -1055,8 +1111,11 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                           if (selected)
                             Align(
                               alignment: Alignment.centerRight,
-                              child: Icon(Icons.check_circle_rounded,
-                                  size: 17, color: colorScheme.primary),
+                              child: Icon(
+                                Icons.check_circle_rounded,
+                                size: 17,
+                                color: colorScheme.primary,
+                              ),
                             ),
                         ],
                       ),
@@ -1068,7 +1127,9 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                       overflow: TextOverflow.ellipsis,
                       textAlign: TextAlign.center,
                       style: const TextStyle(
-                          fontSize: 13, fontWeight: FontWeight.w700),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                     const SizedBox(height: 2),
                     Flexible(
@@ -1078,39 +1139,49 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                         overflow: TextOverflow.ellipsis,
                         textAlign: TextAlign.center,
                         style: TextStyle(
-                            fontSize: 9, color: colorScheme.onSurfaceVariant),
+                          fontSize: 9,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
                       ),
                     ),
                   ],
                 )
               : Row(
                   children: [
-                    Icon(icon,
-                        color: selected
-                            ? colorScheme.primary
-                            : colorScheme.onSurfaceVariant),
+                    Icon(
+                      icon,
+                      color: selected
+                          ? colorScheme.primary
+                          : colorScheme.onSurfaceVariant,
+                    ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(title,
-                              style:
-                                  const TextStyle(fontWeight: FontWeight.w700)),
+                          Text(
+                            title,
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          ),
                           const SizedBox(height: 2),
-                          Text(subtitle,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                  fontSize: 11,
-                                  color: colorScheme.onSurfaceVariant)),
+                          Text(
+                            subtitle,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                          ),
                         ],
                       ),
                     ),
                     if (selected)
-                      Icon(Icons.check_circle_rounded,
-                          color: colorScheme.primary),
+                      Icon(
+                        Icons.check_circle_rounded,
+                        color: colorScheme.primary,
+                      ),
                   ],
                 ),
         ),

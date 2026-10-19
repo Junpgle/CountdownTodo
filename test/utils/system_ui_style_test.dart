@@ -25,8 +25,9 @@ void main() {
     });
   });
 
-  testWidgets('app bottom sheets protect content from the bottom system bar',
-      (tester) async {
+  testWidgets('app bottom sheets protect content from the bottom system bar', (
+    tester,
+  ) async {
     const devicePixelRatio = 2.0;
     const navigationBarHeight = 54.0;
     const padding = FakeViewPadding(
@@ -52,10 +53,8 @@ void main() {
                 onPressed: () {
                   showAppModalBottomSheet<void>(
                     context: context,
-                    builder: (_) => const SizedBox(
-                      key: Key('sheet-content'),
-                      height: 80,
-                    ),
+                    builder: (_) =>
+                        const SizedBox(key: Key('sheet-content'), height: 80),
                   );
                 },
                 child: const Text('打开'),

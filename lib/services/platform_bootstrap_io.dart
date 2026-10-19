@@ -17,7 +17,8 @@ class PlatformBootstrap {
     if (!AppPlatform.isWindows) return false;
     if (args.isNotEmpty && args[0] == 'multi_window') {
       await appendIslandIpcLog(
-          'main routed multi_window args=${args.join('|')}');
+        'main routed multi_window args=${args.join('|')}',
+      );
       await island_entry.islandMain(args);
       return true;
     }
@@ -40,9 +41,7 @@ class PlatformBootstrap {
     }
   }
 
-  static void waitUntilDesktopReady({
-    required VoidCallback onReady,
-  }) {
+  static void waitUntilDesktopReady({required VoidCallback onReady}) {
     if (!AppPlatform.isDesktop) return;
 
     final windowOptions = WindowOptions(
@@ -50,8 +49,9 @@ class PlatformBootstrap {
       center: true,
       backgroundColor: Colors.transparent,
       skipTaskbar: false,
-      titleBarStyle:
-          AppPlatform.isMacOS ? TitleBarStyle.hidden : TitleBarStyle.normal,
+      titleBarStyle: AppPlatform.isMacOS
+          ? TitleBarStyle.hidden
+          : TitleBarStyle.normal,
       windowButtonVisibility: AppPlatform.isMacOS ? false : true,
     );
 

@@ -78,10 +78,7 @@ void main() {
     final bundle = await ThirtyDayChallengeRepository.exportBackup();
     expect(bundle, isNotNull);
     await ThirtyDayChallengeRepository.abandonChallenge();
-    expect(
-      await ThirtyDayChallengeRepository.importBackup(bundle!),
-      2,
-    );
+    expect(await ThirtyDayChallengeRepository.importBackup(bundle!), 2);
 
     final restored = await ThirtyDayChallengeRepository.load();
     expect(restored.challengeTitle, '周末阅读计划');
@@ -114,13 +111,11 @@ void main() {
       title: 'Bob 的挑战',
       taskTitles: ['不能被来源备份覆盖'],
     );
-    await ThirtyDayChallengeRepository.importBackup(
-      bundle!,
-      username: 'alice',
-    );
+    await ThirtyDayChallengeRepository.importBackup(bundle!, username: 'alice');
 
     expect(
-      (await ThirtyDayChallengeRepository.load(username: 'alice')).challengeTitle,
+      (await ThirtyDayChallengeRepository.load(username: 'alice'))
+          .challengeTitle,
       '来源账号挑战',
     );
     expect(

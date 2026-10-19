@@ -9,6 +9,7 @@ import 'package:countdown_todo/services/ai_action_parser.dart';
 import 'package:countdown_todo/services/ai_chat_service.dart';
 import 'package:countdown_todo/services/ai_native_tool_call_parser.dart';
 import 'package:countdown_todo/services/ai_native_tool_definition_builder.dart';
+import 'package:countdown_todo/services/ai_settings_navigation_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -124,6 +125,70 @@ void main() {
   });
 
   group('CDT 和记账工具定义及解析', () {
+    test('语音式创建两个待办时保留各自备注，不误开设置导航', () {
+      const userMessage = '帮我分开记两个待办，我要写两份，思想汇报，一份备注是六月，一份备注是九月。';
+      final tools = AiNativeToolDefinitionBuilder.buildNativeToolDefinitions(
+        userMessage,
+      );
+      final allowedTools = AiNativeToolDefinitionBuilder.allowedToolNames(
+        tools,
+      );
+      final allowedCdtActions =
+          AiNativeToolDefinitionBuilder.allowedCdtActionNames(tools);
+
+      expect(allowedTools, contains('propose_cdt_actions'));
+      expect(allowedCdtActions, contains('create_todo'));
+      expect(
+        AiSettingsNavigationService.shouldOfferForRequest(userMessage),
+        isFalse,
+      );
+
+      final proposal = AiNativeToolCallParser.appendToAssistantText(
+        '',
+        [
+          AiChatFunctionCall(
+            id: 'spoken-two-todos',
+            name: 'propose_cdt_actions',
+            arguments: jsonEncode({
+              'actions': [
+                {
+                  'action': 'create_todo',
+                  'todos': [
+                    {
+                      'title': '思想汇报',
+                      'remark': '六月',
+                      'timeMode': 'unscheduled',
+                    },
+                    {
+                      'title': '思想汇报',
+                      'remark': '九月',
+                      'timeMode': 'unscheduled',
+                    },
+                  ],
+                },
+              ],
+            }),
+          ),
+        ],
+        allowedToolNames: allowedTools,
+        allowedCdtActionNames: allowedCdtActions,
+        allowedFinanceActionNames:
+            AiNativeToolDefinitionBuilder.allowedFinanceActionNames(tools),
+      );
+      final todos = AiActionParser.extractTodoActions(
+        proposal,
+        originalText: userMessage,
+        allowedActionNames: allowedCdtActions,
+      ).where((action) => action.type == AiTodoActionType.createTodo).toList();
+
+      expect(todos, hasLength(2));
+      expect(todos.map((action) => action.remark), ['六月', '九月']);
+      expect(
+        todos.map((action) => action.timeMode),
+        everyElement('unscheduled'),
+      );
+    });
+
     test('明确待办、规划块、习惯与记账请求会提供对应工具', () {
       const userMessage = '创建明天买牛奶待办，规划已有待办今天执行，再创建每天喝水习惯并记一笔午餐28元';
       final tools = AiNativeToolDefinitionBuilder.buildNativeToolDefinitions(

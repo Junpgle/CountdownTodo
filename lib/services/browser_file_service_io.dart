@@ -41,7 +41,8 @@ class BrowserFileService {
     String fileName, {
     String mimeType = 'application/octet-stream',
   }) async {
-    final directory = await getDownloadsDirectory() ??
+    final directory =
+        await getDownloadsDirectory() ??
         await getApplicationDocumentsDirectory();
     final file = File('${directory.path}/$fileName');
     await file.writeAsBytes(bytes, flush: true);

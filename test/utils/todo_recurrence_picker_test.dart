@@ -25,27 +25,32 @@ void main() {
     final future = occurrence(16);
     final normal = TodoItem(title: '普通任务');
 
-    final collapsed = collapseRecurrenceSeriesForTodoPicker(
-      [future, previous, normal, current],
-      now: today,
-    );
+    final collapsed = collapseRecurrenceSeriesForTodoPicker([
+      future,
+      previous,
+      normal,
+      current,
+    ], now: today);
 
     expect(collapsed.map((todo) => todo.id), [normal.id, current.id]);
   });
 
-  test('todo picker uses the latest overdue occurrence when anchor is absent',
-      () {
-    final oldOverdue = occurrence(13);
-    final latestOverdue = occurrence(14);
-    final future = occurrence(16);
+  test(
+    'todo picker uses the latest overdue occurrence when anchor is absent',
+    () {
+      final oldOverdue = occurrence(13);
+      final latestOverdue = occurrence(14);
+      final future = occurrence(16);
 
-    final collapsed = collapseRecurrenceSeriesForTodoPicker(
-      [oldOverdue, future, latestOverdue],
-      now: today,
-    );
+      final collapsed = collapseRecurrenceSeriesForTodoPicker([
+        oldOverdue,
+        future,
+        latestOverdue,
+      ], now: today);
 
-    expect(collapsed.single.id, latestOverdue.id);
-  });
+      expect(collapsed.single.id, latestOverdue.id);
+    },
+  );
 
   test('bound occurrence selects the aggregate row from the same series', () {
     final previous = occurrence(14);
@@ -63,10 +68,10 @@ void main() {
     final current = occurrence(15, recurrence: RecurrenceType.daily);
     final future = occurrence(16);
 
-    final collapsed = collapseRecurrenceSeriesForTodoPicker(
-      [current, future],
-      now: DateTime(2026, 7, 16, 9),
-    );
+    final collapsed = collapseRecurrenceSeriesForTodoPicker([
+      current,
+      future,
+    ], now: DateTime(2026, 7, 16, 9));
 
     expect(collapsed.single.id, future.id);
   });
@@ -89,10 +94,11 @@ void main() {
     final current = occurrence(15, recurrence: RecurrenceType.daily);
     final future = occurrence(16);
 
-    final collapsed = collapseRecurrenceSeriesForTodoPicker(
-      [previous, current, future],
-      now: today,
-    );
+    final collapsed = collapseRecurrenceSeriesForTodoPicker([
+      previous,
+      current,
+      future,
+    ], now: today);
 
     expect(collapsed, hasLength(1));
     expect(collapsed.single.id, current.id);

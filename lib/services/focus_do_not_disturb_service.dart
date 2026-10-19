@@ -122,9 +122,7 @@ class FocusDoNotDisturbService {
   static Future<bool> hasSystemDoNotDisturbAccess() async {
     if (!supportsSystemDoNotDisturb) return false;
     try {
-      return await _channel.invokeMethod<bool>(
-            'getSystemDoNotDisturbAccess',
-          ) ??
+      return await _channel.invokeMethod<bool>('getSystemDoNotDisturbAccess') ??
           false;
     } catch (_) {
       return false;

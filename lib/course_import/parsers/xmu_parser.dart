@@ -1,14 +1,21 @@
 import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:html/parser.dart' as parser;
 import 'package:html/dom.dart';
+
 import '../../models.dart';
 import '../course_schedule_semantics.dart';
 
 class XmuScheduleParser {
+  static final RegExp _mhtmlContinuationPattern = RegExp(r'=\r?\n');
+  static final RegExp _weekPattern = RegExp(r'(\d+)(?:-(\d+))?\s*(单|双)?周');
+
   /// 传入 MHTML/HTML 字符串和 本学期第一周的周一日期
   static List<CourseItem> parseHtml(
-      String htmlString, DateTime semesterStartDate) {
+    String htmlString,
+    DateTime semesterStartDate,
+  ) {
     List<CourseItem> courses = [];
     // 🚀 核心修复：执行绝对安全的底层解码，确保绝不破坏 HTML 标签和现有中文字符
     String cleanHtml = _decodeMhtml(htmlString);
@@ -42,8 +49,9 @@ class XmuScheduleParser {
       String weekStr = innerDivs[0].text.trim(); // e.g. "1-15周", "2-14双周"
       String courseName = innerDivs[1].text.trim(); // e.g. "计量经济学(01)"
       String teacherName = innerDivs[2].text.trim(); // e.g. "康嫱"
-      String roomName =
-          innerDivs.length > 3 ? innerDivs[3].text.trim() : '未知教室';
+      String roomName = innerDivs.length > 3
+          ? innerDivs[3].text.trim()
+          : '未知教室';
 
       // 提取调课/本研标签 (如果有的话)
       String? lessonType;
@@ -66,17 +74,19 @@ class XmuScheduleParser {
           weekday: weekday,
         );
 
-        courses.add(CourseItem(
-          courseName: courseName,
-          teacherName: teacherName,
-          date: dateStr,
-          weekday: weekday,
-          startTime: times[0],
-          endTime: times[1],
-          weekIndex: week,
-          roomName: roomName,
-          lessonType: lessonType,
-        ));
+        courses.add(
+          CourseItem(
+            courseName: courseName,
+            teacherName: teacherName,
+            date: dateStr,
+            weekday: weekday,
+            startTime: times[0],
+            endTime: times[1],
+            weekIndex: week,
+            roomName: roomName,
+            lessonType: lessonType,
+          ),
+        );
       }
     }
 
@@ -93,7 +103,7 @@ class XmuScheduleParser {
 
     try {
       // 1. 剥离行尾软回车延续符
-      String cleaned = rawString.replaceAll(RegExp(r'=\r?\n'), '');
+      String cleaned = rawString.replaceAll(_mhtmlContinuationPattern, '');
 
       // 2. 安全解码：只转换 =XX 为字节，保留原本正常的字符（防止破坏已存在的中文）
       List<int> bytes = [];
@@ -130,9 +140,7 @@ class XmuScheduleParser {
   /// 辅助方法：解析 "1周", "1-15周", "2-14双周", "9-15单周" 为数组
   static List<int> _parseWeeks(String weekStr) {
     List<int> weeks = [];
-    RegExp regExp = RegExp(r'(\d+)(?:-(\d+))?\s*(单|双)?周');
-
-    for (final match in regExp.allMatches(weekStr)) {
+    for (final match in _weekPattern.allMatches(weekStr)) {
       int start = int.parse(match.group(1)!);
       int end = int.tryParse(match.group(2) ?? '') ?? start;
       String? type = match.group(3);
@@ -160,7 +168,7 @@ class XmuScheduleParser {
       8: 1735,
       9: 1910,
       10: 2005,
-      11: 2100
+      11: 2100,
     };
     // 结束时间映射表
     const Map<int, int> endTimes = {
@@ -174,7 +182,7 @@ class XmuScheduleParser {
       8: 1820,
       9: 1955,
       10: 2050,
-      11: 2145
+      11: 2145,
     };
 
     int st = startTimes[startJc] ?? 800;

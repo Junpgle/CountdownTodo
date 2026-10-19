@@ -28,10 +28,7 @@ void main() {
     expect(actions[1].hasCategory, isTrue);
     expect(actions[2].type, FinanceAiActionType.delete);
     expect(actions[2].reason, '重复记录');
-    expect(
-      FinanceTextParser.cleanAssistantContent(reply),
-      '本月支出如下，修改和删除请确认：',
-    );
+    expect(FinanceTextParser.cleanAssistantContent(reply), '本月支出如下，修改和删除请确认：');
   });
 
   test('忽略没有真实账单ID的危险操作', () {

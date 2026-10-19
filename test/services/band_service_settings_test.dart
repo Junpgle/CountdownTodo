@@ -17,9 +17,9 @@ void main() {
     calls.clear();
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (call) async {
-      calls.add(call.method);
-      return true;
-    });
+          calls.add(call.method);
+          return true;
+        });
   });
 
   tearDown(() async {
@@ -51,13 +51,13 @@ void main() {
     final releaseInit = Completer<bool>();
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (call) async {
-      calls.add(call.method);
-      if (call.method == 'init') {
-        initStarted.complete();
-        return releaseInit.future;
-      }
-      return true;
-    });
+          calls.add(call.method);
+          if (call.method == 'init') {
+            initStarted.complete();
+            return releaseInit.future;
+          }
+          return true;
+        });
 
     await BandSyncService.init();
     final enabling = BandSyncService.setServiceEnabled(true);
@@ -67,8 +67,11 @@ void main() {
     final reEnabling = BandSyncService.setServiceEnabled(true);
     releaseInit.complete(true);
 
-    expect(await Future.wait([enabling, disabling, reEnabling]),
-        [true, true, true]);
+    expect(await Future.wait([enabling, disabling, reEnabling]), [
+      true,
+      true,
+      true,
+    ]);
     expect(await BandSyncService.isServiceEnabled(), isTrue);
     expect(calls, ['init']);
   });

@@ -1,16 +1,34 @@
 import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:html/parser.dart' as parser;
 import 'package:html/dom.dart';
+
 import '../../models.dart';
 import '../course_schedule_semantics.dart';
 
 class ZfSoftScheduleParser {
+  static final RegExp _titleMarkerPattern = RegExp(r'[★●◆]');
+  static final RegExp _bracketTitlePattern = RegExp(r'^【.*?】');
+  static final RegExp _dayNumberPattern = RegExp(r'\d+');
+  static final RegExp _locationCluePattern = RegExp(r'[教楼室区]');
+  static final RegExp _periodPattern = RegExp(
+    r'[(\（](?:周.*?第)?(\d+)(?:-(\d+))?[节)）]',
+  );
+  static final RegExp _weekPeriodPattern = RegExp(
+    r'[(\（][^)\（]*?节[^)\（]*?[)）]',
+  );
+  static final RegExp _weekPattern = RegExp(
+    r'(\d+)(?:-(\d+))?(?:周)?(?:\((单|双)\))?',
+  );
+
   /// 传入 正方系统导出的 MHTML/HTML 字符串以及学期开始日期
   /// [customTimes] 格式示例: { 1: {'start': 800, 'end': 845}, 2: {'start': 855, 'end': 940} }
   static List<CourseItem> parseHtml(
-      String htmlString, DateTime semesterStartDate,
-      {Map<int, Map<String, int>>? customTimes}) {
+    String htmlString,
+    DateTime semesterStartDate, {
+    Map<int, Map<String, int>>? customTimes,
+  }) {
     List<CourseItem> courses = [];
 
     // 1. 底层解码
@@ -28,8 +46,8 @@ class ZfSoftScheduleParser {
 
       // 清洗标记
       title = title
-          .replaceAll(RegExp(r'[★●◆]'), '')
-          .replaceAll(RegExp(r'^【.*?】'), '')
+          .replaceAll(_titleMarkerPattern, '')
+          .replaceAll(_bracketTitlePattern, '')
           .trim();
 
       // 🚀 核心修复：根据 td 的 ID 或位置识别星期
@@ -47,8 +65,7 @@ class ZfSoftScheduleParser {
       if (tdElement != null) {
         String tdId = tdElement.id;
         // 匹配第一个数字，如 "3-1" 匹配 3 (周三)
-        RegExp dayReg = RegExp(r'\d+');
-        var match = dayReg.firstMatch(tdId);
+        var match = _dayNumberPattern.firstMatch(tdId);
         if (match != null) {
           weekday = int.tryParse(match.group(0)!) ?? 1;
         } else {
@@ -79,7 +96,7 @@ class ZfSoftScheduleParser {
             (pText.contains('节') && pText.contains('('))) {
           timeSegments.add(pText);
         } else if (tooltipTitle == '上课地点' ||
-            (location.isEmpty && pText.contains(RegExp(r'[教楼室区]')))) {
+            (location.isEmpty && pText.contains(_locationCluePattern))) {
           location = pText;
         } else if (tooltipTitle.contains('教师') ||
             (teacher.isEmpty && pText.length >= 2 && pText.length <= 4)) {
@@ -96,8 +113,7 @@ class ZfSoftScheduleParser {
         // 解析节次 (如 1-2节)
         int startJc = 1;
         int endJc = 2;
-        RegExp periodExp = RegExp(r'[(\（](?:周.*?第)?(\d+)(?:-(\d+))?[节)）]');
-        var pMatch = periodExp.firstMatch(timeStr);
+        var pMatch = _periodPattern.firstMatch(timeStr);
         if (pMatch != null) {
           startJc = int.tryParse(pMatch.group(1)!) ?? startJc;
           String? endGroup = pMatch.group(2);
@@ -119,17 +135,19 @@ class ZfSoftScheduleParser {
             weekday: weekday,
           );
 
-          courses.add(CourseItem(
-            courseName: title,
-            teacherName: teacher,
-            roomName: location,
-            weekday: weekday,
-            weekIndex: week,
-            date: dateStr,
-            startTime: _getStartTime(startJc, customTimes),
-            endTime: _getEndTime(endJc, customTimes),
-            lessonType: null,
-          ));
+          courses.add(
+            CourseItem(
+              courseName: title,
+              teacherName: teacher,
+              roomName: location,
+              weekday: weekday,
+              weekIndex: week,
+              date: dateStr,
+              startTime: _getStartTime(startJc, customTimes),
+              endTime: _getEndTime(endJc, customTimes),
+              lessonType: null,
+            ),
+          );
         }
       }
     }
@@ -161,7 +179,7 @@ class ZfSoftScheduleParser {
       9: 1900,
       10: 1955,
       11: 2050,
-      12: 2145
+      12: 2145,
     };
     return defaultTimes[jc] ?? 800;
   }
@@ -182,21 +200,19 @@ class ZfSoftScheduleParser {
       9: 1945,
       10: 2040,
       11: 2135,
-      12: 2230
+      12: 2230,
     };
     return defaultTimes[jc] ?? 940;
   }
 
   static List<int> _parseZfWeeks(String rawStr) {
     // 移除干扰项：移除包含“节”字的括号内容
-    String content =
-        rawStr.replaceAll(RegExp(r'[(\（][^)\（]*?节[^)\（]*?[)）]'), '');
+    String content = rawStr.replaceAll(_weekPeriodPattern, '');
 
     List<int> weeks = [];
 
     // 正则匹配所有数字组合，识别 1-16, 18 等
-    RegExp weekPattern = RegExp(r'(\d+)(?:-(\d+))?(?:周)?(?:\((单|双)\))?');
-    var matches = weekPattern.allMatches(content);
+    var matches = _weekPattern.allMatches(content);
 
     for (var m in matches) {
       int start = int.parse(m.group(1)!);

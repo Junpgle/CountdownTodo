@@ -24,14 +24,16 @@ class _CourseAdaptationScreenState extends State<CourseAdaptationScreen> {
     super.initState();
     _controller =
         VideoPlayerController.asset('assets/guide_media/course_import.webm')
-          ..initialize().then((_) {
-            setState(() {});
-            _controller.setLooping(true);
-            _controller.play();
-          }).catchError((error) {
-            debugPrint("视频加载失败: $error");
-            setState(() => _isError = true);
-          });
+          ..initialize()
+              .then((_) {
+                setState(() {});
+                _controller.setLooping(true);
+                _controller.play();
+              })
+              .catchError((error) {
+                debugPrint("视频加载失败: $error");
+                setState(() => _isError = true);
+              });
   }
 
   @override
@@ -47,8 +49,10 @@ class _CourseAdaptationScreenState extends State<CourseAdaptationScreen> {
     } else {
       await Clipboard.setData(const ClipboardData(text: "674155783"));
       if (mounted) {
-        AppSnackBars.showSnackBar(context,
-            const SnackBar(content: Text('QQ号已复制到剪贴板')));
+        AppSnackBars.showSnackBar(
+          context,
+          const SnackBar(content: Text('QQ号已复制到剪贴板')),
+        );
       }
     }
   }
@@ -59,7 +63,7 @@ class _CourseAdaptationScreenState extends State<CourseAdaptationScreen> {
       path: 'junpgle@qq.com',
       queryParameters: {
         'subject': '课表适配申请',
-        'body': '学校名称：\n所在城市：\n附件请添加保存好的 mhtml 文件。'
+        'body': '学校名称：\n所在城市：\n附件请添加保存好的 mhtml 文件。',
       },
     );
     if (await canLaunchUrl(emailLaunchUri)) {
@@ -70,16 +74,19 @@ class _CourseAdaptationScreenState extends State<CourseAdaptationScreen> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final topBarHeight =
-        widget.isEmbedded ? 0.0 : floatingGlassTopBarHeight(context);
+    final topBarHeight = widget.isEmbedded
+        ? 0.0
+        : floatingGlassTopBarHeight(context);
     return Scaffold(
       backgroundColor: colorScheme.surface,
       extendBodyBehindAppBar: !widget.isEmbedded,
       appBar: widget.isEmbedded
           ? null
           : FloatingGlassAppBar(
-              title: const Text('学校适配申请',
-                  style: TextStyle(fontWeight: FontWeight.bold)),
+              title: const Text(
+                '学校适配申请',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
               centerTitle: true,
               backgroundColor: Colors.transparent,
               surfaceTintColor: Colors.transparent,
@@ -98,21 +105,31 @@ class _CourseAdaptationScreenState extends State<CourseAdaptationScreen> {
               // 顶部横幅
               Container(
                 width: double.infinity,
-                padding:
-                    const EdgeInsets.symmetric(vertical: 20, horizontal: 24),
+                padding: const EdgeInsets.symmetric(
+                  vertical: 20,
+                  horizontal: 24,
+                ),
                 color: colorScheme.primary.withValues(alpha: 0.05),
                 child: Column(
                   children: [
-                    Icon(Icons.school_rounded,
-                        size: 48,
-                        color: Theme.of(context).colorScheme.secondary),
+                    Icon(
+                      Icons.school_rounded,
+                      size: 48,
+                      color: Theme.of(context).colorScheme.secondary,
+                    ),
                     const SizedBox(height: 12),
-                    const Text('让你的校园生活更高效',
-                        style: TextStyle(
-                            fontSize: 18, fontWeight: FontWeight.bold)),
+                    const Text(
+                      '让你的校园生活更高效',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                     const SizedBox(height: 4),
-                    Text('只需 1 分钟，为全校同学谋福利',
-                        style: TextStyle(color: colorScheme.onSurfaceVariant)),
+                    Text(
+                      '只需 1 分钟，为全校同学谋福利',
+                      style: TextStyle(color: colorScheme.onSurfaceVariant),
+                    ),
                   ],
                 ),
               ),
@@ -124,7 +141,9 @@ class _CourseAdaptationScreenState extends State<CourseAdaptationScreen> {
                   children: [
                     // 新增置顶方法：移动端快捷适配
                     _buildSectionHeader(
-                        Icons.flash_on_rounded, '方案一：自动嗅探 (推荐)'),
+                      Icons.flash_on_rounded,
+                      '方案一：自动嗅探 (推荐)',
+                    ),
                     const SizedBox(height: 16),
                     Container(
                       width: double.infinity,
@@ -135,12 +154,13 @@ class _CourseAdaptationScreenState extends State<CourseAdaptationScreen> {
                           end: Alignment.bottomRight,
                           colors: [
                             colorScheme.primary.withValues(alpha: 0.1),
-                            colorScheme.primary.withValues(alpha: 0.05)
+                            colorScheme.primary.withValues(alpha: 0.05),
                           ],
                         ),
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(
-                            color: colorScheme.primary.withValues(alpha: 0.2)),
+                          color: colorScheme.primary.withValues(alpha: 0.2),
+                        ),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -148,22 +168,28 @@ class _CourseAdaptationScreenState extends State<CourseAdaptationScreen> {
                           const Text(
                             '可以先使用 App 内“网页登录”尝试导入。',
                             style: TextStyle(
-                                fontSize: 15, fontWeight: FontWeight.w600),
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                           const SizedBox(height: 8),
                           Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Icon(Icons.lightbulb_outline_rounded,
-                                  size: 18, color: Colors.orange[700]),
+                              Icon(
+                                Icons.lightbulb_outline_rounded,
+                                size: 18,
+                                color: Colors.orange[700],
+                              ),
                               const SizedBox(width: 8),
                               const Expanded(
                                 child: Text(
                                   '失败后，请将手机“文件管理/Download”目录下的 course_debug.html 发送给开发者。',
                                   style: TextStyle(
-                                      fontSize: 13,
-                                      color: Colors.black87,
-                                      height: 1.4),
+                                    fontSize: 13,
+                                    color: Colors.black87,
+                                    height: 1.4,
+                                  ),
                                 ),
                               ),
                             ],
@@ -176,16 +202,26 @@ class _CourseAdaptationScreenState extends State<CourseAdaptationScreen> {
 
                     // 步骤标题
                     _buildSectionHeader(
-                        Icons.computer_rounded, '方案二：手动导出 (电脑端)'),
+                      Icons.computer_rounded,
+                      '方案二：手动导出 (电脑端)',
+                    ),
                     const SizedBox(height: 16),
 
                     // 步骤时间轴
-                    _buildStepTile(1, '登录教务系统', '在电脑浏览器中进入课表查询页面。',
-                        isFirst: true),
+                    _buildStepTile(
+                      1,
+                      '登录教务系统',
+                      '在电脑浏览器中进入课表查询页面。',
+                      isFirst: true,
+                    ),
                     _buildStepTile(2, '右键另存为', '点击页面空白处，选择“另存为”。'),
                     _buildStepTile(3, '选择格式', '保存类型选“网页，单个文件 (*.mhtml)”。'),
-                    _buildStepTile(4, '发送文件', '通过下方联系方式将文件发给开发者。',
-                        isLast: true),
+                    _buildStepTile(
+                      4,
+                      '发送文件',
+                      '通过下方联系方式将文件发给开发者。',
+                      isLast: true,
+                    ),
 
                     const SizedBox(height: 32),
 
@@ -199,9 +235,10 @@ class _CourseAdaptationScreenState extends State<CourseAdaptationScreen> {
                         borderRadius: BorderRadius.circular(20),
                         boxShadow: [
                           BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.2),
-                              blurRadius: 15,
-                              offset: const Offset(0, 8))
+                            color: Colors.black.withValues(alpha: 0.2),
+                            blurRadius: 15,
+                            offset: const Offset(0, 8),
+                          ),
                         ],
                       ),
                       clipBehavior: Clip.antiAlias,
@@ -209,49 +246,54 @@ class _CourseAdaptationScreenState extends State<CourseAdaptationScreen> {
                           ? const SizedBox(
                               height: 200,
                               child: Center(
-                                  child: Text('视频无法加载',
-                                      style: TextStyle(color: Colors.white70))))
+                                child: Text(
+                                  '视频无法加载',
+                                  style: TextStyle(color: Colors.white70),
+                                ),
+                              ),
+                            )
                           : _controller.value.isInitialized
-                              ? Center(
-                                  child: ConstrainedBox(
-                                    constraints: BoxConstraints(
-                                        maxHeight:
-                                            MediaQuery.of(context).size.height *
-                                                0.45),
-                                    child: AspectRatio(
-                                      aspectRatio:
-                                          _controller.value.aspectRatio,
-                                      child: GestureDetector(
-                                        onTap: () => setState(() =>
-                                            _controller.value.isPlaying
-                                                ? _controller.pause()
-                                                : _controller.play()),
-                                        child: Stack(
-                                          alignment: Alignment.center,
-                                          children: [
-                                            VideoPlayer(_controller),
-                                            if (!_controller.value.isPlaying)
-                                              Container(
-                                                padding:
-                                                    const EdgeInsets.all(12),
-                                                decoration: BoxDecoration(
-                                                    color: Colors.black38,
-                                                    shape: BoxShape.circle),
-                                                child: const Icon(
-                                                    Icons.play_arrow_rounded,
-                                                    color: Colors.white,
-                                                    size: 48),
-                                              ),
-                                          ],
-                                        ),
-                                      ),
+                          ? Center(
+                              child: ConstrainedBox(
+                                constraints: BoxConstraints(
+                                  maxHeight:
+                                      MediaQuery.of(context).size.height * 0.45,
+                                ),
+                                child: AspectRatio(
+                                  aspectRatio: _controller.value.aspectRatio,
+                                  child: GestureDetector(
+                                    onTap: () => setState(
+                                      () => _controller.value.isPlaying
+                                          ? _controller.pause()
+                                          : _controller.play(),
+                                    ),
+                                    child: Stack(
+                                      alignment: Alignment.center,
+                                      children: [
+                                        VideoPlayer(_controller),
+                                        if (!_controller.value.isPlaying)
+                                          Container(
+                                            padding: const EdgeInsets.all(12),
+                                            decoration: BoxDecoration(
+                                              color: Colors.black38,
+                                              shape: BoxShape.circle,
+                                            ),
+                                            child: const Icon(
+                                              Icons.play_arrow_rounded,
+                                              color: Colors.white,
+                                              size: 48,
+                                            ),
+                                          ),
+                                      ],
                                     ),
                                   ),
-                                )
-                              : const SizedBox(
-                                  height: 200,
-                                  child: Center(
-                                      child: CircularProgressIndicator())),
+                                ),
+                              ),
+                            )
+                          : const SizedBox(
+                              height: 200,
+                              child: Center(child: CircularProgressIndicator()),
+                            ),
                     ),
 
                     const SizedBox(height: 40),
@@ -262,18 +304,20 @@ class _CourseAdaptationScreenState extends State<CourseAdaptationScreen> {
                     Row(
                       children: [
                         _buildContactCard(
-                            'QQ 邮箱',
-                            'junpgle@qq.com',
-                            Icons.alternate_email_rounded,
-                            Theme.of(context).colorScheme.primary,
-                            _launchEmail),
+                          'QQ 邮箱',
+                          'junpgle@qq.com',
+                          Icons.alternate_email_rounded,
+                          Theme.of(context).colorScheme.primary,
+                          _launchEmail,
+                        ),
                         const SizedBox(width: 16),
                         _buildContactCard(
-                            '开发者 QQ',
-                            '674155783',
-                            Icons.chat_bubble_rounded,
-                            Colors.indigo,
-                            _launchQQ),
+                          '开发者 QQ',
+                          '674155783',
+                          Icons.chat_bubble_rounded,
+                          Colors.indigo,
+                          _launchQQ,
+                        ),
                       ],
                     ),
                     const SizedBox(height: 40),
@@ -292,15 +336,25 @@ class _CourseAdaptationScreenState extends State<CourseAdaptationScreen> {
       children: [
         Icon(icon, size: 20, color: Theme.of(context).colorScheme.secondary),
         const SizedBox(width: 8),
-        Text(title,
-            style: const TextStyle(
-                fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1)),
+        Text(
+          title,
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 1,
+          ),
+        ),
       ],
     );
   }
 
-  Widget _buildStepTile(int step, String title, String desc,
-      {bool isFirst = false, bool isLast = false}) {
+  Widget _buildStepTile(
+    int step,
+    String title,
+    String desc, {
+    bool isFirst = false,
+    bool isLast = false,
+  }) {
     final colorScheme = Theme.of(context).colorScheme;
     return IntrinsicHeight(
       child: Row(
@@ -315,11 +369,15 @@ class _CourseAdaptationScreenState extends State<CourseAdaptationScreen> {
                   shape: BoxShape.circle,
                 ),
                 child: Center(
-                    child: Text('$step',
-                        style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold))),
+                  child: Text(
+                    '$step',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
               ),
               if (!isLast)
                 Expanded(
@@ -335,13 +393,21 @@ class _CourseAdaptationScreenState extends State<CourseAdaptationScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.bold, fontSize: 15)),
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                  ),
+                ),
                 const SizedBox(height: 4),
-                Text(desc,
-                    style: TextStyle(
-                        color: colorScheme.onSurfaceVariant, fontSize: 13)),
+                Text(
+                  desc,
+                  style: TextStyle(
+                    color: colorScheme.onSurfaceVariant,
+                    fontSize: 13,
+                  ),
+                ),
                 if (!isLast) const SizedBox(height: 20),
               ],
             ),
@@ -351,8 +417,13 @@ class _CourseAdaptationScreenState extends State<CourseAdaptationScreen> {
     );
   }
 
-  Widget _buildContactCard(String title, String value, IconData icon,
-      Color color, VoidCallback onTap) {
+  Widget _buildContactCard(
+    String title,
+    String value,
+    IconData icon,
+    Color color,
+    VoidCallback onTap,
+  ) {
     return Expanded(
       child: InkWell(
         onTap: onTap,
@@ -368,13 +439,21 @@ class _CourseAdaptationScreenState extends State<CourseAdaptationScreen> {
             children: [
               Icon(icon, color: color, size: 28),
               const SizedBox(height: 12),
-              Text(title,
-                  style: const TextStyle(
-                      fontWeight: FontWeight.bold, fontSize: 14)),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                ),
+              ),
               const SizedBox(height: 4),
-              Text(value,
-                  style: TextStyle(
-                      fontSize: 11, color: color.withValues(alpha: 0.8))),
+              Text(
+                value,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: color.withValues(alpha: 0.8),
+                ),
+              ),
             ],
           ),
         ),

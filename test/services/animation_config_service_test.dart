@@ -10,10 +10,7 @@ void main() {
   });
 
   test('defaults to the elegant speed preset', () async {
-    expect(
-      await AnimationConfigService.getPreset(),
-      AnimationPreset.balanced,
-    );
+    expect(await AnimationConfigService.getPreset(), AnimationPreset.balanced);
     expect(
       await AnimationConfigService.getAnimationSpeedPreset(),
       AnimationSpeedPreset.elegant,
@@ -24,23 +21,25 @@ void main() {
     );
   });
 
-  test('saving a speed preset updates duration and clears performance preset',
-      () async {
-    await AnimationConfigService.setPreset(AnimationPreset.performance);
-    await AnimationConfigService.setAnimationSpeedPreset(
-      AnimationSpeedPreset.balanced,
-    );
+  test(
+    'saving a speed preset updates duration and clears performance preset',
+    () async {
+      await AnimationConfigService.setPreset(AnimationPreset.performance);
+      await AnimationConfigService.setAnimationSpeedPreset(
+        AnimationSpeedPreset.balanced,
+      );
 
-    expect(await AnimationConfigService.getPreset(), isNull);
-    expect(
-      await AnimationConfigService.getAnimationSpeedPreset(),
-      AnimationSpeedPreset.balanced,
-    );
-    expect(
-      await AnimationConfigService.getAnimationDuration(),
-      AnimationSpeedPreset.balanced.duration,
-    );
-  });
+      expect(await AnimationConfigService.getPreset(), isNull);
+      expect(
+        await AnimationConfigService.getAnimationSpeedPreset(),
+        AnimationSpeedPreset.balanced,
+      );
+      expect(
+        await AnimationConfigService.getAnimationDuration(),
+        AnimationSpeedPreset.balanced.duration,
+      );
+    },
+  );
 
   test('manual duration changes are treated as a custom speed', () async {
     await AnimationConfigService.setAnimationSpeedPreset(

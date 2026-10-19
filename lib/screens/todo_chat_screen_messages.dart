@@ -5,7 +5,7 @@ part of 'todo_chat_screen.dart';
 mixin _TodoChatMessages on _TodoChatScreenStateBase {
   Widget _buildMessageBubble(ChatMessage msg, bool isDark) {
     final isUser = msg.role == ChatRole.user;
-    final timeStr = DateFormat('HH:mm').format(msg.timestamp);
+    final timeStr = _todoChatDateFormat('HH:mm').format(msg.timestamp);
     final colorScheme = Theme.of(context).colorScheme;
     final maxBubbleWidth = MediaQuery.of(context).size.width >= 900
         ? (isUser ? 560.0 : 720.0)
@@ -102,7 +102,8 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
                               if (msg.usageSummary != null)
                                 _buildUsageSummaryFooter(
                                   msg.usageSummary!,
-                                  isVoice: msg.usageSummary!.model ==
+                                  isVoice:
+                                      msg.usageSummary!.model ==
                                       MimoAsrService.model,
                                   foregroundColor: colorScheme.onPrimary,
                                 ),
@@ -514,8 +515,9 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
       decoration: BoxDecoration(
         border: Border(
           top: BorderSide(
-            color: (foregroundColor ?? scheme.outlineVariant)
-                .withValues(alpha: 0.55),
+            color: (foregroundColor ?? scheme.outlineVariant).withValues(
+              alpha: 0.55,
+            ),
           ),
         ),
       ),
@@ -557,131 +559,143 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
         : isFailed
         ? '识别失败'
         : '识别完成';
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Icon(
-              isProcessing
-                  ? Icons.auto_awesome_rounded
-                  : isFailed
-                  ? Icons.error_outline_rounded
-                  : Icons.check_circle_outline_rounded,
-              size: 18,
-              color: statusColor,
-            ),
-            const SizedBox(width: 6),
-            Text(
-              '${info.recognizer} · $statusLabel',
-              style: TextStyle(
+    return AiWaterRippleBorder(
+      isLight: !isDark,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                isProcessing
+                    ? Icons.auto_awesome_rounded
+                    : isFailed
+                    ? Icons.error_outline_rounded
+                    : Icons.check_circle_outline_rounded,
+                size: 18,
                 color: statusColor,
-                fontWeight: FontWeight.w600,
-                fontSize: 13,
               ),
-            ),
-            if (isProcessing) ...[
-              const Spacer(),
-              SizedBox(
-                width: 14,
-                height: 14,
-                child: CircularProgressIndicator(
-                  strokeWidth: 1.8,
+              const SizedBox(width: 6),
+              Text(
+                '${info.recognizer} · $statusLabel',
+                style: TextStyle(
                   color: statusColor,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
                 ),
               ),
-            ],
-          ],
-        ),
-        if (msg.content.isNotEmpty) ...[
-          const SizedBox(height: 7),
-          AiChatMarkdown(data: AiActionParser.cleanActionContent(msg.content)),
-        ],
-        if (info.todoResults.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(9),
-            decoration: BoxDecoration(
-              color: scheme.primaryContainer.withValues(alpha: 0.45),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: info.todoResults.asMap().entries.map((entry) {
-                final result = entry.value;
-                final title = (result['title'] ?? result['content'] ?? '')
-                    .toString()
-                    .trim();
-                final detail = (result['remark'] ?? result['notes'] ?? '')
-                    .toString()
-                    .trim();
-                return Padding(
-                  padding: EdgeInsets.only(
-                    bottom: entry.key == info.todoResults.length - 1 ? 0 : 5,
+              if (isProcessing) ...[
+                const Spacer(),
+                SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 1.8,
+                    color: statusColor,
                   ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '${entry.key + 1}.',
-                        style: TextStyle(
-                          color: scheme.primary,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(width: 5),
-                      Expanded(
-                        child: Text(
-                          detail.isEmpty ? title : '$title · $detail',
+                ),
+              ],
+            ],
+          ),
+          if (msg.content.isNotEmpty) ...[
+            const SizedBox(height: 7),
+            AiChatMarkdown(
+              data: AiActionParser.cleanActionContent(msg.content),
+            ),
+          ],
+          if (info.todoResults.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(9),
+              decoration: BoxDecoration(
+                color: scheme.primaryContainer.withValues(alpha: 0.45),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: info.todoResults.asMap().entries.map((entry) {
+                  final result = entry.value;
+                  final title = (result['title'] ?? result['content'] ?? '')
+                      .toString()
+                      .trim();
+                  final detail = (result['remark'] ?? result['notes'] ?? '')
+                      .toString()
+                      .trim();
+                  return Padding(
+                    padding: EdgeInsets.only(
+                      bottom: entry.key == info.todoResults.length - 1 ? 0 : 5,
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '${entry.key + 1}.',
                           style: TextStyle(
-                            color: scheme.onSurface,
-                            fontSize: 13,
-                            height: 1.35,
+                            color: scheme.primary,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
-                      ),
-                    ],
-                  ),
+                        const SizedBox(width: 5),
+                        Expanded(
+                          child: Text(
+                            detail.isEmpty ? title : '$title · $detail',
+                            style: TextStyle(
+                              color: scheme.onSurface,
+                              fontSize: 13,
+                              height: 1.35,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+          ],
+          if (info.suggestions.isNotEmpty) ...[
+            const SizedBox(height: 9),
+            Text(
+              '建议下一步',
+              style: TextStyle(
+                color: scheme.onSurfaceVariant,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: info.suggestions.map((suggestion) {
+                return ActionChip(
+                  label: Text(suggestion),
+                  onPressed: () {
+                    _inputCtrl
+                      ..text = suggestion
+                      ..selection = TextSelection.collapsed(
+                        offset: suggestion.length,
+                      );
+                  },
+                  visualDensity: VisualDensity.compact,
                 );
               }).toList(),
             ),
-          ),
+          ],
         ],
-        if (info.suggestions.isNotEmpty) ...[
-          const SizedBox(height: 9),
-          Text(
-            '建议下一步',
-            style: TextStyle(
-              color: scheme.onSurfaceVariant,
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: info.suggestions.map((suggestion) {
-              return ActionChip(
-                label: Text(suggestion),
-                onPressed: () {
-                  _inputCtrl
-                    ..text = suggestion
-                    ..selection = TextSelection.collapsed(
-                      offset: suggestion.length,
-                    );
-                },
-                visualDensity: VisualDensity.compact,
-              );
-            }).toList(),
-          ),
-        ],
-      ],
+      ),
     );
   }
 
   Widget _buildInputArea(ColorScheme colorScheme) {
+    return ValueListenableBuilder<int>(
+      valueListenable: _inputAreaRevision,
+      builder: (context, _, _) => _buildInputAreaContent(colorScheme),
+    );
+  }
+
+  Widget _buildInputAreaContent(ColorScheme colorScheme) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final useFloating = floatingBottomBarShouldFloat(context);
     final keyboardVisible = MediaQuery.viewInsetsOf(context).bottom > 0;
@@ -821,7 +835,10 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
                         _customInjectStart != null &&
                         _customInjectEnd != null)
                       Text(
-                        '自定义范围: ${DateFormat('yyyy-MM-dd').format(_customInjectStart!)} 至 ${DateFormat('yyyy-MM-dd').format(_customInjectEnd!)}',
+                        _formatTodoChatDateRange(
+                          _customInjectStart!,
+                          _customInjectEnd!,
+                        ),
                         style: TextStyle(
                           fontSize: 11,
                           color: colorScheme.onSurface.withValues(alpha: 0.6),
@@ -953,9 +970,11 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
                 await ChatStorageService.setSmartContextEnabled(_smartContext);
               },
               onSettings: _showPromptSettings,
+              onSettingsFromSource: _showPromptSettingsFromSource,
               onModelConfig: _showModelConfig,
               onCopyPrompt: _inputHasText ? _copyManualPromptFromInput : null,
               onPasteReply: _pasteManualReplyFromClipboard,
+              onPasteImage: _pasteChatImageFromClipboard,
               onRetry:
                   !_isLoading &&
                       _messages.isNotEmpty &&

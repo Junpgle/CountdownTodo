@@ -12,21 +12,22 @@ void main() {
   final now = DateTime(2026, 8, 5, 14, 0); // 周三 14:00
 
   HabitGoal goal(HabitSourceType type, List<String> sourceIds) => HabitGoal(
-        uuid: 'goal-1',
-        name: '测试习惯',
-        sourceType: type,
-        sourceIds: sourceIds,
-      );
+    uuid: 'goal-1',
+    name: '测试习惯',
+    sourceType: type,
+    sourceIds: sourceIds,
+  );
 
   HabitGoalRuleRevision dailyRule({double target = 1}) => HabitGoalRuleRevision(
-        uuid: 'rule-1',
-        habitUuid: 'goal-1',
-        effectiveFromDate: '2026-07-01',
-        periodType: HabitPeriodType.daily,
-        targetValue: target,
-      );
+    uuid: 'rule-1',
+    habitUuid: 'goal-1',
+    effectiveFromDate: '2026-07-01',
+    periodType: HabitPeriodType.daily,
+    targetValue: target,
+  );
 
-  String dayKey(DateTime d) => '${d.year.toString().padLeft(4, '0')}-'
+  String dayKey(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}-'
       '${d.month.toString().padLeft(2, '0')}-'
       '${d.day.toString().padLeft(2, '0')}';
 
@@ -139,10 +140,7 @@ void main() {
       );
 
       expect(results, hasLength(3));
-      expect(
-        results.map((result) => result.logicalDate.day),
-        [7, 8, 9],
-      );
+      expect(results.map((result) => result.logicalDate.day), [7, 8, 9]);
     });
 
     test('已达标的历史日期为 met', () async {
@@ -154,9 +152,7 @@ void main() {
         from: DateTime(2026, 8, 3),
         to: DateTime(2026, 8, 3),
         now: now,
-        checkIns: [
-          checkIn(DateTime(2026, 8, 3, 9, 0), 2000),
-        ],
+        checkIns: [checkIn(DateTime(2026, 8, 3, 9, 0), 2000)],
       );
       expect(results.first.progress.goalMet, true);
       expect(results.first.progress.dayStatus, HabitDayStatus.met);
@@ -181,9 +177,7 @@ void main() {
         from: DateTime(2026, 8, 5),
         to: DateTime(2026, 8, 5),
         now: now,
-        checkIns: [
-          checkIn(DateTime(2026, 8, 5, 23), 8 * 60 * 60),
-        ],
+        checkIns: [checkIn(DateTime(2026, 8, 5, 23), 8 * 60 * 60)],
       );
 
       expect(results.first.progress.currentValue, 8 * 60 * 60);
@@ -287,16 +281,21 @@ void main() {
   });
 
   group('完成型习惯', () {
-    TodoItem todo(
-            {required String id, required DateTime day, bool done = false}) =>
-        TodoItem(
-          id: id,
-          title: '每天整理桌面',
-          createdDate:
-              DateTime(day.year, day.month, day.day).millisecondsSinceEpoch,
-          isDone: done,
-          recurrenceSeriesId: 'series-1',
-        );
+    TodoItem todo({
+      required String id,
+      required DateTime day,
+      bool done = false,
+    }) => TodoItem(
+      id: id,
+      title: '每天整理桌面',
+      createdDate: DateTime(
+        day.year,
+        day.month,
+        day.day,
+      ).millisecondsSinceEpoch,
+      isDone: done,
+      recurrenceSeriesId: 'series-1',
+    );
 
     test('对应日期实例完成则达标', () async {
       final habit = goal(HabitSourceType.recurringTodo, ['series-1']);
@@ -307,9 +306,7 @@ void main() {
         from: DateTime(2026, 8, 5),
         to: DateTime(2026, 8, 5),
         now: now,
-        todos: [
-          todo(id: 't1', day: DateTime(2026, 8, 5), done: true),
-        ],
+        todos: [todo(id: 't1', day: DateTime(2026, 8, 5), done: true)],
       );
       expect(results.first.progress.goalMet, true);
       expect(results.first.progress.dayStatus, HabitDayStatus.met);
@@ -360,15 +357,14 @@ void main() {
       required String uuid,
       required DateTime start,
       int effective = 30 * 60,
-    }) =>
-        PomodoroRecord(
-          uuid: uuid,
-          startTime: start.millisecondsSinceEpoch,
-          plannedDuration: effective,
-          actualDuration: effective,
-          status: PomodoroRecordStatus.completed,
-          tagUuids: const ['tag-1'],
-        );
+    }) => PomodoroRecord(
+      uuid: uuid,
+      startTime: start.millisecondsSinceEpoch,
+      plannedDuration: effective,
+      actualDuration: effective,
+      status: PomodoroRecordStatus.completed,
+      tagUuids: const ['tag-1'],
+    );
 
     test('每天累计有效时长，暂停时间不计入', () async {
       final habit = goal(HabitSourceType.pomodoroTag, ['tag-1']);
@@ -387,13 +383,15 @@ void main() {
         now: now,
         records: [
           record(
-              uuid: 'r1',
-              start: DateTime(2026, 8, 5, 9, 0),
-              effective: 20 * 60),
+            uuid: 'r1',
+            start: DateTime(2026, 8, 5, 9, 0),
+            effective: 20 * 60,
+          ),
           record(
-              uuid: 'r2',
-              start: DateTime(2026, 8, 5, 10, 0),
-              effective: 10 * 60),
+            uuid: 'r2',
+            start: DateTime(2026, 8, 5, 10, 0),
+            effective: 10 * 60,
+          ),
         ],
       );
       final progress = results.first.progress;
@@ -449,17 +447,20 @@ void main() {
         now: now,
         records: [
           record(
-              uuid: 'r1',
-              start: DateTime(2026, 8, 3, 9, 0),
-              effective: 80 * 60),
+            uuid: 'r1',
+            start: DateTime(2026, 8, 3, 9, 0),
+            effective: 80 * 60,
+          ),
           record(
-              uuid: 'r2',
-              start: DateTime(2026, 8, 5, 10, 0),
-              effective: 70 * 60),
+            uuid: 'r2',
+            start: DateTime(2026, 8, 5, 10, 0),
+            effective: 70 * 60,
+          ),
           record(
-              uuid: 'r3',
-              start: DateTime(2026, 8, 10, 9, 0),
-              effective: 60 * 60),
+            uuid: 'r3',
+            start: DateTime(2026, 8, 10, 9, 0),
+            effective: 60 * 60,
+          ),
         ],
       );
       for (final day in results) {
@@ -508,13 +509,15 @@ void main() {
       expect(
         periodLevel
             .lastWhere(
-                (d) => d.logicalDate.year == 2026 && d.logicalDate.month == 7)
+              (d) => d.logicalDate.year == 2026 && d.logicalDate.month == 7,
+            )
             .progress
             .goalMet,
         true,
       );
       final aug = periodLevel.lastWhere(
-          (d) => d.logicalDate.year == 2026 && d.logicalDate.month == 8);
+        (d) => d.logicalDate.year == 2026 && d.logicalDate.month == 8,
+      );
       expect(aug.progress.isFinished, false);
       expect(aug.progress.goalMet, false);
     });

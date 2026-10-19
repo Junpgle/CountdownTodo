@@ -7,15 +7,14 @@ FixedScheduleItem fixed(
   String title,
   DateTime start,
   DateTime end,
-) =>
-    FixedScheduleItem(
-      id: id,
-      title: title,
-      date:
-          '${start.year}-${start.month.toString().padLeft(2, '0')}-${start.day.toString().padLeft(2, '0')}',
-      startTime: start.millisecondsSinceEpoch,
-      endTime: end.millisecondsSinceEpoch,
-    );
+) => FixedScheduleItem(
+  id: id,
+  title: title,
+  date:
+      '${start.year}-${start.month.toString().padLeft(2, '0')}-${start.day.toString().padLeft(2, '0')}',
+  startTime: start.millisecondsSinceEpoch,
+  endTime: end.millisecondsSinceEpoch,
+);
 
 void main() {
   group('ScheduleConflictService', () {

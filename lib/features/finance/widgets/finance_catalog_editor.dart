@@ -67,16 +67,19 @@ class _FinanceCatalogEditorState extends State<FinanceCatalogEditor> {
   String get _label => _isPayment
       ? '付款方式'
       : widget.isSubcategory
-          ? '细分类'
-          : '分类';
+      ? '细分类'
+      : '分类';
   String get _icon => _iconController.text.trim().isEmpty
       ? (_isPayment ? '💼' : '📦')
       : _iconController.text.trim();
 
-  bool get _hasChildren => widget.editingCategoryUuid != null &&
-      widget.availableParents.any((category) =>
-          category.parentUuid == widget.editingCategoryUuid &&
-          !category.isDeleted);
+  bool get _hasChildren =>
+      widget.editingCategoryUuid != null &&
+      widget.availableParents.any(
+        (category) =>
+            category.parentUuid == widget.editingCategoryUuid &&
+            !category.isDeleted,
+      );
 
   List<FinanceCategory> get _parentCandidates {
     if (_isPayment || _type == null) return const [];
@@ -121,49 +124,49 @@ class _FinanceCatalogEditorState extends State<FinanceCatalogEditor> {
           '🧧',
           '💰',
           '🌐',
-          '🧾'
+          '🧾',
         ]
       : _type == FinanceCategoryType.income
-          ? const [
-              '💼',
-              '💰',
-              '🏆',
-              '🧧',
-              '🎁',
-              '🪙',
-              '🏦',
-              '📈',
-              '✨',
-              '🌱',
-              '🏠',
-              '➕'
-            ]
-          : const [
-              '🍜',
-              '☕',
-              '🛒',
-              '🛍️',
-              '🚇',
-              '🚕',
-              '🏠',
-              '💡',
-              '📚',
-              '🎮',
-              '🎬',
-              '🎧',
-              '💊',
-              '🏃',
-              '🐾',
-              '🌷',
-              '🎁',
-              '✈️',
-              '🔔',
-              '✨',
-              '👕',
-              '📱',
-              '🧾',
-              '📦',
-            ];
+      ? const [
+          '💼',
+          '💰',
+          '🏆',
+          '🧧',
+          '🎁',
+          '🪙',
+          '🏦',
+          '📈',
+          '✨',
+          '🌱',
+          '🏠',
+          '➕',
+        ]
+      : const [
+          '🍜',
+          '☕',
+          '🛒',
+          '🛍️',
+          '🚇',
+          '🚕',
+          '🏠',
+          '💡',
+          '📚',
+          '🎮',
+          '🎬',
+          '🎧',
+          '💊',
+          '🏃',
+          '🐾',
+          '🌷',
+          '🎁',
+          '✈️',
+          '🔔',
+          '✨',
+          '👕',
+          '📱',
+          '🧾',
+          '📦',
+        ];
 
   @override
   void initState() {
@@ -190,12 +193,14 @@ class _FinanceCatalogEditorState extends State<FinanceCatalogEditor> {
       _saveError = null;
     });
     try {
-      await widget.onSave(FinanceCatalogDraft(
-        name: _nameController.text.trim(),
-        icon: _icon,
-        type: _type,
-        parentUuid: _parentUuid,
-      ));
+      await widget.onSave(
+        FinanceCatalogDraft(
+          name: _nameController.text.trim(),
+          icon: _icon,
+          type: _type,
+          parentUuid: _parentUuid,
+        ),
+      );
       if (mounted) Navigator.of(context).pop(true);
     } catch (error) {
       debugPrint('记账$_label保存失败：$error');
@@ -243,9 +248,11 @@ class _FinanceCatalogEditorState extends State<FinanceCatalogEditor> {
                   ),
                   child: Row(
                     children: [
-                      Text(_icon,
-                          textScaler: TextScaler.noScaling,
-                          style: const TextStyle(fontSize: 32)),
+                      Text(
+                        _icon,
+                        textScaler: TextScaler.noScaling,
+                        style: const TextStyle(fontSize: 32),
+                      ),
                       const SizedBox(width: 16),
                       Expanded(
                         child: Column(
@@ -255,8 +262,8 @@ class _FinanceCatalogEditorState extends State<FinanceCatalogEditor> {
                               _nameController.text.trim().isEmpty
                                   ? '你的$_label'
                                   : selectedParentPath == null
-                                      ? _nameController.text.trim()
-                                      : '$selectedParentPath - ${_nameController.text.trim()}',
+                                  ? _nameController.text.trim()
+                                  : '$selectedParentPath - ${_nameController.text.trim()}',
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                               style: theme.textTheme.titleMedium?.copyWith(
@@ -268,8 +275,8 @@ class _FinanceCatalogEditorState extends State<FinanceCatalogEditor> {
                               _isPayment
                                   ? '付款方式 · 自定义'
                                   : widget.systemCategory
-                                      ? '系统${_type!.label}分类 · 自定义名称和图标'
-                                      : '${_type!.label}分类 · 自定义',
+                                  ? '系统${_type!.label}分类 · 自定义名称和图标'
+                                  : '${_type!.label}分类 · 自定义',
                               style: theme.textTheme.bodySmall?.copyWith(
                                 color: colors.onSurfaceVariant,
                               ),
@@ -292,10 +299,11 @@ class _FinanceCatalogEditorState extends State<FinanceCatalogEditor> {
                     hintText: _isPayment
                         ? '例如：日常银行卡'
                         : _type == FinanceCategoryType.income
-                            ? '例如：兼职、理财收益'
-                            : '例如：咖啡、宠物',
+                        ? '例如：兼职、理财收益'
+                        : '例如：咖啡、宠物',
                     border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(14)),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
                   ),
                   onChanged: (_) => setState(() {}),
                   onFieldSubmitted: (_) => _save(),
@@ -315,12 +323,13 @@ class _FinanceCatalogEditorState extends State<FinanceCatalogEditor> {
                           onSelected: _isSaving || widget.isEditing
                               ? null
                               : (_) => setState(() {
-                                    _type = type;
-                                    if (!_parentCandidates.any((category) =>
-                                        category.uuid == _parentUuid)) {
-                                      _parentUuid = null;
-                                    }
-                                  }),
+                                  _type = type;
+                                  if (!_parentCandidates.any(
+                                    (category) => category.uuid == _parentUuid,
+                                  )) {
+                                    _parentUuid = null;
+                                  }
+                                }),
                         ),
                     ],
                   ),
@@ -329,8 +338,9 @@ class _FinanceCatalogEditorState extends State<FinanceCatalogEditor> {
                       padding: const EdgeInsets.only(top: 4),
                       child: Text(
                         '分类类型创建后不可修改',
-                        style: theme.textTheme.bodySmall
-                            ?.copyWith(color: colors.onSurfaceVariant),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: colors.onSurfaceVariant,
+                        ),
                       ),
                     ),
                   const SizedBox(height: 16),
@@ -347,11 +357,12 @@ class _FinanceCatalogEditorState extends State<FinanceCatalogEditor> {
                       helperText: _hasChildren
                           ? '已有二级分类，请先移动二级分类后再调整上级'
                           : widget.lockParent && _selectedParent != null
-                              ? '已选择“$selectedParentName”，这是该大类下的细分类'
-                              : '不选择上级时，会创建为一级分类',
+                          ? '已选择“$selectedParentName”，这是该大类下的细分类'
+                          : '不选择上级时，会创建为一级分类',
                       helperMaxLines: 2,
                       border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14)),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
                     ),
                     items: [
                       const DropdownMenuItem<String>(
@@ -362,19 +373,17 @@ class _FinanceCatalogEditorState extends State<FinanceCatalogEditor> {
                         DropdownMenuItem<String>(
                           value: parent.uuid,
                           child: Text(
-                            '${parent.icon} ${financeCategorySiblingDisplayName(
-                              parent,
-                              widget.availableParents,
-                            )}',
+                            '${parent.icon} ${financeCategorySiblingDisplayName(parent, widget.availableParents)}',
                           ),
                         ),
                     ],
                     onChanged: _isSaving || widget.lockParent || _hasChildren
                         ? null
                         : (value) => setState(() {
-                              _parentUuid =
-                                  value == _noParentValue ? null : value;
-                            }),
+                            _parentUuid = value == _noParentValue
+                                ? null
+                                : value;
+                          }),
                   ),
                   const SizedBox(height: 16),
                 ],
@@ -392,15 +401,17 @@ class _FinanceCatalogEditorState extends State<FinanceCatalogEditor> {
                         child: Material(
                           color: _icon == icon
                               ? colors.primaryContainer
-                              : colors.surfaceContainerHighest
-                                  .withValues(alpha: 0.5),
+                              : colors.surfaceContainerHighest.withValues(
+                                  alpha: 0.5,
+                                ),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(14),
                             side: BorderSide(
                               color: _icon == icon
                                   ? colors.primary
-                                  : colors.outlineVariant
-                                      .withValues(alpha: 0.4),
+                                  : colors.outlineVariant.withValues(
+                                      alpha: 0.4,
+                                    ),
                             ),
                           ),
                           clipBehavior: Clip.antiAlias,
@@ -416,9 +427,12 @@ class _FinanceCatalogEditorState extends State<FinanceCatalogEditor> {
                               width: 48,
                               height: 48,
                               child: Center(
-                                  child: Text(icon,
-                                      textScaler: TextScaler.noScaling,
-                                      style: const TextStyle(fontSize: 24))),
+                                child: Text(
+                                  icon,
+                                  textScaler: TextScaler.noScaling,
+                                  style: const TextStyle(fontSize: 24),
+                                ),
+                              ),
                             ),
                           ),
                         ),
@@ -436,15 +450,18 @@ class _FinanceCatalogEditorState extends State<FinanceCatalogEditor> {
                     helperText: '也可以粘贴喜欢的表情',
                     prefixIcon: const Icon(Icons.emoji_emotions_outlined),
                     border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(14)),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
                   ),
                   onChanged: (_) => setState(() {}),
                 ),
                 if (_saveError != null)
                   Padding(
                     padding: const EdgeInsets.only(top: 12),
-                    child: Text(_saveError!,
-                        style: TextStyle(color: colors.error)),
+                    child: Text(
+                      _saveError!,
+                      style: TextStyle(color: colors.error),
+                    ),
                   ),
               ],
             ),
@@ -452,8 +469,9 @@ class _FinanceCatalogEditorState extends State<FinanceCatalogEditor> {
         ),
         actions: [
           TextButton(
-            onPressed:
-                _isSaving ? null : () => Navigator.of(context).pop(false),
+            onPressed: _isSaving
+                ? null
+                : () => Navigator.of(context).pop(false),
             child: const Text('取消'),
           ),
           FilledButton.icon(
@@ -463,7 +481,8 @@ class _FinanceCatalogEditorState extends State<FinanceCatalogEditor> {
                 ? const SizedBox(
                     width: 16,
                     height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2))
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
                 : const Icon(Icons.check_rounded, size: 18),
             label: Text(_isSaving ? '保存中' : '保存'),
           ),

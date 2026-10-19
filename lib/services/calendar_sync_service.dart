@@ -46,20 +46,23 @@ class CalendarSyncEntry {
   }
 
   Map<String, dynamic> toPlatformJson() => {
-        'sourceId': id,
-        'sourceType': type.name,
-        'title': title,
-        'startMs': _platformMillis(start),
-        'endMs': _platformMillis(end),
-        'allDay': allDay,
-        'location': location,
-        'description': description,
-      };
+    'sourceId': id,
+    'sourceType': type.name,
+    'title': title,
+    'startMs': _platformMillis(start),
+    'endMs': _platformMillis(end),
+    'allDay': allDay,
+    'location': location,
+    'description': description,
+  };
 
   int _platformMillis(DateTime value) {
     if (!allDay) return value.toUtc().millisecondsSinceEpoch;
-    return DateTime.utc(value.year, value.month, value.day)
-        .millisecondsSinceEpoch;
+    return DateTime.utc(
+      value.year,
+      value.month,
+      value.day,
+    ).millisecondsSinceEpoch;
   }
 }
 
@@ -104,8 +107,9 @@ class CalendarSyncResult {
 }
 
 class CalendarSyncService {
-  static const MethodChannel _channel =
-      MethodChannel('com.math_quiz.junpgle.com.math_quiz_app/notifications');
+  static const MethodChannel _channel = MethodChannel(
+    'com.math_quiz.junpgle.com.math_quiz_app/notifications',
+  );
 
   static bool get isSupported => AppPlatform.isAndroid;
 
@@ -123,9 +127,8 @@ class CalendarSyncService {
 
   static Future<List<Map<String, dynamic>>> getWritableCalendars() async {
     if (!isSupported) return const [];
-    final raw = await _channel.invokeMethod<List<dynamic>>(
-          'getWritableCalendars',
-        ) ??
+    final raw =
+        await _channel.invokeMethod<List<dynamic>>('getWritableCalendars') ??
         const [];
     return raw
         .whereType<Map>()
@@ -140,7 +143,10 @@ class CalendarSyncService {
   }) async {
     if (!isSupported) {
       return CalendarSyncResult(
-          inserted: 0, cleared: 0, failed: entries.length);
+        inserted: 0,
+        cleared: 0,
+        failed: entries.length,
+      );
     }
     final result = await _channel.invokeMethod<Map<dynamic, dynamic>>(
       'syncCalendarEvents',
@@ -155,10 +161,9 @@ class CalendarSyncService {
 
   static Future<int> clearAppEvents({int? calendarId}) async {
     if (!isSupported) return 0;
-    final cleared = await _channel.invokeMethod<int>(
-      'clearCalendarEvents',
-      {'calendarId': calendarId},
-    );
+    final cleared = await _channel.invokeMethod<int>('clearCalendarEvents', {
+      'calendarId': calendarId,
+    });
     return cleared ?? 0;
   }
 
@@ -256,8 +261,7 @@ class CalendarSyncService {
   @visibleForTesting
   static CalendarSyncEntry? fixedScheduleToEntryForTest(
     FixedScheduleItem item,
-  ) =>
-      _fixedScheduleToEntry(item);
+  ) => _fixedScheduleToEntry(item);
 
   @visibleForTesting
   static CalendarSyncEntry countdownToEntryForTest(CountdownItem countdown) =>
@@ -296,8 +300,9 @@ class CalendarSyncService {
     // 新截止待办以截止点为锚，导出成截止前的一分钟标记；旧版已经保存
     // 为真实时间段的待办保持原范围，避免同步时悄悄改动历史日历事件。
     final hasLegacyRange = start.isBefore(due);
-    final entryStart =
-        hasLegacyRange ? start : due.subtract(const Duration(minutes: 1));
+    final entryStart = hasLegacyRange
+        ? start
+        : due.subtract(const Duration(minutes: 1));
     final entryEnd = due;
 
     return CalendarSyncEntry(

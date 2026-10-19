@@ -9,10 +9,7 @@ void main() {
     );
 
     expect(drafts, hasLength(2));
-    expect(
-      drafts.map((item) => item.paymentMethodName),
-      ['微信', '支付宝'],
-    );
+    expect(drafts.map((item) => item.paymentMethodName), ['微信', '支付宝']);
   });
 
   test('结构化账单中的无效日期不会被解析成另一个日期', () {

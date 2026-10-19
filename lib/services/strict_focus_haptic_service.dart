@@ -2,8 +2,9 @@ import 'package:flutter/services.dart';
 
 /// Provides a stronger, platform-native confirmation vibration for strict focus.
 class StrictFocusHapticService {
-  static const MethodChannel _channel =
-      MethodChannel('countdown_todo/strict_focus_haptics');
+  static const MethodChannel _channel = MethodChannel(
+    'countdown_todo/strict_focus_haptics',
+  );
 
   static Future<void> notifyFocusStarted() async {
     try {

@@ -6,37 +6,37 @@ void main() {
   final baseDate = DateTime(2026, 7, 15);
 
   List<TodoRecurrenceProgressNode> buildNodes() => [
-        TodoRecurrenceProgressNode(
-          date: baseDate.subtract(const Duration(days: 2)),
-          state: TodoRecurrenceNodeState.completed,
-          occurrenceId: 'completed',
-        ),
-        TodoRecurrenceProgressNode(
-          date: baseDate.subtract(const Duration(days: 1)),
-          state: TodoRecurrenceNodeState.overdue,
-          occurrenceId: 'overdue',
-        ),
-        TodoRecurrenceProgressNode(
-          date: baseDate,
-          state: TodoRecurrenceNodeState.current,
-          occurrenceId: 'current',
-          isCurrent: true,
-        ),
-        TodoRecurrenceProgressNode(
-          date: baseDate.add(const Duration(days: 1)),
-          state: TodoRecurrenceNodeState.pending,
-          occurrenceId: 'pending',
-        ),
-        TodoRecurrenceProgressNode(
-          date: baseDate.add(const Duration(days: 2)),
-          state: TodoRecurrenceNodeState.future,
-        ),
-        TodoRecurrenceProgressNode(
-          date: baseDate.add(const Duration(days: 3)),
-          state: TodoRecurrenceNodeState.neutral,
-          label: '结束',
-        ),
-      ];
+    TodoRecurrenceProgressNode(
+      date: baseDate.subtract(const Duration(days: 2)),
+      state: TodoRecurrenceNodeState.completed,
+      occurrenceId: 'completed',
+    ),
+    TodoRecurrenceProgressNode(
+      date: baseDate.subtract(const Duration(days: 1)),
+      state: TodoRecurrenceNodeState.overdue,
+      occurrenceId: 'overdue',
+    ),
+    TodoRecurrenceProgressNode(
+      date: baseDate,
+      state: TodoRecurrenceNodeState.current,
+      occurrenceId: 'current',
+      isCurrent: true,
+    ),
+    TodoRecurrenceProgressNode(
+      date: baseDate.add(const Duration(days: 1)),
+      state: TodoRecurrenceNodeState.pending,
+      occurrenceId: 'pending',
+    ),
+    TodoRecurrenceProgressNode(
+      date: baseDate.add(const Duration(days: 2)),
+      state: TodoRecurrenceNodeState.future,
+    ),
+    TodoRecurrenceProgressNode(
+      date: baseDate.add(const Duration(days: 3)),
+      state: TodoRecurrenceNodeState.neutral,
+      label: '结束',
+    ),
+  ];
 
   Widget buildSubject({
     ValueChanged<TodoRecurrenceProgressNode>? onNodeTap,
@@ -65,8 +65,9 @@ void main() {
     );
   }
 
-  testWidgets('renders recurrence node states and compact summary',
-      (tester) async {
+  testWidgets('renders recurrence node states and compact summary', (
+    tester,
+  ) async {
     await tester.pumpWidget(buildSubject());
 
     expect(find.byIcon(Icons.check_rounded), findsOneWidget);
@@ -75,28 +76,27 @@ void main() {
     expect(find.byIcon(Icons.remove_rounded), findsOneWidget);
     expect(find.textContaining('已完成 1/4 期'), findsOneWidget);
 
-    await tester.tap(find.byKey(
-      const ValueKey('recurrence_progress_toggle'),
-    ));
+    await tester.tap(find.byKey(const ValueKey('recurrence_progress_toggle')));
     await tester.pumpAndSettle();
 
     expect(find.byIcon(Icons.check_rounded), findsNothing);
     expect(find.text('已完成 1/4 期 · 1 逾期'), findsOneWidget);
   });
 
-  testWidgets('node tap and timeline long press trigger callbacks',
-      (tester) async {
+  testWidgets('node tap and timeline long press trigger callbacks', (
+    tester,
+  ) async {
     TodoRecurrenceProgressNode? tappedNode;
     var managed = false;
     final nodes = buildNodes();
-    await tester.pumpWidget(buildSubject(
-      onNodeTap: (node) => tappedNode = node,
-      onManage: () => managed = true,
-    ));
+    await tester.pumpWidget(
+      buildSubject(
+        onNodeTap: (node) => tappedNode = node,
+        onManage: () => managed = true,
+      ),
+    );
 
-    await tester.tap(find.byKey(
-      ValueKey('recurrence_node_${nodes[2].key}'),
-    ));
+    await tester.tap(find.byKey(ValueKey('recurrence_node_${nodes[2].key}')));
     await tester.pump();
     expect(tappedNode?.occurrenceId, 'current');
 
@@ -107,8 +107,9 @@ void main() {
     expect(managed, isTrue);
   });
 
-  testWidgets('many nodes use a horizontal scroll view on narrow layouts',
-      (tester) async {
+  testWidgets('many nodes use a horizontal scroll view on narrow layouts', (
+    tester,
+  ) async {
     final nodes = List.generate(
       12,
       (index) => TodoRecurrenceProgressNode(
@@ -120,22 +121,24 @@ void main() {
       ),
     );
 
-    await tester.pumpWidget(MaterialApp(
-      home: Scaffold(
-        body: Dismissible(
-          key: const ValueKey('parent_dismissible'),
-          direction: DismissDirection.endToStart,
-          child: SizedBox(
-            width: 240,
-            child: TodoRecurrenceProgress(
-              nodes: nodes,
-              completedCount: 0,
-              totalCount: 1,
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Dismissible(
+            key: const ValueKey('parent_dismissible'),
+            direction: DismissDirection.endToStart,
+            child: SizedBox(
+              width: 240,
+              child: TodoRecurrenceProgress(
+                nodes: nodes,
+                completedCount: 0,
+                totalCount: 1,
+              ),
             ),
           ),
         ),
       ),
-    ));
+    );
 
     final scrollView = find.byType(SingleChildScrollView);
     expect(scrollView, findsOneWidget);
@@ -153,8 +156,9 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('open-ended recurrence omits a misleading total count',
-      (tester) async {
+  testWidgets('open-ended recurrence omits a misleading total count', (
+    tester,
+  ) async {
     await tester.pumpWidget(buildSubject(totalCount: null));
 
     expect(find.textContaining('已完成 1 期'), findsOneWidget);

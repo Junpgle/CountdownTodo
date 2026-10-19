@@ -1,10 +1,10 @@
 {
-  "version_code": 70100,
-  "version_name": "7.1.0",
+  "version_code": 70107,
+  "version_name": "7.1.7",
   "force_update": false,
   "update_info": {
-    "title": "版本更新 7.1.0",
-    "description": "【新增】规划中心增加日概览、执行进度和实际投入复盘，支持复制已有规划并安全收尾已完成任务。\n【新增】规划支持每周可用时段、前后缓冲和长任务分段安排；保存前可复核内容，未完成草稿可保留与恢复。\n【优化】完善逾期待办整理、规划时段查找、时长估算和截止校验，提升刷新、切换日期及恢复前台时的列表稳定性。\n【修复】统一本地日历日期边界，修正夏令时、跨时区和跨午夜下待办、课程、倒数日、时间日志、统计与小组件的日期计算。\n【新增】个人账本支持期初结余与累计余额，并完善余额快照的月份和时区边界处理。\n【优化】改进分类映射、同步和提醒状态处理，提升历史数据及页面生命周期稳定性。\n【优化】稳定首页模块滚动；底栏图标增加选中态，常用入口更易辨认。\n【优化】完善规划与课程详情的容器共享转场，降低弹层及时间统计的渲染开销。\n【修复】移除透明底部弹层多余遮挡，并让时间日志周视图操作栏与日历表头自然衔接。\n【优化】待办完成交互增加触觉反馈与当日全清提示。",
+    "title": "版本更新 7.1.7",
+    "description": "【新增】AI 助手支持查询屏幕使用时间，并完善智能上下文、操作提案校验与多轮工具执行。\n【优化】整合首页日程展示，完善规划时段、计划块详情、手动完成与冲突拦截流程。\n【优化】提升财务、习惯、课程、搜索、同步及数据导入的查询和统计效率，减少重复计算。\n【优化】复用常用日期/时间格式器与文本解析规则，降低待办、课程、专注、时间线及财务界面的重复处理。\n【优化】改进习惯打卡与睡眠目标、时间日志录入、批量标签选择及共享页面转场体验。\n【优化】改善番茄钟启动和横屏统计布局；完善结束状态跨端同步，并在 macOS 专注期间显示灵动岛侧翼。\n【修复】防止旧循环待办数据覆盖新状态，修正周视图规划详情状态与专注时长。\n【修复】修正文件夹待办详情共享动画来源，补齐提示条计时结束后的关闭处理。\n【适配】调整桌面多窗口插件的本地依赖配置，避免 macOS 注册 Windows 专属多窗口插件。",
     "full_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-arm64-v8a-release.apk",
     "PC_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/CountDownTodoPro_Setup.exe",
     "mac_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/CountDownTodo-macOS-arm64.zip",
@@ -16,6 +16,20 @@
     "android_delta_packages": {
       "arm64-v8a": [
         {
+          "from_version": "7.1.0",
+          "from_sha256": "ef0d3929e08df75d9705a0cd37db46a7cb34c919c3b6b78abd4eb966571723a0",
+          "to_version": "7.1.7",
+          "to_sha256": "75ad477e5707c96fcd4e7665a2c1bc17d9f9862afa08df0fad21f1d1ff77c7f0",
+          "patch_size": 32188991,
+          "patch_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-arm64-v8a-7.1.0_to_7.1.7.patch",
+          "operation_count": 18,
+          "full_apk_size": 48363709,
+          "copied_bytes": 16174988,
+          "embedded_bytes": 32188721,
+          "algorithm": "apk-zip-local-spans",
+          "recommended": true
+        },
+        {
           "from_version": "6.4.35",
           "from_sha256": "669bcd444782a9823e65f9976e124d7f4e85771453acac4d7e7393c582821391",
           "to_version": "7.1.0",
@@ -26,6 +40,20 @@
           "full_apk_size": 47524129,
           "copied_bytes": 14687958,
           "embedded_bytes": 32836171,
+          "algorithm": "apk-zip-local-spans",
+          "recommended": true
+        },
+        {
+          "from_version": "6.7.2",
+          "from_sha256": "20b50d002cd22bb0d0e453f8e5df788a47a3e66d554dbfa043d84fa484153298",
+          "to_version": "7.1.0",
+          "to_sha256": "ef0d3929e08df75d9705a0cd37db46a7cb34c919c3b6b78abd4eb966571723a0",
+          "patch_size": 24726341,
+          "patch_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-arm64-v8a-6.7.2_to_7.1.0.patch",
+          "operation_count": 12,
+          "full_apk_size": 47524129,
+          "copied_bytes": 22797980,
+          "embedded_bytes": 24726149,
           "algorithm": "apk-zip-local-spans",
           "recommended": true
         },
@@ -180,6 +208,21 @@
     "image_url": "https://gitee.com/Junpgle/CountdownTodo/raw/master/wallpapergitee/15.jpg"
   },
   "changelog_history": [
+    {
+      "version_name": "7.1.7",
+      "date": "2026-10-19",
+      "items": [
+        "【新增】AI 助手支持查询屏幕使用时间，并完善智能上下文、操作提案校验与多轮工具执行。",
+        "【优化】整合首页日程展示，完善规划时段、计划块详情、手动完成与冲突拦截流程。",
+        "【优化】提升财务、习惯、课程、搜索、同步及数据导入的查询和统计效率，减少重复计算。",
+        "【优化】复用常用日期/时间格式器与文本解析规则，降低待办、课程、专注、时间线及财务界面的重复处理。",
+        "【优化】改进习惯打卡与睡眠目标、时间日志录入、批量标签选择及共享页面转场体验。",
+        "【优化】改善番茄钟启动和横屏统计布局；完善结束状态跨端同步，并在 macOS 专注期间显示灵动岛侧翼。",
+        "【修复】防止旧循环待办数据覆盖新状态，修正周视图规划详情状态与专注时长。",
+        "【修复】修正文件夹待办详情共享动画来源，补齐提示条计时结束后的关闭处理。",
+        "【适配】调整桌面多窗口插件的本地依赖配置，避免 macOS 注册 Windows 专属多窗口插件。"
+      ]
+    },
     {
       "version_name": "7.1.0",
       "date": "2026-10-15",

@@ -93,8 +93,11 @@ class IslandConfig {
   // ── UI Sizes ─────────────────────────────────────────────────────────────
 
   /// Get target size for each island state
-  static Size sizeForState(IslandStateConfig state,
-      {bool hasSubtitle = false, String? expandedPart}) {
+  static Size sizeForState(
+    IslandStateConfig state, {
+    bool hasSubtitle = false,
+    String? expandedPart,
+  }) {
     switch (state) {
       case IslandStateConfig.idle:
         return const Size(100, 34);
@@ -153,7 +156,7 @@ class IslandConfig {
   static const Duration transitionDuration = Duration(milliseconds: 200);
 
   /// Content switch duration
-  static const Duration switchDuration = Duration(milliseconds: 300);
+  static const Duration switchDuration = Duration(milliseconds: 200);
 
   /// Initial scale for switch animation
   static const double switchScaleBegin = 0.92;

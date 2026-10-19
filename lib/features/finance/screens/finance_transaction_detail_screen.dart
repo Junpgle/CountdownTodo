@@ -1,9 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../../../utils/page_transitions.dart';
+import '../../../utils/time_utils.dart';
 import '../../../widgets/app_detail_widgets.dart';
 import '../../../widgets/floating_glass_control.dart';
 import '../models/finance_models.dart';
@@ -55,8 +55,8 @@ class _FinanceTransactionDetailScreenState
     category = widget.category;
     categoryDisplayName = widget.categoryDisplayName;
     paymentMethod = widget.paymentMethod;
-    _paymentMethods = widget.paymentMethods.isEmpty &&
-            widget.paymentMethod != null
+    _paymentMethods =
+        widget.paymentMethods.isEmpty && widget.paymentMethod != null
         ? [widget.paymentMethod!]
         : widget.paymentMethods;
     FinanceStorage.revision.addListener(_onFinanceChanged);
@@ -205,7 +205,7 @@ class _FinanceTransactionDetailScreenState
   String _occurredAtLabel() {
     final occurred = transaction.occurrenceLocalTime;
     if (occurred == null) return '未记录';
-    final time = DateFormat('yyyy年M月d日 HH:mm').format(occurred);
+    final time = AppTimeFormats.format(occurred, 'yyyy年M月d日 HH:mm');
     final deviceOffsetAtOccurrence = DateTime.fromMillisecondsSinceEpoch(
       transaction.occurredAt!,
     ).timeZoneOffset.inMinutes;

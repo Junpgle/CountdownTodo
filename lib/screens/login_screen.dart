@@ -1,9 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
+
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
+
 import '../services/api_service.dart';
 import '../services/background_notification_service.dart';
 import '../services/storage/app_settings_storage.dart';
@@ -23,8 +26,8 @@ import '../utils/app_dialogs.dart';
 // ─────────────────────────────────────────────
 class _T {
   _T(BuildContext context)
-      : _scheme = Theme.of(context).colorScheme,
-        _dark = Theme.of(context).brightness == Brightness.dark;
+    : _scheme = Theme.of(context).colorScheme,
+      _dark = Theme.of(context).brightness == Brightness.dark;
 
   final ColorScheme _scheme;
   final bool _dark;
@@ -52,19 +55,16 @@ class _T {
   Color get textHint => _scheme.onSurfaceVariant.withValues(alpha: 0.68);
 
   // ── Inputs ──
-  Color get inputBg => _scheme.surfaceContainerHighest.withValues(
-        alpha: _dark ? 0.42 : 0.62,
-      );
-  Color get inputBgF => _scheme.primaryContainer.withValues(
-        alpha: _dark ? 0.30 : 0.46,
-      );
+  Color get inputBg =>
+      _scheme.surfaceContainerHighest.withValues(alpha: _dark ? 0.42 : 0.62);
+  Color get inputBgF =>
+      _scheme.primaryContainer.withValues(alpha: _dark ? 0.30 : 0.46);
   Color get inputBd => _scheme.outlineVariant.withValues(alpha: 0.72);
 
   // ── Warning / legacy banner ──
   Color get amber => _scheme.cdtWarning;
-  Color get amberBg => _scheme.cdtWarningContainer.withValues(
-        alpha: _dark ? 0.22 : 0.45,
-      );
+  Color get amberBg =>
+      _scheme.cdtWarningContainer.withValues(alpha: _dark ? 0.22 : 0.45);
   Color get amberBd => _scheme.cdtWarning.withValues(alpha: 0.28);
   Color get amberEm => _scheme.cdtOnWarningContainer;
 
@@ -76,19 +76,16 @@ class _T {
   Color get leftFeatureBd => onPrimary.withValues(alpha: 0.24);
 
   // ── Tab switcher ──
-  Color get tabActiveBg => _scheme.primaryContainer.withValues(
-        alpha: _dark ? 0.42 : 0.76,
-      );
+  Color get tabActiveBg =>
+      _scheme.primaryContainer.withValues(alpha: _dark ? 0.42 : 0.76);
   Color get tabActiveBd => primary.withValues(alpha: 0.46);
   Color get tabActiveText => _scheme.onPrimaryContainer;
 
   // ── Misc ──
-  Color get otpBg => _scheme.primaryContainer.withValues(
-        alpha: _dark ? 0.28 : 0.54,
-      );
-  Color get verifyIconBg => _scheme.primaryContainer.withValues(
-        alpha: _dark ? 0.30 : 0.64,
-      );
+  Color get otpBg =>
+      _scheme.primaryContainer.withValues(alpha: _dark ? 0.28 : 0.54);
+  Color get verifyIconBg =>
+      _scheme.primaryContainer.withValues(alpha: _dark ? 0.30 : 0.64);
   Color get verifyIconBd => primary.withValues(alpha: 0.35);
   Color get dropdownBg => card;
 }
@@ -116,22 +113,36 @@ class _OrbPainter extends CustomPainter {
       Offset(size.width * 0.88, size.height * 0.10),
       240,
       Paint()
-        ..shader = RadialGradient(
-          colors: [primary.withValues(alpha: a1), Colors.transparent],
-        ).createShader(Rect.fromCircle(
-            center: Offset(size.width * 0.88, size.height * 0.10),
-            radius: 240)),
+        ..shader =
+            RadialGradient(
+              colors: [
+                primary.withValues(alpha: a1),
+                Colors.transparent,
+              ],
+            ).createShader(
+              Rect.fromCircle(
+                center: Offset(size.width * 0.88, size.height * 0.10),
+                radius: 240,
+              ),
+            ),
     );
 
     canvas.drawCircle(
       Offset(size.width * 0.08, size.height * 0.80),
       200,
       Paint()
-        ..shader = RadialGradient(
-          colors: [accent.withValues(alpha: a2), Colors.transparent],
-        ).createShader(Rect.fromCircle(
-            center: Offset(size.width * 0.08, size.height * 0.80),
-            radius: 200)),
+        ..shader =
+            RadialGradient(
+              colors: [
+                accent.withValues(alpha: a2),
+                Colors.transparent,
+              ],
+            ).createShader(
+              Rect.fromCircle(
+                center: Offset(size.width * 0.08, size.height * 0.80),
+                radius: 200,
+              ),
+            ),
     );
   }
 
@@ -152,6 +163,7 @@ class _Field extends StatelessWidget {
     this.obscure = false,
     this.enabled = true,
     this.keyboardType,
+    this.autofillHints,
   });
 
   final TextEditingController controller;
@@ -161,6 +173,7 @@ class _Field extends StatelessWidget {
   final bool obscure;
   final bool enabled;
   final TextInputType? keyboardType;
+  final Iterable<String>? autofillHints;
 
   @override
   Widget build(BuildContext context) {
@@ -183,6 +196,7 @@ class _Field extends StatelessWidget {
           obscureText: obscure,
           enabled: enabled,
           keyboardType: keyboardType,
+          autofillHints: autofillHints,
           style: TextStyle(
             fontSize: 15,
             color: t.textPri,
@@ -204,11 +218,15 @@ class _Field extends StatelessWidget {
             ),
             disabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(14),
-              borderSide:
-                  BorderSide(color: t.border.withValues(alpha: 0.4), width: 1),
+              borderSide: BorderSide(
+                color: t.border.withValues(alpha: 0.4),
+                width: 1,
+              ),
             ),
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 16,
+            ),
           ),
         ),
       ],
@@ -257,8 +275,9 @@ class _PrimaryBtn extends StatelessWidget {
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.transparent,
             shadowColor: Colors.transparent,
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
           ),
           child: Text(
             label,
@@ -333,10 +352,12 @@ class _TabSwitcher extends StatelessWidget {
         borderRadius: BorderRadius.circular(13),
         border: Border.all(color: t.border, width: 1),
       ),
-      child: Row(children: [
-        _tab(context, t, '登录', !isRegister),
-        _tab(context, t, '注册', isRegister),
-      ]),
+      child: Row(
+        children: [
+          _tab(context, t, '登录', !isRegister),
+          _tab(context, t, '注册', isRegister),
+        ],
+      ),
     );
   }
 
@@ -402,19 +423,28 @@ class _ServerSelector extends StatelessWidget {
             value: value,
             underline: const SizedBox(),
             dropdownColor: t.dropdownBg,
-            icon: Icon(Icons.keyboard_arrow_down_rounded,
-                size: 16, color: t.textHint),
+            icon: Icon(
+              Icons.keyboard_arrow_down_rounded,
+              size: 16,
+              color: t.textHint,
+            ),
             style: TextStyle(
-                color: t.primaryLt, fontSize: 12, fontWeight: FontWeight.w500),
+              color: t.primaryLt,
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+            ),
             items: [
               DropdownMenuItem(
-                  value: ApiService.serverChoiceCloudflare,
-                  child: Text('Cloudflare 中转（HTTPS）',
-                      style: TextStyle(color: t.textSec))),
+                value: ApiService.serverChoiceCloudflare,
+                child: Text(
+                  'Cloudflare 中转（HTTPS）',
+                  style: TextStyle(color: t.textSec),
+                ),
+              ),
               DropdownMenuItem(
-                  value: ApiService.serverChoiceAliyunDirect,
-                  child:
-                      Text('阿里云直连（HTTP）', style: TextStyle(color: t.textSec))),
+                value: ApiService.serverChoiceAliyunDirect,
+                child: Text('阿里云直连（HTTP）', style: TextStyle(color: t.textSec)),
+              ),
             ],
             onChanged: onChanged,
           ),
@@ -463,7 +493,9 @@ class _LegacyBanner extends StatelessWidget {
                   TextSpan(
                     text: username,
                     style: TextStyle(
-                        fontWeight: FontWeight.w600, color: t.amberEm),
+                      fontWeight: FontWeight.w600,
+                      color: t.amberEm,
+                    ),
                   ),
                   const TextSpan(text: '，注册后将自动迁移数据至云端'),
                 ],
@@ -544,12 +576,19 @@ class _OtpInputState extends State<_OtpInput> with TickerProviderStateMixin {
         color: t.textPri,
         letterSpacing: 12,
       ),
-      buildCounter:
-          (_, {required currentLength, required isFocused, maxLength}) => null,
+      buildCounter: (
+        _, {
+        required currentLength,
+        required isFocused,
+        maxLength,
+      }) => null,
       decoration: InputDecoration(
         hintText: '——————',
-        hintStyle:
-            TextStyle(fontSize: 20, color: t.textHint, letterSpacing: 10),
+        hintStyle: TextStyle(
+          fontSize: 20,
+          color: t.textHint,
+          letterSpacing: 10,
+        ),
         filled: true,
         fillColor: t.otpBg,
         enabledBorder: OutlineInputBorder(
@@ -560,8 +599,10 @@ class _OtpInputState extends State<_OtpInput> with TickerProviderStateMixin {
           borderRadius: BorderRadius.circular(16),
           borderSide: BorderSide(color: t.primaryLt, width: 2),
         ),
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 20,
+          vertical: 22,
+        ),
       ),
     );
   }
@@ -602,20 +643,18 @@ class _WideLeftPanel extends StatelessWidget {
           const SizedBox(height: 14),
           Text(
             '待办、倒计时、番茄钟，\n多端实时同步，让效率触手可及。',
-            style: TextStyle(
-              fontSize: 14,
-              color: t.leftTextSec,
-              height: 1.7,
-            ),
+            style: TextStyle(fontSize: 14, color: t.leftTextSec, height: 1.7),
           ),
           const Spacer(),
           ...[
             (Icons.timer_outlined, '番茄钟跨设备实时感知'),
             (Icons.event_outlined, '倒计时 & 重要日提醒'),
             (Icons.cloud_sync_outlined, '增量同步，流量低消耗'),
-          ].map((e) => Padding(
-                padding: const EdgeInsets.only(bottom: 14),
-                child: Row(children: [
+          ].map(
+            (e) => Padding(
+              padding: const EdgeInsets.only(bottom: 14),
+              child: Row(
+                children: [
                   Container(
                     width: 32,
                     height: 32,
@@ -627,10 +666,14 @@ class _WideLeftPanel extends StatelessWidget {
                     child: Icon(e.$1, size: 16, color: t.leftText),
                   ),
                   const SizedBox(width: 12),
-                  Text(e.$2,
-                      style: TextStyle(fontSize: 13.5, color: t.leftTextSec)),
-                ]),
-              )),
+                  Text(
+                    e.$2,
+                    style: TextStyle(fontSize: 13.5, color: t.leftTextSec),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -666,7 +709,7 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen>
-    with TickerProviderStateMixin {
+    with SingleTickerProviderStateMixin {
   final _userCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
   final _passCtrl = TextEditingController();
@@ -683,16 +726,15 @@ class _LoginScreenState extends State<LoginScreen>
   final _resetCodeCtrl = TextEditingController();
   final _newPassCtrl = TextEditingController();
   final _confirmPassCtrl = TextEditingController();
-  int _resetCodeCooldown = 0;
+  final ValueNotifier<int> _resetCodeCooldown = ValueNotifier<int>(0);
   Timer? _cooldownTimer;
 
   // 🔐 Turnstile 人机验证相关状态
   String? _turnstileToken;
   GlobalKey<State> _turnstileKey = GlobalKey();
 
-  late final AnimationController _fadeCtrl;
+  late final AnimationController _contentTransitionController;
   late final Animation<double> _fadeAnim;
-  late final AnimationController _slideCtrl;
   late final Animation<Offset> _slideAnim;
 
   // ── Lifecycle ────────────────────────────────
@@ -700,17 +742,22 @@ class _LoginScreenState extends State<LoginScreen>
   @override
   void initState() {
     super.initState();
-    _fadeCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 480));
-    _fadeAnim = CurvedAnimation(parent: _fadeCtrl, curve: Curves.easeOut);
-    _slideCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 480));
-    _slideAnim = Tween<Offset>(
-      begin: const Offset(0.15, 0.0),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(parent: _slideCtrl, curve: Curves.easeOutCubic));
-    _fadeCtrl.forward();
-    _slideCtrl.forward();
+    _contentTransitionController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 480),
+    );
+    _fadeAnim = CurvedAnimation(
+      parent: _contentTransitionController,
+      curve: Curves.easeOut,
+    );
+    _slideAnim = Tween<Offset>(begin: const Offset(0.15, 0.0), end: Offset.zero)
+        .animate(
+          CurvedAnimation(
+            parent: _contentTransitionController,
+            curve: Curves.easeOutCubic,
+          ),
+        );
+    _contentTransitionController.forward();
     _checkLocalLegacyAccount();
     _loadServerChoice();
   }
@@ -718,8 +765,8 @@ class _LoginScreenState extends State<LoginScreen>
   @override
   void dispose() {
     _cooldownTimer?.cancel();
-    _fadeCtrl.dispose();
-    _slideCtrl.dispose();
+    _resetCodeCooldown.dispose();
+    _contentTransitionController.dispose();
     _userCtrl.dispose();
     _emailCtrl.dispose();
     _passCtrl.dispose();
@@ -756,15 +803,19 @@ class _LoginScreenState extends State<LoginScreen>
         _userCtrl.text = legacyUser;
         _isRegisterMode = true;
       });
-      AppSnackBars.showSnackBar(context,
-          const SnackBar(content: Text('检测到本地存档，注册后自动同步数据')));
+      AppSnackBars.showSnackBar(
+        context,
+        const SnackBar(content: Text('检测到本地存档，注册后自动同步数据')),
+      );
     }
   }
 
   // ── Data migration ───────────────────────────
 
   Future<void> _syncLocalDataToCloud(
-      int targetUserId, String currentUsername) async {
+    int targetUserId,
+    String currentUsername,
+  ) async {
     final sourceUsername = _legacyLocalUser ?? currentUsername;
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -810,7 +861,8 @@ class _LoginScreenState extends State<LoginScreen>
         } catch (_) {}
       }
 
-      final countdownsJson = prefs.getString('countdowns_$sourceUsername') ??
+      final countdownsJson =
+          prefs.getString('countdowns_$sourceUsername') ??
           prefs.getString('countdowns');
       if (countdownsJson != null) {
         try {
@@ -871,15 +923,20 @@ class _LoginScreenState extends State<LoginScreen>
     }
 
     setState(() => _isLoading = true);
-    final result =
-        await ApiService.login(email, pass, turnstileToken: _turnstileToken);
+    final result = await ApiService.login(
+      email,
+      pass,
+      turnstileToken: _turnstileToken,
+    );
     if (!mounted) return;
 
     if (result['success'] == true) {
       final user = result['user'] as Map<String, dynamic>;
       final token = (result['token'] ?? '') as String;
-      await UserSessionStorage.saveLoginSession(user['username'] as String,
-          token: token);
+      await UserSessionStorage.saveLoginSession(
+        user['username'] as String,
+        token: token,
+      );
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt('current_user_id', user['id'] as int);
       await BackgroundNotificationService.configureNotificationPoll(
@@ -889,8 +946,11 @@ class _LoginScreenState extends State<LoginScreen>
       );
       if (_legacyLocalUser != null) {
         await _syncLocalDataToCloud(
-            user['id'] as int, user['username'] as String);
+          user['id'] as int,
+          user['username'] as String,
+        );
       }
+      TextInput.finishAutofillContext(shouldSave: true);
       _finalizeLoginAndNavigate(user['username'] as String);
     } else {
       setState(() => _isLoading = false);
@@ -954,7 +1014,10 @@ class _LoginScreenState extends State<LoginScreen>
   }
 
   void _performAutoLoginAfterRegister(
-      String email, String pass, String username) async {
+    String email,
+    String pass,
+    String username,
+  ) async {
     await AppSettingsStorage.setPrivacyPolicyAgreed(true);
     setState(() => _isLoading = true);
     final loginResult = await ApiService.login(email, pass);
@@ -973,6 +1036,7 @@ class _LoginScreenState extends State<LoginScreen>
         apiBaseUrl: ApiService.effectiveBaseUrl,
       );
       await _syncLocalDataToCloud(userInfo['id'] as int, username);
+      TextInput.finishAutofillContext(shouldSave: true);
       _finalizeLoginAndNavigate(username);
     } else {
       setState(() {
@@ -997,10 +1061,8 @@ class _LoginScreenState extends State<LoginScreen>
   }
 
   void _toggleMode() {
-    _fadeCtrl
-      ..reset()
-      ..forward();
-    _slideCtrl
+    TextInput.finishAutofillContext(shouldSave: false);
+    _contentTransitionController
       ..reset()
       ..forward();
     setState(() {
@@ -1024,8 +1086,7 @@ class _LoginScreenState extends State<LoginScreen>
 
   void _snack(String msg) {
     if (!mounted) return;
-    AppSnackBars.showSnackBar(
-        context, SnackBar(content: Text(msg)));
+    AppSnackBars.showSnackBar(context, SnackBar(content: Text(msg)));
   }
 
   void _showPrivacyDialog(BuildContext context) {
@@ -1047,6 +1108,7 @@ class _LoginScreenState extends State<LoginScreen>
   }
 
   void _openForgotPassword() {
+    TextInput.finishAutofillContext(shouldSave: false);
     _resetEmailCtrl.text = _emailCtrl.text.trim();
     _resetCodeCtrl.clear();
     _newPassCtrl.clear();
@@ -1055,7 +1117,7 @@ class _LoginScreenState extends State<LoginScreen>
   }
 
   void _handleSendResetCode() async {
-    if (_resetCodeCooldown > 0) return;
+    if (_resetCodeCooldown.value > 0) return;
     final email = _resetEmailCtrl.text.trim();
     if (email.isEmpty) {
       _snack('请输入邮箱地址');
@@ -1063,25 +1125,26 @@ class _LoginScreenState extends State<LoginScreen>
     }
     setState(() {
       _isLoading = true;
-      _resetCodeCooldown = 60;
+      _resetCodeCooldown.value = 60;
     });
     final result = await ApiService.forgotPassword(email);
     if (!mounted) return;
     setState(() => _isLoading = false);
     if (result['success'] == true) {
+      TextInput.finishAutofillContext(shouldSave: true);
       _snack(result['message']);
       setState(() => _forgotPasswordStep = 2);
       _cooldownTimer?.cancel();
       _cooldownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-        if (_resetCodeCooldown <= 0) {
+        if (_resetCodeCooldown.value <= 0) {
           timer.cancel();
           return;
         }
-        setState(() => _resetCodeCooldown--);
+        _resetCodeCooldown.value--;
       });
     } else {
       _snack(result['message']);
-      setState(() => _resetCodeCooldown = 0);
+      _resetCodeCooldown.value = 0;
     }
   }
 
@@ -1130,46 +1193,54 @@ class _LoginScreenState extends State<LoginScreen>
     final t = _T(context);
     return Scaffold(
       backgroundColor: t.bg,
-      body: Stack(children: [
-        Positioned.fill(
-          child: CustomPaint(
-            painter: _OrbPainter(
-              dark: t._dark,
-              primary: t.primary,
-              accent: t.accent,
+      body: Stack(
+        children: [
+          Positioned.fill(
+            child: CustomPaint(
+              painter: _OrbPainter(
+                dark: t._dark,
+                primary: t.primary,
+                accent: t.accent,
+              ),
             ),
           ),
-        ),
-        SafeArea(
-          child: LayoutBuilder(builder: (ctx, constraints) {
-            return constraints.maxWidth >= 768
-                ? _buildWideLayout()
-                : _buildNarrowLayout();
-          }),
-        ),
-      ]),
+          SafeArea(
+            child: LayoutBuilder(
+              builder: (ctx, constraints) {
+                return constraints.maxWidth >= 768
+                    ? _buildWideLayout()
+                    : _buildNarrowLayout();
+              },
+            ),
+          ),
+        ],
+      ),
     );
   }
 
   Widget _buildWideLayout() {
-    return Row(children: [
-      const Expanded(child: _WideLeftPanel()),
-      Expanded(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 56, vertical: 40),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 420),
-              child: SlideTransition(
-                position: _slideAnim,
-                child: FadeTransition(
-                    opacity: _fadeAnim, child: _buildFormContent()),
+    return Row(
+      children: [
+        const Expanded(child: _WideLeftPanel()),
+        Expanded(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 56, vertical: 40),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 420),
+                child: SlideTransition(
+                  position: _slideAnim,
+                  child: FadeTransition(
+                    opacity: _fadeAnim,
+                    child: _buildFormContent(),
+                  ),
+                ),
               ),
             ),
           ),
         ),
-      ),
-    ]);
+      ],
+    );
   }
 
   Widget _buildNarrowLayout() {
@@ -1196,8 +1267,18 @@ class _LoginScreenState extends State<LoginScreen>
   }
 
   Widget _buildFormContent() {
-    if (_forgotPasswordStep > 0) return _buildForgotPasswordView();
-    return _awaitingVerification ? _buildVerifyView() : _buildMainForm();
+    final Widget child;
+    if (_forgotPasswordStep > 0) {
+      child = _buildForgotPasswordView();
+    } else if (_awaitingVerification) {
+      child = _buildVerifyView();
+    } else {
+      child = _buildMainForm();
+    }
+    return AutofillGroup(
+      onDisposeAction: AutofillContextAction.cancel,
+      child: child,
+    );
   }
 
   // ── Main form ────────────────────────────────
@@ -1210,7 +1291,10 @@ class _LoginScreenState extends State<LoginScreen>
         Text(
           _isRegisterMode ? '账号升级' : '欢迎回来',
           style: TextStyle(
-              fontSize: 24, fontWeight: FontWeight.w700, color: t.textPri),
+            fontSize: 24,
+            fontWeight: FontWeight.w700,
+            color: t.textPri,
+          ),
         ),
         const SizedBox(height: 4),
         Text(
@@ -1230,6 +1314,7 @@ class _LoginScreenState extends State<LoginScreen>
             label: '用户名',
             hint: '设置你的用户名',
             icon: Icons.person_outline_rounded,
+            autofillHints: const [AutofillHints.newUsername],
           ),
           const SizedBox(height: 16),
         ],
@@ -1239,6 +1324,7 @@ class _LoginScreenState extends State<LoginScreen>
           hint: '输入邮箱地址',
           icon: Icons.mail_outline_rounded,
           keyboardType: TextInputType.emailAddress,
+          autofillHints: const [AutofillHints.email],
         ),
         const SizedBox(height: 16),
         _Field(
@@ -1247,6 +1333,9 @@ class _LoginScreenState extends State<LoginScreen>
           hint: _isRegisterMode ? '设置密码' : '输入密码',
           icon: Icons.lock_outline_rounded,
           obscure: true,
+          autofillHints: _isRegisterMode
+              ? const [AutofillHints.newPassword]
+              : const [AutofillHints.password],
         ),
         if (!_isRegisterMode)
           Align(
@@ -1275,7 +1364,8 @@ class _LoginScreenState extends State<LoginScreen>
               value: _privacyAgreed,
               onChanged: (val) => setState(() => _privacyAgreed = val ?? false),
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(4)),
+                borderRadius: BorderRadius.circular(4),
+              ),
               materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),
             Expanded(
@@ -1284,7 +1374,10 @@ class _LoginScreenState extends State<LoginScreen>
                 child: RichText(
                   text: TextSpan(
                     style: TextStyle(
-                        fontSize: 12.5, color: t.textSec, height: 1.4),
+                      fontSize: 12.5,
+                      color: t.textSec,
+                      height: 1.4,
+                    ),
                     children: [
                       const TextSpan(text: '我已阅读并同意'),
                       WidgetSpan(
@@ -1327,7 +1420,9 @@ class _LoginScreenState extends State<LoginScreen>
           ),
         const SizedBox(height: 28),
         _ServerSelector(
-            value: _serverChoice, onChanged: _onServerChoiceChanged),
+          value: _serverChoice,
+          onChanged: _onServerChoiceChanged,
+        ),
       ],
     );
   }
@@ -1347,14 +1442,20 @@ class _LoginScreenState extends State<LoginScreen>
             borderRadius: BorderRadius.circular(16),
             border: Border.all(color: t.verifyIconBd, width: 1),
           ),
-          child: Icon(Icons.mark_email_read_outlined,
-              color: t.primaryLt, size: 26),
+          child: Icon(
+            Icons.mark_email_read_outlined,
+            color: t.primaryLt,
+            size: 26,
+          ),
         ),
         const SizedBox(height: 20),
         Text(
           '验证邮箱',
           style: TextStyle(
-              fontSize: 26, fontWeight: FontWeight.w700, color: t.textPri),
+            fontSize: 26,
+            fontWeight: FontWeight.w700,
+            color: t.textPri,
+          ),
         ),
         const SizedBox(height: 8),
         Text(
@@ -1367,10 +1468,7 @@ class _LoginScreenState extends State<LoginScreen>
         if (_isLoading)
           const _Spinner()
         else
-          _PrimaryBtn(
-            label: '验证并完成注册',
-            onPressed: _handleRegister,
-          ),
+          _PrimaryBtn(label: '验证并完成注册', onPressed: _handleRegister),
         const SizedBox(height: 18),
         Center(
           child: TextButton(
@@ -1378,9 +1476,10 @@ class _LoginScreenState extends State<LoginScreen>
             child: Text(
               '← 返回修改邮箱',
               style: TextStyle(
-                  fontSize: 13,
-                  color: t.primaryLt,
-                  fontWeight: FontWeight.w500),
+                fontSize: 13,
+                color: t.primaryLt,
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ),
         ),
@@ -1409,7 +1508,10 @@ class _LoginScreenState extends State<LoginScreen>
         Text(
           '重置密码',
           style: TextStyle(
-              fontSize: 26, fontWeight: FontWeight.w700, color: t.textPri),
+            fontSize: 26,
+            fontWeight: FontWeight.w700,
+            color: t.textPri,
+          ),
         ),
         const SizedBox(height: 8),
         Text(
@@ -1426,35 +1528,42 @@ class _LoginScreenState extends State<LoginScreen>
             hint: '输入注册邮箱',
             icon: Icons.mail_outline_rounded,
             keyboardType: TextInputType.emailAddress,
+            autofillHints: const [AutofillHints.email],
           ),
           const SizedBox(height: 28),
           if (_isLoading)
             const _Spinner()
-          else if (_resetCodeCooldown > 0)
-            SizedBox(
-              width: double.infinity,
-              height: 52,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: t.textHint.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Center(
-                  child: Text(
-                    '$_resetCodeCooldown 秒后可重新发送',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: t.textHint,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ),
-              ),
-            )
           else
-            _PrimaryBtn(
-              label: '发送验证码',
-              onPressed: _handleSendResetCode,
+            ValueListenableBuilder<int>(
+              valueListenable: _resetCodeCooldown,
+              builder: (context, cooldown, child) {
+                if (cooldown > 0) {
+                  return SizedBox(
+                    width: double.infinity,
+                    height: 52,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: t.textHint.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Center(
+                        child: Text(
+                          '$cooldown 秒后可重新发送',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: t.textHint,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                }
+                return _PrimaryBtn(
+                  label: '发送验证码',
+                  onPressed: _handleSendResetCode,
+                );
+              },
             ),
         ] else ...[
           _Field(
@@ -1474,6 +1583,7 @@ class _LoginScreenState extends State<LoginScreen>
             hint: '设置新密码（至少6位）',
             icon: Icons.lock_outline_rounded,
             obscure: true,
+            autofillHints: const [AutofillHints.newPassword],
           ),
           const SizedBox(height: 16),
           _Field(
@@ -1482,6 +1592,7 @@ class _LoginScreenState extends State<LoginScreen>
             hint: '再次输入新密码',
             icon: Icons.lock_outline_rounded,
             obscure: true,
+            autofillHints: const [AutofillHints.newPassword],
           ),
           const SizedBox(height: 28),
           if (_isLoading)
@@ -1500,9 +1611,10 @@ class _LoginScreenState extends State<LoginScreen>
             child: Text(
               '← 返回登录',
               style: TextStyle(
-                  fontSize: 13,
-                  color: t.primaryLt,
-                  fontWeight: FontWeight.w500),
+                fontSize: 13,
+                color: t.primaryLt,
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ),
         ),

@@ -17,9 +17,13 @@ mixin _TodoSectionLifecycleMixin on _TodoSectionStateBase {
       final seriesIds =
           await HabitRepository.getHabitOnlyRecurringTodoSeriesIds();
       if (!mounted) return;
+      if (_habitOnlyRecurringSeriesIds.length == seriesIds.length &&
+          _habitOnlyRecurringSeriesIds.containsAll(seriesIds)) {
+        return;
+      }
       setState(() {
         _habitOnlyRecurringSeriesIds = seriesIds;
-        _cachedVm = null;
+        _invalidateTodoViewModel();
       });
     } catch (_) {
       // 习惯数据读取失败时保留待办列表，避免影响普通待办展示。
@@ -37,8 +41,9 @@ mixin _TodoSectionLifecycleMixin on _TodoSectionStateBase {
               .toList();
           for (var t in teams) {
             final uuid = t['uuid']?.toString();
-            final role =
-                (t['role'] == 0 || t['user_role'] == 0) ? 'admin' : 'member';
+            final role = (t['role'] == 0 || t['user_role'] == 0)
+                ? 'admin'
+                : 'member';
             if (uuid != null) _teamRoles[uuid] = role;
           }
         });
@@ -55,7 +60,7 @@ mixin _TodoSectionLifecycleMixin on _TodoSectionStateBase {
       setState(() {
         _inlineFolders = inline;
         _folderDisplayMode = _parseFolderDisplayMode(modeName);
-        _cachedVm = null;
+        _invalidateTodoViewModel();
       });
     }
   }
@@ -90,14 +95,30 @@ mixin _TodoSectionLifecycleMixin on _TodoSectionStateBase {
   @override
   void didUpdateWidget(TodoSectionWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.todos != widget.todos ||
-        oldWidget.todoGroups != widget.todoGroups) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final nextSignature = _computeViewModelSignature(today);
+    final inputListsChanged =
+        oldWidget.todos != widget.todos ||
+        oldWidget.todoGroups != widget.todoGroups;
+    if (inputListsChanged ||
+        _cachedVmSignature != nextSignature ||
+        _cachedVmSignatureDate != today ||
+        (_cachedVm != null && _cachedVm!.today != today)) {
       _cachedVm = null;
+      _cachedTeamFilterMap = null;
+      _cachedTeamFilterSignature = null;
+      _recurrenceDateStructures.clear();
+    }
+    _cachedVmSignature = nextSignature;
+    _cachedVmSignatureDate = today;
+
+    if (inputListsChanged) {
       _loadHabitDisplaySettings();
     }
     if (!_hasInitializedExpansion && widget.todos.isNotEmpty) {
       _isTodayExpanded = !widget.todos
-          .where((t) => !_isHistoricalTodo(t))
+          .where((t) => !_isHistoricalTodoAt(t, today))
           .every((t) => t.isDone);
       _hasInitializedExpansion = true;
     }
@@ -111,6 +132,8 @@ mixin _TodoSectionLifecycleMixin on _TodoSectionStateBase {
   }) async {
     final aiContext = await _loadAiAssistantContext();
     if (!mounted) return;
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
 
     await AiTodoChatLauncher.open(
       context,
@@ -120,7 +143,7 @@ mixin _TodoSectionLifecycleMixin on _TodoSectionStateBase {
       sendInitialMessage: sendInitialMessage,
       initialVoiceUsageSummary: initialVoiceUsageSummary,
       todos: widget.todos
-          .where((t) => !t.isDone && !_isHistoricalTodo(t))
+          .where((t) => !t.isDone && !_isHistoricalTodoAt(t, today))
           .toList(),
       todoGroups: widget.todoGroups,
       courses: aiContext.courses,
@@ -142,21 +165,19 @@ mixin _TodoSectionLifecycleMixin on _TodoSectionStateBase {
     );
   }
 
-  bool _isHistoricalTodo(TodoItem t) {
+  bool _isHistoricalTodoAt(TodoItem t, DateTime today) {
     if (!t.isDone) return false;
-    DateTime today = DateTime.now();
-    today = DateTime(today.year, today.month, today.day);
-    if (t.dueDate != null) {
-      DateTime d = DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day);
-      return d.isBefore(today);
-    } else {
-      DateTime cDate = DateTime.fromMillisecondsSinceEpoch(
-        t.createdDate ?? t.createdAt,
-        isUtc: true,
-      ).toLocal();
-      DateTime c = DateTime(cDate.year, cDate.month, cDate.day);
-      return c.isBefore(today);
+    final dueDate = t.dueDate;
+    if (dueDate != null) {
+      if (dueDate.year != today.year) return dueDate.year < today.year;
+      if (dueDate.month != today.month) return dueDate.month < today.month;
+      return dueDate.day < today.day;
     }
+
+    // `today` is local midnight, so comparing epoch values preserves the
+    // local-calendar boundary without allocating and converting a DateTime
+    // for every completed todo.
+    return (t.createdDate ?? t.createdAt) < today.millisecondsSinceEpoch;
   }
 
   void showAddTodoDialog() {
@@ -170,10 +191,7 @@ mixin _TodoSectionLifecycleMixin on _TodoSectionStateBase {
             widget.onTodosChanged(updatedList);
           },
           onFixedScheduleAdded: (item) async {
-            await StorageService.saveFixedSchedules(
-              widget.username,
-              [item],
-            );
+            await StorageService.saveFixedSchedules(widget.username, [item]);
             widget.onRefreshRequested();
           },
           onLLMResultsParsed: widget.onLLMResultsParsed,
@@ -200,8 +218,13 @@ mixin _TodoSectionLifecycleMixin on _TodoSectionStateBase {
       final currentTeamName = _selectedSubTeamUuid != null
           ? existingTeams[_selectedSubTeamUuid]
           : null;
-      widget.onLLMResultsParsed!(llmResults, imagePath, originalText,
-          _selectedSubTeamUuid, currentTeamName);
+      widget.onLLMResultsParsed!(
+        llmResults,
+        imagePath,
+        originalText,
+        _selectedSubTeamUuid,
+        currentTeamName,
+      );
     } else {
       // 如果没有回调，使用旧的对话框方式
       _showAddTodoDialogWithData(llmResults, imagePath, originalText);

@@ -1,7 +1,7 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 
 import '../../../utils/page_transitions.dart';
+import '../../../utils/app_image_filters.dart';
 import '../../../widgets/floating_bottom_bar.dart';
 import '../../../widgets/platform_backdrop_filter.dart';
 import '../models/habit_goal.dart';
@@ -48,12 +48,14 @@ class HabitTodayTab extends StatefulWidget {
 class _HabitTodayTabState extends State<HabitTodayTab> {
   HabitDaySnapshot? _snapshot;
   final Map<String, GlobalKey> _cardKeys = {};
+  HabitDaySnapshot? _groupedGoalsSnapshot;
+  List<(String, IconData, List<HabitGoal>)> _groupedGoalsCache = const [];
   bool _loading = true;
 
   @override
   void initState() {
     super.initState();
-    _loadData();
+    _loadData(showLoadingIndicator: true);
   }
 
   @override
@@ -64,9 +66,11 @@ class _HabitTodayTabState extends State<HabitTodayTab> {
     }
   }
 
-  Future<void> _loadData() async {
+  Future<void> _loadData({bool showLoadingIndicator = false}) async {
     if (!mounted) return;
-    setState(() => _loading = true);
+    if (showLoadingIndicator || _snapshot == null) {
+      setState(() => _loading = true);
+    }
     final snapshot = await HabitDayLoader.loadForDate(
       DateTime.now(),
       username: widget.username,
@@ -88,18 +92,11 @@ class _HabitTodayTabState extends State<HabitTodayTab> {
     return _cardKeys.putIfAbsent(goal.uuid, GlobalKey.new);
   }
 
-  Future<void> _openDetail(
-    HabitGoal goal, {
-    GlobalKey? sourceKey,
-  }) async {
-    final page = HabitDetailScreen(
-      goal: goal,
-      username: widget.username,
-    );
+  Future<void> _openDetail(HabitGoal goal, {GlobalKey? sourceKey}) async {
+    final page = HabitDetailScreen(goal: goal, username: widget.username);
     final changed = sourceKey == null
-        ? await Navigator.of(context).push(
-            PageTransitions.material(builder: (_) => page),
-          )
+        ? await Navigator.of(context)
+              .push(PageTransitions.material(builder: (_) => page))
         : await PageTransitions.pushFromRect(
             context: context,
             page: page,
@@ -114,26 +111,25 @@ class _HabitTodayTabState extends State<HabitTodayTab> {
   }
 
   Future<void> _openCreate() async {
-    final created = await Navigator.of(context).push(
-      PageTransitions.material(
-        builder: (_) => const HabitEditScreen(),
-      ),
-    );
+    final created = await Navigator.of(
+      context,
+    ).push(PageTransitions.material(builder: (_) => const HabitEditScreen()));
     if (created == true && mounted) _handleChanged();
   }
 
   /// 时长型：启动专注并跳转番茄钟，默认时长为习惯设置的默认时长。
   Future<void> _startFocus(HabitGoal goal) => HabitFocusLauncher.open(
-        context: context,
-        username: widget.username,
-        goal: goal,
-        onReturned: _handleChanged,
-      );
+    context: context,
+    username: widget.username,
+    goal: goal,
+    sourceKey: _cardKeyFor(goal),
+    onReturned: _handleChanged,
+  );
 
   @override
   Widget build(BuildContext context) {
     final Widget content;
-    if (_loading) {
+    if (_loading && _snapshot == null) {
       content = const Center(child: CircularProgressIndicator());
     } else {
       final snapshot = _snapshot;
@@ -142,21 +138,118 @@ class _HabitTodayTabState extends State<HabitTodayTab> {
       } else if (snapshot.isEmpty) {
         content = _buildEmpty();
       } else {
-        final bottomPadding =
-            floatingBottomNavigationContentPaddingFor(context);
+        final bottomPadding = floatingBottomNavigationContentPaddingFor(
+          context,
+        );
+        final groups = _groupedGoals(snapshot);
+        final firstGoalUuid = snapshot.goals.first.uuid;
         content = RefreshIndicator(
           onRefresh: _loadData,
           child: Center(
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 840),
-              child: ListView(
-                padding: EdgeInsets.fromLTRB(
-                    16, widget.topPadding + 12, 16, bottomPadding),
-                children: [
-                  _buildSummaryCard(snapshot),
-                  const SizedBox(height: 16),
-                  ..._buildGroupedCards(snapshot),
-                ],
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  const horizontalPadding = 16.0;
+                  const spacing = 12.0;
+                  final contentWidth =
+                      constraints.maxWidth - horizontalPadding * 2;
+                  final crossAxisCount = contentWidth > 600 ? 2 : 1;
+                  final cardWidth =
+                      (contentWidth - spacing * (crossAxisCount - 1)) /
+                      crossAxisCount;
+                  return CustomScrollView(
+                    slivers: [
+                      SliverPadding(
+                        padding: EdgeInsets.fromLTRB(
+                          horizontalPadding,
+                          widget.topPadding + 12,
+                          horizontalPadding,
+                          0,
+                        ),
+                        sliver: SliverToBoxAdapter(
+                          child: _buildSummaryCard(snapshot),
+                        ),
+                      ),
+                      const SliverToBoxAdapter(child: SizedBox(height: 16)),
+                      for (final (label, icon, goals) in groups)
+                        if (goals.isNotEmpty) ...[
+                          SliverPadding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: horizontalPadding,
+                            ),
+                            sliver: SliverToBoxAdapter(
+                              child: _buildGroupHeading(
+                                label,
+                                icon,
+                                goals.length,
+                              ),
+                            ),
+                          ),
+                          SliverPadding(
+                            padding: const EdgeInsets.only(
+                              left: horizontalPadding,
+                              right: horizontalPadding,
+                              bottom: 16,
+                            ),
+                            sliver: SliverList(
+                              delegate: SliverChildBuilderDelegate(
+                                (context, rowIndex) {
+                                  final firstIndex = rowIndex * crossAxisCount;
+                                  final remaining = goals.length - firstIndex;
+                                  final rowLength = remaining < crossAxisCount
+                                      ? remaining
+                                      : crossAxisCount;
+                                  final rowChildren = <Widget>[];
+                                  for (
+                                    var column = 0;
+                                    column < rowLength;
+                                    column++
+                                  ) {
+                                    if (column > 0) {
+                                      rowChildren.add(
+                                        const SizedBox(width: spacing),
+                                      );
+                                    }
+                                    final goal = goals[firstIndex + column];
+                                    rowChildren.add(
+                                      _buildGoalCard(
+                                        snapshot,
+                                        goal,
+                                        firstGoalUuid,
+                                        cardWidth,
+                                      ),
+                                    );
+                                  }
+                                  final rowCount =
+                                      (goals.length + crossAxisCount - 1) ~/
+                                      crossAxisCount;
+                                  return Padding(
+                                    padding: EdgeInsets.only(
+                                      bottom: rowIndex + 1 < rowCount
+                                          ? spacing
+                                          : 0,
+                                    ),
+                                    child: Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: rowChildren,
+                                    ),
+                                  );
+                                },
+                                childCount:
+                                    (goals.length + crossAxisCount - 1) ~/
+                                    crossAxisCount,
+                              ),
+                            ),
+                          ),
+                        ],
+                      SliverToBoxAdapter(
+                        child: SizedBox(height: bottomPadding),
+                      ),
+                    ],
+                  );
+                },
               ),
             ),
           ),
@@ -173,7 +266,13 @@ class _HabitTodayTabState extends State<HabitTodayTab> {
   }
 
   /// 按设计文档 11.2 分组：清晨 / 白天 / 晚间 / 本周（本月）目标。
-  List<Widget> _buildGroupedCards(HabitDaySnapshot snapshot) {
+  List<(String, IconData, List<HabitGoal>)> _groupedGoals(
+    HabitDaySnapshot snapshot,
+  ) {
+    if (identical(_groupedGoalsSnapshot, snapshot)) {
+      return _groupedGoalsCache;
+    }
+
     final groups = <(String, IconData, List<HabitGoal>)>[
       ('清晨打卡', Icons.wb_twilight_rounded, []),
       ('白天打卡', Icons.wb_sunny_rounded, []),
@@ -186,87 +285,70 @@ class _HabitTodayTabState extends State<HabitTodayTab> {
       final groupIndex = _groupIndex(goal, rule);
       groups[groupIndex].$3.add(goal);
     }
+    _groupedGoalsSnapshot = snapshot;
+    return _groupedGoalsCache = groups;
+  }
 
+  Widget _buildGroupHeading(String label, IconData icon, int goalCount) {
     final colorScheme = Theme.of(context).colorScheme;
-    final firstGoalUuid =
-        snapshot.goals.isEmpty ? null : snapshot.goals.first.uuid;
-    final children = <Widget>[];
-    for (final (label, icon, goals) in groups) {
-      if (goals.isEmpty) continue;
-      children.add(Padding(
-        padding: const EdgeInsets.only(top: 16, bottom: 12),
-        child: Row(
-          children: [
-            Icon(icon, size: 20, color: colorScheme.primary),
-            const SizedBox(width: 8),
-            Text(
-              label,
+    return Padding(
+      padding: const EdgeInsets.only(top: 16, bottom: 12),
+      child: Row(
+        children: [
+          Icon(icon, size: 20, color: colorScheme.primary),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+              color: colorScheme.onSurface,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            decoration: BoxDecoration(
+              color: colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              '$goalCount',
               style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w800,
-                color: colorScheme.onSurface,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: colorScheme.onSurfaceVariant,
               ),
             ),
-            const SizedBox(width: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              decoration: BoxDecoration(
-                color: colorScheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                '${goals.length}',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ));
-      children.add(
-        LayoutBuilder(
-          builder: (context, constraints) {
-            final crossAxisCount = constraints.maxWidth > 600 ? 2 : 1;
-            const spacing = 12.0;
-            final width =
-                (constraints.maxWidth - spacing * (crossAxisCount - 1)) /
-                    crossAxisCount;
-            return Wrap(
-              spacing: spacing,
-              runSpacing: spacing,
-              children: goals
-                  .map((goal) => SizedBox(
-                        key: goal.uuid == firstGoalUuid
-                            ? widget.coachTargetKey ?? ValueKey(goal.uuid)
-                            : ValueKey(goal.uuid),
-                        width: width,
-                        child: HabitCard(
-                          goal: goal,
-                          rule: snapshot.ruleOf(goal),
-                          dayProgress: _dayProgress(snapshot, goal),
-                          sleepCoachingMetric:
-                              snapshot.sleepCoachingMetricFor(goal),
-                          username: widget.username,
-                          onChanged: _handleChanged,
-                          onStartFocus: _startFocus,
-                          animationKey: _cardKeyFor(goal),
-                          onTap: () => _openDetail(
-                            goal,
-                            sourceKey: _cardKeyFor(goal),
-                          ),
-                        ),
-                      ))
-                  .toList(),
-            );
-          },
-        ),
-      );
-      children.add(const SizedBox(height: 16));
-    }
-    return children;
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGoalCard(
+    HabitDaySnapshot snapshot,
+    HabitGoal goal,
+    String firstGoalUuid,
+    double width,
+  ) {
+    return SizedBox(
+      key: goal.uuid == firstGoalUuid
+          ? widget.coachTargetKey ?? ValueKey(goal.uuid)
+          : ValueKey(goal.uuid),
+      width: width,
+      child: HabitCard(
+        goal: goal,
+        rule: snapshot.ruleOf(goal),
+        dayProgress: _dayProgress(snapshot, goal),
+        sleepCoachingMetric: snapshot.sleepCoachingMetricFor(goal),
+        username: widget.username,
+        onChanged: _handleChanged,
+        onStartFocus: _startFocus,
+        animationKey: _cardKeyFor(goal),
+        onTap: () => _openDetail(goal, sourceKey: _cardKeyFor(goal)),
+      ),
+    );
   }
 
   /// 目标时间分组：清晨 05:00-10:00，晚间 >= 21:00 或 < 05:00（深夜），其余归白天；
@@ -320,7 +402,7 @@ class _HabitTodayTabState extends State<HabitTodayTab> {
     return ClipRRect(
       borderRadius: BorderRadius.circular(28),
       child: PlatformBackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+        filter: AppImageFilters.blur30,
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
           decoration: BoxDecoration(
@@ -376,8 +458,9 @@ class _HabitTodayTabState extends State<HabitTodayTab> {
                         value: planned == 0 ? 0 : met / planned,
                         strokeWidth: 8,
                         strokeCap: StrokeCap.round,
-                        backgroundColor:
-                            colorScheme.onSurface.withValues(alpha: 0.1),
+                        backgroundColor: colorScheme.onSurface.withValues(
+                          alpha: 0.1,
+                        ),
                         valueColor: AlwaysStoppedAnimation(colorScheme.primary),
                       ),
                       Center(

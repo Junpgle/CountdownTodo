@@ -1,11 +1,12 @@
 import 'dart:async';
 import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+
 import '../models.dart';
 import '../storage_service.dart';
 import '../services/pomodoro_service.dart';
-import '../services/pomodoro_control_service.dart';
 import '../services/course_service.dart';
 import '../services/ai_todo_chat_launcher.dart';
 import '../services/ai_todo_action_executor.dart';
@@ -17,8 +18,11 @@ import '../utils/todo_recurrence_picker.dart';
 import '../utils/theme_color_tokens.dart';
 import '../utils/time_log_range_math.dart';
 import '../widgets/app_detail_widgets.dart';
+
 import 'dart:ui' as ui;
+
 import 'pomodoro_screen.dart';
+import 'pomodoro/pomodoro_entry_intent.dart';
 import '../services/feature_tip_service.dart';
 import '../widgets/coach_mark_overlay.dart';
 import '../widgets/floating_glass_control.dart';
@@ -48,6 +52,8 @@ const double kWeekDayW = 100.0;
 // 叠在一起后产生割裂感。
 const double _timeLogActionBarRadius = 20.0;
 const double _timeLogActionChipRadius = 12.0;
+const double _timeLogSummaryChipHeight = 30.0;
+const double _timeLogTagSidebarWidth = 78.0;
 
 const List<String> kPalette = [
   '#EF4444',
@@ -73,12 +79,6 @@ Color hexColor(String hex, {double opacity = 1.0}) {
 DateTime _dayStart(DateTime d) => CalendarDateMath.dateOnly(d);
 int _dayEndMs(DateTime d) =>
     CalendarDateMath.dayRange(d).endExclusive.millisecondsSinceEpoch;
-
-List<DateTime> _weekDays([DateTime? now]) {
-  final n = now ?? DateTime.now();
-  final monday = CalendarDateMath.weekRange(n).start;
-  return List.generate(7, (i) => CalendarDateMath.addDays(monday, i));
-}
 
 // ══════════════════════════════════════════════════════════
 // 主题色助手
@@ -133,6 +133,7 @@ class TimeLogScreen extends StatefulWidget {
 }
 
 class _TimeLogScreenState extends State<TimeLogScreen> {
+  final GlobalKey _aiAssistantActionKey = GlobalKey();
   bool _isLoading = true;
   _ViewMode _view = _ViewMode.week;
   _DayMode _dayMode = _DayMode.view;
@@ -249,8 +250,9 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
 
   @override
   void dispose() {
-    StorageService.scopedDataRefreshNotifier
-        .removeListener(_onScopedDataRefresh);
+    StorageService.scopedDataRefreshNotifier.removeListener(
+      _onScopedDataRefresh,
+    );
     super.dispose();
   }
 
@@ -261,16 +263,18 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
 
     if (forceSync) {
       try {
-        await StorageService.syncData(widget.username,
-            syncTimeLogs: true,
-            syncScreenTime: false,
-            syncTodos: false,
-            syncCountdowns: false,
-            syncPomodoro: false,
-            syncPlanBlocks: false,
-            syncFixedSchedules: false,
-            syncHabits: false,
-            syncFinance: false);
+        await StorageService.syncData(
+          widget.username,
+          syncTimeLogs: true,
+          syncScreenTime: false,
+          syncTodos: false,
+          syncCountdowns: false,
+          syncPomodoro: false,
+          syncPlanBlocks: false,
+          syncFixedSchedules: false,
+          syncHabits: false,
+          syncFinance: false,
+        );
       } catch (e) {
         if (mounted) {
           AppSnackBars.error(context, '同步失败: $e');
@@ -302,16 +306,19 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
     setState(() {
       _allTags = results[0] as List<PomodoroTag>;
       _tags = _allTags.where((t) => !t.isArchived).toList();
-      _allLogs =
-          (results[1] as List<TimeLogItem>).where((l) => !l.isDeleted).toList();
+      _allLogs = (results[1] as List<TimeLogItem>)
+          .where((l) => !l.isDeleted)
+          .toList();
       _allPomodoros = results[2] as List<PomodoroRecord>;
-      _allTodos =
-          (results[3] as List<TodoItem>).where((t) => !t.isDeleted).toList();
+      _allTodos = (results[3] as List<TodoItem>)
+          .where((t) => !t.isDeleted)
+          .toList();
       _allPlanBlocks = (results[4] as List<TodoPlanBlock>)
           .where((p) => !p.isDeleted)
           .toList();
-      _allTodoGroups =
-          (results[5] as List<TodoGroup>).where((g) => !g.isDeleted).toList();
+      _allTodoGroups = (results[5] as List<TodoGroup>)
+          .where((g) => !g.isDeleted)
+          .toList();
       _isLoading = false;
     });
 
@@ -319,8 +326,9 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
     if (widget.initialTagUuid != null && !_didOpenInitialTag) {
       _didOpenInitialTag = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        final tag =
-            _tags.where((t) => t.uuid == widget.initialTagUuid).firstOrNull;
+        final tag = _tags
+            .where((t) => t.uuid == widget.initialTagUuid)
+            .firstOrNull;
         if (tag != null && mounted) _showTagDetail(tag);
       });
     }
@@ -328,8 +336,11 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
 
   Future<void> _addLog(TimeLogItem log) async {
     setState(() {
-      _allLogs.removeWhere((l) => l.id == log.id);
-      _allLogs.add(log);
+      _allLogs = [
+        for (final existing in _allLogs)
+          if (existing.id != log.id) existing,
+        log,
+      ];
     });
     try {
       await StorageService.saveTimeLogs(widget.username, _allLogs, sync: true);
@@ -356,10 +367,10 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
   }
 
   void _goDay(DateTime d, {_DayMode mode = _DayMode.view}) => setState(() {
-        _focusedDate = d;
-        _view = _ViewMode.day;
-        _dayMode = mode;
-      });
+    _focusedDate = d;
+    _view = _ViewMode.day;
+    _dayMode = mode;
+  });
 
   void _goWeek() => setState(() => _view = _ViewMode.week);
 
@@ -377,60 +388,77 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
   Widget _buildTitle() {
     if (_view == _ViewMode.week) {
       final we = CalendarDateMath.addDays(_weekStart, 6);
-      return Row(mainAxisSize: MainAxisSize.min, children: [
-        _buildTitleChevron(
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildTitleChevron(
             Icons.chevron_left,
             () => setState(
-                () => _weekStart = CalendarDateMath.addDays(_weekStart, -7))),
-        const SizedBox(width: 4),
-        GestureDetector(
-          onTap: () => setState(() =>
-              _weekStart = CalendarDateMath.weekRange(DateTime.now()).start),
-          child: Text(
+              () => _weekStart = CalendarDateMath.addDays(_weekStart, -7),
+            ),
+          ),
+          const SizedBox(width: 4),
+          GestureDetector(
+            onTap: () => setState(
+              () =>
+                  _weekStart = CalendarDateMath.weekRange(DateTime.now()).start,
+            ),
+            child: Text(
               '${AppTimeFormats.monthDaySlash(_weekStart)} - ${AppTimeFormats.monthDaySlash(we)}',
-              style:
-                  const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-        ),
-        const SizedBox(width: 4),
-        _buildTitleChevron(
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+            ),
+          ),
+          const SizedBox(width: 4),
+          _buildTitleChevron(
             Icons.chevron_right,
             () => setState(
-                () =>
-                    _weekStart = CalendarDateMath.addDays(_weekStart, 7))),
-      ]);
+              () => _weekStart = CalendarDateMath.addDays(_weekStart, 7),
+            ),
+          ),
+        ],
+      );
     }
-    return Row(mainAxisSize: MainAxisSize.min, children: [
-      _buildTitleChevron(
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _buildTitleChevron(
           Icons.chevron_left,
-          () => setState(() => _focusedDate = CalendarDateMath.addDays(
-                CalendarDateMath.dateOnly(_focusedDate),
-                -1,
-              ))),
-      GestureDetector(
-        onTap: () async {
-          final p = await showAppDatePicker(
+          () => setState(
+            () => _focusedDate = CalendarDateMath.addDays(
+              CalendarDateMath.dateOnly(_focusedDate),
+              -1,
+            ),
+          ),
+        ),
+        GestureDetector(
+          onTap: () async {
+            final p = await showAppDatePicker(
               context: context,
               initialDate: _focusedDate,
               firstDate: DateTime(2020),
               lastDate: CalendarDateMath.addDays(
                 CalendarDateMath.dateOnly(DateTime.now()),
                 1,
-              ));
-          if (p != null) setState(() => _focusedDate = p);
-        },
-        child: Text(AppTimeFormats.monthDayCn(_focusedDate),
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-      ),
-      _buildTitleChevron(
-        Icons.chevron_right,
-        () => setState(
-          () => _focusedDate = CalendarDateMath.addDays(
-            CalendarDateMath.dateOnly(_focusedDate),
-            1,
+              ),
+            );
+            if (p != null) setState(() => _focusedDate = p);
+          },
+          child: Text(
+            AppTimeFormats.monthDayCn(_focusedDate),
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
           ),
         ),
-      ),
-    ]);
+        _buildTitleChevron(
+          Icons.chevron_right,
+          () => setState(
+            () => _focusedDate = CalendarDateMath.addDays(
+              CalendarDateMath.dateOnly(_focusedDate),
+              1,
+            ),
+          ),
+        ),
+      ],
+    );
   }
 
   List<Widget> _buildActions() {
@@ -441,21 +469,32 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
     if (_view == _ViewMode.day) {
       // 只保留标签管理，不再有切换图标
       if (_dayMode == _DayMode.edit) {
-        acts.add(IconButton(
+        acts.add(
+          IconButton(
+            key: timeLogTagKey,
             icon: const Icon(Icons.label_outline, size: 20),
             onPressed: _showTagManager,
-            tooltip: '标签管理'));
+            tooltip: '标签管理',
+          ),
+        );
       }
     }
     if (showAiAssistant) {
-      acts.add(IconButton(
+      acts.add(
+        IconButton(
+          key: _aiAssistantActionKey,
           icon: const Icon(Icons.smart_toy_outlined, size: 20),
           tooltip: 'AI专注助手',
-          onPressed: _openAiAssistant));
+          onPressed: _openAiAssistant,
+        ),
+      );
     }
-    acts.add(IconButton(
+    acts.add(
+      IconButton(
         icon: const Icon(Icons.refresh, size: 20),
-        onPressed: () => _loadData(forceSync: true)));
+        onPressed: () => _loadData(forceSync: true),
+      ),
+    );
     return acts;
   }
 
@@ -471,10 +510,12 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
       await AiTodoChatLauncher.open(
         context,
         username: widget.username,
-        todos:
-            (results[0] as List<TodoItem>).where((t) => !t.isDeleted).toList(),
-        todoGroups:
-            (results[1] as List<TodoGroup>).where((g) => !g.isDeleted).toList(),
+        todos: (results[0] as List<TodoItem>)
+            .where((t) => !t.isDeleted)
+            .toList(),
+        todoGroups: (results[1] as List<TodoGroup>)
+            .where((g) => !g.isDeleted)
+            .toList(),
         courses: (results[2] as List<CourseItem>)
             .where((c) => !c.isDeleted)
             .toList(),
@@ -484,10 +525,14 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
         pomodoroTags: _tags,
         timeLogs: _allLogs,
         pomodoroRecords: _allPomodoros,
+        sourceKey: _aiAssistantActionKey,
         onTodosBatchAction: (inserted, updated) async {
           final allTodos = await StorageService.getTodos(widget.username);
           final merged = AiTodoActionExecutor.mergeTodoUpdates(
-              allTodos, inserted, updated);
+            allTodos,
+            inserted,
+            updated,
+          );
           await StorageService.saveTodos(widget.username, merged);
         },
       );
@@ -516,7 +561,8 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
           leading: _view == _ViewMode.day
               ? IconButton(
                   icon: const Icon(Icons.arrow_back_ios_new, size: 18),
-                  onPressed: _goWeek)
+                  onPressed: _goWeek,
+                )
               : null,
           title: _buildTitle(),
           centerTitle: true,
@@ -525,24 +571,28 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
             child: Container(
               height: 34,
               color: _TC.topBar(context),
-              child:
-                  Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                _ViewTab(
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  _ViewTab(
                     label: '周',
                     selected: _view == _ViewMode.week,
                     onTap: () {
                       if (_view != _ViewMode.week) _goWeek();
-                    }),
-                const SizedBox(width: 6),
-                _ViewTab(
+                    },
+                  ),
+                  const SizedBox(width: 6),
+                  _ViewTab(
                     label: '日',
                     selected: _view == _ViewMode.day,
                     onTap: () {
                       if (_view != _ViewMode.day) {
                         _goDay(DateTime.now(), mode: _DayMode.view);
                       }
-                    }),
-              ]),
+                    },
+                  ),
+                ],
+              ),
             ),
           ),
           actions: _buildActions(),
@@ -555,56 +605,56 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
           child: _isLoading
               ? _buildSkeleton()
               : _view == _ViewMode.week
-                  ? _WeekView(
-                      weekStart: _weekStart,
-                      logs: _allLogs,
-                      pomodoros: _allPomodoros,
-                      tags: _tags,
-                      onDayTap: (d) => _goDay(d),
-                      onTagTap: _showTagDetail,
-                      onManageTags: _showTagManager,
-                      onAddLog: () =>
-                          _goDay(DateTime.now(), mode: _DayMode.edit),
-                      onPomodoroTap: _showPomodoroDetail,
-                      onTimeLogTap: _showTimeLogDetail,
-                      username: widget.username)
-                  : _dayMode == _DayMode.view
-                      ? _DayGridView(
-                          date: _focusedDate,
-                          logs: _allLogs,
-                          pomodoros: _allPomodoros,
-                          tags: _tags,
-                          onPomodoroTap: _showPomodoroDetail,
-                          onTimeLogTap: _showTimeLogDetail,
-                          onSwitchEdit: () =>
-                              setState(() => _dayMode = _DayMode.edit))
-                      : _DayView(
-                          date: _focusedDate,
-                          crossDay: _crossDay,
-                          logs: _allLogs,
-                          planBlocks: _allPlanBlocks,
-                          pomodoros: _allPomodoros,
-                          tags: _tags,
-                          todos: _allTodos,
-                          todoGroups: _allTodoGroups,
-                          username: widget.username,
-                          entryMode: _entryMode,
-                          onEntryModeChanged: (mode) =>
-                              setState(() => _entryMode = mode),
-                          onBack: _goWeek,
-                          onCrossDayChanged: (v) =>
-                              setState(() => _crossDay = v),
-                          onSaveLog: (log) {
-                            _addLog(log);
-                            setState(() => _dayMode = _DayMode.view);
-                          },
-                          onSavePlanBlock: (block) {
-                            _addPlanBlock(block);
-                            setState(() => _dayMode = _DayMode.view);
-                          },
-                          onPomodoroTap: _showPomodoroDetail,
-                          onDeleteLog: _deleteLog,
-                          onDeletePlanBlock: _deletePlanBlock),
+              ? _WeekView(
+                  weekStart: _weekStart,
+                  logs: _allLogs,
+                  pomodoros: _allPomodoros,
+                  tags: _tags,
+                  onDayTap: (d) => _goDay(d),
+                  onTagTap: _showTagDetail,
+                  onManageTags: _showTagManager,
+                  onAddLog: () => _goDay(DateTime.now(), mode: _DayMode.edit),
+                  onPomodoroTap: _showPomodoroDetail,
+                  onTimeLogTap: _showTimeLogDetail,
+                  username: widget.username,
+                )
+              : _dayMode == _DayMode.view
+              ? _DayGridView(
+                  date: _focusedDate,
+                  logs: _allLogs,
+                  pomodoros: _allPomodoros,
+                  tags: _tags,
+                  onPomodoroTap: _showPomodoroDetail,
+                  onTimeLogTap: _showTimeLogDetail,
+                  onSwitchEdit: () => setState(() => _dayMode = _DayMode.edit),
+                )
+              : _DayView(
+                  date: _focusedDate,
+                  crossDay: _crossDay,
+                  logs: _allLogs,
+                  planBlocks: _allPlanBlocks,
+                  pomodoros: _allPomodoros,
+                  tags: _tags,
+                  todos: _allTodos,
+                  todoGroups: _allTodoGroups,
+                  username: widget.username,
+                  entryMode: _entryMode,
+                  onEntryModeChanged: (mode) =>
+                      setState(() => _entryMode = mode),
+                  onBack: _goWeek,
+                  onCrossDayChanged: (v) => setState(() => _crossDay = v),
+                  onSaveLog: (log) {
+                    _addLog(log);
+                    setState(() => _dayMode = _DayMode.view);
+                  },
+                  onSavePlanBlock: (block) {
+                    _addPlanBlock(block);
+                    setState(() => _dayMode = _DayMode.view);
+                  },
+                  onPomodoroTap: _showPomodoroDetail,
+                  onDeleteLog: _deleteLog,
+                  onDeletePlanBlock: _deletePlanBlock,
+                ),
         ),
       ),
     );
@@ -612,23 +662,28 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
 
   // ── 共用弹窗容器 ─────────────────────────────────────
   Widget _sheet(Color borderColor, Widget child) => OptionalLiquidGlassSheet(
-        topRadius: 20,
-        padding: EdgeInsets.fromLTRB(
-            20, 20, 20, MediaQuery.of(context).padding.bottom + 20),
-        fallbackDecoration: BoxDecoration(
-            color: _TC.card(context),
-            border: Border(top: BorderSide(color: borderColor, width: 1.5)),
-            borderRadius:
-                const BorderRadius.vertical(top: Radius.circular(20))),
-        child: child,
-      );
+    topRadius: 20,
+    padding: EdgeInsets.fromLTRB(
+      20,
+      20,
+      20,
+      MediaQuery.of(context).padding.bottom + 20,
+    ),
+    fallbackDecoration: BoxDecoration(
+      color: _TC.card(context),
+      border: Border(top: BorderSide(color: borderColor, width: 1.5)),
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+    ),
+    child: child,
+  );
 
   void _showPomodoroDetail(PomodoroRecord pom) {
     final colorScheme = Theme.of(context).colorScheme;
     final tag = pom.tagUuids.isNotEmpty
         ? _tags.cast<PomodoroTag?>().firstWhere(
             (t) => t?.uuid == pom.tagUuids.first,
-            orElse: () => null)
+            orElse: () => null,
+          )
         : null;
     final tc = tag != null ? hexColor(tag.color) : colorScheme.cdtFocus;
     final endMs = pom.endTime ?? (pom.startTime + pom.effectiveDuration * 1000);
@@ -636,63 +691,82 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
     final s = DateTime.fromMillisecondsSinceEpoch(pom.startTime);
     final e = DateTime.fromMillisecondsSinceEpoch(endMs);
     showAppModalBottomSheet(
-        context: context,
-        backgroundColor: Colors.transparent,
-        builder: (_) => _sheet(
-              tc.withValues(alpha: 0.4),
-              Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(children: [
-                      _glow(tc),
-                      const SizedBox(width: 10),
-                      Text('专注记录',
-                          style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w700,
-                              color: _TC.text(context))),
-                      const Spacer(),
-                      _pill('${dur}min', tc),
-                      IconButton(
-                          icon: Icon(Icons.close,
-                              size: 18, color: _TC.textHint(context)),
-                          onPressed: () => Navigator.pop(context)),
-                    ]),
-                    if (tag != null) ...[
-                      const SizedBox(height: 10),
-                      _tagRow(tag.name, tc)
-                    ],
-                    const SizedBox(height: 16),
-                    Row(children: [
-                      Expanded(
-                          child: _InfoCard(
-                              label: '开始',
-                              value: AppTimeFormats.clock(s),
-                              sub: AppTimeFormats.monthDaySlash(s))),
-                      const SizedBox(width: 10),
-                      Expanded(
-                          child: _InfoCard(
-                              label: '结束',
-                              value: AppTimeFormats.clock(e),
-                              sub: AppTimeFormats.monthDaySlash(e))),
-                      const SizedBox(width: 10),
-                      Expanded(
-                          child: _InfoCard(
-                              label: '时长',
-                              value: '${dur}min',
-                              sub:
-                                  (pom.isCompleted == true) ? '✓ 完成' : '手动停止')),
-                    ]),
-                  ]),
-            ));
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _sheet(
+        tc.withValues(alpha: 0.4),
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                _glow(tc),
+                const SizedBox(width: 10),
+                Text(
+                  '专注记录',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: _TC.text(context),
+                  ),
+                ),
+                const Spacer(),
+                _pill('${dur}min', tc),
+                IconButton(
+                  icon: Icon(
+                    Icons.close,
+                    size: 18,
+                    color: _TC.textHint(context),
+                  ),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ],
+            ),
+            if (tag != null) ...[
+              const SizedBox(height: 10),
+              _tagRow(tag.name, tc),
+            ],
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: _InfoCard(
+                    label: '开始',
+                    value: AppTimeFormats.clock(s),
+                    sub: AppTimeFormats.monthDaySlash(s),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _InfoCard(
+                    label: '结束',
+                    value: AppTimeFormats.clock(e),
+                    sub: AppTimeFormats.monthDaySlash(e),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _InfoCard(
+                    label: '时长',
+                    value: '${dur}min',
+                    sub: (pom.isCompleted == true) ? '✓ 完成' : '手动停止',
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   void _showTimeLogDetail(TimeLogItem log) {
     final tag = log.tagUuids.isNotEmpty
         ? _tags.cast<PomodoroTag?>().firstWhere(
             (t) => t?.uuid == log.tagUuids.first,
-            orElse: () => null)
+            orElse: () => null,
+          )
         : null;
     final c = tag != null
         ? hexColor(tag.color)
@@ -701,155 +775,195 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
     final s = DateTime.fromMillisecondsSinceEpoch(log.startTime);
     final e = DateTime.fromMillisecondsSinceEpoch(log.endTime);
     showAppModalBottomSheet(
-        context: context,
-        backgroundColor: Colors.transparent,
-        builder: (_) => _sheet(
-              c.withValues(alpha: 0.4),
-              Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(children: [
-                      _glow(c),
-                      const SizedBox(width: 10),
-                      Expanded(
-                          child: Text(
-                              log.title.isNotEmpty
-                                  ? log.title
-                                  : (tag?.name ?? '补录记录'),
-                              style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w700,
-                                  color: _TC.text(context)),
-                              overflow: TextOverflow.ellipsis)),
-                      _pill('${dur}min', c),
-                      IconButton(
-                          icon: Icon(Icons.close,
-                              size: 18, color: _TC.textHint(context)),
-                          onPressed: () => Navigator.pop(context)),
-                    ]),
-                    if (tag != null) ...[
-                      const SizedBox(height: 10),
-                      _tagRow(tag.name, c)
-                    ],
-                    const SizedBox(height: 16),
-                    Row(children: [
-                      Expanded(
-                          child: _InfoCard(
-                              label: '开始',
-                              value: AppTimeFormats.clock(s),
-                              sub: AppTimeFormats.monthDaySlash(s))),
-                      const SizedBox(width: 10),
-                      Expanded(
-                          child: _InfoCard(
-                              label: '结束',
-                              value: AppTimeFormats.clock(e),
-                              sub: AppTimeFormats.monthDaySlash(e))),
-                      const SizedBox(width: 10),
-                      Expanded(
-                          child: _InfoCard(
-                              label: '时长', value: '${dur}min', sub: '手动补录')),
-                    ]),
-                    const SizedBox(height: 20),
-                    Row(children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: () {
-                            Navigator.pop(context);
-                            _editTimeLog(log);
-                          },
-                          icon: const Icon(Icons.edit_note, size: 18),
-                          label: const Text('编辑记录',
-                              style: TextStyle(
-                                  fontSize: 14, fontWeight: FontWeight.w600)),
-                          style: OutlinedButton.styleFrom(
-                              foregroundColor: _TC.text(context),
-                              side: BorderSide(color: _TC.divider(context)),
-                              shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12))),
-                        ),
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _sheet(
+        c.withValues(alpha: 0.4),
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                _glow(c),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    log.title.isNotEmpty ? log.title : (tag?.name ?? '补录记录'),
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: _TC.text(context),
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                _pill('${dur}min', c),
+                IconButton(
+                  icon: Icon(
+                    Icons.close,
+                    size: 18,
+                    color: _TC.textHint(context),
+                  ),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ],
+            ),
+            if (tag != null) ...[
+              const SizedBox(height: 10),
+              _tagRow(tag.name, c),
+            ],
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: _InfoCard(
+                    label: '开始',
+                    value: AppTimeFormats.clock(s),
+                    sub: AppTimeFormats.monthDaySlash(s),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _InfoCard(
+                    label: '结束',
+                    value: AppTimeFormats.clock(e),
+                    sub: AppTimeFormats.monthDaySlash(e),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _InfoCard(
+                    label: '时长',
+                    value: '${dur}min',
+                    sub: '手动补录',
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      _editTimeLog(log);
+                    },
+                    icon: const Icon(Icons.edit_note, size: 18),
+                    label: const Text(
+                      '编辑记录',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: () {
-                            Navigator.pop(context);
-                            _deleteLog(log.id);
-                          },
-                          icon: const Icon(Icons.delete_outline, size: 18),
-                          label: const Text('删除记录',
-                              style: TextStyle(
-                                  fontSize: 14, fontWeight: FontWeight.w600)),
-                          style: OutlinedButton.styleFrom(
-                              foregroundColor:
-                                  Theme.of(context).colorScheme.error,
-                              side: BorderSide(
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .error
-                                      .withValues(alpha: 0.4)),
-                              shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12))),
-                        ),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: _TC.text(context),
+                      side: BorderSide(color: _TC.divider(context)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                    ]),
-                  ]),
-            ));
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      _deleteLog(log.id);
+                    },
+                    icon: const Icon(Icons.delete_outline, size: 18),
+                    label: const Text(
+                      '删除记录',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Theme.of(context).colorScheme.error,
+                      side: BorderSide(
+                        color: Theme.of(context).colorScheme.error
+                            .withValues(alpha: 0.4),
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _glow(Color c) => Container(
-      width: 10,
-      height: 10,
-      decoration: BoxDecoration(
-          color: c,
-          shape: BoxShape.circle,
-          boxShadow: [BoxShadow(color: c, blurRadius: 6)]));
+    width: 10,
+    height: 10,
+    decoration: BoxDecoration(
+      color: c,
+      shape: BoxShape.circle,
+      boxShadow: [BoxShadow(color: c, blurRadius: 6)],
+    ),
+  );
 
   Widget _pill(String t, Color c) => AppMetricChip(label: t, color: c);
 
-  Widget _tagRow(String name, Color c) => Row(children: [
-        Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(color: c, shape: BoxShape.circle)),
-        const SizedBox(width: 8),
-        Text(name,
-            style:
-                TextStyle(fontSize: 13, color: c, fontWeight: FontWeight.w600)),
-      ]);
+  Widget _tagRow(String name, Color c) => Row(
+    children: [
+      Container(
+        width: 8,
+        height: 8,
+        decoration: BoxDecoration(color: c, shape: BoxShape.circle),
+      ),
+      const SizedBox(width: 8),
+      Text(
+        name,
+        style: TextStyle(fontSize: 13, color: c, fontWeight: FontWeight.w600),
+      ),
+    ],
+  );
 
   void _showTagDetail(PomodoroTag tag) {
     showAppModalBottomSheet(
-        context: context,
-        isScrollControlled: true,
-        backgroundColor: Colors.transparent,
-        builder: (_) => _TagDetailSheet(
-            tag: tag,
-            logs: _allLogs,
-            pomodoros: _allPomodoros,
-            onDelete: (id) {
-              Navigator.pop(context);
-              _deleteLog(id);
-            }));
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _TagDetailSheet(
+        tag: tag,
+        logs: _allLogs,
+        pomodoros: _allPomodoros,
+        onDelete: (id) {
+          Navigator.pop(context);
+          _deleteLog(id);
+        },
+      ),
+    );
   }
 
   void _showTagManager() async {
-    final updated = await Navigator.push<List<PomodoroTag>>(
-      context,
-      MaterialPageRoute(
-        builder: (_) => UnifiedTagManagerScreen(
-          allTags: _allTags,
-          showSelection: false,
-          showArchive: true,
-          onChanged: (tags, selected) async {
-            await PomodoroService.saveTags(tags);
-            setState(() {
-              _allTags = tags;
-              _tags = tags.where((t) => !t.isArchived).toList();
-            });
-          },
-        ),
+    final updated = await PageTransitions.pushFromRect<List<PomodoroTag>>(
+      context: context,
+      page: UnifiedTagManagerScreen(
+        allTags: _allTags,
+        showSelection: false,
+        showArchive: true,
+        onChanged: (tags, selected) async {
+          await PomodoroService.saveTags(tags);
+          setState(() {
+            _allTags = tags;
+            _tags = tags.where((t) => !t.isArchived).toList();
+          });
+        },
       ),
+      sourceKey: timeLogTagKey,
+      sourceBorderRadius: BorderRadius.circular(_timeLogActionChipRadius),
+      placeholderIcon: Icons.label_outline,
     );
     if (updated != null) {
       await PomodoroService.saveTags(updated);
@@ -863,8 +977,9 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
   // 🚀 时间日志骨架屏
   Widget _buildSkeleton() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final baseColor =
-        isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05);
+    final baseColor = isDark
+        ? Colors.white10
+        : Colors.black.withValues(alpha: 0.05);
 
     return ListView.builder(
       padding: const EdgeInsets.all(16),
@@ -889,31 +1004,39 @@ class _ViewTab extends StatelessWidget {
   final bool selected;
   final VoidCallback onTap;
 
-  const _ViewTab(
-      {required this.label, required this.selected, required this.onTap});
+  const _ViewTab({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
     final accent = Theme.of(context).colorScheme.primary;
     return GestureDetector(
-        onTap: onTap,
-        child: AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 5),
-            decoration: BoxDecoration(
-                color: selected
-                    ? accent.withValues(alpha: 0.12)
-                    : Colors.transparent,
-                border: Border.all(
-                    color: selected
-                        ? accent.withValues(alpha: 0.4)
-                        : Colors.transparent),
-                borderRadius: BorderRadius.circular(_timeLogActionChipRadius)),
-            child: Text(label,
-                style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
-                    color: selected ? accent : _TC.textSub(context)))));
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 5),
+        decoration: BoxDecoration(
+          color: selected ? accent.withValues(alpha: 0.12) : Colors.transparent,
+          border: Border.all(
+            color: selected
+                ? accent.withValues(alpha: 0.4)
+                : Colors.transparent,
+          ),
+          borderRadius: BorderRadius.circular(_timeLogActionChipRadius),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
+            color: selected ? accent : _TC.textSub(context),
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -932,35 +1055,69 @@ class _WeekView extends StatefulWidget {
   final void Function(TimeLogItem) onTimeLogTap;
   final String username;
 
-  const _WeekView(
-      {required this.weekStart,
-      required this.logs,
-      required this.pomodoros,
-      required this.tags,
-      required this.onDayTap,
-      required this.onTagTap,
-      required this.onManageTags,
-      required this.onAddLog,
-      required this.onPomodoroTap,
-      required this.onTimeLogTap,
-      required this.username});
+  const _WeekView({
+    required this.weekStart,
+    required this.logs,
+    required this.pomodoros,
+    required this.tags,
+    required this.onDayTap,
+    required this.onTagTap,
+    required this.onManageTags,
+    required this.onAddLog,
+    required this.onPomodoroTap,
+    required this.onTimeLogTap,
+    required this.username,
+  });
 
   @override
   State<_WeekView> createState() => _WeekViewState();
+}
+
+class _WeekViewData {
+  const _WeekViewData({
+    required this.days,
+    required this.todayMinutes,
+    required this.dayStartMs,
+    required this.dayEndMs,
+    required this.logsByDay,
+    required this.pomodorosByDay,
+    required this.minutesByDay,
+    required this.minutesByTag,
+  });
+
+  final List<DateTime> days;
+  final int todayMinutes;
+  final List<int> dayStartMs;
+  final List<int> dayEndMs;
+  final List<List<TimeLogItem>> logsByDay;
+  final List<List<PomodoroRecord>> pomodorosByDay;
+  final List<int> minutesByDay;
+  final Map<String, int> minutesByTag;
 }
 
 class _WeekViewState extends State<_WeekView>
     with SingleTickerProviderStateMixin {
   late AnimationController _heatAnimCtrl;
   late Animation<double> _heatAnim;
+  List<TimeLogItem>? _cachedLogs;
+  List<PomodoroRecord>? _cachedPomodoros;
+  List<PomodoroTag>? _cachedTags;
+  DateTime? _cachedWeekStart;
+  int? _cachedTodayStartMs;
+  int? _cachedTodayEndMs;
+  _WeekViewData? _cachedWeekData;
 
   @override
   void initState() {
     super.initState();
     _heatAnimCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 800));
-    _heatAnim =
-        CurvedAnimation(parent: _heatAnimCtrl, curve: Curves.easeOutCubic);
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    );
+    _heatAnim = CurvedAnimation(
+      parent: _heatAnimCtrl,
+      curve: Curves.easeOutCubic,
+    );
     _heatAnimCtrl.forward();
   }
 
@@ -981,65 +1138,204 @@ class _WeekViewState extends State<_WeekView>
     super.dispose();
   }
 
-  int _rangeMin(int from, int to) {
-    final lm = widget.logs
-        .where((l) => l.endTime > from && l.startTime < to)
-        .fold(
-          0,
-          (s, l) =>
-              s +
-              TimeLogRangeMath.overlapMinutes(
-                intervalStartMs: l.startTime,
-                intervalEndMs: l.endTime,
-                rangeStartMs: from,
-                rangeEndMs: to,
-              ),
+  _WeekViewData _buildWeekViewData(
+    List<DateTime> days,
+    DateTime todayStart,
+    DateTime todayEnd,
+  ) {
+    final dayStartMs = <int>[];
+    final dayEndMs = <int>[];
+    for (final day in days) {
+      final range = CalendarDateMath.dayRange(day);
+      dayStartMs.add(range.start.millisecondsSinceEpoch);
+      dayEndMs.add(range.endExclusive.millisecondsSinceEpoch);
+    }
+    final logsByDay = List.generate(days.length, (_) => <TimeLogItem>[]);
+    final pomodorosByDay = List.generate(
+      days.length,
+      (_) => <PomodoroRecord>[],
+    );
+    final minutesByDay = List<int>.filled(days.length, 0);
+    final visibleTagUuids = widget.tags.map((tag) => tag.uuid).toSet();
+    final minutesByTag = <String, int>{};
+    final seenTagUuids = <String>{};
+    final weekStartMs = dayStartMs.first;
+    final weekEndMs = dayEndMs.last;
+    final todayStartMs = todayStart.millisecondsSinceEpoch;
+    final todayEndMs = todayEnd.millisecondsSinceEpoch;
+    var todayMinutes = 0;
+
+    int firstDayEndingAfter(int instantMs) {
+      var low = 0;
+      var high = dayEndMs.length;
+      while (low < high) {
+        final middle = (low + high) ~/ 2;
+        if (dayEndMs[middle] <= instantMs) {
+          low = middle + 1;
+        } else {
+          high = middle;
+        }
+      }
+      return low;
+    }
+
+    for (final log in widget.logs) {
+      if (log.endTime > weekStartMs && log.startTime < weekEndMs) {
+        final overlapMinutes = TimeLogRangeMath.overlapMinutes(
+          intervalStartMs: log.startTime,
+          intervalEndMs: log.endTime,
+          rangeStartMs: weekStartMs,
+          rangeEndMs: weekEndMs,
         );
-    final pm = widget.pomodoros
-        .where((p) =>
-            p.startTime < to &&
-            (p.endTime ?? p.startTime + p.effectiveDuration * 1000) > from)
-        .fold(0, (s, p) => s + p.effectiveDuration ~/ 60);
-    return lm + pm;
+        seenTagUuids.clear();
+        for (final uuid in log.tagUuids) {
+          if (!visibleTagUuids.contains(uuid) || !seenTagUuids.add(uuid)) {
+            continue;
+          }
+          minutesByTag[uuid] = (minutesByTag[uuid] ?? 0) + overlapMinutes;
+        }
+      }
+      if (log.endTime > todayStartMs && log.startTime < todayEndMs) {
+        todayMinutes += TimeLogRangeMath.overlapMinutes(
+          intervalStartMs: log.startTime,
+          intervalEndMs: log.endTime,
+          rangeStartMs: todayStartMs,
+          rangeEndMs: todayEndMs,
+        );
+      }
+      for (
+        var dayIndex = firstDayEndingAfter(log.startTime);
+        dayIndex < days.length && dayStartMs[dayIndex] < log.endTime;
+        dayIndex++
+      ) {
+        logsByDay[dayIndex].add(log);
+        minutesByDay[dayIndex] += TimeLogRangeMath.overlapMinutes(
+          intervalStartMs: log.startTime,
+          intervalEndMs: log.endTime,
+          rangeStartMs: dayStartMs[dayIndex],
+          rangeEndMs: dayEndMs[dayIndex],
+        );
+      }
+    }
+    for (final pomodoro in widget.pomodoros) {
+      final endMs =
+          pomodoro.endTime ??
+          (pomodoro.startTime + pomodoro.effectiveDuration * 1000);
+      if (pomodoro.startTime < weekEndMs && endMs > weekStartMs) {
+        final durationMinutes = pomodoro.effectiveDuration ~/ 60;
+        seenTagUuids.clear();
+        for (final uuid in pomodoro.tagUuids) {
+          if (!visibleTagUuids.contains(uuid) || !seenTagUuids.add(uuid)) {
+            continue;
+          }
+          minutesByTag[uuid] = (minutesByTag[uuid] ?? 0) + durationMinutes;
+        }
+      }
+      if (pomodoro.startTime < todayEndMs && endMs > todayStartMs) {
+        todayMinutes += pomodoro.effectiveDuration ~/ 60;
+      }
+      for (
+        var dayIndex = firstDayEndingAfter(pomodoro.startTime);
+        dayIndex < days.length && dayStartMs[dayIndex] < endMs;
+        dayIndex++
+      ) {
+        pomodorosByDay[dayIndex].add(pomodoro);
+        minutesByDay[dayIndex] += pomodoro.effectiveDuration ~/ 60;
+      }
+    }
+
+    return _WeekViewData(
+      days: days,
+      todayMinutes: todayMinutes,
+      dayStartMs: dayStartMs,
+      dayEndMs: dayEndMs,
+      logsByDay: logsByDay,
+      pomodorosByDay: pomodorosByDay,
+      minutesByDay: minutesByDay,
+      minutesByTag: minutesByTag,
+    );
+  }
+
+  _WeekViewData _weekViewDataFor(
+    DateTime weekStart,
+    DateTime todayStart,
+    DateTime todayEnd,
+  ) {
+    final normalizedWeekStart = CalendarDateMath.weekRange(weekStart).start;
+    final todayStartMs = todayStart.millisecondsSinceEpoch;
+    final todayEndMs = todayEnd.millisecondsSinceEpoch;
+    final cached = _cachedWeekData;
+    if (cached != null &&
+        identical(_cachedLogs, widget.logs) &&
+        identical(_cachedPomodoros, widget.pomodoros) &&
+        identical(_cachedTags, widget.tags) &&
+        _cachedWeekStart == normalizedWeekStart &&
+        _cachedTodayStartMs == todayStartMs &&
+        _cachedTodayEndMs == todayEndMs) {
+      return cached;
+    }
+
+    final days = List<DateTime>.generate(
+      7,
+      (index) => CalendarDateMath.addDays(normalizedWeekStart, index),
+      growable: false,
+    );
+    final data = _buildWeekViewData(days, todayStart, todayEnd);
+    _cachedLogs = widget.logs;
+    _cachedPomodoros = widget.pomodoros;
+    _cachedTags = widget.tags;
+    _cachedWeekStart = normalizedWeekStart;
+    _cachedTodayStartMs = todayStartMs;
+    _cachedTodayEndMs = todayEndMs;
+    return _cachedWeekData = data;
   }
 
   @override
   Widget build(BuildContext context) {
-    final days = _weekDays(widget.weekStart);
     final todayRange = CalendarDateMath.dayRange(DateTime.now());
-    final todayMin = _rangeMin(
-      todayRange.start.millisecondsSinceEpoch,
-      todayRange.endExclusive.millisecondsSinceEpoch,
+    final weekData = _weekViewDataFor(
+      widget.weekStart,
+      todayRange.start,
+      todayRange.endExclusive,
     );
-    final wStart0 = days.first.millisecondsSinceEpoch;
-    final wEnd0 = _dayEndMs(days.last);
+    final days = weekData.days;
 
-    return LayoutBuilder(builder: (ctx, outer) {
-      final isWide = outer.maxWidth >= 720;
-      return AnimatedBuilder(
-        animation: _heatAnim,
-        builder: (ctx, child) => Column(children: [
-          _buildTopBar(ctx, todayMin),
-          Expanded(
-              child:
-                  Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    return LayoutBuilder(
+      builder: (ctx, outer) {
+        final isWide = outer.maxWidth >= 720;
+        return Column(
+          children: [
+            _buildTopBar(ctx, weekData.todayMinutes),
             Expanded(
-                child: _buildGrid(
-                    ctx, days, outer.maxWidth - (isWide ? 160.0 : 0))),
-            if (isWide) _buildTagSidebar(ctx, wStart0, wEnd0),
-          ])),
-          if (!isWide) _buildTagChips(ctx, wStart0, wEnd0),
-        ]),
-      );
-    });
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: _buildGrid(
+                      ctx,
+                      days,
+                      outer.maxWidth - (isWide ? 160.0 : 0),
+                      weekData,
+                    ),
+                  ),
+                  if (isWide) _buildTagSidebar(ctx, weekData.minutesByTag),
+                ],
+              ),
+            ),
+            if (!isWide) _buildTagChips(ctx, weekData.minutesByTag),
+          ],
+        );
+      },
+    );
   }
 
   Widget _buildTopBar(BuildContext ctx, int todayMin) {
     final useFloating = floatingBottomBarShouldFloat(ctx);
     final child = Container(
-        padding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
-        decoration: useFloating ? null : BoxDecoration(color: _TC.topBar(ctx)),
-        child: Row(children: [
+      padding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
+      decoration: useFloating ? null : BoxDecoration(color: _TC.topBar(ctx)),
+      child: Row(
+        children: [
           // 今日统计
           _TopBarChip(
             label: '今日 ${todayMin}min',
@@ -1071,28 +1367,33 @@ class _WeekViewState extends State<_WeekView>
           ),
           const SizedBox(width: 6),
           Builder(
-              builder: (bCtx) => _TopBarChip(
-                    label: '恢复',
-                    icon: Icons.cloud_download_outlined,
-                    color: Theme.of(ctx).colorScheme.cdtSuccess,
-                    ctx: ctx,
-                    onTap: () async {
-                      await StorageService.resetSyncTime(widget.username);
-                      await StorageService.syncData(widget.username,
-                          forceFullSync: true,
-                          syncTodos: true,
-                          syncCountdowns: true,
-                          syncTimeLogs: true);
-                      if (bCtx.mounted) {
-                        AppSnackBars.success(
-                          bCtx,
-                          '🎉 数据强拉成功！请点击右上角的【刷新图标 ↻】查看界面',
-                          duration: const Duration(seconds: 4),
-                        );
-                      }
-                    },
-                  )),
-        ]));
+            builder: (bCtx) => _TopBarChip(
+              label: '恢复',
+              icon: Icons.cloud_download_outlined,
+              color: Theme.of(ctx).colorScheme.cdtSuccess,
+              ctx: ctx,
+              onTap: () async {
+                await StorageService.resetSyncTime(widget.username);
+                await StorageService.syncData(
+                  widget.username,
+                  forceFullSync: true,
+                  syncTodos: true,
+                  syncCountdowns: true,
+                  syncTimeLogs: true,
+                );
+                if (bCtx.mounted) {
+                  AppSnackBars.success(
+                    bCtx,
+                    '🎉 数据强拉成功！请点击右上角的【刷新图标 ↻】查看界面',
+                    duration: const Duration(seconds: 4),
+                  );
+                }
+              },
+            ),
+          ),
+        ],
+      ),
+    );
     if (useFloating) {
       // The weekly calendar header sits directly below this action row. Keep
       // both on the same page surface so a floating glass capsule does not
@@ -1114,7 +1415,12 @@ class _WeekViewState extends State<_WeekView>
     );
   }
 
-  Widget _buildGrid(BuildContext ctx, List<DateTime> days, double availW) {
+  Widget _buildGrid(
+    BuildContext ctx,
+    List<DateTime> days,
+    double availW,
+    _WeekViewData weekData,
+  ) {
     const totalW = kWeekTimeW + kWeekDayW * 7;
     final scale = availW / totalW;
     final tW = kWeekTimeW * scale;
@@ -1123,434 +1429,572 @@ class _WeekViewState extends State<_WeekView>
     final accent = colorScheme.primary;
     final isDark = Theme.of(ctx).brightness == Brightness.dark;
 
-    int dayMin(DateTime d) {
-      final range = CalendarDateMath.dayRange(d);
-      return _rangeMin(
-        range.start.millisecondsSinceEpoch,
-        range.endExclusive.millisecondsSinceEpoch,
-      );
-    }
-
-    return Column(children: [
-      Container(
+    return Column(
+      children: [
+        Container(
           height: 52,
           color: _TC.topBar(ctx),
-          child: Row(children: [
-            SizedBox(width: tW),
-            ...List.generate(7, (i) {
-              final d = days[i];
-              final isToday = AppTimeFormats.isSameDay(d, DateTime.now());
-              final dm = dayMin(d);
-              return GestureDetector(
+          child: Row(
+            children: [
+              SizedBox(width: tW),
+              ...List.generate(7, (i) {
+                final d = days[i];
+                final isToday = AppTimeFormats.isSameDay(d, DateTime.now());
+                final dm = weekData.minutesByDay[i];
+                return GestureDetector(
                   onTap: () => widget.onDayTap(d),
                   child: Container(
-                      width: dW,
-                      height: 52,
-                      padding: const EdgeInsets.symmetric(vertical: 6),
-                      decoration: BoxDecoration(
-                          color:
-                              isToday ? accent.withValues(alpha: 0.07) : null,
-                          border: Border(
-                              right: BorderSide(
-                                  color: _TC
-                                      .divider(ctx)
-                                      .withValues(alpha: 0.2)))),
-                      child: FittedBox(
-                          fit: BoxFit.scaleDown,
-                          child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                    '周${[
-                                      '一',
-                                      '二',
-                                      '三',
-                                      '四',
-                                      '五',
-                                      '六',
-                                      '日'
-                                    ][i]}',
-                                    style: TextStyle(
-                                        fontSize: 9,
-                                        color: isToday
-                                            ? accent
-                                            : _TC.textHint(ctx),
-                                        fontWeight: FontWeight.w700,
-                                        letterSpacing: 0.5)),
-                                Text('${d.day}',
-                                    style: TextStyle(
-                                        fontSize: 15,
-                                        color: isToday
-                                            ? _TC.text(ctx)
-                                            : _TC.textSub(ctx),
-                                        fontWeight: isToday
-                                            ? FontWeight.w700
-                                            : FontWeight.w400)),
-                                if (dm > 0)
-                                  Text('${dm}m',
-                                      style: TextStyle(
-                                          fontSize: 8,
-                                          color:
-                                              accent.withValues(alpha: 0.5))),
-                              ]))));
-            }),
-          ])),
-      Expanded(child: LayoutBuilder(builder: (ctx2, gc) {
-        final hourH = gc.maxHeight / 24;
-        final totalH = hourH * 24;
-        return SizedBox(
-            height: totalH,
-            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              SizedBox(
-                  width: tW,
-                  height: totalH,
-                  child: Stack(
-                      clipBehavior: Clip.none,
-                      children: List.generate(
-                          24,
-                          (h) => Positioned(
-                              top: h * hourH - 8,
-                              right: 4,
-                              child: Text(h.toString().padLeft(2, '0'),
-                                  style: TextStyle(
-                                      fontSize: (tW * 0.16).clamp(7.0, 11.0),
-                                      color: _TC.timeLabel(ctx2,
-                                          major: h % 6 == 0),
-                                      fontWeight: FontWeight.w700)))))),
-              ...days.map((d) {
-                final range = CalendarDateMath.dayRange(d);
-                final ds = range.start.millisecondsSinceEpoch;
-                final de = range.endExclusive.millisecondsSinceEpoch;
-                final dLogs = widget.logs
-                    .where((l) => l.endTime > ds && l.startTime < de)
-                    .toList();
-                final dPoms = widget.pomodoros.where((p) {
-                  final pe =
-                      p.endTime ?? (p.startTime + p.effectiveDuration * 1000);
-                  return pe > ds && p.startTime < de;
-                }).toList();
-                return SizedBox(
                     width: dW,
-                    height: totalH,
-                    child: Stack(children: [
-                      CustomPaint(
-                          size: Size(dW, totalH),
-                          painter: _WeekColPainter(
-                              dayLogs: dLogs,
-                              dayPoms: dPoms,
-                              tags: widget.tags,
-                              dayStartMs: ds,
-                              isDark: isDark,
-                              hourH: hourH,
-                              focusColor: colorScheme.cdtFocus,
-                              logColor: colorScheme.cdtInfo,
-                              majorLineColor: colorScheme.outlineVariant,
-                              minorLineColor: colorScheme.outlineVariant
-                                  .withValues(alpha: isDark ? 0.28 : 0.45),
-                              animationProgress: _heatAnim.value)),
-                      ...dPoms.map((pom) {
-                        final pe = pom.endTime ??
-                            (pom.startTime + pom.effectiveDuration * 1000);
-                        final rs = max(pom.startTime, ds);
-                        final re = min(pe, de);
-                        final top = (rs - ds) / 3600000 * hourH;
-                        final h =
-                            ((re - rs) / 3600000 * hourH).clamp(3.0, 9999.0);
-                        return Positioned(
-                            top: top,
-                            left: 0,
-                            right: 0,
-                            height: h,
-                            child: GestureDetector(
-                                onTap: () => widget.onPomodoroTap(pom),
-                                behavior: HitTestBehavior.opaque,
-                                child: const SizedBox.expand()));
-                      }),
-                      ...dLogs.map((log) {
-                        final rs = max(log.startTime, ds);
-                        final re = min(log.endTime, de);
-                        final top = (rs - ds) / 3600000 * hourH;
-                        final h =
-                            ((re - rs) / 3600000 * hourH).clamp(3.0, 9999.0);
-                        return Positioned(
-                            top: top,
-                            left: 0,
-                            right: 0,
-                            height: h,
-                            child: GestureDetector(
-                                onTap: () => widget.onTimeLogTap(log),
-                                behavior: HitTestBehavior.opaque,
-                                child: const SizedBox.expand()));
-                      }),
-                    ]));
-              }),
-            ]));
-      })),
-    ]);
-  }
-
-  Widget _buildTagSidebar(BuildContext ctx, int ws, int we) => SizedBox(
-      width: 160,
-      child: OptionalLiquidGlassSheet(
-          fallbackDecoration: BoxDecoration(
-              color: _TC.card(ctx),
-              border: Border(left: BorderSide(color: _TC.divider(ctx)))),
-          child:
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Padding(
-                padding: const EdgeInsets.fromLTRB(12, 14, 12, 8),
-                child: Text('本周标签',
-                    style: TextStyle(
-                        fontSize: 10,
-                        color: _TC.textHint(ctx),
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 1.5))),
-            Expanded(
-                child: ListView(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    children: widget.tags.map((t) {
-                      int tw = widget.logs
-                          .where((l) =>
-                              l.tagUuids.contains(t.uuid) &&
-                              l.endTime > ws &&
-                              l.startTime < we)
-                          .fold(
-                            0,
-                            (s, l) =>
-                                s +
-                                TimeLogRangeMath.overlapMinutes(
-                                  intervalStartMs: l.startTime,
-                                  intervalEndMs: l.endTime,
-                                  rangeStartMs: ws,
-                                  rangeEndMs: we,
-                                ),
-                          );
-                      tw += widget.pomodoros
-                          .where((p) =>
-                              p.tagUuids.contains(t.uuid) &&
-                              p.startTime < we &&
-                              (p.endTime ??
-                                      p.startTime +
-                                          p.effectiveDuration * 1000) >
-                                  ws)
-                          .fold(0, (s, p) => s + p.effectiveDuration ~/ 60);
-                      final c = hexColor(t.color);
-                      return GestureDetector(
-                          onTap: () => widget.onTagTap(t),
-                          child: Container(
-                              margin: const EdgeInsets.fromLTRB(8, 0, 8, 6),
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 12, vertical: 10),
-                              decoration: BoxDecoration(
-                                  color: c.withValues(alpha: 0.07),
-                                  border: Border.all(
-                                      color: c.withValues(alpha: 0.25)),
-                                  borderRadius: BorderRadius.circular(10)),
-                              child: Row(children: [
-                                Container(
-                                    width: 8,
-                                    height: 8,
-                                    decoration: BoxDecoration(
-                                        color: c, shape: BoxShape.circle)),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                    child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                      Text(t.name,
-                                          style: TextStyle(
-                                              fontSize: 11,
-                                              color: c,
-                                              fontWeight: FontWeight.w700),
-                                          overflow: TextOverflow.ellipsis),
-                                      Text('${(tw / 60).toStringAsFixed(1)}h',
-                                          style: TextStyle(
-                                              fontSize: 13,
-                                              color: _TC.text(ctx),
-                                              fontWeight: FontWeight.w700)),
-                                    ])),
-                              ])));
-                    }).toList())),
-          ])));
-
-  Widget _buildTagChips(BuildContext ctx, int ws, int we) => Container(
-      height: 56,
-      color: _TC.topBar(ctx),
-      child: ListView(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          children: widget.tags.map((t) {
-            int tw = widget.logs
-                .where((l) =>
-                    l.tagUuids.contains(t.uuid) &&
-                    l.endTime > ws &&
-                    l.startTime < we)
-                .fold(
-                  0,
-                  (s, l) =>
-                      s +
-                      TimeLogRangeMath.overlapMinutes(
-                        intervalStartMs: l.startTime,
-                        intervalEndMs: l.endTime,
-                        rangeStartMs: ws,
-                        rangeEndMs: we,
-                      ),
-                );
-            tw += widget.pomodoros
-                .where((p) =>
-                    p.tagUuids.contains(t.uuid) &&
-                    p.startTime < we &&
-                    (p.endTime ?? p.startTime + p.effectiveDuration * 1000) >
-                        ws)
-                .fold(0, (s, p) => s + p.effectiveDuration ~/ 60);
-            final c = hexColor(t.color);
-            return GestureDetector(
-                onTap: () => widget.onTagTap(t),
-                child: Container(
-                    margin: const EdgeInsets.only(right: 8),
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    height: 52,
+                    padding: const EdgeInsets.symmetric(vertical: 6),
                     decoration: BoxDecoration(
-                        color: c.withValues(alpha: 0.08),
-                        border: Border.all(color: c.withValues(alpha: 0.3)),
-                        borderRadius: BorderRadius.circular(8)),
-                    child: Column(
+                      color: isToday ? accent.withValues(alpha: 0.07) : null,
+                      border: Border(
+                        right: BorderSide(
+                          color: _TC.divider(ctx).withValues(alpha: 0.2),
+                        ),
+                      ),
+                    ),
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text(t.name,
+                          Text(
+                            '周${['一', '二', '三', '四', '五', '六', '日'][i]}',
+                            style: TextStyle(
+                              fontSize: 9,
+                              color: isToday ? accent : _TC.textHint(ctx),
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                          Text(
+                            '${d.day}',
+                            style: TextStyle(
+                              fontSize: 15,
+                              color: isToday ? _TC.text(ctx) : _TC.textSub(ctx),
+                              fontWeight: isToday
+                                  ? FontWeight.w700
+                                  : FontWeight.w400,
+                            ),
+                          ),
+                          if (dm > 0)
+                            Text(
+                              '${dm}m',
                               style: TextStyle(
-                                  fontSize: 9,
-                                  color: c,
-                                  fontWeight: FontWeight.w700,
-                                  letterSpacing: 0.8)),
-                          Text('${(tw / 60).toStringAsFixed(1)}h',
+                                fontSize: 8,
+                                color: accent.withValues(alpha: 0.5),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              }),
+            ],
+          ),
+        ),
+        Expanded(
+          child: LayoutBuilder(
+            builder: (ctx2, gc) {
+              final hourH = gc.maxHeight / 24;
+              final totalH = hourH * 24;
+              return SizedBox(
+                height: totalH,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(
+                      width: tW,
+                      height: totalH,
+                      child: Stack(
+                        clipBehavior: Clip.none,
+                        children: List.generate(
+                          24,
+                          (h) => Positioned(
+                            top: h * hourH - 8,
+                            right: 4,
+                            child: Text(
+                              h.toString().padLeft(2, '0'),
                               style: TextStyle(
-                                  fontSize: 11,
-                                  color: _TC.text(ctx),
-                                  fontWeight: FontWeight.w700)),
-                        ])));
-          }).toList()));
+                                fontSize: (tW * 0.16).clamp(7.0, 11.0),
+                                color: _TC.timeLabel(ctx2, major: h % 6 == 0),
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    ...List.generate(days.length, (dayIndex) {
+                      final ds = weekData.dayStartMs[dayIndex];
+                      final de = weekData.dayEndMs[dayIndex];
+                      final dLogs = weekData.logsByDay[dayIndex];
+                      final dPoms = weekData.pomodorosByDay[dayIndex];
+                      return SizedBox(
+                        width: dW,
+                        height: totalH,
+                        child: Stack(
+                          children: [
+                            RepaintBoundary(
+                              child: CustomPaint(
+                                size: Size(dW, totalH),
+                                painter: _WeekGridPainter(
+                                  hourH: hourH,
+                                  majorLineColor: colorScheme.outlineVariant,
+                                  minorLineColor: colorScheme.outlineVariant
+                                      .withValues(alpha: isDark ? 0.28 : 0.45),
+                                ),
+                              ),
+                            ),
+                            CustomPaint(
+                              size: Size(dW, totalH),
+                              painter: _WeekColPainter(
+                                dayLogs: dLogs,
+                                dayPoms: dPoms,
+                                tags: widget.tags,
+                                dayStartMs: ds,
+                                dayEndMs: de,
+                                isDark: isDark,
+                                hourH: hourH,
+                                animation: _heatAnim,
+                                focusColor: colorScheme.cdtFocus,
+                                logColor: colorScheme.cdtInfo,
+                              ),
+                            ),
+                            ...dPoms.map((pom) {
+                              final pe =
+                                  pom.endTime ??
+                                  (pom.startTime +
+                                      pom.effectiveDuration * 1000);
+                              final rs = max(pom.startTime, ds);
+                              final re = min(pe, de);
+                              final top = (rs - ds) / 3600000 * hourH;
+                              final h = ((re - rs) / 3600000 * hourH).clamp(
+                                3.0,
+                                9999.0,
+                              );
+                              return Positioned(
+                                top: top,
+                                left: 0,
+                                right: 0,
+                                height: h,
+                                child: GestureDetector(
+                                  onTap: () => widget.onPomodoroTap(pom),
+                                  behavior: HitTestBehavior.opaque,
+                                  child: const SizedBox.expand(),
+                                ),
+                              );
+                            }),
+                            ...dLogs.map((log) {
+                              final rs = max(log.startTime, ds);
+                              final re = min(log.endTime, de);
+                              final top = (rs - ds) / 3600000 * hourH;
+                              final h = ((re - rs) / 3600000 * hourH).clamp(
+                                3.0,
+                                9999.0,
+                              );
+                              return Positioned(
+                                top: top,
+                                left: 0,
+                                right: 0,
+                                height: h,
+                                child: GestureDetector(
+                                  onTap: () => widget.onTimeLogTap(log),
+                                  behavior: HitTestBehavior.opaque,
+                                  child: const SizedBox.expand(),
+                                ),
+                              );
+                            }),
+                          ],
+                        ),
+                      );
+                    }),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTagSidebar(BuildContext ctx, Map<String, int> minutesByTag) =>
+      SizedBox(
+        width: 160,
+        child: OptionalLiquidGlassSheet(
+          fallbackDecoration: BoxDecoration(
+            color: _TC.card(ctx),
+            border: Border(left: BorderSide(color: _TC.divider(ctx))),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 14, 12, 8),
+                child: Text(
+                  '本周标签',
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: _TC.textHint(ctx),
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.5,
+                  ),
+                ),
+              ),
+              Expanded(
+                child: ListView.builder(
+                  itemCount: widget.tags.length,
+                  itemBuilder: (context, index) {
+                    final t = widget.tags[index];
+                    final tw = minutesByTag[t.uuid] ?? 0;
+                    final c = hexColor(t.color);
+                    return GestureDetector(
+                      onTap: () => widget.onTagTap(t),
+                      child: Container(
+                        margin: const EdgeInsets.fromLTRB(8, 0, 8, 6),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
+                        decoration: BoxDecoration(
+                          color: c.withValues(alpha: 0.07),
+                          border: Border.all(color: c.withValues(alpha: 0.25)),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 8,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                color: c,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    t.name,
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: c,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  Text(
+                                    '${(tw / 60).toStringAsFixed(1)}h',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: _TC.text(ctx),
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                  padding: const EdgeInsets.only(bottom: 8),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+
+  Widget _buildTagChips(BuildContext ctx, Map<String, int> minutesByTag) =>
+      Container(
+        height: 56,
+        color: _TC.topBar(ctx),
+        child: ListView.builder(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          itemCount: widget.tags.length,
+          itemBuilder: (context, index) {
+            final t = widget.tags[index];
+            final tw = minutesByTag[t.uuid] ?? 0;
+            final c = hexColor(t.color);
+            return GestureDetector(
+              onTap: () => widget.onTagTap(t),
+              child: Container(
+                margin: const EdgeInsets.only(right: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
+                decoration: BoxDecoration(
+                  color: c.withValues(alpha: 0.08),
+                  border: Border.all(color: c.withValues(alpha: 0.3)),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      t.name,
+                      style: TextStyle(
+                        fontSize: 9,
+                        color: c,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.8,
+                      ),
+                    ),
+                    Text(
+                      '${(tw / 60).toStringAsFixed(1)}h',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: _TC.text(ctx),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+      );
 }
 
 // ══════════════════════════════════════════════════════════
-// 周视图列 Painter
+// 周视图静态网格 Painter
 // ══════════════════════════════════════════════════════════
+class _WeekGridPainter extends CustomPainter {
+  final double hourH;
+  final Color majorLineColor;
+  final Color minorLineColor;
+  final Paint _gridPaint = Paint()..strokeWidth = 0.5;
+
+  _WeekGridPainter({
+    required this.hourH,
+    required this.majorLineColor,
+    required this.minorLineColor,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    for (int hour = 0; hour <= 24; hour++) {
+      final y = hour * hourH;
+      canvas.drawLine(
+        Offset(0, y),
+        Offset(size.width, y),
+        _gridPaint..color = hour % 6 == 0 ? majorLineColor : minorLineColor,
+      );
+    }
+    canvas.drawLine(
+      Offset(size.width - 0.5, 0),
+      Offset(size.width - 0.5, size.height),
+      _gridPaint..color = majorLineColor,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _WeekGridPainter oldDelegate) =>
+      oldDelegate.hourH != hourH ||
+      oldDelegate.majorLineColor != majorLineColor ||
+      oldDelegate.minorLineColor != minorLineColor;
+}
+
+// ══════════════════════════════════════════════════════════
+// 周视图区块 Painter
+// ══════════════════════════════════════════════════════════
+class _WeekColBlockVisual {
+  final Color color;
+  final String title;
+  final double top;
+  final double bottom;
+  final double staggerDelay;
+  final double staggerProgressScale;
+
+  const _WeekColBlockVisual({
+    required this.color,
+    required this.title,
+    required this.top,
+    required this.bottom,
+    required this.staggerDelay,
+    required this.staggerProgressScale,
+  });
+}
+
 class _WeekColPainter extends CustomPainter {
   final List<TimeLogItem> dayLogs;
   final List<PomodoroRecord> dayPoms;
   final List<PomodoroTag> tags;
   final int dayStartMs;
+  final int dayEndMs;
   final bool isDark;
   final double hourH;
-  final double animationProgress;
+  final Animation<double> animation;
   final Color focusColor;
   final Color logColor;
-  final Color majorLineColor;
-  final Color minorLineColor;
+  final Paint _blockPaint = Paint();
+  late final Map<String, int> _tagIndicesByUuid =
+      _DayGridPainter._buildTagIndices(tags);
+  TextPainter? _titlePainter;
+  int _staggerBlockIndex = 0;
+  late final int _totalBlockCount = dayPoms.length + dayLogs.length;
 
-  const _WeekColPainter(
-      {required this.dayLogs,
-      this.dayPoms = const [],
-      required this.tags,
-      required this.dayStartMs,
-      required this.isDark,
-      required this.hourH,
-      required this.focusColor,
-      required this.logColor,
-      required this.majorLineColor,
-      required this.minorLineColor,
-      this.animationProgress = 1.0});
+  double _staggerDelayFor(double top, double bottom) {
+    if (bottom <= top + 1) return 0.0;
+    final delay = _totalBlockCount > 0
+        ? _staggerBlockIndex / _totalBlockCount
+        : 0.0;
+    _staggerBlockIndex++;
+    return delay;
+  }
+
+  TextPainter get _reusableTitlePainter => _titlePainter ??= TextPainter(
+    textDirection: ui.TextDirection.ltr,
+    maxLines: 1,
+    ellipsis: '…',
+  );
+  late final List<_WeekColBlockVisual> _pomodoroVisuals = dayPoms
+      .map((pomodoro) {
+        final tag = _matchingTag(pomodoro.tagUuids);
+        final end =
+            pomodoro.endTime ??
+            (pomodoro.startTime + pomodoro.effectiveDuration * 1000);
+        final rangeStart = max(pomodoro.startTime, dayStartMs);
+        final rangeEnd = min(end, dayEndMs);
+        final top = (rangeStart - dayStartMs) / 3600000 * hourH;
+        final bottom = (rangeEnd - dayStartMs) / 3600000 * hourH;
+        final staggerDelay = _staggerDelayFor(top, bottom);
+        return _WeekColBlockVisual(
+          color: tag == null
+              ? focusColor.withValues(alpha: 0.45)
+              : hexColor(tag.color, opacity: 0.45),
+          title: tag?.name ?? '专注',
+          top: top,
+          bottom: bottom,
+          staggerDelay: staggerDelay,
+          staggerProgressScale: 1.0 / (1.0 - staggerDelay),
+        );
+      })
+      .toList(growable: false);
+  late final List<_WeekColBlockVisual> _logVisuals = dayLogs
+      .map((log) {
+        final tag = _matchingTag(log.tagUuids);
+        final title = log.title.isNotEmpty ? log.title : '补录';
+        final rangeStart = max(log.startTime, dayStartMs);
+        final rangeEnd = min(log.endTime, dayEndMs);
+        final top = (rangeStart - dayStartMs) / 3600000 * hourH;
+        final bottom = (rangeEnd - dayStartMs) / 3600000 * hourH;
+        final staggerDelay = _staggerDelayFor(top, bottom);
+        return _WeekColBlockVisual(
+          color: tag == null
+              ? logColor.withValues(alpha: 0.45)
+              : hexColor(tag.color, opacity: 0.45),
+          title: tag != null && title == '补录' ? tag.name : title,
+          top: top,
+          bottom: bottom,
+          staggerDelay: staggerDelay,
+          staggerProgressScale: 1.0 / (1.0 - staggerDelay),
+        );
+      })
+      .toList(growable: false);
+
+  _WeekColPainter({
+    required this.dayLogs,
+    this.dayPoms = const [],
+    required this.tags,
+    required this.dayStartMs,
+    required this.dayEndMs,
+    required this.isDark,
+    required this.hourH,
+    required this.animation,
+    required this.focusColor,
+    required this.logColor,
+  }) : super(repaint: animation);
+
+  PomodoroTag? _matchingTag(List<String> tagUuids) {
+    if (tagUuids.isEmpty) return null;
+    int? firstIndex;
+    for (final uuid in tagUuids) {
+      final index = _tagIndicesByUuid[uuid];
+      if (index != null && (firstIndex == null || index < firstIndex)) {
+        firstIndex = index;
+      }
+    }
+    return firstIndex == null ? null : tags[firstIndex];
+  }
 
   @override
   void paint(Canvas canvas, Size size) {
-    final de = _dayEndMs(DateTime.fromMillisecondsSinceEpoch(dayStartMs));
-    for (int h = 0; h <= 24; h++) {
-      final y = h * hourH;
-      canvas.drawLine(
-          Offset(0, y),
-          Offset(size.width, y),
-          Paint()
-            ..color = h % 6 == 0 ? majorLineColor : minorLineColor
-            ..strokeWidth = 0.5);
-    }
-    canvas.drawLine(
-        Offset(size.width - 0.5, 0),
-        Offset(size.width - 0.5, size.height),
-        Paint()
-          ..color = majorLineColor
-          ..strokeWidth = 0.5);
+    final animationProgress = animation.value;
 
-    final totalBlocks = dayPoms.length + dayLogs.length;
-    int blockIndex = 0;
-
-    void block(int start, int end, Color c, bool isPom, String title) {
-      final rs = max(start, dayStartMs);
-      final re = min(end, de);
-      final top = (rs - dayStartMs) / 3600000 * hourH;
-      final bot = (re - dayStartMs) / 3600000 * hourH;
+    void block(_WeekColBlockVisual visual, bool isPom) {
+      final top = visual.top;
+      final bot = visual.bottom;
       if (bot <= top + 1) return;
 
-      final staggerDelay = totalBlocks > 0 ? blockIndex / totalBlocks : 0.0;
       final blockProgress =
-          ((animationProgress - staggerDelay) / (1.0 - staggerDelay))
+          ((animationProgress - visual.staggerDelay) *
+                  visual.staggerProgressScale)
               .clamp(0.0, 1.0);
-      if (blockProgress <= 0.0) {
-        blockIndex++;
-        return;
-      }
+      if (blockProgress <= 0.0) return;
 
       final animatedBot = top + (bot - top) * blockProgress;
 
       canvas.drawRRect(
-          RRect.fromRectAndRadius(
-              Rect.fromLTRB(0, top + 0.5, 3, animatedBot - 0.5),
-              const Radius.circular(2)),
-          Paint()..color = c.withValues(alpha: 0.9 * blockProgress));
+        RRect.fromRectAndRadius(
+          Rect.fromLTRB(0, top + 0.5, 3, animatedBot - 0.5),
+          const Radius.circular(2),
+        ),
+        _blockPaint
+          ..color = visual.color.withValues(alpha: 0.9 * blockProgress),
+      );
 
       canvas.drawRRect(
-          RRect.fromRectAndRadius(
-              Rect.fromLTRB(3, top + 0.5, size.width - 1, animatedBot - 0.5),
-              const Radius.circular(3)),
-          Paint()
-            ..color =
-                c.withValues(alpha: (isPom ? 0.22 : 0.35) * blockProgress));
+        RRect.fromRectAndRadius(
+          Rect.fromLTRB(3, top + 0.5, size.width - 1, animatedBot - 0.5),
+          const Radius.circular(3),
+        ),
+        _blockPaint
+          ..color = visual.color.withValues(
+            alpha: (isPom ? 0.22 : 0.35) * blockProgress,
+          ),
+      );
 
       final blockH = animatedBot - top;
       final blockW = size.width - 6;
 
       if (blockH >= 10 && blockW >= 8 && blockProgress > 0.5) {
         if (blockH >= 18) {
-          final tp = TextPainter(
-            text: TextSpan(
-              text: title,
+          final tp = _reusableTitlePainter
+            ..text = TextSpan(
+              text: visual.title,
               style: TextStyle(
                 fontSize: (blockH * 0.28).clamp(7.0, 10.0),
-                color: c.withValues(alpha: 0.95 * blockProgress),
+                color: visual.color.withValues(alpha: 0.95 * blockProgress),
                 fontWeight: FontWeight.w700,
               ),
-            ),
-            textDirection: ui.TextDirection.ltr,
-            maxLines: 1,
-            ellipsis: '…',
-          )..layout(maxWidth: blockW - 4);
+            )
+            ..layout(maxWidth: blockW - 4);
           tp.paint(canvas, Offset(5, top + (blockH - tp.height) / 2));
         } else {
-          final tp = TextPainter(
-            text: TextSpan(
-              text: title,
+          final tp = _reusableTitlePainter
+            ..text = TextSpan(
+              text: visual.title,
               style: TextStyle(
                 fontSize: 7.0,
-                color: c.withValues(alpha: 0.85 * blockProgress),
+                color: visual.color.withValues(alpha: 0.85 * blockProgress),
                 fontWeight: FontWeight.w700,
               ),
-            ),
-            textDirection: ui.TextDirection.ltr,
-            maxLines: 1,
-            ellipsis: '…',
-          )..layout(maxWidth: blockH - 2);
+            )
+            ..layout(maxWidth: blockH - 2);
 
           canvas.save();
           canvas.translate(5 + tp.height, top + 1);
@@ -1559,40 +2003,18 @@ class _WeekColPainter extends CustomPainter {
           canvas.restore();
         }
       }
-      blockIndex++;
     }
 
     // 画番茄钟（★ 传入 title）
-    for (final p in dayPoms) {
-      final pe = p.endTime ?? (p.startTime + p.effectiveDuration * 1000);
-      Color c = focusColor.withValues(alpha: 0.45);
-      String title = '专注';
-      if (p.tagUuids.isNotEmpty) {
-        final t = tags.cast<PomodoroTag?>().firstWhere(
-            (t) => p.tagUuids.contains(t?.uuid),
-            orElse: () => null);
-        if (t != null) {
-          c = hexColor(t.color, opacity: 0.45);
-          title = t.name;
-        }
-      }
-      block(p.startTime, pe, c, true, title);
+    for (var i = 0; i < dayPoms.length; i++) {
+      final visual = _pomodoroVisuals[i];
+      block(visual, true);
     }
 
     // 画补录日志（★ 传入 title）
-    for (final l in dayLogs) {
-      Color c = logColor.withValues(alpha: 0.45);
-      String title = l.title.isNotEmpty ? l.title : '补录';
-      if (l.tagUuids.isNotEmpty) {
-        final t = tags.cast<PomodoroTag?>().firstWhere(
-            (t) => l.tagUuids.contains(t?.uuid),
-            orElse: () => null);
-        if (t != null) {
-          c = hexColor(t.color, opacity: 0.45);
-          if (title == '补录') title = t.name;
-        }
-      }
-      block(l.startTime, l.endTime, c, false, title);
+    for (var i = 0; i < dayLogs.length; i++) {
+      final visual = _logVisuals[i];
+      block(visual, false);
     }
   }
 
@@ -1600,13 +2022,14 @@ class _WeekColPainter extends CustomPainter {
   bool shouldRepaint(covariant _WeekColPainter o) =>
       o.isDark != isDark ||
       o.hourH != hourH ||
-      o.dayLogs.length != dayLogs.length ||
-      o.dayPoms.length != dayPoms.length ||
-      o.animationProgress != animationProgress ||
+      o.dayLogs != dayLogs ||
+      o.dayPoms != dayPoms ||
+      o.tags != tags ||
+      o.dayStartMs != dayStartMs ||
+      o.dayEndMs != dayEndMs ||
+      o.animation != animation ||
       o.focusColor != focusColor ||
-      o.logColor != logColor ||
-      o.majorLineColor != majorLineColor ||
-      o.minorLineColor != minorLineColor;
+      o.logColor != logColor;
 }
 
 // ══════════════════════════════════════════════════════════
@@ -1621,172 +2044,295 @@ class _DayGridView extends StatefulWidget {
   final void Function(TimeLogItem) onTimeLogTap;
   final VoidCallback onSwitchEdit;
 
-  const _DayGridView(
-      {required this.date,
-      required this.logs,
-      required this.pomodoros,
-      required this.tags,
-      required this.onPomodoroTap,
-      required this.onTimeLogTap,
-      required this.onSwitchEdit});
+  const _DayGridView({
+    required this.date,
+    required this.logs,
+    required this.pomodoros,
+    required this.tags,
+    required this.onPomodoroTap,
+    required this.onTimeLogTap,
+    required this.onSwitchEdit,
+  });
 
   @override
   State<_DayGridView> createState() => _DayGridViewState();
 }
 
 class _DayGridViewState extends State<_DayGridView> {
+  List<TimeLogItem>? _dayLogsSource;
+  List<PomodoroRecord>? _dayPomodorosSource;
+  int? _dayDataStartMs;
+  int? _dayDataEndMs;
+  List<TimeLogItem> _dayLogs = const [];
+  List<PomodoroRecord> _dayPomodoros = const [];
+  List<MapEntry<String, int>> _sortedTagMinutes = const [];
+  List<PomodoroTag>? _tagIndexSource;
+  List<PomodoroTag>? _tagIndexSnapshot;
+  Map<String, PomodoroTag> _tagsByUuid = const {};
+  Map<String, int> _tagIndicesByUuid = const {};
+  int _dayLogMinutes = 0;
+  int _dayPomodoroMinutes = 0;
+
+  void _ensureTagIndex() {
+    final cachedTags = _tagIndexSnapshot;
+    if (identical(_tagIndexSource, widget.tags) &&
+        cachedTags != null &&
+        cachedTags.length == widget.tags.length) {
+      var tagsUnchanged = true;
+      for (var index = 0; index < widget.tags.length; index++) {
+        if (!identical(cachedTags[index], widget.tags[index])) {
+          tagsUnchanged = false;
+          break;
+        }
+      }
+      if (tagsUnchanged) return;
+    }
+
+    final tagsByUuid = <String, PomodoroTag>{};
+    final tagIndicesByUuid = <String, int>{};
+    for (var index = 0; index < widget.tags.length; index++) {
+      final tag = widget.tags[index];
+      tagsByUuid.putIfAbsent(tag.uuid, () => tag);
+      tagIndicesByUuid.putIfAbsent(tag.uuid, () => index);
+    }
+    _tagIndexSource = widget.tags;
+    _tagIndexSnapshot = List<PomodoroTag>.of(widget.tags, growable: false);
+    _tagsByUuid = tagsByUuid;
+    _tagIndicesByUuid = tagIndicesByUuid;
+  }
+
+  void _ensureDayData(int dayStartMs, int dayEndMs) {
+    if (identical(_dayLogsSource, widget.logs) &&
+        identical(_dayPomodorosSource, widget.pomodoros) &&
+        _dayDataStartMs == dayStartMs &&
+        _dayDataEndMs == dayEndMs) {
+      return;
+    }
+
+    final dayLogs = <TimeLogItem>[];
+    final dayPomodoros = <PomodoroRecord>[];
+    final tagMinutesByUuid = <String, int>{};
+    var logMinutes = 0;
+    for (final log in widget.logs) {
+      if (log.endTime <= dayStartMs || log.startTime >= dayEndMs) continue;
+      dayLogs.add(log);
+      final overlapMinutes = TimeLogRangeMath.overlapMinutes(
+        intervalStartMs: log.startTime,
+        intervalEndMs: log.endTime,
+        rangeStartMs: dayStartMs,
+        rangeEndMs: dayEndMs,
+      );
+      logMinutes += overlapMinutes;
+      for (final uuid in log.tagUuids) {
+        tagMinutesByUuid[uuid] = (tagMinutesByUuid[uuid] ?? 0) + overlapMinutes;
+      }
+    }
+
+    var pomodoroMinutes = 0;
+    for (final pomodoro in widget.pomodoros) {
+      final endMs =
+          pomodoro.endTime ??
+          (pomodoro.startTime + pomodoro.effectiveDuration * 1000);
+      if (endMs <= dayStartMs || pomodoro.startTime >= dayEndMs) continue;
+      dayPomodoros.add(pomodoro);
+      final durationMinutes = pomodoro.effectiveDuration ~/ 60;
+      pomodoroMinutes += durationMinutes;
+      for (final uuid in pomodoro.tagUuids) {
+        tagMinutesByUuid[uuid] =
+            (tagMinutesByUuid[uuid] ?? 0) + durationMinutes;
+      }
+    }
+
+    _dayLogsSource = widget.logs;
+    _dayPomodorosSource = widget.pomodoros;
+    _dayDataStartMs = dayStartMs;
+    _dayDataEndMs = dayEndMs;
+    _dayLogs = dayLogs;
+    _dayPomodoros = dayPomodoros;
+    _sortedTagMinutes = tagMinutesByUuid.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    _dayLogMinutes = logMinutes;
+    _dayPomodoroMinutes = pomodoroMinutes;
+  }
+
   @override
   Widget build(BuildContext context) {
     final dayRange = CalendarDateMath.dayRange(widget.date);
     final ds = dayRange.start.millisecondsSinceEpoch;
     final de = dayRange.endExclusive.millisecondsSinceEpoch;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final colorScheme = Theme.of(context).colorScheme;
+    _ensureDayData(ds, de);
+    _ensureTagIndex();
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final colorScheme = theme.colorScheme;
+    final totalMin = _dayLogMinutes + _dayPomodoroMinutes;
 
-    final dLogs =
-        widget.logs.where((l) => l.endTime > ds && l.startTime < de).toList();
-    final dPoms = widget.pomodoros.where((p) {
-      final pe = p.endTime ?? (p.startTime + p.effectiveDuration * 1000);
-      return pe > ds && p.startTime < de;
-    }).toList();
+    return Column(
+      children: [
+        _buildSummary(
+          context,
+          totalMin,
+          _dayLogMinutes,
+          _dayPomodoroMinutes,
+          _sortedTagMinutes,
+          _tagsByUuid,
+        ),
+        Expanded(
+          child: LayoutBuilder(
+            builder: (ctx, constraints) {
+              final gridAreaW = constraints.maxWidth - kTimeAxisW;
+              final colW = gridAreaW / kColsPerH;
+              final rowH = constraints.maxHeight / kTotalRows;
 
-    final logMin = dLogs.fold(
-      0,
-      (s, l) =>
-          s +
-          TimeLogRangeMath.overlapMinutes(
-            intervalStartMs: l.startTime,
-            intervalEndMs: l.endTime,
-            rangeStartMs: ds,
-            rangeEndMs: de,
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    width: kTimeAxisW,
+                    height: constraints.maxHeight,
+                    child: _TimeLabels(isDark: isDark, rowH: rowH),
+                  ),
+                  Expanded(
+                    child: SizedBox(
+                      width: gridAreaW,
+                      height: constraints.maxHeight,
+                      child: _GridCanvas(
+                        colW: colW,
+                        rowW: gridAreaW,
+                        rowH: rowH,
+                        dayStartMs: ds,
+                        dLogs: _dayLogs,
+                        dPoms: _dayPomodoros,
+                        tags: widget.tags,
+                        tagIndicesByUuid: _tagIndicesByUuid,
+                        isDark: isDark,
+                        focusColor: colorScheme.cdtFocus,
+                        logColor: colorScheme.cdtInfo,
+                        onPomodoroTap: widget.onPomodoroTap,
+                        onTimeLogTap: widget.onTimeLogTap,
+                        date: widget.date,
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
           ),
+        ),
+      ],
     );
-    final pomMin = dPoms.fold(0, (s, p) => s + p.effectiveDuration ~/ 60);
-    final totalMin = logMin + pomMin;
-
-    final Map<String, int> tagMinMap = {};
-    for (final l in dLogs) {
-      for (final uid in l.tagUuids) {
-        tagMinMap[uid] =
-            (tagMinMap[uid] ?? 0) +
-                TimeLogRangeMath.overlapMinutes(
-                  intervalStartMs: l.startTime,
-                  intervalEndMs: l.endTime,
-                  rangeStartMs: ds,
-                  rangeEndMs: de,
-                );
-      }
-    }
-    for (final p in dPoms) {
-      for (final uid in p.tagUuids) {
-        tagMinMap[uid] = (tagMinMap[uid] ?? 0) + p.effectiveDuration ~/ 60;
-      }
-    }
-
-    return Column(children: [
-      _buildSummary(context, totalMin, logMin, pomMin, tagMinMap),
-      Expanded(child: LayoutBuilder(builder: (ctx, constraints) {
-        final gridAreaW = constraints.maxWidth - kTimeAxisW;
-        final colW = gridAreaW / kColsPerH;
-        debugPrint('colW=$colW  gridAreaW=$gridAreaW');
-        final rowH = constraints.maxHeight / kTotalRows;
-
-        return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          SizedBox(
-            width: kTimeAxisW,
-            height: constraints.maxHeight,
-            child: _TimeLabels(isDark: isDark, rowH: rowH),
-          ),
-          Expanded(
-            child: SizedBox(
-              width: gridAreaW,
-              height: constraints.maxHeight,
-              child: _GridCanvas(
-                colW: colW,
-                rowW: gridAreaW,
-                rowH: rowH,
-                dayStartMs: ds,
-                dLogs: dLogs,
-                dPoms: dPoms,
-                tags: widget.tags,
-                isDark: isDark,
-                focusColor: colorScheme.cdtFocus,
-                logColor: colorScheme.cdtInfo,
-                onPomodoroTap: widget.onPomodoroTap,
-                onTimeLogTap: widget.onTimeLogTap,
-                date: widget.date,
-              ),
-            ),
-          ),
-        ]);
-      })),
-    ]);
   }
 
-  Widget _buildSummary(BuildContext ctx, int total, int logMin, int pomMin,
-      Map<String, int> tagMinMap) {
+  Widget _buildSummary(
+    BuildContext ctx,
+    int total,
+    int logMin,
+    int pomMin,
+    List<MapEntry<String, int>> sortedTagMinutes,
+    Map<String, PomodoroTag> tagsByUuid,
+  ) {
     final accent = Theme.of(ctx).colorScheme.primary;
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
       color: _TC.topBar(ctx),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              decoration: BoxDecoration(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                height: _timeLogSummaryChipHeight,
+                alignment: Alignment.center,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                decoration: BoxDecoration(
                   color: accent.withValues(alpha: 0.1),
                   border: Border.all(color: accent.withValues(alpha: 0.3)),
-                  borderRadius: BorderRadius.circular(20)),
-              child: Text('${(total / 60).toStringAsFixed(1)}h  今日合计',
+                  borderRadius: BorderRadius.circular(_timeLogActionChipRadius),
+                ),
+                child: Text(
+                  '${(total / 60).toStringAsFixed(1)}h  今日合计',
                   style: TextStyle(
-                      fontSize: 11,
-                      color: accent,
-                      fontWeight: FontWeight.w700))),
-          const SizedBox(width: 8),
-          if (pomMin > 0)
-            _miniPill(ctx, '专注 ${pomMin}m', Theme.of(ctx).colorScheme.cdtFocus),
-          if (logMin > 0) ...[
-            const SizedBox(width: 6),
-            _miniPill(ctx, '补录 ${logMin}m', Theme.of(ctx).colorScheme.cdtInfo),
-          ],
-          const Spacer(),
-          GestureDetector(
-              onTap: widget.onSwitchEdit,
-              child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    fontSize: 11,
+                    color: accent,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              if (pomMin > 0)
+                _miniPill(
+                  ctx,
+                  '专注 ${pomMin}m',
+                  Theme.of(ctx).colorScheme.cdtFocus,
+                ),
+              if (logMin > 0) ...[
+                const SizedBox(width: 6),
+                _miniPill(
+                  ctx,
+                  '补录 ${logMin}m',
+                  Theme.of(ctx).colorScheme.cdtInfo,
+                ),
+              ],
+              const Spacer(),
+              GestureDetector(
+                onTap: widget.onSwitchEdit,
+                child: Container(
+                  height: _timeLogSummaryChipHeight,
+                  alignment: Alignment.center,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
                   decoration: BoxDecoration(
-                      color: accent.withValues(alpha: 0.1),
-                      border: Border.all(color: accent.withValues(alpha: 0.3)),
-                      borderRadius: BorderRadius.circular(8)),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    Icon(Icons.edit_note, size: 14, color: accent),
-                    const SizedBox(width: 4),
-                    Text('补录',
+                    color: accent.withValues(alpha: 0.1),
+                    border: Border.all(color: accent.withValues(alpha: 0.3)),
+                    borderRadius: BorderRadius.circular(
+                      _timeLogActionChipRadius,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.edit_note, size: 14, color: accent),
+                      const SizedBox(width: 4),
+                      Text(
+                        '补录',
                         style: TextStyle(
-                            fontSize: 11,
-                            color: accent,
-                            fontWeight: FontWeight.w700)),
-                  ]))),
-        ]),
-        if (tagMinMap.isNotEmpty && total > 0) ...[
-          const SizedBox(height: 8),
-          _TagProgressBar(
-              tagMinMap: tagMinMap, totalMin: total, tags: widget.tags),
+                          fontSize: 11,
+                          color: accent,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (sortedTagMinutes.isNotEmpty && total > 0) ...[
+            const SizedBox(height: 8),
+            _TagProgressBar(
+              sortedTagMinutes: sortedTagMinutes,
+              totalMin: total,
+              tagsByUuid: tagsByUuid,
+            ),
+          ],
         ],
-      ]),
+      ),
     );
   }
 
   Widget _miniPill(BuildContext ctx, String text, Color c) => Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-      decoration: BoxDecoration(
-          color: c.withValues(alpha: 0.08),
-          border: Border.all(color: c.withValues(alpha: 0.3)),
-          borderRadius: BorderRadius.circular(16)),
-      child: Text(text,
-          style:
-              TextStyle(fontSize: 10, color: c, fontWeight: FontWeight.w600)));
+    height: _timeLogSummaryChipHeight,
+    alignment: Alignment.center,
+    padding: const EdgeInsets.symmetric(horizontal: 12),
+    decoration: BoxDecoration(
+      color: c.withValues(alpha: 0.08),
+      border: Border.all(color: c.withValues(alpha: 0.3)),
+      borderRadius: BorderRadius.circular(_timeLogActionChipRadius),
+    ),
+    child: Text(
+      text,
+      style: TextStyle(fontSize: 11, color: c, fontWeight: FontWeight.w600),
+    ),
+  );
 }
 
 // ══════════════════════════════════════════════════════════
@@ -1819,8 +2365,9 @@ class _TimeLabels extends StatelessWidget {
                     '${h.toString().padLeft(2, '0')}:00',
                     style: TextStyle(
                       fontSize: 9,
-                      fontWeight:
-                          h % 6 == 0 ? FontWeight.w700 : FontWeight.w400,
+                      fontWeight: h % 6 == 0
+                          ? FontWeight.w700
+                          : FontWeight.w400,
                       color: _TC.timeLabel(context, major: h % 6 == 0),
                     ),
                   ),
@@ -1843,6 +2390,7 @@ class _GridCanvas extends StatelessWidget {
   final List<TimeLogItem> dLogs;
   final List<PomodoroRecord> dPoms;
   final List<PomodoroTag> tags;
+  final Map<String, int> tagIndicesByUuid;
   final bool isDark;
   final Color focusColor;
   final Color logColor;
@@ -1850,112 +2398,122 @@ class _GridCanvas extends StatelessWidget {
   final void Function(PomodoroRecord) onPomodoroTap;
   final void Function(TimeLogItem) onTimeLogTap;
 
-  const _GridCanvas(
-      {required this.colW,
-      required this.rowW,
-      required this.rowH,
-      required this.dayStartMs,
-      required this.dLogs,
-      required this.dPoms,
-      required this.tags,
-      required this.isDark,
-      required this.focusColor,
-      required this.logColor,
-      required this.date,
-      required this.onPomodoroTap,
-      required this.onTimeLogTap});
+  const _GridCanvas({
+    required this.colW,
+    required this.rowW,
+    required this.rowH,
+    required this.dayStartMs,
+    required this.dLogs,
+    required this.dPoms,
+    required this.tags,
+    required this.tagIndicesByUuid,
+    required this.isDark,
+    required this.focusColor,
+    required this.logColor,
+    required this.date,
+    required this.onPomodoroTap,
+    required this.onTimeLogTap,
+  });
+
+  PomodoroTag? _firstTagForUuids(List<String> uuids) {
+    int? firstIndex;
+    for (final uuid in uuids) {
+      final index = tagIndicesByUuid[uuid];
+      if (index != null && (firstIndex == null || index < firstIndex)) {
+        firstIndex = index;
+      }
+    }
+    return firstIndex == null ? null : tags[firstIndex];
+  }
 
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
+    final dayEndMs = _dayEndMs(DateTime.fromMillisecondsSinceEpoch(dayStartMs));
     final colorScheme = Theme.of(context).colorScheme;
     final isToday = AppTimeFormats.isSameDay(now, date);
     final nowTotalMin = isToday ? now.hour * 60 + now.minute : -1;
 
-    return Stack(children: [
-      CustomPaint(
-        size: Size(rowW, rowH * kTotalRows),
-        painter: _GridBgPainter(
-          colW: colW,
-          rowH: rowH,
-          rowMajorColor: colorScheme.outlineVariant,
-          rowNormalColor: colorScheme.outlineVariant.withValues(
-            alpha: isDark ? 0.38 : 0.58,
+    return Stack(
+      children: [
+        CustomPaint(
+          size: Size(rowW, rowH * kTotalRows),
+          painter: _GridBgPainter(
+            colW: colW,
+            rowH: rowH,
+            rowMajorColor: colorScheme.outlineVariant,
+            rowNormalColor: colorScheme.outlineVariant.withValues(
+              alpha: isDark ? 0.38 : 0.58,
+            ),
+            colHourColor: colorScheme.outline,
+            colHalfColor: colorScheme.outlineVariant,
+            colCellColor: colorScheme.outlineVariant.withValues(
+              alpha: isDark ? 0.26 : 0.42,
+            ),
+            labelMajorColor: colorScheme.onSurfaceVariant.withValues(
+              alpha: 0.48,
+            ),
+            labelMinorColor: colorScheme.onSurfaceVariant.withValues(
+              alpha: 0.34,
+            ),
           ),
-          colHourColor: colorScheme.outline,
-          colHalfColor: colorScheme.outlineVariant,
-          colCellColor: colorScheme.outlineVariant.withValues(
-            alpha: isDark ? 0.26 : 0.42,
-          ),
-          labelMajorColor: colorScheme.onSurfaceVariant.withValues(alpha: 0.48),
-          labelMinorColor: colorScheme.onSurfaceVariant.withValues(alpha: 0.34),
         ),
-      ),
-      if (nowTotalMin >= 0) _buildNowLine(nowTotalMin),
-      // 番茄钟
-      ...dPoms.expand((pom) {
-        final pe =
-            pom.endTime ?? (pom.startTime + pom.effectiveDuration * 1000);
-        PomodoroTag? tag;
-        if (pom.tagUuids.isNotEmpty) {
-          tag = tags.cast<PomodoroTag?>().firstWhere(
-              (t) => pom.tagUuids.contains(t?.uuid),
-              orElse: () => null);
-        }
-        final base = tag != null ? hexColor(tag.color) : focusColor;
-        final title = tag?.name ?? '专注';
-        return _buildEventBlocks(
-          startMs: max(pom.startTime, dayStartMs),
-          endMs: min(
-            pe,
-            _dayEndMs(DateTime.fromMillisecondsSinceEpoch(dayStartMs)),
-          ),
-          dayStartMs: dayStartMs,
-          colW: colW,
-          rowW: rowW,
-          rowH: rowH,
-          fillColor: base.withValues(alpha: isDark ? 0.30 : 0.22),
-          barColor: base,
-          title: title,
-          onTap: () => onPomodoroTap(pom),
-        );
-      }),
+        if (nowTotalMin >= 0) _buildNowLine(nowTotalMin),
+        // 番茄钟
+        ...dPoms.expand((pom) {
+          final pe =
+              pom.endTime ?? (pom.startTime + pom.effectiveDuration * 1000);
+          PomodoroTag? tag;
+          if (pom.tagUuids.isNotEmpty) {
+            tag = _firstTagForUuids(pom.tagUuids);
+          }
+          final base = tag != null ? hexColor(tag.color) : focusColor;
+          final title = tag?.name ?? '专注';
+          return _buildEventBlocks(
+            startMs: max(pom.startTime, dayStartMs),
+            endMs: min(pe, dayEndMs),
+            dayStartMs: dayStartMs,
+            colW: colW,
+            rowW: rowW,
+            rowH: rowH,
+            fillColor: base.withValues(alpha: isDark ? 0.30 : 0.22),
+            barColor: base,
+            title: title,
+            onTap: () => onPomodoroTap(pom),
+          );
+        }),
 
-      // 补录日志
-      ...dLogs.expand((log) {
-        PomodoroTag? tag;
-        if (log.tagUuids.isNotEmpty) {
-          tag = tags.cast<PomodoroTag?>().firstWhere(
-              (t) => log.tagUuids.contains(t?.uuid),
-              orElse: () => null);
-        }
-        final base = tag != null ? hexColor(tag.color) : logColor;
-        final title = log.title.isNotEmpty ? log.title : (tag?.name ?? '补录');
-        return _buildEventBlocks(
-          startMs: max(log.startTime, dayStartMs),
-          endMs: min(
-            log.endTime,
-            _dayEndMs(DateTime.fromMillisecondsSinceEpoch(dayStartMs)),
-          ),
-          dayStartMs: dayStartMs,
-          colW: colW,
-          rowW: rowW,
-          rowH: rowH,
-          fillColor: base.withValues(alpha: isDark ? 0.26 : 0.18),
-          barColor: base,
-          title: title,
-          onTap: () => onTimeLogTap(log),
-        );
-      }),
+        // 补录日志
+        ...dLogs.expand((log) {
+          PomodoroTag? tag;
+          if (log.tagUuids.isNotEmpty) {
+            tag = _firstTagForUuids(log.tagUuids);
+          }
+          final base = tag != null ? hexColor(tag.color) : logColor;
+          final title = log.title.isNotEmpty ? log.title : (tag?.name ?? '补录');
+          return _buildEventBlocks(
+            startMs: max(log.startTime, dayStartMs),
+            endMs: min(log.endTime, dayEndMs),
+            dayStartMs: dayStartMs,
+            colW: colW,
+            rowW: rowW,
+            rowH: rowH,
+            fillColor: base.withValues(alpha: isDark ? 0.26 : 0.18),
+            barColor: base,
+            title: title,
+            onTap: () => onTimeLogTap(log),
+          );
+        }),
 
-      Positioned(
-        top: 9 * rowH,
-        left: rowW / 3,
-        width: rowW / 3,
-        height: rowH,
-        child: SizedBox(key: timeLogDragKey),
-      ),
-    ]);
+        Positioned(
+          top: 9 * rowH,
+          left: rowW / 3,
+          width: rowW / 3,
+          height: rowH,
+          child: SizedBox(key: timeLogDragKey),
+        ),
+      ],
+    );
   }
 
   Widget _buildNowLine(int nowTotalMin) {
@@ -1964,37 +2522,42 @@ class _GridCanvas extends StatelessWidget {
     final x = (minInHour / kMinsPerCol) * colW;
     final y = nowHour * rowH;
 
-    return Stack(children: [
-      Positioned(
-        top: y,
-        left: 0,
-        right: 0,
-        height: 1.0,
-        child: Container(color: focusColor.withValues(alpha: 0.20)),
-      ),
-      Positioned(
-        top: y,
-        left: x,
-        width: 1.5,
-        height: rowH,
-        child: Container(color: focusColor.withValues(alpha: 0.80)),
-      ),
-      Positioned(
-        top: y + rowH / 2 - 3,
-        left: x - 3,
-        child: Container(
-          width: 6,
-          height: 6,
-          decoration: BoxDecoration(
-            color: focusColor,
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(color: focusColor.withValues(alpha: 0.5), blurRadius: 4)
-            ],
+    return Stack(
+      children: [
+        Positioned(
+          top: y,
+          left: 0,
+          right: 0,
+          height: 1.0,
+          child: Container(color: focusColor.withValues(alpha: 0.20)),
+        ),
+        Positioned(
+          top: y,
+          left: x,
+          width: 1.5,
+          height: rowH,
+          child: Container(color: focusColor.withValues(alpha: 0.80)),
+        ),
+        Positioned(
+          top: y + rowH / 2 - 3,
+          left: x - 3,
+          child: Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(
+              color: focusColor,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: focusColor.withValues(alpha: 0.5),
+                  blurRadius: 4,
+                ),
+              ],
+            ),
           ),
         ),
-      ),
-    ]);
+      ],
+    );
   }
 
   List<Widget> _buildEventBlocks({
@@ -2037,71 +2600,81 @@ class _GridCanvas extends StatelessWidget {
       final isLast = endMinF <= rowEndMin;
 
       // ── 色块背景（每一行都画）──────────────────────────
-      result.add(Positioned(
-        top: row * rowH + 1,
-        left: left + 1,
-        width: width - 2,
-        height: rowH - 2,
-        child: GestureDetector(
-          onTap: onTap,
-          behavior: HitTestBehavior.opaque,
-          child: ClipRRect(
-            borderRadius: BorderRadius.only(
-              topLeft: Radius.circular(isFirst ? 3 : 0),
-              bottomLeft: Radius.circular(isLast ? 3 : 0),
-              topRight: Radius.circular(isFirst && isLast ? 3 : 0),
-              bottomRight: Radius.circular(isFirst && isLast ? 3 : 0),
-            ),
-            child: Container(
-              decoration: BoxDecoration(
-                color: fillColor,
-                border: Border(
-                  left: BorderSide(color: barColor, width: 2.5),
-                  top: isFirst
-                      ? BorderSide(
-                          color: barColor.withValues(alpha: 0.45), width: 1.0)
-                      : BorderSide.none,
-                  bottom: isLast
-                      ? BorderSide(
-                          color: barColor.withValues(alpha: 0.45), width: 1.0)
-                      : BorderSide.none,
-                  right: isLast && colEnd < kColsPerH
-                      ? BorderSide(
-                          color: barColor.withValues(alpha: 0.25), width: 1.0)
-                      : BorderSide.none,
+      result.add(
+        Positioned(
+          top: row * rowH + 1,
+          left: left + 1,
+          width: width - 2,
+          height: rowH - 2,
+          child: GestureDetector(
+            onTap: onTap,
+            behavior: HitTestBehavior.opaque,
+            child: ClipRRect(
+              borderRadius: BorderRadius.only(
+                topLeft: Radius.circular(isFirst ? 3 : 0),
+                bottomLeft: Radius.circular(isLast ? 3 : 0),
+                topRight: Radius.circular(isFirst && isLast ? 3 : 0),
+                bottomRight: Radius.circular(isFirst && isLast ? 3 : 0),
+              ),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: fillColor,
+                  border: Border(
+                    left: BorderSide(color: barColor, width: 2.5),
+                    top: isFirst
+                        ? BorderSide(
+                            color: barColor.withValues(alpha: 0.45),
+                            width: 1.0,
+                          )
+                        : BorderSide.none,
+                    bottom: isLast
+                        ? BorderSide(
+                            color: barColor.withValues(alpha: 0.45),
+                            width: 1.0,
+                          )
+                        : BorderSide.none,
+                    right: isLast && colEnd < kColsPerH
+                        ? BorderSide(
+                            color: barColor.withValues(alpha: 0.25),
+                            width: 1.0,
+                          )
+                        : BorderSide.none,
+                  ),
                 ),
               ),
             ),
           ),
         ),
-      ));
+      );
 
       // ── 文字：只在第一行，横跨整行宽度（从 left+3 到行末）──
       if (isFirst) {
-        result.add(Positioned(
-          top: row * rowH + 1,
-          left: left + 3, // 紧贴左边彩条右侧
-          right: 2, // 贴到行右边，让文字尽量展开
-          height: rowH - 2,
-          child: GestureDetector(
-            onTap: onTap,
-            behavior: HitTestBehavior.translucent,
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                title,
-                style: TextStyle(
-                  fontSize: 10,
-                  color: barColor,
-                  fontWeight: FontWeight.w700,
-                  height: 1.2,
+        result.add(
+          Positioned(
+            top: row * rowH + 1,
+            left: left + 3, // 紧贴左边彩条右侧
+            right: 2, // 贴到行右边，让文字尽量展开
+            height: rowH - 2,
+            child: GestureDetector(
+              onTap: onTap,
+              behavior: HitTestBehavior.translucent,
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: barColor,
+                    fontWeight: FontWeight.w700,
+                    height: 1.2,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
                 ),
-                overflow: TextOverflow.ellipsis,
-                maxLines: 1,
               ),
             ),
           ),
-        ));
+        );
       }
 
       if (isLast) break;
@@ -2205,8 +2778,14 @@ class _GridBgPainter extends CustomPainter {
     }
   }
 
-  void _drawLabel(Canvas canvas, String text, Offset offset,
-      {required double fontSize, required Color color, required bool bold}) {
+  void _drawLabel(
+    Canvas canvas,
+    String text,
+    Offset offset, {
+    required double fontSize,
+    required Color color,
+    required bool bold,
+  }) {
     final tp = TextPainter(
       text: TextSpan(
         text: text,
@@ -2238,57 +2817,75 @@ class _GridBgPainter extends CustomPainter {
 // 标签色条
 // ══════════════════════════════════════════════════════════
 class _TagProgressBar extends StatelessWidget {
-  final Map<String, int> tagMinMap;
+  final List<MapEntry<String, int>> sortedTagMinutes;
   final int totalMin;
-  final List<PomodoroTag> tags;
+  final Map<String, PomodoroTag> tagsByUuid;
 
-  const _TagProgressBar(
-      {required this.tagMinMap, required this.totalMin, required this.tags});
+  const _TagProgressBar({
+    required this.sortedTagMinutes,
+    required this.totalMin,
+    required this.tagsByUuid,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final sorted = tagMinMap.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      ClipRRect(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ClipRRect(
           borderRadius: BorderRadius.circular(4),
           child: SizedBox(
-              height: 5,
-              width: double.infinity,
-              child: Row(
-                  children: sorted.map((e) {
-                final t = tags
-                    .cast<PomodoroTag?>()
-                    .firstWhere((t) => t?.uuid == e.key, orElse: () => null);
+            height: 5,
+            width: double.infinity,
+            child: Row(
+              children: sortedTagMinutes.map((e) {
+                final t = tagsByUuid[e.key];
                 final c = t != null
                     ? hexColor(t.color)
                     : Theme.of(context).colorScheme.cdtInfo;
-                return Expanded(flex: e.value, child: Container(color: c));
-              }).toList()))),
-      const SizedBox(height: 5),
-      Wrap(
+                return Expanded(
+                  flex: e.value,
+                  child: Container(color: c),
+                );
+              }).toList(),
+            ),
+          ),
+        ),
+        const SizedBox(height: 5),
+        Wrap(
           spacing: 10,
           runSpacing: 3,
-          children: sorted.map((e) {
-            final t = tags
-                .cast<PomodoroTag?>()
-                .firstWhere((t) => t?.uuid == e.key, orElse: () => null);
+          children: sortedTagMinutes.map((e) {
+            final t = tagsByUuid[e.key];
             if (t == null) return const SizedBox.shrink();
             final c = hexColor(t.color);
-            return Row(mainAxisSize: MainAxisSize.min, children: [
-              Container(
+            return Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
                   width: 6,
                   height: 6,
-                  decoration: BoxDecoration(color: c, shape: BoxShape.circle)),
-              const SizedBox(width: 4),
-              Text(t.name,
+                  decoration: BoxDecoration(color: c, shape: BoxShape.circle),
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  t.name,
                   style: TextStyle(
-                      fontSize: 10, color: c, fontWeight: FontWeight.w600)),
-              const SizedBox(width: 3),
-              Text('${e.value}m',
-                  style: TextStyle(fontSize: 10, color: _TC.textSub(context))),
-            ]);
-          }).toList()),
-    ]);
+                    fontSize: 10,
+                    color: c,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(width: 3),
+                Text(
+                  '${e.value}m',
+                  style: TextStyle(fontSize: 10, color: _TC.textSub(context)),
+                ),
+              ],
+            );
+          }).toList(),
+        ),
+      ],
+    );
   }
 }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+
 import '../../models.dart';
 import '../../services/pomodoro_service.dart';
 import '../../storage_service.dart';
@@ -10,10 +11,7 @@ import '../../utils/calendar_date_math.dart';
 class RebindTagPage extends StatefulWidget {
   final String username;
 
-  const RebindTagPage({
-    super.key,
-    required this.username,
-  });
+  const RebindTagPage({super.key, required this.username});
 
   @override
   State<RebindTagPage> createState() => _RebindTagPageState();
@@ -42,6 +40,16 @@ class _RebindTagPageState extends State<RebindTagPage>
   // 选中的记录
   final Set<String> _selectedPomodoros = {};
   final Set<String> _selectedTimeLogs = {};
+
+  final Map<(String?, String), DateFormat> _dateFormatters = {};
+
+  DateFormat _cachedDateFormat(String pattern) {
+    final locale = Intl.defaultLocale;
+    return _dateFormatters.putIfAbsent((
+      locale,
+      pattern,
+    ), () => DateFormat(pattern, locale));
+  }
 
   final TextEditingController _searchController = TextEditingController();
 
@@ -77,8 +85,9 @@ class _RebindTagPageState extends State<RebindTagPage>
       _allPomodoros = (results[2] as List<PomodoroRecord>)
           .where((p) => !p.isDeleted)
           .toList();
-      _allTimeLogs =
-          (results[3] as List<TimeLogItem>).where((l) => !l.isDeleted).toList();
+      _allTimeLogs = (results[3] as List<TimeLogItem>)
+          .where((l) => !l.isDeleted)
+          .toList();
       _isLoading = false;
     });
   }
@@ -281,8 +290,11 @@ class _RebindTagPageState extends State<RebindTagPage>
             }
           }
         }
-        await StorageService.saveTimeLogs(widget.username, _allTimeLogs,
-            sync: true);
+        await StorageService.saveTimeLogs(
+          widget.username,
+          _allTimeLogs,
+          sync: true,
+        );
       }
 
       if (!mounted) return;
@@ -304,10 +316,7 @@ class _RebindTagPageState extends State<RebindTagPage>
       await _loadData();
     } catch (e) {
       if (!mounted) return;
-      AppSnackBars.showSnackBar(
-        context,
-        SnackBar(content: Text('保存失败: $e')),
-      );
+      AppSnackBars.showSnackBar(context, SnackBar(content: Text('保存失败: $e')));
       setState(() => _isLoading = false);
     }
   }
@@ -327,8 +336,10 @@ class _RebindTagPageState extends State<RebindTagPage>
               padding: const EdgeInsets.only(right: 8),
               child: Center(
                 child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: colorScheme.primaryContainer,
                     borderRadius: BorderRadius.circular(12),
@@ -360,7 +371,8 @@ class _RebindTagPageState extends State<RebindTagPage>
             ? const Center(child: CircularProgressIndicator())
             : Padding(
                 padding: EdgeInsets.only(
-                  top: floatingGlassSettingsContentTopInset(context) +
+                  top:
+                      floatingGlassSettingsContentTopInset(context) +
                       kTextTabBarHeight,
                 ),
                 child: Column(
@@ -388,7 +400,8 @@ class _RebindTagPageState extends State<RebindTagPage>
                 ),
               ),
       ),
-      floatingActionButton: (_selectedOldTagUuids.isNotEmpty &&
+      floatingActionButton:
+          (_selectedOldTagUuids.isNotEmpty &&
               _selectedNewTagUuid != null &&
               (_selectedPomodoros.isNotEmpty || _selectedTimeLogs.isNotEmpty))
           ? FloatingGlassActionButton.extended(
@@ -462,8 +475,11 @@ class _RebindTagPageState extends State<RebindTagPage>
                   selectedColor: colorScheme.errorContainer,
                   checkmarkColor: colorScheme.onErrorContainer,
                   avatar: isSelected
-                      ? Icon(Icons.check,
-                          size: 16, color: colorScheme.onErrorContainer)
+                      ? Icon(
+                          Icons.check,
+                          size: 16,
+                          color: colorScheme.onErrorContainer,
+                        )
                       : null,
                 );
               }).toList(),
@@ -529,8 +545,11 @@ class _RebindTagPageState extends State<RebindTagPage>
                   selectedColor: colorScheme.primaryContainer,
                   checkmarkColor: colorScheme.onPrimaryContainer,
                   avatar: isSelected
-                      ? Icon(Icons.check,
-                          size: 16, color: colorScheme.onPrimaryContainer)
+                      ? Icon(
+                          Icons.check,
+                          size: 16,
+                          color: colorScheme.onPrimaryContainer,
+                        )
                       : null,
                 );
               }).toList(),
@@ -541,6 +560,7 @@ class _RebindTagPageState extends State<RebindTagPage>
   }
 
   Widget _buildFilterToolbar(ColorScheme colorScheme) {
+    final dateFormat = _cachedDateFormat('MM/dd');
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: Row(
@@ -562,7 +582,7 @@ class _RebindTagPageState extends State<RebindTagPage>
               icon: const Icon(Icons.calendar_today, size: 16),
               label: Text(
                 _dateRange != null
-                    ? '${DateFormat('MM/dd').format(_dateRange!.start)} - ${DateFormat('MM/dd').format(_dateRange!.end)}'
+                    ? '${dateFormat.format(_dateRange!.start)} - ${dateFormat.format(_dateRange!.end)}'
                     : '时间范围',
                 style: const TextStyle(fontSize: 12),
               ),
@@ -592,8 +612,10 @@ class _RebindTagPageState extends State<RebindTagPage>
                       )
                     : null,
                 isDense: true,
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
                 ),
@@ -616,8 +638,11 @@ class _RebindTagPageState extends State<RebindTagPage>
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.touch_app,
-                size: 48, color: colorScheme.onSurfaceVariant),
+            Icon(
+              Icons.touch_app,
+              size: 48,
+              color: colorScheme.onSurfaceVariant,
+            ),
             const SizedBox(height: 16),
             Text(
               '请先选择要替换的旧标签',
@@ -636,8 +661,11 @@ class _RebindTagPageState extends State<RebindTagPage>
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.check_circle_outline,
-                size: 48, color: colorScheme.onSurfaceVariant),
+            Icon(
+              Icons.check_circle_outline,
+              size: 48,
+              color: colorScheme.onSurfaceVariant,
+            ),
             const SizedBox(height: 16),
             Text(
               '没有找到包含已删除标签的番茄钟记录',
@@ -650,6 +678,7 @@ class _RebindTagPageState extends State<RebindTagPage>
         ),
       );
     }
+    final recordDateFormat = _cachedDateFormat('yyyy-MM-dd HH:mm');
 
     return Column(
       children: [
@@ -659,7 +688,8 @@ class _RebindTagPageState extends State<RebindTagPage>
           child: Row(
             children: [
               Checkbox(
-                value: _selectedPomodoros.length == records.length &&
+                value:
+                    _selectedPomodoros.length == records.length &&
                     records.isNotEmpty,
                 tristate: true,
                 onChanged: (value) => _toggleSelectAll(true),
@@ -683,20 +713,21 @@ class _RebindTagPageState extends State<RebindTagPage>
               final oldTagNames = record.tagUuids
                   .where((uuid) => _selectedOldTagUuids.contains(uuid))
                   .map((uuid) {
-                final tag = _allTags.firstWhere(
-                  (t) => t.uuid == uuid,
-                  orElse: () => PomodoroTag(
-                    uuid: uuid,
-                    name: '未知',
-                    color: '#9E9E9E',
-                    isDeleted: true,
-                    version: 0,
-                    createdAt: 0,
-                    updatedAt: 0,
-                  ),
-                );
-                return tag.name;
-              }).toList();
+                    final tag = _allTags.firstWhere(
+                      (t) => t.uuid == uuid,
+                      orElse: () => PomodoroTag(
+                        uuid: uuid,
+                        name: '未知',
+                        color: '#9E9E9E',
+                        isDeleted: true,
+                        version: 0,
+                        createdAt: 0,
+                        updatedAt: 0,
+                      ),
+                    );
+                    return tag.name;
+                  })
+                  .toList();
 
               return ListTile(
                 leading: Checkbox(
@@ -720,9 +751,9 @@ class _RebindTagPageState extends State<RebindTagPage>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      DateFormat('yyyy-MM-dd HH:mm').format(
-                          DateTime.fromMillisecondsSinceEpoch(
-                              record.startTime)),
+                      recordDateFormat.format(
+                        DateTime.fromMillisecondsSinceEpoch(record.startTime),
+                      ),
                       style: TextStyle(
                         fontSize: 12,
                         color: colorScheme.onSurfaceVariant,
@@ -739,8 +770,10 @@ class _RebindTagPageState extends State<RebindTagPage>
                   ],
                 ),
                 trailing: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
                   decoration: BoxDecoration(
                     color: colorScheme.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(4),
@@ -769,8 +802,11 @@ class _RebindTagPageState extends State<RebindTagPage>
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.touch_app,
-                size: 48, color: colorScheme.onSurfaceVariant),
+            Icon(
+              Icons.touch_app,
+              size: 48,
+              color: colorScheme.onSurfaceVariant,
+            ),
             const SizedBox(height: 16),
             Text(
               '请先选择要替换的旧标签',
@@ -789,8 +825,11 @@ class _RebindTagPageState extends State<RebindTagPage>
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.check_circle_outline,
-                size: 48, color: colorScheme.onSurfaceVariant),
+            Icon(
+              Icons.check_circle_outline,
+              size: 48,
+              color: colorScheme.onSurfaceVariant,
+            ),
             const SizedBox(height: 16),
             Text(
               '没有找到包含已删除标签的时间日志',
@@ -803,6 +842,7 @@ class _RebindTagPageState extends State<RebindTagPage>
         ),
       );
     }
+    final recordDateFormat = _cachedDateFormat('yyyy-MM-dd HH:mm');
 
     return Column(
       children: [
@@ -836,24 +876,26 @@ class _RebindTagPageState extends State<RebindTagPage>
               final oldTagNames = log.tagUuids
                   .where((uuid) => _selectedOldTagUuids.contains(uuid))
                   .map((uuid) {
-                final tag = _allTags.firstWhere(
-                  (t) => t.uuid == uuid,
-                  orElse: () => PomodoroTag(
-                    uuid: uuid,
-                    name: '未知',
-                    color: '#9E9E9E',
-                    isDeleted: true,
-                    version: 0,
-                    createdAt: 0,
-                    updatedAt: 0,
-                  ),
-                );
-                return tag.name;
-              }).toList();
+                    final tag = _allTags.firstWhere(
+                      (t) => t.uuid == uuid,
+                      orElse: () => PomodoroTag(
+                        uuid: uuid,
+                        name: '未知',
+                        color: '#9E9E9E',
+                        isDeleted: true,
+                        version: 0,
+                        createdAt: 0,
+                        updatedAt: 0,
+                      ),
+                    );
+                    return tag.name;
+                  })
+                  .toList();
 
               final duration = DateTime.fromMillisecondsSinceEpoch(log.endTime)
                   .difference(
-                      DateTime.fromMillisecondsSinceEpoch(log.startTime))
+                    DateTime.fromMillisecondsSinceEpoch(log.startTime),
+                  )
                   .inMinutes;
 
               return ListTile(
@@ -878,8 +920,9 @@ class _RebindTagPageState extends State<RebindTagPage>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      DateFormat('yyyy-MM-dd HH:mm').format(
-                          DateTime.fromMillisecondsSinceEpoch(log.startTime)),
+                      recordDateFormat.format(
+                        DateTime.fromMillisecondsSinceEpoch(log.startTime),
+                      ),
                       style: TextStyle(
                         fontSize: 12,
                         color: colorScheme.onSurfaceVariant,
@@ -896,8 +939,10 @@ class _RebindTagPageState extends State<RebindTagPage>
                   ],
                 ),
                 trailing: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
                   decoration: BoxDecoration(
                     color: colorScheme.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(4),

@@ -103,17 +103,21 @@ void main() {
       );
 
       expect(
-        beforeSpringForward.computeRescheduledDueDate(
-          dateOnly,
-          target: OverdueRescheduleTarget.tomorrow,
-        ).dueDate,
+        beforeSpringForward
+            .computeRescheduledDueDate(
+              dateOnly,
+              target: OverdueRescheduleTarget.tomorrow,
+            )
+            .dueDate,
         DateTime(2026, 3, 8, 23, 59),
       );
       expect(
-        beforeSpringForward.computeRescheduledDueDate(
-          timed,
-          target: OverdueRescheduleTarget.tomorrow,
-        ).dueDate,
+        beforeSpringForward
+            .computeRescheduledDueDate(
+              timed,
+              target: OverdueRescheduleTarget.tomorrow,
+            )
+            .dueDate,
         DateTime(2026, 3, 8, 18),
       );
     });
@@ -296,16 +300,12 @@ void main() {
           dueDate: DateTime(2026, 11, 1, 23, 55),
         );
 
-        await StorageService.saveTodos(
-          'dst_conflict_test',
-          [first],
-          sync: false,
-        );
-        await StorageService.saveTodos(
-          'dst_conflict_test',
-          [second],
-          sync: false,
-        );
+        await StorageService.saveTodos('dst_conflict_test', [
+          first,
+        ], sync: false);
+        await StorageService.saveTodos('dst_conflict_test', [
+          second,
+        ], sync: false);
 
         final saved = await StorageService.getTodos(
           'dst_conflict_test',

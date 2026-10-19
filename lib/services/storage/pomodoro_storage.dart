@@ -51,24 +51,20 @@ class PomodoroStorage {
 
     final batch = db.batch();
     for (final item in result) {
-      batch.insert(
-        'time_logs',
-        {
-          'uuid': item.id,
-          'title': item.title,
-          'tag_uuids': jsonEncode(item.tagUuids),
-          'start_time': item.startTime,
-          'end_time': item.endTime,
-          'remark': item.remark,
-          'is_deleted': item.isDeleted ? 1 : 0,
-          'version': item.version,
-          'updated_at': item.updatedAt,
-          'created_at': item.createdAt,
-          'device_id': item.deviceId ?? '',
-          'team_uuid': item.teamUuid ?? '',
-        },
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
+      batch.insert('time_logs', {
+        'uuid': item.id,
+        'title': item.title,
+        'tag_uuids': jsonEncode(item.tagUuids),
+        'start_time': item.startTime,
+        'end_time': item.endTime,
+        'remark': item.remark,
+        'is_deleted': item.isDeleted ? 1 : 0,
+        'version': item.version,
+        'updated_at': item.updatedAt,
+        'created_at': item.createdAt,
+        'device_id': item.deviceId ?? '',
+        'team_uuid': item.teamUuid ?? '',
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
     }
     if (result.isNotEmpty) {
       await batch.commit(noResult: true);
@@ -83,6 +79,8 @@ class PomodoroStorage {
   static Future<List<TimeLogItem>> getTimeLogs(
     String username, {
     int? limit,
+    DateTime? from,
+    DateTime? to,
     required TimeLogMigrationSaver saveMigratedTimeLogs,
   }) async {
     final prefs = await SharedPreferences.getInstance();
@@ -100,7 +98,7 @@ class PomodoroStorage {
         }
 
         if (legacyJsonList.isNotEmpty) {
-//           debugPrint("🚀 发现未迁移专注记录，正在执行迁移...");
+          //           debugPrint("🚀 发现未迁移专注记录，正在执行迁移...");
           final legacyItems = <TimeLogItem>[];
           for (var e in legacyJsonList) {
             try {
@@ -110,14 +108,15 @@ class PomodoroStorage {
           await saveMigratedTimeLogs(username, legacyItems, sync: false);
           await prefs.remove("${_timeLogsKey}_$username");
           await prefs.remove(_timeLogsKey);
-//           debugPrint("✅ 专注记录迁移完成并已物理清理。");
+          //           debugPrint("✅ 专注记录迁移完成并已物理清理。");
         }
         await prefs.setBool(migrationKey, true);
       } else {
         final db = await dbHelper.databaseForUser(username);
-        final countRows =
-            await db.rawQuery('SELECT COUNT(*) as cnt FROM time_logs');
-        final hasSqlRows = (countRows.first['cnt'] as int? ?? 0) > 0;
+        final existingRows = await db.rawQuery(
+          'SELECT 1 FROM time_logs LIMIT 1',
+        );
+        final hasSqlRows = existingRows.isNotEmpty;
         final legacyJsonList =
             prefs.getStringList("${_timeLogsKey}_$username") ?? [];
         if (!hasSqlRows && legacyJsonList.isNotEmpty) {
@@ -129,24 +128,68 @@ class PomodoroStorage {
           }
           if (legacyItems.isNotEmpty) {
             await saveMigratedTimeLogs(username, legacyItems, sync: false);
-//             debugPrint("✅ 专注记录从 Prefs 修复回 SQL: ${legacyItems.length} 条");
+            //             debugPrint("✅ 专注记录从 Prefs 修复回 SQL: ${legacyItems.length} 条");
           }
         }
       }
 
       final db = await dbHelper.databaseForUser(username);
+      final timeConditions = <String>[];
+      final timeArgs = <Object?>[];
+      if (from != null) {
+        timeConditions.add('start_time >= ?');
+        timeArgs.add(from.millisecondsSinceEpoch);
+      }
+      if (to != null) {
+        timeConditions.add('start_time < ?');
+        timeArgs.add(to.millisecondsSinceEpoch);
+      }
+      final where = <String>[];
+      final whereArgs = <Object?>[];
+      if (timeConditions.isEmpty) {
+        where.add('is_deleted = 0');
+      } else {
+        final timeRange = timeConditions.join(' AND ');
+        where.add(
+          '((is_deleted = 0 AND ($timeRange)) OR '
+          '(is_deleted IS NULL AND ($timeRange)))',
+        );
+        whereArgs
+          ..addAll(timeArgs)
+          ..addAll(timeArgs);
+      }
       final List<Map<String, dynamic>> maps = await db.query(
         'time_logs',
-        where: 'is_deleted = 0',
+        where: where.join(' AND '),
+        whereArgs: whereArgs,
         orderBy: 'start_time DESC',
         limit: limit,
       );
 
       return maps.map(_timeLogFromDbMap).toList();
     } catch (e) {
-//       debugPrint("⚠️ TimeLogs SQL 异常: $e");
+      //       debugPrint("⚠️ TimeLogs SQL 异常: $e");
       final list = prefs.getStringList("${_timeLogsKey}_$username") ?? [];
-      return list.map((e) => TimeLogItem.fromJson(jsonDecode(e))).toList();
+      final items = list
+          .map((e) => TimeLogItem.fromJson(jsonDecode(e)))
+          .toList();
+      if (from == null && to == null) return items;
+      final fromMs = from?.millisecondsSinceEpoch;
+      final toMs = to?.millisecondsSinceEpoch;
+      final filtered =
+          items
+              .where(
+                (item) =>
+                    !item.isDeleted &&
+                    (fromMs == null || item.startTime >= fromMs) &&
+                    (toMs == null || item.startTime < toMs),
+              )
+              .toList()
+            ..sort((a, b) => b.startTime.compareTo(a.startTime));
+      if (limit != null && limit >= 0 && filtered.length > limit) {
+        return filtered.take(limit).toList();
+      }
+      return filtered;
     }
   }
 
@@ -159,9 +202,11 @@ class PomodoroStorage {
       endTime: _parseNullableInt(m['end_time']) ?? 0,
       remark: (m['notes'] ?? m['remark'])?.toString(),
       version: _parseNullableInt(m['version']) ?? 1,
-      updatedAt: _parseNullableInt(m['updated_at']) ??
+      updatedAt:
+          _parseNullableInt(m['updated_at']) ??
           DateTime.now().millisecondsSinceEpoch,
-      createdAt: _parseNullableInt(m['created_at']) ??
+      createdAt:
+          _parseNullableInt(m['created_at']) ??
           DateTime.now().millisecondsSinceEpoch,
       isDeleted: (m['is_deleted'] == 1),
       deviceId: _emptyToNull(m['device_id']),

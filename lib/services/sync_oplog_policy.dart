@@ -36,6 +36,22 @@ class SyncOplogResolution {
 class SyncOplogPolicy {
   SyncOplogPolicy._();
 
+  /// User edits waiting to upload must survive subsequent automatic rolling.
+  /// Maintenance can be recomputed after the user's operation is acknowledged.
+  static void collectTodoPayload(
+    Map<String, Map<String, dynamic>> payloads,
+    String uuid,
+    Map<String, dynamic> incoming,
+  ) {
+    final current = payloads[uuid];
+    if (current != null &&
+        current['_recurrence_maintenance'] is! Map &&
+        incoming['_recurrence_maintenance'] is Map) {
+      return;
+    }
+    payloads[uuid] = incoming;
+  }
+
   static SyncOplogResolution resolveRequestSnapshot({
     required Iterable<SyncOplogEntry> requestSnapshot,
     required Set<String> blockingConflictUuids,
@@ -83,7 +99,8 @@ class SyncOplogPolicy {
     final requestIds = requestSnapshot.map((entry) => entry.id).toSet();
     return currentPending
         .where(
-            (entry) => entry.table == 'todos' && !requestIds.contains(entry.id))
+          (entry) => entry.table == 'todos' && !requestIds.contains(entry.id),
+        )
         .map((entry) => entry.uuid)
         .toSet();
   }
@@ -92,6 +109,5 @@ class SyncOplogPolicy {
     String uuid, {
     required Set<String> forceFlushUuids,
     required Set<String> inFlightMutationUuids,
-  }) =>
-      forceFlushUuids.contains(uuid) || inFlightMutationUuids.contains(uuid);
+  }) => forceFlushUuids.contains(uuid) || inFlightMutationUuids.contains(uuid);
 }

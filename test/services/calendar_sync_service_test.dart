@@ -110,15 +110,9 @@ void main() {
     });
 
     test('does not fabricate an event for a time-TBD fixed schedule', () {
-      final item = FixedScheduleItem(
-        title: '时间待定会议',
-        date: '2026-07-22',
-      );
+      final item = FixedScheduleItem(title: '时间待定会议', date: '2026-07-22');
 
-      expect(
-        CalendarSyncService.fixedScheduleToEntryForTest(item),
-        isNull,
-      );
+      expect(CalendarSyncService.fixedScheduleToEntryForTest(item), isNull);
     });
   });
 }

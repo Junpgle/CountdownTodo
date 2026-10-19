@@ -111,41 +111,61 @@ WITH raw AS (
         await DatabaseHelper.instance.databaseForUser(username);
     final history = await db.transaction((txn) async {
       final args = [now.millisecondsSinceEpoch];
-      final rows = await txn.rawQuery('''$_cte
- SELECT uuid, title, group_id, seconds, ended_at FROM completed
- WHERE invalid_count = 0 AND seconds > 0
- ORDER BY ended_at DESC, uuid LIMIT $maxSamples
+      final resultRows = await txn.rawQuery('''$_cte,
+ sample_rows AS (
+   SELECT uuid, title, group_id, seconds, ended_at FROM completed
+   WHERE invalid_count = 0 AND seconds > 0
+   ORDER BY ended_at DESC, uuid LIMIT $maxSamples
+ ), diagnostics AS (
+   SELECT
+     COALESCE(SUM(CASE WHEN invalid_count > 0 THEN 1 ELSE 0 END), 0) AS incomplete,
+     COALESCE(SUM(CASE WHEN invalid_count = 0 AND COALESCE(seconds, 0) = 0
+       THEN 1 ELSE 0 END), 0) AS no_actual
+   FROM completed
+ ), sample_tags AS (
+   SELECT DISTINCT a.todo_id, a.tags
+   FROM attributed a JOIN sample_rows s ON s.uuid = a.todo_id
+   WHERE a.valid = 1 AND a.tags IS NOT NULL AND a.tags != ''
+ )
+ SELECT 0 AS result_type, uuid, title, group_id, seconds, ended_at,
+   NULL AS incomplete, NULL AS no_actual, NULL AS todo_id, NULL AS tags
+ FROM sample_rows
+ UNION ALL
+ SELECT 1, NULL, NULL, NULL, NULL, NULL, incomplete, no_actual, NULL, NULL
+ FROM diagnostics
+ UNION ALL
+ SELECT 2, NULL, NULL, NULL, NULL, NULL, NULL, NULL, todo_id, tags
+ FROM sample_tags
+ ORDER BY result_type ASC, ended_at DESC, uuid ASC, todo_id ASC, tags ASC
 ''', args);
-      final diagnostics = (await txn.rawQuery('''$_cte
- SELECT COALESCE(SUM(CASE WHEN invalid_count > 0 THEN 1 ELSE 0 END), 0) AS incomplete,
-   COALESCE(SUM(CASE WHEN invalid_count = 0 AND COALESCE(seconds, 0) = 0
-     THEN 1 ELSE 0 END), 0) AS no_actual FROM completed
-''', args)).single;
+
+      final rows = <Map<String, Object?>>[];
       final tags = <String, Set<String>>{};
-      if (rows.isNotEmpty) {
-        final ids = rows.map((r) => r['uuid'] as String).toList();
-        final tagRows = await txn.rawQuery(
-          '''$_cte
- SELECT DISTINCT todo_id, tags FROM attributed
- WHERE valid = 1 AND todo_id IN (${List.filled(ids.length, '?').join(',')})
-   AND tags IS NOT NULL AND tags != ''
-''',
-          [...args, ...ids],
-        );
-        for (final row in tagRows) {
-          final set = tags.putIfAbsent(row['todo_id'] as String, () => {});
-          try {
-            final decoded = jsonDecode(row['tags'] as String);
-            if (decoded is List) {
-              set.addAll(
-                decoded.whereType<String>().where((id) => id.isNotEmpty),
-              );
+      Map<String, Object?>? diagnostics;
+      for (final row in resultRows) {
+        switch (row['result_type']) {
+          case 0:
+            rows.add(row);
+          case 1:
+            diagnostics = row;
+          case 2:
+            final todoId = row['todo_id'] as String;
+            final encodedTags = row['tags'] as String;
+            final set = tags.putIfAbsent(todoId, () => {});
+            try {
+              final decoded = jsonDecode(encodedTags);
+              if (decoded is List) {
+                set.addAll(
+                  decoded.whereType<String>().where((id) => id.isNotEmpty),
+                );
+              }
+            } catch (_) {
+              // Invalid tag metadata cannot create a category match.
             }
-          } catch (_) {
-            // Invalid tag metadata cannot create a category match.
-          }
         }
       }
+
+      final summary = diagnostics!;
       await checkAccount(username);
       return TimeEstimationHistory(
         rows.map(
@@ -158,8 +178,8 @@ WITH raw AS (
             tagIds: tags[row['uuid']] ?? {},
           ),
         ),
-        incompleteCount: (diagnostics['incomplete'] as num).toInt(),
-        noActualCount: (diagnostics['no_actual'] as num).toInt(),
+        incompleteCount: (summary['incomplete'] as num).toInt(),
+        noActualCount: (summary['no_actual'] as num).toInt(),
       );
     }, exclusive: false);
     await checkAccount(username);

@@ -39,29 +39,37 @@ class WidgetSnapshot {
       updatedAt: json['updatedAt'] != null
           ? DateTime.tryParse(json['updatedAt'] as String) ?? DateTime.now()
           : DateTime.now(),
-      countdowns: (json['countdowns'] as List<dynamic>?)
-              ?.map((e) =>
-                  WidgetCountdownItem.fromJson(e as Map<String, dynamic>))
+      countdowns:
+          (json['countdowns'] as List<dynamic>?)
+              ?.map(
+                (e) => WidgetCountdownItem.fromJson(e as Map<String, dynamic>),
+              )
               .toList() ??
           [],
-      todos: (json['todos'] as List<dynamic>?)
+      todos:
+          (json['todos'] as List<dynamic>?)
               ?.map((e) => WidgetTodoItem.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [],
-      courses: (json['courses'] as List<dynamic>?)
+      courses:
+          (json['courses'] as List<dynamic>?)
               ?.map((e) => WidgetCourseItem.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [],
       focus: json['focus'] != null
           ? WidgetFocusState.fromJson(json['focus'] as Map<String, dynamic>)
           : const WidgetFocusState(),
-      recurrenceSeries: (json['recurrenceSeries'] as List<dynamic>?)
-              ?.map((e) => WidgetRecurrenceSeriesItem.fromJson(
-                    e as Map<String, dynamic>,
-                  ))
+      recurrenceSeries:
+          (json['recurrenceSeries'] as List<dynamic>?)
+              ?.map(
+                (e) => WidgetRecurrenceSeriesItem.fromJson(
+                  e as Map<String, dynamic>,
+                ),
+              )
               .toList() ??
           [],
-      habits: (json['habits'] as List<dynamic>?)
+      habits:
+          (json['habits'] as List<dynamic>?)
               ?.map((e) => WidgetHabitItem.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [],
@@ -85,6 +93,8 @@ class WidgetSnapshot {
 /// 金额统一使用人民币分，平台侧只负责展示，录入和数据变更仍由 Flutter
 /// 记账模块处理。
 class WidgetFinanceSummary {
+  static final RegExp _amountGroupingPattern = RegExp(r'(?<=\d)(?=(\d{3})+$)');
+
   final String monthLabel;
   final int incomeMinor;
   final int netExpenseMinor;
@@ -163,7 +173,7 @@ class WidgetFinanceSummary {
     final parts = amount.split('.');
     final whole = parts.first;
     final grouped = whole.replaceAllMapped(
-      RegExp(r'(?<=\d)(?=(\d{3})+$)'),
+      _amountGroupingPattern,
       (match) => ',',
     );
     return '¥$grouped.${parts.last}';
@@ -223,7 +233,8 @@ class WidgetHabitItem {
       targetValue: (json['targetValue'] as num?)?.toDouble() ?? 0,
       unit: json['unit'] as String? ?? '',
       goalMet: json['goalMet'] as bool? ?? false,
-      quickValues: (json['quickValues'] as List<dynamic>?)
+      quickValues:
+          (json['quickValues'] as List<dynamic>?)
               ?.map((e) => (e as num).toDouble())
               .toList() ??
           const [],
@@ -302,10 +313,13 @@ class WidgetRecurrenceSeriesItem {
       overdueCount: (json['overdueCount'] as num?)?.toInt() ?? 0,
       elapsedCount: (json['elapsedCount'] as num?)?.toInt() ?? 0,
       totalCount: (json['totalCount'] as num?)?.toInt(),
-      occurrences: (json['occurrences'] as List<dynamic>?)
-              ?.map((e) => WidgetRecurrenceOccurrenceItem.fromJson(
-                    e as Map<String, dynamic>,
-                  ))
+      occurrences:
+          (json['occurrences'] as List<dynamic>?)
+              ?.map(
+                (e) => WidgetRecurrenceOccurrenceItem.fromJson(
+                  e as Map<String, dynamic>,
+                ),
+              )
               .toList() ??
           [],
     );
@@ -340,9 +354,7 @@ class WidgetRecurrenceOccurrenceItem {
     };
   }
 
-  factory WidgetRecurrenceOccurrenceItem.fromJson(
-    Map<String, dynamic> json,
-  ) {
+  factory WidgetRecurrenceOccurrenceItem.fromJson(Map<String, dynamic> json) {
     return WidgetRecurrenceOccurrenceItem(
       occurrenceId: json['occurrenceId'] as String? ?? '',
       startAtMs: (json['startAtMs'] as num?)?.toInt() ?? 0,

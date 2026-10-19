@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
+
 import 'package:flutter/material.dart';
+
 import '../models.dart';
 import '../storage_service.dart';
 import '../services/api_service.dart';
@@ -12,13 +14,25 @@ import '../services/pomodoro_service.dart';
 import '../services/conflict_visibility_service.dart';
 import '../utils/page_transitions.dart';
 import '../widgets/floating_glass_control.dart';
+
 import 'package:intl/intl.dart';
+
 import '../widgets/todo_section_widget.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
 import '../features/habits/models/habit_goal.dart';
 import '../features/habits/models/habit_goal_rule.dart';
 import '../services/storage/habit_storage.dart';
 import '../utils/json_value_parser.dart';
+
+final Map<(String?, String), DateFormat> _conflictInboxDateFormats = {};
+
+DateFormat _conflictInboxDateFormat(String pattern) {
+  final locale = Intl.defaultLocale;
+  return _conflictInboxDateFormats.putIfAbsent((
+    locale,
+    pattern,
+  ), () => DateFormat(pattern, locale));
+}
 
 enum _ConflictFilter { all, time, other }
 
@@ -40,6 +54,10 @@ class ConflictInboxScreen extends StatefulWidget {
 
 class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
   List<dynamic> _conflictItems = [];
+  List<dynamic> _timeConflictItems = [];
+  List<dynamic> _otherConflictItems = [];
+  List<dynamic> _ghostConflictItems = [];
+  Map<String, Map<String, dynamic>> _syncConflictVersionsByItemId = {};
   bool _isLoading = true;
   bool _isScanning = false;
   bool _isApplyingScheduleFix = false;
@@ -66,8 +84,35 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
   @override
   void initState() {
     super.initState();
+    _cacheSyncConflictVersions();
     StorageService.scopedDataRefreshNotifier.addListener(_onDataRefreshed);
     _loadConflicts();
+  }
+
+  @override
+  void didUpdateWidget(covariant ConflictInboxScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.syncConflicts, widget.syncConflicts)) {
+      _cacheSyncConflictVersions();
+      _ghostConflictItems = _collectGhostConflictItems(_conflictItems);
+    }
+  }
+
+  void _cacheSyncConflictVersions() {
+    final conflicts = widget.syncConflicts;
+    if (conflicts == null || conflicts.isEmpty) {
+      _syncConflictVersionsByItemId = {};
+      return;
+    }
+
+    final versionsByItemId = <String, Map<String, dynamic>>{};
+    for (final conflict in conflicts) {
+      final itemId = conflict.item['uuid'] ?? conflict.item['id'];
+      if (itemId is String && itemId.isNotEmpty) {
+        versionsByItemId.putIfAbsent(itemId, () => conflict.conflictWith);
+      }
+    }
+    _syncConflictVersionsByItemId = versionsByItemId;
   }
 
   @override
@@ -114,8 +159,9 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
       if (!mounted || loadGeneration != _loadGeneration) return;
 
       final List<dynamic> items = [];
-      items
-          .addAll(todos.where(ConflictVisibilityService.isVisibleTodoConflict));
+      items.addAll(
+        todos.where(ConflictVisibilityService.isVisibleTodoConflict),
+      );
       items.addAll(
         groups.where(ConflictVisibilityService.isVisibleTodoGroupConflict),
       );
@@ -133,27 +179,41 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
         int timeA = (a is TodoItem)
             ? a.updatedAt
             : (a is TodoGroup)
-                ? a.updatedAt
-                : (a is CountdownItem)
-                    ? a.updatedAt
-                    : (a is HabitGoal)
-                        ? a.updatedAt
-                        : (a as HabitGoalRuleRevision).updatedAt;
+            ? a.updatedAt
+            : (a is CountdownItem)
+            ? a.updatedAt
+            : (a is HabitGoal)
+            ? a.updatedAt
+            : (a as HabitGoalRuleRevision).updatedAt;
         int timeB = (b is TodoItem)
             ? b.updatedAt
             : (b is TodoGroup)
-                ? b.updatedAt
-                : (b is CountdownItem)
-                    ? b.updatedAt
-                    : (b is HabitGoal)
-                        ? b.updatedAt
-                        : (b as HabitGoalRuleRevision).updatedAt;
+            ? b.updatedAt
+            : (b is CountdownItem)
+            ? b.updatedAt
+            : (b is HabitGoal)
+            ? b.updatedAt
+            : (b as HabitGoalRuleRevision).updatedAt;
         return timeB.compareTo(timeA);
       });
+
+      final timeConflictItems = <dynamic>[];
+      final otherConflictItems = <dynamic>[];
+      for (final item in items) {
+        if (_isLocalScheduleConflict(item)) {
+          timeConflictItems.add(item);
+        } else {
+          otherConflictItems.add(item);
+        }
+      }
+      final ghostConflictItems = _collectGhostConflictItems(items);
 
       if (mounted) {
         setState(() {
           _conflictItems = items;
+          _timeConflictItems = timeConflictItems;
+          _otherConflictItems = otherConflictItems;
+          _ghostConflictItems = ghostConflictItems;
           _isLoading = false;
         });
       }
@@ -202,14 +262,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
 
     final persisted = _conflictData(item);
     if (persisted != null && persisted.isNotEmpty) {
-      final conflictType = persisted['conflict_type']?.toString();
-      final conflictKind = persisted['conflict_kind']?.toString();
-      final source = persisted['source']?.toString();
-      final isPersistedVersionConflict = conflictType == 'version_conflict' ||
-          conflictKind == 'version' ||
-          (conflictType != 'local_schedule_conflict' &&
-              source != 'local_detector');
-      if (isPersistedVersionConflict) {
+      if (ConflictVisibilityService.isVersionConflictData(persisted)) {
         return persisted;
       }
     }
@@ -246,15 +299,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
       return item.conflictData;
     }
 
-    if (widget.syncConflicts == null) return null;
-
-    for (final c in widget.syncConflicts!) {
-      final conflictItemId = c.item['uuid'] ?? c.item['id'] ?? '';
-      if (conflictItemId == itemId) {
-        return c.conflictWith;
-      }
-    }
-    return null;
+    return _syncConflictVersionsByItemId[itemId];
   }
 
   Map<String, dynamic>? _conflictData(dynamic item) {
@@ -267,10 +312,9 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
   }
 
   bool _isLocalScheduleConflict(dynamic item) {
-    final data = _conflictData(item);
-    if (data == null) return false;
-    return data['conflict_type'] == 'local_schedule_conflict' ||
-        data['source'] == 'local_detector';
+    return ConflictVisibilityService.isLocalScheduleConflictData(
+      _conflictData(item),
+    );
   }
 
   String _conflictLabel(dynamic item) {
@@ -372,12 +416,6 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     return deduped.values.toList();
   }
 
-  List<dynamic> get _timeConflictItems =>
-      _conflictItems.where(_isLocalScheduleConflict).toList();
-
-  List<dynamic> get _otherConflictItems =>
-      _conflictItems.where((item) => !_isLocalScheduleConflict(item)).toList();
-
   List<dynamic> get _visibleConflictItems {
     switch (_selectedFilter) {
       case _ConflictFilter.time:
@@ -387,6 +425,29 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
       case _ConflictFilter.all:
         return _conflictItems;
     }
+  }
+
+  Map<String, dynamic> _visibleConflictItemsById() {
+    final itemsById = <String, dynamic>{};
+    for (final item in _visibleConflictItems) {
+      itemsById.putIfAbsent(_getConflictId(item), () => item);
+    }
+    return itemsById;
+  }
+
+  List<dynamic> _collectGhostConflictItems(Iterable<dynamic> items) {
+    final ghostItems = <dynamic>[];
+    for (final item in items) {
+      if (item is! TodoItem) continue;
+      final data = _findServerVersion(item);
+      if ((data == null || data.isEmpty) &&
+          !ConflictVisibilityService.isLocalScheduleConflictData(
+            _conflictData(item),
+          )) {
+        ghostItems.add(item);
+      }
+    }
+    return ghostItems;
   }
 
   String? _itemId(dynamic item) {
@@ -421,8 +482,10 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     return {};
   }
 
-  Future<bool> _keepLocalAndQueueSync(dynamic item,
-      {bool syncNow = true}) async {
+  Future<bool> _keepLocalAndQueueSync(
+    dynamic item, {
+    bool syncNow = true,
+  }) async {
     final localJson = _itemToJson(item);
     final table = _resolveTable(item);
     final uuid = (localJson['uuid'] ?? localJson['id'] ?? '').toString();
@@ -622,21 +685,23 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                 ] else ...[
                   _buildAppBarAction(
                     icon: Icons.select_all_rounded,
-                    onTap: _selectedConflictIds.length ==
+                    onTap:
+                        _selectedConflictIds.length ==
                             _visibleConflictItems.length
                         ? () => setState(() => _selectedConflictIds.clear())
                         : () => setState(() {
-                              _selectedConflictIds.clear();
-                              for (final item in _visibleConflictItems) {
-                                _selectedConflictIds.add(_getConflictId(item));
-                              }
-                            }),
-                    tooltip: _selectedConflictIds.length ==
+                            _selectedConflictIds.clear();
+                            for (final item in _visibleConflictItems) {
+                              _selectedConflictIds.add(_getConflictId(item));
+                            }
+                          }),
+                    tooltip:
+                        _selectedConflictIds.length ==
                             _visibleConflictItems.length
                         ? '取消全选'
                         : '全选',
                   ),
-                ]
+                ],
               ],
             ),
           ),
@@ -697,10 +762,12 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
       await AiTodoChatLauncher.open(
         context,
         username: widget.username,
-        todos:
-            (results[0] as List<TodoItem>).where((t) => !t.isDeleted).toList(),
-        todoGroups:
-            (results[1] as List<TodoGroup>).where((g) => !g.isDeleted).toList(),
+        todos: (results[0] as List<TodoItem>)
+            .where((t) => !t.isDeleted)
+            .toList(),
+        todoGroups: (results[1] as List<TodoGroup>)
+            .where((g) => !g.isDeleted)
+            .toList(),
         courses: (results[2] as List<CourseItem>)
             .where((c) => !c.isDeleted)
             .toList(),
@@ -717,9 +784,16 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
         onTodosBatchAction: (inserted, updated) async {
           final allTodos = await StorageService.getTodos(widget.username);
           final merged = AiTodoActionExecutor.mergeTodoUpdates(
-              allTodos, inserted, updated);
+            allTodos,
+            inserted,
+            updated,
+          );
           await StorageService.saveTodos(widget.username, merged);
-          await _loadConflicts();
+          try {
+            await _loadConflicts();
+          } catch (error) {
+            debugPrint('AI todo conflict refresh failed after save: $error');
+          }
         },
       );
     } catch (e) {
@@ -787,10 +861,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
           child: Row(
             children: [
               // 左栏：列表
-              SizedBox(
-                width: 380,
-                child: _buildConflictList(isDark),
-              ),
+              SizedBox(width: 380, child: _buildConflictList(isDark)),
               // 分割线
               VerticalDivider(
                 width: 1,
@@ -798,9 +869,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                 color: isDark ? Colors.white10 : Colors.black12,
               ),
               // 右栏：详情
-              Expanded(
-                child: _buildDetailPane(isDark),
-              ),
+              Expanded(child: _buildDetailPane(isDark)),
             ],
           ),
         ),
@@ -914,12 +983,14 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
               child: FilledButton.icon(
                 onPressed: () => _batchResolveGhostConflicts([item]),
                 icon: const Icon(Icons.flash_on_rounded),
-                label: const Text('立即修复并同步',
-                    style:
-                        TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                label: const Text(
+                  '立即修复并同步',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
                 style: FilledButton.styleFrom(
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16)),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
                 ),
               ),
             ),
@@ -937,8 +1008,9 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     bool center = false,
   }) {
     return Column(
-      crossAxisAlignment:
-          center ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+      crossAxisAlignment: center
+          ? CrossAxisAlignment.center
+          : CrossAxisAlignment.start,
       children: [
         Container(
           padding: const EdgeInsets.all(12),
@@ -946,8 +1018,11 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
             color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
             shape: BoxShape.circle,
           ),
-          child: Icon(icon,
-              color: Theme.of(context).colorScheme.primary, size: 32),
+          child: Icon(
+            icon,
+            color: Theme.of(context).colorScheme.primary,
+            size: 32,
+          ),
         ),
         const SizedBox(height: 20),
         Text(
@@ -1027,18 +1102,20 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
       fallbackDecoration: BoxDecoration(
         color: isSelected || isBatchSelected
             ? (isDark
-                ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.15)
-                : Theme.of(context).colorScheme.primary.withValues(alpha: 0.1))
+                  ? Theme.of(context).colorScheme.primary
+                        .withValues(alpha: 0.15)
+                  : Theme.of(context).colorScheme.primary
+                        .withValues(alpha: 0.1))
             : (isDark
-                ? Colors.white.withValues(alpha: 0.03)
-                : Colors.white.withValues(alpha: 0.6)),
+                  ? Colors.white.withValues(alpha: 0.03)
+                  : Colors.white.withValues(alpha: 0.6)),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: isSelected || isBatchSelected
               ? Theme.of(context).colorScheme.primary
               : (isDark
-                  ? Colors.white.withValues(alpha: 0.05)
-                  : Colors.black.withValues(alpha: 0.05)),
+                    ? Colors.white.withValues(alpha: 0.05)
+                    : Colors.black.withValues(alpha: 0.05)),
           width: isSelected || isBatchSelected ? 1.5 : 1,
         ),
       ),
@@ -1125,16 +1202,16 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                       runSpacing: 4,
                       children: [
                         _buildMiniBadge(
-                            _conflictLabel(item),
-                            conflictColor.withValues(alpha: 0.1),
-                            conflictColor),
+                          _conflictLabel(item),
+                          conflictColor.withValues(alpha: 0.1),
+                          conflictColor,
+                        ),
                         _buildMiniBadge(
-                            _relationLabel(item),
-                            Theme.of(context)
-                                .colorScheme
-                                .primary
-                                .withValues(alpha: 0.1),
-                            Theme.of(context).colorScheme.primary),
+                          _relationLabel(item),
+                          Theme.of(context).colorScheme.primary
+                              .withValues(alpha: 0.1),
+                          Theme.of(context).colorScheme.primary,
+                        ),
                       ],
                     ),
                   ],
@@ -1199,10 +1276,9 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                         borderRadius: BorderRadius.circular(12),
                       ),
                       side: BorderSide(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .primary
-                              .withValues(alpha: 0.3)),
+                        color: Theme.of(context).colorScheme.primary
+                            .withValues(alpha: 0.3),
+                      ),
                     ),
                   ),
                 ),
@@ -1219,7 +1295,8 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                         borderRadius: BorderRadius.circular(12),
                       ),
                       side: BorderSide(
-                          color: Colors.orange.withValues(alpha: 0.3)),
+                        color: Colors.orange.withValues(alpha: 0.3),
+                      ),
                     ),
                   ),
                 ),
@@ -1285,10 +1362,9 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                   side: BorderSide(
-                      color: Theme.of(context)
-                          .colorScheme
-                          .primary
-                          .withValues(alpha: 0.3)),
+                    color: Theme.of(context).colorScheme.primary
+                        .withValues(alpha: 0.3),
+                  ),
                 ),
               ),
               const SizedBox(width: 8),
@@ -1343,8 +1419,9 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
           decoration: BoxDecoration(
             color: Colors.orangeAccent.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(20),
-            border:
-                Border.all(color: Colors.orangeAccent.withValues(alpha: 0.18)),
+            border: Border.all(
+              color: Colors.orangeAccent.withValues(alpha: 0.18),
+            ),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1357,29 +1434,43 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                       color: Colors.orangeAccent.withValues(alpha: 0.15),
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(Icons.radar_rounded,
-                        size: 20, color: Colors.orangeAccent),
+                    child: const Icon(
+                      Icons.radar_rounded,
+                      size: 20,
+                      color: Colors.orangeAccent,
+                    ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(message,
-                            style: const TextStyle(
-                                fontSize: 14, fontWeight: FontWeight.bold)),
+                        Text(
+                          message,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                         const SizedBox(height: 2),
-                        Text('已扫描 $current / $total',
-                            style: TextStyle(
-                                fontSize: 12, color: Colors.grey.shade600)),
+                        Text(
+                          '已扫描 $current / $total',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
                       ],
                     ),
                   ),
-                  Text('$progress%',
-                      style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w900,
-                          color: Colors.orangeAccent)),
+                  Text(
+                    '$progress%',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w900,
+                      color: Colors.orangeAccent,
+                    ),
+                  ),
                 ],
               ),
               const SizedBox(height: 16),
@@ -1389,8 +1480,9 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                   value: progress <= 0 ? null : progress / 100,
                   minHeight: 8,
                   backgroundColor: Colors.orangeAccent.withValues(alpha: 0.12),
-                  valueColor:
-                      const AlwaysStoppedAnimation<Color>(Colors.orangeAccent),
+                  valueColor: const AlwaysStoppedAnimation<Color>(
+                    Colors.orangeAccent,
+                  ),
                 ),
               ),
             ],
@@ -1401,12 +1493,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
   }
 
   Widget _buildGhostConflictBanner() {
-    final ghostItems = _conflictItems.where((item) {
-      if (item is! TodoItem) return false;
-      final data = _findServerVersion(item);
-      return (data == null || data.isEmpty) &&
-          !(_conflictData(item)?['type'] == 'schedule');
-    }).toList();
+    final ghostItems = _ghostConflictItems;
 
     if (ghostItems.isEmpty) return const SizedBox.shrink();
 
@@ -1425,7 +1512,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
             color: Colors.red.withValues(alpha: 0.25),
             blurRadius: 20,
             offset: const Offset(0, 8),
-          )
+          ),
         ],
       ),
       child: Row(
@@ -1435,9 +1522,10 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
             child: Text(
               "发现 ${ghostItems.length} 项损坏的冲突（无云端快照）",
               style: const TextStyle(
-                  fontSize: 13,
-                  color: Colors.orange,
-                  fontWeight: FontWeight.w600),
+                fontSize: 13,
+                color: Colors.orange,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
           TextButton(
@@ -1458,11 +1546,13 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
         content: Text("将保留这 ${items.length} 项任务，只清除本地损坏的冲突标记。确认继续？"),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text("取消")),
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text("取消"),
+          ),
           FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text("确认修复")),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text("确认修复"),
+          ),
         ],
       ),
     );
@@ -1486,53 +1576,74 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
       bool groupsChanged = false;
       bool countdownsChanged = false;
 
-      // 2. 在内存中批量处理
+      final todoIds = <String>{};
+      final groupIds = <String>{};
+      final countdownIds = <String>{};
       for (final ghost in items) {
         final id = _itemId(ghost);
         if (id == null) continue;
 
         if (ghost is TodoItem) {
-          final idx = allTodos.indexWhere((t) => t.id == id);
-          if (idx != -1) {
-            final item = allTodos[idx];
-            item.hasConflict = false;
-            item.serverVersionData = null;
-            todosChanged = true;
-          }
+          todoIds.add(id);
         } else if (ghost is TodoGroup) {
-          final idx = allGroups.indexWhere((g) => g.id == id);
-          if (idx != -1) {
-            final item = allGroups[idx];
-            item.hasConflict = false;
-            item.conflictData = null;
-            groupsChanged = true;
-          }
+          groupIds.add(id);
         } else if (ghost is CountdownItem) {
-          final idx = allCountdowns.indexWhere((c) => c.id == id);
-          if (idx != -1) {
-            final item = allCountdowns[idx];
-            item.hasConflict = false;
-            item.conflictData = null;
-            countdownsChanged = true;
-          }
+          countdownIds.add(id);
         }
+      }
+
+      // 2. 在内存中批量处理，每种数据表只扫描一次。
+      for (final todo in allTodos) {
+        if (!todoIds.remove(todo.id)) continue;
+        todo.hasConflict = false;
+        todo.serverVersionData = null;
+        todosChanged = true;
+      }
+      for (final group in allGroups) {
+        if (!groupIds.remove(group.id)) continue;
+        group.hasConflict = false;
+        group.conflictData = null;
+        groupsChanged = true;
+      }
+      for (final countdown in allCountdowns) {
+        if (!countdownIds.remove(countdown.id)) continue;
+        countdown.hasConflict = false;
+        countdown.conflictData = null;
+        countdownsChanged = true;
       }
 
       // 3. 批量持久化（每种类型仅写入一次）
       final saves = <Future>[];
       if (todosChanged) {
-        saves.add(StorageService.saveTodos(widget.username, allTodos,
+        saves.add(
+          StorageService.saveTodos(
+            widget.username,
+            allTodos,
             sync: false,
             isSyncSource: true,
-            recomputeScheduleConflicts: false));
+            recomputeScheduleConflicts: false,
+          ),
+        );
       }
       if (groupsChanged) {
-        saves.add(StorageService.saveTodoGroups(widget.username, allGroups,
-            sync: false, isSyncSource: true));
+        saves.add(
+          StorageService.saveTodoGroups(
+            widget.username,
+            allGroups,
+            sync: false,
+            isSyncSource: true,
+          ),
+        );
       }
       if (countdownsChanged) {
-        saves.add(StorageService.saveCountdowns(widget.username, allCountdowns,
-            sync: false, isSyncSource: true));
+        saves.add(
+          StorageService.saveCountdowns(
+            widget.username,
+            allCountdowns,
+            sync: false,
+            isSyncSource: true,
+          ),
+        );
       }
 
       if (saves.isNotEmpty) {
@@ -1667,20 +1778,25 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
             : Colors.white.withValues(alpha: 0.6),
         borderRadius: BorderRadius.circular(24),
         border: Border.all(
-            color:
-                isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05)),
+          color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text("受影响的项目",
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          const Text(
+            "受影响的项目",
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          ),
           const SizedBox(height: 16),
           _buildScheduleItemRow(item, isMain: true),
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-            child:
-                Icon(Icons.link_rounded, color: Colors.orangeAccent, size: 20),
+            child: Icon(
+              Icons.link_rounded,
+              color: Colors.orangeAccent,
+              size: 20,
+            ),
           ),
           ...peers.map((p) => _buildScheduleItemRow(p)),
           const SizedBox(height: 32),
@@ -1689,12 +1805,15 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
             child: FilledButton.icon(
               onPressed: () => _resolveConflict(item),
               icon: const Icon(Icons.edit_calendar_rounded),
-              label: const Text("进入时间对齐助手",
-                  style: TextStyle(fontWeight: FontWeight.bold)),
+              label: const Text(
+                "进入时间对齐助手",
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
               style: FilledButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16)),
+                  borderRadius: BorderRadius.circular(16),
+                ),
               ),
             ),
           ),
@@ -1708,12 +1827,16 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
         ? Map<String, dynamic>.from(data)
         : (data as TodoItem).toJson();
     final title = map['content'] ?? map['title'] ?? '未命名任务';
-    final start = _parseMs(map['created_date'] ??
-        map['createdDate'] ??
-        map['start_time'] ??
-        map['startTime']);
+    final start = _parseMs(
+      map['created_date'] ??
+          map['createdDate'] ??
+          map['start_time'] ??
+          map['startTime'],
+    );
     final end = _parseMs(
-        map['due_date'] ?? map['dueDate'] ?? map['end_time'] ?? map['endTime']);
+      map['due_date'] ?? map['dueDate'] ?? map['end_time'] ?? map['endTime'],
+    );
+    final timeFormat = _conflictInboxDateFormat('HH:mm');
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -1723,28 +1846,36 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
             : Colors.transparent,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-            color: isMain
-                ? Colors.orangeAccent.withValues(alpha: 0.2)
-                : Colors.transparent),
+          color: isMain
+              ? Colors.orangeAccent.withValues(alpha: 0.2)
+              : Colors.transparent,
+        ),
       ),
       child: Row(
         children: [
-          Icon(isMain ? Icons.warning_amber_rounded : Icons.event_note_rounded,
-              color: isMain
-                  ? Colors.orangeAccent
-                  : Theme.of(context).colorScheme.primary,
-              size: 20),
+          Icon(
+            isMain ? Icons.warning_amber_rounded : Icons.event_note_rounded,
+            color: isMain
+                ? Colors.orangeAccent
+                : Theme.of(context).colorScheme.primary,
+            size: 20,
+          ),
           const SizedBox(width: 16),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title,
-                    style: const TextStyle(
-                        fontSize: 14, fontWeight: FontWeight.bold)),
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
                 const SizedBox(height: 4),
                 Text(
-                  '${DateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(start))} ~ ${DateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(end))}',
+                  '${timeFormat.format(DateTime.fromMillisecondsSinceEpoch(start))} ~ '
+                  '${timeFormat.format(DateTime.fromMillisecondsSinceEpoch(end))}',
                   style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                 ),
               ],
@@ -1770,15 +1901,26 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text("什么是数据冲突？",
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const Text(
+              "什么是数据冲突？",
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
             const SizedBox(height: 16),
-            _buildHelpItem(Icons.devices_rounded, "多端编辑争议",
-                "当你在不同设备上同时修改同一个任务，且系统无法判定哪个版本更新时，会标记为冲突。"),
-            _buildHelpItem(Icons.history_rounded, "版本回退",
-                "如果你的本地版本低于云端，但你强行进行了覆盖，系统会保留云端备份并提示争议。"),
-            _buildHelpItem(Icons.sync_problem_rounded, "逻辑冲突",
-                "如多个人同时预约了同一个时间段的日程，系统会标记该日程存在冲突。"),
+            _buildHelpItem(
+              Icons.devices_rounded,
+              "多端编辑争议",
+              "当你在不同设备上同时修改同一个任务，且系统无法判定哪个版本更新时，会标记为冲突。",
+            ),
+            _buildHelpItem(
+              Icons.history_rounded,
+              "版本回退",
+              "如果你的本地版本低于云端，但你强行进行了覆盖，系统会保留云端备份并提示争议。",
+            ),
+            _buildHelpItem(
+              Icons.sync_problem_rounded,
+              "逻辑冲突",
+              "如多个人同时预约了同一个时间段的日程，系统会标记该日程存在冲突。",
+            ),
             const SizedBox(height: 16),
             SizedBox(
               width: double.infinity,
@@ -1787,7 +1929,8 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                 style: ElevatedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 12),
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
                 child: const Text("知道了"),
               ),
@@ -1810,11 +1953,17 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title,
-                    style: const TextStyle(
-                        fontSize: 14, fontWeight: FontWeight.bold)),
-                Text(desc,
-                    style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Text(
+                  desc,
+                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                ),
               ],
             ),
           ),
@@ -1826,20 +1975,27 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
   Widget _buildEmptyState() {
     final hasAnyConflicts = _conflictItems.isNotEmpty;
     final title = hasAnyConflicts ? '当前筛选下没有冲突' : '所有数据已完全对齐';
-    final subtitle =
-        hasAnyConflicts ? '可以切换到“全部”或其他分类查看待处理项' : '目前没有任何待解决的同步冲突';
+    final subtitle = hasAnyConflicts
+        ? '可以切换到“全部”或其他分类查看待处理项'
+        : '目前没有任何待解决的同步冲突';
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.verified_user_rounded,
-              size: 80, color: Colors.green.withValues(alpha: 0.2)),
+          Icon(
+            Icons.verified_user_rounded,
+            size: 80,
+            color: Colors.green.withValues(alpha: 0.2),
+          ),
           const SizedBox(height: 16),
-          Text(title,
-              style:
-                  const TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
-          Text(subtitle,
-              style: const TextStyle(fontSize: 12, color: Colors.grey)),
+          Text(
+            title,
+            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
+          ),
+          Text(
+            subtitle,
+            style: const TextStyle(fontSize: 12, color: Colors.grey),
+          ),
         ],
       ),
     );
@@ -1896,13 +2052,16 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                    color: Colors.grey.shade300,
-                    borderRadius: BorderRadius.circular(2)),
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2),
+                ),
               ),
             ),
             const SizedBox(height: 16),
-            const Text('暂无云端版本快照',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const Text(
+              '暂无云端版本快照',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
             const SizedBox(height: 8),
             Text(
               '当前条目标记为${_conflictLabel(item)}，但本地没有保存可对比的服务器版本内容。',
@@ -1949,14 +2108,11 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
       int successCount = 0;
       int scheduleSkippedCount = 0;
       final ids = _selectedConflictIds.toList();
+      final conflictItemsById = _visibleConflictItemsById();
 
       for (final itemId in ids) {
         try {
-          // 根据 ID 格式查找对应的冲突项
-          final conflictItem = _visibleConflictItems.firstWhere(
-            (item) => _getConflictId(item) == itemId,
-            orElse: () => null,
-          );
+          final conflictItem = conflictItemsById[itemId];
           if (conflictItem == null) continue;
 
           if (_isLocalScheduleConflict(conflictItem) &&
@@ -1994,9 +2150,11 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
         AppSnackBars.showSnackBarFromMessenger(
           messenger,
           SnackBar(
-            content: Text(scheduleSkippedCount > 0
-                ? '已保留本地版本，成功处理 $successCount 项版本冲突；$scheduleSkippedCount 项时间冲突需单独处理'
-                : '已保留本地版本，成功处理 $successCount 项冲突'),
+            content: Text(
+              scheduleSkippedCount > 0
+                  ? '已保留本地版本，成功处理 $successCount 项版本冲突；$scheduleSkippedCount 项时间冲突需单独处理'
+                  : '已保留本地版本，成功处理 $successCount 项冲突',
+            ),
             backgroundColor: Colors.green,
           ),
         );
@@ -2022,13 +2180,11 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
       int successCount = 0;
       int scheduleSkippedCount = 0;
       final ids = _selectedConflictIds.toList();
+      final conflictItemsById = _visibleConflictItemsById();
 
       for (final itemId in ids) {
         try {
-          final conflictItem = _visibleConflictItems.firstWhere(
-            (item) => _getConflictId(item) == itemId,
-            orElse: () => null,
-          );
+          final conflictItem = conflictItemsById[itemId];
           if (conflictItem == null) continue;
 
           if (_isLocalScheduleConflict(conflictItem) &&
@@ -2088,9 +2244,11 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
         AppSnackBars.showSnackBarFromMessenger(
           messenger,
           SnackBar(
-            content: Text(scheduleSkippedCount > 0
-                ? '已采用服务器版本，成功处理 $successCount 项版本冲突；$scheduleSkippedCount 项时间冲突需单独处理'
-                : '已采用服务器版本，成功处理 $successCount 项冲突'),
+            content: Text(
+              scheduleSkippedCount > 0
+                  ? '已采用服务器版本，成功处理 $successCount 项版本冲突；$scheduleSkippedCount 项时间冲突需单独处理'
+                  : '已采用服务器版本，成功处理 $successCount 项冲突',
+            ),
             backgroundColor: Colors.green,
           ),
         );
@@ -2134,13 +2292,16 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                    color: Colors.grey.shade300,
-                    borderRadius: BorderRadius.circular(2)),
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2),
+                ),
               ),
             ),
             const SizedBox(height: 16),
-            const Text('批量推荐方案',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const Text(
+              '批量推荐方案',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
             const SizedBox(height: 8),
             Text(
               '该操作将对选中的 ${_selectedConflictIds.length} 项冲突应用推荐的解决方案。',
@@ -2150,28 +2311,29 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: Theme.of(context)
-                    .colorScheme
-                    .primary
+                color: Theme.of(context).colorScheme.primary
                     .withValues(alpha: 0.05),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                    color: Theme.of(context)
-                        .colorScheme
-                        .primary
-                        .withValues(alpha: 0.2)),
+                  color: Theme.of(context).colorScheme.primary
+                      .withValues(alpha: 0.2),
+                ),
               ),
               child: Row(
                 children: [
-                  Icon(Icons.info_outline_rounded,
-                      size: 18, color: Theme.of(context).colorScheme.primary),
+                  Icon(
+                    Icons.info_outline_rounded,
+                    size: 18,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       '批量推荐只处理版本冲突；时间冲突需要进入单条详情查看预览后确认。',
                       style: TextStyle(
-                          fontSize: 12,
-                          color: Theme.of(context).colorScheme.primary),
+                        fontSize: 12,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
                     ),
                   ),
                 ],
@@ -2215,13 +2377,11 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
       int successCount = 0;
       int scheduleSkippedCount = 0;
       final ids = _selectedConflictIds.toList();
+      final conflictItemsById = _visibleConflictItemsById();
 
       for (final itemId in ids) {
         try {
-          final conflictItem = _visibleConflictItems.firstWhere(
-            (item) => _getConflictId(item) == itemId,
-            orElse: () => null,
-          );
+          final conflictItem = conflictItemsById[itemId];
           if (conflictItem == null) continue;
 
           if (_isLocalScheduleConflict(conflictItem) &&
@@ -2238,8 +2398,9 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
               final uuid = localJson['uuid'] ?? localJson['id'] ?? '';
               final serverVer = serverVersion['version'] as int? ?? 0;
               final currentVer = localJson['version'] as int? ?? 1;
-              final newVersion =
-                  serverVer > currentVer ? serverVer + 1 : currentVer + 1;
+              final newVersion = serverVer > currentVer
+                  ? serverVer + 1
+                  : currentVer + 1;
               final now = DateTime.now().millisecondsSinceEpoch;
 
               localJson['version'] = newVersion;
@@ -2290,10 +2451,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
             : '已应用推荐方案，成功处理 $successCount 项冲突';
         AppSnackBars.showSnackBarFromMessenger(
           messenger,
-          SnackBar(
-            content: Text(message),
-            backgroundColor: Colors.green,
-          ),
+          SnackBar(content: Text(message), backgroundColor: Colors.green),
         );
       }
     } catch (e) {
@@ -2308,8 +2466,10 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     }
   }
 
-  Future<void> _resolveGhostConflict(dynamic item,
-      {bool refresh = true}) async {
+  Future<void> _resolveGhostConflict(
+    dynamic item, {
+    bool refresh = true,
+  }) async {
     await _keepLocalAndQueueSync(item, syncNow: refresh);
 
     if (refresh) {
@@ -2325,17 +2485,18 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
 
   Future<void> _showLocalScheduleConflict(dynamic item) async {
     final data = _conflictData(item) ?? {};
-    final peers = (data['conflict_with'] is List
-            ? data['conflict_with'] as List
-            : const [])
-        .where(
-          (p) =>
-              p is Map &&
-              !ConflictVisibilityService.isAllDayTodoData(
-                Map<String, dynamic>.from(p),
-              ),
-        )
-        .toList();
+    final peers =
+        (data['conflict_with'] is List
+                ? data['conflict_with'] as List
+                : const [])
+            .where(
+              (p) =>
+                  p is Map &&
+                  !ConflictVisibilityService.isAllDayTodoData(
+                    Map<String, dynamic>.from(p),
+                  ),
+            )
+            .toList();
 
     // 如果过滤掉全天任务后不再冲突，则不显示详情（或提示已解决）
     if (peers.isEmpty && (item is TodoItem)) {
@@ -2346,8 +2507,9 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
         ? await StorageService.getTodos(widget.username, includeDeleted: true)
         : const <TodoItem>[];
     if (!mounted) return;
-    final recommendedWindow =
-        item is TodoItem ? _suggestPreferredWindow(item, peers) : null;
+    final recommendedWindow = item is TodoItem
+        ? _suggestPreferredWindow(item, peers)
+        : null;
     final recommendedLabel = item is TodoItem && recommendedWindow != null
         ? _buildRecommendedResolutionLabel(item, recommendedWindow)
         : null;
@@ -2381,14 +2543,16 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
           };
           return Container(
             constraints: BoxConstraints(
-                maxHeight: MediaQuery.of(sheetContext).size.height * 0.88),
+              maxHeight: MediaQuery.of(sheetContext).size.height * 0.88,
+            ),
             child: OptionalLiquidGlassSheet(
               topRadius: 20,
               padding: const EdgeInsets.all(20),
               fallbackDecoration: BoxDecoration(
                 color: Theme.of(sheetContext).scaffoldBackgroundColor,
-                borderRadius:
-                    const BorderRadius.vertical(top: Radius.circular(20)),
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(20),
+                ),
               ),
               child: SingleChildScrollView(
                 child: Column(
@@ -2399,27 +2563,38 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                         width: 40,
                         height: 4,
                         decoration: BoxDecoration(
-                            color: Colors.grey.shade300,
-                            borderRadius: BorderRadius.circular(2)),
+                          color: Colors.grey.shade300,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
                       ),
                     ),
                     const SizedBox(height: 16),
-                    const Text('时间重叠',
-                        style: TextStyle(
-                            fontSize: 18, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 8),
-                    Text(_relationLabel(item),
-                        style: const TextStyle(
-                            fontSize: 12,
-                            color: Colors.orangeAccent,
-                            fontWeight: FontWeight.w600)),
+                    const Text(
+                      '时间重叠',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                     const SizedBox(height: 8),
                     Text(
-                        selectedMode == _ScheduleResolutionMode.manual
-                            ? '手动模式：点击上方卡片可选中任一冲突任务进行编辑。'
-                            : '先横向查看当前任务和冲突任务，再选择处理方式。执行前会先给出预览。',
-                        style: TextStyle(
-                            fontSize: 13, color: Colors.grey.shade600)),
+                      _relationLabel(item),
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Colors.orangeAccent,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      selectedMode == _ScheduleResolutionMode.manual
+                          ? '手动模式：点击上方卡片可选中任一冲突任务进行编辑。'
+                          : '先横向查看当前任务和冲突任务，再选择处理方式。执行前会先给出预览。',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
                     if (recommendedLabel != null) ...[
                       const SizedBox(height: 12),
                       Container(
@@ -2435,8 +2610,11 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Icon(Icons.auto_fix_high_rounded,
-                                size: 18, color: Colors.green),
+                            const Icon(
+                              Icons.auto_fix_high_rounded,
+                              size: 18,
+                              color: Colors.green,
+                            ),
                             const SizedBox(width: 10),
                             Expanded(
                               child: Text(
@@ -2475,7 +2653,8 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                       if (_isApplyingScheduleFix) ...[
                         const SizedBox(height: 12),
                         const Center(
-                            child: CircularProgressIndicator(strokeWidth: 2)),
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
                       ],
                       const SizedBox(height: 16),
                       Row(
@@ -2492,12 +2671,14 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                               onPressed: _isApplyingScheduleFix
                                   ? null
                                   : () async {
-                                      final messenger =
-                                          ScaffoldMessenger.of(context);
+                                      final messenger = ScaffoldMessenger.of(
+                                        context,
+                                      );
                                       Navigator.pop(sheetContext);
-                                      await StorageService
-                                          .ignoreLocalScheduleConflict(
-                                              widget.username, item);
+                                      await StorageService.ignoreLocalScheduleConflict(
+                                        widget.username,
+                                        item,
+                                      );
                                       await _loadConflicts();
                                       if (!mounted) return;
                                       AppSnackBars.showSnackBarFromMessenger(
@@ -2513,7 +2694,8 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                           const SizedBox(width: 12),
                           Expanded(
                             child: FilledButton(
-                              onPressed: _isApplyingScheduleFix ||
+                              onPressed:
+                                  _isApplyingScheduleFix ||
                                       (selectedMode !=
                                               _ScheduleResolutionMode.manual &&
                                           selectedUpdates.isEmpty)
@@ -2535,7 +2717,8 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                                         return;
                                       }
                                       if (selectedUpdates.isEmpty) return;
-                                      final successMessage = selectedMode ==
+                                      final successMessage =
+                                          selectedMode ==
                                               _ScheduleResolutionMode.recommend
                                           ? '已按预览结果调整当前任务'
                                           : '已按预览结果顺排冲突链';
@@ -2583,8 +2766,10 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text("冲突对比 (横向滑动)",
-            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+        const Text(
+          "冲突对比 (横向滑动)",
+          style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+        ),
         const SizedBox(height: 10),
         SizedBox(
           height: 145,
@@ -2632,8 +2817,10 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
         border: Border.all(color: Colors.grey.withValues(alpha: 0.1)),
       ),
       child: const Center(
-        child:
-            Text("无其他冲突对象", style: TextStyle(fontSize: 12, color: Colors.grey)),
+        child: Text(
+          "无其他冲突对象",
+          style: TextStyle(fontSize: 12, color: Colors.grey),
+        ),
       ),
     );
   }
@@ -2651,16 +2838,20 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     final isManualMode = mode == _ScheduleResolutionMode.manual;
 
     final title = _itemTitle(data);
-    final start = _parseMs(data['start_time'] ??
-        data['startTime'] ??
-        data['created_date'] ??
-        data['createdDate']);
-    final end = _parseMs(data['end_time'] ??
-        data['endTime'] ??
-        data['due_date'] ??
-        data['dueDate']);
+    final start = _parseMs(
+      data['start_time'] ??
+          data['startTime'] ??
+          data['created_date'] ??
+          data['createdDate'],
+    );
+    final end = _parseMs(
+      data['end_time'] ??
+          data['endTime'] ??
+          data['due_date'] ??
+          data['dueDate'],
+    );
 
-    final sf = DateFormat('HH:mm');
+    final sf = _conflictInboxDateFormat('HH:mm');
     final originalTime = start > 0 && end > 0
         ? '${sf.format(DateTime.fromMillisecondsSinceEpoch(start))} ~ ${sf.format(DateTime.fromMillisecondsSinceEpoch(end))}'
         : '时间未知';
@@ -2681,15 +2872,15 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
           color: isSelectedForEdit
               ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.1)
               : (isPrimary
-                  ? Colors.orangeAccent.withValues(alpha: 0.08)
-                  : Theme.of(context).colorScheme.surface),
+                    ? Colors.orangeAccent.withValues(alpha: 0.08)
+                    : Theme.of(context).colorScheme.surface),
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
             color: isSelectedForEdit
                 ? Theme.of(context).colorScheme.primary
                 : (isPrimary
-                    ? Colors.orangeAccent.withValues(alpha: 0.25)
-                    : Colors.grey.withValues(alpha: 0.15)),
+                      ? Colors.orangeAccent.withValues(alpha: 0.25)
+                      : Colors.grey.withValues(alpha: 0.15)),
             width: isSelectedForEdit || isPrimary ? 1.5 : 1,
           ),
           boxShadow: [
@@ -2709,8 +2900,8 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                   isSelectedForEdit
                       ? Icons.check_circle_rounded
                       : (isPrimary
-                          ? Icons.push_pin_rounded
-                          : Icons.schedule_rounded),
+                            ? Icons.push_pin_rounded
+                            : Icons.schedule_rounded),
                   size: 14,
                   color: isSelectedForEdit
                       ? Theme.of(context).colorScheme.primary
@@ -2730,20 +2921,23 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                 if (update != null) ...[
                   const Spacer(),
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 5,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
-                      color: Theme.of(context)
-                          .colorScheme
-                          .primary
+                      color: Theme.of(context).colorScheme.primary
                           .withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(4),
                     ),
-                    child: Text("待调",
-                        style: TextStyle(
-                            fontSize: 9,
-                            color: Theme.of(context).colorScheme.primary,
-                            fontWeight: FontWeight.bold)),
+                    child: Text(
+                      "待调",
+                      style: TextStyle(
+                        fontSize: 9,
+                        color: Theme.of(context).colorScheme.primary,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                   ),
                 ],
               ],
@@ -2757,24 +2951,26 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
             ),
             const Spacer(),
             _buildMiniInfoChip(
-                _scheduleScopeLabel(data),
-                isPrimary
-                    ? Colors.orangeAccent
-                    : Theme.of(context).colorScheme.primary),
+              _scheduleScopeLabel(data),
+              isPrimary
+                  ? Colors.orangeAccent
+                  : Theme.of(context).colorScheme.primary,
+            ),
             const SizedBox(height: 6),
             if (update == null)
               Text(
                 originalTime,
                 style: TextStyle(
-                    fontSize: 11,
-                    color: isSelectedForEdit
-                        ? Theme.of(context).colorScheme.primary
-                        : (isPrimary
+                  fontSize: 11,
+                  color: isSelectedForEdit
+                      ? Theme.of(context).colorScheme.primary
+                      : (isPrimary
                             ? Colors.orangeAccent
                             : Colors.grey.shade600),
-                    fontWeight: isSelectedForEdit || isPrimary
-                        ? FontWeight.w600
-                        : FontWeight.normal),
+                  fontWeight: isSelectedForEdit || isPrimary
+                      ? FontWeight.w600
+                      : FontWeight.normal,
+                ),
               )
             else
               Column(
@@ -2791,16 +2987,19 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                   ),
                   Row(
                     children: [
-                      Icon(Icons.arrow_right_alt_rounded,
-                          size: 14,
-                          color: Theme.of(context).colorScheme.primary),
+                      Icon(
+                        Icons.arrow_right_alt_rounded,
+                        size: 14,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
                       const SizedBox(width: 2),
                       Text(
                         '${sf.format(update.start)}~${sf.format(update.end)}',
                         style: TextStyle(
-                            fontSize: 11,
-                            color: Theme.of(context).colorScheme.primary,
-                            fontWeight: FontWeight.bold),
+                          fontSize: 11,
+                          color: Theme.of(context).colorScheme.primary,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ],
                   ),
@@ -2821,8 +3020,10 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text("处理方式",
-            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+        const Text(
+          "处理方式",
+          style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+        ),
         const SizedBox(height: 10),
         Row(
           children: [
@@ -2891,12 +3092,14 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
             children: [
               Icon(icon, size: 20, color: color),
               const SizedBox(height: 4),
-              Text(label,
-                  style: TextStyle(
-                      fontSize: 11,
-                      fontWeight:
-                          selected ? FontWeight.bold : FontWeight.normal,
-                      color: color)),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+                  color: color,
+                ),
+              ),
             ],
           ),
         ),
@@ -2916,20 +3119,27 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     final durationMs = endMs - startMs;
     var candidateStart = startMs;
     var candidateEnd = candidateStart + durationMs;
-    final busyRanges = peers
-        .whereType<Map>()
-        .map((peer) => Map<String, dynamic>.from(peer))
-        .map((peer) => (
-              start: _parseMs(peer['start_time'] ?? peer['startTime']),
-              end: _parseMs(peer['end_time'] ?? peer['endTime']),
-            ))
-        .where((range) => range.start > 0 && range.end > range.start)
-        .toList()
-      ..sort((a, b) => a.start.compareTo(b.start));
+    final busyRanges =
+        peers
+            .whereType<Map>()
+            .map((peer) => Map<String, dynamic>.from(peer))
+            .map(
+              (peer) => (
+                start: _parseMs(peer['start_time'] ?? peer['startTime']),
+                end: _parseMs(peer['end_time'] ?? peer['endTime']),
+              ),
+            )
+            .where((range) => range.start > 0 && range.end > range.start)
+            .toList()
+          ..sort((a, b) => a.start.compareTo(b.start));
 
     for (final range in busyRanges) {
       if (!_rangesOverlap(
-          candidateStart, candidateEnd, range.start, range.end)) {
+        candidateStart,
+        candidateEnd,
+        range.start,
+        range.end,
+      )) {
         continue;
       }
       candidateStart = range.end + const Duration(minutes: 5).inMilliseconds;
@@ -2951,15 +3161,17 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     final endMs = item.dueDate?.millisecondsSinceEpoch ?? 0;
     final durationMinutes = startMs > 0 && endMs > startMs
         ? ((endMs - startMs) / const Duration(minutes: 1).inMilliseconds)
-            .round()
+              .round()
         : 0;
     final shiftedMinutes =
         ((recommendedWindow.start.millisecondsSinceEpoch - startMs) /
                 const Duration(minutes: 1).inMilliseconds)
             .round();
+    final startDateFormat = _conflictInboxDateFormat('MM-dd HH:mm');
+    final endTimeFormat = _conflictInboxDateFormat('HH:mm');
     return '推荐：仅移动开始时间，保留 $durationMinutes 分钟时长。新时间为 '
-        '${DateFormat('MM-dd HH:mm').format(recommendedWindow.start)} ~ '
-        '${DateFormat('HH:mm').format(recommendedWindow.end)}'
+        '${startDateFormat.format(recommendedWindow.start)} ~ '
+        '${endTimeFormat.format(recommendedWindow.end)}'
         '${shiftedMinutes > 0 ? '，整体后移 $shiftedMinutes 分钟' : ''}。';
   }
 
@@ -3020,29 +3232,33 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     for (final peer in peers.whereType<Map>()) {
       final peerData = Map<String, dynamic>.from(peer);
       final peerId = _itemIdFromData(peerData);
-      final peerStart = _parseMs(peerData['start_time'] ??
-          peerData['startTime'] ??
-          peerData['created_date'] ??
-          peerData['createdDate']);
-      final peerEnd = _parseMs(peerData['end_time'] ??
-          peerData['endTime'] ??
-          peerData['due_date'] ??
-          peerData['dueDate']);
+      final peerStart = _parseMs(
+        peerData['start_time'] ??
+            peerData['startTime'] ??
+            peerData['created_date'] ??
+            peerData['createdDate'],
+      );
+      final peerEnd = _parseMs(
+        peerData['end_time'] ??
+            peerData['endTime'] ??
+            peerData['due_date'] ??
+            peerData['dueDate'],
+      );
 
       final todo = allTodos.cast<TodoItem?>().firstWhere(
-            (candidate) =>
-                candidate != null &&
-                !candidate.isDeleted &&
-                !candidate.isAllDay &&
-                !ConflictVisibilityService.isAllDayTodo(candidate) &&
-                _todoEndMs(candidate) > _todoStartMs(candidate) &&
-                _isSameLocalDayMs(_todoStartMs(candidate), seedStart) &&
-                ((peerId != null && candidate.id == peerId) ||
-                    (_itemTitle(peerData) == candidate.title &&
-                        _todoStartMs(candidate) == peerStart &&
-                        _todoEndMs(candidate) == peerEnd)),
-            orElse: () => null,
-          );
+        (candidate) =>
+            candidate != null &&
+            !candidate.isDeleted &&
+            !candidate.isAllDay &&
+            !ConflictVisibilityService.isAllDayTodo(candidate) &&
+            _todoEndMs(candidate) > _todoStartMs(candidate) &&
+            _isSameLocalDayMs(_todoStartMs(candidate), seedStart) &&
+            ((peerId != null && candidate.id == peerId) ||
+                (_itemTitle(peerData) == candidate.title &&
+                    _todoStartMs(candidate) == peerStart &&
+                    _todoEndMs(candidate) == peerEnd)),
+        orElse: () => null,
+      );
       if (todo != null && !matched.any((existing) => existing.id == todo.id)) {
         matched.add(todo);
       }
@@ -3088,14 +3304,18 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
   }
 
   Future<void> _openTodoEditor(TodoItem item) async {
-    final allTodos =
-        await StorageService.getTodos(widget.username, includeDeleted: true);
-    final allGroups = await StorageService.getTodoGroups(widget.username,
-        includeDeleted: true);
+    final allTodos = await StorageService.getTodos(
+      widget.username,
+      includeDeleted: true,
+    );
+    final allGroups = await StorageService.getTodoGroups(
+      widget.username,
+      includeDeleted: true,
+    );
     final target = allTodos.cast<TodoItem?>().firstWhere(
-          (todo) => todo?.id == item.id,
-          orElse: () => null,
-        );
+      (todo) => todo?.id == item.id,
+      orElse: () => null,
+    );
     if (!mounted || target == null) return;
 
     final changed = await Navigator.push<bool>(
@@ -3131,8 +3351,10 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     final messenger = ScaffoldMessenger.of(context);
     setState(() => _isApplyingScheduleFix = true);
     try {
-      final allTodos =
-          await StorageService.getTodos(widget.username, includeDeleted: true);
+      final allTodos = await StorageService.getTodos(
+        widget.username,
+        includeDeleted: true,
+      );
       var appliedCount = 0;
       for (final todo in allTodos) {
         final update = updates[todo.id];
@@ -3173,8 +3395,9 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
 
   Widget _buildSkeleton() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final baseColor =
-        isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05);
+    final baseColor = isDark
+        ? Colors.white10
+        : Colors.black.withValues(alpha: 0.05);
 
     return ListView.builder(
       padding: const EdgeInsets.all(16),
@@ -3235,8 +3458,9 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
     }
 
     return Container(
-      constraints:
-          BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.8),
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.8,
+      ),
       child: OptionalLiquidGlassSheet(
         topRadius: 20,
         padding: const EdgeInsets.all(20),
@@ -3255,8 +3479,9 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
                   width: 40,
                   height: 4,
                   decoration: BoxDecoration(
-                      color: Colors.grey.shade300,
-                      borderRadius: BorderRadius.circular(2)),
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
               ),
               const SizedBox(height: 16),
@@ -3272,8 +3497,10 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
     final diffs = _buildDiffFields(widget.localItem, widget.serverItem);
 
     return [
-      const Text("版本对齐建议",
-          style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+      const Text(
+        "版本对齐建议",
+        style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+      ),
       const SizedBox(height: 8),
       Text(
         "检测到两端内容存在差异，请选择权威版本进行保留。",
@@ -3339,7 +3566,8 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
               style: OutlinedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
             ),
           ),
@@ -3352,7 +3580,8 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
               style: FilledButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
             ),
           ),
@@ -3404,13 +3633,16 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
             children: diffs
                 .map(
                   (diff) => Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 8,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.white.withValues(alpha: 0.75),
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
-                          color: Colors.grey.withValues(alpha: 0.15)),
+                        color: Colors.grey.withValues(alpha: 0.15),
+                      ),
                     ),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
@@ -3463,14 +3695,20 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.info_outline_rounded,
-              size: 18, color: Colors.grey.shade600),
+          Icon(
+            Icons.info_outline_rounded,
+            size: 18,
+            color: Colors.grey.shade600,
+          ),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
               '当前没有匹配到可见字段差异。可能是其它隐藏字段、归一化值，或者服务端只保留了冲突标记。',
               style: TextStyle(
-                  fontSize: 12, color: Colors.grey.shade700, height: 1.4),
+                fontSize: 12,
+                color: Colors.grey.shade700,
+                height: 1.4,
+              ),
             ),
           ),
         ],
@@ -3493,21 +3731,24 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
     final unit = data['unit']?.toString() ?? '';
 
     String? timeStr;
-    final start = data['start_time'] ??
+    final start =
+        data['start_time'] ??
         data['startTime'] ??
         data['created_date'] ??
         data['createdDate'];
-    final end = data['end_time'] ??
+    final end =
+        data['end_time'] ??
         data['endTime'] ??
         data['due_date'] ??
         data['dueDate'];
     final targetTime = data['target_time'] ?? data['targetTime'];
     if (start != null && end != null) {
-      final startMs =
-          start is int ? start : int.tryParse(start.toString()) ?? 0;
+      final startMs = start is int
+          ? start
+          : int.tryParse(start.toString()) ?? 0;
       final endMs = end is int ? end : int.tryParse(end.toString()) ?? 0;
       if (startMs > 0 && endMs > 0) {
-        final sf = DateFormat('MM-dd HH:mm');
+        final sf = _conflictInboxDateFormat('MM-dd HH:mm');
         timeStr =
             '${sf.format(DateTime.fromMillisecondsSinceEpoch(startMs))} ~ ${sf.format(DateTime.fromMillisecondsSinceEpoch(endMs))}';
       }
@@ -3516,7 +3757,7 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
           ? targetTime
           : int.tryParse(targetTime.toString()) ?? 0;
       if (tMs > 0) {
-        timeStr = DateFormat('MM-dd HH:mm')
+        timeStr = _conflictInboxDateFormat('MM-dd HH:mm')
             .format(DateTime.fromMillisecondsSinceEpoch(tMs));
       }
     }
@@ -3535,20 +3776,29 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
             children: [
               Icon(icon, size: 16, color: color),
               const SizedBox(width: 8),
-              Text(label,
-                  style: TextStyle(
-                      fontSize: 13, fontWeight: FontWeight.bold, color: color)),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  color: color,
+                ),
+              ),
               const Spacer(),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(4)),
-                child: Text("v$version",
-                    style: TextStyle(
-                        fontSize: 10,
-                        color: color,
-                        fontWeight: FontWeight.bold)),
+                  color: color.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  "v$version",
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: color,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ),
             ],
           ),
@@ -3558,7 +3808,9 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
           if (isCompleted) _buildFieldRow("完成", "是"),
           if (targetValue != null)
             _buildFieldRow(
-                "目标值", unit.isNotEmpty ? '$targetValue $unit' : '$targetValue'),
+              "目标值",
+              unit.isNotEmpty ? '$targetValue $unit' : '$targetValue',
+            ),
           if (timeStr != null) _buildFieldRow("时间", timeStr),
           if (data['remark'] != null && data['remark'].toString().isNotEmpty)
             _buildFieldRow("备注", data['remark'].toString()),
@@ -3568,7 +3820,9 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
   }
 
   List<_ConflictFieldDiff> _buildDiffFields(
-      Map<String, dynamic> local, Map<String, dynamic>? server) {
+    Map<String, dynamic> local,
+    Map<String, dynamic>? server,
+  ) {
     if (server == null || server.isEmpty) return const [];
 
     final fields = <_ConflictFieldSpec>[
@@ -3576,10 +3830,7 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
         label: '标题',
         keys: const ['content', 'title', 'name', 'courseName', 'course_name'],
       ),
-      _ConflictFieldSpec(
-        label: '备注',
-        keys: const ['remark'],
-      ),
+      _ConflictFieldSpec(label: '备注', keys: const ['remark']),
       _ConflictFieldSpec(
         label: '完成状态',
         keys: const ['is_completed', 'isCompleted'],
@@ -3588,10 +3839,7 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
         label: '删除状态',
         keys: const ['is_deleted', 'isDeleted'],
       ),
-      _ConflictFieldSpec(
-        label: '版本号',
-        keys: const ['version'],
-      ),
+      _ConflictFieldSpec(label: '版本号', keys: const ['version']),
       _ConflictFieldSpec(
         label: '更新时间',
         keys: const ['updated_at', 'updatedAt'],
@@ -3602,14 +3850,8 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
         keys: const ['created_at', 'createdAt'],
         formatter: _formatTimestamp,
       ),
-      _ConflictFieldSpec(
-        label: '分组',
-        keys: const ['group_id', 'groupId'],
-      ),
-      _ConflictFieldSpec(
-        label: '团队',
-        keys: const ['team_uuid', 'teamUuid'],
-      ),
+      _ConflictFieldSpec(label: '分组', keys: const ['group_id', 'groupId']),
+      _ConflictFieldSpec(label: '团队', keys: const ['team_uuid', 'teamUuid']),
       _ConflictFieldSpec(
         label: '分类',
         keys: const ['category_id', 'categoryId'],
@@ -3627,18 +3869,12 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
           'due_date',
           'dueDate',
           'target_time',
-          'targetTime'
+          'targetTime',
         ],
         formatter: _formatDateTimeMs,
       ),
-      _ConflictFieldSpec(
-        label: '循环',
-        keys: const ['recurrence'],
-      ),
-      _ConflictFieldSpec(
-        label: '全天',
-        keys: const ['is_all_day', 'isAllDay'],
-      ),
+      _ConflictFieldSpec(label: '循环', keys: const ['recurrence']),
+      _ConflictFieldSpec(label: '全天', keys: const ['is_all_day', 'isAllDay']),
       _ConflictFieldSpec(
         label: '协作类型',
         keys: const ['collab_type', 'collabType'],
@@ -3647,18 +3883,9 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
         label: '提醒',
         keys: const ['reminder_minutes', 'reminderMinutes'],
       ),
-      _ConflictFieldSpec(
-        label: '星期',
-        keys: const ['weekday'],
-      ),
-      _ConflictFieldSpec(
-        label: '周次',
-        keys: const ['week_index', 'weekIndex'],
-      ),
-      _ConflictFieldSpec(
-        label: '地点',
-        keys: const ['room_name', 'roomName'],
-      ),
+      _ConflictFieldSpec(label: '星期', keys: const ['weekday']),
+      _ConflictFieldSpec(label: '周次', keys: const ['week_index', 'weekIndex']),
+      _ConflictFieldSpec(label: '地点', keys: const ['room_name', 'roomName']),
       _ConflictFieldSpec(
         label: '教师',
         keys: const ['teacher_name', 'teacherName'],
@@ -3667,10 +3894,7 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
         label: '课名',
         keys: const ['course_name', 'courseName'],
       ),
-      _ConflictFieldSpec(
-        label: '图标',
-        keys: const ['icon'],
-      ),
+      _ConflictFieldSpec(label: '图标', keys: const ['icon']),
       _ConflictFieldSpec(
         label: '来源类型',
         keys: const ['source_type', 'sourceType'],
@@ -3687,10 +3911,7 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
         label: '默认专注',
         keys: const ['default_focus_minutes', 'defaultFocusMinutes'],
       ),
-      _ConflictFieldSpec(
-        label: '排序',
-        keys: const ['sort_order', 'sortOrder'],
-      ),
+      _ConflictFieldSpec(label: '排序', keys: const ['sort_order', 'sortOrder']),
       _ConflictFieldSpec(
         label: '归档',
         keys: const ['is_archived', 'isArchived'],
@@ -3723,10 +3944,7 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
         label: '目标值',
         keys: const ['target_value', 'targetValue'],
       ),
-      _ConflictFieldSpec(
-        label: '单位',
-        keys: const ['unit'],
-      ),
+      _ConflictFieldSpec(label: '单位', keys: const ['unit']),
       _ConflictFieldSpec(
         label: '目标时刻',
         keys: const ['target_time_minute', 'targetTimeMinute'],
@@ -3793,7 +4011,9 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
   }
 
   String _formatFieldValue(
-      dynamic value, String Function(dynamic value)? formatter) {
+    dynamic value,
+    String Function(dynamic value)? formatter,
+  ) {
     if (formatter != null) {
       return formatter(value);
     }
@@ -3804,17 +4024,15 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
   String _formatTimestamp(dynamic value) {
     final ms = _toMillis(value);
     if (ms == null || ms <= 0) return '空';
-    return DateFormat('yyyy-MM-dd HH:mm:ss').format(
-      DateTime.fromMillisecondsSinceEpoch(ms),
-    );
+    return _conflictInboxDateFormat('yyyy-MM-dd HH:mm:ss')
+        .format(DateTime.fromMillisecondsSinceEpoch(ms));
   }
 
   String _formatDateTimeMs(dynamic value) {
     final ms = _toMillis(value);
     if (ms == null || ms <= 0) return '空';
-    return DateFormat('MM-dd HH:mm').format(
-      DateTime.fromMillisecondsSinceEpoch(ms),
-    );
+    return _conflictInboxDateFormat('MM-dd HH:mm')
+        .format(DateTime.fromMillisecondsSinceEpoch(ms));
   }
 
   int? _toMillis(dynamic value) {
@@ -3832,14 +4050,18 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
         children: [
           SizedBox(
             width: 40,
-            child: Text(label,
-                style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+            child: Text(
+              label,
+              style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+            ),
           ),
           Expanded(
-            child: Text(value,
-                style: TextStyle(fontSize: 13, color: valueColor),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis),
+            child: Text(
+              value,
+              style: TextStyle(fontSize: 13, color: valueColor),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
         ],
       ),
@@ -3898,7 +4120,9 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
         AppSnackBars.showSnackBarFromMessenger(
           messenger,
           const SnackBar(
-              content: Text('已保留本地版本，冲突已解决'), backgroundColor: Colors.green),
+            content: Text('已保留本地版本，冲突已解决'),
+            backgroundColor: Colors.green,
+          ),
         );
       }
     } catch (e) {
@@ -3918,7 +4142,9 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
       AppSnackBars.showSnackBar(
         context,
         const SnackBar(
-            content: Text('服务器版本数据不可用，请先同步'), backgroundColor: Colors.orange),
+          content: Text('服务器版本数据不可用，请先同步'),
+          backgroundColor: Colors.orange,
+        ),
       );
       return;
     }
@@ -3968,7 +4194,9 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
         AppSnackBars.showSnackBarFromMessenger(
           messenger,
           const SnackBar(
-              content: Text('已采用服务器版本，冲突已解决'), backgroundColor: Colors.green),
+            content: Text('已采用服务器版本，冲突已解决'),
+            backgroundColor: Colors.green,
+          ),
         );
       }
     } catch (e) {

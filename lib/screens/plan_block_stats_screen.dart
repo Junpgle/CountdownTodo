@@ -16,6 +16,21 @@ import '../widgets/floating_glass_control.dart';
 import '../widgets/missed_plan_recovery_flow.dart';
 import 'course_screens.dart';
 
+String? _reviewDateLocale;
+final _reviewDateFormats = <String, DateFormat>{};
+
+DateFormat _reviewDateFormat(String pattern) {
+  final locale = Intl.defaultLocale;
+  if (_reviewDateLocale != locale) {
+    _reviewDateLocale = locale;
+    _reviewDateFormats.clear();
+  }
+  return _reviewDateFormats.putIfAbsent(
+    pattern,
+    () => DateFormat(pattern, locale),
+  );
+}
+
 String reviewDuration(int seconds) {
   if (seconds == 0) return '0分钟';
   final hours = seconds ~/ 3600, minutes = seconds % 3600 ~/ 60;
@@ -29,7 +44,7 @@ String reviewDuration(int seconds) {
 
 String _date(int ms) {
   if (ms <= 0 || ms > 8640000000000000) return '时间待核对';
-  return DateFormat('M/d HH:mm')
+  return _reviewDateFormat('M/d HH:mm')
       .format(DateTime.fromMillisecondsSinceEpoch(ms));
 }
 
@@ -134,6 +149,33 @@ class PlanBlockStatsScreen extends StatefulWidget {
   State<PlanBlockStatsScreen> createState() => _PlanBlockStatsScreenState();
 }
 
+class _ReviewTrendPoint {
+  const _ReviewTrendPoint({
+    required this.date,
+    required this.dateLabel,
+    required this.planned,
+    required this.actual,
+    required this.plannedLabel,
+    required this.actualLabel,
+    required this.showDayLabel,
+  });
+
+  final DateTime date;
+  final String dateLabel, plannedLabel, actualLabel;
+  final int planned, actual;
+  final bool showDayLabel;
+}
+
+class _ReviewTrendProjection {
+  const _ReviewTrendProjection({
+    required this.points,
+    required this.maxSeconds,
+  });
+
+  final List<_ReviewTrendPoint> points;
+  final int maxSeconds;
+}
+
 class _PlanBlockStatsScreenState
     extends _ReviewLiveState<PlanBlockStatsScreen> {
   late DateTime _current;
@@ -142,6 +184,9 @@ class _PlanBlockStatsScreenState
   bool _loading = true;
   String? _error;
   PlanReviewSummary? _data;
+  PlanReviewSummary? _trendSource;
+  String? _trendLocale;
+  _ReviewTrendProjection? _trendProjection;
   DateTime get _now => widget.clock?.call() ?? DateTime.now();
   DateTimeRange get _range {
     final start = switch (_dimension) {
@@ -166,10 +211,11 @@ class _PlanBlockStatsScreenState
   }
 
   String get _rangeLabel => _dimension == 2
-      ? DateFormat('yyyy年M月').format(_current)
+      ? _reviewDateFormat('yyyy年M月').format(_current)
       : _dimension == 0
-      ? DateFormat('yyyy年M月d日').format(_current)
-      : '${DateFormat('M/d').format(_range.start)} — ${DateFormat('M/d').format(DateTime(_range.end.year, _range.end.month, _range.end.day - 1))}';
+      ? _reviewDateFormat('yyyy年M月d日').format(_current)
+      : '${_reviewDateFormat('M/d').format(_range.start)} — '
+            '${_reviewDateFormat('M/d').format(DateTime(_range.end.year, _range.end.month, _range.end.day - 1))}';
   @override
   void initState() {
     _current = widget.initialDate ?? _now;
@@ -346,7 +392,7 @@ class _PlanBlockStatsScreenState
                               message: _rangeLabel,
                               child: Text(
                                 compactDate && _dimension == 0
-                                    ? DateFormat('M月d日').format(_current)
+                                    ? _reviewDateFormat('M月d日').format(_current)
                                     : _rangeLabel,
                                 textAlign: TextAlign.center,
                                 style: theme.textTheme.titleMedium,
@@ -636,15 +682,51 @@ class _PlanBlockStatsScreenState
       ),
     ),
   );
+
+  _ReviewTrendProjection _trendProjectionFor(PlanReviewSummary summary) {
+    final locale = Intl.defaultLocale;
+    final cached = _trendProjection;
+    if (identical(_trendSource, summary) &&
+        _trendLocale == locale &&
+        cached != null) {
+      return cached;
+    }
+
+    final dateFormat = _reviewDateFormat('M/d');
+    var maxSeconds = 1;
+    final points = <_ReviewTrendPoint>[];
+    for (var i = 0; i < summary.days.length; i++) {
+      final row = summary.days[i];
+      final date = DateTime.fromMillisecondsSinceEpoch(row['start'] as int);
+      final planned = (row['planned'] as num).toInt();
+      final actual = (row['actual'] as num).toInt();
+      maxSeconds = math.max(maxSeconds, math.max(planned, actual));
+      points.add(
+        _ReviewTrendPoint(
+          date: date,
+          dateLabel: dateFormat.format(date),
+          planned: planned,
+          actual: actual,
+          plannedLabel: reviewDuration(planned),
+          actualLabel: reviewDuration(actual),
+          showDayLabel: summary.days.length <= 7 || i % 5 == 0,
+        ),
+      );
+    }
+
+    final projection = _ReviewTrendProjection(
+      points: List<_ReviewTrendPoint>.unmodifiable(points),
+      maxSeconds: maxSeconds,
+    );
+    _trendSource = summary;
+    _trendLocale = locale;
+    _trendProjection = projection;
+    return projection;
+  }
+
   Widget _trend(PlanReviewSummary s) {
     final colors = Theme.of(context).colorScheme;
-    final maxSeconds = s.days.fold<int>(
-      1,
-      (m, d) => math.max(
-        m,
-        math.max((d['planned'] as num).toInt(), (d['actual'] as num).toInt()),
-      ),
-    );
+    final projection = _trendProjectionFor(s);
     return _section('投入趋势', [
       Wrap(
         spacing: 16,
@@ -658,21 +740,18 @@ class _PlanBlockStatsScreenState
         height: 112,
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.end,
-          children: s.days.indexed.map((pair) {
-            final (i, d) = pair;
-            final date = DateTime.fromMillisecondsSinceEpoch(d['start'] as int);
-            final planned = (d['planned'] as num).toInt(),
-                actual = (d['actual'] as num).toInt();
+          children: projection.points.map((point) {
+            final date = point.date;
             return Expanded(
               child: Tooltip(
                 message:
-                    '${DateFormat('M/d').format(date)}\n规划 ${reviewDuration(planned)}\n专注 ${reviewDuration(actual)}',
+                    '${point.dateLabel}\n规划 ${point.plannedLabel}\n专注 ${point.actualLabel}',
                 child: InkWell(
                   onTap: () => _open(
                     PlanReviewFilter.focus,
                     start: date,
                     end: DateTime(date.year, date.month, date.day + 1),
-                    title: '${DateFormat('M/d').format(date)}专注明细',
+                    title: '${point.dateLabel}专注明细',
                   ),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.end,
@@ -686,7 +765,10 @@ class _PlanBlockStatsScreenState
                             Flexible(
                               child: Container(
                                 width: 24,
-                                height: math.max(2, 82 * planned / maxSeconds),
+                                height: math.max(
+                                  2,
+                                  82 * point.planned / projection.maxSeconds,
+                                ),
                                 margin: const EdgeInsets.symmetric(
                                   horizontal: 1,
                                 ),
@@ -699,7 +781,10 @@ class _PlanBlockStatsScreenState
                             Flexible(
                               child: Container(
                                 width: 24,
-                                height: math.max(2, 82 * actual / maxSeconds),
+                                height: math.max(
+                                  2,
+                                  82 * point.actual / projection.maxSeconds,
+                                ),
                                 margin: const EdgeInsets.symmetric(
                                   horizontal: 1,
                                 ),
@@ -714,7 +799,7 @@ class _PlanBlockStatsScreenState
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        s.days.length <= 7 || i % 5 == 0 ? '${date.day}' : '',
+                        point.showDayLabel ? '${date.day}' : '',
                         textScaler: TextScaler.noScaling,
                         style: const TextStyle(fontSize: 11),
                       ),
@@ -1016,130 +1101,147 @@ class _PlanReviewDetailScreenState
       ),
       body: RefreshIndicator(
         onRefresh: load,
-        child: ListView(
+        child: ListView.builder(
           key: PageStorageKey('review-detail-${widget.filter.name}'),
           padding: const EdgeInsets.all(16),
-          children: [
-            Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 900),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(
-                      widget.cumulative
-                          ? '累计有效记录 · 按唯一规划关联'
-                          : '${DateFormat('yyyy/M/d').format(widget.start)} — ${DateFormat('yyyy/M/d').format(DateTime(widget.end.year, widget.end.month, widget.end.day - 1))}',
-                    ),
-                    if (focusFilters.contains(widget.filter))
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        child: Wrap(
-                          spacing: 8,
-                          runSpacing: 4,
-                          children: focusFilters
-                              .map(
-                                (f) => ChoiceChip(
-                                  label: Text(_label(f)),
-                                  selected: _filter == f,
-                                  onSelected: (_) {
-                                    setState(() => _filter = f);
-                                    unawaited(load());
-                                  },
-                                ),
-                              )
-                              .toList(),
-                        ),
+          itemCount: _rows.length + 2,
+          itemBuilder: (context, index) {
+            if (index == 0) {
+              return Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 900),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        widget.cumulative
+                            ? '累计有效记录 · 按唯一规划关联'
+                            : '${_reviewDateFormat('yyyy/M/d').format(widget.start)} — '
+                                  '${_reviewDateFormat('yyyy/M/d').format(DateTime(widget.end.year, widget.end.month, widget.end.day - 1))}',
                       ),
-                    if (_page != null)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        child: Text(
-                          _filter == PlanReviewFilter.issues
-                              ? '${_page!.total}项需要核对'
-                              : '${_page!.total}项 · ${reviewDuration(_page!.seconds)}',
-                          style: theme.textTheme.titleLarge,
-                        ),
-                      ),
-                    if (widget.filter == PlanReviewFilter.logs)
-                      const Text('日志记录时长可能重叠，未与专注相加。'),
-                    if (focusFilters.contains(widget.filter))
-                      const Text('按记录开始日统计 · 跨午夜仅计一次'),
-                    if (_error != null)
-                      _ReviewError(error: _error!, retry: load),
-                    if (!_loading && _error == null && _rows.isEmpty)
-                      const Padding(
-                        padding: EdgeInsets.all(32),
-                        child: Text('当前筛选没有记录'),
-                      ),
-                    ..._rows.map(
-                      (e) => Card(
-                        margin: const EdgeInsets.symmetric(vertical: 5),
-                        child: Padding(
-                          padding: const EdgeInsets.all(12),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              InkWell(
-                                key: ValueKey('review-entry-${e.kind}-${e.id}'),
-                                onTap: () => _openEntry(e),
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 4,
+                      if (focusFilters.contains(widget.filter))
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          child: Wrap(
+                            spacing: 8,
+                            runSpacing: 4,
+                            children: focusFilters
+                                .map(
+                                  (f) => ChoiceChip(
+                                    label: Text(_label(f)),
+                                    selected: _filter == f,
+                                    onSelected: (_) {
+                                      setState(() => _filter = f);
+                                      unawaited(load());
+                                    },
                                   ),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        e.title,
-                                        style: theme.textTheme.titleMedium,
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(_period(e)),
-                                      Text(
-                                        '${e.kind == 'plan'
-                                            ? '计划'
-                                            : e.kind == 'log'
-                                            ? '日志'
-                                            : '专注'} ${e.verified ? reviewDuration(e.seconds) : '时长待核对'}${e.reason.isEmpty ? '' : ' · ${e.reason}'}',
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                              if (e.kind == 'plan' && e.values['status'] == 6)
-                                Align(
-                                  alignment: Alignment.centerRight,
-                                  child: TextButton(
-                                    key: ValueKey(
-                                      'plan-stats-all-recover-${e.id}',
-                                    ),
-                                    onPressed: () => _recover(e),
-                                    child: const Text('重新安排'),
-                                  ),
-                                ),
-                            ],
+                                )
+                                .toList(),
                           ),
                         ),
+                      if (_page != null)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          child: Text(
+                            _filter == PlanReviewFilter.issues
+                                ? '${_page!.total}项需要核对'
+                                : '${_page!.total}项 · ${reviewDuration(_page!.seconds)}',
+                            style: theme.textTheme.titleLarge,
+                          ),
+                        ),
+                      if (widget.filter == PlanReviewFilter.logs)
+                        const Text('日志记录时长可能重叠，未与专注相加。'),
+                      if (focusFilters.contains(widget.filter))
+                        const Text('按记录开始日统计 · 跨午夜仅计一次'),
+                      if (_error != null)
+                        _ReviewError(error: _error!, retry: load),
+                      if (!_loading && _error == null && _rows.isEmpty)
+                        const Padding(
+                          padding: EdgeInsets.all(32),
+                          child: Text('当前筛选没有记录'),
+                        ),
+                    ],
+                  ),
+                ),
+              );
+            }
+
+            if (index == _rows.length + 1) {
+              final footer = _loading
+                  ? const Padding(
+                      padding: EdgeInsets.all(24),
+                      child: Center(child: CircularProgressIndicator()),
+                    )
+                  : _error == null && _page?.next != null
+                  ? TextButton(
+                      key: const ValueKey('review-load-more'),
+                      onPressed: () => load(more: true),
+                      child: const Text('加载更多'),
+                    )
+                  : const SizedBox.shrink();
+              return Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 900),
+                  child: footer,
+                ),
+              );
+            }
+
+            final e = _rows[index - 1];
+            return Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 900),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: Card(
+                    margin: const EdgeInsets.symmetric(vertical: 5),
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          InkWell(
+                            key: ValueKey('review-entry-${e.kind}-${e.id}'),
+                            onTap: () => _openEntry(e),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 4),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    e.title,
+                                    style: theme.textTheme.titleMedium,
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(_period(e)),
+                                  Text(
+                                    '${e.kind == 'plan'
+                                        ? '计划'
+                                        : e.kind == 'log'
+                                        ? '日志'
+                                        : '专注'} ${e.verified ? reviewDuration(e.seconds) : '时长待核对'}${e.reason.isEmpty ? '' : ' · ${e.reason}'}',
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          if (e.kind == 'plan' && e.values['status'] == 6)
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: TextButton(
+                                key: ValueKey('plan-stats-all-recover-${e.id}'),
+                                onPressed: () => _recover(e),
+                                child: const Text('重新安排'),
+                              ),
+                            ),
+                        ],
                       ),
                     ),
-                    if (_loading)
-                      const Padding(
-                        padding: EdgeInsets.all(24),
-                        child: Center(child: CircularProgressIndicator()),
-                      )
-                    else if (_error == null && _page?.next != null)
-                      TextButton(
-                        key: const ValueKey('review-load-more'),
-                        onPressed: () => load(more: true),
-                        child: const Text('加载更多'),
-                      ),
-                  ],
+                  ),
                 ),
               ),
-            ),
-          ],
+            );
+          },
         ),
       ),
     );

@@ -51,7 +51,8 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
         final declaredTimeMode = RecognizedTodoAdapter.parseTimeMode(
           result['timeMode'] ?? result['time_mode'],
         );
-        final isAllDay = RecognizedTodoAdapter.parseBool(
+        final isAllDay =
+            RecognizedTodoAdapter.parseBool(
               result['isAllDay'] ?? result['is_all_day'],
             ) ||
             declaredTimeMode == TodoTimeMode.dateOnly ||
@@ -59,7 +60,8 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
                 endTime != null &&
                 TodoItem.looksLikeLegacyDateOnlyRange(startTime, endTime));
         return ParsedTodoResult(
-          title: result['title']?.toString() ??
+          title:
+              result['title']?.toString() ??
               result['content']?.toString() ??
               '',
           remark: (result['remark'] ?? result['notes'] ?? result['note'])
@@ -83,10 +85,11 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
           reminderMinutes:
               result['reminderMinutes'] ?? result['reminder_minutes'],
           itemKind: (result['itemKind'] ?? result['item_kind'])?.toString(),
-          originalText: (result['originalText'] ??
-                  result['original_text'] ??
-                  originalText)
-              ?.toString(),
+          originalText:
+              (result['originalText'] ??
+                      result['original_text'] ??
+                      originalText)
+                  ?.toString(),
         );
       }).toList();
 
@@ -130,7 +133,8 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
         } else {
           customDaysCtrl.clear();
         }
-        reminderMinutes = first.reminderMinutes ??
+        reminderMinutes =
+            first.reminderMinutes ??
             (first.itemKind == 'fixedSchedule' ? 15 : 5);
         currentOriginalText = first.originalText;
       }
@@ -181,7 +185,8 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
                     activeThumbColor: Theme.of(context).colorScheme.primary,
                     onChanged: (val) {
                       setDialogState(() {
-                        final wasDateOnlyRange = dueDate != null &&
+                        final wasDateOnlyRange =
+                            dueDate != null &&
                             TodoItem.looksLikeLegacyDateOnlyRange(
                               createdAt,
                               dueDate!,
@@ -230,7 +235,7 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
                     ListTile(
                       contentPadding: EdgeInsets.zero,
                       title: Text(
-                        "完成日期: ${DateFormat('yyyy-MM-dd').format(createdAt)}",
+                        "完成日期: ${_cachedDateFormat('yyyy-MM-dd').format(createdAt)}",
                       ),
                       trailing: Icon(
                         Icons.edit_calendar,
@@ -246,24 +251,22 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
                         );
                         if (pickedDate != null) {
                           if (isAllDay) {
-                            setDialogState(
-                              () {
-                                createdAt = DateTime(
-                                  pickedDate.year,
-                                  pickedDate.month,
-                                  pickedDate.day,
-                                  0,
-                                  0,
-                                );
-                                dueDate = DateTime(
-                                  pickedDate.year,
-                                  pickedDate.month,
-                                  pickedDate.day,
-                                  23,
-                                  59,
-                                );
-                              },
-                            );
+                            setDialogState(() {
+                              createdAt = DateTime(
+                                pickedDate.year,
+                                pickedDate.month,
+                                pickedDate.day,
+                                0,
+                                0,
+                              );
+                              dueDate = DateTime(
+                                pickedDate.year,
+                                pickedDate.month,
+                                pickedDate.day,
+                                23,
+                                59,
+                              );
+                            });
                           } else {
                             if (!context.mounted) return;
                             final pickedTime = await showAppTimePicker(
@@ -291,7 +294,7 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
                       title: Text(
                         dueDate == null
                             ? "设置截止时间（当前未安排）"
-                            : "${DateFormat('yyyy-MM-dd HH:mm').format(dueDate!)} 前完成",
+                            : "${_cachedDateFormat('yyyy-MM-dd HH:mm').format(dueDate!)} 前完成",
                       ),
                       trailing: Icon(
                         Icons.event,
@@ -401,7 +404,7 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
                       title: Text(
                         recurrenceEndDate == null
                             ? "重复结束日期 (可选)"
-                            : "重复结束: ${DateFormat('yyyy-MM-dd').format(recurrenceEndDate!)}",
+                            : "重复结束: ${_cachedDateFormat('yyyy-MM-dd').format(recurrenceEndDate!)}",
                       ),
                       trailing: Icon(
                         Icons.event_busy,
@@ -427,8 +430,9 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
                     initialValue: reminderMinutes,
                     decoration: InputDecoration(
                       labelText: "温馨提醒 (提前量)",
-                      prefixIcon:
-                          const Icon(Icons.notifications_active_outlined),
+                      prefixIcon: const Icon(
+                        Icons.notifications_active_outlined,
+                      ),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
@@ -464,9 +468,8 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: Theme.of(
-                          context,
-                        ).colorScheme.secondaryContainer.withValues(alpha: 0.3),
+                        color: Theme.of(context).colorScheme.secondaryContainer
+                            .withValues(alpha: 0.3),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Column(
@@ -484,9 +487,9 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
                                 "识别的图片",
                                 style: TextStyle(
                                   fontWeight: FontWeight.bold,
-                                  color: Theme.of(
-                                    context,
-                                  ).colorScheme.secondary,
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .secondary,
                                 ),
                               ),
                               const Spacer(),
@@ -519,9 +522,8 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Theme.of(
-                        context,
-                      ).colorScheme.primaryContainer.withValues(alpha: 0.3),
+                      color: Theme.of(context).colorScheme.primaryContainer
+                          .withValues(alpha: 0.3),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Column(
@@ -567,553 +569,575 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
                     minLines: 2,
                   ),
                   const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: FilledButton(
-                          onPressed: isParsing
-                              ? null
-                              : () async {
-                                  if (aiInputCtrl.text.trim().isEmpty) {
-                                    AppSnackBars.showSnackBar(
-                                      context,
-                                      const SnackBar(content: Text("请输入事项内容")),
-                                    );
-                                    return;
-                                  }
-
-                                  final config = await LLMService.getConfig();
-                                  if (config == null || !config.isConfigured) {
-                                    if (!context.mounted) return;
-                                    final goToSettings =
-                                        await showAppDialog<bool>(
-                                      context: context,
-                                      builder: (ctx) => AlertDialog(
-                                        title: const Text("未配置大模型"),
-                                        content: const Text(
-                                          "使用大模型识别需要先配置API地址和密钥，是否前往设置？",
-                                        ),
-                                        actions: [
-                                          TextButton(
-                                            onPressed: () =>
-                                                Navigator.pop(ctx, false),
-                                            child: const Text("取消"),
-                                          ),
-                                          FilledButton(
-                                            onPressed: () =>
-                                                Navigator.pop(ctx, true),
-                                            child: const Text("去配置"),
-                                          ),
-                                        ],
-                                      ),
-                                    );
-                                    if (goToSettings == true &&
-                                        context.mounted) {
-                                      Navigator.of(context).push(
-                                        PageTransitions.material(
-                                          builder: (_) => const SettingsPage(),
+                  AiWaterRippleBorder(
+                    isLight: Theme.of(context).brightness == Brightness.light,
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: FilledButton(
+                            onPressed: isParsing
+                                ? null
+                                : () async {
+                                    if (aiInputCtrl.text.trim().isEmpty) {
+                                      AppSnackBars.showSnackBar(
+                                        context,
+                                        const SnackBar(
+                                          content: Text("请输入事项内容"),
                                         ),
                                       );
-                                    }
-                                    return;
-                                  }
-
-                                  setDialogState(() {
-                                    isParsing = true;
-                                  });
-
-                                  // 给一个短暂延迟让UI刷新出 Loading 状态，避免同步卡顿
-                                  await Future.delayed(
-                                    const Duration(milliseconds: 150),
-                                  );
-
-                                  final recognitionInput =
-                                      aiInputCtrl.text.trim();
-                                  AiRecognitionHandle? recognitionHandle;
-                                  ChatUsageSummary? recognitionUsage;
-                                  try {
-                                    recognitionHandle =
-                                        await AiRecognitionChatBridge.startText(
-                                      recognitionInput,
-                                    );
-                                  } catch (_) {}
-
-                                  try {
-                                    final results =
-                                        await LLMService.parseTodoWithLLM(
-                                      recognitionInput,
-                                      onUsage: (usage) =>
-                                          recognitionUsage = usage,
-                                    );
-                                    if (recognitionHandle != null) {
-                                      try {
-                                        await AiRecognitionChatBridge.complete(
-                                          recognitionHandle,
-                                          todoResults: results,
-                                          usageSummary: recognitionUsage,
-                                        );
-                                      } catch (_) {}
-                                    }
-                                    if (!context.mounted || !ctx.mounted) {
                                       return;
                                     }
 
-                                    final parsedResultsList = results
-                                        .map(
-                                          (result) => _parseRecognizedResult(
-                                            result,
-                                            recognitionInput,
+                                    final config = await LLMService.getConfig();
+                                    if (config == null ||
+                                        !config.isConfigured) {
+                                      if (!context.mounted) return;
+                                      final goToSettings =
+                                          await showAppDialog<bool>(
+                                            context: context,
+                                            builder: (ctx) => AlertDialog(
+                                              title: const Text("未配置大模型"),
+                                              content: const Text(
+                                                "使用大模型识别需要先配置API地址和密钥，是否前往设置？",
+                                              ),
+                                              actions: [
+                                                TextButton(
+                                                  onPressed: () =>
+                                                      Navigator.pop(ctx, false),
+                                                  child: const Text("取消"),
+                                                ),
+                                                FilledButton(
+                                                  onPressed: () =>
+                                                      Navigator.pop(ctx, true),
+                                                  child: const Text("去配置"),
+                                                ),
+                                              ],
+                                            ),
+                                          );
+                                      if (goToSettings == true &&
+                                          context.mounted) {
+                                        Navigator.of(context).push(
+                                          PageTransitions.material(
+                                            builder: (_) =>
+                                                const SettingsPage(),
                                           ),
-                                        )
-                                        .toList();
+                                        );
+                                      }
+                                      return;
+                                    }
 
                                     setDialogState(() {
-                                      parsedResults = parsedResultsList;
-                                      currentParseIndex = 0;
-                                      isParsing = false;
-                                      currentOriginalText = aiInputCtrl.text;
+                                      isParsing = true;
                                     });
 
-                                    if (parsedResults.isNotEmpty) {
-                                      final first = parsedResults[0];
+                                    // 给一个短暂延迟让UI刷新出 Loading 状态，避免同步卡顿
+                                    await Future.delayed(
+                                      const Duration(milliseconds: 150),
+                                    );
+
+                                    final recognitionInput = aiInputCtrl.text
+                                        .trim();
+                                    AiRecognitionHandle? recognitionHandle;
+                                    ChatUsageSummary? recognitionUsage;
+                                    try {
+                                      recognitionHandle =
+                                          await AiRecognitionChatBridge.startText(
+                                            recognitionInput,
+                                          );
+                                    } catch (_) {}
+
+                                    try {
+                                      final results =
+                                          await LLMService.parseTodoWithLLM(
+                                            recognitionInput,
+                                            onUsage: (usage) =>
+                                                recognitionUsage = usage,
+                                          );
+                                      if (recognitionHandle != null) {
+                                        try {
+                                          await AiRecognitionChatBridge.complete(
+                                            recognitionHandle,
+                                            todoResults: results,
+                                            usageSummary: recognitionUsage,
+                                          );
+                                        } catch (_) {}
+                                      }
+                                      if (!context.mounted || !ctx.mounted) {
+                                        return;
+                                      }
+
+                                      final parsedResultsList = results
+                                          .map(
+                                            (result) => _parseRecognizedResult(
+                                              result,
+                                              recognitionInput,
+                                            ),
+                                          )
+                                          .toList();
+
                                       setDialogState(() {
-                                        titleCtrl.text = first.title;
-                                        remarkCtrl.text = first.remark ?? "";
-                                        dueDate = null;
-                                        if (first.startTime != null) {
-                                          createdAt = first.startTime!;
-                                          if (first.isAllDay) {
-                                            createdAt = DateTime(
+                                        parsedResults = parsedResultsList;
+                                        currentParseIndex = 0;
+                                        isParsing = false;
+                                        currentOriginalText = aiInputCtrl.text;
+                                      });
+
+                                      if (parsedResults.isNotEmpty) {
+                                        final first = parsedResults[0];
+                                        setDialogState(() {
+                                          titleCtrl.text = first.title;
+                                          remarkCtrl.text = first.remark ?? "";
+                                          dueDate = null;
+                                          if (first.startTime != null) {
+                                            createdAt = first.startTime!;
+                                            if (first.isAllDay) {
+                                              createdAt = DateTime(
+                                                createdAt.year,
+                                                createdAt.month,
+                                                createdAt.day,
+                                                0,
+                                                0,
+                                              );
+                                            }
+                                          }
+                                          if (first.endTime != null) {
+                                            dueDate = first.endTime;
+                                          } else if (first.startTime != null &&
+                                              first.isAllDay) {
+                                            dueDate = DateTime(
                                               createdAt.year,
                                               createdAt.month,
                                               createdAt.day,
-                                              0,
-                                              0,
+                                              23,
+                                              59,
                                             );
                                           }
-                                        }
-                                        if (first.endTime != null) {
-                                          dueDate = first.endTime;
-                                        } else if (first.startTime != null &&
-                                            first.isAllDay) {
-                                          dueDate = DateTime(
-                                            createdAt.year,
-                                            createdAt.month,
-                                            createdAt.day,
-                                            23,
-                                            59,
+                                          isAllDay = first.isAllDay;
+                                          recurrence = first.recurrence;
+                                          customDays = first.customIntervalDays;
+                                          recurrenceEndDate =
+                                              first.recurrenceEndDate;
+                                          if (customDays != null) {
+                                            customDaysCtrl.text = customDays
+                                                .toString();
+                                          } else {
+                                            customDaysCtrl.clear();
+                                          }
+                                          reminderMinutes =
+                                              first.reminderMinutes ??
+                                              (first.itemKind == 'fixedSchedule'
+                                                  ? 15
+                                                  : 5);
+
+                                          // ★ 解析完成后自动切回"手动输入"标签页供用户检查或修改 ★
+                                          selectedTabIndex = 0;
+                                        });
+
+                                        if (mounted) {
+                                          AppSnackBars.showSnackBar(
+                                            context,
+                                            SnackBar(
+                                              content: Text(
+                                                "大模型解析成功，共${parsedResults.length}个事项",
+                                              ),
+                                              duration: const Duration(
+                                                seconds: 2,
+                                              ),
+                                            ),
                                           );
                                         }
-                                        isAllDay = first.isAllDay;
-                                        recurrence = first.recurrence;
-                                        customDays = first.customIntervalDays;
-                                        recurrenceEndDate =
-                                            first.recurrenceEndDate;
-                                        if (customDays != null) {
-                                          customDaysCtrl.text =
-                                              customDays.toString();
-                                        } else {
-                                          customDaysCtrl.clear();
-                                        }
-                                        reminderMinutes = first
-                                                .reminderMinutes ??
-                                            (first.itemKind == 'fixedSchedule'
-                                                ? 15
-                                                : 5);
-
-                                        // ★ 解析完成后自动切回"手动输入"标签页供用户检查或修改 ★
-                                        selectedTabIndex = 0;
+                                      }
+                                    } catch (e) {
+                                      if (recognitionHandle != null) {
+                                        try {
+                                          await AiRecognitionChatBridge.fail(
+                                            recognitionHandle,
+                                            e,
+                                          );
+                                        } catch (_) {}
+                                      }
+                                      if (!context.mounted) return;
+                                      setDialogState(() {
+                                        isParsing = false;
                                       });
-
                                       if (mounted) {
                                         AppSnackBars.showSnackBar(
                                           context,
                                           SnackBar(
-                                            content: Text(
-                                              "大模型解析成功，共${parsedResults.length}个事项",
-                                            ),
-                                            duration:
-                                                const Duration(seconds: 2),
+                                            content: Text("大模型解析失败: $e"),
                                           ),
                                         );
                                       }
                                     }
-                                  } catch (e) {
-                                    if (recognitionHandle != null) {
-                                      try {
-                                        await AiRecognitionChatBridge.fail(
-                                          recognitionHandle,
-                                          e,
-                                        );
-                                      } catch (_) {}
-                                    }
-                                    if (!context.mounted) return;
-                                    setDialogState(() {
-                                      isParsing = false;
-                                    });
-                                    if (mounted) {
+                                  },
+                            child: isParsing
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Text("智能解析"),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: isParsing
+                                ? null
+                                : () async {
+                                    if (aiInputCtrl.text.trim().isEmpty) {
                                       AppSnackBars.showSnackBar(
                                         context,
-                                        SnackBar(content: Text("大模型解析失败: $e")),
-                                      );
-                                    }
-                                  }
-                                },
-                          child: isParsing
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Text("智能解析"),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: isParsing
-                              ? null
-                              : () async {
-                                  if (aiInputCtrl.text.trim().isEmpty) {
-                                    AppSnackBars.showSnackBar(
-                                      context,
-                                      const SnackBar(content: Text("请输入事项内容")),
-                                    );
-                                    return;
-                                  }
-
-                                  final config = await LLMService.getConfig();
-                                  if (config == null || !config.isConfigured) {
-                                    if (!context.mounted) return;
-                                    final goToSettings =
-                                        await showAppDialog<bool>(
-                                      context: context,
-                                      builder: (ctx) => AlertDialog(
-                                        title: const Text("未配置大模型"),
-                                        content: const Text(
-                                          "使用大模型识别需要先配置API地址和密钥，是否前往设置？",
-                                        ),
-                                        actions: [
-                                          TextButton(
-                                            onPressed: () =>
-                                                Navigator.pop(ctx, false),
-                                            child: const Text("取消"),
-                                          ),
-                                          FilledButton(
-                                            onPressed: () =>
-                                                Navigator.pop(ctx, true),
-                                            child: const Text("去配置"),
-                                          ),
-                                        ],
-                                      ),
-                                    );
-                                    if (goToSettings == true &&
-                                        context.mounted) {
-                                      Navigator.of(context).push(
-                                        PageTransitions.material(
-                                          builder: (_) => const SettingsPage(),
+                                        const SnackBar(
+                                          content: Text("请输入事项内容"),
                                         ),
                                       );
-                                    }
-                                    return;
-                                  }
-
-                                  setDialogState(() {
-                                    isParsing = true;
-                                  });
-
-                                  final recognitionInput =
-                                      aiInputCtrl.text.trim();
-                                  AiRecognitionHandle? recognitionHandle;
-                                  ChatUsageSummary? recognitionUsage;
-                                  try {
-                                    recognitionHandle =
-                                        await AiRecognitionChatBridge.startText(
-                                      recognitionInput,
-                                    );
-                                  } catch (_) {}
-
-                                  try {
-                                    final results =
-                                        await LLMService.parseTodoWithLLM(
-                                      recognitionInput,
-                                      onUsage: (usage) =>
-                                          recognitionUsage = usage,
-                                    );
-                                    if (recognitionHandle != null) {
-                                      try {
-                                        await AiRecognitionChatBridge.complete(
-                                          recognitionHandle,
-                                          todoResults: results,
-                                          usageSummary: recognitionUsage,
-                                        );
-                                      } catch (_) {}
-                                    }
-                                    if (!context.mounted || !ctx.mounted) {
                                       return;
                                     }
 
-                                    final parsedResultsList = results
-                                        .map(
-                                          (result) => _parseRecognizedResult(
-                                            result,
-                                            recognitionInput,
+                                    final config = await LLMService.getConfig();
+                                    if (config == null ||
+                                        !config.isConfigured) {
+                                      if (!context.mounted) return;
+                                      final goToSettings =
+                                          await showAppDialog<bool>(
+                                            context: context,
+                                            builder: (ctx) => AlertDialog(
+                                              title: const Text("未配置大模型"),
+                                              content: const Text(
+                                                "使用大模型识别需要先配置API地址和密钥，是否前往设置？",
+                                              ),
+                                              actions: [
+                                                TextButton(
+                                                  onPressed: () =>
+                                                      Navigator.pop(ctx, false),
+                                                  child: const Text("取消"),
+                                                ),
+                                                FilledButton(
+                                                  onPressed: () =>
+                                                      Navigator.pop(ctx, true),
+                                                  child: const Text("去配置"),
+                                                ),
+                                              ],
+                                            ),
+                                          );
+                                      if (goToSettings == true &&
+                                          context.mounted) {
+                                        Navigator.of(context).push(
+                                          PageTransitions.material(
+                                            builder: (_) =>
+                                                const SettingsPage(),
                                           ),
-                                        )
-                                        .toList();
+                                        );
+                                      }
+                                      return;
+                                    }
 
                                     setDialogState(() {
-                                      parsedResults = parsedResultsList;
-                                      currentParseIndex = 0;
-                                      isParsing = false;
-                                      llmRawResponse =
-                                          const JsonEncoder.withIndent(
-                                        '  ',
-                                      ).convert(results);
+                                      isParsing = true;
                                     });
 
-                                    if (parsedResults.isNotEmpty) {
-                                      // 如果有回调，关闭对话框并导航到确认页面
-                                      if (widget.onLLMResultsParsed != null) {
-                                        Navigator.pop(ctx);
-                                        final existingTeams =
-                                            <String, String>{};
-                                        for (var t in widget.todos) {
-                                          if (t.teamUuid != null &&
-                                              t.teamName != null) {
-                                            existingTeams[t.teamUuid!] =
-                                                t.teamName!;
-                                          }
-                                        }
-                                        final currentTeamName =
-                                            _selectedSubTeamUuid != null
-                                                ? existingTeams[
-                                                    _selectedSubTeamUuid]
-                                                : null;
+                                    final recognitionInput = aiInputCtrl.text
+                                        .trim();
+                                    AiRecognitionHandle? recognitionHandle;
+                                    ChatUsageSummary? recognitionUsage;
+                                    try {
+                                      recognitionHandle =
+                                          await AiRecognitionChatBridge.startText(
+                                            recognitionInput,
+                                          );
+                                    } catch (_) {}
 
-                                        widget.onLLMResultsParsed!(
+                                    try {
+                                      final results =
+                                          await LLMService.parseTodoWithLLM(
+                                            recognitionInput,
+                                            onUsage: (usage) =>
+                                                recognitionUsage = usage,
+                                          );
+                                      if (recognitionHandle != null) {
+                                        try {
+                                          await AiRecognitionChatBridge.complete(
+                                            recognitionHandle,
+                                            todoResults: results,
+                                            usageSummary: recognitionUsage,
+                                          );
+                                        } catch (_) {}
+                                      }
+                                      if (!context.mounted || !ctx.mounted) {
+                                        return;
+                                      }
+
+                                      final parsedResultsList = results
+                                          .map(
+                                            (result) => _parseRecognizedResult(
+                                              result,
+                                              recognitionInput,
+                                            ),
+                                          )
+                                          .toList();
+
+                                      setDialogState(() {
+                                        parsedResults = parsedResultsList;
+                                        currentParseIndex = 0;
+                                        isParsing = false;
+                                        llmRawResponse =
+                                            const JsonEncoder.withIndent('  ')
+                                                .convert(results);
+                                      });
+
+                                      if (parsedResults.isNotEmpty) {
+                                        // 如果有回调，关闭对话框并导航到确认页面
+                                        if (widget.onLLMResultsParsed != null) {
+                                          Navigator.pop(ctx);
+                                          final existingTeams =
+                                              <String, String>{};
+                                          for (var t in widget.todos) {
+                                            if (t.teamUuid != null &&
+                                                t.teamName != null) {
+                                              existingTeams[t.teamUuid!] =
+                                                  t.teamName!;
+                                            }
+                                          }
+                                          final currentTeamName =
+                                              _selectedSubTeamUuid != null
+                                              ? existingTeams[_selectedSubTeamUuid]
+                                              : null;
+
+                                          widget.onLLMResultsParsed!(
                                             results,
                                             imagePath,
                                             recognitionInput,
                                             _selectedSubTeamUuid,
-                                            currentTeamName);
-                                        return;
-                                      }
+                                            currentTeamName,
+                                          );
+                                          return;
+                                        }
 
-                                      final first = parsedResults[0];
-                                      setDialogState(() {
-                                        titleCtrl.text = first.title;
-                                        remarkCtrl.text = first.remark ?? "";
-                                        dueDate = null;
-                                        if (first.startTime != null) {
-                                          createdAt = first.startTime!;
-                                          if (first.isAllDay) {
-                                            createdAt = DateTime(
+                                        final first = parsedResults[0];
+                                        setDialogState(() {
+                                          titleCtrl.text = first.title;
+                                          remarkCtrl.text = first.remark ?? "";
+                                          dueDate = null;
+                                          if (first.startTime != null) {
+                                            createdAt = first.startTime!;
+                                            if (first.isAllDay) {
+                                              createdAt = DateTime(
+                                                createdAt.year,
+                                                createdAt.month,
+                                                createdAt.day,
+                                                0,
+                                                0,
+                                              );
+                                            }
+                                          }
+                                          if (first.endTime != null) {
+                                            dueDate = first.endTime;
+                                          } else if (first.startTime != null &&
+                                              first.isAllDay) {
+                                            dueDate = DateTime(
                                               createdAt.year,
                                               createdAt.month,
                                               createdAt.day,
-                                              0,
-                                              0,
+                                              23,
+                                              59,
                                             );
                                           }
-                                        }
-                                        if (first.endTime != null) {
-                                          dueDate = first.endTime;
-                                        } else if (first.startTime != null &&
-                                            first.isAllDay) {
-                                          dueDate = DateTime(
-                                            createdAt.year,
-                                            createdAt.month,
-                                            createdAt.day,
-                                            23,
-                                            59,
+                                          isAllDay = first.isAllDay;
+                                          recurrence = first.recurrence;
+                                          customDays = first.customIntervalDays;
+                                          recurrenceEndDate =
+                                              first.recurrenceEndDate;
+                                          if (customDays != null) {
+                                            customDaysCtrl.text = customDays
+                                                .toString();
+                                          } else {
+                                            customDaysCtrl.clear();
+                                          }
+                                          reminderMinutes =
+                                              first.reminderMinutes ??
+                                              (first.itemKind == 'fixedSchedule'
+                                                  ? 15
+                                                  : 5);
+                                          currentOriginalText =
+                                              aiInputCtrl.text;
+                                          selectedTabIndex = 0;
+                                        });
+
+                                        if (mounted) {
+                                          AppSnackBars.showSnackBar(
+                                            context,
+                                            SnackBar(
+                                              content: Text(
+                                                "大模型解析成功，共${parsedResults.length}个事项，请确认或修改后保存",
+                                              ),
+                                              duration: const Duration(
+                                                seconds: 2,
+                                              ),
+                                            ),
                                           );
                                         }
-                                        isAllDay = first.isAllDay;
-                                        recurrence = first.recurrence;
-                                        customDays = first.customIntervalDays;
-                                        recurrenceEndDate =
-                                            first.recurrenceEndDate;
-                                        if (customDays != null) {
-                                          customDaysCtrl.text =
-                                              customDays.toString();
-                                        } else {
-                                          customDaysCtrl.clear();
-                                        }
-                                        reminderMinutes = first
-                                                .reminderMinutes ??
-                                            (first.itemKind == 'fixedSchedule'
-                                                ? 15
-                                                : 5);
-                                        currentOriginalText = aiInputCtrl.text;
-                                        selectedTabIndex = 0;
+                                      }
+                                    } catch (e) {
+                                      if (recognitionHandle != null) {
+                                        try {
+                                          await AiRecognitionChatBridge.fail(
+                                            recognitionHandle,
+                                            e,
+                                          );
+                                        } catch (_) {}
+                                      }
+                                      if (!context.mounted) return;
+                                      setDialogState(() {
+                                        isParsing = false;
                                       });
-
                                       if (mounted) {
                                         AppSnackBars.showSnackBar(
                                           context,
                                           SnackBar(
-                                            content: Text(
-                                              "大模型解析成功，共${parsedResults.length}个事项，请确认或修改后保存",
-                                            ),
-                                            duration: const Duration(
-                                              seconds: 2,
-                                            ),
+                                            content: Text("大模型解析失败: $e"),
                                           ),
                                         );
                                       }
                                     }
-                                  } catch (e) {
-                                    if (recognitionHandle != null) {
-                                      try {
-                                        await AiRecognitionChatBridge.fail(
-                                          recognitionHandle,
-                                          e,
-                                        );
-                                      } catch (_) {}
-                                    }
-                                    if (!context.mounted) return;
-                                    setDialogState(() {
-                                      isParsing = false;
-                                    });
-                                    if (mounted) {
-                                      AppSnackBars.showSnackBar(
-                                        context,
-                                        SnackBar(content: Text("大模型解析失败: $e")),
-                                      );
-                                    }
-                                  }
-                                },
-                          child: isParsing
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Text("大模型识别"),
+                                  },
+                            child: isParsing
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Text("大模型识别"),
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                  if (parsedResults.isNotEmpty) ...[
-                    const SizedBox(height: 16),
-                    const Divider(),
-                    const SizedBox(height: 8),
-                    Text(
-                      "解析结果 (${currentParseIndex + 1}/${parsedResults.length})",
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 8),
-                    _buildParseResultItem(
-                      '类型',
-                      _quickCaptureKindLabel(
-                        parsedResults[currentParseIndex],
-                      ),
-                    ),
-                    _buildParseResultItem(
-                      '事项内容',
-                      parsedResults[currentParseIndex].title,
-                    ),
-                    _buildParseResultItem(
-                      '时间',
-                      _quickCaptureTimeLabel(
-                        parsedResults[currentParseIndex],
-                      ),
-                    ),
-                    _buildParseResultItem(
-                      "重复",
-                      _getRecurrenceText(
-                        parsedResults[currentParseIndex].recurrence,
-                      ),
-                    ),
-                    _buildParseResultItem(
-                      "备注/地点",
-                      _quickCaptureDetailLabel(
-                        parsedResults[currentParseIndex],
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        if (currentParseIndex > 0)
-                          TextButton(
-                            onPressed: () {
-                              setDialogState(() => currentParseIndex--);
-                              _applyParsedResult(
-                                parsedResults[currentParseIndex],
-                                setDialogState,
-                                titleCtrl,
-                                remarkCtrl,
-                                (d) => createdAt = d,
-                                (d) => dueDate = d,
-                                (b) => isAllDay = b,
-                                (r) => recurrence = r,
-                                (i) => customDays = i,
-                                (d) => recurrenceEndDate = d,
-                                (minutes) => reminderMinutes = minutes,
-                                customDaysCtrl,
-                              );
-                            },
-                            child: const Text("上一个"),
-                          ),
-                        if (currentParseIndex < parsedResults.length - 1)
-                          TextButton(
-                            onPressed: () {
-                              setDialogState(() => currentParseIndex++);
-                              _applyParsedResult(
-                                parsedResults[currentParseIndex],
-                                setDialogState,
-                                titleCtrl,
-                                remarkCtrl,
-                                (d) => createdAt = d,
-                                (d) => dueDate = d,
-                                (b) => isAllDay = b,
-                                (r) => recurrence = r,
-                                (i) => customDays = i,
-                                (d) => recurrenceEndDate = d,
-                                (minutes) => reminderMinutes = minutes,
-                                customDaysCtrl,
-                              );
-                            },
-                            child: const Text("下一个"),
-                          ),
                       ],
                     ),
-                    if (llmRawResponse != null) ...[
-                      const SizedBox(height: 12),
-                      ExpansionTile(
-                        title: const Text(
-                          "大模型原始返回",
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
+                  ),
+                  if (parsedResults.isNotEmpty)
+                    AiWaterRippleBorder(
+                      isLight: Theme.of(context).brightness == Brightness.light,
+                      child: Column(
                         children: [
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: Colors.grey[100],
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: SelectableText(
-                              llmRawResponse!,
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontFamily: 'monospace',
-                              ),
+                          const SizedBox(height: 16),
+                          const Divider(),
+                          const SizedBox(height: 8),
+                          Text(
+                            "解析结果 (${currentParseIndex + 1}/${parsedResults.length})",
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(height: 8),
+                          _buildParseResultItem(
+                            '类型',
+                            _quickCaptureKindLabel(
+                              parsedResults[currentParseIndex],
                             ),
                           ),
+                          _buildParseResultItem(
+                            '事项内容',
+                            parsedResults[currentParseIndex].title,
+                          ),
+                          _buildParseResultItem(
+                            '时间',
+                            _quickCaptureTimeLabel(
+                              parsedResults[currentParseIndex],
+                            ),
+                          ),
+                          _buildParseResultItem(
+                            "重复",
+                            _getRecurrenceText(
+                              parsedResults[currentParseIndex].recurrence,
+                            ),
+                          ),
+                          _buildParseResultItem(
+                            "备注/地点",
+                            _quickCaptureDetailLabel(
+                              parsedResults[currentParseIndex],
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                            children: [
+                              if (currentParseIndex > 0)
+                                TextButton(
+                                  onPressed: () {
+                                    setDialogState(() => currentParseIndex--);
+                                    _applyParsedResult(
+                                      parsedResults[currentParseIndex],
+                                      setDialogState,
+                                      titleCtrl,
+                                      remarkCtrl,
+                                      (d) => createdAt = d,
+                                      (d) => dueDate = d,
+                                      (b) => isAllDay = b,
+                                      (r) => recurrence = r,
+                                      (i) => customDays = i,
+                                      (d) => recurrenceEndDate = d,
+                                      (minutes) => reminderMinutes = minutes,
+                                      customDaysCtrl,
+                                    );
+                                  },
+                                  child: const Text("上一个"),
+                                ),
+                              if (currentParseIndex < parsedResults.length - 1)
+                                TextButton(
+                                  onPressed: () {
+                                    setDialogState(() => currentParseIndex++);
+                                    _applyParsedResult(
+                                      parsedResults[currentParseIndex],
+                                      setDialogState,
+                                      titleCtrl,
+                                      remarkCtrl,
+                                      (d) => createdAt = d,
+                                      (d) => dueDate = d,
+                                      (b) => isAllDay = b,
+                                      (r) => recurrence = r,
+                                      (i) => customDays = i,
+                                      (d) => recurrenceEndDate = d,
+                                      (minutes) => reminderMinutes = minutes,
+                                      customDaysCtrl,
+                                    );
+                                  },
+                                  child: const Text("下一个"),
+                                ),
+                            ],
+                          ),
+                          if (llmRawResponse != null) ...[
+                            const SizedBox(height: 12),
+                            ExpansionTile(
+                              title: const Text(
+                                "大模型原始返回",
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              children: [
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey[100],
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: SelectableText(
+                                    llmRawResponse!,
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontFamily: 'monospace',
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                         ],
                       ),
-                    ],
-                  ],
+                    ),
                 ],
               ),
             );
@@ -1129,21 +1153,26 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  SegmentedButton<int>(
-                    segments: const [
-                      ButtonSegment(value: 0, label: Text("手动输入")),
-                      ButtonSegment(
-                        value: 1,
-                        icon: Icon(Icons.auto_awesome),
-                        label: Text("AI识别"),
-                      ),
-                    ],
-                    selected: {selectedTabIndex},
-                    onSelectionChanged: (Set<int> selection) {
-                      setDialogState(() {
-                        selectedTabIndex = selection.first;
-                      });
-                    },
+                  AiWaterRippleBorder(
+                    enabled: selectedTabIndex == 1,
+                    isLight: Theme.of(context).brightness == Brightness.light,
+                    borderRadius: BorderRadius.circular(16),
+                    child: SegmentedButton<int>(
+                      segments: const [
+                        ButtonSegment(value: 0, label: Text("手动输入")),
+                        ButtonSegment(
+                          value: 1,
+                          icon: Icon(Icons.auto_awesome),
+                          label: Text("AI识别"),
+                        ),
+                      ],
+                      selected: {selectedTabIndex},
+                      onSelectionChanged: (Set<int> selection) {
+                        setDialogState(() {
+                          selectedTabIndex = selection.first;
+                        });
+                      },
+                    ),
                   ),
                   const SizedBox(height: 16),
                   SizedBox(
@@ -1184,7 +1213,8 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
                     }
                     if (saveTarget == _QuickCaptureTarget.fixedSchedule) {
                       final sourceText = currentOriginalText ?? titleCtrl.text;
-                      final hasParsedDate = currentParsed?.startTime != null ||
+                      final hasParsedDate =
+                          currentParsed?.startTime != null ||
                           currentParsed?.endTime != null ||
                           isAllDay ||
                           dueDate != null;
@@ -1223,9 +1253,7 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
                         normalizedTime.start == null) {
                       AppSnackBars.showSnackBar(
                         context,
-                        const SnackBar(
-                          content: Text('重复待办需要先设置首次完成日期'),
-                        ),
+                        const SnackBar(content: Text('重复待办需要先设置首次完成日期')),
                       );
                       return;
                     }
@@ -1235,8 +1263,9 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
                       customIntervalDays: customDays,
                       recurrenceEndDate: recurrenceEndDate,
                       dueDate: normalizedTime.due,
-                      createdDate:
-                          normalizedTime.start?.toUtc().millisecondsSinceEpoch,
+                      createdDate: normalizedTime.start
+                          ?.toUtc()
+                          .millisecondsSinceEpoch,
                       remark: remarkCtrl.text.trim().isEmpty
                           ? null
                           : remarkCtrl.text.trim(),
@@ -1274,17 +1303,17 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
     }
     final (title, message) = switch (intent) {
       CaptureIntentKind.fixedSchedule => (
-          '识别为固定日程',
-          '考试、会议或预约属于不可自由移动的固定日程，可以直接按日程保存。',
-        ),
+        '识别为固定日程',
+        '考试、会议或预约属于不可自由移动的固定日程，可以直接按日程保存。',
+      ),
       CaptureIntentKind.planBlock => (
-          '识别为规划时段',
-          '这个时间段更适合关联到待办的规划块。继续只保存待办，不占用规划日历。',
-        ),
+        '识别为规划时段',
+        '这个时间段更适合关联到待办的规划块。继续只保存待办，不占用规划日历。',
+      ),
       CaptureIntentKind.needsConfirmation => (
-          '需要确认时间性质',
-          '无法确定这是固定日程还是可调整的规划时段。继续会暂存为待办。',
-        ),
+        '需要确认时间性质',
+        '无法确定这是固定日程还是可调整的规划时段。继续会暂存为待办。',
+      ),
       CaptureIntentKind.todo => ('', ''),
     };
     return await showAppDialog<_QuickCaptureTarget>(
@@ -1294,10 +1323,8 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
             content: Text(message),
             actions: [
               TextButton(
-                onPressed: () => Navigator.pop(
-                  dialogContext,
-                  _QuickCaptureTarget.cancel,
-                ),
+                onPressed: () =>
+                    Navigator.pop(dialogContext, _QuickCaptureTarget.cancel),
                 child: const Text('返回调整'),
               ),
               if (intent == CaptureIntentKind.fixedSchedule)
@@ -1309,10 +1336,8 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
                   child: const Text('保存为固定日程'),
                 ),
               FilledButton(
-                onPressed: () => Navigator.pop(
-                  dialogContext,
-                  _QuickCaptureTarget.todo,
-                ),
+                onPressed: () =>
+                    Navigator.pop(dialogContext, _QuickCaptureTarget.todo),
                 child: const Text('暂存为待办'),
               ),
             ],
@@ -1344,7 +1369,7 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
     }
     final item = FixedScheduleItem(
       title: parsed.title,
-      date: DateFormat('yyyy-MM-dd').format(dateSource),
+      date: _cachedDateFormat('yyyy-MM-dd').format(dateSource),
       startTime: start?.millisecondsSinceEpoch,
       endTime: end?.millisecondsSinceEpoch,
       source: FixedScheduleSource.ai,
@@ -1356,7 +1381,8 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
     );
     if (item.recurrence != RecurrenceType.none) {
       item.recurrenceSeriesId = item.id;
-      final recurrenceEnd = parsed.recurrenceEndDate ??
+      final recurrenceEnd =
+          parsed.recurrenceEndDate ??
           FixedScheduleRecurrenceService.defaultEndDate(
             startDate: dateSource,
             recurrence: item.recurrence,
@@ -1409,10 +1435,7 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
             child: InteractiveViewer(
               minScale: 0.5,
               maxScale: 4.0,
-              child: localImageWidget(
-                imagePath,
-                fit: BoxFit.contain,
-              ),
+              child: localImageWidget(imagePath, fit: BoxFit.contain),
             ),
           ),
         ),
@@ -1509,8 +1532,8 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
     );
     return ParsedTodoResult(
       title: result['title']?.toString() ?? fallbackTitle,
-      remark:
-          (result['remark'] ?? result['notes'] ?? result['note'])?.toString(),
+      remark: (result['remark'] ?? result['notes'] ?? result['note'])
+          ?.toString(),
       location: result['location']?.toString(),
       isAllDay: isAllDay,
       startTime: startTime,
@@ -1521,9 +1544,7 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
         startTime: startTime,
         endTime: endTime,
       ),
-      recurrence: _parseRecurrenceType(
-        result['recurrence']?.toString(),
-      ),
+      recurrence: _parseRecurrenceType(result['recurrence']?.toString()),
       customIntervalDays: _parseNullableInt(
         result['customIntervalDays'] ?? result['custom_interval_days'],
       ),
@@ -1582,35 +1603,35 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
       if (result.isAllDay) {
         return result.startTime == null
             ? '日期待确认 · 时间待定'
-            : '${DateFormat('yyyy-MM-dd').format(result.startTime!)} · 时间待定';
+            : '${_cachedDateFormat('yyyy-MM-dd').format(result.startTime!)} · 时间待定';
       }
       if (result.startTime != null && result.endTime != null) {
-        return '${DateFormat('yyyy-MM-dd HH:mm').format(result.startTime!)}–${DateFormat('HH:mm').format(result.endTime!)}';
+        return '${_cachedDateFormat('yyyy-MM-dd HH:mm').format(result.startTime!)}–${_cachedDateFormat('HH:mm').format(result.endTime!)}';
       }
       if (result.startTime != null) {
-        return '${DateFormat('yyyy-MM-dd HH:mm').format(result.startTime!)}开始 · 结束待定';
+        return '${_cachedDateFormat('yyyy-MM-dd HH:mm').format(result.startTime!)}开始 · 结束待定';
       }
       return '日期和时间待确认';
     }
     if (intent == CaptureIntentKind.planBlock) {
       return result.startTime != null && result.endTime != null
-          ? '${DateFormat('yyyy-MM-dd HH:mm').format(result.startTime!)}–${DateFormat('HH:mm').format(result.endTime!)}'
+          ? '${_cachedDateFormat('yyyy-MM-dd HH:mm').format(result.startTime!)}–${_cachedDateFormat('HH:mm').format(result.endTime!)}'
           : '规划时段待确认';
     }
     if (result.isAllDay && result.startTime != null) {
-      return '${DateFormat('yyyy-MM-dd').format(result.startTime!)} 内完成';
+      return '${_cachedDateFormat('yyyy-MM-dd').format(result.startTime!)} 内完成';
     }
     if (result.endTime != null) {
-      return '${DateFormat('yyyy-MM-dd HH:mm').format(result.endTime!)} 前完成';
+      return '${_cachedDateFormat('yyyy-MM-dd HH:mm').format(result.endTime!)} 前完成';
     }
     return '未安排';
   }
 
   String _quickCaptureDetailLabel(ParsedTodoResult result) {
-    final detail = [result.location, result.remark]
-        .whereType<String>()
-        .where((text) => text.trim().isNotEmpty)
-        .join(' · ');
+    final detail = [
+      result.location,
+      result.remark,
+    ].whereType<String>().where((text) => text.trim().isNotEmpty).join(' · ');
     return detail.isEmpty ? '-' : detail;
   }
 
@@ -1654,8 +1675,9 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
       } else {
         customDaysCtrl.clear();
       }
-      setReminderMinutes(result.reminderMinutes ??
-          (result.itemKind == 'fixedSchedule' ? 15 : 5));
+      setReminderMinutes(
+        result.reminderMinutes ?? (result.itemKind == 'fixedSchedule' ? 15 : 5),
+      );
     });
   }
 }

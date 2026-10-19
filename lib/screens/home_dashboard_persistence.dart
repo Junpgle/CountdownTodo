@@ -1,4 +1,5 @@
 part of 'home_dashboard.dart';
+
 // ignore_for_file: annotate_overrides
 
 mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
@@ -12,7 +13,7 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
   }
 
   List<TodoItem> _cloneTodosForPersistence(List<TodoItem> todos) {
-    return todos.map((todo) => TodoItem.fromJson(todo.toJson())).toList();
+    return todos.map((todo) => todo.detachedCopy()).toList();
   }
 
   List<TodoItem> _mergePendingTodoSnapshots(List<TodoItem> loadedTodos) {
@@ -20,9 +21,15 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
       _persistingTodosSnapshot,
       _pendingTodosToPersist,
     ].whereType<List<TodoItem>>();
-    if (snapshots.isEmpty) return loadedTodos;
+    if (snapshots.isEmpty) {
+      if (!loadedTodos.any((todo) => todo.isDeleted)) return loadedTodos;
+      return loadedTodos.where((todo) => !todo.isDeleted).toList();
+    }
 
-    final byId = {for (final todo in loadedTodos) todo.id: todo};
+    final byId = <String, TodoItem>{};
+    for (final todo in loadedTodos) {
+      if (!todo.isDeleted) byId[todo.id] = todo;
+    }
     for (final snapshot in snapshots) {
       for (final pending in snapshot) {
         final existing = byId[pending.id];
@@ -36,22 +43,40 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
   }
 
   Future<void> _handleTodosChanged(List<TodoItem> newTodos) async {
-    final oldTodos = List<TodoItem>.from(_todos);
+    final oldTodos = _todos;
     final nextTodos = List<TodoItem>.from(newTodos);
 
     _todos = nextTodos;
+    _todoDataRevision++;
     _todosNotifier.value = List<TodoItem>.from(nextTodos);
-    _todoUpdateSignalNotifier.value++;
     _timelineRevision.value++;
     _pomodoroTickNotifier.value++;
 
-    for (var nt in nextTodos) {
-      if (nt.isDone) {
+    Map<String, bool>? oldTodoCompletionById;
+    var completedTodoCount = 0;
+    for (final nt in nextTodos) {
+      if (!nt.isDone) continue;
+      completedTodoCount++;
+
+      if (oldTodoCompletionById == null && completedTodoCount < 3) {
         final ot = oldTodos.firstWhere((t) => t.id == nt.id, orElse: () => nt);
         if (!ot.isDone) {
           // debugPrint("🧹 任务 ${nt.title} 已完成，尝试清除通知 ${nt.id.hashCode}");
           NotificationService.cancelSpecialTodoNotification(nt.id.hashCode);
         }
+        continue;
+      }
+
+      if (oldTodoCompletionById == null) {
+        final completionById = <String, bool>{};
+        for (final oldTodo in oldTodos) {
+          completionById.putIfAbsent(oldTodo.id, () => oldTodo.isDone);
+        }
+        oldTodoCompletionById = completionById;
+      }
+      if (oldTodoCompletionById[nt.id] == false) {
+        // debugPrint("🧹 任务 ${nt.title} 已完成，尝试清除通知 ${nt.id.hashCode}");
+        NotificationService.cancelSpecialTodoNotification(nt.id.hashCode);
       }
     }
 
@@ -64,16 +89,20 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
     final completer = Completer<void>();
     _todoPersistDebounceCompleter = completer;
     _todoPersistDebounce = Timer(const Duration(milliseconds: 220), () {
-      _todoPersistChain = _todoPersistChain.catchError((_) {}).then((_) async {
-        final snapshot = _pendingTodosToPersist;
-        if (snapshot == null) return;
-        _pendingTodosToPersist = null;
-        await _persistTodosSnapshot(snapshot);
-      }).catchError((e) {
-        // debugPrint('[HomeDashboard] persist todos failed: $e');
-      }).whenComplete(() {
-        if (!completer.isCompleted) completer.complete();
-      });
+      _todoPersistChain = _todoPersistChain
+          .catchError((_) {})
+          .then((_) async {
+            final snapshot = _pendingTodosToPersist;
+            if (snapshot == null) return;
+            _pendingTodosToPersist = null;
+            await _persistTodosSnapshot(snapshot);
+          })
+          .catchError((e) {
+            // debugPrint('[HomeDashboard] persist todos failed: $e');
+          })
+          .whenComplete(() {
+            if (!completer.isCompleted) completer.complete();
+          });
     });
 
     return completer.future;
@@ -83,17 +112,41 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
     _persistingTodosSnapshot = todosSnapshot;
     final allTodos = await StorageService.getTodos(widget.username);
     try {
-      for (var newT in todosSnapshot) {
-        int idx = allTodos.indexWhere((x) => x.id == newT.id);
-        if (idx != -1) {
-          if (newT.updatedAt >= allTodos[idx].updatedAt) {
-            allTodos[idx] = newT;
-          }
-        } else {
-          allTodos.add(newT);
+      final todosToPersistById = <String, TodoItem>{};
+      for (final todo in allTodos) {
+        if (todo.recurrence != RecurrenceType.none &&
+            (todo.recurrenceSeriesId == null ||
+                todo.recurrenceSeriesId!.isEmpty)) {
+          todo.recurrenceSeriesId = todo.id;
+          todosToPersistById[todo.id] = todo;
         }
       }
-      await StorageService.saveTodos(widget.username, allTodos);
+
+      final todoIndicesById = <String, int>{};
+      for (var index = 0; index < allTodos.length; index++) {
+        final id = allTodos[index].id;
+        if (!todoIndicesById.containsKey(id)) {
+          todoIndicesById[id] = index;
+        }
+      }
+      for (final newTodo in todosSnapshot) {
+        final index = todoIndicesById[newTodo.id];
+        if (index != null) {
+          if (newTodo.updatedAt >= allTodos[index].updatedAt) {
+            allTodos[index] = newTodo;
+            todosToPersistById[newTodo.id] = newTodo;
+          }
+        } else {
+          todoIndicesById[newTodo.id] = allTodos.length;
+          allTodos.add(newTodo);
+          todosToPersistById[newTodo.id] = newTodo;
+        }
+      }
+      await StorageService.saveTodos(
+        widget.username,
+        todosToPersistById.values.toList(growable: false),
+        bandSyncSnapshot: allTodos,
+      );
       await _saveTodosToSharedFile(allTodos);
 
       FloatWindowService.triggerReminderCheck();
@@ -102,8 +155,6 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
       _syncTodoNotification();
       _rescheduleAlarms();
       await WidgetService.updateTodoWidget(todosSnapshot);
-
-      _todoUpdateSignalNotifier.value++;
     } finally {
       if (identical(_persistingTodosSnapshot, todosSnapshot)) {
         _persistingTodosSnapshot = null;
@@ -139,10 +190,13 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
         _pendingTodosToPersist = null;
         _todoPersistDebounce?.cancel();
         await StorageService.saveTodos(
-            widget.username, pendingSnapshotBeforeSync);
+          widget.username,
+          pendingSnapshotBeforeSync,
+        );
         // 🚀 设置保护：merge 时跳过这些待办，防止同步覆盖用户刚做的修改
         StorageService.setForceFlushProtectedUuids(
-            pendingSnapshotBeforeSync.map((t) => t.id).toSet());
+          pendingSnapshotBeforeSync.map((t) => t.id).toSet(),
+        );
       }
 
       // 仅记录长耗时诊断，不释放逻辑锁。释放锁必须由真实的同步 Future
@@ -192,10 +246,10 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
         hasChanges = syncResult['hasChanges'] ?? false;
         final List<String> updatedTodoIds =
             (syncResult['updatedTodoIds'] as List?)
-                    ?.map((e) => e.toString())
-                    .where((e) => e.isNotEmpty)
-                    .toList() ??
-                const <String>[];
+                ?.map((e) => e.toString())
+                .where((e) => e.isNotEmpty)
+                .toList() ??
+            const <String>[];
         if (updatedTodoIds.isNotEmpty && mounted) {
           _remoteTodoHighlightTimer?.cancel();
           setState(() {
@@ -218,8 +272,10 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
         final conflictDetectionEnabled =
             await StorageService.getConflictDetectionEnabled();
         if (conflictDetectionEnabled && conflicts.isNotEmpty && mounted) {
-          final shouldOpenConflictCenter =
-              await ConflictAlertDialog.show(context, conflicts);
+          final shouldOpenConflictCenter = await ConflictAlertDialog.show(
+            context,
+            conflicts,
+          );
           if (shouldOpenConflictCenter == true && mounted) {
             await Navigator.push(
               context,
@@ -283,8 +339,10 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
         } else {
           msg = "同步失败: 获取数据异常";
         }
-        AppSnackBars.showSnackBar(context,
-            SnackBar(content: Text(msg), backgroundColor: Colors.redAccent));
+        AppSnackBars.showSnackBar(
+          context,
+          SnackBar(content: Text(msg), backgroundColor: Colors.redAccent),
+        );
       }
     } finally {
       if (syncAttempt == _syncAttemptGeneration) {
@@ -314,16 +372,20 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
           return AlertDialog(
             title: Row(
               children: [
-                Icon(Icons.analytics_outlined,
-                    color: Theme.of(context).colorScheme.secondary),
+                Icon(
+                  Icons.analytics_outlined,
+                  color: Theme.of(context).colorScheme.secondary,
+                ),
                 const SizedBox(width: 10),
-                const Text("链路诊断报告",
-                    style:
-                        TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                const Text(
+                  "链路诊断报告",
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
               ],
             ),
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
             content: SizedBox(
               width: double.maxFinite,
               child: Column(
@@ -331,12 +393,16 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
                 children: [
                   _buildDiagnosticItem("核心 API 服务", ApiService.ping()),
                   _buildDiagnosticItem(
-                      "实时同步通道",
-                      Future.value(
-                          PomodoroSyncService.instance.connectionState ==
-                              SyncConnectionState.connected)),
+                    "实时同步通道",
+                    Future.value(
+                      PomodoroSyncService.instance.connectionState ==
+                          SyncConnectionState.connected,
+                    ),
+                  ),
                   _buildDiagnosticItem(
-                      "增量引擎状态", Future.value(true)), // 逻辑始终为真，仅展示
+                    "增量引擎状态",
+                    Future.value(true),
+                  ), // 逻辑始终为真，仅展示
                   const Divider(height: 32),
                   _buildEnvironmentInfo(),
                 ],
@@ -350,7 +416,8 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
               TextButton.icon(
                 onPressed: () async {
                   final uri = Uri.parse(
-                      'https://github.com/Junpgle/math_quiz_app/issues');
+                    'https://github.com/Junpgle/math_quiz_app/issues',
+                  );
                   if (await canLaunchUrl(uri)) {
                     await launchUrl(uri, mode: LaunchMode.externalApplication);
                   }
@@ -400,16 +467,19 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(label,
-                        style: const TextStyle(fontWeight: FontWeight.w500)),
+                    Text(
+                      label,
+                      style: const TextStyle(fontWeight: FontWeight.w500),
+                    ),
                     if (!isLoading)
                       Text(
                         isOk == true ? "服务运行正常" : "连接受阻，部分功能受限",
                         style: TextStyle(
-                            fontSize: 11,
-                            color: isOk == true
-                                ? Colors.grey
-                                : Colors.redAccent.withValues(alpha: 0.8)),
+                          fontSize: 11,
+                          color: isOk == true
+                              ? Colors.grey
+                              : Colors.redAccent.withValues(alpha: 0.8),
+                        ),
                       ),
                   ],
                 ),
@@ -433,7 +503,9 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
         children: [
           const SizedBox(height: 4),
           _buildInfoRow(
-              "当前接入点", isTest ? "Aliyun (Test Node)" : "Aliyun (Global Node)"),
+            "当前接入点",
+            isTest ? "Aliyun (Test Node)" : "Aliyun (Global Node)",
+          ),
           const SizedBox(height: 8),
           const Text(
             "注意：链路异常可能影响公告获取、版本更新、多设备同步等功能",
@@ -450,11 +522,14 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey)),
-        Text(value,
-            style: const TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.bold,
-                color: Colors.blueGrey)),
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 10,
+            fontWeight: FontWeight.bold,
+            color: Colors.blueGrey,
+          ),
+        ),
       ],
     );
   }
@@ -468,118 +543,128 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
     bool syncPlanBlocks = true;
     bool syncFixedSchedules = true;
     bool syncHabits = true;
-    bool syncFinance =
-        await AppSettingsStorage.isFinanceCloudSyncEnabled(widget.username);
+    bool syncFinance = await AppSettingsStorage.isFinanceCloudSyncEnabled(
+      widget.username,
+    );
     if (!mounted) return;
 
     showAppDialog(
       context: context,
-      builder: (ctx) => StatefulBuilder(builder: (context, setDialogState) {
-        return AlertDialog(
-          title:
-              const Text("手动同步", style: TextStyle(fontWeight: FontWeight.bold)),
-          content: SingleChildScrollView(
-            // 加入滚动防止选项过多溢出屏幕
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text("请勾选你需要同步的数据模块：",
-                    style: TextStyle(fontSize: 13, color: Colors.grey)),
-                const SizedBox(height: 12),
-                CheckboxListTile(
-                  title: const Text("待办事项"),
-                  value: syncTodos,
-                  onChanged: (val) =>
-                      setDialogState(() => syncTodos = val ?? false),
-                ),
-                CheckboxListTile(
-                  title: const Text("重要日与倒计时"),
-                  value: syncCountdowns,
-                  onChanged: (val) =>
-                      setDialogState(() => syncCountdowns = val ?? false),
-                ),
-                CheckboxListTile(
-                  title: const Text("屏幕使用时间"),
-                  value: syncScreenTime,
-                  onChanged: (val) =>
-                      setDialogState(() => syncScreenTime = val ?? false),
-                ),
-                CheckboxListTile(
-                  title: const Text("番茄钟记录"),
-                  value: syncPomodoro,
-                  onChanged: (val) =>
-                      setDialogState(() => syncPomodoro = val ?? false),
-                ),
-                CheckboxListTile(
-                  title: const Text("时间日志 (补录)"),
-                  value: syncTimeLogs,
-                  onChanged: (val) =>
-                      setDialogState(() => syncTimeLogs = val ?? false),
-                ),
-                CheckboxListTile(
-                  title: const Text("今日规划"),
-                  value: syncPlanBlocks,
-                  onChanged: (val) =>
-                      setDialogState(() => syncPlanBlocks = val ?? false),
-                ),
-                CheckboxListTile(
-                  title: const Text("固定日程"),
-                  value: syncFixedSchedules,
-                  onChanged: (val) =>
-                      setDialogState(() => syncFixedSchedules = val ?? false),
-                ),
-                CheckboxListTile(
-                  title: const Text("习惯"),
-                  value: syncHabits,
-                  onChanged: (val) =>
-                      setDialogState(() => syncHabits = val ?? false),
-                ),
-                CheckboxListTile(
-                  title: const Text("记账"),
-                  value: syncFinance,
-                  onChanged: (val) =>
-                      setDialogState(() => syncFinance = val ?? false),
-                ),
-              ],
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            title: const Text(
+              "手动同步",
+              style: TextStyle(fontWeight: FontWeight.bold),
             ),
-          ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(ctx), child: const Text("取消")),
-            FilledButton(
-              // 🚀 3. 按钮启用条件加入 syncTimeLogs
-              onPressed: (syncTodos ||
-                      syncCountdowns ||
-                      syncScreenTime ||
-                      syncPomodoro ||
-                      syncTimeLogs ||
-                      syncPlanBlocks ||
-                      syncFixedSchedules ||
-                      syncHabits ||
-                      syncFinance)
-                  ? () {
-                      Navigator.pop(ctx);
-                      _handleManualSync(
-                        silent: false,
-                        syncTodos: syncTodos,
-                        syncCountdowns: syncCountdowns,
-                        syncScreenTime: syncScreenTime,
-                        syncPomodoro: syncPomodoro,
-                        syncTimeLogs: syncTimeLogs,
-                        syncPlanBlocks: syncPlanBlocks,
-                        syncFixedSchedules: syncFixedSchedules,
-                        syncHabits: syncHabits,
-                        syncFinance: syncFinance,
-                        financeSyncExplicitlyAuthorized: syncFinance,
-                      );
-                    }
-                  : null,
-              child: const Text("开始同步"),
+            content: SingleChildScrollView(
+              // 加入滚动防止选项过多溢出屏幕
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    "请勾选你需要同步的数据模块：",
+                    style: TextStyle(fontSize: 13, color: Colors.grey),
+                  ),
+                  const SizedBox(height: 12),
+                  CheckboxListTile(
+                    title: const Text("待办事项"),
+                    value: syncTodos,
+                    onChanged: (val) =>
+                        setDialogState(() => syncTodos = val ?? false),
+                  ),
+                  CheckboxListTile(
+                    title: const Text("重要日与倒计时"),
+                    value: syncCountdowns,
+                    onChanged: (val) =>
+                        setDialogState(() => syncCountdowns = val ?? false),
+                  ),
+                  CheckboxListTile(
+                    title: const Text("屏幕使用时间"),
+                    value: syncScreenTime,
+                    onChanged: (val) =>
+                        setDialogState(() => syncScreenTime = val ?? false),
+                  ),
+                  CheckboxListTile(
+                    title: const Text("番茄钟记录"),
+                    value: syncPomodoro,
+                    onChanged: (val) =>
+                        setDialogState(() => syncPomodoro = val ?? false),
+                  ),
+                  CheckboxListTile(
+                    title: const Text("时间日志 (补录)"),
+                    value: syncTimeLogs,
+                    onChanged: (val) =>
+                        setDialogState(() => syncTimeLogs = val ?? false),
+                  ),
+                  CheckboxListTile(
+                    title: const Text("今日规划"),
+                    value: syncPlanBlocks,
+                    onChanged: (val) =>
+                        setDialogState(() => syncPlanBlocks = val ?? false),
+                  ),
+                  CheckboxListTile(
+                    title: const Text("固定日程"),
+                    value: syncFixedSchedules,
+                    onChanged: (val) =>
+                        setDialogState(() => syncFixedSchedules = val ?? false),
+                  ),
+                  CheckboxListTile(
+                    title: const Text("习惯"),
+                    value: syncHabits,
+                    onChanged: (val) =>
+                        setDialogState(() => syncHabits = val ?? false),
+                  ),
+                  CheckboxListTile(
+                    title: const Text("记账"),
+                    value: syncFinance,
+                    onChanged: (val) =>
+                        setDialogState(() => syncFinance = val ?? false),
+                  ),
+                ],
+              ),
             ),
-          ],
-        );
-      }),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text("取消"),
+              ),
+              FilledButton(
+                // 🚀 3. 按钮启用条件加入 syncTimeLogs
+                onPressed:
+                    (syncTodos ||
+                        syncCountdowns ||
+                        syncScreenTime ||
+                        syncPomodoro ||
+                        syncTimeLogs ||
+                        syncPlanBlocks ||
+                        syncFixedSchedules ||
+                        syncHabits ||
+                        syncFinance)
+                    ? () {
+                        Navigator.pop(ctx);
+                        _handleManualSync(
+                          silent: false,
+                          syncTodos: syncTodos,
+                          syncCountdowns: syncCountdowns,
+                          syncScreenTime: syncScreenTime,
+                          syncPomodoro: syncPomodoro,
+                          syncTimeLogs: syncTimeLogs,
+                          syncPlanBlocks: syncPlanBlocks,
+                          syncFixedSchedules: syncFixedSchedules,
+                          syncHabits: syncHabits,
+                          syncFinance: syncFinance,
+                          financeSyncExplicitlyAuthorized: syncFinance,
+                        );
+                      }
+                    : null,
+                child: const Text("开始同步"),
+              ),
+            ],
+          );
+        },
+      ),
     );
   }
 

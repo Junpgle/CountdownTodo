@@ -7,30 +7,15 @@ void main() {
   final now = DateTime(2026, 8, 30, 15, 20);
 
   test('普通的一句话记账不会注入已有账单隐私', () {
-    expect(
-      FinanceAiContextService.shouldInjectFor('今天午餐花了 28 元'),
-      isFalse,
-    );
-    expect(
-      FinanceAiContextService.shouldInjectFor('请统计本月支出'),
-      isTrue,
-    );
-    expect(
-      FinanceAiContextService.shouldInjectFor('把昨天那笔改成 30 元'),
-      isTrue,
-    );
+    expect(FinanceAiContextService.shouldInjectFor('今天午餐花了 28 元'), isFalse);
+    expect(FinanceAiContextService.shouldInjectFor('请统计本月支出'), isTrue);
+    expect(FinanceAiContextService.shouldInjectFor('把昨天那笔改成 30 元'), isTrue);
     expect(
       FinanceAiContextService.shouldInjectCatalogFor('今天午餐花了 28 元'),
       isTrue,
     );
-    expect(
-      FinanceAiContextService.shouldInjectCatalogFor('请统计本月支出'),
-      isFalse,
-    );
-    expect(
-      FinanceAiContextService.shouldInjectCatalogFor('查看本月账单'),
-      isFalse,
-    );
+    expect(FinanceAiContextService.shouldInjectCatalogFor('请统计本月支出'), isFalse);
+    expect(FinanceAiContextService.shouldInjectCatalogFor('查看本月账单'), isFalse);
     expect(
       FinanceAiContextService.shouldInjectCatalogFor('记录一下今天的学习时长'),
       isFalse,
@@ -44,16 +29,8 @@ void main() {
   test('本地记账目录包含真实UUID并排除归档和删除项目', () {
     final context = FinanceAiContextService.formatCatalogContext(
       categories: [
-        FinanceCategory(
-          uuid: 'category-coffee',
-          name: '咖啡',
-          sortOrder: 10,
-        ),
-        FinanceCategory(
-          uuid: 'category-old',
-          name: '旧分类',
-          isArchived: true,
-        ),
+        FinanceCategory(uuid: 'category-coffee', name: '咖啡', sortOrder: 10),
+        FinanceCategory(uuid: 'category-old', name: '旧分类', isArchived: true),
       ],
       paymentMethods: [
         FinancePaymentMethod(uuid: 'payment-wechat', name: '微信'),
@@ -118,10 +95,7 @@ void main() {
         DateTime(now.year, now.month),
         DateTime(now.year, now.month + 1),
       ),
-      summary: FinanceSummary.fromTransactions(
-        transactions,
-        asOfAt: asOfAt,
-      ),
+      summary: FinanceSummary.fromTransactions(transactions, asOfAt: asOfAt),
       transactions: transactions,
       categories: const [],
       paymentMethods: const [],
@@ -132,10 +106,7 @@ void main() {
 
     expect(context, contains('支出 ¥40.00'));
     expect(context, isNot(contains('支出 ¥130.00')));
-    expect(
-      context,
-      contains('待发生 | [transactionId: context-future-expense]'),
-    );
+    expect(context, contains('待发生 | [transactionId: context-future-expense]'));
     expect(context, contains('已发生午餐'));
   });
 
@@ -155,10 +126,7 @@ void main() {
         DateTime(now.year, now.month),
         DateTime(now.year, now.month + 1),
       ),
-      summary: FinanceSummary.fromTransactions(
-        [transaction],
-        asOfAt: asOfAt,
-      ),
+      summary: FinanceSummary.fromTransactions([transaction], asOfAt: asOfAt),
       transactions: [transaction],
       categories: [
         FinanceCategory(
@@ -178,8 +146,9 @@ void main() {
   });
 
   test('动作协议覆盖查询、修改、删除和真实ID安全规则', () {
-    final prompt =
-        AiTodoContextBuilder.buildActionProtocolPrompt('查询本月账单并统计餐饮支出');
+    final prompt = AiTodoContextBuilder.buildActionProtocolPrompt(
+      '查询本月账单并统计餐饮支出',
+    );
 
     expect(prompt, contains('finance_summary'));
     expect(prompt, contains('finance_list'));
@@ -194,8 +163,9 @@ void main() {
     expect(updatePrompt, contains('update_finance'));
     expect(updatePrompt, contains('绝不编造transactionId'));
 
-    final creationPrompt =
-        AiTodoContextBuilder.buildActionProtocolPrompt('今天午餐 28 元');
+    final creationPrompt = AiTodoContextBuilder.buildActionProtocolPrompt(
+      '今天午餐 28 元',
+    );
     expect(creationPrompt, contains('categoryUuid'));
   });
 

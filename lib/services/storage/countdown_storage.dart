@@ -69,8 +69,9 @@ class CountdownStorage {
     Map<String, Map<String, dynamic>> existingItemsMap = {};
     if (!isSyncSource && dedupeList.isNotEmpty) {
       final uuids = dedupeList.map((e) => "'${e.id}'").join(',');
-      final List<Map<String, dynamic>> existing =
-          await db.rawQuery('SELECT * FROM countdowns WHERE uuid IN ($uuids)');
+      final List<Map<String, dynamic>> existing = await db.rawQuery(
+        'SELECT * FROM countdowns WHERE uuid IN ($uuids)',
+      );
       for (var row in existing) {
         existingItemsMap[row['uuid']] = row;
       }
@@ -89,18 +90,20 @@ class CountdownStorage {
           'is_completed',
           'team_uuid',
           'version',
-          'updated_at'
+          'updated_at',
         ]);
       }
 
       if (!isSyncSource && hasChanged) {
-        unawaited(recordLocalAudit(
-          'countdowns',
-          item.id,
-          itemData,
-          item.teamUuid,
-          oldData,
-        ));
+        unawaited(
+          recordLocalAudit(
+            'countdowns',
+            item.id,
+            itemData,
+            item.teamUuid,
+            oldData,
+          ),
+        );
 
         batch.insert('op_logs', {
           'op_type': 'UPSERT',
@@ -114,28 +117,24 @@ class CountdownStorage {
       }
 
       if (hasChanged || oldData == null) {
-        batch.insert(
-          'countdowns',
-          {
-            'uuid': item.id,
-            'team_uuid': item.teamUuid,
-            'team_name': item.teamName,
-            'creator_id': item.creatorId,
-            'creator_name': item.creatorName,
-            'title': item.title,
-            'target_time': item.targetDate.millisecondsSinceEpoch,
-            'is_deleted': item.isDeleted ? 1 : 0,
-            'is_completed': item.isCompleted ? 1 : 0,
-            'version': item.version,
-            'updated_at': item.updatedAt,
-            'created_at': item.createdAt,
-            'has_conflict': item.hasConflict ? 1 : 0,
-            'conflict_data': item.conflictData != null
-                ? jsonEncode(item.conflictData)
-                : null,
-          },
-          conflictAlgorithm: ConflictAlgorithm.replace,
-        );
+        batch.insert('countdowns', {
+          'uuid': item.id,
+          'team_uuid': item.teamUuid,
+          'team_name': item.teamName,
+          'creator_id': item.creatorId,
+          'creator_name': item.creatorName,
+          'title': item.title,
+          'target_time': item.targetDate.millisecondsSinceEpoch,
+          'is_deleted': item.isDeleted ? 1 : 0,
+          'is_completed': item.isCompleted ? 1 : 0,
+          'version': item.version,
+          'updated_at': item.updatedAt,
+          'created_at': item.createdAt,
+          'has_conflict': item.hasConflict ? 1 : 0,
+          'conflict_data': item.conflictData != null
+              ? jsonEncode(item.conflictData)
+              : null,
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
       }
     }
 
@@ -150,20 +149,26 @@ class CountdownStorage {
   static Future<List<CountdownItem>> getCountdowns(
     String username, {
     bool includeDeleted = false,
+    DateTime? from,
+    DateTime? to,
     required CountdownMigrationSaver saveMigratedCountdowns,
   }) async {
     final prefs = await SharedPreferences.getInstance();
     try {
       final dbHelper = DatabaseHelper.instance;
       final db = await dbHelper.databaseForUser(username);
-      await StorageConflictCleanup.clearGhostConflictFlags(db);
+      await StorageConflictCleanup.clearGhostConflictFlags(
+        db,
+        tables: const ['countdowns'],
+      );
 
       final String migrationKey = "migrated_countdowns_$username";
       final bool alreadyMigrated = prefs.getBool(migrationKey) ?? false;
 
-      final List<Map<String, dynamic>> sqliteCount =
-          await db.rawQuery('SELECT COUNT(*) as cnt FROM countdowns');
-      if (sqliteCount.first['cnt'] == 0) {
+      final hasSqliteRows = await db.rawQuery(
+        'SELECT 1 FROM countdowns LIMIT 1',
+      );
+      if (hasSqliteRows.isEmpty) {
         List<String> legacyJsonList =
             prefs.getStringList(_legacyDataKey(username)) ?? [];
 
@@ -178,7 +183,7 @@ class CountdownStorage {
         }
 
         if (legacyJsonList.isNotEmpty) {
-//           debugPrint("🚀 自动迁移倒数日老数据至 SQLite...");
+          //           debugPrint("🚀 自动迁移倒数日老数据至 SQLite...");
           final legacyData = legacyJsonList
               .map((e) => CountdownItem.fromJson(jsonDecode(e)))
               .toList();
@@ -190,10 +195,10 @@ class CountdownStorage {
           );
           await prefs.remove(_legacyDataKey(username));
           await prefs.remove(_countdownsKey);
-//           debugPrint("✅ 倒数日老数据迁移完成并已物理清理。");
+          //           debugPrint("✅ 倒数日老数据迁移完成并已物理清理。");
         }
         if (legacyJsonList.isNotEmpty && alreadyMigrated) {
-//           debugPrint("✅ 倒数日从 Prefs 修复回 SQL: ${legacyJsonList.length} 条");
+          //           debugPrint("✅ 倒数日从 Prefs 修复回 SQL: ${legacyJsonList.length} 条");
         }
         await prefs.setBool(migrationKey, true);
       } else if (alreadyMigrated) {
@@ -201,9 +206,21 @@ class CountdownStorage {
         await prefs.remove(_countdownsKey);
       }
 
+      final where = <String>[];
+      final whereArgs = <Object?>[];
+      if (!includeDeleted) where.add('is_deleted = 0');
+      if (from != null) {
+        where.add('target_time >= ?');
+        whereArgs.add(from.millisecondsSinceEpoch);
+      }
+      if (to != null) {
+        where.add('target_time < ?');
+        whereArgs.add(to.millisecondsSinceEpoch);
+      }
       final List<Map<String, dynamic>> maps = await db.query(
         'countdowns',
-        where: includeDeleted ? null : 'is_deleted = 0',
+        where: where.isEmpty ? null : where.join(' AND '),
+        whereArgs: whereArgs.isEmpty ? null : whereArgs,
       );
 
       if (maps.isNotEmpty) {
@@ -213,14 +230,26 @@ class CountdownStorage {
 
         return maps.map(_countdownFromDbMap).toList();
       }
+
+      if (from != null || to != null) {
+        var hasRowsForUnboundedRead = hasSqliteRows.isNotEmpty;
+        if (!includeDeleted) {
+          final activeRows = await db.rawQuery(
+            'SELECT 1 FROM countdowns WHERE is_deleted = 0 LIMIT 1',
+          );
+          hasRowsForUnboundedRead = activeRows.isNotEmpty;
+        }
+        if (hasRowsForUnboundedRead) return const <CountdownItem>[];
+      }
     } catch (e) {
-//       debugPrint("⚠️ Countdowns SQL 引擎异常: $e");
+      //       debugPrint("⚠️ Countdowns SQL 引擎异常: $e");
     }
 
     final list = prefs.getStringList(_legacyDataKey(username)) ?? [];
 
     if (list.length > 50) {
-      return await compute(_parseCountdownJsonItemsIsolate, list);
+      final items = await compute(_parseCountdownJsonItemsIsolate, list);
+      return _filterCountdownsByDateRange(items, from: from, to: to);
     }
 
     final result = <CountdownItem>[];
@@ -229,7 +258,22 @@ class CountdownStorage {
         result.add(CountdownItem.fromJson(jsonDecode(e)));
       } catch (_) {}
     }
-    return result;
+    return _filterCountdownsByDateRange(result, from: from, to: to);
+  }
+
+  static List<CountdownItem> _filterCountdownsByDateRange(
+    List<CountdownItem> items, {
+    DateTime? from,
+    DateTime? to,
+  }) {
+    if (from == null && to == null) return items;
+    final fromMs = from?.millisecondsSinceEpoch;
+    final toMs = to?.millisecondsSinceEpoch;
+    return items.where((item) {
+      final targetMs = item.targetDate.millisecondsSinceEpoch;
+      return (fromMs == null || targetMs >= fromMs) &&
+          (toMs == null || targetMs < toMs);
+    }).toList();
   }
 
   static Future<void> _clearCountdownPrefsMirror(String username) async {
@@ -253,18 +297,21 @@ class CountdownStorage {
       creatorId: m['creator_id'],
       creatorName: m['creator_name'],
       hasConflict: m['has_conflict'] == 1,
-      conflictData:
-          m['conflict_data'] != null ? jsonDecode(m['conflict_data']) : null,
+      conflictData: m['conflict_data'] != null
+          ? jsonDecode(m['conflict_data'])
+          : null,
     );
   }
 
   static List<CountdownItem> _parseCountdownItemsIsolate(
-      List<Map<String, dynamic>> maps) {
+    List<Map<String, dynamic>> maps,
+  ) {
     return maps.map(_countdownFromDbMap).toList();
   }
 
   static List<CountdownItem> _parseCountdownJsonItemsIsolate(
-      List<String> jsonList) {
+    List<String> jsonList,
+  ) {
     return jsonList
         .map((e) {
           try {

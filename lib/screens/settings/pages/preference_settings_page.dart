@@ -27,8 +27,11 @@ import '../../../widgets/optional_liquid_glass_surface.dart';
 class PreferenceSettingsPage extends StatefulWidget {
   final String? initialTarget;
   final bool isEmbedded;
-  const PreferenceSettingsPage(
-      {super.key, this.initialTarget, this.isEmbedded = false});
+  const PreferenceSettingsPage({
+    super.key,
+    this.initialTarget,
+    this.isEmbedded = false,
+  });
 
   @override
   State<PreferenceSettingsPage> createState() => _PreferenceSettingsPageState();
@@ -68,25 +71,22 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
   late StorageManagementHandler _storageManagementHandler;
   Timer? _highlightTimer;
 
-  GlobalKey _navigationKey(String id) => _itemKeys.putIfAbsent(
-        id,
-        () => GlobalKey(debugLabel: 'settings-$id'),
-      );
+  GlobalKey _navigationKey(String id) =>
+      _itemKeys.putIfAbsent(id, () => GlobalKey(debugLabel: 'settings-$id'));
 
   Future<T?> _openSettingsPage<T>(
     String id,
     Widget page, {
     RouteSettings? settings,
     bool rootNavigator = false,
-  }) =>
-      SettingsNavigation.push<T>(
-        context: context,
-        page: page,
-        sourceKey: _navigationKey(id),
-        isEmbedded: widget.isEmbedded,
-        rootNavigator: rootNavigator,
-        settings: settings,
-      );
+  }) => SettingsNavigation.push<T>(
+    context: context,
+    page: page,
+    sourceKey: _navigationKey(id),
+    isEmbedded: widget.isEmbedded,
+    rootNavigator: rootNavigator,
+    settings: settings,
+  );
 
   @override
   void initState() {
@@ -183,9 +183,7 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
     await showAppDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => MigrationDialog(
-        onSuccess: () {},
-      ),
+      builder: (context) => MigrationDialog(onSuccess: () {}),
     );
   }
 
@@ -305,13 +303,19 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
             _buildTile(
               targetId: 'cache',
               child: ListTile(
-                leading: Icon(Icons.cleaning_services_outlined,
-                    color: colorScheme.secondary),
+                leading: Icon(
+                  Icons.cleaning_services_outlined,
+                  color: colorScheme.secondary,
+                ),
                 title: Text(isWeb ? '清理页面图片缓存' : '深度清理缓存与冗余'),
                 subtitle: Text(isWeb ? '清理当前浏览器页面的图片缓存' : '包含更新残留包与深度图片缓存'),
-                trailing: Text(_cacheSizeStr,
-                    style: TextStyle(
-                        fontSize: 12, color: colorScheme.onSurfaceVariant)),
+                trailing: Text(
+                  _cacheSizeStr,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
                 onTap: _storageManagementHandler.clearCache,
               ),
             ),
@@ -320,8 +324,10 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
               _buildTile(
                 targetId: 'storage',
                 child: ListTile(
-                  leading:
-                      Icon(Icons.data_usage, color: colorScheme.cdtWarning),
+                  leading: Icon(
+                    Icons.data_usage,
+                    color: colorScheme.cdtWarning,
+                  ),
                   title: const Text('存储空间深度分析'),
                   subtitle: const Text('找出占用数百MB的隐藏文件'),
                   trailing: const Icon(Icons.chevron_right),
@@ -336,17 +342,17 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
             _buildTile(
               targetId: 'help_center',
               child: ListTile(
-                leading: Icon(Icons.help_outline_rounded,
-                    color: colorScheme.primary),
+                leading: Icon(
+                  Icons.help_outline_rounded,
+                  color: colorScheme.primary,
+                ),
                 title: const Text('帮助与反馈'),
                 subtitle: const Text('使用指南、快速上手、常见问题'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () {
                   _openSettingsPage(
                     'help_center',
-                    HelpCenterScreen(
-                      username: _username,
-                    ),
+                    HelpCenterScreen(username: _username),
                   );
                 },
               ),
@@ -355,8 +361,10 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
             _buildTile(
               targetId: 'changelog',
               child: ListTile(
-                leading: Icon(Icons.system_update_outlined,
-                    color: colorScheme.primary),
+                leading: Icon(
+                  Icons.system_update_outlined,
+                  color: colorScheme.primary,
+                ),
                 title: const Text('更新日志'),
                 subtitle: const Text('查看当前版本及历史更新内容'),
                 trailing: const Icon(Icons.chevron_right),
@@ -376,8 +384,10 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
             _buildTile(
               targetId: 'feature_guide',
               child: ListTile(
-                leading:
-                    Icon(Icons.school_outlined, color: colorScheme.tertiary),
+                leading: Icon(
+                  Icons.school_outlined,
+                  color: colorScheme.tertiary,
+                ),
                 title: const Text('版本引导'),
                 subtitle: const Text('查看新版本功能介绍与使用引导'),
                 trailing: const Icon(Icons.chevron_right),
@@ -398,8 +408,10 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
               _buildTile(
                 targetId: 'migration',
                 child: ListTile(
-                  leading:
-                      Icon(Icons.move_to_inbox, color: colorScheme.secondary),
+                  leading: Icon(
+                    Icons.move_to_inbox,
+                    color: colorScheme.secondary,
+                  ),
                   title: const Text('旧版本地数据一键迁移'),
                   subtitle: const Text('包含待办、课程、课表与习惯数据'),
                   trailing: const Icon(Icons.chevron_right),
@@ -425,11 +437,14 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('首页壁纸',
-                    style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                Text(
+                  '首页壁纸',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
                 GestureDetector(
                   key: _navigationKey('wallpaper_advanced'),
                   onTap: () => _openSettingsPage(
@@ -439,13 +454,18 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
                   ),
                   child: Row(
                     children: [
-                      Text('高级设置',
-                          style: TextStyle(
-                              fontSize: 12,
-                              color: Theme.of(context).colorScheme.primary)),
-                      Icon(Icons.chevron_right,
-                          size: 16,
-                          color: Theme.of(context).colorScheme.primary),
+                      Text(
+                        '高级设置',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      ),
+                      Icon(
+                        Icons.chevron_right,
+                        size: 16,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
                     ],
                   ),
                 ),
@@ -461,7 +481,10 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
                 if (!AppPlatform.isWeb) ...[
                   const SizedBox(width: 24),
                   _buildWallpaperCard(
-                      'custom', '自定义图片', Icons.folder_special_outlined),
+                    'custom',
+                    '自定义图片',
+                    Icons.folder_special_outlined,
+                  ),
                 ],
               ],
             ),
@@ -495,26 +518,31 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
               boxShadow: [
                 if (isSelected)
                   BoxShadow(
-                      color: colorScheme.primary.withValues(alpha: 0.2),
-                      blurRadius: 6,
-                      spreadRadius: 1)
+                    color: colorScheme.primary.withValues(alpha: 0.2),
+                    blurRadius: 6,
+                    spreadRadius: 1,
+                  ),
               ],
             ),
             child: Center(
-              child: Icon(icon,
-                  size: 28,
-                  color: isSelected
-                      ? colorScheme.primary
-                      : colorScheme.onSurfaceVariant),
+              child: Icon(
+                icon,
+                size: 28,
+                color: isSelected
+                    ? colorScheme.primary
+                    : colorScheme.onSurfaceVariant,
+              ),
             ),
           ),
           const SizedBox(height: 8),
-          Text(title,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                color: isSelected ? colorScheme.primary : null,
-              )),
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+              color: isSelected ? colorScheme.primary : null,
+            ),
+          ),
         ],
       ),
     );
@@ -526,7 +554,9 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
     final usernameFormat =
         _homeTextConfig['usernameFormat'] as String? ?? '{name}';
     final displayName = usernameFormat.replaceAll(
-        '{name}', _username.isNotEmpty ? _username : '用户');
+      '{name}',
+      _username.isNotEmpty ? _username : '用户',
+    );
 
     final dateFormat =
         _homeTextConfig['dateFormat'] as String? ?? 'MM月dd日 EEEE';
@@ -624,11 +654,14 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('首页文字',
-                    style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                Text(
+                  '首页文字',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
                 GestureDetector(
                   key: _navigationKey('home_text_advanced'),
                   onTap: () async {
@@ -645,13 +678,18 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
                   },
                   child: Row(
                     children: [
-                      Text('高级设置',
-                          style: TextStyle(
-                              fontSize: 12,
-                              color: Theme.of(context).colorScheme.primary)),
-                      Icon(Icons.chevron_right,
-                          size: 16,
-                          color: Theme.of(context).colorScheme.primary),
+                      Text(
+                        '高级设置',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      ),
+                      Icon(
+                        Icons.chevron_right,
+                        size: 16,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
                     ],
                   ),
                 ),
@@ -680,41 +718,47 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
                   borderRadius: BorderRadius.circular(16),
                   color: Theme.of(context).colorScheme.surfaceContainerHighest,
                   border: Border.all(
-                      color: Theme.of(context)
-                          .colorScheme
-                          .primary
-                          .withValues(alpha: 0.2)),
+                    color: Theme.of(context).colorScheme.primary
+                        .withValues(alpha: 0.2),
+                  ),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                        '$salutation，${displayName.isEmpty ? "访客" : displayName}',
-                        style: const TextStyle(
-                            fontSize: 22, fontWeight: FontWeight.w600)),
+                      '$salutation，${displayName.isEmpty ? "访客" : displayName}',
+                      style: const TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                     const SizedBox(height: 6),
-                    Text(dateStr,
-                        style: TextStyle(
-                            fontSize: 14,
-                            color: Theme.of(context)
-                                .colorScheme
-                                .onSurfaceVariant)),
+                    Text(
+                      dateStr,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
                     const SizedBox(height: 16),
                     Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 8),
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
                       decoration: BoxDecoration(
-                        color: Theme.of(context)
-                            .colorScheme
-                            .primary
+                        color: Theme.of(context).colorScheme.primary
                             .withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: Text('“ $greeting ”',
-                          style: TextStyle(
-                              fontSize: 13,
-                              color: Theme.of(context).colorScheme.primary,
-                              fontStyle: FontStyle.italic)),
+                      child: Text(
+                        '“ $greeting ”',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Theme.of(context).colorScheme.primary,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
                     ),
                   ],
                 ),
@@ -734,11 +778,14 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('外观',
-                style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: Theme.of(context).colorScheme.onSurfaceVariant)),
+            Text(
+              '外观',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
             const SizedBox(height: 16),
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -768,11 +815,14 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('首页布局',
-                    style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: colorScheme.onSurfaceVariant)),
+                Text(
+                  '首页布局',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
                 GestureDetector(
                   key: _navigationKey('home_layout_advanced'),
                   onTap: () {
@@ -784,11 +834,18 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
                   },
                   child: Row(
                     children: [
-                      Text('高级设置',
-                          style: TextStyle(
-                              fontSize: 12, color: colorScheme.primary)),
-                      Icon(Icons.chevron_right,
-                          size: 16, color: colorScheme.primary),
+                      Text(
+                        '高级设置',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: colorScheme.primary,
+                        ),
+                      ),
+                      Icon(
+                        Icons.chevron_right,
+                        size: 16,
+                        color: colorScheme.primary,
+                      ),
                     ],
                   ),
                 ),
@@ -813,7 +870,8 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
                   borderRadius: BorderRadius.circular(16),
                   color: colorScheme.surfaceContainerHighest,
                   border: Border.all(
-                      color: colorScheme.primary.withValues(alpha: 0.2)),
+                    color: colorScheme.primary.withValues(alpha: 0.2),
+                  ),
                 ),
                 child: Row(
                   children: [
@@ -828,7 +886,7 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
                             color: colorScheme.shadow.withValues(alpha: 0.05),
                             blurRadius: 4,
                             offset: const Offset(0, 2),
-                          )
+                          ),
                         ],
                       ),
                       padding: const EdgeInsets.all(8),
@@ -849,8 +907,9 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
                                 child: Container(
                                   height: 12,
                                   decoration: BoxDecoration(
-                                    color: colorScheme.tertiary
-                                        .withValues(alpha: 0.4),
+                                    color: colorScheme.tertiary.withValues(
+                                      alpha: 0.4,
+                                    ),
                                     borderRadius: BorderRadius.circular(2),
                                   ),
                                 ),
@@ -860,8 +919,9 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
                                 child: Container(
                                   height: 12,
                                   decoration: BoxDecoration(
-                                    color: colorScheme.secondary
-                                        .withValues(alpha: 0.4),
+                                    color: colorScheme.secondary.withValues(
+                                      alpha: 0.4,
+                                    ),
                                     borderRadius: BorderRadius.circular(2),
                                   ),
                                 ),
@@ -871,8 +931,9 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
                           Container(
                             height: 6,
                             decoration: BoxDecoration(
-                              color: colorScheme.onSurfaceVariant
-                                  .withValues(alpha: 0.2),
+                              color: colorScheme.onSurfaceVariant.withValues(
+                                alpha: 0.2,
+                              ),
                               borderRadius: BorderRadius.circular(2),
                             ),
                           ),
@@ -936,10 +997,13 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
                 InkWell(
                   key: _navigationKey('sidebar_menu_advanced'),
                   borderRadius: BorderRadius.circular(8),
-                  onTap: () => _openSidebarMenuSettings('sidebar_menu_advanced'),
+                  onTap: () =>
+                      _openSidebarMenuSettings('sidebar_menu_advanced'),
                   child: Padding(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 4,
+                      vertical: 6,
+                    ),
                     child: Row(
                       children: [
                         Text(
@@ -1026,8 +1090,10 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
   }
 
   Widget _buildSidebarMenuPreview(ColorScheme colorScheme) {
-    Widget menuLine(
-        {double width = double.infinity, bool highlighted = false}) {
+    Widget menuLine({
+      double width = double.infinity,
+      bool highlighted = false,
+    }) {
       return Container(
         width: width,
         height: 5,
@@ -1105,9 +1171,10 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
               boxShadow: [
                 if (isSelected)
                   BoxShadow(
-                      color: colorScheme.primary.withValues(alpha: 0.2),
-                      blurRadius: 6,
-                      spreadRadius: 1)
+                    color: colorScheme.primary.withValues(alpha: 0.2),
+                    blurRadius: 6,
+                    spreadRadius: 1,
+                  ),
               ],
             ),
             child: Padding(
@@ -1119,12 +1186,14 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
             ),
           ),
           const SizedBox(height: 8),
-          Text(title,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                color: isSelected ? colorScheme.primary : null,
-              )),
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+              color: isSelected ? colorScheme.primary : null,
+            ),
+          ),
         ],
       ),
     );
@@ -1143,21 +1212,25 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
               child: Row(
                 children: [
                   Expanded(
-                      flex: 1,
-                      child: Container(
-                          color: colorScheme.surfaceContainerHigh,
-                          margin: const EdgeInsets.only(right: 4))),
+                    flex: 1,
+                    child: Container(
+                      color: colorScheme.surfaceContainerHigh,
+                      margin: const EdgeInsets.only(right: 4),
+                    ),
+                  ),
                   Expanded(
-                      flex: 2,
-                      child: Container(
-                        decoration: BoxDecoration(
-                            color: colorScheme.primaryContainer,
-                            borderRadius: BorderRadius.circular(2)),
-                      )),
+                    flex: 2,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: colorScheme.primaryContainer,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
-          )
+          ),
         ],
       ),
     );
@@ -1170,30 +1243,36 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
       child: Column(
         children: [
           Container(
-              height: 14,
-              color: colorScheme.inversePrimary.withValues(alpha: 0.28)),
+            height: 14,
+            color: colorScheme.inversePrimary.withValues(alpha: 0.28),
+          ),
           Expanded(
             child: Padding(
               padding: const EdgeInsets.all(4.0),
               child: Row(
                 children: [
                   Expanded(
-                      flex: 1,
-                      child: Container(
-                          color: colorScheme.onInverseSurface
-                              .withValues(alpha: 0.14),
-                          margin: const EdgeInsets.only(right: 4))),
+                    flex: 1,
+                    child: Container(
+                      color: colorScheme.onInverseSurface.withValues(
+                        alpha: 0.14,
+                      ),
+                      margin: const EdgeInsets.only(right: 4),
+                    ),
+                  ),
                   Expanded(
-                      flex: 2,
-                      child: Container(
-                        decoration: BoxDecoration(
-                            color: colorScheme.inversePrimary,
-                            borderRadius: BorderRadius.circular(2)),
-                      )),
+                    flex: 2,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: colorScheme.inversePrimary,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
-          )
+          ),
         ],
       ),
     );
@@ -1220,7 +1299,7 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
       Colors.orange,
       Colors.yellow,
       Colors.green,
-      Colors.grey
+      Colors.grey,
     ];
 
     List<Color> displayColors;
@@ -1245,11 +1324,14 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('主题颜色',
-                style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: Theme.of(context).colorScheme.onSurfaceVariant)),
+            Text(
+              '主题颜色',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
             const SizedBox(height: 16),
             Center(
               child: SingleChildScrollView(
@@ -1258,22 +1340,44 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _buildColorCircle('system_wallpaper', null,
-                        AppPlatform.isWeb ? '默认' : '多色/自动', displayColors),
+                    _buildColorCircle(
+                      'system_wallpaper',
+                      null,
+                      AppPlatform.isWeb ? '默认' : '多色/自动',
+                      displayColors,
+                    ),
                     const SizedBox(width: 12),
                     _buildColorCircle(
-                        'app_wallpaper', null, '应用壁纸', displayColors),
+                      'app_wallpaper',
+                      null,
+                      '应用壁纸',
+                      displayColors,
+                    ),
                     const SizedBox(width: 12),
-                    ...displayColors.map((c) => Padding(
-                          padding: const EdgeInsets.only(right: 12.0),
-                          child: _buildColorCircle(
-                              'custom', c, null, displayColors),
-                        )),
+                    ...displayColors.map(
+                      (c) => Padding(
+                        padding: const EdgeInsets.only(right: 12.0),
+                        child: _buildColorCircle(
+                          'custom',
+                          c,
+                          null,
+                          displayColors,
+                        ),
+                      ),
+                    ),
                     _buildColorCircle(
-                        'custom_picker', null, '自定义', displayColors),
+                      'custom_picker',
+                      null,
+                      '自定义',
+                      displayColors,
+                    ),
                     const SizedBox(width: 12),
                     _buildColorCircle(
-                        'image_extracted', null, '图片取色', displayColors),
+                      'image_extracted',
+                      null,
+                      '图片取色',
+                      displayColors,
+                    ),
                   ],
                 ),
               ),
@@ -1285,7 +1389,11 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
   }
 
   Widget _buildColorCircle(
-      String mode, Color? color, String? label, List<Color> displayColors) {
+    String mode,
+    Color? color,
+    String? label,
+    List<Color> displayColors,
+  ) {
     bool isSelected = false;
 
     if (mode == 'system_wallpaper') {
@@ -1294,11 +1402,13 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
     } else if (mode == 'app_wallpaper') {
       isSelected = _themeColorMode == 'app_wallpaper';
     } else if (mode == 'custom' && color != null) {
-      isSelected = (_themeColorMode == 'custom') &&
+      isSelected =
+          (_themeColorMode == 'custom') &&
           _customThemeColor?.toARGB32() == color.toARGB32();
     } else if (mode == 'custom_picker') {
       final customArgb = _customThemeColor?.toARGB32();
-      isSelected = (_themeColorMode == 'custom') &&
+      isSelected =
+          (_themeColorMode == 'custom') &&
           !displayColors.any((c) => c.toARGB32() == customArgb);
     } else if (mode == 'image_extracted') {
       isSelected = _themeColorMode == 'image_extracted';
@@ -1317,7 +1427,7 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
               Colors.orange,
               Colors.yellow,
               Colors.green,
-              Colors.blue
+              Colors.blue,
             ],
           ),
         ),
@@ -1328,8 +1438,11 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
           shape: BoxShape.circle,
           color: Theme.of(context).colorScheme.surfaceContainerHighest,
         ),
-        child: Icon(Icons.wallpaper,
-            size: 16, color: Theme.of(context).colorScheme.onSurfaceVariant),
+        child: Icon(
+          Icons.wallpaper,
+          size: 16,
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
       );
     } else if (mode == 'custom_picker') {
       inner = Container(
@@ -1337,8 +1450,11 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
           shape: BoxShape.circle,
           color: Theme.of(context).colorScheme.surfaceContainerHighest,
         ),
-        child: Icon(Icons.colorize,
-            size: 16, color: Theme.of(context).colorScheme.onSurfaceVariant),
+        child: Icon(
+          Icons.colorize,
+          size: 16,
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
       );
     } else if (mode == 'image_extracted') {
       inner = Container(
@@ -1346,8 +1462,11 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
           shape: BoxShape.circle,
           color: Theme.of(context).colorScheme.surfaceContainerHighest,
         ),
-        child: Icon(Icons.image,
-            size: 16, color: Theme.of(context).colorScheme.onSurfaceVariant),
+        child: Icon(
+          Icons.image,
+          size: 16,
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
       );
     } else {
       inner = Container(
@@ -1397,12 +1516,15 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
             ),
             if (label != null) ...[
               const SizedBox(height: 6),
-              Text(label,
-                  style: TextStyle(
-                      fontSize: 11,
-                      color: Theme.of(context).colorScheme.onSurfaceVariant),
-                  textAlign: TextAlign.center),
-            ]
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
           ],
         ),
       ),

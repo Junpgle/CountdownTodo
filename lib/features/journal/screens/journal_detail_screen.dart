@@ -1,12 +1,13 @@
 import '../../../widgets/floating_glass_control.dart';
+
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../models/journal_entry.dart';
 import '../services/journal_media_service.dart';
 import '../services/journal_storage.dart';
 import 'journal_editor_screen.dart';
 import '../../../utils/app_dialogs.dart';
+import '../../../utils/time_utils.dart';
 
 class JournalDetailScreen extends StatefulWidget {
   final String accountId;
@@ -34,10 +35,8 @@ class _JournalDetailScreenState extends State<JournalDetailScreen> {
   Future<void> _edit() async {
     final changed = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
-        builder: (_) => JournalEditorScreen(
-          accountId: widget.accountId,
-          entry: _entry,
-        ),
+        builder: (_) =>
+            JournalEditorScreen(accountId: widget.accountId, entry: _entry),
       ),
     );
     if (changed != true || !mounted) return;
@@ -57,8 +56,9 @@ class _JournalDetailScreenState extends State<JournalDetailScreen> {
         content: const Text('删除后无法恢复。'),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('取消')),
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
             child: const Text('删除'),
@@ -111,16 +111,18 @@ class _JournalDetailScreenState extends State<JournalDetailScreen> {
       extendBodyBehindAppBar: true,
       appBar: FloatingGlassAppBar(
         flexibleSpace: const FloatingGlassTopBarBackground(),
-        title: Text(DateFormat('yyyy年MM月dd日').format(_entry.occurredAt)),
+        title: Text(AppTimeFormats.format(_entry.occurredAt, 'yyyy年MM月dd日')),
         actions: [
           IconButton(
-              tooltip: '编辑',
-              onPressed: _edit,
-              icon: const Icon(Icons.edit_rounded)),
+            tooltip: '编辑',
+            onPressed: _edit,
+            icon: const Icon(Icons.edit_rounded),
+          ),
           IconButton(
-              tooltip: '删除',
-              onPressed: _delete,
-              icon: const Icon(Icons.delete_outline_rounded)),
+            tooltip: '删除',
+            onPressed: _delete,
+            icon: const Icon(Icons.delete_outline_rounded),
+          ),
         ],
       ),
       body: FloatingGlassTopBarContentFade(
@@ -134,7 +136,11 @@ class _JournalDetailScreenState extends State<JournalDetailScreen> {
                 padding: EdgeInsets.fromLTRB(20, topBarHeight + 12, 20, 48),
                 children: [
                   Text(
-                    DateFormat('EEEE', 'zh_CN').format(_entry.occurredAt),
+                    AppTimeFormats.format(
+                      _entry.occurredAt,
+                      'EEEE',
+                      locale: 'zh_CN',
+                    ),
                     style: theme.textTheme.labelLarge?.copyWith(
                       color: scheme.primary,
                       fontWeight: FontWeight.w800,
@@ -167,7 +173,7 @@ class _JournalDetailScreenState extends State<JournalDetailScreen> {
                   const SizedBox(height: 36),
                   Center(
                     child: Text(
-                      '记录于 ${DateFormat('yyyy年MM月dd日 HH:mm').format(_entry.createdAt)}',
+                      '记录于 ${AppTimeFormats.format(_entry.createdAt, 'yyyy年MM月dd日 HH:mm')}',
                       style: theme.textTheme.labelSmall?.copyWith(
                         color: scheme.onSurfaceVariant,
                       ),
@@ -206,8 +212,9 @@ class _DetailGallery extends StatelessWidget {
             mainAxisExtent: height,
           ),
           itemBuilder: (_, index) {
-            final provider =
-                JournalMediaService.instance.provider(attachments[index]);
+            final provider = JournalMediaService.instance.provider(
+              attachments[index],
+            );
             return ClipRRect(
               borderRadius: BorderRadius.circular(22),
               child: InkWell(
@@ -231,8 +238,10 @@ class _JournalGalleryViewer extends StatefulWidget {
   final List<JournalAttachment> attachments;
   final int initialIndex;
 
-  const _JournalGalleryViewer(
-      {required this.attachments, required this.initialIndex});
+  const _JournalGalleryViewer({
+    required this.attachments,
+    required this.initialIndex,
+  });
 
   @override
   State<_JournalGalleryViewer> createState() => _JournalGalleryViewerState();
@@ -270,8 +279,9 @@ class _JournalGalleryViewerState extends State<_JournalGalleryViewer> {
         itemCount: widget.attachments.length,
         onPageChanged: (value) => setState(() => _index = value),
         itemBuilder: (_, index) {
-          final provider =
-              JournalMediaService.instance.provider(widget.attachments[index]);
+          final provider = JournalMediaService.instance.provider(
+            widget.attachments[index],
+          );
           return InteractiveViewer(
             minScale: 0.8,
             maxScale: 4,

@@ -111,7 +111,7 @@ jobs:
           fi
 
           echo "$changed_dart_files"
-          echo "$changed_dart_files" | xargs dart analyze --no-fatal-infos --no-fatal-warnings
+          echo "$changed_dart_files" | xargs dart analyze --no-fatal-warnings
 
       - name: Run related tests
         if: github.event_name == 'pull_request'

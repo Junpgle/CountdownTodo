@@ -1,28 +1,57 @@
 import 'package:flutter/material.dart';
+
 import 'dart:math';
+
 import '../models.dart';
 
-class TeamHeatmapWidget extends StatelessWidget {
+const _teamHeatmapColorLevels = <Color>[
+  Color(0xFFBBDEFB),
+  Color(0xFF64B5F6),
+  Color(0xFF2196F3),
+  Color(0xFF1565C0),
+];
+
+class TeamHeatmapWidget extends StatefulWidget {
   final List<TodoItem> todos;
   final int viewDays;
   const TeamHeatmapWidget({super.key, required this.todos, this.viewDays = 35});
 
-  Map<DateTime, int> _calcDensity() {
-    final Map<DateTime, int> map = {};
+  @override
+  State<TeamHeatmapWidget> createState() => _TeamHeatmapWidgetState();
+}
+
+class _TeamHeatmapWidgetState extends State<TeamHeatmapWidget> {
+  List<TodoItem>? _densitySource;
+  Map<int, int> _densityCache = const {};
+
+  int _dateKey(DateTime date) =>
+      date.year * 10000 + date.month * 100 + date.day;
+
+  Map<int, int> _calcDensity(List<TodoItem> todos) {
+    final Map<int, int> map = {};
     for (var t in todos) {
       if (t.isDeleted) continue;
       final dt = t.dueDate ?? DateTime.fromMillisecondsSinceEpoch(t.updatedAt);
-      final day = DateTime(dt.year, dt.month, dt.day);
+      final day = _dateKey(dt);
       map[day] = (map[day] ?? 0) + 1;
     }
     return map;
+  }
+
+  Map<int, int> _densityFor(List<TodoItem> todos) {
+    if (identical(_densitySource, todos)) return _densityCache;
+    final density = _calcDensity(todos);
+    _densitySource = todos;
+    _densityCache = density;
+    return density;
   }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    final density = _calcDensity();
+    final density = _densityFor(widget.todos);
+    final viewDays = widget.viewDays;
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final weeks = (viewDays / 7).ceil();
@@ -33,11 +62,17 @@ class TeamHeatmapWidget extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Text(
-              "全景任务热力分布 (${viewDays >= 30 ? '月视图' : viewDays >= 14 ? '双周' : '周视图'})",
-              style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.grey)),
+            "全景任务热力分布 (${viewDays >= 30
+                ? '月视图'
+                : viewDays >= 14
+                ? '双周'
+                : '周视图'})",
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: Colors.grey,
+            ),
+          ),
         ),
         const SizedBox(height: 12),
         SizedBox(
@@ -51,11 +86,13 @@ class TeamHeatmapWidget extends StatelessWidget {
                 padding: const EdgeInsets.only(right: 6),
                 child: Column(
                   children: List.generate(7, (dayIdx) {
-                    final date = today.subtract(Duration(
+                    final date = today.subtract(
+                      Duration(
                         days: ((weeks - 1 - weekIdx) * 7 + (6 - dayIdx))
-                            .toInt()));
-                    final count =
-                        density[DateTime(date.year, date.month, date.day)] ?? 0;
+                            .toInt(),
+                      ),
+                    );
+                    final count = density[_dateKey(date)] ?? 0;
                     int intensity = 0;
                     if (count > 0 && count <= 2) {
                       intensity = 1;
@@ -91,14 +128,7 @@ class TeamHeatmapWidget extends StatelessWidget {
   Color _getHeatmapColor(int intensity, bool isDark) {
     if (intensity == 0) return isDark ? Colors.grey[900]! : Colors.grey[200]!;
 
-    // 蓝色渐变系
-    List<Color> levels = [
-      Colors.blue[100]!,
-      Colors.blue[300]!,
-      Colors.blue[500]!,
-      Colors.blue[800]!,
-    ];
-    return levels[min(intensity - 1, 3)];
+    return _teamHeatmapColorLevels[min(intensity - 1, 3)];
   }
 
   Widget _buildLegend(bool isDark) {
@@ -106,26 +136,34 @@ class TeamHeatmapWidget extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
         children: [
-          Text("Less",
-              style: TextStyle(
-                  fontSize: 9,
-                  color: isDark ? Colors.white38 : Colors.black38)),
+          Text(
+            "Less",
+            style: TextStyle(
+              fontSize: 9,
+              color: isDark ? Colors.white38 : Colors.black38,
+            ),
+          ),
           const SizedBox(width: 4),
           ...List.generate(
-              5,
-              (i) => Container(
-                    width: 8,
-                    height: 8,
-                    margin: const EdgeInsets.symmetric(horizontal: 1),
-                    decoration: BoxDecoration(
-                        color: _getHeatmapColor(i, isDark),
-                        borderRadius: BorderRadius.circular(1)),
-                  )),
+            5,
+            (i) => Container(
+              width: 8,
+              height: 8,
+              margin: const EdgeInsets.symmetric(horizontal: 1),
+              decoration: BoxDecoration(
+                color: _getHeatmapColor(i, isDark),
+                borderRadius: BorderRadius.circular(1),
+              ),
+            ),
+          ),
           const SizedBox(width: 4),
-          Text("More",
-              style: TextStyle(
-                  fontSize: 9,
-                  color: isDark ? Colors.white38 : Colors.black38)),
+          Text(
+            "More",
+            style: TextStyle(
+              fontSize: 9,
+              color: isDark ? Colors.white38 : Colors.black38,
+            ),
+          ),
         ],
       ),
     );

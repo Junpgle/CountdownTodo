@@ -1,4 +1,5 @@
 part of 'course_screens.dart';
+
 // ignore_for_file: annotate_overrides, unused_element, unused_element_parameter
 
 mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
@@ -24,8 +25,9 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
     _syncPowerSavePulse();
     _pageController = PageController(initialPage: 0);
     DeviceCalendarReadService.revision.addListener(_reloadDeviceCalendar);
-    StorageService.scopedDataRefreshNotifier
-        .addListener(_reloadFixedSchedulesOnRefresh);
+    StorageService.scopedDataRefreshNotifier.addListener(
+      _reloadFixedSchedulesOnRefresh,
+    );
     _loadData();
   }
 
@@ -36,8 +38,9 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
     _courseExpandCtrl.dispose();
     _pageController.dispose();
     DeviceCalendarReadService.revision.removeListener(_reloadDeviceCalendar);
-    StorageService.scopedDataRefreshNotifier
-        .removeListener(_reloadFixedSchedulesOnRefresh);
+    StorageService.scopedDataRefreshNotifier.removeListener(
+      _reloadFixedSchedulesOnRefresh,
+    );
     super.dispose();
   }
 
@@ -107,7 +110,7 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
           name: '当前学期',
           startDate: semStart,
           isCurrent: true,
-        )
+        ),
       ];
     }
 
@@ -133,11 +136,14 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
 
     // 4. 计算学期起始周。优先使用用户明确选择的学期；没有有效选择时
     // 使用当前日期所在的学期，最后才回退到最近的学期。
-    _allPlanBlocks =
-        (results[5] as List<TodoPlanBlock>).where((p) => !p.isDeleted).toList();
+    _allPlanBlocks = (results[5] as List<TodoPlanBlock>)
+        .where((p) => !p.isDeleted)
+        .toList();
     _allFixedSchedules = (results[9] as List<FixedScheduleItem>)
-        .where((item) =>
-            !item.isDeleted && item.status != FixedScheduleStatus.cancelled)
+        .where(
+          (item) =>
+              !item.isDeleted && item.status != FixedScheduleStatus.cancelled,
+        )
         .toList();
 
     if (_semesters.isNotEmpty) {
@@ -152,8 +158,9 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
       anchorSemester ??= _semesterForDate(DateTime.now());
       semStart = anchorSemester?.startDate ?? _semesters.last.startDate;
       if (anchorSemester != null) {
-        _activeSemesterId =
-            CourseScheduleSemantics.canonicalSemesterId(anchorSemester.id);
+        _activeSemesterId = CourseScheduleSemantics.canonicalSemesterId(
+          anchorSemester.id,
+        );
       }
       _semesterMonday = CourseScheduleSemantics.mondayOf(semStart);
     } else if (semStart != null) {
@@ -163,8 +170,8 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
         ..sort((a, b) => a.weekIndex.compareTo(b.weekIndex));
       final firstCourse = sortedCourses.first;
       if (firstCourse.date.isNotEmpty) {
-        DateTime firstCourseDate =
-            DateFormat('yyyy-MM-dd').parse(firstCourse.date);
+        DateTime firstCourseDate = _cachedDateFormat('yyyy-MM-dd')
+            .parse(firstCourse.date);
         _semesterMonday = CalendarDateMath.addDays(
           firstCourseDate,
           -(firstCourse.weekday - 1) -
@@ -180,8 +187,10 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
 
     // 5. 计算当前周 - 基于选中的/当前学期
     DateTime now = DateTime.now();
-    final calculatedWeek =
-        CourseScheduleSemantics.weekIndexForDate(_semesterMonday!, now);
+    final calculatedWeek = CourseScheduleSemantics.weekIndexForDate(
+      _semesterMonday!,
+      now,
+    );
     _currentWeek = calculatedWeek < 1 ? 1 : calculatedWeek;
 
     // 6. 获取当前周课程 - 根据当前周次找到对应的学期，然后过滤课程
@@ -222,8 +231,10 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
 
     setState(() {
       _allFixedSchedules = schedules
-          .where((item) =>
-              !item.isDeleted && item.status != FixedScheduleStatus.cancelled)
+          .where(
+            (item) =>
+                !item.isDeleted && item.status != FixedScheduleStatus.cancelled,
+          )
           .toList();
       _updateWeekFixedSchedules();
       if (_monthDataPrepared) _groupDataForMonthView();
@@ -237,8 +248,10 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
     if (_semesterMonday == null) return;
 
     // 计算当前周次对应的周一日期
-    final currentWeekMonday =
-        CalendarDateMath.addDays(_semesterMonday!, (_currentWeek - 1) * 7);
+    final currentWeekMonday = CalendarDateMath.addDays(
+      _semesterMonday!,
+      (_currentWeek - 1) * 7,
+    );
 
     final targetSemester = _semesterForDate(currentWeekMonday);
     final targetSemesterId = targetSemester?.id ?? 'default';
@@ -248,23 +261,19 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
 
     // 过滤课程：只显示当前学期当前相对周次的课程
     _weekCourses = _allCourses
-        .where((c) =>
-            CourseScheduleSemantics.canonicalSemesterId(c.semesterId) ==
-                CourseScheduleSemantics.canonicalSemesterId(targetSemesterId) &&
-            c.weekIndex == relativeWeek)
+        .where(
+          (c) =>
+              CourseScheduleSemantics.canonicalSemesterId(c.semesterId) ==
+                  CourseScheduleSemantics.canonicalSemesterId(
+                    targetSemesterId,
+                  ) &&
+              c.weekIndex == relativeWeek,
+        )
         .toList();
   }
 
   void _updateWeekFixedSchedules() {
-    _fixedSchedulesPerDay = {
-      1: [],
-      2: [],
-      3: [],
-      4: [],
-      5: [],
-      6: [],
-      7: [],
-    };
+    _fixedSchedulesPerDay = {1: [], 2: [], 3: [], 4: [], 5: [], 6: [], 7: []};
     if (_semesterMonday == null) return;
 
     final weekStart = DateTime(
@@ -403,10 +412,7 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
 
     final weekStart = DateTime(monday.year, monday.month, monday.day);
     if (_viewMode == 1) {
-      return (
-        start: weekStart,
-        end: CalendarDateMath.addDays(weekStart, 14),
-      );
+      return (start: weekStart, end: CalendarDateMath.addDays(weekStart, 14));
     }
 
     // The initial homepage query and the week view use the same month-grid
@@ -461,20 +467,25 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
       }
     }
     for (var dayIndex = 1; dayIndex <= 7; dayIndex++) {
-      _allDayDeviceCalendarEventsPerDay[dayIndex]!
-          .sort((a, b) => a.title.compareTo(b.title));
-      _timedDeviceCalendarEventsPerDay[dayIndex]!
-          .sort((a, b) => a.start.compareTo(b.start));
+      _allDayDeviceCalendarEventsPerDay[dayIndex]!.sort(
+        (a, b) => a.title.compareTo(b.title),
+      );
+      _timedDeviceCalendarEventsPerDay[dayIndex]!.sort(
+        (a, b) => a.start.compareTo(b.start),
+      );
     }
   }
 
   void _updateMonthDeviceCalendarEvents() {
     final grouped = <String, List<DeviceCalendarEvent>>{};
-    final df = DateFormat('yyyy-MM-dd');
+    final df = _cachedDateFormat('yyyy-MM-dd');
 
     for (final event in _deviceCalendarEvents) {
-      final firstDay =
-          DateTime(event.start.year, event.start.month, event.start.day);
+      final firstDay = DateTime(
+        event.start.year,
+        event.start.month,
+        event.start.day,
+      );
       final lastDay = DateTime(event.end.year, event.end.month, event.end.day);
       final spanDays = CalendarDateMath.daysBetween(firstDay, lastDay);
       if (spanDays < 0 || spanDays > _maxExpandedSpanDays) continue;
@@ -498,8 +509,9 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
   void _checkCoachMarks() async {
     if (!mounted || _showCoachMarks) return;
 
-    final hasShown =
-        await FeatureTipService.hasTipBeenShown('course_screen_guide');
+    final hasShown = await FeatureTipService.hasTipBeenShown(
+      'course_screen_guide',
+    );
     if (hasShown || !mounted) return;
 
     setState(() {
@@ -571,7 +583,7 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
     _monthFixedScheduleMap = {};
     _monthDeviceCalendarMap = {};
 
-    final df = DateFormat('yyyy-MM-dd');
+    final df = _cachedDateFormat('yyyy-MM-dd');
 
     final semesterMondays = <String, DateTime>{
       for (final semester in _semesters)
@@ -587,8 +599,10 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
       if (c.date.isNotEmpty) {
         _monthCourseMap.putIfAbsent(c.date, () => []).add(c);
       } else if (c.weekIndex > 0) {
-        final monday = semesterMondays[
-            CourseScheduleSemantics.canonicalSemesterId(c.semesterId)];
+        final monday =
+            semesterMondays[CourseScheduleSemantics.canonicalSemesterId(
+              c.semesterId,
+            )];
         if (monday == null) continue;
         final date = CalendarDateMath.addDays(
           monday,
@@ -602,19 +616,21 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
     final recurrenceIndex = TodoRecurrenceCalendarIndex(_allTodos);
     for (var t in _allTodos) {
       if (!recurrenceIndex.shouldDisplayPersisted(t)) continue;
-      DateTime tStart =
-          DateTime.fromMillisecondsSinceEpoch(t.createdDate ?? t.createdAt)
-              .toLocal();
+      DateTime tStart = DateTime.fromMillisecondsSinceEpoch(
+        t.createdDate ?? t.createdAt,
+      ).toLocal();
       DateTime tEnd = t.dueDate ?? tStart.add(const Duration(hours: 1));
 
-      bool isAllDay = t.dueDate != null &&
+      bool isAllDay =
+          t.dueDate != null &&
           tStart.hour == 0 &&
           tStart.minute == 0 &&
           t.dueDate!.hour == 23 &&
           t.dueDate!.minute == 59;
-      bool isAcross = !(tStart.year == tEnd.year &&
-          tStart.month == tEnd.month &&
-          tStart.day == tEnd.day);
+      bool isAcross =
+          !(tStart.year == tEnd.year &&
+              tStart.month == tEnd.month &&
+              tStart.day == tEnd.day);
 
       _forEachExpandedDay(
         start: tStart,
@@ -633,8 +649,8 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
 
     // 3. 日志与番茄钟
     for (var l in _allTimeLogs) {
-      DateTime lStart =
-          DateTime.fromMillisecondsSinceEpoch(l.startTime).toLocal();
+      DateTime lStart = DateTime.fromMillisecondsSinceEpoch(l.startTime)
+          .toLocal();
       DateTime lEnd = DateTime.fromMillisecondsSinceEpoch(l.endTime).toLocal();
       _forEachExpandedDay(
         start: lStart,
@@ -648,8 +664,8 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
 
     for (var p in _allPomodoroRecords) {
       if (p.startTime <= 0) continue;
-      DateTime pStart =
-          DateTime.fromMillisecondsSinceEpoch(p.startTime).toLocal();
+      DateTime pStart = DateTime.fromMillisecondsSinceEpoch(p.startTime)
+          .toLocal();
       int pEndMs = p.endTime ?? (p.startTime + p.effectiveDuration * 1000);
       DateTime pEnd = DateTime.fromMillisecondsSinceEpoch(pEndMs).toLocal();
       _forEachExpandedDay(
@@ -664,8 +680,8 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
 
     for (var plan in _allPlanBlocks) {
       if (plan.startTime <= 0 || plan.endTime <= plan.startTime) continue;
-      final start =
-          DateTime.fromMillisecondsSinceEpoch(plan.startTime).toLocal();
+      final start = DateTime.fromMillisecondsSinceEpoch(plan.startTime)
+          .toLocal();
       final end = DateTime.fromMillisecondsSinceEpoch(plan.endTime).toLocal();
       _forEachExpandedDay(
         start: start,
@@ -724,13 +740,19 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
 
   TodoItem _createRecurringOccurrence(TodoItem todo, DateTime targetDay) {
     DateTime origStart = DateTime.fromMillisecondsSinceEpoch(
-            todo.createdDate ?? todo.createdAt,
-            isUtc: true)
-        .toLocal();
+      todo.createdDate ?? todo.createdAt,
+      isUtc: true,
+    ).toLocal();
     DateTime origEnd = todo.dueDate ?? origStart.add(const Duration(hours: 1));
 
-    DateTime newStart = DateTime(targetDay.year, targetDay.month, targetDay.day,
-        origStart.hour, origStart.minute, origStart.second);
+    DateTime newStart = DateTime(
+      targetDay.year,
+      targetDay.month,
+      targetDay.day,
+      origStart.hour,
+      origStart.minute,
+      origStart.second,
+    );
     int startDiffMs = newStart.difference(origStart).inMilliseconds;
     DateTime newEnd = origEnd.add(Duration(milliseconds: startDiffMs));
 
@@ -769,10 +791,15 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
     // because _handleRecurrenceLogic rolls dueDate forward daily for
     // daily/customDays recurrence, which would shift the anchor.
     final int startMs = todo.createdDate ?? todo.createdAt;
-    final DateTime startDate =
-        DateTime.fromMillisecondsSinceEpoch(startMs, isUtc: true).toLocal();
-    final DateTime anchorDay =
-        DateTime(startDate.year, startDate.month, startDate.day);
+    final DateTime startDate = DateTime.fromMillisecondsSinceEpoch(
+      startMs,
+      isUtc: true,
+    ).toLocal();
+    final DateTime anchorDay = DateTime(
+      startDate.year,
+      startDate.month,
+      startDate.day,
+    );
 
     // End boundary: for daily/customDays recurrence, _handleRecurrenceLogic
     // rolls dueDate forward to today, so dueDate cannot serve as end boundary.
@@ -782,16 +809,25 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
     if (todo.recurrence == RecurrenceType.daily ||
         todo.recurrence == RecurrenceType.customDays) {
       if (todo.recurrenceEndDate != null) {
-        endBoundary = DateTime(todo.recurrenceEndDate!.year,
-            todo.recurrenceEndDate!.month, todo.recurrenceEndDate!.day);
+        endBoundary = DateTime(
+          todo.recurrenceEndDate!.year,
+          todo.recurrenceEndDate!.month,
+          todo.recurrenceEndDate!.day,
+        );
       }
     } else {
       if (todo.dueDate != null) {
         endBoundary = DateTime(
-            todo.dueDate!.year, todo.dueDate!.month, todo.dueDate!.day);
+          todo.dueDate!.year,
+          todo.dueDate!.month,
+          todo.dueDate!.day,
+        );
       } else if (todo.recurrenceEndDate != null) {
-        endBoundary = DateTime(todo.recurrenceEndDate!.year,
-            todo.recurrenceEndDate!.month, todo.recurrenceEndDate!.day);
+        endBoundary = DateTime(
+          todo.recurrenceEndDate!.year,
+          todo.recurrenceEndDate!.month,
+          todo.recurrenceEndDate!.day,
+        );
       }
     }
 
@@ -821,7 +857,8 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
           matches = targetDay.day == anchorDay.day;
           break;
         case RecurrenceType.yearly:
-          matches = targetDay.month == anchorDay.month &&
+          matches =
+              targetDay.month == anchorDay.month &&
               targetDay.day == anchorDay.day;
           break;
         case RecurrenceType.customDays:
@@ -848,10 +885,15 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
 
     if (_semesterMonday == null) return;
 
-    DateTime currentWeekMonday =
-        CalendarDateMath.addDays(_semesterMonday!, (_currentWeek - 1) * 7);
+    DateTime currentWeekMonday = CalendarDateMath.addDays(
+      _semesterMonday!,
+      (_currentWeek - 1) * 7,
+    );
     DateTime currentWeekMondayStart = DateTime(
-        currentWeekMonday.year, currentWeekMonday.month, currentWeekMonday.day);
+      currentWeekMonday.year,
+      currentWeekMonday.month,
+      currentWeekMonday.day,
+    );
     final recurrenceIndex = TodoRecurrenceCalendarIndex(_allTodos);
 
     for (var todo in _allTodos) {
@@ -860,34 +902,37 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
       List<TodoItem> todosToPlace;
 
       if (isRecurring) {
-        todosToPlace = _expandRecurringTodo(todo, currentWeekMondayStart)
-            .where((occurrence) {
-          final start = DateTime.fromMillisecondsSinceEpoch(
-            occurrence.createdDate ?? occurrence.createdAt,
-            isUtc: true,
-          ).toLocal();
-          return recurrenceIndex.shouldProjectVirtual(todo, start);
-        }).toList();
+        todosToPlace = _expandRecurringTodo(todo, currentWeekMondayStart).where(
+          (occurrence) {
+            final start = DateTime.fromMillisecondsSinceEpoch(
+              occurrence.createdDate ?? occurrence.createdAt,
+              isUtc: true,
+            ).toLocal();
+            return recurrenceIndex.shouldProjectVirtual(todo, start);
+          },
+        ).toList();
       } else {
         todosToPlace = [todo];
       }
 
       for (var effectiveTodo in todosToPlace) {
         DateTime start = DateTime.fromMillisecondsSinceEpoch(
-                effectiveTodo.createdDate ?? effectiveTodo.createdAt,
-                isUtc: true)
-            .toLocal();
+          effectiveTodo.createdDate ?? effectiveTodo.createdAt,
+          isUtc: true,
+        ).toLocal();
         DateTime end =
             effectiveTodo.dueDate ?? start.add(const Duration(hours: 1));
 
-        bool isAllDayFlag = effectiveTodo.dueDate != null &&
+        bool isAllDayFlag =
+            effectiveTodo.dueDate != null &&
             start.hour == 0 &&
             start.minute == 0 &&
             effectiveTodo.dueDate!.hour == 23 &&
             effectiveTodo.dueDate!.minute == 59;
-        bool isCrossDay = !(start.year == end.year &&
-            start.month == end.month &&
-            start.day == end.day);
+        bool isCrossDay =
+            !(start.year == end.year &&
+                start.month == end.month &&
+                start.day == end.day);
         bool treatAsAllDay = isAllDayFlag || isCrossDay;
 
         if (_activeDataViews.contains('hideCrossDay') && isCrossDay) {
@@ -895,8 +940,10 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
         }
 
         for (int i = 1; i <= 7; i++) {
-          DateTime dayStart =
-              CalendarDateMath.addDays(currentWeekMondayStart, i - 1);
+          DateTime dayStart = CalendarDateMath.addDays(
+            currentWeekMondayStart,
+            i - 1,
+          );
           DateTime dayEndExclusive = CalendarDateMath.addDays(dayStart, 1);
 
           if (start.isBefore(dayEndExclusive) && end.isAfter(dayStart)) {
@@ -924,46 +971,94 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
   }
 
   void _updateWeekTimeLogsPomodorosAndPlans() {
+    _invalidatePlanPomodoroProgressIndex();
     _timeLogsPerDay = {1: [], 2: [], 3: [], 4: [], 5: [], 6: [], 7: []};
     _pomodorosPerDay = {1: [], 2: [], 3: [], 4: [], 5: [], 6: [], 7: []};
     _planBlocksPerDay = {1: [], 2: [], 3: [], 4: [], 5: [], 6: [], 7: []};
 
     if (_semesterMonday == null) return;
 
-    DateTime currentWeekMonday =
-        CalendarDateMath.addDays(_semesterMonday!, (_currentWeek - 1) * 7);
+    DateTime currentWeekMonday = CalendarDateMath.addDays(
+      _semesterMonday!,
+      (_currentWeek - 1) * 7,
+    );
 
-    for (int i = 1; i <= 7; i++) {
-      DateTime dayStart = CalendarDateMath.addDays(currentWeekMonday, i - 1);
-      DateTime dayStartMs =
-          DateTime(dayStart.year, dayStart.month, dayStart.day);
-      DateTime dayEndMs = CalendarDateMath.addDays(dayStartMs, 1);
+    final dayStartEpochs = List<int>.filled(7, 0);
+    final dayEndEpochs = List<int>.filled(7, 0);
+    for (var index = 0; index < 7; index++) {
+      final day = CalendarDateMath.addDays(currentWeekMonday, index);
+      final dayStart = DateTime(day.year, day.month, day.day);
+      dayStartEpochs[index] = dayStart.millisecondsSinceEpoch;
+      dayEndEpochs[index] = CalendarDateMath.addDays(
+        dayStart,
+        1,
+      ).millisecondsSinceEpoch;
+    }
 
-      int dayStartMsEpoch = dayStartMs.millisecondsSinceEpoch;
-      int dayEndMsEpoch = dayEndMs.millisecondsSinceEpoch;
-
-      for (var log in _allTimeLogs) {
-        if (log.endTime > dayStartMsEpoch && log.startTime < dayEndMsEpoch) {
-          _timeLogsPerDay[i]!.add(log);
+    void addToOverlappingDays<T>(
+      int itemStart,
+      int itemEnd,
+      T item,
+      Map<int, List<T>> days,
+    ) {
+      var low = 0;
+      var high = dayEndEpochs.length;
+      while (low < high) {
+        final middle = (low + high) ~/ 2;
+        if (dayEndEpochs[middle] <= itemStart) {
+          low = middle + 1;
+        } else {
+          high = middle;
         }
       }
-
-      for (var record in _allPomodoroRecords) {
-        int recordEnd = record.endTime ??
-            (record.startTime + record.effectiveDuration * 1000);
-        if (recordEnd > dayStartMsEpoch && record.startTime < dayEndMsEpoch) {
-          // 🚀 跳过与计划块关联的番茄钟，避免重复显示
-          if (!_isPomodoroAssociatedWithPlan(record)) {
-            _pomodorosPerDay[i]!.add(record);
-          }
+      for (
+        var index = low;
+        index < dayStartEpochs.length && dayStartEpochs[index] < itemEnd;
+        index++
+      ) {
+        if (itemEnd > dayStartEpochs[index] &&
+            itemStart < dayEndEpochs[index]) {
+          days[index + 1]!.add(item);
         }
       }
+    }
 
-      for (var plan in _allPlanBlocks) {
-        if (plan.endTime > dayStartMsEpoch && plan.startTime < dayEndMsEpoch) {
-          _planBlocksPerDay[i]!.add(plan);
-        }
+    for (final log in _allTimeLogs) {
+      addToOverlappingDays(log.startTime, log.endTime, log, _timeLogsPerDay);
+    }
+
+    final associationLookup =
+        _allPlanBlocks.length > 1 &&
+            _allPlanBlocks.length * _allPomodoroRecords.length > 128
+        ? _PomodoroPlanAssociationLookup(_allPlanBlocks)
+        : null;
+    for (final record in _allPomodoroRecords) {
+      final recordEnd =
+          record.endTime ?? record.startTime + record.effectiveDuration * 1000;
+      if (recordEnd <= dayStartEpochs.first ||
+          record.startTime >= dayEndEpochs.last) {
+        continue;
       }
+      final associated =
+          associationLookup?.isAssociated(record, recordEnd) ??
+          _isPomodoroAssociatedWithPlan(record);
+      if (associated) continue;
+
+      addToOverlappingDays(
+        record.startTime,
+        recordEnd,
+        record,
+        _pomodorosPerDay,
+      );
+    }
+
+    for (final plan in _allPlanBlocks) {
+      addToOverlappingDays(
+        plan.startTime,
+        plan.endTime,
+        plan,
+        _planBlocksPerDay,
+      );
     }
   }
 }

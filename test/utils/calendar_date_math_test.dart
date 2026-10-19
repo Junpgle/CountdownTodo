@@ -48,20 +48,23 @@ void main() {
     expect(fall.endExclusive, DateTime(2026, 11, 2));
   });
 
-  test('day and week navigation advance by local calendar dates across fall DST', () {
-    expect(
-      CalendarDateMath.addDays(DateTime(2026, 11, 1), 1),
-      DateTime(2026, 11, 2),
-    );
-    expect(
-      CalendarDateMath.addDays(DateTime(2026, 10, 26), 7),
-      DateTime(2026, 11, 2),
-    );
-    expect(
-      CalendarDateMath.addDays(DateTime(2026, 11, 2), -7),
-      DateTime(2026, 10, 26),
-    );
-  });
+  test(
+    'day and week navigation advance by local calendar dates across fall DST',
+    () {
+      expect(
+        CalendarDateMath.addDays(DateTime(2026, 11, 1), 1),
+        DateTime(2026, 11, 2),
+      );
+      expect(
+        CalendarDateMath.addDays(DateTime(2026, 10, 26), 7),
+        DateTime(2026, 11, 2),
+      );
+      expect(
+        CalendarDateMath.addDays(DateTime(2026, 11, 2), -7),
+        DateTime(2026, 10, 26),
+      );
+    },
+  );
 
   test(
     'inclusive local date iteration neither skips nor repeats DST dates',

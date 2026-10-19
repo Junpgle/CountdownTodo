@@ -22,8 +22,9 @@ class WallpaperCacheService {
         await StorageService.getWallpaperCacheCleanupTime();
 
     if (lastCleanupTimestamp != null) {
-      final lastCleanup =
-          DateTime.fromMillisecondsSinceEpoch(lastCleanupTimestamp);
+      final lastCleanup = DateTime.fromMillisecondsSinceEpoch(
+        lastCleanupTimestamp,
+      );
       if (now.difference(lastCleanup) < cleanupInterval) {
         return;
       }

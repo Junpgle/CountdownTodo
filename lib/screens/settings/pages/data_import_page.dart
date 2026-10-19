@@ -396,8 +396,11 @@ class _DataImportPageState extends State<DataImportPage> {
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.description,
-                        color: colorScheme.onSurfaceVariant, size: 20),
+                    Icon(
+                      Icons.description,
+                      color: colorScheme.onSurfaceVariant,
+                      size: 20,
+                    ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
@@ -428,9 +431,9 @@ class _DataImportPageState extends State<DataImportPage> {
               child: OutlinedButton.icon(
                 onPressed: _isParsing ? null : _pickFile,
                 icon: const Icon(Icons.file_upload_outlined),
-                label: Text((_filePath == null && _fileContent == null)
-                    ? '选择文件'
-                    : '更换文件'),
+                label: Text(
+                  (_filePath == null && _fileContent == null) ? '选择文件' : '更换文件',
+                ),
               ),
             ),
           ],
@@ -459,34 +462,35 @@ class _DataImportPageState extends State<DataImportPage> {
               ],
             ),
             const SizedBox(height: 12),
-            _buildInfoRow('导出时间',
-                DateFormat('yyyy-MM-dd HH:mm').format(preview.exportedAt)),
+            _buildInfoRow(
+              '导出时间',
+              DateFormat('yyyy-MM-dd HH:mm').format(preview.exportedAt),
+            ),
             if (preview.appVersion != null)
               _buildInfoRow('应用版本', preview.appVersion!),
             const Divider(height: 24),
-            const Text(
-              '包含数据:',
-              style: TextStyle(fontWeight: FontWeight.w500),
-            ),
+            const Text('包含数据:', style: TextStyle(fontWeight: FontWeight.w500)),
             const SizedBox(height: 8),
-            ...preview.types.map((type) => Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.circle, size: 6),
-                      const SizedBox(width: 8),
-                      Text(type.label),
-                      const Spacer(),
-                      Text(
-                        '${type.count} 条',
-                        style: TextStyle(
-                          color: colorScheme.onSurfaceVariant,
-                          fontSize: 13,
-                        ),
+            ...preview.types.map(
+              (type) => Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Row(
+                  children: [
+                    const Icon(Icons.circle, size: 6),
+                    const SizedBox(width: 8),
+                    Text(type.label),
+                    const Spacer(),
+                    Text(
+                      '${type.count} 条',
+                      style: TextStyle(
+                        color: colorScheme.onSurfaceVariant,
+                        fontSize: 13,
                       ),
-                    ],
-                  ),
-                )),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ],
         ),
       ),
@@ -498,10 +502,7 @@ class _DataImportPageState extends State<DataImportPage> {
       padding: const EdgeInsets.only(bottom: 4),
       child: Row(
         children: [
-          Text(
-            '$label: ',
-            style: const TextStyle(fontWeight: FontWeight.w500),
-          ),
+          Text('$label: ', style: const TextStyle(fontWeight: FontWeight.w500)),
           Text(value),
         ],
       ),
@@ -524,8 +525,11 @@ class _DataImportPageState extends State<DataImportPage> {
           children: [
             Row(
               children: [
-                Icon(Icons.merge_type,
-                    color: colorScheme.onPrimaryContainer, size: 20),
+                Icon(
+                  Icons.merge_type,
+                  color: colorScheme.onPrimaryContainer,
+                  size: 20,
+                ),
                 const SizedBox(width: 8),
                 Text(
                   '智能合并',
@@ -665,7 +669,9 @@ class _DataImportPageState extends State<DataImportPage> {
                 width: 18,
                 height: 18,
                 child: CircularProgressIndicator(
-                    strokeWidth: 2, color: Colors.white),
+                  strokeWidth: 2,
+                  color: Colors.white,
+                ),
               )
             : const Icon(Icons.download),
         label: Text(_isImporting ? '导入中...' : '开始导入'),
@@ -679,10 +685,11 @@ class _DataImportPageState extends State<DataImportPage> {
     return OptionalLiquidGlassCard(
       borderRadius: 12,
       highContrast: true,
-      tint: (result.success
-              ? colorScheme.tertiaryContainer
-              : colorScheme.errorContainer)
-          .withValues(alpha: 0.16),
+      tint:
+          (result.success
+                  ? colorScheme.tertiaryContainer
+                  : colorScheme.errorContainer)
+              .withValues(alpha: 0.16),
       fallbackDecoration: BoxDecoration(
         color: result.success
             ? colorScheme.tertiaryContainer

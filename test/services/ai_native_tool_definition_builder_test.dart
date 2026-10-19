@@ -31,7 +31,9 @@ void main() {
   group('AiNativeToolDefinitionBuilder', () {
     test('缺少卡片的反馈与口语任务描述承接规划，普通任务描述不强行变成规划', () {
       for (final text in [
-        '你没给我操作块', '我没看到卡片', '规划块不显示',
+        '你没给我操作块',
+        '我没看到卡片',
+        '规划块不显示',
         '操作卡片在哪里',
         '我打算做一点公考的行测和申论，然后做习概的论文提交，再抽时间做党课',
       ]) {
@@ -39,14 +41,25 @@ void main() {
           text,
           previousAssistantMessage: '规划块草案已生成，请核对方案。',
         );
-        expect(AiNativeToolDefinitionBuilder.allowedCdtActionNames(tools),
-            contains('create_plan_block'), reason: text);
+        expect(
+          AiNativeToolDefinitionBuilder.allowedCdtActionNames(tools),
+          contains('create_plan_block'),
+          reason: text,
+        );
       }
-      final unrelated = AiNativeToolDefinitionBuilder.buildNativeToolDefinitions(
-        '我打算做一点行测', previousAssistantMessage: '今天心情如何？');
-      expect(AiNativeToolDefinitionBuilder.allowedCdtActionNames(unrelated),
-          isNot(contains('create_plan_block')));
-      expect(AiNativeToolDefinitionBuilder.isMissingActionCardReport('调整首页布局'), false);
+      final unrelated =
+          AiNativeToolDefinitionBuilder.buildNativeToolDefinitions(
+            '我打算做一点行测',
+            previousAssistantMessage: '今天心情如何？',
+          );
+      expect(
+        AiNativeToolDefinitionBuilder.allowedCdtActionNames(unrelated),
+        isNot(contains('create_plan_block')),
+      );
+      expect(
+        AiNativeToolDefinitionBuilder.isMissingActionCardReport('调整首页布局'),
+        false,
+      );
     });
 
     test('截图中的任务、时间偏好、确认与要的都承接规划，不泄漏其他修改动作', () {

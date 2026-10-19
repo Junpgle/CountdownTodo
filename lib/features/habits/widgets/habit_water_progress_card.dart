@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+
 import '../../../utils/android_energy_policy.dart';
 import '../../../services/power_save_mode_service.dart';
 
@@ -26,14 +27,16 @@ class HabitWaterProgressCard extends StatelessWidget {
     final double ratio = currentValue / safeTarget;
     final double visualRatio = ratio.clamp(0.0, 1.0).toDouble();
     final displayUnit = unit.trim().isEmpty ? 'ml' : unit.trim();
-    final double remaining =
-        math.max(safeTarget - currentValue, 0.0).toDouble();
+    final double remaining = math
+        .max(safeTarget - currentValue, 0.0)
+        .toDouble();
     final percent = (ratio * 100).round();
     final isComplete = currentValue >= safeTarget;
 
     return Semantics(
       container: true,
-      label: '今日饮水 ${_formatAmount(currentValue)} $displayUnit，'
+      label:
+          '今日饮水 ${_formatAmount(currentValue)} $displayUnit，'
           '目标 ${_formatAmount(safeTarget)} $displayUnit，完成 $percent%',
       child: Container(
         width: double.infinity,
@@ -112,8 +115,9 @@ class HabitWaterProgressCard extends StatelessWidget {
                       value: visualRatio,
                       minHeight: 8,
                       backgroundColor: colorScheme.primaryContainer,
-                      valueColor:
-                          AlwaysStoppedAnimation<Color>(colorScheme.primary),
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        colorScheme.primary,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 10),
@@ -208,47 +212,129 @@ class _AnimatedWaterCupState extends State<_AnimatedWaterCup>
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _waveController,
-      builder: (context, child) {
-        return CustomPaint(
-          painter: _WaterProgressCupPainter(
-            ratio: widget.ratio,
-            phase: _waveController.value * math.pi * 2,
-            colorScheme: widget.colorScheme,
-          ),
-        );
-      },
+    return CustomPaint(
+      painter: _WaterProgressCupPainter(
+        ratio: widget.ratio,
+        animation: _waveController,
+        colorScheme: widget.colorScheme,
+      ),
     );
   }
 }
 
 class _WaterProgressCupPainter extends CustomPainter {
-  final double ratio;
-  final double phase;
-  final ColorScheme colorScheme;
+  static const _waveSampleCount = 28;
+  // Cache each sample angle so animated frames only calculate phase sin/cos.
+  static final List<(double, double, double, double, double)> _waveBasis =
+      List.generate(_waveSampleCount, (index) {
+        final progress = (index + 1) / _waveSampleCount;
+        final primaryAngle = progress * math.pi * 2.2;
+        final secondaryAngle = progress * math.pi * 4.4;
+        return (
+          progress,
+          math.sin(primaryAngle),
+          math.cos(primaryAngle),
+          math.sin(secondaryAngle),
+          math.cos(secondaryAngle),
+        );
+      }, growable: false);
 
-  const _WaterProgressCupPainter({
+  final double ratio;
+  final Animation<double> animation;
+  final ColorScheme colorScheme;
+  late final Paint _shadowPaint = Paint()
+    ..color = colorScheme.primary.withValues(alpha: 0.12)
+    ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 9);
+  final Paint _glassPaint = Paint();
+  final Paint _waterPaint = Paint();
+  late final Paint _surfacePaint = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = 1.5
+    ..color = colorScheme.onPrimary.withValues(alpha: 0.52);
+  late final Paint _reflectionPaint = Paint()
+    ..color = colorScheme.onPrimary.withValues(alpha: 0.26)
+    ..strokeWidth = 3
+    ..strokeCap = StrokeCap.round;
+  late final Paint _bubblePaint = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = 1.1
+    ..color = colorScheme.onPrimary.withValues(alpha: 0.3);
+  late final Paint _outlinePaint = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = 2.2
+    ..color = colorScheme.primary.withValues(alpha: 0.52);
+  late final Paint _highlightPaint = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = 3
+    ..strokeCap = StrokeCap.round
+    ..color = colorScheme.onPrimary.withValues(alpha: 0.38);
+  late final Paint _rimPaint = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = 1.7
+    ..color = colorScheme.primary.withValues(alpha: 0.45);
+  late final Paint _graduationPaint = Paint()
+    ..color = colorScheme.onPrimaryContainer.withValues(alpha: 0.34)
+    ..strokeWidth = 1.2;
+  late final LinearGradient _waterGradient = LinearGradient(
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+    colors: [
+      colorScheme.primary.withValues(alpha: 0.68),
+      colorScheme.primary.withValues(alpha: 0.96),
+      colorScheme.tertiary.withValues(alpha: 0.82),
+    ],
+    stops: const [0, 0.45, 1],
+  );
+
+  static const List<(double, double, double, double)> _bubbles = [
+    (0.28, 0.24, 2.4, 1.0),
+    (0.66, 0.52, 1.8, 1.4),
+    (0.47, 0.76, 1.3, 0.8),
+  ];
+
+  Size? _geometrySize;
+  Path? _cupPathCache;
+  Path? _highlightPathCache;
+  final Path _waterPathCache = Path();
+  final Path _surfacePathCache = Path();
+  final List<double> _waveOffsets = List<double>.filled(
+    _waveSampleCount,
+    0,
+    growable: false,
+  );
+  Rect? _glassShaderBounds;
+  Shader? _glassShader;
+
+  _WaterProgressCupPainter({
     required this.ratio,
-    required this.phase,
+    required this.animation,
     required this.colorScheme,
-  });
+  }) : super(repaint: animation);
 
   @override
   void paint(Canvas canvas, Size size) {
-    final cup = _cupPath(size);
+    if (_geometrySize != size) {
+      _geometrySize = size;
+      _cupPathCache = _cupPath(size);
+      _highlightPathCache = _highlightPath(size);
+      _glassShaderBounds = null;
+      _glassShader = null;
+    }
+
+    final phase = animation.value * math.pi * 2;
+    final cup = _cupPathCache!;
     final top = 25.0;
     final bottom = size.height - 18;
     final fillTop = bottom - (bottom - top) * ratio.clamp(0.0, 1.0);
 
-    _drawShadow(canvas, size, cup);
+    _drawShadow(canvas, cup);
     _drawGlassBody(canvas, cup);
 
     canvas.save();
     canvas.clipPath(cup);
     if (ratio > 0.005) {
-      _drawWater(canvas, size, fillTop, bottom);
-      _drawBubbles(canvas, size, fillTop, bottom);
+      _drawWater(canvas, size, fillTop, bottom, phase);
+      _drawBubbles(canvas, size, fillTop, bottom, phase);
     }
     canvas.restore();
 
@@ -284,67 +370,83 @@ class _WaterProgressCupPainter extends CustomPainter {
       ..close();
   }
 
-  void _drawShadow(Canvas canvas, Size size, Path cup) {
-    final shadowPaint = Paint()
-      ..color = colorScheme.primary.withValues(alpha: 0.12)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 9);
+  void _drawShadow(Canvas canvas, Path cup) {
     canvas.save();
     canvas.translate(0, 5);
-    canvas.drawPath(cup, shadowPaint);
+    canvas.drawPath(cup, _shadowPaint);
     canvas.restore();
   }
 
   void _drawGlassBody(Canvas canvas, Path cup) {
-    final glassPaint = Paint()
-      ..shader = LinearGradient(
+    final bounds = cup.getBounds();
+    if (_glassShaderBounds != bounds) {
+      _glassShaderBounds = bounds;
+      _glassShader = LinearGradient(
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
         colors: [
           colorScheme.surface.withValues(alpha: 0.72),
           colorScheme.primaryContainer.withValues(alpha: 0.34),
         ],
-      ).createShader(cup.getBounds());
-    canvas.drawPath(cup, glassPaint);
+      ).createShader(bounds);
+    }
+    _glassPaint.shader = _glassShader;
+    canvas.drawPath(cup, _glassPaint);
   }
 
-  void _drawWater(Canvas canvas, Size size, double fillTop, double bottom) {
+  void _drawWater(
+    Canvas canvas,
+    Size size,
+    double fillTop,
+    double bottom,
+    double phase,
+  ) {
+    _updateWaveOffsets(phase);
     final waterPath = _waterPath(size, fillTop, bottom);
     final bounds = waterPath.getBounds();
-    final waterPaint = Paint()
-      ..shader = LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [
-          colorScheme.primary.withValues(alpha: 0.68),
-          colorScheme.primary.withValues(alpha: 0.96),
-          colorScheme.tertiary.withValues(alpha: 0.82),
-        ],
-        stops: const [0, 0.45, 1],
-      ).createShader(bounds);
-    canvas.drawPath(waterPath, waterPaint);
+    _waterPaint.shader = _waterGradient.createShader(bounds);
+    canvas.drawPath(waterPath, _waterPaint);
 
-    final surfacePath = _wavePath(size, fillTop, phase, amplitude: 2.8);
-    final surfacePaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.5
-      ..color = colorScheme.onPrimary.withValues(alpha: 0.52);
-    canvas.drawPath(surfacePath, surfacePaint);
+    final surfacePath = _wavePath(
+      size,
+      fillTop,
+      amplitude: 2.8,
+      path: _surfacePathCache,
+    );
+    canvas.drawPath(surfacePath, _surfacePaint);
 
-    final reflectionPaint = Paint()
-      ..color = colorScheme.onPrimary.withValues(alpha: 0.26)
-      ..strokeWidth = 3
-      ..strokeCap = StrokeCap.round;
     canvas.drawLine(
       Offset(size.width * 0.31, size.height * 0.43),
       Offset(size.width * 0.31, size.height * 0.68),
-      reflectionPaint,
+      _reflectionPaint,
     );
+  }
+
+  void _updateWaveOffsets(double phase) {
+    final phaseSin = math.sin(phase);
+    final phaseCos = math.cos(phase);
+    final secondaryPhase = phase * 0.7;
+    final secondaryPhaseSin = math.sin(secondaryPhase);
+    final secondaryPhaseCos = math.cos(secondaryPhase);
+
+    for (var i = 0; i < _waveBasis.length; i++) {
+      final basis = _waveBasis[i];
+      final primary = basis.$2 * phaseCos + basis.$3 * phaseSin;
+      final secondary =
+          basis.$4 * secondaryPhaseCos - basis.$5 * secondaryPhaseSin;
+      _waveOffsets[i] = primary + secondary * 0.28;
+    }
   }
 
   Path _waterPath(Size size, double fillTop, double bottom) {
     final left = size.width * 0.16;
     final right = size.width * 0.84;
-    final surface = _wavePath(size, fillTop, phase, amplitude: 3.6);
+    final surface = _wavePath(
+      size,
+      fillTop,
+      amplitude: 3.6,
+      path: _waterPathCache,
+    );
     return surface
       ..lineTo(right, bottom + 5)
       ..lineTo(left, bottom + 5)
@@ -353,67 +455,45 @@ class _WaterProgressCupPainter extends CustomPainter {
 
   Path _wavePath(
     Size size,
-    double y,
-    double phase, {
+    double y, {
     required double amplitude,
+    required Path path,
   }) {
     final left = size.width * 0.16;
     final width = size.width * 0.68;
-    final path = Path()..moveTo(left, y);
-    const samples = 28;
-    for (var i = 1; i <= samples; i++) {
-      final progress = i / samples;
-      final x = left + width * progress;
-      final wave = math.sin(progress * math.pi * 2.2 + phase) * amplitude;
-      final smallWave =
-          math.sin(progress * math.pi * 4.4 - phase * 0.7) * amplitude * 0.28;
-      path.lineTo(x, y + wave + smallWave);
+    path
+      ..reset()
+      ..moveTo(left, y);
+    for (var i = 0; i < _waveSampleCount; i++) {
+      final x = left + width * _waveBasis[i].$1;
+      path.lineTo(x, y + _waveOffsets[i] * amplitude);
     }
     return path;
   }
 
-  void _drawBubbles(Canvas canvas, Size size, double fillTop, double bottom) {
+  void _drawBubbles(
+    Canvas canvas,
+    Size size,
+    double fillTop,
+    double bottom,
+    double phase,
+  ) {
     final waterHeight = bottom - fillTop;
     if (waterHeight < 24) return;
-    final bubblePaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.1
-      ..color = colorScheme.onPrimary.withValues(alpha: 0.3);
-    final bubbles = [
-      (0.28, 0.24, 2.4, 1.0),
-      (0.66, 0.52, 1.8, 1.4),
-      (0.47, 0.76, 1.3, 0.8),
-    ];
-    for (final bubble in bubbles) {
+    final phaseCycles = phase / (math.pi * 2);
+    for (final bubble in _bubbles) {
       final x = size.width * bubble.$1;
-      final travel = (phase / (math.pi * 2) * bubble.$4 + bubble.$2) % 1;
+      final travel = (phaseCycles * bubble.$4 + bubble.$2) % 1;
       final y = bottom - waterHeight * travel;
       if (y <= fillTop + 8 || y >= bottom - 6) continue;
-      canvas.drawCircle(Offset(x, y), bubble.$3, bubblePaint);
+      canvas.drawCircle(Offset(x, y), bubble.$3, _bubblePaint);
     }
   }
 
   void _drawGlassEdges(Canvas canvas, Size size, Path cup) {
-    final outlinePaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.2
-      ..color = colorScheme.primary.withValues(alpha: 0.52);
-    canvas.drawPath(cup, outlinePaint);
+    canvas.drawPath(cup, _outlinePaint);
 
-    final highlightPaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 3
-      ..strokeCap = StrokeCap.round
-      ..color = colorScheme.onPrimary.withValues(alpha: 0.38);
-    final highlight = Path()
-      ..moveTo(size.width * 0.22, size.height * 0.28)
-      ..quadraticBezierTo(
-        size.width * 0.18,
-        size.height * 0.52,
-        size.width * 0.28,
-        size.height * 0.78,
-      );
-    canvas.drawPath(highlight, highlightPaint);
+    canvas.drawPath(_highlightPathCache!, _highlightPaint);
   }
 
   void _drawRim(Canvas canvas, Size size) {
@@ -425,32 +505,34 @@ class _WaterProgressCupPainter extends CustomPainter {
       Rect.fromLTWH(size.width * 0.12, 21, size.width * 0.76, 9),
       const Radius.circular(5),
     );
-    final rimPaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.7
-      ..color = colorScheme.primary.withValues(alpha: 0.45);
-    canvas.drawRRect(rimOuter, rimPaint);
-    canvas.drawRRect(rimInner, rimPaint);
+    canvas.drawRRect(rimOuter, _rimPaint);
+    canvas.drawRRect(rimInner, _rimPaint);
   }
 
   void _drawGraduations(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = colorScheme.onPrimaryContainer.withValues(alpha: 0.34)
-      ..strokeWidth = 1.2;
     for (var i = 1; i <= 3; i++) {
       final y = size.height * (0.34 + i * 0.14);
       canvas.drawLine(
         Offset(size.width * 0.76, y),
         Offset(size.width * 0.84, y),
-        paint,
+        _graduationPaint,
       );
     }
   }
 
+  Path _highlightPath(Size size) => Path()
+    ..moveTo(size.width * 0.22, size.height * 0.28)
+    ..quadraticBezierTo(
+      size.width * 0.18,
+      size.height * 0.52,
+      size.width * 0.28,
+      size.height * 0.78,
+    );
+
   @override
   bool shouldRepaint(covariant _WaterProgressCupPainter oldDelegate) {
     return oldDelegate.ratio != ratio ||
-        oldDelegate.phase != phase ||
+        oldDelegate.animation != animation ||
         oldDelegate.colorScheme != colorScheme;
   }
 }

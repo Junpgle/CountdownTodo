@@ -175,10 +175,7 @@ class _AppStatusToastViewState extends State<_AppStatusToastView>
         colorScheme.primaryContainer,
       ),
     );
-    final glassContent = _content(
-      colorScheme.onSurface,
-      colorScheme.primary,
-    );
+    final glassContent = _content(colorScheme.onSurface, colorScheme.primary);
 
     return Material(
       type: MaterialType.transparency,

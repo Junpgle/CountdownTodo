@@ -1,4 +1,5 @@
 part of 'home_dashboard.dart';
+
 // ignore_for_file: annotate_overrides
 
 mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
@@ -13,9 +14,7 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
         action: SnackBarAction(
           label: '去授权',
           onPressed: () async {
-            await _permissionCoordinator.request(
-              AppPermissionKind.exactAlarm,
-            );
+            await _permissionCoordinator.request(AppPermissionKind.exactAlarm);
           },
         ),
         duration: const Duration(seconds: 8),
@@ -24,53 +23,56 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
   }
 
   /// 导航到待办确认页面
-  Future<dynamic> _navigateToTodoConfirm(List<Map<String, dynamic>> results,
-      String? imagePath, String? originalText,
-      [String? teamUuid, String? teamName]) async {
+  Future<dynamic> _navigateToTodoConfirm(
+    List<Map<String, dynamic>> results,
+    String? imagePath,
+    String? originalText, [
+    String? teamUuid,
+    String? teamName,
+  ]) async {
     if (!mounted || results.isEmpty) return null;
 
     return Navigator.push(
       context,
-      PageTransitions.slideHorizontal(TodoConfirmScreen(
-        llmResults: results,
-        imagePath: imagePath,
-        originalText: originalText,
-        initialTeamUuid: teamUuid,
-        initialTeamName: teamName,
-        onFixedScheduleAdded: (item) async {
-          await StorageService.saveFixedSchedules(
-            widget.username,
-            [item],
-          );
-          if (!mounted) return;
-          _scheduleRevision.value++;
-          _timelineRevision.value++;
-          await _loadAllData(
-            deferred: true,
-            domains: const {DataRefreshDomain.fixedSchedules},
-          );
-          if (_pendingTodoConfirm != null) {
-            setState(() => _pendingTodoConfirm = null);
-            ExternalShareHandler.clearPendingTodoConfirm();
-          }
-        },
-        onConfirm: (confirmedResults) {
-          // 用户确认后，直接批量添加待办
-          _batchAddTodos(confirmedResults, teamUuid, teamName);
-          // 清除待确认数据（如果有）
-          if (_pendingTodoConfirm != null) {
-            setState(() => _pendingTodoConfirm = null);
-            ExternalShareHandler.clearPendingTodoConfirm();
-          }
-        },
-        onSkip: () {
-          // 用户跳过全部待办，清除待确认数据
-          if (_pendingTodoConfirm != null) {
-            setState(() => _pendingTodoConfirm = null);
-            ExternalShareHandler.clearPendingTodoConfirm();
-          }
-        },
-      )),
+      PageTransitions.slideHorizontal(
+        TodoConfirmScreen(
+          llmResults: results,
+          imagePath: imagePath,
+          originalText: originalText,
+          initialTeamUuid: teamUuid,
+          initialTeamName: teamName,
+          onFixedScheduleAdded: (item) async {
+            await StorageService.saveFixedSchedules(widget.username, [item]);
+            if (!mounted) return;
+            _scheduleRevision.value++;
+            _timelineRevision.value++;
+            await _loadAllData(
+              deferred: true,
+              domains: const {DataRefreshDomain.fixedSchedules},
+            );
+            if (_pendingTodoConfirm != null) {
+              setState(() => _pendingTodoConfirm = null);
+              ExternalShareHandler.clearPendingTodoConfirm();
+            }
+          },
+          onConfirm: (confirmedResults) {
+            // 用户确认后，直接批量添加待办
+            _batchAddTodos(confirmedResults, teamUuid, teamName);
+            // 清除待确认数据（如果有）
+            if (_pendingTodoConfirm != null) {
+              setState(() => _pendingTodoConfirm = null);
+              ExternalShareHandler.clearPendingTodoConfirm();
+            }
+          },
+          onSkip: () {
+            // 用户跳过全部待办，清除待确认数据
+            if (_pendingTodoConfirm != null) {
+              setState(() => _pendingTodoConfirm = null);
+              ExternalShareHandler.clearPendingTodoConfirm();
+            }
+          },
+        ),
+      ),
     );
   }
 
@@ -109,13 +111,17 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
   }
 
   /// 批量添加待办 (支持团队上下文关联)
-  Future<void> _batchAddTodos(List<Map<String, dynamic>> todosData,
-      [String? teamUuid, String? teamName]) async {
+  Future<void> _batchAddTodos(
+    List<Map<String, dynamic>> todosData, [
+    String? teamUuid,
+    String? teamName,
+  ]) async {
     if (todosData.isEmpty) return;
 
     RecurrenceType parseRecurrence(dynamic value) {
-      final index =
-          value is num ? value.toInt() : int.tryParse(value?.toString() ?? '');
+      final index = value is num
+          ? value.toInt()
+          : int.tryParse(value?.toString() ?? '');
       if (index != null && index >= 0 && index < RecurrenceType.values.length) {
         return RecurrenceType.values[index];
       }
@@ -146,7 +152,8 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
       final timeMode = RecognizedTodoAdapter.parseTimeMode(
         data['timeMode'] ?? data['time_mode'],
       );
-      final isDateOnly = RecognizedTodoAdapter.parseBool(
+      final isDateOnly =
+          RecognizedTodoAdapter.parseBool(
             data['isAllDay'] ?? data['is_all_day'],
           ) ||
           timeMode == TodoTimeMode.dateOnly ||
@@ -156,7 +163,8 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
                 selectedDate,
                 parsedDueDate,
               ));
-      final dueDate = parsedDueDate ??
+      final dueDate =
+          parsedDueDate ??
           (timeMode == TodoTimeMode.deadline ? selectedDate : null);
 
       final normalizedTime = TodoItem.normalizeTimeForWrite(
@@ -173,22 +181,24 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
         createdAt: DateTime.now().millisecondsSinceEpoch,
         recurrence: parseRecurrence(data['recurrence']),
         customIntervalDays: parseInt(
-            data['customIntervalDays'] ?? data['custom_interval_days']),
+          data['customIntervalDays'] ?? data['custom_interval_days'],
+        ),
         recurrenceEndDate: RecognizedTodoAdapter.parseDateTime(
           data['recurrence_end_date'] ?? data['recurrenceEndDate'],
         ),
         // 📸 关联图片路径（兼容确认页与存储层两种字段名）
         imagePath: (data['imagePath'] ?? data['image_path'])?.toString(),
         // 📄 原始分析文本
-        originalText:
-            (data['originalText'] ?? data['original_text'])?.toString(),
+        originalText: (data['originalText'] ?? data['original_text'])
+            ?.toString(),
         teamUuid: (data['team_uuid'] ?? data['teamUuid'] ?? teamUuid)
             ?.toString(), // 🚀 关联团队
         teamName: (data['team_name'] ?? data['teamName'] ?? teamName)
             ?.toString(), // 🚀 团队名称
         groupId: (data['groupId'] ?? data['group_id'])?.toString(),
-        reminderMinutes:
-            parseInt(data['reminderMinutes'] ?? data['reminder_minutes']),
+        reminderMinutes: parseInt(
+          data['reminderMinutes'] ?? data['reminder_minutes'],
+        ),
         collabType: parseInt(data['collab_type'] ?? data['collabType']) ?? 0,
         isAllDay: isDateOnly,
       );
@@ -196,18 +206,26 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
 
     // 更新局部卡片，避免为批量添加待办重建整个首页。
     _todos = [...newTodos, ..._todos];
+    _todoDataRevision++;
     _todosNotifier.value = List<TodoItem>.from(_todos);
-    _todoUpdateSignalNotifier.value++;
     _timelineRevision.value++;
     _pomodoroTickNotifier.value++;
 
     // 保存到数据库
     final allTodos = await StorageService.getTodos(widget.username);
+    final todoIndicesById = <String, int>{};
+    for (var index = 0; index < allTodos.length; index++) {
+      final id = allTodos[index].id;
+      if (!todoIndicesById.containsKey(id)) {
+        todoIndicesById[id] = index;
+      }
+    }
     for (var newT in newTodos) {
-      int idx = allTodos.indexWhere((x) => x.id == newT.id);
-      if (idx != -1) {
-        allTodos[idx] = newT;
+      final index = todoIndicesById[newT.id];
+      if (index != null) {
+        allTodos[index] = newT;
       } else {
+        todoIndicesById[newT.id] = allTodos.length;
         allTodos.add(newT);
       }
     }
@@ -265,11 +283,14 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
       final rawFinanceResults = pendingData['financeResults'];
       final financeDrafts = rawFinanceResults is List
           ? rawFinanceResults
-              .whereType<Map>()
-              .map((item) =>
-                  FinanceEntryDraft.fromJson(Map<String, dynamic>.from(item)))
-              .where((draft) => !draft.isAdded && !draft.isIgnored)
-              .toList()
+                .whereType<Map>()
+                .map(
+                  (item) => FinanceEntryDraft.fromJson(
+                    Map<String, dynamic>.from(item),
+                  ),
+                )
+                .where((draft) => !draft.isAdded && !draft.isIgnored)
+                .toList()
           : const <FinanceEntryDraft>[];
       if (financeDrafts.isNotEmpty) {
         await _openRecognizedFinanceDrafts(financeDrafts);
@@ -314,10 +335,7 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
             child: InteractiveViewer(
               minScale: 0.5,
               maxScale: 4.0,
-              child: localImageWidget(
-                imagePath,
-                fit: BoxFit.contain,
-              ),
+              child: localImageWidget(imagePath, fit: BoxFit.contain),
             ),
           ),
         ),
@@ -404,9 +422,8 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
     if (kind == 'todo') {
       final todo = await _findIslandTodo(id);
       if (todo == null || !mounted) return;
-      await Navigator.of(context).push(
-        PageTransitions.slideHorizontal(TodoDetailScreen(todo: todo)),
-      );
+      await Navigator.of(context)
+          .push(PageTransitions.slideHorizontal(TodoDetailScreen(todo: todo)));
       return;
     }
 
@@ -441,10 +458,8 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
       if (item == null || !mounted) return;
       await Navigator.of(context).push(
         PageTransitions.material(
-          builder: (_) => FixedScheduleEditorScreen(
-            username: widget.username,
-            item: item,
-          ),
+          builder: (_) =>
+              FixedScheduleEditorScreen(username: widget.username, item: item),
         ),
       );
       if (!mounted) return;
@@ -467,7 +482,9 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
 
     if (kind == 'plan_block') {
       final block = await _findIslandPlanBlock(id);
-      if (block != null) await _startPlanBlockFocus(block);
+      if (block != null) {
+        await _startPlanBlockFocus(block, sourceKey: _homePomodoroActionKey);
+      }
       return;
     }
     if (kind != 'todo') return;
@@ -485,10 +502,7 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
       _navigateToPomodoro();
     } catch (e) {
       if (!mounted) return;
-      AppSnackBars.showSnackBar(
-        context,
-        SnackBar(content: Text('启动专注失败: $e')),
-      );
+      AppSnackBars.showSnackBar(context, SnackBar(content: Text('启动专注失败: $e')));
     }
   }
 
@@ -515,8 +529,8 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
     if (!mounted) return;
     todo.isDone = true;
     _todos.sort((a, b) => a.isDone == b.isDone ? 0 : (a.isDone ? 1 : -1));
+    _todoDataRevision++;
     _todosNotifier.value = List<TodoItem>.from(_todos);
-    _todoUpdateSignalNotifier.value++;
     _timelineRevision.value++;
     _pomodoroRevision.value++;
     _pomodoroTickNotifier.value++;
@@ -550,8 +564,9 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
   }
 
   Future<CourseItem?> _findIslandCourse(String id) async {
-    final dashboardCourses =
-        _safeListResult<CourseItem>(_dashboardCourseData['courses']);
+    final dashboardCourses = _safeListResult<CourseItem>(
+      _dashboardCourseData['courses'],
+    );
     for (final course in dashboardCourses) {
       if (course.uuid == id && !course.isDeleted) return course;
     }
@@ -576,9 +591,8 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
     // debugPrint("⚡ 处理 Shortcut: $shortcutType");
     switch (shortcutType) {
       case 'settings':
-        await Navigator.of(context).push(
-          PageTransitions.slideHorizontal(const SettingsPage()),
-        );
+        await Navigator.of(context)
+            .push(PageTransitions.slideHorizontal(const SettingsPage()));
         _loadSectionPreferences();
         _loadSemesterSettings();
         await _loadHomeTextConfig();
@@ -587,10 +601,7 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
       case 'finance_entry':
         await Navigator.of(context).push(
           PageTransitions.slideHorizontal(
-            FinanceHomeScreen(
-              username: widget.username,
-              openQuickEntry: true,
-            ),
+            FinanceHomeScreen(username: widget.username, openQuickEntry: true),
           ),
         );
         if (mounted) await _loadAllData(deferred: true);
@@ -606,9 +617,10 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
         );
         break;
       case 'challenge':
-        await Navigator.of(context, rootNavigator: true).push(
-          PageTransitions.slideHorizontal(const ChallengeCenterScreen()),
-        );
+        await Navigator.of(
+          context,
+          rootNavigator: true,
+        ).push(PageTransitions.slideHorizontal(const ChallengeCenterScreen()));
         if (mounted) _loadThirtyDayChallengeStatus();
         break;
       case 'pomodoro':
@@ -630,9 +642,8 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
         );
         break;
       case 'band':
-        await Navigator.of(context).push(
-          PageTransitions.slideHorizontal(const BandSyncScreen()),
-        );
+        await Navigator.of(context)
+            .push(PageTransitions.slideHorizontal(const BandSyncScreen()));
         break;
     }
   }
@@ -644,8 +655,8 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
     String? planBlockId;
     if (arguments is Map) {
       notifId = arguments['notifId'] as int?;
-      planBlockId =
-          (arguments['planBlockId'] ?? arguments['plan_block_id'])?.toString();
+      planBlockId = (arguments['planBlockId'] ?? arguments['plan_block_id'])
+          ?.toString();
     }
     // debugPrint("📅 打开规划提醒, notifId=$notifId, planBlockId=$planBlockId");
     TodoPlanBlock? target;
@@ -668,8 +679,9 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
           target.status == TodoPlanStatus.reminded) {
         target.status = TodoPlanStatus.reminded;
         target.markAsChanged();
-        await StorageService.savePlanBlocks(widget.username, [target],
-            sync: true);
+        await StorageService.savePlanBlocks(widget.username, [
+          target,
+        ], sync: true);
       }
       // 导航到规划页面，由用户手动决定是否开始专注
       if (!mounted) return;
@@ -703,11 +715,15 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
 
     if (imagePath == null || results == null || results.isEmpty) return;
 
-    final List<Map<String, dynamic>> typedResults =
-        results.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    final List<Map<String, dynamic>> typedResults = results
+        .map((e) => Map<String, dynamic>.from(e as Map))
+        .toList();
 
-    final confirmedResults =
-        await _navigateToTodoConfirm(typedResults, imagePath, null);
+    final confirmedResults = await _navigateToTodoConfirm(
+      typedResults,
+      imagePath,
+      null,
+    );
 
     // 只有用户实际确认了待办才清除，直接返回则保留
     if (confirmedResults != null && (confirmedResults as List).isNotEmpty) {

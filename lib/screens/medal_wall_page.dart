@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
+
+import '../utils/time_utils.dart';
 import '../services/medal_recommendation_service.dart';
 import '../services/timeline_service.dart';
 import '../widgets/floating_glass_control.dart';
 import '../utils/app_dialogs.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
-import 'package:intl/intl.dart';
 
 /// 完整勋章墙页面
 class MedalWallPage extends StatefulWidget {
@@ -49,8 +50,9 @@ class _MedalWallPageState extends State<MedalWallPage>
     final isDark = theme.brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor:
-          isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
+      backgroundColor: isDark
+          ? const Color(0xFF0F172A)
+          : const Color(0xFFF8FAFC),
       body: FloatingGlassScrollAware(
         child: Stack(
           children: [
@@ -96,7 +98,9 @@ class _MedalWallPageState extends State<MedalWallPage>
                               context,
                               widget.recommendation.topRecommendations,
                               isEmpty: widget
-                                  .recommendation.topRecommendations.isEmpty,
+                                  .recommendation
+                                  .topRecommendations
+                                  .isEmpty,
                               emptyMessage: '恭喜！已获得所有推荐勋章',
                               showFeatured: true,
                               isML: widget.recommendation.isML,
@@ -127,7 +131,8 @@ class _MedalWallPageState extends State<MedalWallPage>
                                   .where((m) => !m.earned)
                                   .toList()
                                 ..sort(
-                                    (a, b) => b.progress.compareTo(a.progress)),
+                                  (a, b) => b.progress.compareTo(a.progress),
+                                ),
                               isEmpty: widget.recommendation.allMedals
                                   .where((m) => !m.earned)
                                   .isEmpty,
@@ -161,9 +166,7 @@ class _MedalWallPageState extends State<MedalWallPage>
       height: size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        gradient: RadialGradient(
-          colors: [color, color.withValues(alpha: 0)],
-        ),
+        gradient: RadialGradient(colors: [color, color.withValues(alpha: 0)]),
       ),
     );
   }
@@ -177,8 +180,12 @@ class _MedalWallPageState extends State<MedalWallPage>
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 1200),
         child: Padding(
-          padding:
-              EdgeInsets.fromLTRB(isWide ? 32 : 24, 16, isWide ? 32 : 24, 8),
+          padding: EdgeInsets.fromLTRB(
+            isWide ? 32 : 24,
+            16,
+            isWide ? 32 : 24,
+            8,
+          ),
           child: Row(
             children: [
               FloatingGlassAppBarAction(
@@ -204,8 +211,9 @@ class _MedalWallPageState extends State<MedalWallPage>
                     Text(
                       '已获得 ${widget.recommendation.earnedMedals.length} / ${widget.recommendation.allMedals.length}',
                       style: theme.textTheme.labelLarge?.copyWith(
-                        color:
-                            theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                        color: theme.colorScheme.onSurface.withValues(
+                          alpha: 0.6,
+                        ),
                       ),
                     ),
                   ],
@@ -256,10 +264,13 @@ class _MedalWallPageState extends State<MedalWallPage>
                 ],
               ),
               labelColor: theme.colorScheme.primary,
-              unselectedLabelColor:
-                  theme.colorScheme.onSurface.withValues(alpha: 0.6),
-              labelStyle:
-                  const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+              unselectedLabelColor: theme.colorScheme.onSurface.withValues(
+                alpha: 0.6,
+              ),
+              labelStyle: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 13,
+              ),
               tabs: [
                 const Tab(text: '推荐'),
                 Tab(text: '本周(${widget.earnedThisSession.length})'),
@@ -295,8 +306,11 @@ class _MedalWallPageState extends State<MedalWallPage>
       slivers: [
         if (showFeatured && medals.isNotEmpty)
           SliverToBoxAdapter(
-            child: _buildFeaturedMedal(context, medals.first,
-                reason: reasons[medals.first.medal.id]),
+            child: _buildFeaturedMedal(
+              context,
+              medals.first,
+              reason: reasons[medals.first.medal.id],
+            ),
           ),
         if (isML)
           SliverToBoxAdapter(
@@ -304,15 +318,18 @@ class _MedalWallPageState extends State<MedalWallPage>
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
               child: Row(
                 children: [
-                  Icon(Icons.auto_awesome,
-                      size: 14, color: Theme.of(context).colorScheme.primary),
+                  Icon(
+                    Icons.auto_awesome,
+                    size: 14,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
                   const SizedBox(width: 4),
                   Text(
                     'AI 智能推荐',
                     style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: Theme.of(context).colorScheme.primary,
-                          fontWeight: FontWeight.bold,
-                        ),
+                      color: Theme.of(context).colorScheme.primary,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ],
               ),
@@ -332,8 +349,11 @@ class _MedalWallPageState extends State<MedalWallPage>
                 // If we showed featured, skip the first one in the grid
                 final medalIndex = showFeatured ? index + 1 : index;
                 if (medalIndex >= medals.length) return null;
-                return _buildMedalCard(context, medals[medalIndex],
-                    reason: reasons[medals[medalIndex].medal.id]);
+                return _buildMedalCard(
+                  context,
+                  medals[medalIndex],
+                  reason: reasons[medals[medalIndex].medal.id],
+                );
               },
               childCount: showFeatured
                   ? (medals.length > 1 ? medals.length - 1 : 0)
@@ -361,36 +381,35 @@ class _MedalWallPageState extends State<MedalWallPage>
           Container(
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              color: Theme.of(context)
-                  .colorScheme
-                  .surfaceContainerHighest
+              color: Theme.of(context).colorScheme.surfaceContainerHighest
                   .withValues(alpha: 0.3),
               shape: BoxShape.circle,
             ),
             child: Icon(
               Icons.emoji_events_outlined,
               size: 80,
-              color:
-                  Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
+              color: Theme.of(context).colorScheme.primary
+                  .withValues(alpha: 0.2),
             ),
           ),
           const SizedBox(height: 24),
           Text(
             message ?? '暂无内容',
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  color: Theme.of(context)
-                      .colorScheme
-                      .onSurface
-                      .withValues(alpha: 0.5),
-                ),
+              color: Theme.of(context).colorScheme.onSurface
+                  .withValues(alpha: 0.5),
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildFeaturedMedal(BuildContext context, MedalProgress medal,
-      {String? reason}) {
+  Widget _buildFeaturedMedal(
+    BuildContext context,
+    MedalProgress medal, {
+    String? reason,
+  }) {
     final theme = Theme.of(context);
     final isWide = MediaQuery.of(context).size.width > 600;
 
@@ -440,8 +459,10 @@ class _MedalWallPageState extends State<MedalWallPage>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 2,
+                  ),
                   decoration: BoxDecoration(
                     color: medal.medal.color.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(6),
@@ -475,9 +496,11 @@ class _MedalWallPageState extends State<MedalWallPage>
                   const SizedBox(height: 6),
                   Row(
                     children: [
-                      Icon(Icons.auto_awesome,
-                          size: 12,
-                          color: medal.medal.color.withValues(alpha: 0.7)),
+                      Icon(
+                        Icons.auto_awesome,
+                        size: 12,
+                        color: medal.medal.color.withValues(alpha: 0.7),
+                      ),
                       const SizedBox(width: 4),
                       Expanded(
                         child: Text(
@@ -499,9 +522,7 @@ class _MedalWallPageState extends State<MedalWallPage>
           if (isWide) const SizedBox(width: 24),
           IconButton.filledTonal(
             onPressed: () => _showMedalDetail(context, medal),
-            style: IconButton.styleFrom(
-              padding: const EdgeInsets.all(12),
-            ),
+            style: IconButton.styleFrom(padding: const EdgeInsets.all(12)),
             icon: const Icon(Icons.arrow_forward_ios, size: 20),
           ),
         ],
@@ -509,8 +530,11 @@ class _MedalWallPageState extends State<MedalWallPage>
     );
   }
 
-  Widget _buildMedalCard(BuildContext context, MedalProgress medal,
-      {String? reason}) {
+  Widget _buildMedalCard(
+    BuildContext context,
+    MedalProgress medal, {
+    String? reason,
+  }) {
     final theme = Theme.of(context);
     final earned = medal.earned;
     final progress = (medal.progress * 100).toInt();
@@ -564,8 +588,9 @@ class _MedalWallPageState extends State<MedalWallPage>
                           Container(
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
-                              color: medal.medal.color
-                                  .withValues(alpha: earned ? 0.15 : 0.05),
+                              color: medal.medal.color.withValues(
+                                alpha: earned ? 0.15 : 0.05,
+                              ),
                               shape: BoxShape.circle,
                             ),
                             child: Center(
@@ -574,8 +599,9 @@ class _MedalWallPageState extends State<MedalWallPage>
                                 size: 36,
                                 color: earned
                                     ? medal.medal.color
-                                    : theme.colorScheme.onSurface
-                                        .withValues(alpha: 0.3),
+                                    : theme.colorScheme.onSurface.withValues(
+                                        alpha: 0.3,
+                                      ),
                               ),
                             ),
                           ),
@@ -585,12 +611,16 @@ class _MedalWallPageState extends State<MedalWallPage>
                               bottom: -4,
                               child: Container(
                                 padding: const EdgeInsets.symmetric(
-                                    horizontal: 6, vertical: 2),
+                                  horizontal: 6,
+                                  vertical: 2,
+                                ),
                                 decoration: BoxDecoration(
                                   color: medal.medal.color,
                                   borderRadius: BorderRadius.circular(10),
                                   border: Border.all(
-                                      color: Colors.white, width: 1.5),
+                                    color: Colors.white,
+                                    width: 1.5,
+                                  ),
                                 ),
                                 child: Text(
                                   'x${medal.earnedCount}',
@@ -615,8 +645,9 @@ class _MedalWallPageState extends State<MedalWallPage>
                         fontWeight: FontWeight.bold,
                         color: earned
                             ? theme.colorScheme.onSurface
-                            : theme.colorScheme.onSurface
-                                .withValues(alpha: 0.5),
+                            : theme.colorScheme.onSurface.withValues(
+                                alpha: 0.5,
+                              ),
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -647,8 +678,9 @@ class _MedalWallPageState extends State<MedalWallPage>
                                     style: theme.textTheme.bodySmall?.copyWith(
                                       fontSize: 9,
                                       height: 1.2,
-                                      color: medal.medal.color
-                                          .withValues(alpha: 0.6),
+                                      color: medal.medal.color.withValues(
+                                        alpha: 0.6,
+                                      ),
                                       fontStyle: FontStyle.italic,
                                     ),
                                   ),
@@ -663,8 +695,9 @@ class _MedalWallPageState extends State<MedalWallPage>
                               style: theme.textTheme.bodySmall?.copyWith(
                                 fontSize: 10,
                                 height: 1.2,
-                                color: theme.colorScheme.onSurface
-                                    .withValues(alpha: earned ? 0.6 : 0.3),
+                                color: theme.colorScheme.onSurface.withValues(
+                                  alpha: earned ? 0.6 : 0.3,
+                                ),
                               ),
                             ),
                     ),
@@ -672,7 +705,9 @@ class _MedalWallPageState extends State<MedalWallPage>
                     if (earned)
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 4),
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.green.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(20),
@@ -680,8 +715,11 @@ class _MedalWallPageState extends State<MedalWallPage>
                         child: const Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.check_circle,
-                                size: 12, color: Colors.green),
+                            Icon(
+                              Icons.check_circle,
+                              size: 12,
+                              color: Colors.green,
+                            ),
                             SizedBox(width: 4),
                             Text(
                               '已获得',
@@ -705,7 +743,8 @@ class _MedalWallPageState extends State<MedalWallPage>
                               backgroundColor:
                                   theme.colorScheme.surfaceContainerHighest,
                               valueColor: AlwaysStoppedAnimation<Color>(
-                                  medal.medal.color),
+                                medal.medal.color,
+                              ),
                             ),
                           ),
                           const SizedBox(height: 6),
@@ -739,8 +778,9 @@ class _MedalWallPageState extends State<MedalWallPage>
         physics: const BouncingScrollPhysics(),
         padding: EdgeInsets.fromLTRB(padding, embedded ? 0 : 24, padding, 32),
         child: Column(
-          crossAxisAlignment:
-              isWide ? CrossAxisAlignment.start : CrossAxisAlignment.center,
+          crossAxisAlignment: isWide
+              ? CrossAxisAlignment.start
+              : CrossAxisAlignment.center,
           children: [
             // Top section: icon + title side by side on wide
             isWide
@@ -763,8 +803,11 @@ class _MedalWallPageState extends State<MedalWallPage>
                               ),
                             ],
                           ),
-                          child: Icon(medal.medal.icon,
-                              size: 52, color: medal.medal.color),
+                          child: Icon(
+                            medal.medal.icon,
+                            size: 52,
+                            color: medal.medal.color,
+                          ),
                         ),
                       ),
                       const SizedBox(width: 28),
@@ -781,10 +824,13 @@ class _MedalWallPageState extends State<MedalWallPage>
                             const SizedBox(height: 8),
                             Container(
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: 12, vertical: 4),
+                                horizontal: 12,
+                                vertical: 4,
+                              ),
                               decoration: BoxDecoration(
-                                color:
-                                    medal.medal.color.withValues(alpha: 0.15),
+                                color: medal.medal.color.withValues(
+                                  alpha: 0.15,
+                                ),
                                 borderRadius: BorderRadius.circular(20),
                               ),
                               child: Text(
@@ -818,8 +864,11 @@ class _MedalWallPageState extends State<MedalWallPage>
                               ),
                             ],
                           ),
-                          child: Icon(medal.medal.icon,
-                              size: 64, color: medal.medal.color),
+                          child: Icon(
+                            medal.medal.icon,
+                            size: 64,
+                            color: medal.medal.color,
+                          ),
                         ),
                       ),
                       const SizedBox(height: 24),
@@ -832,7 +881,9 @@ class _MedalWallPageState extends State<MedalWallPage>
                       const SizedBox(height: 8),
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 4),
+                          horizontal: 12,
+                          vertical: 4,
+                        ),
                         decoration: BoxDecoration(
                           color: medal.medal.color.withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(20),
@@ -866,8 +917,10 @@ class _MedalWallPageState extends State<MedalWallPage>
                                       context,
                                       '首次获得',
                                       medal.firstEarnedAt != null
-                                          ? DateFormat('yyyy-MM-dd')
-                                              .format(medal.firstEarnedAt!)
+                                          ? AppTimeFormats.format(
+                                              medal.firstEarnedAt!,
+                                              'yyyy-MM-dd',
+                                            )
                                           : '暂无数据',
                                       Icons.calendar_today_rounded,
                                     ),
@@ -911,7 +964,9 @@ class _MedalWallPageState extends State<MedalWallPage>
                               ),
                             const SizedBox(height: 16),
                             _buildDifficultySection(
-                                context, medal.medal.priority),
+                              context,
+                              medal.medal.priority,
+                            ),
                           ],
                         ),
                       ),
@@ -927,8 +982,10 @@ class _MedalWallPageState extends State<MedalWallPage>
                                 context,
                                 '首次获得',
                                 medal.firstEarnedAt != null
-                                    ? DateFormat('yyyy-MM-dd')
-                                        .format(medal.firstEarnedAt!)
+                                    ? AppTimeFormats.format(
+                                        medal.firstEarnedAt!,
+                                        'yyyy-MM-dd',
+                                      )
                                     : '暂无数据',
                                 Icons.calendar_today_rounded,
                               ),
@@ -1097,8 +1154,9 @@ class _MedalWallPageState extends State<MedalWallPage>
               const SizedBox(width: 8),
               Text(
                 title,
-                style: theme.textTheme.titleSmall
-                    ?.copyWith(fontWeight: FontWeight.bold),
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ],
           ),
@@ -1106,7 +1164,8 @@ class _MedalWallPageState extends State<MedalWallPage>
           Text(
             content,
             style: theme.textTheme.bodyMedium?.copyWith(
-              color: contentColor ??
+              color:
+                  contentColor ??
                   theme.colorScheme.onSurface.withValues(alpha: 0.7),
               height: 1.5,
             ),
@@ -1133,8 +1192,9 @@ class _MedalWallPageState extends State<MedalWallPage>
             children: [
               Text(
                 '解锁进度',
-                style: theme.textTheme.titleSmall
-                    ?.copyWith(fontWeight: FontWeight.bold),
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
               ),
               Text(
                 '${(medal.progress * 100).toInt()}%',
@@ -1181,8 +1241,9 @@ class _MedalWallPageState extends State<MedalWallPage>
         children: [
           Text(
             '获取难度',
-            style: theme.textTheme.titleSmall
-                ?.copyWith(fontWeight: FontWeight.bold),
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.bold,
+            ),
           ),
           Row(
             children: List.generate(
@@ -1202,7 +1263,11 @@ class _MedalWallPageState extends State<MedalWallPage>
   }
 
   Widget _buildStatItem(
-      BuildContext context, String label, String value, IconData icon) {
+    BuildContext context,
+    String label,
+    String value,
+    IconData icon,
+  ) {
     final theme = Theme.of(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),

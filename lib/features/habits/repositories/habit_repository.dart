@@ -47,9 +47,11 @@ abstract final class HabitRepository {
   static Future<Set<String>> getHabitOnlyRecurringTodoSeriesIds() async {
     final goals = await getActiveGoals();
     return goals
-        .where((goal) =>
-            goal.sourceType == HabitSourceType.recurringTodo &&
-            goal.displayMode == HabitDisplayMode.habitOnly)
+        .where(
+          (goal) =>
+              goal.sourceType == HabitSourceType.recurringTodo &&
+              goal.displayMode == HabitDisplayMode.habitOnly,
+        )
         .expand((goal) => goal.sourceIds)
         .where((seriesId) => seriesId.isNotEmpty)
         .toSet();
@@ -58,16 +60,31 @@ abstract final class HabitRepository {
   static Future<List<HabitGoalRuleRevision>> getRules({String? habitUuid}) =>
       HabitStorage.getRuleRevisions(habitUuid: habitUuid);
 
+  static Future<List<HabitGoalRuleRevision>> getRulesForHabits(
+    Iterable<String> habitUuids,
+  ) => HabitStorage.getRuleRevisionsForHabits(habitUuids);
+
   static Future<List<HabitCheckIn>> getCheckIns({
     String? habitUuid,
     String? fromDate,
     String? toDate,
-  }) =>
-      HabitStorage.getCheckIns(
-        habitUuid: habitUuid,
-        fromDate: fromDate,
-        toDate: toDate,
-      );
+  }) => HabitStorage.getCheckIns(
+    habitUuid: habitUuid,
+    fromDate: fromDate,
+    toDate: toDate,
+  );
+
+  static Future<List<HabitCheckIn>> getCheckInsForHabits(
+    Iterable<String> habitUuids, {
+    String? fromDate,
+    String? toDate,
+    bool includeDeleted = false,
+  }) => HabitStorage.getCheckInsForHabits(
+    habitUuids,
+    fromDate: fromDate,
+    toDate: toDate,
+    includeDeleted: includeDeleted,
+  );
 
   /// 创建习惯（含首个规则版本）。
   ///
@@ -220,13 +237,7 @@ abstract final class HabitRepository {
   @visibleForTesting
   static DateTime reminderStartFor(DateTime day, int minuteOfDay) {
     final m = minuteOfDay.clamp(0, 1439);
-    return DateTime(
-      day.year,
-      day.month,
-      day.day,
-      m ~/ 60,
-      m % 60,
-    );
+    return DateTime(day.year, day.month, day.day, m ~/ 60, m % 60);
   }
 
   static Future<TodoItem> _createRecurringTodoFromRule({
@@ -238,8 +249,11 @@ abstract final class HabitRepository {
     final todo = TodoItem(
       title: name,
       isAllDay: true,
-      createdDate:
-          DateTime(now.year, now.month, now.day).millisecondsSinceEpoch,
+      createdDate: DateTime(
+        now.year,
+        now.month,
+        now.day,
+      ).millisecondsSinceEpoch,
     );
     todo.recurrence = _recurrenceFromRule(rule);
     todo.customIntervalDays = rule.customIntervalDays;
@@ -250,8 +264,10 @@ abstract final class HabitRepository {
     // 目标时刻触发（循环实例会继承该时刻）。
     final fixedTimes = rule.reminderPolicy.fixedTimes;
     if (fixedTimes.isNotEmpty) {
-      todo.createdDate =
-          reminderStartFor(now, fixedTimes.first).millisecondsSinceEpoch;
+      todo.createdDate = reminderStartFor(
+        now,
+        fixedTimes.first,
+      ).millisecondsSinceEpoch;
       todo.reminderMinutes = 0;
     }
     await StorageService.updateSingleTodo(username, todo);
@@ -288,35 +304,67 @@ abstract final class HabitRepository {
   /// [effectiveFromOption]：
   /// - 'today'：从今天开始（默认），关闭旧版本、新规则从今天生效；
   /// - 'nextPeriod'：从下一个周期开始（如每周从下周一、每月从下月 1 号）；
-  /// - 'all'：修改全部历史目标（覆盖所有版本的目标值）。
+  /// - 'all'：修改全部历史目标；可指定仅覆盖部分规则字段。
+  /// [fieldsToUpdate] 仅用于选择性覆盖全部历史时保留未指定的历史规则字段；
+  /// 留空时保持旧调用方的整条规则覆盖语义。
   static Future<void> updateRule({
     required HabitGoal goal,
     required HabitGoalRuleRevision updatedRule,
     String effectiveFromOption = 'today',
     required List<HabitGoalRuleRevision> allRules,
+    Set<String>? fieldsToUpdate,
     String username = '',
   }) async {
     final todayKey = HabitRuleResolver.dayKey(
       HabitRuleResolver.logicalDateFor(
-          DateTime.now(), updatedRule.dayBoundaryMinute),
+        DateTime.now(),
+        updatedRule.dayBoundaryMinute,
+      ),
     );
 
     if (effectiveFromOption == 'all') {
       for (final rule in allRules) {
         if (rule.isDeleted) continue;
-        rule
-          ..targetValue = updatedRule.targetValue
-          ..unit = updatedRule.unit
-          ..targetTimeMinute = updatedRule.targetTimeMinute
-          ..timeComparison = updatedRule.timeComparison
-          ..timeToleranceMinutes = updatedRule.timeToleranceMinutes
-          ..periodType = updatedRule.periodType
-          ..weekdaysMask = updatedRule.weekdaysMask
-          ..customIntervalDays = updatedRule.customIntervalDays
-          ..dayBoundaryMinute = updatedRule.dayBoundaryMinute
-          ..quickValues = updatedRule.quickValues
-          ..reminderPolicy = updatedRule.reminderPolicy
-          ..markAsChanged();
+        if (fieldsToUpdate == null || fieldsToUpdate.contains('targetValue')) {
+          rule.targetValue = updatedRule.targetValue;
+        }
+        if (fieldsToUpdate == null || fieldsToUpdate.contains('unit')) {
+          rule.unit = updatedRule.unit;
+        }
+        if (fieldsToUpdate == null ||
+            fieldsToUpdate.contains('targetTimeMinute')) {
+          rule.targetTimeMinute = updatedRule.targetTimeMinute;
+        }
+        if (fieldsToUpdate == null ||
+            fieldsToUpdate.contains('timeComparison')) {
+          rule.timeComparison = updatedRule.timeComparison;
+        }
+        if (fieldsToUpdate == null ||
+            fieldsToUpdate.contains('timeToleranceMinutes')) {
+          rule.timeToleranceMinutes = updatedRule.timeToleranceMinutes;
+        }
+        if (fieldsToUpdate == null || fieldsToUpdate.contains('periodType')) {
+          rule.periodType = updatedRule.periodType;
+        }
+        if (fieldsToUpdate == null || fieldsToUpdate.contains('weekdaysMask')) {
+          rule.weekdaysMask = updatedRule.weekdaysMask;
+        }
+        if (fieldsToUpdate == null ||
+            fieldsToUpdate.contains('customIntervalDays')) {
+          rule.customIntervalDays = updatedRule.customIntervalDays;
+        }
+        if (fieldsToUpdate == null ||
+            fieldsToUpdate.contains('dayBoundaryMinute')) {
+          rule.dayBoundaryMinute = updatedRule.dayBoundaryMinute;
+        }
+        if (fieldsToUpdate == null || fieldsToUpdate.contains('quickValues')) {
+          rule.quickValues = updatedRule.quickValues;
+        }
+        if (fieldsToUpdate == null ||
+            fieldsToUpdate.contains('reminderPolicy')) {
+          rule.reminderPolicy = updatedRule.reminderPolicy;
+        }
+        rule.markAsChanged();
       }
       final current = HabitRuleResolver.effectiveRule(allRules, DateTime.now());
       if (current != null) goal.currentRuleUuid = current.uuid;
@@ -329,8 +377,10 @@ abstract final class HabitRepository {
     }
 
     final sorted = allRules.where((r) => !r.isDeleted).toList()
-      ..sort((a, b) =>
-          (a.effectiveFromDate ?? '').compareTo(b.effectiveFromDate ?? ''));
+      ..sort(
+        (a, b) =>
+            (a.effectiveFromDate ?? '').compareTo(b.effectiveFromDate ?? ''),
+      );
     final current = sorted.isNotEmpty ? sorted.last : null;
 
     if (effectiveFromOption != 'nextPeriod' &&
@@ -363,7 +413,9 @@ abstract final class HabitRepository {
             HabitRuleResolver.nextPeriodStart(
               current,
               HabitRuleResolver.logicalDateFor(
-                  DateTime.now(), current.dayBoundaryMinute),
+                DateTime.now(),
+                current.dayBoundaryMinute,
+              ),
             ),
           )
         : todayKey;
@@ -486,6 +538,18 @@ abstract final class HabitRepository {
     _rescheduleReminders(checkIn.habitUuid);
   }
 
+  /// Persist already-versioned check-in changes together, then publish one
+  /// sync request, refresh signal, and reminder reschedule per affected habit.
+  static Future<void> saveCheckInsBatch(List<HabitCheckIn> checkIns) async {
+    if (checkIns.isEmpty) return;
+    await HabitStorage.saveCheckIns(checkIns);
+    await _requestSync();
+    StorageService.triggerRefresh(const {DataRefreshDomain.habits});
+    for (final habitUuid in checkIns.map((item) => item.habitUuid).toSet()) {
+      _rescheduleReminders(habitUuid);
+    }
+  }
+
   /// 早睡 / 早起是一个「节点结果」，同一晚重复打卡时以后一次为准。
   ///
   /// 只对用户主动产生的记录生效。历史迁移、健康设备等来源保留原始
@@ -515,8 +579,10 @@ abstract final class HabitRepository {
       toDate: logicalDate,
     );
     final replaced = existing
-        .where((checkIn) =>
-            !checkIn.isDeleted && checkIn.source != HabitCheckInSource.skip)
+        .where(
+          (checkIn) =>
+              !checkIn.isDeleted && checkIn.source != HabitCheckInSource.skip,
+        )
         .toList(growable: false);
     if (replaced.isEmpty) return 0;
 
@@ -582,10 +648,7 @@ abstract final class HabitRepository {
     HabitGoal goal,
     DateTime logicalDate,
   ) async {
-    final todos = await HabitSourceResolver.todosForSeries(
-      goal.sourceIds,
-    );
-    return HabitSourceResolver.todoForDate(todos, logicalDate);
+    return HabitSourceResolver.todoForSeriesOnDate(goal.sourceIds, logicalDate);
   }
 
   /// 切换完成型习惯当天实例的完成状态。

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:ffi';
+
 import 'package:ffi/ffi.dart';
 import 'package:win32/win32.dart';
 
@@ -24,6 +25,13 @@ class ClipboardConfig {
 /// Uses Win32 API for direct clipboard access on Windows.
 class ClipboardService {
   static final ClipboardService _instance = ClipboardService._internal();
+  static final RegExp _urlSchemePattern = RegExp(
+    r'^[a-zA-Z][a-zA-Z0-9+\-.]*://',
+  );
+  static final RegExp _ipv4HostPattern = RegExp(r'^\d{1,3}(\.\d{1,3}){3}$');
+  static final RegExp _domainHostPattern = RegExp(
+    r'^[a-zA-Z0-9\-]+(\.[a-zA-Z0-9\-]+)+$',
+  );
 
   factory ClipboardService() => _instance;
 
@@ -31,6 +39,7 @@ class ClipboardService {
 
   Timer? _pollTimer;
   String? _lastClipboardContent;
+  int? _lastClipboardSequenceNumber;
   final _urlController = StreamController<String>.broadcast();
   bool _initialized = false;
 
@@ -51,12 +60,12 @@ class ClipboardService {
     }
 
     // Add scheme if missing before parsing
-    final hasScheme = RegExp(r'^[a-zA-Z][a-zA-Z0-9+\-.]*://').hasMatch(trimmed);
+    final hasScheme = _urlSchemePattern.hasMatch(trimmed);
     final toParse = hasScheme ? trimmed : 'https://$trimmed';
 
     final uri = Uri.tryParse(toParse);
     if (uri == null || !uri.hasScheme) {
-//       debugPrint('[ClipboardService] URL parse failed: $trimmed');
+      //       debugPrint('[ClipboardService] URL parse failed: $trimmed');
       return false;
     }
 
@@ -64,37 +73,38 @@ class ClipboardService {
     if (!uri.hasAuthority) {
       // But for http/https, we need authority
       if (['http', 'https'].contains(uri.scheme.toLowerCase())) {
-//         debugPrint('[ClipboardService] HTTP URL without authority: $trimmed');
+        //         debugPrint('[ClipboardService] HTTP URL without authority: $trimmed');
         return false;
       }
     }
 
     if (!ClipboardConfig.allowedSchemes.contains(uri.scheme.toLowerCase())) {
-//       debugPrint('[ClipboardService] Scheme not allowed: ${uri.scheme}');
+      //       debugPrint('[ClipboardService] Scheme not allowed: ${uri.scheme}');
       return false;
     }
 
     final host = uri.host;
     if (host.isEmpty) {
-//       debugPrint('[ClipboardService] Empty host: $trimmed');
+      //       debugPrint('[ClipboardService] Empty host: $trimmed');
       return false;
     }
 
     // Valid hosts: localhost, IPv4, or domain with at least one dot
-    final isValidHost = host == 'localhost' ||
-        RegExp(r'^\d{1,3}(\.\d{1,3}){3}$').hasMatch(host) ||
-        RegExp(r'^[a-zA-Z0-9\-]+(\.[a-zA-Z0-9\-]+)+$').hasMatch(host);
+    final isValidHost =
+        host == 'localhost' ||
+        _ipv4HostPattern.hasMatch(host) ||
+        _domainHostPattern.hasMatch(host);
 
     if (!isValidHost) {
-//       debugPrint('[ClipboardService] Invalid host: $host');
+      //       debugPrint('[ClipboardService] Invalid host: $host');
     }
 
     return isValidHost;
   }
 
   /// Get text from Windows clipboard using Win32 API
-  String? _getClipboardText() {
-    if (!IsClipboardFormatAvailable(CF_UNICODETEXT).value) {
+  String? _getClipboardText({bool formatAvailable = false}) {
+    if (!formatAvailable && !IsClipboardFormatAvailable(CF_UNICODETEXT).value) {
       return null;
     }
     if (!OpenClipboard(null).value) {
@@ -123,10 +133,11 @@ class ClipboardService {
     if (_initialized) return;
     _initialized = true;
     try {
+      _lastClipboardSequenceNumber = GetClipboardSequenceNumber();
       _lastClipboardContent = _getClipboardText()?.trim();
-//       debugPrint('[ClipboardService] Initialized');
+      //       debugPrint('[ClipboardService] Initialized');
     } catch (e) {
-//       debugPrint('[ClipboardService] Init error: $e');
+      //       debugPrint('[ClipboardService] Init error: $e');
       _initialized = false;
     }
   }
@@ -135,32 +146,45 @@ class ClipboardService {
   void startListening() async {
     await _initClipboard();
     if (_pollTimer?.isActive == true) {
-//       debugPrint('[ClipboardService] Already listening');
+      //       debugPrint('[ClipboardService] Already listening');
       return;
     }
     _pollTimer?.cancel();
     _pollTimer = Timer.periodic(ClipboardConfig.pollInterval, (_) {
       try {
-        final content = _getClipboardText()?.trim();
-        if (content == null || content.isEmpty) return;
+        final sequenceNumber = GetClipboardSequenceNumber();
+        // Zero means the sequence API cannot observe this window station.
+        if (sequenceNumber != 0 &&
+            sequenceNumber == _lastClipboardSequenceNumber) {
+          return;
+        }
+        if (!IsClipboardFormatAvailable(CF_UNICODETEXT).value) {
+          _lastClipboardSequenceNumber = sequenceNumber;
+          return;
+        }
+
+        final content = _getClipboardText(formatAvailable: true)?.trim();
+        if (content == null) return;
+        _lastClipboardSequenceNumber = sequenceNumber;
+        if (content.isEmpty) return;
 
         final isNew = content != _lastClipboardContent;
         if (!isNew) return;
 
         _lastClipboardContent = content;
-//         debugPrint(
-//             '[ClipboardService] New content detected: ${content.length > 50 ? "${content.substring(0, 50)}..." : content}');
+        //         debugPrint(
+        //             '[ClipboardService] New content detected: ${content.length > 50 ? "${content.substring(0, 50)}..." : content}');
 
         if (_isValidUrl(content)) {
           _urlController.add(content);
         } else {
-//           debugPrint('[ClipboardService] Content is not a valid URL');
+          //           debugPrint('[ClipboardService] Content is not a valid URL');
         }
       } catch (e) {
-//         debugPrint('[ClipboardService] Error: $e');
+        //         debugPrint('[ClipboardService] Error: $e');
       }
     });
-//     debugPrint('[ClipboardService] Started listening');
+    //     debugPrint('[ClipboardService] Started listening');
   }
 
   /// Stop listening for clipboard changes
@@ -171,6 +195,7 @@ class ClipboardService {
 
   /// Reset the last known clipboard content (useful after URL is processed)
   void resetLastContent() {
+    _lastClipboardSequenceNumber = GetClipboardSequenceNumber();
     _lastClipboardContent = _getClipboardText()?.trim();
   }
 

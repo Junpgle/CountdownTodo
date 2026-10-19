@@ -36,6 +36,33 @@ class MainFlutterWindow: NSWindow {
       }
     }
 
+    let clipboardImageChannel = FlutterMethodChannel(
+      name: "countdown_todo/clipboard_image",
+      binaryMessenger: flutterViewController.engine.binaryMessenger
+    )
+    clipboardImageChannel.setMethodCallHandler { (call, result) in
+      guard call.method == "readImage" else {
+        result(FlutterMethodNotImplemented)
+        return
+      }
+
+      let pasteboard = NSPasteboard.general
+      let imageData = pasteboard.data(forType: .png) ??
+        pasteboard.data(forType: .tiff).flatMap { tiffData in
+          NSBitmapImageRep(data: tiffData)?.representation(using: .png, properties: [:])
+        }
+      guard let imageData = imageData else {
+        result(nil)
+        return
+      }
+
+      result([
+        "bytes": FlutterStandardTypedData(bytes: imageData),
+        "mimeType": "image/png",
+        "displayName": "clipboard-image.png"
+      ])
+    }
+
     let widgetChannel = FlutterMethodChannel(
       name: "com.countdowntodo/widget",
       binaryMessenger: flutterViewController.engine.binaryMessenger

@@ -20,7 +20,8 @@ class DataExportService {
   static const int _exportVersion = 2;
 
   static Future<List<ExportTypeOption>> getAvailableTypes(
-      String username) async {
+    String username,
+  ) async {
     final todos = await StorageService.getTodos(username);
     final countdowns = await StorageService.getCountdowns(username);
     final groups = await StorageService.getTodoGroups(username);
@@ -31,11 +32,13 @@ class DataExportService {
     final tags = await PomodoroService.getTags();
     final records = await PomodoroService.getRecords();
     final habitGoals = await HabitStorage.getHabitGoals(includeDeleted: true);
-    final habitRules =
-        await HabitStorage.getRuleRevisions(includeDeleted: true);
+    final habitRules = await HabitStorage.getRuleRevisions(
+      includeDeleted: true,
+    );
     final habitCheckIns = await HabitStorage.getCheckIns(includeDeleted: true);
-    final sleepPlans =
-        await HabitStorage.getSleepCoachingPlans(includeDeleted: true);
+    final sleepPlans = await HabitStorage.getSleepCoachingPlans(
+      includeDeleted: true,
+    );
     final financeBundle = await FinanceStorage.getExportBundle();
     final financeTransactions =
         (financeBundle['transactions'] as List<dynamic>? ?? const [])
@@ -60,11 +63,12 @@ class DataExportService {
         (financeBundle['loan_installments'] as List<dynamic>? ?? const [])
             .where((item) => item is Map && item['is_deleted'] != 1)
             .toList();
-    final challengeBundle =
-        await ThirtyDayChallengeRepository.exportBackup(username: username);
+    final challengeBundle = await ThirtyDayChallengeRepository.exportBackup(
+      username: username,
+    );
     final challengeState = challengeBundle?['state'];
-    final challengeTasks = challengeState is Map &&
-            challengeState['tasks'] is List
+    final challengeTasks =
+        challengeState is Map && challengeState['tasks'] is List
         ? (challengeState['tasks'] as List).length
         : 0;
 
@@ -136,7 +140,8 @@ class DataExportService {
         key: 'habits',
         label: '习惯与睡眠训练',
         icon: Icons.track_changes_outlined,
-        count: habitGoals.where((goal) => !goal.isDeleted).length +
+        count:
+            habitGoals.where((goal) => !goal.isDeleted).length +
             habitRules.where((rule) => !rule.isDeleted).length +
             habitCheckIns.where((checkIn) => !checkIn.isDeleted).length +
             sleepPlans.where((plan) => !plan.isDeleted).length,
@@ -153,7 +158,8 @@ class DataExportService {
         key: 'finance',
         label: '记账数据',
         icon: Icons.account_balance_wallet_outlined,
-        count: financeTransactions.length +
+        count:
+            financeTransactions.length +
             financeBudgets.length +
             financeRecurringRules.length +
             financeTemplates.length +
@@ -196,8 +202,10 @@ class DataExportService {
       int totalItems = 0;
 
       if (selectedTypes.contains('todos')) {
-        var items =
-            await StorageService.getTodos(username, includeDeleted: true);
+        var items = await StorageService.getTodos(
+          username,
+          includeDeleted: true,
+        );
         if (options.removeTeamBinding) {
           items = items.map((t) {
             t.teamUuid = null;
@@ -223,8 +231,10 @@ class DataExportService {
       }
 
       if (selectedTypes.contains('countdowns')) {
-        var items =
-            await StorageService.getCountdowns(username, includeDeleted: true);
+        var items = await StorageService.getCountdowns(
+          username,
+          includeDeleted: true,
+        );
         if (options.removeTeamBinding) {
           items = items.map((c) {
             c.teamUuid = null;
@@ -245,8 +255,10 @@ class DataExportService {
       }
 
       if (selectedTypes.contains('todo_groups')) {
-        var items =
-            await StorageService.getTodoGroups(username, includeDeleted: true);
+        var items = await StorageService.getTodoGroups(
+          username,
+          includeDeleted: true,
+        );
         if (options.removeTeamBinding) {
           items = items.map((g) {
             g.teamUuid = null;
@@ -277,8 +289,10 @@ class DataExportService {
       }
 
       if (selectedTypes.contains('todo_plan_blocks')) {
-        var items =
-            await StorageService.getPlanBlocks(username, includeDeleted: true);
+        var items = await StorageService.getPlanBlocks(
+          username,
+          includeDeleted: true,
+        );
         if (options.removeDeviceId) {
           for (var b in items) {
             b.deviceId = null;
@@ -308,8 +322,10 @@ class DataExportService {
       }
 
       if (selectedTypes.contains('courses')) {
-        var items = await CourseService.getAllCourses(username,
-            applyCalendarAdjustments: false);
+        var items = await CourseService.getAllCourses(
+          username,
+          applyCalendarAdjustments: false,
+        );
         if (options.removeTeamBinding) {
           for (var c in items) {
             c.teamUuid = null;
@@ -352,8 +368,9 @@ class DataExportService {
         final goals = await HabitStorage.getHabitGoals(includeDeleted: true);
         final rules = await HabitStorage.getRuleRevisions(includeDeleted: true);
         final checkIns = await HabitStorage.getCheckIns(includeDeleted: true);
-        final sleepPlans =
-            await HabitStorage.getSleepCoachingPlans(includeDeleted: true);
+        final sleepPlans = await HabitStorage.getSleepCoachingPlans(
+          includeDeleted: true,
+        );
 
         if (options.removeDeviceId) {
           for (final goal in goals) {
@@ -384,16 +401,18 @@ class DataExportService {
           'goals': goals.map((goal) => goal.toJson()).toList(),
           'rules': rules.map((rule) => rule.toJson()).toList(),
           'check_ins': checkIns.map((checkIn) => checkIn.toJson()).toList(),
-          'sleep_coaching_plans':
-              sleepPlans.map((plan) => plan.toJson()).toList(),
+          'sleep_coaching_plans': sleepPlans
+              .map((plan) => plan.toJson())
+              .toList(),
         };
         totalItems +=
             goals.length + rules.length + checkIns.length + sleepPlans.length;
       }
 
       if (selectedTypes.contains('thirty_day_challenge')) {
-        final bundle =
-            await ThirtyDayChallengeRepository.exportBackup(username: username);
+        final bundle = await ThirtyDayChallengeRepository.exportBackup(
+          username: username,
+        );
         if (bundle != null) {
           data['thirty_day_challenge'] = bundle;
           final state = bundle['state'];
@@ -455,10 +474,7 @@ class DataExportService {
           subject: 'CountDownTodo 数据备份',
           mimeType: 'application/json;charset=utf-8',
         );
-        return ExportResult(
-          success: true,
-          totalItems: totalItems,
-        );
+        return ExportResult(success: true, totalItems: totalItems);
       }
     } catch (e) {
       // debugPrint('❌ DataExportService: exportData error: $e');
@@ -515,7 +531,9 @@ class DataExportService {
       if (excludedKeys.contains(key) ||
           StorageKeyScope.isKeyForBase(key, StorageService.keyDeviceId) ||
           StorageKeyScope.isKeyForBase(
-              key, StorageService.keyDeviceInstallId) ||
+            key,
+            StorageService.keyDeviceInstallId,
+          ) ||
           StorageKeyScope.isChallengeDataKey(key)) {
         continue;
       }

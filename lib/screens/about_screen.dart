@@ -3,6 +3,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:device_info_plus/device_info_plus.dart';
+
 import '../../utils/page_transitions.dart';
 import '../utils/app_performance_monitor.dart';
 import '../utils/app_platform.dart';
@@ -12,11 +13,15 @@ import 'settings/device_version_detail_page.dart';
 import 'login_screen.dart';
 import '../storage_service.dart';
 import '../update_service.dart';
+
 import 'dart:async';
+
 import '../services/local_migration_service.dart';
 import '../services/database_helper.dart';
 import '../services/database_schema_history.dart';
+
 import 'package:shared_preferences/shared_preferences.dart';
+
 import '../services/github_resource_service.dart';
 import '../widgets/floating_glass_control.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
@@ -65,24 +70,23 @@ class _AboutScreenState extends State<AboutScreen> {
       'https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master/PRIVACY_POLICY.md';
 
   GlobalKey _navigationKey(String id) => _navigationKeys.putIfAbsent(
-        id,
-        () => GlobalKey(debugLabel: 'settings-$id'),
-      );
+    id,
+    () => GlobalKey(debugLabel: 'settings-$id'),
+  );
 
   Future<T?> _openSettingsPage<T>(
     String id,
     Widget page, {
     RouteSettings? settings,
     bool rootNavigator = false,
-  }) =>
-      SettingsNavigation.push<T>(
-        context: context,
-        page: page,
-        sourceKey: _navigationKey(id),
-        isEmbedded: widget.isEmbedded,
-        rootNavigator: rootNavigator,
-        settings: settings,
-      );
+  }) => SettingsNavigation.push<T>(
+    context: context,
+    page: page,
+    sourceKey: _navigationKey(id),
+    isEmbedded: widget.isEmbedded,
+    rootNavigator: rootNavigator,
+    settings: settings,
+  );
 
   @override
   void initState() {
@@ -129,22 +133,22 @@ class _AboutScreenState extends State<AboutScreen> {
       _migrationStage = '启动迁移...';
     });
 
-    _migrationSub =
-        LocalMigrationService.performMigration(username).listen((p) {
-      if (mounted) {
-        setState(() {
-          _migrationProgress = p.progress;
-          _migrationStage = p.stage;
-          _migrationErrors = p.errors;
-          _migrationSuccessCount = p.totalSuccess;
-          if (p.isCompleted) {
-            _isMigrating = false;
-            _migrationCompleted = p.errors.isEmpty;
-            _needsMigration = p.errors.isNotEmpty;
+    _migrationSub = LocalMigrationService.performMigration(username)
+        .listen((p) {
+          if (mounted) {
+            setState(() {
+              _migrationProgress = p.progress;
+              _migrationStage = p.stage;
+              _migrationErrors = p.errors;
+              _migrationSuccessCount = p.totalSuccess;
+              if (p.isCompleted) {
+                _isMigrating = false;
+                _migrationCompleted = p.errors.isEmpty;
+                _needsMigration = p.errors.isNotEmpty;
+              }
+            });
           }
         });
-      }
-    });
   }
 
   Future<void> _loadDeviceInfo() async {
@@ -256,7 +260,9 @@ class _AboutScreenState extends State<AboutScreen> {
     try {
       final manifest = await UpdateService.checkManifest(preferCache: true);
       final archive = await UpdateService.loadChangelogArchive(
-          manifest: manifest, preferCache: true);
+        manifest: manifest,
+        preferCache: true,
+      );
       if (mounted) {
         setState(() {
           _changelogEntries = [..._changelogEntries, ...archive];
@@ -371,22 +377,27 @@ class _AboutScreenState extends State<AboutScreen> {
       builder: (ctx) => AlertDialog(
         title: const Text('课程去重'),
         content: const Text(
-            '系统将扫描数据库中重复的课程记录（名称、时间、周次、地点均相同），并自动清理多余项。此操作将保留最新的一份，并将清理记录同步到云端。'),
+          '系统将扫描数据库中重复的课程记录（名称、时间、周次、地点均相同），并自动清理多余项。此操作将保留最新的一份，并将清理记录同步到云端。',
+        ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('取消')),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
           FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('开始清理')),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('开始清理'),
+          ),
         ],
       ),
     );
 
     if (confirmed == true) {
       if (!mounted) return;
-      AppSnackBars.showSnackBar(context,
-          const SnackBar(content: Text('正在执行数据库深度清理...')));
+      AppSnackBars.showSnackBar(
+        context,
+        const SnackBar(content: Text('正在执行数据库深度清理...')),
+      );
 
       final count = await DatabaseHelper.instance.deduplicateCourses();
 
@@ -398,7 +409,9 @@ class _AboutScreenState extends State<AboutScreen> {
             content: Text('成功清理了 $count 条重复课程记录。'),
             actions: [
               TextButton(
-                  onPressed: () => Navigator.pop(ctx), child: const Text('确定')),
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('确定'),
+              ),
             ],
           ),
         );
@@ -466,16 +479,14 @@ class _AboutScreenState extends State<AboutScreen> {
                     const SizedBox(height: 12),
                     Text(
                       'CountDownTodo',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
+                      style: Theme.of(context).textTheme.titleLarge
+                          ?.copyWith(fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       '版本 $_version',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Colors.grey,
-                          ),
+                      style: Theme.of(context).textTheme.bodySmall
+                          ?.copyWith(color: Colors.grey),
                     ),
                     const SizedBox(height: 4),
                     Text(
@@ -530,14 +541,16 @@ class _AboutScreenState extends State<AboutScreen> {
                             title: '官方 GitHub',
                             subtitle: 'github.com/Junpgle/math_quiz_app',
                             onTap: () => _launchURL(
-                                'https://github.com/Junpgle/math_quiz_app'),
+                              'https://github.com/Junpgle/math_quiz_app',
+                            ),
                           ),
                           _LinkItem(
                             icon: Icons.bug_report_outlined,
                             title: '问题反馈',
                             subtitle: '在 GitHub 提交 Issues',
                             onTap: () => _launchURL(
-                                'https://github.com/Junpgle/math_quiz_app/issues'),
+                              'https://github.com/Junpgle/math_quiz_app/issues',
+                            ),
                           ),
                           _LinkItem(
                             sourceKey: _navigationKey('device_versions'),
@@ -580,10 +593,7 @@ class _AboutScreenState extends State<AboutScreen> {
     );
   }
 
-  Widget _buildNarrowLayout(
-    BuildContext context, {
-    required bool standalone,
-  }) {
+  Widget _buildNarrowLayout(BuildContext context, {required bool standalone}) {
     return SingleChildScrollView(
       child: Column(
         children: [
@@ -613,22 +623,17 @@ class _AboutScreenState extends State<AboutScreen> {
           const SizedBox(height: 16),
           Text(
             'CountDownTodo',
-            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
+            style: Theme.of(context).textTheme.headlineSmall
+                ?.copyWith(fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 8),
           Text(
             '版本 $_version',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Colors.grey,
-                ),
+            style: Theme.of(context).textTheme.bodyMedium
+                ?.copyWith(color: Colors.grey),
           ),
           const SizedBox(height: 8),
-          Text(
-            '您的个人效率助手',
-            style: Theme.of(context).textTheme.bodyLarge,
-          ),
+          Text('您的个人效率助手', style: Theme.of(context).textTheme.bodyLarge),
           const SizedBox(height: 32),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -674,7 +679,8 @@ class _AboutScreenState extends State<AboutScreen> {
                 title: '问题反馈',
                 subtitle: '在 GitHub 提交 Issues',
                 onTap: () => _launchURL(
-                    'https://github.com/Junpgle/math_quiz_app/issues'),
+                  'https://github.com/Junpgle/math_quiz_app/issues',
+                ),
               ),
               _LinkItem(
                 sourceKey: _navigationKey('device_versions'),
@@ -724,8 +730,11 @@ class _AboutScreenState extends State<AboutScreen> {
           children: [
             Row(
               children: [
-                Icon(Icons.sync_problem_rounded,
-                    color: colorScheme.error, size: 20),
+                Icon(
+                  Icons.sync_problem_rounded,
+                  color: colorScheme.error,
+                  size: 20,
+                ),
                 const SizedBox(width: 8),
                 Text(
                   '同步异常中心 (${_syncFailures.length})',
@@ -741,8 +750,10 @@ class _AboutScreenState extends State<AboutScreen> {
                     final username =
                         prefs.getString(StorageService.keyCurrentUser) ?? '';
                     if (!context.mounted || username.trim().isEmpty) return;
-                    await StorageService.syncData(username,
-                        forceFullSync: true);
+                    await StorageService.syncData(
+                      username,
+                      forceFullSync: true,
+                    );
                     _loadSyncFailures();
                   },
                   child: const Text('重试全部'),
@@ -865,13 +876,25 @@ class _AboutScreenState extends State<AboutScreen> {
                   runSpacing: 8,
                   children: [
                     _buildPerformanceMetric(
-                        context, '采样帧', '${monitor.frameCount}'),
+                      context,
+                      '采样帧',
+                      '${monitor.frameCount}',
+                    ),
                     _buildPerformanceMetric(
-                        context, '超阈值', '${monitor.overThresholdCount}'),
+                      context,
+                      '超阈值',
+                      '${monitor.overThresholdCount}',
+                    ),
                     _buildPerformanceMetric(
-                        context, '慢构建', '${monitor.slowBuildCount}'),
+                      context,
+                      '慢构建',
+                      '${monitor.slowBuildCount}',
+                    ),
                     _buildPerformanceMetric(
-                        context, '慢光栅', '${monitor.slowRasterCount}'),
+                      context,
+                      '慢光栅',
+                      '${monitor.slowRasterCount}',
+                    ),
                     _buildPerformanceMetric(
                       context,
                       '最大耗时',
@@ -982,10 +1005,8 @@ class _AboutScreenState extends State<AboutScreen> {
       elevation: compact ? 0 : 1,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       color: compact
-          ? Theme.of(context)
-              .colorScheme
-              .surfaceContainerHighest
-              .withValues(alpha: 0.3)
+          ? Theme.of(context).colorScheme.surfaceContainerHighest
+                .withValues(alpha: 0.3)
           : null,
       child: Padding(
         padding: EdgeInsets.all(compact ? 14 : 16),
@@ -994,14 +1015,19 @@ class _AboutScreenState extends State<AboutScreen> {
           children: [
             Row(
               children: [
-                Icon(icon,
-                    size: compact ? 18 : 20,
-                    color: Theme.of(context).colorScheme.primary),
+                Icon(
+                  icon,
+                  size: compact ? 18 : 20,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
                 const SizedBox(width: 8),
-                Text(title,
-                    style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: compact ? 14 : 15)),
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: compact ? 14 : 15,
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 12),
@@ -1022,8 +1048,10 @@ class _AboutScreenState extends State<AboutScreen> {
           children: [
             ListTile(
               key: _navigationKey('privacy'),
-              leading: Icon(Icons.privacy_tip_outlined,
-                  color: Theme.of(context).colorScheme.primary),
+              leading: Icon(
+                Icons.privacy_tip_outlined,
+                color: Theme.of(context).colorScheme.primary,
+              ),
               title: const Text('隐私政策'),
               subtitle: _privacyPolicyDate != null
                   ? Text('版本日期：$_privacyPolicyDate')
@@ -1033,8 +1061,10 @@ class _AboutScreenState extends State<AboutScreen> {
             ),
             const Divider(height: 1, indent: 56),
             ListTile(
-              leading: const Icon(Icons.do_not_disturb_on_outlined,
-                  color: Colors.orange),
+              leading: const Icon(
+                Icons.do_not_disturb_on_outlined,
+                color: Colors.orange,
+              ),
               title: const Text('撤回隐私同意'),
               subtitle: const Text('撤回后将退出账号并清除本地数据'),
               onTap: _showWithdrawConfirmation,
@@ -1050,10 +1080,8 @@ class _AboutScreenState extends State<AboutScreen> {
       elevation: compact ? 0 : 1,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       color: compact
-          ? Theme.of(context)
-              .colorScheme
-              .surfaceContainerHighest
-              .withValues(alpha: 0.3)
+          ? Theme.of(context).colorScheme.surfaceContainerHighest
+                .withValues(alpha: 0.3)
           : null,
       child: Padding(
         padding: EdgeInsets.all(compact ? 14 : 16),
@@ -1062,14 +1090,19 @@ class _AboutScreenState extends State<AboutScreen> {
           children: [
             Row(
               children: [
-                Icon(Icons.devices,
-                    size: compact ? 18 : 20,
-                    color: Theme.of(context).colorScheme.primary),
+                Icon(
+                  Icons.devices,
+                  size: compact ? 18 : 20,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
                 const SizedBox(width: 8),
-                Text('设备信息',
-                    style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: compact ? 14 : 15)),
+                Text(
+                  '设备信息',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: compact ? 14 : 15,
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 12),
@@ -1095,12 +1128,7 @@ class _AboutScreenState extends State<AboutScreen> {
             style: const TextStyle(fontSize: 13, color: Colors.grey),
           ),
         ),
-        Expanded(
-          child: Text(
-            value,
-            style: const TextStyle(fontSize: 13),
-          ),
-        ),
+        Expanded(child: Text(value, style: const TextStyle(fontSize: 13))),
       ],
     );
   }
@@ -1114,8 +1142,10 @@ class _AboutScreenState extends State<AboutScreen> {
         child: Column(
           children: [
             ListTile(
-              leading: Icon(Icons.cleaning_services_rounded,
-                  color: Theme.of(context).colorScheme.primary),
+              leading: Icon(
+                Icons.cleaning_services_rounded,
+                color: Theme.of(context).colorScheme.primary,
+              ),
               title: const Text('数据库清理'),
               subtitle: const Text('剔除重复课程数据，优化数据库体积'),
               trailing: const Icon(Icons.chevron_right),
@@ -1133,10 +1163,10 @@ class _AboutScreenState extends State<AboutScreen> {
     final versionSubtitle = _databaseVersionLoadFailed
         ? '读取失败，可重试或直接查看架构日志'
         : version == null
-            ? '正在读取本地 SQLite 架构版本…'
-            : version == DatabaseSchemaHistory.currentVersion
-                ? '本地 SQLite 架构已是最新版本'
-                : '最新版本为 V${DatabaseSchemaHistory.currentVersion}';
+        ? '正在读取本地 SQLite 架构版本…'
+        : version == DatabaseSchemaHistory.currentVersion
+        ? '本地 SQLite 架构已是最新版本'
+        : '最新版本为 V${DatabaseSchemaHistory.currentVersion}';
 
     final Widget versionTrailing;
     if (_databaseVersionLoadFailed) {
@@ -1176,10 +1206,7 @@ class _AboutScreenState extends State<AboutScreen> {
         child: Column(
           children: [
             ListTile(
-              leading: Icon(
-                Icons.storage_rounded,
-                color: colorScheme.primary,
-              ),
+              leading: Icon(Icons.storage_rounded, color: colorScheme.primary),
               title: const Text('当前数据库版本'),
               subtitle: Text(versionSubtitle),
               trailing: versionTrailing,
@@ -1203,8 +1230,10 @@ class _AboutScreenState extends State<AboutScreen> {
     );
   }
 
-  Widget _buildLinkCard(BuildContext context,
-      {required List<_LinkItem> items}) {
+  Widget _buildLinkCard(
+    BuildContext context, {
+    required List<_LinkItem> items,
+  }) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Card(
@@ -1218,11 +1247,15 @@ class _AboutScreenState extends State<AboutScreen> {
               children: [
                 ListTile(
                   key: item.sourceKey,
-                  leading: Icon(item.icon,
-                      color: Theme.of(context).colorScheme.primary),
+                  leading: Icon(
+                    item.icon,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
                   title: Text(item.title),
-                  subtitle:
-                      Text(item.subtitle, style: const TextStyle(fontSize: 12)),
+                  subtitle: Text(
+                    item.subtitle,
+                    style: const TextStyle(fontSize: 12),
+                  ),
                   trailing: const Icon(Icons.open_in_new, size: 18),
                   onTap: item.onTap,
                 ),
@@ -1256,19 +1289,24 @@ class _AboutScreenState extends State<AboutScreen> {
             children: [
               Row(
                 children: [
-                  Icon(Icons.history,
-                      size: 20, color: Theme.of(context).colorScheme.primary),
+                  Icon(
+                    Icons.history,
+                    size: 20,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
                   const SizedBox(width: 8),
-                  const Text('更新日志',
-                      style:
-                          TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                  const Text(
+                    '更新日志',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                  ),
                   if (_changelogEntries.isNotEmpty) ...[
                     const SizedBox(width: 8),
                     Text(
                       '${_changelogEntries.length} 个版本',
                       style: TextStyle(
-                          fontSize: 11,
-                          color: Theme.of(context).colorScheme.outline),
+                        fontSize: 11,
+                        color: Theme.of(context).colorScheme.outline,
+                      ),
                     ),
                   ],
                 ],
@@ -1282,60 +1320,60 @@ class _AboutScreenState extends State<AboutScreen> {
                       ),
                     )
                   : _changelogEntries.isEmpty
-                      ? const Center(
-                          child: Padding(
-                            padding: EdgeInsets.all(20),
-                            child: Text('暂无更新日志'),
-                          ),
-                        )
-                      : Column(
-                          children: [
-                            ...visibleEntries
-                                .map((entry) => _buildChangelogEntry(entry)),
-                            if (hasMore)
-                              Padding(
-                                padding: const EdgeInsets.only(top: 8),
-                                child: SizedBox(
-                                  width: double.infinity,
-                                  child: TextButton.icon(
-                                    onPressed: _isLoadingArchive
-                                        ? null
-                                        : () {
-                                            if (!_versionExpanded) {
-                                              // 第一次展开：显示更多近期版本
-                                              setState(() =>
-                                                  _versionExpanded = true);
-                                              // 同时后台加载归档
-                                              _loadArchive();
-                                            } else if (!_archiveLoaded) {
-                                              // 已展开但归档未加载：加载归档
-                                              _loadArchive();
-                                            }
-                                          },
-                                    icon: _isLoadingArchive
-                                        ? const SizedBox(
-                                            width: 14,
-                                            height: 14,
-                                            child: CircularProgressIndicator(
-                                                strokeWidth: 2),
-                                          )
-                                        : const Icon(
-                                            Icons.expand_more,
-                                            size: 18,
-                                          ),
-                                    label: Text(
-                                      _isLoadingArchive
-                                          ? '加载中...'
-                                          : _versionExpanded
-                                              ? '加载更早版本'
-                                              : '查看全部',
-                                      style: const TextStyle(fontSize: 12),
-                                    ),
-                                  ),
+                  ? const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(20),
+                        child: Text('暂无更新日志'),
+                      ),
+                    )
+                  : Column(
+                      children: [
+                        ...visibleEntries.map(
+                          (entry) => _buildChangelogEntry(entry),
+                        ),
+                        if (hasMore)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: SizedBox(
+                              width: double.infinity,
+                              child: TextButton.icon(
+                                onPressed: _isLoadingArchive
+                                    ? null
+                                    : () {
+                                        if (!_versionExpanded) {
+                                          // 第一次展开：显示更多近期版本
+                                          setState(
+                                            () => _versionExpanded = true,
+                                          );
+                                          // 同时后台加载归档
+                                          _loadArchive();
+                                        } else if (!_archiveLoaded) {
+                                          // 已展开但归档未加载：加载归档
+                                          _loadArchive();
+                                        }
+                                      },
+                                icon: _isLoadingArchive
+                                    ? const SizedBox(
+                                        width: 14,
+                                        height: 14,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      )
+                                    : const Icon(Icons.expand_more, size: 18),
+                                label: Text(
+                                  _isLoadingArchive
+                                      ? '加载中...'
+                                      : _versionExpanded
+                                      ? '加载更早版本'
+                                      : '查看全部',
+                                  style: const TextStyle(fontSize: 12),
                                 ),
                               ),
-                          ],
-                        ),
+                            ),
+                          ),
+                      ],
+                    ),
             ],
           ),
         ),
@@ -1381,13 +1419,12 @@ class _AboutScreenState extends State<AboutScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: entry.items
-                    .map((item) => Padding(
-                          padding: const EdgeInsets.only(bottom: 4),
-                          child: Text(
-                            item,
-                            style: const TextStyle(fontSize: 13),
-                          ),
-                        ))
+                    .map(
+                      (item) => Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Text(item, style: const TextStyle(fontSize: 13)),
+                      ),
+                    )
                     .toList(),
               ),
             ),
@@ -1428,8 +1465,11 @@ class _AboutScreenState extends State<AboutScreen> {
                     color: colorScheme.primary,
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(Icons.auto_awesome,
-                      color: Colors.white, size: 18),
+                  child: const Icon(
+                    Icons.auto_awesome,
+                    color: Colors.white,
+                    size: 18,
+                  ),
                 ),
                 const SizedBox(width: 12),
                 const Expanded(
@@ -1479,14 +1519,13 @@ class _AboutScreenState extends State<AboutScreen> {
                   onPressed: _startMigration,
                   icon: const Icon(Icons.rocket_launch_rounded),
                   label: Text(
-                    _migrationErrors.isEmpty
-                        ? '立即开始极速迁移'
-                        : '重试未完成迁移',
+                    _migrationErrors.isEmpty ? '立即开始极速迁移' : '重试未完成迁移',
                   ),
                   style: FilledButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                   ),
                 ),
               ),
@@ -1497,9 +1536,10 @@ class _AboutScreenState extends State<AboutScreen> {
                   Text(
                     _migrationStage,
                     style: TextStyle(
-                        fontSize: 13,
-                        color: colorScheme.primary,
-                        fontWeight: FontWeight.w500),
+                      fontSize: 13,
+                      color: colorScheme.primary,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                   Text(
                     '成功: $_migrationSuccessCount | 失败: ${_migrationErrors.length}',
@@ -1761,10 +1801,8 @@ class _DatabaseChangelogSheet extends StatelessWidget {
                                   Expanded(
                                     child: Text(
                                       change,
-                                      style:
-                                          theme.textTheme.bodyMedium?.copyWith(
-                                        height: 1.45,
-                                      ),
+                                      style: theme.textTheme.bodyMedium
+                                          ?.copyWith(height: 1.45),
                                     ),
                                   ),
                                 ],
@@ -1815,40 +1853,47 @@ class PrivacyPolicyPage extends StatelessWidget {
         child: isLoading
             ? const Center(child: CircularProgressIndicator())
             : content == null
-                ? const Center(child: Text('加载失败，请检查网络连接'))
-                : Markdown(
-                    data: content!,
-                    padding: EdgeInsets.fromLTRB(
-                      16,
-                      isEmbedded
-                          ? 16
-                          : floatingGlassSettingsContentTopInset(context,
-                              extra: 16),
-                      16,
-                      16,
-                    ),
-                    styleSheet: MarkdownStyleSheet(
-                      h1: const TextStyle(
-                          fontSize: 22, fontWeight: FontWeight.bold),
-                      h2: const TextStyle(
-                          fontSize: 18, fontWeight: FontWeight.bold),
-                      h3: const TextStyle(
-                          fontSize: 16, fontWeight: FontWeight.bold),
-                      p: const TextStyle(fontSize: 14, height: 1.6),
-                      listBullet: const TextStyle(fontSize: 14),
-                      blockquote: TextStyle(
-                        fontSize: 14,
-                        color: Colors.grey[600],
-                        fontStyle: FontStyle.italic,
-                      ),
-                      code: const TextStyle(
-                          fontSize: 13, fontFamily: 'monospace'),
-                      codeblockDecoration: BoxDecoration(
-                        color: Colors.grey[100],
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
+            ? const Center(child: Text('加载失败，请检查网络连接'))
+            : Markdown(
+                data: content!,
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  isEmbedded
+                      ? 16
+                      : floatingGlassSettingsContentTopInset(
+                          context,
+                          extra: 16,
+                        ),
+                  16,
+                  16,
+                ),
+                styleSheet: MarkdownStyleSheet(
+                  h1: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
                   ),
+                  h2: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  h3: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  p: const TextStyle(fontSize: 14, height: 1.6),
+                  listBullet: const TextStyle(fontSize: 14),
+                  blockquote: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey[600],
+                    fontStyle: FontStyle.italic,
+                  ),
+                  code: const TextStyle(fontSize: 13, fontFamily: 'monospace'),
+                  codeblockDecoration: BoxDecoration(
+                    color: Colors.grey[100],
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+              ),
       ),
     );
   }

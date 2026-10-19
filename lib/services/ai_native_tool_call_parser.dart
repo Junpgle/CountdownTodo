@@ -1,13 +1,38 @@
 import 'dart:convert';
 
+import 'ai_action_parser.dart';
 import 'ai_chat_service.dart';
 import 'ai_settings_navigation_service.dart';
 import 'ai_tool_result_context.dart';
 
 /// Converts native function calls into the internal action containers consumed
-/// by the existing parsers and confirmation cards. The model never emits these
-/// textual wrappers; they are an in-process compatibility format only.
+/// by the existing parsers and confirmation cards. Text protocol blocks remain
+/// available as a compatibility path when the matching native tool was not
+/// called; both paths still produce drafts that require user confirmation.
 abstract final class AiNativeToolCallParser {
+  static final RegExp _actionBlockPattern = RegExp(
+    r'\[ACTION_START\][\s\S]*?\[ACTION_END\]',
+    dotAll: true,
+  );
+  static final RegExp _financeDraftBlockPattern = RegExp(
+    r'\[FINANCE_START\][\s\S]*?\[FINANCE_END\]',
+    dotAll: true,
+  );
+  static final RegExp _financeActionBlockPattern = RegExp(
+    r'\[FINANCE_ACTION_START\][\s\S]*?\[FINANCE_ACTION_END\]',
+    dotAll: true,
+  );
+  static final RegExp _settingsBlockPattern = RegExp(
+    r'\[SETTINGS_START\][\s\S]*?\[SETTINGS_END\]',
+    dotAll: true,
+  );
+  static final RegExp _unfinishedFinanceDraftBlockPattern = RegExp(
+    r'\[FINANCE_START\][\s\S]*?(?:\[FINANCE_END\]|$)',
+  );
+  static final RegExp _unfinishedFinanceActionBlockPattern = RegExp(
+    r'\[FINANCE_ACTION_START\][\s\S]*?(?:\[FINANCE_ACTION_END\]|$)',
+  );
+
   static String formatRawReply(
     String assistantText,
     List<AiChatFunctionCall> calls,
@@ -22,10 +47,10 @@ abstract final class AiNativeToolCallParser {
           'function': {'name': call.name, 'arguments': call.arguments},
         },
     ]);
-    return [
-      assistantText.trim(),
-      '[NATIVE_TOOL_CALLS]\n$rawCalls',
-    ].where((part) => part.isNotEmpty).join('\n\n');
+    final sections = <String>[];
+    if (assistantText.isNotEmpty) sections.add(assistantText);
+    sections.add('[NATIVE_TOOL_CALLS]\n$rawCalls');
+    return sections.join('\n\n');
   }
 
   static String appendToAssistantText(
@@ -36,6 +61,48 @@ abstract final class AiNativeToolCallParser {
     required Set<String> allowedFinanceActionNames,
   }) {
     assistantText = AiToolResultContext.withoutHistory(assistantText);
+    final suggestions = AiActionParser.extractSuggestions(assistantText);
+    final fallbackTextBlocks = <String>[];
+
+    void retainFallbackTextBlock(
+      RegExp pattern, {
+      required bool nativeToolWasCalled,
+    }) {
+      if (nativeToolWasCalled) return;
+      fallbackTextBlocks.addAll(
+        pattern.allMatches(assistantText).map((match) => match.group(0)!),
+      );
+      assistantText = assistantText.replaceAll(pattern, '');
+    }
+
+    retainFallbackTextBlock(
+      _actionBlockPattern,
+      nativeToolWasCalled: calls.any(
+        (call) => call.name == 'propose_cdt_actions',
+      ),
+    );
+    retainFallbackTextBlock(
+      _financeDraftBlockPattern,
+      nativeToolWasCalled: calls.any(
+        (call) => call.name == 'propose_finance_drafts',
+      ),
+    );
+    retainFallbackTextBlock(
+      _financeActionBlockPattern,
+      nativeToolWasCalled: calls.any(
+        (call) => call.name == 'propose_finance_actions',
+      ),
+    );
+    retainFallbackTextBlock(
+      _settingsBlockPattern,
+      nativeToolWasCalled: calls.any(
+        (call) => call.name == AiSettingsNavigationService.toolName,
+      ),
+    );
+    assistantText = AiActionParser.cleanActionContent(assistantText)
+        .replaceAll(_unfinishedFinanceDraftBlockPattern, '')
+        .replaceAll(_unfinishedFinanceActionBlockPattern, '')
+        .trim();
     final settingsTargets = <String>[];
     final cdtActions = <Map<String, dynamic>>[];
     final financeDrafts = <Map<String, dynamic>>[];
@@ -100,10 +167,16 @@ abstract final class AiNativeToolCallParser {
       );
     }
 
-    if (blocks.isEmpty) return assistantText;
+    final combinedBlocks = <String>[
+      ...fallbackTextBlocks,
+      ...blocks,
+      if (suggestions.isNotEmpty)
+        '[SUGGEST_START]${jsonEncode(suggestions)}[SUGGEST_END]',
+    ];
+    if (combinedBlocks.isEmpty) return assistantText;
     return [
       assistantText.trim(),
-      ...blocks,
+      ...combinedBlocks,
     ].where((part) => part.isNotEmpty).join('\n\n');
   }
 

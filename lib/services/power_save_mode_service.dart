@@ -10,10 +10,12 @@ import '../utils/app_platform.dart';
 /// Android pushes changes through an EventChannel. A method call is retained as
 /// a cold-start/resume fallback for vendor systems that delay broadcasts.
 abstract final class PowerSaveModeService {
-  static const MethodChannel _methodChannel =
-      MethodChannel('com.math_quiz_app/power_save_mode');
-  static const EventChannel _eventChannel =
-      EventChannel('com.math_quiz_app/power_save_mode_events');
+  static const MethodChannel _methodChannel = MethodChannel(
+    'com.math_quiz_app/power_save_mode',
+  );
+  static const EventChannel _eventChannel = EventChannel(
+    'com.math_quiz_app/power_save_mode_events',
+  );
 
   static final ValueNotifier<bool> _enabledNotifier = ValueNotifier(false);
   static StreamSubscription<dynamic>? _eventSubscription;
@@ -39,13 +41,13 @@ abstract final class PowerSaveModeService {
   static void _ensureEventSubscription() {
     if (!AppPlatform.isAndroid || _eventSubscription != null) return;
     _eventSubscription = _eventChannel.receiveBroadcastStream().listen(
-          _updateFromPlatform,
-          onError: (_) {
-            // Keep the last confirmed native state. A resume refresh provides the
-            // fallback when an OEM drops or delays the broadcast stream.
-          },
-          onDone: () => _eventSubscription = null,
-        );
+      _updateFromPlatform,
+      onError: (_) {
+        // Keep the last confirmed native state. A resume refresh provides the
+        // fallback when an OEM drops or delays the broadcast stream.
+      },
+      onDone: () => _eventSubscription = null,
+    );
   }
 
   static Future<void> refresh() async {
@@ -56,8 +58,9 @@ abstract final class PowerSaveModeService {
 
     _ensureEventSubscription();
     try {
-      final enabled =
-          await _methodChannel.invokeMethod<bool>('refreshPowerSaveMode');
+      final enabled = await _methodChannel.invokeMethod<bool>(
+        'refreshPowerSaveMode',
+      );
       if (enabled != null) _setEnabled(enabled);
     } on MissingPluginException {
       // Older/non-Android embeddings do not expose this bridge.

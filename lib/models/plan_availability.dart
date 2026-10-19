@@ -64,23 +64,45 @@ class PlanAvailabilityQuery {
   final String? bufferDefaultsKey;
   final bool avoidanceOverride;
   final String? avoidanceDefaultsKey;
-  PlanAvailabilityQuery withWeekly(PlanWeeklyContext? value) => PlanAvailabilityQuery(
-    username:username,todoId:todoId,date:date,minutes:minutes,
-    windowStart:windowStart,windowEnd:windowEnd,excludeBlockId:excludeBlockId,
-    appOnly:appOnly,resultLimit:resultLimit,avoidWindows:avoidWindows,
-    bufferBefore:bufferBefore,bufferAfter:bufferAfter,bufferOverride:bufferOverride,
-    bufferDefaultsKey:bufferDefaultsKey,avoidanceOverride:avoidanceOverride,
-    avoidanceDefaultsKey:avoidanceDefaultsKey,weekly:value);
+  PlanAvailabilityQuery withWeekly(PlanWeeklyContext? value) =>
+      PlanAvailabilityQuery(
+        username: username,
+        todoId: todoId,
+        date: date,
+        minutes: minutes,
+        windowStart: windowStart,
+        windowEnd: windowEnd,
+        excludeBlockId: excludeBlockId,
+        appOnly: appOnly,
+        resultLimit: resultLimit,
+        avoidWindows: avoidWindows,
+        bufferBefore: bufferBefore,
+        bufferAfter: bufferAfter,
+        bufferOverride: bufferOverride,
+        bufferDefaultsKey: bufferDefaultsKey,
+        avoidanceOverride: avoidanceOverride,
+        avoidanceDefaultsKey: avoidanceDefaultsKey,
+        weekly: value,
+      );
   PlanAvailabilityQuery onDate(DateTime value, {int? limit, bool? onlyApp}) =>
       PlanAvailabilityQuery(
-        username: username, todoId: todoId, date: value, minutes: minutes,
-        windowStart: windowStart, windowEnd: windowEnd,
-        excludeBlockId: excludeBlockId, appOnly: onlyApp ?? appOnly,
-        resultLimit: limit ?? resultLimit, avoidWindows: avoidWindows,
-        bufferBefore: bufferBefore, bufferAfter: bufferAfter,
-        bufferOverride: bufferOverride, bufferDefaultsKey: bufferDefaultsKey,
+        username: username,
+        todoId: todoId,
+        date: value,
+        minutes: minutes,
+        windowStart: windowStart,
+        windowEnd: windowEnd,
+        excludeBlockId: excludeBlockId,
+        appOnly: onlyApp ?? appOnly,
+        resultLimit: limit ?? resultLimit,
+        avoidWindows: avoidWindows,
+        bufferBefore: bufferBefore,
+        bufferAfter: bufferAfter,
+        bufferOverride: bufferOverride,
+        bufferDefaultsKey: bufferDefaultsKey,
         avoidanceOverride: avoidanceOverride,
-        avoidanceDefaultsKey: avoidanceDefaultsKey, weekly: weekly,
+        avoidanceDefaultsKey: avoidanceDefaultsKey,
+        weekly: weekly,
       );
   bool get hasBuffers => bufferBefore != 0 || bufferAfter != 0;
   String get bufferSummary => bufferOverride && !hasBuffers
@@ -205,11 +227,16 @@ class PlanAvailabilityRangeSnapshot {
   final bool deviceCalendarIncluded;
 }
 
-
 /// Reasons describe a successful calculation, never a failed source read.
 enum PlanAvailabilityReason {
-  available, invalid, rangeEnded, deadline, weeklyNone, weeklyOutside,
-  noTime, fragmented,
+  available,
+  invalid,
+  rangeEnded,
+  deadline,
+  weeklyNone,
+  weeklyOutside,
+  noTime,
+  fragmented,
 }
 
 class PlanAvailabilityStage {
@@ -219,28 +246,35 @@ class PlanAvailabilityStage {
 }
 
 class PlanAvailabilityDiagnostics {
-  PlanAvailabilityDiagnostics(this.reason, this.message,
-      {Iterable<PlanTimeSlot> fragments = const [],
-       Iterable<PlanAvailabilityStage> stages = const []})
-      : fragments = List.unmodifiable(fragments),
-        stages = List.unmodifiable(stages);
+  PlanAvailabilityDiagnostics(
+    this.reason,
+    this.message, {
+    Iterable<PlanTimeSlot> fragments = const [],
+    Iterable<PlanAvailabilityStage> stages = const [],
+  }) : fragments = List.unmodifiable(fragments),
+       stages = List.unmodifiable(stages);
   final PlanAvailabilityReason reason;
   final String? message;
   final List<PlanTimeSlot> fragments;
   final List<PlanAvailabilityStage> stages;
   bool get valid => reason != PlanAvailabilityReason.invalid;
   int get totalMinutes => fragments.fold(0, (n, s) => n + s.minutes);
-  int get longestMinutes => fragments.fold(0, (n, s) => s.minutes > n ? s.minutes : n);
+  int get longestMinutes =>
+      fragments.fold(0, (n, s) => s.minutes > n ? s.minutes : n);
   String get summary => '当前条件下最长$longestMinutes分钟，共$totalMinutes分钟碎片';
 }
 
 class PlanContinuousRangeResult {
-  PlanContinuousRangeResult(this.start, this.end, this.coverage,
-      Iterable<PlanAvailabilitySelection> selections,
-      Iterable<String> unknownTimes,
-      {this.currentSnapshot})
-      : selections = List.unmodifiable(selections),
-        unknownTimes = List.unmodifiable(unknownTimes.toSet());
+  PlanContinuousRangeResult(
+    this.start,
+    this.end,
+    this.coverage,
+    Iterable<PlanAvailabilitySelection> selections,
+    Iterable<String> unknownTimes, {
+    this.currentSnapshot,
+  }) : selections = List.unmodifiable(selections),
+       unknownTimes = List.unmodifiable(unknownTimes.toSet());
+
   /// Inclusive start and exclusive end, both local calendar midnights.
   final DateTime start, end;
   final String coverage;

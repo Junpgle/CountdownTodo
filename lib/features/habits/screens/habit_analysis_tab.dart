@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 
+import '../../../models.dart';
+import '../../../services/pomodoro_service.dart';
 import '../../../utils/page_transitions.dart';
 import '../../../widgets/floating_bottom_bar.dart';
+import '../models/habit_checkin.dart';
 import '../models/habit_goal.dart';
 import '../models/habit_goal_rule.dart';
 import '../models/habit_progress.dart';
@@ -10,9 +13,27 @@ import '../services/habit_day_loader.dart';
 import '../services/habit_progress_calculator.dart';
 import '../services/habit_rule_resolver.dart';
 import '../services/habit_sleep_goal_resolver.dart';
+import '../services/habit_source_resolver.dart';
 import '../services/habit_streak_service.dart';
 import '../widgets/habit_format.dart';
 import 'habit_detail_screen.dart';
+
+typedef _HabitAnalysisInputs = ({
+  Map<String, List<HabitCheckIn>> checkInsByHabit,
+  Map<String, List<PomodoroRecord>> recordsByHabit,
+  Map<String, List<TodoItem>>? todosByHabit,
+});
+
+typedef _HabitAnalysisStatistics = ({
+  int weekPlanned,
+  int weekMet,
+  List<int> monthTrend,
+});
+
+typedef _HabitStreakInputs = ({
+  Map<String, List<HabitCheckIn>> checkInsByHabit,
+  Map<String, List<PomodoroRecord>> recordsByHabit,
+});
 
 /// 习惯中心「分析」标签页：各习惯的连续与完成率统计。
 class HabitAnalysisTab extends StatefulWidget {
@@ -68,39 +89,84 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
     final goals = HabitSleepGoalResolver.forDisplay(
       await HabitRepository.getActiveGoals(),
     );
-    final allRules = await HabitRepository.getRules();
+    final goalUuids = goals.map((goal) => goal.uuid).toSet();
+    final allRules = goalUuids.isEmpty
+        ? const <HabitGoalRuleRevision>[]
+        : await HabitRepository.getRulesForHabits(goalUuids);
     final rulesByHabit = <String, List<HabitGoalRuleRevision>>{};
     final summaries = <String, HabitStreakSummary>{};
 
+    if (goalUuids.isNotEmpty) {
+      for (final rule in allRules) {
+        if (!goalUuids.contains(rule.habitUuid)) continue;
+        rulesByHabit.putIfAbsent(rule.habitUuid, () => []).add(rule);
+      }
+    }
     for (final goal in goals) {
-      final rules = allRules.where((r) => r.habitUuid == goal.uuid).toList()
-        ..sort((a, b) =>
-            (a.effectiveFromDate ?? '').compareTo(b.effectiveFromDate ?? ''));
-      rulesByHabit[goal.uuid] = rules;
+      final rules = rulesByHabit.putIfAbsent(
+        goal.uuid,
+        () => <HabitGoalRuleRevision>[],
+      );
+      rules.sort(
+        (a, b) =>
+            (a.effectiveFromDate ?? '').compareTo(b.effectiveFromDate ?? ''),
+      );
     }
 
-    // 并行统计各习惯，避免串行拖慢分析页加载。
-    final futures = <Future<void>>[];
-    for (final goal in goals) {
-      final rules = rulesByHabit[goal.uuid] ?? const [];
-      if (rules.isEmpty) continue;
-      futures.add(() async {
-        summaries[goal.uuid] = await HabitStreakService.summarize(
-          habit: goal,
-          rules: rules,
-        );
-      }());
-    }
-    // 本周进度 + 近 30 天趋势（并行计算）。
-    futures.add(() async {
-      final result = await _computeWeekProgress(goals, rulesByHabit);
-      _weekPlanned = result.$1;
-      _weekMet = result.$2;
-    }());
-    futures.add(() async {
-      _monthTrend = await _computeMonthTrend(goals, rulesByHabit);
-    }());
-    await Future.wait(futures);
+    final analysisNow = DateTime.now();
+    final analysisInputsFuture = _loadAnalysisInputs(
+      goals,
+      rulesByHabit,
+      now: analysisNow,
+    );
+    final streakInputsFuture = _loadStreakInputs(
+      goals,
+      rulesByHabit,
+      now: analysisNow,
+    );
+    final analysisStatisticsFuture = analysisInputsFuture.then(
+      (inputs) => _computeAnalysisStatistics(
+        goals,
+        rulesByHabit,
+        inputs: inputs,
+        now: analysisNow,
+      ),
+    );
+
+    // 连续统计共用一次按最大回看范围读取的原始数据，避免每个习惯单独读库。
+    final summariesFuture = () async {
+      final streakInputs = await streakInputsFuture;
+      final analysisInputs = await analysisInputsFuture;
+      await Future.wait(
+        goals.map((goal) async {
+          final rules = rulesByHabit[goal.uuid] ?? const [];
+          if (rules.isEmpty) return;
+          final todosByHabit = analysisInputs.todosByHabit;
+          final todos = goal.sourceType == HabitSourceType.recurringTodo
+              ? (todosByHabit == null ? null : todosByHabit[goal.uuid])
+              : const <TodoItem>[];
+          summaries[goal.uuid] = await HabitStreakService.summarize(
+            habit: goal,
+            rules: rules,
+            now: analysisNow,
+            todos: todos,
+            records: goal.sourceType == HabitSourceType.pomodoroTag
+                ? streakInputs.recordsByHabit[goal.uuid] ??
+                      const <PomodoroRecord>[]
+                : const <PomodoroRecord>[],
+            checkIns:
+                streakInputs.checkInsByHabit[goal.uuid] ??
+                const <HabitCheckIn>[],
+          );
+        }),
+      );
+    }();
+
+    final statistics = await analysisStatisticsFuture;
+    await summariesFuture;
+    _weekPlanned = statistics.weekPlanned;
+    _weekMet = statistics.weekMet;
+    _monthTrend = statistics.monthTrend;
 
     if (mounted) {
       setState(() {
@@ -112,16 +178,18 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
     }
   }
 
-  /// 本周进度：日粒度习惯按周一至今逐日统计；周粒度习惯整周达标计入一次；
-  /// 月粒度习惯不计入本周。
-  Future<(int, int)> _computeWeekProgress(
+  /// 周进度和月趋势共享 30 天的进度结果，避免重叠日期重复计算。
+  Future<_HabitAnalysisStatistics> _computeAnalysisStatistics(
     List<HabitGoal> goals,
-    Map<String, List<HabitGoalRuleRevision>> rulesByHabit,
-  ) async {
-    final now = DateTime.now();
-    var planned = 0;
-    var met = 0;
-
+    Map<String, List<HabitGoalRuleRevision>> rulesByHabit, {
+    required _HabitAnalysisInputs inputs,
+    required DateTime now,
+  }) async {
+    final today = DateTime(now.year, now.month, now.day);
+    final from = HabitRuleResolver.addCalendarDays(today, -29);
+    final trend = List<int>.filled(30, 0);
+    final weekPlans =
+        <String, ({DateTime logicalToday, DateTime from, bool weekly})>{};
     for (final goal in goals) {
       final rules = rulesByHabit[goal.uuid] ?? const [];
       if (rules.isEmpty) continue;
@@ -138,13 +206,11 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
       if (rule.periodType == HabitPeriodType.weekly) {
         // 周周期：仅在本周结束时判定达标。
         if (logicalToday.weekday == DateTime.sunday) {
-          final progress = await HabitProgressCalculator.computePeriod(
-            habit: goal,
-            rules: rules,
-            logicalDate: logicalToday,
+          weekPlans[goal.uuid] = (
+            logicalToday: logicalToday,
+            from: logicalToday,
+            weekly: true,
           );
-          planned++;
-          if (progress.goalMet) met++;
         }
         continue;
       }
@@ -153,59 +219,177 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
         logicalToday,
         1 - logicalToday.weekday,
       );
-      final range = await HabitProgressCalculator.computeRange(
-        habit: goal,
-        rules: rules,
+      weekPlans[goal.uuid] = (
+        logicalToday: logicalToday,
         from: monday,
-        to: logicalToday,
+        weekly: false,
       );
-      for (final day in range) {
-        if (!day.progress.isPlanned) continue;
-        planned++;
-        if (day.progress.goalMet) met++;
-      }
     }
-    return (planned, met);
-  }
 
-  /// 近 30 天每日达标习惯数（从 29 天前到今天）。
-  Future<List<int>> _computeMonthTrend(
-    List<HabitGoal> goals,
-    Map<String, List<HabitGoalRuleRevision>> rulesByHabit,
-  ) async {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final from = HabitRuleResolver.addCalendarDays(today, -29);
-    final trend = List<int>.filled(30, 0);
-
+    var weekPlanned = 0;
+    var weekMet = 0;
     for (final goal in goals) {
       final rules = rulesByHabit[goal.uuid] ?? const [];
       if (rules.isEmpty) continue;
+      final todos = inputs.todosByHabit?[goal.uuid];
+      final records = inputs.recordsByHabit[goal.uuid] ?? const [];
+      final habitCheckIns = inputs.checkInsByHabit[goal.uuid] ?? const [];
       final range = await HabitProgressCalculator.computeRange(
         habit: goal,
         rules: rules,
         from: from,
         to: today,
+        now: now,
+        todos: goal.sourceType == HabitSourceType.recurringTodo
+            ? todos
+            : const [],
+        records: goal.sourceType == HabitSourceType.pomodoroTag
+            ? records
+            : const [],
+        checkIns: habitCheckIns,
       );
+      final weekPlan = weekPlans[goal.uuid];
+      final weekEndOffset = weekPlan == null
+          ? -1
+          : HabitRuleResolver.calendarDayDifference(
+              weekPlan.logicalToday,
+              weekPlan.from,
+            );
       for (final day in range) {
-        if (!day.progress.isPlanned || !day.progress.goalMet) continue;
-        final rule = HabitRuleResolver.effectiveRule(
-          rules,
-          day.logicalDate,
-        );
-        if (rule == null ||
-            !HabitRuleResolver.isDailyHeatmapCompletionDay(
-              rule,
+        if (day.progress.isPlanned && day.progress.goalMet) {
+          final rule = HabitRuleResolver.effectiveRule(rules, day.logicalDate);
+          if (rule != null &&
+              HabitRuleResolver.isDailyHeatmapCompletionDay(
+                rule,
+                day.logicalDate,
+              )) {
+            final index = HabitRuleResolver.calendarDayDifference(
               day.logicalDate,
-            )) {
-          continue;
+              from,
+            );
+            if (index >= 0 && index < 30) trend[index]++;
+          }
         }
-        final index =
-            HabitRuleResolver.calendarDayDifference(day.logicalDate, from);
-        if (index >= 0 && index < 30) trend[index]++;
+
+        if (weekPlan == null) continue;
+        final offset = HabitRuleResolver.calendarDayDifference(
+          day.logicalDate,
+          weekPlan.from,
+        );
+        if (offset < 0 || offset > weekEndOffset) continue;
+        if (weekPlan.weekly) {
+          // 周习惯仅在周日计入一次，与周周期计算口径一致。
+          if (day.logicalDate != weekPlan.logicalToday) continue;
+          weekPlanned++;
+          if (day.progress.goalMet) weekMet++;
+        } else if (day.progress.isPlanned) {
+          weekPlanned++;
+          if (day.progress.goalMet) weekMet++;
+        }
       }
     }
-    return trend;
+    return (weekPlanned: weekPlanned, weekMet: weekMet, monthTrend: trend);
+  }
+
+  /// 连续统计按各习惯最大回看窗口批量读取打卡与专注记录。
+  Future<_HabitStreakInputs> _loadStreakInputs(
+    List<HabitGoal> goals,
+    Map<String, List<HabitGoalRuleRevision>> rulesByHabit, {
+    required DateTime now,
+  }) async {
+    final windowsByHabit =
+        <
+          String,
+          ({HabitGoalRuleRevision rule, DateTime today, DateTime from})
+        >{};
+    for (final goal in goals) {
+      final rules = rulesByHabit[goal.uuid] ?? const [];
+      final window = HabitStreakService.summaryWindow(rules: rules, now: now);
+      if (window != null) windowsByHabit[goal.uuid] = window;
+    }
+    if (windowsByHabit.isEmpty) {
+      return (
+        checkInsByHabit: const <String, List<HabitCheckIn>>{},
+        recordsByHabit: const <String, List<PomodoroRecord>>{},
+      );
+    }
+
+    final windows = windowsByHabit.values;
+    final from = windows
+        .map((window) => window.from)
+        .reduce((a, b) => a.isBefore(b) ? a : b);
+    final to = windows
+        .map((window) => window.today)
+        .reduce((a, b) => a.isAfter(b) ? a : b);
+    final calculationGoals = goals
+        .where((goal) => windowsByHabit.containsKey(goal.uuid))
+        .toList(growable: false);
+
+    final checkInsFuture = HabitRepository.getCheckInsForHabits(
+      calculationGoals.map((goal) => goal.uuid),
+      fromDate: HabitRuleResolver.dayKey(from),
+      toDate: HabitRuleResolver.dayKey(to),
+    );
+    final recordsFuture = HabitSourceResolver.recordsForRange(
+      calculationGoals
+          .where((goal) => goal.sourceType == HabitSourceType.pomodoroTag)
+          .map((goal) => (habitUuid: goal.uuid, tagUuids: goal.sourceIds)),
+      from: from,
+      to: to,
+    );
+    final checkIns = await checkInsFuture;
+    final recordsByHabit = await recordsFuture;
+    final checkInsByHabit = <String, List<HabitCheckIn>>{};
+    for (final checkIn in checkIns) {
+      (checkInsByHabit[checkIn.habitUuid] ??= <HabitCheckIn>[]).add(checkIn);
+    }
+    return (checkInsByHabit: checkInsByHabit, recordsByHabit: recordsByHabit);
+  }
+
+  /// 周进度与月趋势共用近 30 天数据快照，避免重复读取相同来源。
+  Future<_HabitAnalysisInputs> _loadAnalysisInputs(
+    List<HabitGoal> goals,
+    Map<String, List<HabitGoalRuleRevision>> rulesByHabit, {
+    required DateTime now,
+  }) async {
+    final today = DateTime(now.year, now.month, now.day);
+    final from = HabitRuleResolver.addCalendarDays(today, -29);
+    final calculationGoals = goals
+        .where((goal) => rulesByHabit[goal.uuid]?.isNotEmpty == true)
+        .toList(growable: false);
+
+    // 各来源查询彼此独立，启动后共同等待，且不创建额外 CPU worker。
+    final checkInsFuture = calculationGoals.isEmpty
+        ? Future.value(const <HabitCheckIn>[])
+        : HabitRepository.getCheckInsForHabits(
+            calculationGoals.map((goal) => goal.uuid),
+            fromDate: HabitRuleResolver.dayKey(from),
+            toDate: HabitRuleResolver.dayKey(today),
+          );
+    final recordsFuture = HabitSourceResolver.recordsForRange(
+      calculationGoals
+          .where((goal) => goal.sourceType == HabitSourceType.pomodoroTag)
+          .map((goal) => (habitUuid: goal.uuid, tagUuids: goal.sourceIds)),
+      from: from,
+      to: today,
+    );
+    final todosFuture = HabitSourceResolver.todosForHabitSources(
+      calculationGoals
+          .where((goal) => goal.sourceType == HabitSourceType.recurringTodo)
+          .map((goal) => (habitUuid: goal.uuid, seriesIds: goal.sourceIds)),
+    );
+    final checkIns = await checkInsFuture;
+    final recordsByHabit = await recordsFuture;
+    final todosByHabit = await todosFuture;
+    final checkInsByHabit = <String, List<HabitCheckIn>>{};
+    for (final checkIn in checkIns) {
+      (checkInsByHabit[checkIn.habitUuid] ??= <HabitCheckIn>[]).add(checkIn);
+    }
+    return (
+      checkInsByHabit: checkInsByHabit,
+      recordsByHabit: recordsByHabit,
+      todosByHabit: todosByHabit,
+    );
   }
 
   @override
@@ -267,19 +451,23 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
                       spacing: 12,
                       runSpacing: 12,
                       children: _goals
-                          .map((g) => SizedBox(
-                                width: (constraints.maxWidth - 12) / 2,
-                                child: _buildStatCard(g),
-                              ))
+                          .map(
+                            (g) => SizedBox(
+                              width: (constraints.maxWidth - 12) / 2,
+                              child: _buildStatCard(g),
+                            ),
+                          )
                           .toList(),
                     );
                   }
                   return Column(
                     children: _goals
-                        .map((goal) => Padding(
-                              padding: const EdgeInsets.only(bottom: 12),
-                              child: _buildStatCard(goal),
-                            ))
+                        .map(
+                          (goal) => Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: _buildStatCard(goal),
+                          ),
+                        )
                         .toList(),
                   );
                 },
@@ -294,8 +482,9 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
   /// 本周进度卡（设计文档 9.x：本周进度）。
   Widget _buildWeekProgressCard() {
     final colorScheme = Theme.of(context).colorScheme;
-    final ratio =
-        _weekPlanned == 0 ? 0.0 : (_weekMet / _weekPlanned).clamp(0.0, 1.0);
+    final ratio = _weekPlanned == 0
+        ? 0.0
+        : (_weekMet / _weekPlanned).clamp(0.0, 1.0);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
       decoration: BoxDecoration(
@@ -372,8 +561,9 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
   /// 近 30 天每日达标数热力图 (Heatmap)
   Widget _buildMonthTrendCard() {
     final colorScheme = Theme.of(context).colorScheme;
-    final maxCount =
-        _monthTrend.isEmpty ? 0 : _monthTrend.reduce((a, b) => a > b ? a : b);
+    final maxCount = _monthTrend.isEmpty
+        ? 0
+        : _monthTrend.reduce((a, b) => a > b ? a : b);
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final first = HabitRuleResolver.addCalendarDays(today, -29);
@@ -394,48 +584,51 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
 
         if (dayIndex < 0 || dayIndex >= 30) {
           // Empty placeholder
-          cells.add(Container(
-            width: 12,
-            height: 12,
-            margin: const EdgeInsets.all(2),
-            color: Colors.transparent,
-          ));
+          cells.add(
+            Container(
+              width: 12,
+              height: 12,
+              margin: const EdgeInsets.all(2),
+              color: Colors.transparent,
+            ),
+          );
         } else {
           final value = _monthTrend[dayIndex];
           final isToday = dayIndex == 29;
 
           Color cellColor;
           if (value == 0) {
-            cellColor =
-                colorScheme.surfaceContainerHighest.withValues(alpha: 0.5);
+            cellColor = colorScheme.surfaceContainerHighest.withValues(
+              alpha: 0.5,
+            );
           } else {
             // Calculate opacity based on intensity
-            final intensity =
-                maxCount == 0 ? 1.0 : (value / maxCount).clamp(0.2, 1.0);
+            final intensity = maxCount == 0
+                ? 1.0
+                : (value / maxCount).clamp(0.2, 1.0);
             cellColor = colorScheme.primary.withValues(alpha: intensity);
           }
           if (isToday) {
             cellColor = colorScheme.tertiary; // Highlight today
           }
 
-          cells.add(Container(
-            width: 12,
-            height: 12,
-            margin: const EdgeInsets.all(2),
-            decoration: BoxDecoration(
-              color: cellColor,
-              borderRadius: BorderRadius.circular(3),
-              border: isToday
-                  ? Border.all(color: colorScheme.onTertiary, width: 1)
-                  : null,
+          cells.add(
+            Container(
+              width: 12,
+              height: 12,
+              margin: const EdgeInsets.all(2),
+              decoration: BoxDecoration(
+                color: cellColor,
+                borderRadius: BorderRadius.circular(3),
+                border: isToday
+                    ? Border.all(color: colorScheme.onTertiary, width: 1)
+                    : null,
+              ),
             ),
-          ));
+          );
         }
       }
-      columns.add(Column(
-        mainAxisSize: MainAxisSize.min,
-        children: cells,
-      ));
+      columns.add(Column(mainAxisSize: MainAxisSize.min, children: cells));
     }
 
     return Container(
@@ -484,10 +677,7 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
                 child: SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   reverse: true, // Scroll to end (today)
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: columns,
-                  ),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: columns),
                 ),
               ),
             ],
@@ -536,10 +726,7 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
         onTap: () async {
           final changed = await PageTransitions.pushFromRect(
             context: context,
-            page: HabitDetailScreen(
-              goal: goal,
-              username: widget.username,
-            ),
+            page: HabitDetailScreen(goal: goal, username: widget.username),
             sourceKey: _cardKeys[goal.uuid]!,
             placeholderBuilder: (_) => Text(
               goal.icon.isNotEmpty ? goal.icon : '🎯',
@@ -556,8 +743,10 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
             children: [
               Row(
                 children: [
-                  Text(goal.icon.isNotEmpty ? goal.icon : '🎯',
-                      style: const TextStyle(fontSize: 20)),
+                  Text(
+                    goal.icon.isNotEmpty ? goal.icon : '🎯',
+                    style: const TextStyle(fontSize: 20),
+                  ),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
@@ -590,10 +779,7 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
               else ...[
                 Row(
                   children: [
-                    _statItem(
-                      '当前连续',
-                      '${summary.currentStreak} $periodUnit',
-                    ),
+                    _statItem('当前连续', '${summary.currentStreak} $periodUnit'),
                     _statItem('最长连续', '${summary.longestStreak} $periodUnit'),
                     _statItem('近 7 周期', _percent(summary.rate7)),
                     _statItem('近 30 周期', _percent(summary.rate30)),
@@ -631,8 +817,11 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.local_fire_department_rounded,
-              size: 14, color: colorScheme.tertiary),
+          Icon(
+            Icons.local_fire_department_rounded,
+            size: 14,
+            color: colorScheme.tertiary,
+          ),
           const SizedBox(width: 4),
           Text(
             '连续 $streak $unit',
@@ -719,7 +908,8 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
       case HabitSourceType.durationCheckIn:
         if (summary.averageDuration != null) {
           extras.add(
-              '平均 ${(summary.averageDuration! / 3600).toStringAsFixed(1)} 小时');
+            '平均 ${(summary.averageDuration! / 3600).toStringAsFixed(1)} 小时',
+          );
         }
       case HabitSourceType.quantityCheckIn:
         if (summary.averageValue != null) {
@@ -802,11 +992,7 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
       ),
       child: Row(
         children: [
-          Icon(
-            Icons.auto_awesome,
-            size: 14,
-            color: colorScheme.primary,
-          ),
+          Icon(Icons.auto_awesome, size: 14, color: colorScheme.primary),
           const SizedBox(width: 8),
           Expanded(
             child: Text(

@@ -1,4 +1,5 @@
 import '../../../widgets/floating_glass_control.dart';
+
 import 'package:flutter/material.dart';
 
 import '../../../models.dart';
@@ -22,22 +23,41 @@ class HabitHistoryScreen extends StatefulWidget {
   final HabitGoal goal;
   final String username;
 
-  const HabitHistoryScreen({
-    super.key,
-    required this.goal,
-    this.username = '',
-  });
+  const HabitHistoryScreen({super.key, required this.goal, this.username = ''});
 
   @override
   State<HabitHistoryScreen> createState() => _HabitHistoryScreenState();
 }
 
+class _HabitHistorySectionHeader {
+  const _HabitHistorySectionHeader(this.title, {this.detail});
+
+  final String title;
+  final String? detail;
+}
+
+class _HabitHistoryDateHeader {
+  const _HabitHistoryDateHeader(this.dateKey);
+
+  final String dateKey;
+}
+
+class _HabitHistoryEmptyState {
+  const _HabitHistoryEmptyState(this.text);
+
+  final String text;
+}
+
+class _HabitHistoryGap {
+  const _HabitHistoryGap(this.height);
+
+  final double height;
+}
+
 class _HabitHistoryScreenState extends State<HabitHistoryScreen> {
   bool _loading = true;
-  List<HabitCheckIn> _checkIns = [];
-  List<PomodoroRecord> _focusRecords = [];
-  List<TodoItem> _linkedTodos = [];
-  List<HabitGoalRuleRevision> _rules = [];
+  Map<String, HabitGoalRuleRevision> _rulesByUuid = const {};
+  List<Object> _historyRows = const [];
 
   @override
   void initState() {
@@ -63,19 +83,181 @@ class _HabitHistoryScreenState extends State<HabitHistoryScreen> {
         ? await HabitSourceResolver.todosForSeries(widget.goal.sourceIds)
         : const <TodoItem>[];
     final rules = await HabitRepository.getRules(habitUuid: widget.goal.uuid);
+    final sortedCheckIns = checkIns.where((c) => !c.isDeleted).toList()
+      ..sort((a, b) => b.logicalDate.compareTo(a.logicalDate));
+    final sortedFocusRecords = focusRecords.toList()
+      ..sort((a, b) => b.startTime.compareTo(a.startTime));
+    final sortedLinkedTodos =
+        linkedTodos.where((todo) => !todo.isDeleted).toList()
+          ..sort((a, b) => _todoDate(b).compareTo(_todoDate(a)));
+    final sortedRules = rules.where((r) => !r.isDeleted).toList()
+      ..sort(
+        (a, b) =>
+            (b.effectiveFromDate ?? '').compareTo(a.effectiveFromDate ?? ''),
+      );
+    final rulesByUuid = {for (final rule in sortedRules) rule.uuid: rule};
+    final historyRows = _buildHistoryRows(
+      checkIns: sortedCheckIns,
+      focusRecords: sortedFocusRecords,
+      linkedTodos: sortedLinkedTodos,
+      rules: sortedRules,
+    );
     if (!mounted) return;
     setState(() {
-      _checkIns = checkIns.where((c) => !c.isDeleted).toList()
-        ..sort((a, b) => b.logicalDate.compareTo(a.logicalDate));
-      _focusRecords = focusRecords.toList()
-        ..sort((a, b) => b.startTime.compareTo(a.startTime));
-      _linkedTodos = linkedTodos.where((todo) => !todo.isDeleted).toList()
-        ..sort((a, b) => _todoDate(b).compareTo(_todoDate(a)));
-      _rules = rules.where((r) => !r.isDeleted).toList()
-        ..sort((a, b) =>
-            (b.effectiveFromDate ?? '').compareTo(a.effectiveFromDate ?? ''));
+      _rulesByUuid = rulesByUuid;
+      _historyRows = historyRows;
       _loading = false;
     });
+  }
+
+  List<Object> _buildHistoryRows({
+    required List<HabitCheckIn> checkIns,
+    required List<PomodoroRecord> focusRecords,
+    required List<TodoItem> linkedTodos,
+    required List<HabitGoalRuleRevision> rules,
+  }) {
+    final rows = <Object>[];
+    switch (widget.goal.sourceType) {
+      case HabitSourceType.pomodoroTag:
+        rows.add(
+          _HabitHistorySectionHeader(
+            '专注记录',
+            detail: '共 ${focusRecords.length} 条',
+          ),
+        );
+        rows.add(const _HabitHistoryGap(10));
+        if (focusRecords.isEmpty) {
+          rows.add(const _HabitHistoryEmptyState('暂无专注记录'));
+        } else {
+          final grouped = _groupByHistoryDay(focusRecords, (record) {
+            final local = DateTime.fromMillisecondsSinceEpoch(record.startTime)
+                .toLocal();
+            return _dateKey(local);
+          });
+          for (final entry in grouped.entries) {
+            rows.add(_HabitHistoryDateHeader(entry.key));
+            rows.addAll(entry.value);
+          }
+        }
+      case HabitSourceType.recurringTodo:
+        final completedTodos = linkedTodos
+            .where((todo) => todo.isDone)
+            .toList(growable: false);
+        rows.add(
+          _HabitHistorySectionHeader(
+            '关联待办完成记录',
+            detail: '已完成 ${completedTodos.length}/${linkedTodos.length} 期',
+          ),
+        );
+        rows.add(const _HabitHistoryGap(10));
+        if (completedTodos.isEmpty) {
+          rows.add(const _HabitHistoryEmptyState('暂无已完成的关联待办'));
+        } else {
+          final grouped = _groupByHistoryDay(completedTodos, _todoDateKey);
+          for (final entry in grouped.entries) {
+            rows.add(_HabitHistoryDateHeader(entry.key));
+            rows.addAll(entry.value);
+          }
+        }
+      case HabitSourceType.quantityCheckIn:
+      case HabitSourceType.durationCheckIn:
+      case HabitSourceType.timeCheckIn:
+        rows.add(
+          _HabitHistorySectionHeader('打卡记录', detail: '共 ${checkIns.length} 条'),
+        );
+        rows.add(const _HabitHistoryGap(10));
+        if (checkIns.isEmpty) {
+          rows.add(const _HabitHistoryEmptyState('暂无打卡记录'));
+        } else {
+          final grouped = _groupByHistoryDay(checkIns, (checkIn) {
+            return checkIn.logicalDate;
+          });
+          for (final entry in grouped.entries) {
+            rows.add(_HabitHistoryDateHeader(entry.key));
+            rows.addAll(entry.value);
+          }
+        }
+    }
+
+    rows.add(const _HabitHistoryGap(24));
+    rows.add(const _HabitHistorySectionHeader('目标修改历史'));
+    rows.add(const _HabitHistoryGap(10));
+    if (rules.isEmpty) {
+      rows.add(const _HabitHistoryEmptyState('暂无目标修改记录'));
+    } else {
+      rows.addAll(rules);
+    }
+    return rows;
+  }
+
+  Map<String, List<T>> _groupByHistoryDay<T>(
+    Iterable<T> items,
+    String Function(T item) dateKeyFor,
+  ) {
+    final grouped = <String, List<T>>{};
+    for (final item in items) {
+      grouped.putIfAbsent(dateKeyFor(item), () => []).add(item);
+    }
+    return grouped;
+  }
+
+  String _dateKey(DateTime date) =>
+      '${date.year.toString().padLeft(4, '0')}-'
+      '${date.month.toString().padLeft(2, '0')}-'
+      '${date.day.toString().padLeft(2, '0')}';
+
+  Widget _buildHistoryRow(Object row, ColorScheme colorScheme) {
+    if (row is _HabitHistorySectionHeader) {
+      return _sectionHeader(colorScheme, row.title, detail: row.detail);
+    }
+    if (row is _HabitHistoryDateHeader) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 8, bottom: 4),
+        child: Text(
+          _dateLabel(row.dateKey),
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: colorScheme.primary,
+          ),
+        ),
+      );
+    }
+    if (row is _HabitHistoryEmptyState) {
+      return _emptyBox(colorScheme, row.text);
+    }
+    if (row is _HabitHistoryGap) return SizedBox(height: row.height);
+    if (row is HabitCheckIn) return _checkInRow(colorScheme, row);
+    if (row is PomodoroRecord) return _focusRecordRow(colorScheme, row);
+    if (row is TodoItem) return _linkedTodoRow(colorScheme, row);
+    if (row is HabitGoalRuleRevision) return _ruleRow(colorScheme, row);
+    throw StateError('Unexpected habit history row: ${row.runtimeType}');
+  }
+
+  Widget _sectionHeader(
+    ColorScheme colorScheme,
+    String title, {
+    String? detail,
+  }) {
+    return Row(
+      children: [
+        Text(
+          title,
+          style: TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w700,
+            color: colorScheme.onSurface,
+          ),
+        ),
+        if (detail != null) ...[
+          const SizedBox(width: 8),
+          Text(
+            detail,
+            style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+          ),
+        ],
+      ],
+    );
   }
 
   Future<void> _deleteCheckIn(HabitCheckIn checkIn) async {
@@ -127,10 +309,7 @@ class _HabitHistoryScreenState extends State<HabitHistoryScreen> {
 
   HabitGoalRuleRevision? _ruleFor(String? uuid) {
     if (uuid == null) return null;
-    for (final rule in _rules) {
-      if (rule.uuid == uuid) return rule;
-    }
-    return null;
+    return _rulesByUuid[uuid];
   }
 
   @override
@@ -152,80 +331,15 @@ class _HabitHistoryScreenState extends State<HabitHistoryScreen> {
             : Center(
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 840),
-                  child: ListView(
+                  child: ListView.builder(
                     padding: EdgeInsets.fromLTRB(16, topBarHeight + 8, 16, 32),
-                    children: [
-                      if (widget.goal.sourceType == HabitSourceType.pomodoroTag)
-                        _buildFocusRecordSection(colorScheme)
-                      else if (widget.goal.sourceType ==
-                          HabitSourceType.recurringTodo)
-                        _buildRecurringTodoSection(colorScheme)
-                      else
-                        _buildCheckInSection(colorScheme),
-                      const SizedBox(height: 24),
-                      _buildRuleHistorySection(colorScheme),
-                    ],
+                    itemCount: _historyRows.length,
+                    itemBuilder: (context, index) =>
+                        _buildHistoryRow(_historyRows[index], colorScheme),
                   ),
                 ),
               ),
       ),
-    );
-  }
-
-  Widget _buildRecurringTodoSection(ColorScheme colorScheme) {
-    final completedTodos = _linkedTodos.where((todo) => todo.isDone).toList();
-    final grouped = <String, List<TodoItem>>{};
-    for (final todo in completedTodos) {
-      grouped.putIfAbsent(_todoDateKey(todo), () => []).add(todo);
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Text(
-              '关联待办完成记录',
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-                color: colorScheme.onSurface,
-              ),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              '已完成 ${completedTodos.length}/${_linkedTodos.length} 期',
-              style: TextStyle(
-                fontSize: 12,
-                color: colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        if (completedTodos.isEmpty) _emptyBox(colorScheme, '暂无已完成的关联待办'),
-        ...grouped.entries.map(
-          (entry) => Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Padding(
-                padding: const EdgeInsets.only(top: 8, bottom: 4),
-                child: Text(
-                  _dateLabel(entry.key),
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: colorScheme.primary,
-                  ),
-                ),
-              ),
-              ...entry.value.map(
-                (todo) => _linkedTodoRow(colorScheme, todo),
-              ),
-            ],
-          ),
-        ),
-      ],
     );
   }
 
@@ -273,10 +387,7 @@ class _HabitHistoryScreenState extends State<HabitHistoryScreen> {
           ),
           Text(
             HabitText.timeOfDay(local),
-            style: TextStyle(
-              fontSize: 12,
-              color: colorScheme.onSurfaceVariant,
-            ),
+            style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
           ),
         ],
       ),
@@ -297,74 +408,9 @@ class _HabitHistoryScreenState extends State<HabitHistoryScreen> {
         '${local.day.toString().padLeft(2, '0')}';
   }
 
-  Widget _buildFocusRecordSection(ColorScheme colorScheme) {
-    final grouped = <String, List<PomodoroRecord>>{};
-    for (final record in _focusRecords) {
-      final local =
-          DateTime.fromMillisecondsSinceEpoch(record.startTime).toLocal();
-      final key = '${local.year.toString().padLeft(4, '0')}-'
-          '${local.month.toString().padLeft(2, '0')}-'
-          '${local.day.toString().padLeft(2, '0')}';
-      grouped.putIfAbsent(key, () => []).add(record);
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Text(
-              '专注记录',
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-                color: colorScheme.onSurface,
-              ),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              '共 ${_focusRecords.length} 条',
-              style: TextStyle(
-                fontSize: 12,
-                color: colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        if (_focusRecords.isEmpty) _emptyBox(colorScheme, '暂无专注记录'),
-        ...grouped.entries.map(
-          (entry) => Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Padding(
-                padding: const EdgeInsets.only(top: 8, bottom: 4),
-                child: Text(
-                  _dateLabel(entry.key),
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: colorScheme.primary,
-                  ),
-                ),
-              ),
-              ...entry.value.map((record) => _focusRecordRow(
-                    colorScheme,
-                    record,
-                  )),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _focusRecordRow(
-    ColorScheme colorScheme,
-    PomodoroRecord record,
-  ) {
-    final local =
-        DateTime.fromMillisecondsSinceEpoch(record.startTime).toLocal();
+  Widget _focusRecordRow(ColorScheme colorScheme, PomodoroRecord record) {
+    final local = DateTime.fromMillisecondsSinceEpoch(record.startTime)
+        .toLocal();
     return Container(
       margin: const EdgeInsets.only(bottom: 6),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -405,73 +451,10 @@ class _HabitHistoryScreenState extends State<HabitHistoryScreen> {
           ),
           Text(
             HabitText.timeOfDay(local),
-            style: TextStyle(
-              fontSize: 12,
-              color: colorScheme.onSurfaceVariant,
-            ),
+            style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
           ),
         ],
       ),
-    );
-  }
-
-  // ── 打卡记录 ────────────────────────────────────────
-  Widget _buildCheckInSection(ColorScheme colorScheme) {
-    final grouped = <String, List<HabitCheckIn>>{};
-    for (final checkIn in _checkIns) {
-      grouped.putIfAbsent(checkIn.logicalDate, () => []).add(checkIn);
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Text(
-              '打卡记录',
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-                color: colorScheme.onSurface,
-              ),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              '共 ${_checkIns.length} 条',
-              style: TextStyle(
-                fontSize: 12,
-                color: colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        if (_checkIns.isEmpty) _emptyBox(colorScheme, '暂无打卡记录'),
-        ...grouped.entries.map((entry) => _dayGroup(colorScheme, entry)),
-      ],
-    );
-  }
-
-  Widget _dayGroup(
-    ColorScheme colorScheme,
-    MapEntry<String, List<HabitCheckIn>> entry,
-  ) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(top: 8, bottom: 4),
-          child: Text(
-            _dateLabel(entry.key),
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: colorScheme.primary,
-            ),
-          ),
-        ),
-        ...entry.value.map((c) => _checkInRow(colorScheme, c)),
-      ],
     );
   }
 
@@ -487,8 +470,7 @@ class _HabitHistoryScreenState extends State<HabitHistoryScreen> {
             '${HabitText.formatDuration(checkIn.value.round())}',
       HabitSourceType.timeCheckIn => '打卡 ${HabitText.timeOfDay(local)}',
       HabitSourceType.recurringTodo ||
-      HabitSourceType.pomodoroTag =>
-        HabitText.timeOfDay(local),
+      HabitSourceType.pomodoroTag => HabitText.timeOfDay(local),
     };
 
     return Container(
@@ -533,10 +515,7 @@ class _HabitHistoryScreenState extends State<HabitHistoryScreen> {
           ),
           Text(
             HabitText.timeOfDay(local),
-            style: TextStyle(
-              fontSize: 12,
-              color: colorScheme.onSurfaceVariant,
-            ),
+            style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
           ),
           if (checkIn.source != HabitCheckInSource.skip &&
               (widget.goal.sourceType == HabitSourceType.quantityCheckIn ||
@@ -561,41 +540,21 @@ class _HabitHistoryScreenState extends State<HabitHistoryScreen> {
     );
   }
 
-  // ── 目标修改历史 ────────────────────────────────────
-  Widget _buildRuleHistorySection(ColorScheme colorScheme) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          '目标修改历史',
-          style: TextStyle(
-            fontSize: 15,
-            fontWeight: FontWeight.w700,
-            color: colorScheme.onSurface,
-          ),
-        ),
-        const SizedBox(height: 10),
-        if (_rules.isEmpty) _emptyBox(colorScheme, '暂无目标修改记录'),
-        ..._rules.map((r) => _ruleRow(colorScheme, r)),
-      ],
-    );
-  }
-
-  Widget _ruleRow(
-    ColorScheme colorScheme,
-    HabitGoalRuleRevision rule,
-  ) {
+  Widget _ruleRow(ColorScheme colorScheme, HabitGoalRuleRevision rule) {
     final from = rule.effectiveFromDate ?? '';
     final to = rule.effectiveToDate ?? '至今';
     final targetText = switch (widget.goal.sourceType) {
-      HabitSourceType.quantityCheckIn => '${_trimNumber(rule.targetValue)}'
-          '${rule.unit.isNotEmpty ? ' ${rule.unit}' : ''}',
-      HabitSourceType.pomodoroTag =>
-        HabitText.formatDuration(rule.targetValue.round()),
+      HabitSourceType.quantityCheckIn =>
+        '${_trimNumber(rule.targetValue)}'
+            '${rule.unit.isNotEmpty ? ' ${rule.unit}' : ''}',
+      HabitSourceType.pomodoroTag => HabitText.formatDuration(
+        rule.targetValue.round(),
+      ),
       HabitSourceType.durationCheckIn =>
         '${(rule.targetValue / 3600).toStringAsFixed(1)} 小时',
-      HabitSourceType.timeCheckIn =>
-        HabitText.targetTime(rule.targetTimeMinute),
+      HabitSourceType.timeCheckIn => HabitText.targetTime(
+        rule.targetTimeMinute,
+      ),
       HabitSourceType.recurringTodo => '完成一次',
     };
 
@@ -608,11 +567,7 @@ class _HabitHistoryScreenState extends State<HabitHistoryScreen> {
       ),
       child: Row(
         children: [
-          Icon(
-            Icons.history_rounded,
-            size: 18,
-            color: colorScheme.primary,
-          ),
+          Icon(Icons.history_rounded, size: 18, color: colorScheme.primary),
           const SizedBox(width: 10),
           Expanded(
             child: Column(

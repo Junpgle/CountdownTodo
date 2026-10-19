@@ -1,6 +1,8 @@
 import 'dart:math'; // test
+
 import 'package:flutter/cupertino.dart';
 import 'package:uuid/uuid.dart';
+
 import 'dart:convert';
 
 import 'utils/analysis_image_cleanup.dart';
@@ -96,8 +98,9 @@ class Question {
 
     String result = "$num1 $opStr $num2 = ${userAnswer ?? '?'}";
     if (isAnswered) {
-      result +=
-          (userAnswer == correctAnswer) ? " (正确)" : " (错误, 正解: $correctAnswer)";
+      result += (userAnswer == correctAnswer)
+          ? " (正确)"
+          : " (错误, 正解: $correctAnswer)";
     } else {
       result += " (未作答)";
     }
@@ -148,8 +151,9 @@ class QuestionGenerator {
       }
 
       if (isValid) {
-        questions.add(Question(
-            num1: n1, num2: n2, operatorSymbol: op, correctAnswer: ans));
+        questions.add(
+          Question(num1: n1, num2: n2, operatorSymbol: op, correctAnswer: ans),
+        );
       }
     }
     return questions;
@@ -167,7 +171,7 @@ enum RecurrenceType {
   weekly,
   monthly,
   yearly,
-  weekdays
+  weekdays,
 }
 
 /// 用户可理解的待办时间语义。
@@ -238,9 +242,9 @@ class TodoItem {
     this.serverVersionData,
     this.isAllDay = false,
     this.categoryId,
-  })  : id = id ?? const Uuid().v4(),
-        updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch,
-        createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch;
+  }) : id = id ?? const Uuid().v4(),
+       updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch,
+       createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch;
 
   // 🚀 核心方法：每次本地对任务的修改，都必须调用此方法！
   void markAsChanged() {
@@ -249,15 +253,32 @@ class TodoItem {
     updatedAt = now > updatedAt ? now : updatedAt + 1;
   }
 
+  /// Automatic recurrence maintenance must not turn an old completion or date
+  /// into a new user edit. Keep the source write time for legacy LWW servers.
+  void markRecurrenceMaintenanceChanged() {
+    version++;
+  }
+
   DateTime get effectiveStartTime => DateTime.fromMillisecondsSinceEpoch(
-        createdDate ?? createdAt,
-        isUtc: true,
-      ).toLocal();
+    createdDate ?? createdAt,
+    isUtc: true,
+  ).toLocal();
 
   TodoTimeMode get timeMode {
     final end = dueDate?.toLocal();
     if (end == null) return TodoTimeMode.unscheduled;
-    if (isAllDay || looksLikeLegacyDateOnlyRange(effectiveStartTime, end)) {
+    return _timeModeForStartAndEnd(effectiveStartTime, end);
+  }
+
+  /// Computes [timeMode] using a start time that the caller already resolved.
+  TodoTimeMode timeModeForStartTime(DateTime startTime) {
+    final end = dueDate?.toLocal();
+    if (end == null) return TodoTimeMode.unscheduled;
+    return _timeModeForStartAndEnd(startTime, end);
+  }
+
+  TodoTimeMode _timeModeForStartAndEnd(DateTime startTime, DateTime end) {
+    if (isAllDay || looksLikeLegacyDateOnlyRange(startTime, end)) {
       return TodoTimeMode.dateOnly;
     }
     return TodoTimeMode.deadline;
@@ -269,7 +290,13 @@ class TodoItem {
   /// Date-only tasks remain valid through the end of their local calendar day.
   DateTime? get effectiveDueAt {
     final due = dueDate;
-    if (due == null || !isDateOnly) return due;
+    if (due == null) return null;
+    return effectiveDueAtForTimeMode(timeMode);
+  }
+
+  DateTime? effectiveDueAtForTimeMode(TodoTimeMode timeMode) {
+    final due = dueDate;
+    if (due == null || timeMode != TodoTimeMode.dateOnly) return due;
     final localDue = due.toLocal();
     final nextDay = DateTime(localDue.year, localDue.month, localDue.day + 1);
     return nextDay.subtract(const Duration(milliseconds: 1));
@@ -306,14 +333,16 @@ class TodoItem {
   /// 截止任务错误归为日期待办。
   static bool looksLikeLegacyDateOnlyRange(DateTime start, DateTime end) {
     if (!end.isAfter(start)) return false;
-    final startsAtMidnight = start.hour == 0 &&
+    final startsAtMidnight =
+        start.hour == 0 &&
         start.minute == 0 &&
         start.second == 0 &&
         start.millisecond == 0;
     if (!startsAtMidnight) return false;
 
     final endsAtEndOfDay = end.hour == 23 && end.minute == 59;
-    final endsAtLaterMidnight = end.hour == 0 &&
+    final endsAtLaterMidnight =
+        end.hour == 0 &&
         end.minute == 0 &&
         end.second == 0 &&
         end.millisecond == 0;
@@ -365,44 +394,79 @@ class TodoItem {
   }
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'uuid': id,
-        'content': title,
-        'is_completed': isDone ? 1 : 0,
-        'is_deleted': isDeleted ? 1 : 0,
-        'version': version,
-        'updated_at': updatedAt, // UTC 毫秒时间戳
-        'created_at': createdAt, // UTC 毫秒时间戳（物理创建时间，不可变）
-        'created_date': createdDate, // UTC 毫秒时间戳（任务开始时间，可为 null）
-        'due_date': dueDate
-            ?.toUtc()
-            .millisecondsSinceEpoch, // UTC 毫秒时间戳（任务截止时间，可为 null）
-        'recurrence': recurrence.index,
-        'recurrence_series_id': recurrenceSeriesId,
-        'recurrenceSeriesId': recurrenceSeriesId,
-        // 循环间隔：同时输出两种键名兼容后端列名(custom_interval_days)和本地存储名(customIntervalDays)
-        'customIntervalDays': customIntervalDays,
-        'custom_interval_days': customIntervalDays,
-        // 循环结束日：同时输出两种键名
-        'recurrenceEndDate': recurrenceEndDate?.toUtc().millisecondsSinceEpoch,
-        'recurrence_end_date':
-            recurrenceEndDate?.toUtc().millisecondsSinceEpoch,
-        'remark': remark, // 📝 备注（可为 null）
-        'image_path': imagePath, // 📸 图片路径
-        'original_text': originalText, // 📄 原始分析文本
-        'group_id': groupId, // 📁 分组 ID
-        'reminder_minutes': reminderMinutes, // 🚀 提醒提前量
-        'team_uuid': teamUuid, // 👥 团队 ID
-        'creator_id': creatorId,
-        'creator_name': creatorName,
-        'team_name': teamName,
-        'collab_type': collabType,
-        'is_all_day': isAllDay ? 1 : 0,
-        'category_id': categoryId,
-        'has_conflict': hasConflict ? 1 : 0,
-        'conflict_data':
-            serverVersionData != null ? jsonEncode(serverVersionData) : null,
-      };
+    'id': id,
+    'uuid': id,
+    'content': title,
+    'is_completed': isDone ? 1 : 0,
+    'is_deleted': isDeleted ? 1 : 0,
+    'version': version,
+    'updated_at': updatedAt, // UTC 毫秒时间戳
+    'created_at': createdAt, // UTC 毫秒时间戳（物理创建时间，不可变）
+    'created_date': createdDate, // UTC 毫秒时间戳（任务开始时间，可为 null）
+    'due_date': dueDate
+        ?.toUtc()
+        .millisecondsSinceEpoch, // UTC 毫秒时间戳（任务截止时间，可为 null）
+    'recurrence': recurrence.index,
+    'recurrence_series_id': recurrenceSeriesId,
+    'recurrenceSeriesId': recurrenceSeriesId,
+    // 循环间隔：同时输出两种键名兼容后端列名(custom_interval_days)和本地存储名(customIntervalDays)
+    'customIntervalDays': customIntervalDays,
+    'custom_interval_days': customIntervalDays,
+    // 循环结束日：同时输出两种键名
+    'recurrenceEndDate': recurrenceEndDate?.toUtc().millisecondsSinceEpoch,
+    'recurrence_end_date': recurrenceEndDate?.toUtc().millisecondsSinceEpoch,
+    'remark': remark, // 📝 备注（可为 null）
+    'image_path': imagePath, // 📸 图片路径
+    'original_text': originalText, // 📄 原始分析文本
+    'group_id': groupId, // 📁 分组 ID
+    'reminder_minutes': reminderMinutes, // 🚀 提醒提前量
+    'team_uuid': teamUuid, // 👥 团队 ID
+    'creator_id': creatorId,
+    'creator_name': creatorName,
+    'team_name': teamName,
+    'collab_type': collabType,
+    'is_all_day': isAllDay ? 1 : 0,
+    'category_id': categoryId,
+    'has_conflict': hasConflict ? 1 : 0,
+    'conflict_data': serverVersionData != null
+        ? jsonEncode(serverVersionData)
+        : null,
+  };
+
+  /// Returns an independent snapshot without serializing every scalar field.
+  /// The conflict payload is copied through JSON because it may contain nested
+  /// maps and lists that callers can mutate after the snapshot is taken.
+  TodoItem detachedCopy() => TodoItem(
+    id: id.contains('-') ? id : const Uuid().v4(),
+    title: title,
+    isDone: isDone,
+    isDeleted: isDeleted,
+    version: version,
+    updatedAt: updatedAt,
+    createdAt: createdAt,
+    createdDate: createdDate,
+    recurrence: recurrence,
+    recurrenceSeriesId: _emptyStringToNull(recurrenceSeriesId),
+    customIntervalDays: customIntervalDays,
+    recurrenceEndDate: _localDateCopy(recurrenceEndDate),
+    dueDate: _localDateCopy(dueDate),
+    remark: remark,
+    imagePath: imagePath,
+    originalText: originalText,
+    groupId: groupId,
+    reminderMinutes: reminderMinutes,
+    teamUuid: teamUuid,
+    creatorId: creatorId,
+    creatorName: creatorName,
+    teamName: teamName,
+    collabType: collabType,
+    hasConflict: hasConflict,
+    serverVersionData: serverVersionData == null
+        ? null
+        : JsonValueParser.toMap(jsonEncode(serverVersionData)),
+    isAllDay: isAllDay,
+    categoryId: categoryId,
+  );
 
   factory TodoItem.fromSql(Map<String, dynamic> map) => TodoItem.fromJson(map);
 
@@ -421,10 +485,12 @@ class TodoItem {
     return TodoItem(
       id: parsedId,
       title: json['content']?.toString() ?? json['title']?.toString() ?? '',
-      isDone: json['is_completed'] == 1 ||
+      isDone:
+          json['is_completed'] == 1 ||
           json['is_completed'] == true ||
           json['isDone'] == true,
-      isDeleted: json['is_deleted'] == 1 ||
+      isDeleted:
+          json['is_deleted'] == 1 ||
           json['is_deleted'] == true ||
           json['isDeleted'] == true,
       version: JsonValueParser.toInt(json['version'], fallback: 1),
@@ -435,8 +501,8 @@ class TodoItem {
       createdDate: (json['created_date'] != null)
           ? _parseTimestamp(json['created_date'])
           : ((json['createdDate'] != null)
-              ? _parseTimestamp(json['createdDate'])
-              : null),
+                ? _parseTimestamp(json['createdDate'])
+                : null),
 
       recurrence: RecurrenceType.values[recurrenceIndex],
       recurrenceSeriesId: _emptyStringToNull(
@@ -449,7 +515,8 @@ class TodoItem {
       ),
       // 兼容两种字段名：后端列名 recurrence_end_date 和本地存储名 recurrenceEndDate
       recurrenceEndDate: _parseDateField(
-          json['recurrenceEndDate'] ?? json['recurrence_end_date']),
+        json['recurrenceEndDate'] ?? json['recurrence_end_date'],
+      ),
       // due_date = 任务截止时间
       dueDate: _parseDateField(json['dueDate'] ?? json['due_date']),
       // 📝 备注
@@ -517,9 +584,9 @@ class CountdownItem {
     this.creatorName,
     this.hasConflict = false,
     this.conflictData,
-  })  : id = id ?? const Uuid().v4(),
-        updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch,
-        createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch;
+  }) : id = id ?? const Uuid().v4(),
+       updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch,
+       createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch;
 
   // 🚀 核心方法：每次本地对倒计时的修改，都必须调用此方法！
   void markAsChanged() {
@@ -528,22 +595,22 @@ class CountdownItem {
   }
 
   Map<String, dynamic> toJson() => {
-        'id': id, // 兼容本地读取
-        'uuid': id, // 对齐后端数据库主键
-        'title': title,
-        'target_time': targetDate.millisecondsSinceEpoch, // UTC 毫秒时间戳
-        'is_deleted': isDeleted ? 1 : 0,
-        'is_completed': isCompleted ? 1 : 0,
-        'version': version,
-        'updated_at': updatedAt, // UTC 毫秒时间戳
-        'created_at': createdAt, // UTC 毫秒时间戳
-        'team_uuid': teamUuid,
-        'team_name': teamName,
-        'creator_id': creatorId,
-        'creator_name': creatorName,
-        'has_conflict': hasConflict ? 1 : 0,
-        'conflict_data': conflictData != null ? jsonEncode(conflictData) : null,
-      };
+    'id': id, // 兼容本地读取
+    'uuid': id, // 对齐后端数据库主键
+    'title': title,
+    'target_time': targetDate.millisecondsSinceEpoch, // UTC 毫秒时间戳
+    'is_deleted': isDeleted ? 1 : 0,
+    'is_completed': isCompleted ? 1 : 0,
+    'version': version,
+    'updated_at': updatedAt, // UTC 毫秒时间戳
+    'created_at': createdAt, // UTC 毫秒时间戳
+    'team_uuid': teamUuid,
+    'team_name': teamName,
+    'creator_id': creatorId,
+    'creator_name': creatorName,
+    'has_conflict': hasConflict ? 1 : 0,
+    'conflict_data': conflictData != null ? jsonEncode(conflictData) : null,
+  };
 
   factory CountdownItem.fromSql(Map<String, dynamic> map) =>
       CountdownItem.fromJson(map);
@@ -559,14 +626,17 @@ class CountdownItem {
       title: json['title']?.toString() ?? '',
       // 🚀 修复：正确解析 targetDate（可能是毫秒时间戳或 ISO 字符串）
       // 兼容所有字段名：target_time(客户端), target_date(新服务器DB列名), targetDate(旧格式)
-      targetDate: _parseDateField(json['target_time'] ??
-              json['target_date'] ??
-              json['targetDate']) ??
+      targetDate:
+          _parseDateField(
+            json['target_time'] ?? json['target_date'] ?? json['targetDate'],
+          ) ??
           DateTime.now().add(const Duration(days: 1)),
-      isDeleted: json['is_deleted'] == 1 ||
+      isDeleted:
+          json['is_deleted'] == 1 ||
           json['is_deleted'] == true ||
           json['isDeleted'] == true,
-      isCompleted: json['is_completed'] == 1 ||
+      isCompleted:
+          json['is_completed'] == 1 ||
           json['is_completed'] == true ||
           json['isCompleted'] == true,
       version: JsonValueParser.toInt(json['version'], fallback: 1),
@@ -615,9 +685,9 @@ class TodoGroup {
     this.creatorName,
     this.hasConflict = false,
     this.conflictData,
-  })  : id = id ?? const Uuid().v4(),
-        updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch,
-        createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch;
+  }) : id = id ?? const Uuid().v4(),
+       updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch,
+       createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch;
 
   void markAsChanged() {
     version++;
@@ -625,21 +695,21 @@ class TodoGroup {
   }
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'uuid': id,
-        'name': name,
-        'is_expanded': isExpanded ? 1 : 0,
-        'is_deleted': isDeleted ? 1 : 0,
-        'version': version,
-        'updated_at': updatedAt,
-        'created_at': createdAt,
-        'team_uuid': teamUuid,
-        'team_name': teamName,
-        'creator_id': creatorId,
-        'creator_name': creatorName,
-        'has_conflict': hasConflict ? 1 : 0,
-        'conflict_data': conflictData != null ? jsonEncode(conflictData) : null,
-      };
+    'id': id,
+    'uuid': id,
+    'name': name,
+    'is_expanded': isExpanded ? 1 : 0,
+    'is_deleted': isDeleted ? 1 : 0,
+    'version': version,
+    'updated_at': updatedAt,
+    'created_at': createdAt,
+    'team_uuid': teamUuid,
+    'team_name': teamName,
+    'creator_id': creatorId,
+    'creator_name': creatorName,
+    'has_conflict': hasConflict ? 1 : 0,
+    'conflict_data': conflictData != null ? jsonEncode(conflictData) : null,
+  };
 
   factory TodoGroup.fromSql(Map<String, dynamic> map) =>
       TodoGroup.fromJson(map);
@@ -677,6 +747,11 @@ DateTime? _parseDateField(dynamic val) {
   return JsonValueParser.localDateTime(val);
 }
 
+DateTime? _localDateCopy(DateTime? value) {
+  if (value == null) return null;
+  return _parseDateField(value.toUtc().millisecondsSinceEpoch);
+}
+
 String? _emptyStringToNull(String? value) {
   if (value == null || value.isEmpty || value == 'null') return null;
   return value;
@@ -709,9 +784,9 @@ class TimeLogItem {
     this.isDeleted = false,
     this.deviceId,
     this.teamUuid,
-  })  : id = id ?? const Uuid().v4(),
-        updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch,
-        createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch;
+  }) : id = id ?? const Uuid().v4(),
+       updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch,
+       createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch;
 
   void markAsChanged() {
     version++;
@@ -719,27 +794,29 @@ class TimeLogItem {
   }
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'title': title,
-        'tag_uuids': tagUuids,
-        'start_time': startTime,
-        'end_time': endTime,
-        'remark': remark,
-        'version': version,
-        'updated_at': updatedAt,
-        'created_at': createdAt,
-        'is_deleted': isDeleted ? 1 : 0,
-        'device_id': deviceId,
-        'team_uuid': teamUuid,
-      };
+    'id': id,
+    'title': title,
+    'tag_uuids': tagUuids,
+    'start_time': startTime,
+    'end_time': endTime,
+    'remark': remark,
+    'version': version,
+    'updated_at': updatedAt,
+    'created_at': createdAt,
+    'is_deleted': isDeleted ? 1 : 0,
+    'device_id': deviceId,
+    'team_uuid': teamUuid,
+  };
 
   factory TimeLogItem.fromJson(Map<String, dynamic> json) {
     return TimeLogItem(
-      id: json['id']?.toString() ??
+      id:
+          json['id']?.toString() ??
           json['uuid']?.toString() ??
           const Uuid().v4(),
       title: json['title']?.toString() ?? '',
-      tagUuids: (json['tag_uuids'] as List<dynamic>?)
+      tagUuids:
+          (json['tag_uuids'] as List<dynamic>?)
               ?.map((e) => e.toString())
               .toList() ??
           [],
@@ -820,10 +897,10 @@ class TodoPlanBlock {
     this.isDeleted = false,
     this.isChangedLocally = false,
     this.deviceId,
-  })  : id = id ?? const Uuid().v4(),
-        pomodoroRecordIds = pomodoroRecordIds ?? [],
-        createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch,
-        updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch;
+  }) : id = id ?? const Uuid().v4(),
+       pomodoroRecordIds = pomodoroRecordIds ?? [],
+       createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch,
+       updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch;
 
   void markAsChanged() {
     version++;
@@ -832,27 +909,27 @@ class TodoPlanBlock {
   }
 
   Map<String, dynamic> toJson() => {
-        'uuid': id,
-        'todo_uuid': todoId,
-        'title_snapshot': titleSnapshot,
-        'start_time': startTime,
-        'end_time': endTime,
-        'planned_minutes': plannedMinutes,
-        'actual_focus_seconds': actualFocusSeconds,
-        'status': status.index,
-        'source': source.index,
-        'remark': remark,
-        'reminder_minutes': reminderMinutes,
-        'pomodoro_minutes': pomodoroMinutes,
-        'pomodoro_rounds': pomodoroRounds,
-        'calendar_event_id': calendarEventId,
-        'pomodoro_record_ids': pomodoroRecordIds.join(','),
-        'version': version,
-        'created_at': createdAt,
-        'updated_at': updatedAt,
-        'is_deleted': isDeleted ? 1 : 0,
-        'device_id': deviceId,
-      };
+    'uuid': id,
+    'todo_uuid': todoId,
+    'title_snapshot': titleSnapshot,
+    'start_time': startTime,
+    'end_time': endTime,
+    'planned_minutes': plannedMinutes,
+    'actual_focus_seconds': actualFocusSeconds,
+    'status': status.index,
+    'source': source.index,
+    'remark': remark,
+    'reminder_minutes': reminderMinutes,
+    'pomodoro_minutes': pomodoroMinutes,
+    'pomodoro_rounds': pomodoroRounds,
+    'calendar_event_id': calendarEventId,
+    'pomodoro_record_ids': pomodoroRecordIds.join(','),
+    'version': version,
+    'created_at': createdAt,
+    'updated_at': updatedAt,
+    'is_deleted': isDeleted ? 1 : 0,
+    'device_id': deviceId,
+  };
 
   Map<String, dynamic> toDbJson() {
     final data = toJson();
@@ -863,39 +940,40 @@ class TodoPlanBlock {
   }
 
   factory TodoPlanBlock.fromJson(Map<String, dynamic> j) => TodoPlanBlock(
-        id: (j['uuid'] ?? j['id'])?.toString(),
-        todoId:
-            (j['todo_uuid'] ?? j['todo_id'] ?? j['todoId'])?.toString() ?? '',
-        titleSnapshot: (j['title_snapshot'] ?? j['titleSnapshot'])?.toString(),
-        startTime: JsonValueParser.toInt(j['start_time']),
-        endTime: JsonValueParser.toInt(j['end_time']),
-        plannedMinutes: JsonValueParser.toInt(j['planned_minutes']),
-        actualFocusSeconds: JsonValueParser.toInt(j['actual_focus_seconds']),
-        status: TodoPlanStatus.values[JsonValueParser.toInt(j['status'])
+    id: (j['uuid'] ?? j['id'])?.toString(),
+    todoId: (j['todo_uuid'] ?? j['todo_id'] ?? j['todoId'])?.toString() ?? '',
+    titleSnapshot: (j['title_snapshot'] ?? j['titleSnapshot'])?.toString(),
+    startTime: JsonValueParser.toInt(j['start_time']),
+    endTime: JsonValueParser.toInt(j['end_time']),
+    plannedMinutes: JsonValueParser.toInt(j['planned_minutes']),
+    actualFocusSeconds: JsonValueParser.toInt(j['actual_focus_seconds']),
+    status:
+        TodoPlanStatus.values[JsonValueParser.toInt(j['status'])
             .clamp(0, TodoPlanStatus.values.length - 1)
             .toInt()],
-        source: TodoPlanSource.values[JsonValueParser.toInt(j['source'])
+    source:
+        TodoPlanSource.values[JsonValueParser.toInt(j['source'])
             .clamp(0, TodoPlanSource.values.length - 1)
             .toInt()],
-        remark: j['remark']?.toString(),
-        reminderMinutes:
-            JsonValueParser.toInt(j['reminder_minutes'], fallback: 5),
-        pomodoroMinutes:
-            JsonValueParser.toInt(j['pomodoro_minutes'], fallback: 25),
-        pomodoroRounds: JsonValueParser.toInt(j['pomodoro_rounds']),
-        calendarEventId: _emptyStringToNull(
-            (j['calendar_event_id'] ?? j['calendarEventId'])?.toString()),
-        pomodoroRecordIds: (j['pomodoro_record_ids'] as String?)
-                ?.split(',')
-                .where((s) => s.isNotEmpty)
-                .toList() ??
-            [],
-        version: JsonValueParser.toInt(j['version'], fallback: 1),
-        createdAt: JsonValueParser.toNullableInt(j['created_at']),
-        updatedAt: JsonValueParser.toNullableInt(j['updated_at']),
-        isDeleted: j['is_deleted'] == 1 || j['is_deleted'] == true,
-        deviceId: j['device_id']?.toString(),
-      );
+    remark: j['remark']?.toString(),
+    reminderMinutes: JsonValueParser.toInt(j['reminder_minutes'], fallback: 5),
+    pomodoroMinutes: JsonValueParser.toInt(j['pomodoro_minutes'], fallback: 25),
+    pomodoroRounds: JsonValueParser.toInt(j['pomodoro_rounds']),
+    calendarEventId: _emptyStringToNull(
+      (j['calendar_event_id'] ?? j['calendarEventId'])?.toString(),
+    ),
+    pomodoroRecordIds:
+        (j['pomodoro_record_ids'] as String?)
+            ?.split(',')
+            .where((s) => s.isNotEmpty)
+            .toList() ??
+        [],
+    version: JsonValueParser.toInt(j['version'], fallback: 1),
+    createdAt: JsonValueParser.toNullableInt(j['created_at']),
+    updatedAt: JsonValueParser.toNullableInt(j['updated_at']),
+    isDeleted: j['is_deleted'] == 1 || j['is_deleted'] == true,
+    deviceId: j['device_id']?.toString(),
+  );
 }
 
 // ==========================================
@@ -981,11 +1059,11 @@ class FixedScheduleItem {
     this.version = 1,
     int? createdAt,
     int? updatedAt,
-  })  : id = id ?? const Uuid().v4(),
-        reminderMinutes = List<int>.from(reminderMinutes ?? const [15]),
-        relatedTodoIds = List<String>.from(relatedTodoIds ?? const []),
-        createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch,
-        updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch;
+  }) : id = id ?? const Uuid().v4(),
+       reminderMinutes = List<int>.from(reminderMinutes ?? const [15]),
+       relatedTodoIds = List<String>.from(relatedTodoIds ?? const []),
+       createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch,
+       updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch;
 
   FixedSchedulePhase phaseAt(DateTime now) {
     if (status == FixedScheduleStatus.cancelled || isDeleted) {
@@ -1011,31 +1089,31 @@ class FixedScheduleItem {
   }
 
   Map<String, dynamic> toJson() => {
-        'uuid': id,
-        'title': title,
-        'date': date,
-        'start_time': startTime,
-        'end_time': endTime,
-        'status': status.index,
-        'source': source.index,
-        'location': location,
-        'remark': remark,
-        'reminder_minutes': jsonEncode(reminderMinutes),
-        'timezone': timezone,
-        'recurrence': recurrence.index,
-        'custom_interval_days': customIntervalDays,
-        'recurrence_series_id': recurrenceSeriesId,
-        'related_todo_ids': jsonEncode(relatedTodoIds),
-        'external_source': externalSource,
-        'external_id': externalId,
-        'team_uuid': teamUuid,
-        'owner_user_id': ownerUserId,
-        'device_id': deviceId,
-        'is_deleted': isDeleted ? 1 : 0,
-        'version': version,
-        'created_at': createdAt,
-        'updated_at': updatedAt,
-      };
+    'uuid': id,
+    'title': title,
+    'date': date,
+    'start_time': startTime,
+    'end_time': endTime,
+    'status': status.index,
+    'source': source.index,
+    'location': location,
+    'remark': remark,
+    'reminder_minutes': jsonEncode(reminderMinutes),
+    'timezone': timezone,
+    'recurrence': recurrence.index,
+    'custom_interval_days': customIntervalDays,
+    'recurrence_series_id': recurrenceSeriesId,
+    'related_todo_ids': jsonEncode(relatedTodoIds),
+    'external_source': externalSource,
+    'external_id': externalId,
+    'team_uuid': teamUuid,
+    'owner_user_id': ownerUserId,
+    'device_id': deviceId,
+    'is_deleted': isDeleted ? 1 : 0,
+    'version': version,
+    'created_at': createdAt,
+    'updated_at': updatedAt,
+  };
 
   factory FixedScheduleItem.fromJson(Map<String, dynamic> json) {
     List<T> parseList<T>(dynamic raw, T Function(dynamic) convert) {
@@ -1080,8 +1158,9 @@ class FixedScheduleItem {
         json['custom_interval_days'] ?? json['customIntervalDays'],
       ),
       recurrenceSeriesId: _emptyStringToNull(
-          (json['recurrence_series_id'] ?? json['recurrenceSeriesId'])
-              ?.toString()),
+        (json['recurrence_series_id'] ?? json['recurrenceSeriesId'])
+            ?.toString(),
+      ),
       relatedTodoIds: parseList<String>(
         json['related_todo_ids'] ?? json['relatedTodoIds'],
         (value) => value.toString(),
@@ -1122,42 +1201,45 @@ class SemesterInfo {
   });
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'name': name,
-        'start_date': startDate.toIso8601String(),
-        'end_date': endDate?.toIso8601String(),
-        'is_current': isCurrent,
-      };
+    'id': id,
+    'name': name,
+    'start_date': startDate.toIso8601String(),
+    'end_date': endDate?.toIso8601String(),
+    'is_current': isCurrent,
+  };
 
   factory SemesterInfo.fromJson(Map<String, dynamic> json) => SemesterInfo(
-        id: json['id']?.toString() ?? '',
-        name: json['name']?.toString() ?? '',
-        startDate: JsonValueParser.localDateTime(json['start_date']) ??
-            DateTime.fromMillisecondsSinceEpoch(0),
-        endDate: JsonValueParser.localDateTime(json['end_date']),
-        isCurrent: json['is_current'] == true || json['is_current'] == 1,
-      );
+    id: json['id']?.toString() ?? '',
+    name: json['name']?.toString() ?? '',
+    startDate:
+        JsonValueParser.localDateTime(json['start_date']) ??
+        DateTime.fromMillisecondsSinceEpoch(0),
+    endDate: JsonValueParser.localDateTime(json['end_date']),
+    isCurrent: json['is_current'] == true || json['is_current'] == 1,
+  );
 
   /// 转换为毫秒时间戳（用于云端同步）
   Map<String, dynamic> toCloudJson() => {
-        'id': id,
-        'name': name,
-        'start_ms': startDate.millisecondsSinceEpoch,
-        'end_ms': endDate?.millisecondsSinceEpoch,
-        'is_current': isCurrent,
-      };
+    'id': id,
+    'name': name,
+    'start_ms': startDate.millisecondsSinceEpoch,
+    'end_ms': endDate?.millisecondsSinceEpoch,
+    'is_current': isCurrent,
+  };
 
   factory SemesterInfo.fromCloudJson(Map<String, dynamic> json) => SemesterInfo(
-        id: json['id']?.toString() ?? '',
-        name: json['name']?.toString() ?? '',
-        startDate: DateTime.fromMillisecondsSinceEpoch(
-            JsonValueParser.toInt(json['start_ms'])),
-        endDate: json['end_ms'] != null
-            ? DateTime.fromMillisecondsSinceEpoch(
-                JsonValueParser.toInt(json['end_ms']))
-            : null,
-        isCurrent: json['is_current'] == true || json['is_current'] == 1,
-      );
+    id: json['id']?.toString() ?? '',
+    name: json['name']?.toString() ?? '',
+    startDate: DateTime.fromMillisecondsSinceEpoch(
+      JsonValueParser.toInt(json['start_ms']),
+    ),
+    endDate: json['end_ms'] != null
+        ? DateTime.fromMillisecondsSinceEpoch(
+            JsonValueParser.toInt(json['end_ms']),
+          )
+        : null,
+    isCurrent: json['is_current'] == true || json['is_current'] == 1,
+  );
 }
 
 class CourseItem {
@@ -1195,17 +1277,30 @@ class CourseItem {
     int? updatedAt,
     int? createdAt,
     this.isDeleted = false,
-  })  : semesterId = _canonicalSemesterId(semesterId),
-        uuid = uuid ??
-            generateDeterministicUuid(
-                courseName, weekday, startTime, endTime, weekIndex, roomName,
-                semesterId: _canonicalSemesterId(semesterId)),
-        updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch,
-        createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch;
+  }) : semesterId = _canonicalSemesterId(semesterId),
+       uuid =
+           uuid ??
+           generateDeterministicUuid(
+             courseName,
+             weekday,
+             startTime,
+             endTime,
+             weekIndex,
+             roomName,
+             semesterId: _canonicalSemesterId(semesterId),
+           ),
+       updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch,
+       createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch;
 
   static String generateDeterministicUuid(
-      String name, int day, int start, int end, int week, String room,
-      {String semesterId = 'default'}) {
+    String name,
+    int day,
+    int start,
+    int end,
+    int week,
+    String room, {
+    String semesterId = 'default',
+  }) {
     const namespace =
         '6ba7b810-9dad-11d1-80b4-00c04fd430c8'; // Namespace URL as seed
     final input =
@@ -1224,50 +1319,48 @@ class CourseItem {
       '${(endTime ~/ 100).toString().padLeft(2, '0')}:${(endTime % 100).toString().padLeft(2, '0')}';
 
   Map<String, dynamic> toJson() => {
-        'uuid': uuid,
-        'courseName': courseName,
-        'teacherName': teacherName,
-        'date': date,
-        'weekday': weekday,
-        'startTime': startTime,
-        'endTime': endTime,
-        'weekIndex': weekIndex,
-        'roomName': roomName,
-        'lessonType': lessonType,
-        'semester_id': semesterId,
-        'team_uuid': teamUuid,
-        'version': version,
-        'updated_at': updatedAt,
-        'created_at': createdAt,
-        'is_deleted': isDeleted ? 1 : 0,
-      };
+    'uuid': uuid,
+    'courseName': courseName,
+    'teacherName': teacherName,
+    'date': date,
+    'weekday': weekday,
+    'startTime': startTime,
+    'endTime': endTime,
+    'weekIndex': weekIndex,
+    'roomName': roomName,
+    'lessonType': lessonType,
+    'semester_id': semesterId,
+    'team_uuid': teamUuid,
+    'version': version,
+    'updated_at': updatedAt,
+    'created_at': createdAt,
+    'is_deleted': isDeleted ? 1 : 0,
+  };
 
   factory CourseItem.fromJson(Map<String, dynamic> json) => CourseItem(
-        uuid: (json['uuid'] ?? json['id'])?.toString(),
-        courseName:
-            (json['courseName'] ?? json['course_name'])?.toString() ?? '未知课程',
-        teacherName:
-            (json['teacherName'] ?? json['teacher_name'])?.toString() ?? '未知教师',
-        date: json['date']?.toString() ?? '',
-        weekday: JsonValueParser.toInt(json['weekday'], fallback: 1),
-        startTime: JsonValueParser.toInt(
-          json['startTime'] ?? json['start_time'],
-        ),
-        endTime: JsonValueParser.toInt(json['endTime'] ?? json['end_time']),
-        weekIndex: JsonValueParser.toInt(
-          json['weekIndex'] ?? json['week_index'],
-          fallback: 1,
-        ),
-        roomName: (json['roomName'] ?? json['room_name'])?.toString() ?? '未知地点',
-        lessonType: (json['lessonType'] ?? json['lesson_type'])?.toString(),
-        semesterId: (json['semester_id'] ?? json['semesterId'])?.toString() ??
-            'default',
-        teamUuid: (json['team_uuid'] ?? json['teamUuid'])?.toString(),
-        version: JsonValueParser.toInt(json['version'], fallback: 1),
-        updatedAt: JsonValueParser.toNullableInt(json['updated_at']),
-        createdAt: JsonValueParser.toNullableInt(json['created_at']),
-        isDeleted: json['is_deleted'] == 1 || json['is_deleted'] == true,
-      );
+    uuid: (json['uuid'] ?? json['id'])?.toString(),
+    courseName:
+        (json['courseName'] ?? json['course_name'])?.toString() ?? '未知课程',
+    teacherName:
+        (json['teacherName'] ?? json['teacher_name'])?.toString() ?? '未知教师',
+    date: json['date']?.toString() ?? '',
+    weekday: JsonValueParser.toInt(json['weekday'], fallback: 1),
+    startTime: JsonValueParser.toInt(json['startTime'] ?? json['start_time']),
+    endTime: JsonValueParser.toInt(json['endTime'] ?? json['end_time']),
+    weekIndex: JsonValueParser.toInt(
+      json['weekIndex'] ?? json['week_index'],
+      fallback: 1,
+    ),
+    roomName: (json['roomName'] ?? json['room_name'])?.toString() ?? '未知地点',
+    lessonType: (json['lessonType'] ?? json['lesson_type'])?.toString(),
+    semesterId:
+        (json['semester_id'] ?? json['semesterId'])?.toString() ?? 'default',
+    teamUuid: (json['team_uuid'] ?? json['teamUuid'])?.toString(),
+    version: JsonValueParser.toInt(json['version'], fallback: 1),
+    updatedAt: JsonValueParser.toNullableInt(json['updated_at']),
+    createdAt: JsonValueParser.toNullableInt(json['created_at']),
+    isDeleted: json['is_deleted'] == 1 || json['is_deleted'] == true,
+  );
 }
 
 // ==========================================
@@ -1292,12 +1385,12 @@ class TeamMember {
   });
 
   factory TeamMember.fromJson(Map<String, dynamic> json) => TeamMember(
-        userId: JsonValueParser.toInt(json['user_id']),
-        username: json['username']?.toString(),
-        email: json['email']?.toString(),
-        role: (json['role'] == 0) ? TeamRole.admin : TeamRole.member,
-        joinedAt: _parseTimestamp(json['joined_at']),
-      );
+    userId: JsonValueParser.toInt(json['user_id']),
+    username: json['username']?.toString(),
+    email: json['email']?.toString(),
+    role: (json['role'] == 0) ? TeamRole.admin : TeamRole.member,
+    joinedAt: _parseTimestamp(json['joined_at']),
+  );
 }
 
 class Team {
@@ -1320,16 +1413,16 @@ class Team {
   });
 
   factory Team.fromJson(Map<String, dynamic> json) => Team(
-        uuid: json['uuid']?.toString() ?? '',
-        name: json['name']?.toString() ?? '未命名团队',
-        creatorId: int.tryParse(json['creator_id']?.toString() ?? '0') ?? 0,
-        createdAt: _parseTimestamp(json['created_at']),
-        userRole: (json['role'] == 0 || json['user_role'] == 0)
-            ? TeamRole.admin
-            : TeamRole.member,
-        memberCount: int.tryParse(json['member_count']?.toString() ?? '1') ?? 1,
-        inviteCode: json['invite_code']?.toString(),
-      );
+    uuid: json['uuid']?.toString() ?? '',
+    name: json['name']?.toString() ?? '未命名团队',
+    creatorId: int.tryParse(json['creator_id']?.toString() ?? '0') ?? 0,
+    createdAt: _parseTimestamp(json['created_at']),
+    userRole: (json['role'] == 0 || json['user_role'] == 0)
+        ? TeamRole.admin
+        : TeamRole.member,
+    memberCount: int.tryParse(json['member_count']?.toString() ?? '1') ?? 1,
+    inviteCode: json['invite_code']?.toString(),
+  );
 }
 
 class TeamInvitation {
@@ -1356,11 +1449,11 @@ class ConflictInfo {
   });
 
   factory ConflictInfo.fromJson(Map<String, dynamic> json) => ConflictInfo(
-        type: json['type']?.toString() ?? 'unknown',
-        item: (json['item'] as Map?)?.cast<String, dynamic>() ?? {},
-        conflictWith:
-            (json['conflict_with'] as Map?)?.cast<String, dynamic>() ?? {},
-      );
+    type: json['type']?.toString() ?? 'unknown',
+    item: (json['item'] as Map?)?.cast<String, dynamic>() ?? {},
+    conflictWith:
+        (json['conflict_with'] as Map?)?.cast<String, dynamic>() ?? {},
+  );
 }
 
 class TeamAnnouncement {
@@ -1404,16 +1497,16 @@ class TeamAnnouncement {
   }
 
   Map<String, dynamic> toJson() => {
-        'uuid': uuid,
-        'team_uuid': teamUuid,
-        'title': title,
-        'content': content,
-        'creator_name': creatorName,
-        'created_at': createdAt,
-        'expires_at': expiresAt,
-        'is_priority': isPriority ? 1 : 0,
-        'is_read': isRead ? 1 : 0,
-      };
+    'uuid': uuid,
+    'team_uuid': teamUuid,
+    'title': title,
+    'content': content,
+    'creator_name': creatorName,
+    'created_at': createdAt,
+    'expires_at': expiresAt,
+    'is_priority': isPriority ? 1 : 0,
+    'is_read': isRead ? 1 : 0,
+  };
 }
 
 class TeamShare {
@@ -1455,26 +1548,27 @@ class TeamShare {
       expiresAt != null && expiresAt! < DateTime.now().millisecondsSinceEpoch;
 
   factory TeamShare.fromJson(Map<String, dynamic> json) => TeamShare(
-        id: JsonValueParser.toInt(json['id']),
-        shareCode: json['share_code']?.toString() ?? '',
-        teamUuid: json['team_uuid']?.toString() ?? '',
-        title: json['title']?.toString(),
-        description: json['description']?.toString(),
-        shareTodos: json['share_todos'] == 1 || json['share_todos'] == true,
-        shareSchedules: json['share_schedules'] == null ||
-            json['share_schedules'] == 1 ||
-            json['share_schedules'] == true,
-        shareCountdowns:
-            json['share_countdowns'] == 1 || json['share_countdowns'] == true,
-        shareAnnouncements: json['share_announcements'] == 1 ||
-            json['share_announcements'] == true,
-        hasPassword: json['has_password'] == true || json['has_password'] == 1,
-        expiresAt: JsonValueParser.toNullableInt(json['expires_at']),
-        viewCount: JsonValueParser.toInt(json['view_count']),
-        createdAt: JsonValueParser.toInt(json['created_at']),
-        isActive: json['is_active'] == 1 || json['is_active'] == true,
-        shareUrl: json['share_url']?.toString(),
-      );
+    id: JsonValueParser.toInt(json['id']),
+    shareCode: json['share_code']?.toString() ?? '',
+    teamUuid: json['team_uuid']?.toString() ?? '',
+    title: json['title']?.toString(),
+    description: json['description']?.toString(),
+    shareTodos: json['share_todos'] == 1 || json['share_todos'] == true,
+    shareSchedules:
+        json['share_schedules'] == null ||
+        json['share_schedules'] == 1 ||
+        json['share_schedules'] == true,
+    shareCountdowns:
+        json['share_countdowns'] == 1 || json['share_countdowns'] == true,
+    shareAnnouncements:
+        json['share_announcements'] == 1 || json['share_announcements'] == true,
+    hasPassword: json['has_password'] == true || json['has_password'] == 1,
+    expiresAt: JsonValueParser.toNullableInt(json['expires_at']),
+    viewCount: JsonValueParser.toInt(json['view_count']),
+    createdAt: JsonValueParser.toInt(json['created_at']),
+    isActive: json['is_active'] == 1 || json['is_active'] == true,
+    shareUrl: json['share_url']?.toString(),
+  );
 }
 
 // ==========================================
@@ -1503,7 +1597,7 @@ enum SearchResultType {
   challengeTask,
   challengeTemplate,
   recommend,
-  history
+  history,
 }
 
 class SearchResult {

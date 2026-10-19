@@ -23,29 +23,33 @@ Future<List<CourseItem>> recoverLegacyCoursesFromSql(String username) async {
     for (final dbName in candidateNames)
       absolute(join('.dart_tool', 'sqflite_common_ffi', 'databases', dbName)),
     for (final dbName in candidateNames)
-      absolute(join(
-        'build',
-        'windows',
-        'x64',
-        'runner',
-        'Debug',
-        '.dart_tool',
-        'sqflite_common_ffi',
-        'databases',
-        dbName,
-      )),
+      absolute(
+        join(
+          'build',
+          'windows',
+          'x64',
+          'runner',
+          'Debug',
+          '.dart_tool',
+          'sqflite_common_ffi',
+          'databases',
+          dbName,
+        ),
+      ),
     for (final dbName in candidateNames)
-      absolute(join(
-        'build',
-        'windows',
-        'x64',
-        'runner',
-        'Release',
-        '.dart_tool',
-        'sqflite_common_ffi',
-        'databases',
-        dbName,
-      )),
+      absolute(
+        join(
+          'build',
+          'windows',
+          'x64',
+          'runner',
+          'Release',
+          '.dart_tool',
+          'sqflite_common_ffi',
+          'databases',
+          dbName,
+        ),
+      ),
   };
 
   for (final legacyPath in candidatePaths) {

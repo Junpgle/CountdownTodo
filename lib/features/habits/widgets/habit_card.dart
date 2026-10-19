@@ -14,6 +14,10 @@ import '../../../services/liquid_glass_effect_service.dart';
 import '../../../widgets/optional_liquid_glass_surface.dart';
 import 'habit_format.dart';
 import 'habit_quick_checkin_sheet.dart';
+import '../services/habit_streak_service.dart';
+import 'habit_celebration_overlay.dart';
+import 'habit_checkin_button.dart';
+import 'habit_stamp_badge.dart';
 
 /// 单个习惯卡片：进度条 + 类型化操作按钮。
 ///
@@ -26,7 +30,7 @@ class HabitCard extends StatefulWidget {
   /// 数据变化后通知父级刷新。
   final VoidCallback onChanged;
 
-  /// 时长型习惯「开始专注」回调（由父级负责启动并跳转番茄钟）。
+  /// 时长型习惯「开始专注」回调（由父级打开番茄钟并预绑定习惯专注信息）。
   final Future<void> Function(HabitGoal goal)? onStartFocus;
 
   /// 时长型习惯「查看记录」回调（默认由父级跳转详情页）。
@@ -72,8 +76,33 @@ class HabitCard extends StatefulWidget {
 class _HabitCardState extends State<HabitCard> {
   bool _busy = false;
   bool _isPressed = false;
+  bool _justStamped = false;
 
   ColorScheme get _colors => Theme.of(context).colorScheme;
+
+  @override
+  void didUpdateWidget(HabitCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.dayProgress.status != HabitDayStatus.met &&
+        widget.dayProgress.status == HabitDayStatus.met &&
+        !_justStamped) {
+      _triggerStampAnimation();
+    }
+  }
+
+  void _triggerStampAnimation() {
+    if (!mounted) return;
+    if (_justStamped) {
+      setState(() => _justStamped = false);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          setState(() => _justStamped = true);
+        }
+      });
+    } else {
+      setState(() => _justStamped = true);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -90,9 +119,9 @@ class _HabitCardState extends State<HabitCard> {
       onTapUp: (_) {
         if (widget.onTap != null) {
           setState(() => _isPressed = false);
-          widget.onTap!();
         }
       },
+      onTap: widget.onTap,
       onTapCancel: () {
         if (widget.onTap != null) setState(() => _isPressed = false);
       },
@@ -104,8 +133,9 @@ class _HabitCardState extends State<HabitCard> {
           key: widget.animationKey,
           margin: EdgeInsets.symmetric(vertical: widget.compact ? 2 : 6),
           borderRadius: widget.compact ? 18 : 24,
-          tint: (widget.isLight ? _colors.scrim : statusColor)
-              .withValues(alpha: 0.16),
+          tint: (widget.isLight ? _colors.scrim : statusColor).withValues(
+            alpha: 0.16,
+          ),
           isDark: isDark,
           fallbackDecoration: BoxDecoration(
             color: _colors.surfaceContainerLow,
@@ -123,27 +153,66 @@ class _HabitCardState extends State<HabitCard> {
                 offset: AppPlatform.isAndroid
                     ? const Offset(0, 4)
                     : (widget.compact
-                        ? const Offset(0, 4)
-                        : const Offset(0, 8)),
+                          ? const Offset(0, 4)
+                          : const Offset(0, 8)),
               ),
             ],
           ),
-          child: Padding(
-            padding: widget.compact
-                ? const EdgeInsets.fromLTRB(12, 12, 12, 10)
-                : const EdgeInsets.fromLTRB(16, 18, 16, 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(widget.compact ? 18 : 24),
+            child: Stack(
               children: [
-                _buildHeader(progress, status),
-                if (widget.goal.sourceType != HabitSourceType.timeCheckIn &&
-                    widget.goal.sourceType !=
-                        HabitSourceType.recurringTodo) ...[
-                  SizedBox(height: widget.compact ? 8 : 14),
-                  _buildProgressBar(progress, status),
-                ],
-                SizedBox(height: widget.compact ? 8 : 12),
-                _buildActions(progress, status),
+                // 1. 底层水印印章：右下角出血位，超出边界被 ClipRRect 裁切，形成半透明防伪印质感
+                if (_justStamped || status == HabitDayStatus.met)
+                  Positioned(
+                    right: widget.compact ? -18 : -22,
+                    bottom: widget.compact ? -16 : -20,
+                    child: IgnorePointer(
+                      child: HabitStampBadge(
+                        animate: _justStamped,
+                        text: '已达成',
+                        size: widget.compact ? 116 : 136,
+                        opacity: 0.22,
+                        color: _colors.cdtSuccess,
+                        onAnimationComplete: () {
+                          if (mounted && _justStamped) {
+                            setState(() => _justStamped = false);
+                          }
+                        },
+                      ),
+                    ),
+                  ),
+
+                // 2. 前景主体：文字、进度、操作按钮（在水印上层渲染，信息绝不被遮挡）
+                Padding(
+                  padding: widget.compact
+                      ? const EdgeInsets.fromLTRB(12, 12, 12, 10)
+                      : const EdgeInsets.fromLTRB(16, 18, 16, 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildHeader(progress, status),
+                      if (widget.goal.sourceType !=
+                              HabitSourceType.timeCheckIn &&
+                          widget.goal.sourceType !=
+                              HabitSourceType.recurringTodo) ...[
+                        SizedBox(height: widget.compact ? 8 : 14),
+                        _buildProgressBar(progress, status),
+                      ],
+                      SizedBox(height: widget.compact ? 8 : 12),
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () {
+                          // 吸收操作按钮区域的点击手势，阻止向上冒泡触发卡片全局详情跳转
+                        },
+                        onTapDown: (_) {},
+                        onTapUp: (_) {},
+                        onTapCancel: () {},
+                        child: _buildActions(progress, status),
+                      ),
+                    ],
+                  ),
+                ),
               ],
             ),
           ),
@@ -222,7 +291,7 @@ class _HabitCardState extends State<HabitCard> {
         final coachingTarget = _sleepCoachingTargetLabel;
         return '${HabitText.periodLabel(widget.rule)} · '
             '${coachingTarget == null ? HabitText.durationProgressForGoal(widget.goal, progress) : '${HabitText.formatDuration(progress.currentValue.round())} · '
-                '本期目标 $coachingTarget'}';
+                      '本期目标 $coachingTarget'}';
       case HabitSourceType.quantityCheckIn:
         final unit = widget.rule.unit;
         return '${HabitText.periodLabel(widget.rule)} · '
@@ -281,21 +350,49 @@ class _HabitCardState extends State<HabitCard> {
         text = '已跳过';
         break;
     }
-    return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: widget.compact ? 6 : 8,
-        vertical: widget.compact ? 3 : 4,
-      ),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Text(
-        text,
-        style: TextStyle(
-          fontSize: widget.compact ? 10 : 11,
-          fontWeight: FontWeight.w600,
-          color: color,
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 350),
+      transitionBuilder: (child, animation) {
+        return ScaleTransition(
+          scale: CurvedAnimation(parent: animation, curve: Curves.elasticOut),
+          child: child,
+        );
+      },
+      child: Container(
+        key: ValueKey(status),
+        padding: EdgeInsets.symmetric(
+          horizontal: widget.compact ? 6 : 8,
+          vertical: widget.compact ? 3 : 4,
+        ),
+        decoration: BoxDecoration(
+          color: color.withValues(
+            alpha: status == HabitDayStatus.met ? 0.16 : 0.1,
+          ),
+          borderRadius: BorderRadius.circular(6),
+          border: status == HabitDayStatus.met
+              ? Border.all(color: color.withValues(alpha: 0.35), width: 1)
+              : null,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (status == HabitDayStatus.met) ...[
+              Icon(
+                Icons.check_circle_rounded,
+                size: widget.compact ? 11 : 12,
+                color: color,
+              ),
+              const SizedBox(width: 3),
+            ],
+            Text(
+              text,
+              style: TextStyle(
+                fontSize: widget.compact ? 10 : 11,
+                fontWeight: FontWeight.w600,
+                color: color,
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -305,22 +402,30 @@ class _HabitCardState extends State<HabitCard> {
   Widget _buildProgressBar(HabitProgress progress, HabitDayStatus status) {
     final barColor = _statusColor(status);
     final coaching = widget.sleepCoachingMetric;
-    final ratio = coaching?.kind == HabitAdaptationKind.sleepDuration &&
+    final ratio =
+        coaching?.kind == HabitAdaptationKind.sleepDuration &&
             coaching!.stageTarget > 0
         ? (progress.currentValue / (coaching.stageTarget * 60)).clamp(0.0, 1.0)
         : progress.completionRatio.clamp(0.0, 1.0);
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(2),
-      child: LinearProgressIndicator(
-        value: ratio,
-        minHeight: 4,
-        backgroundColor:
-            widget.isLight && LiquidGlassEffectService.configuration.enabled
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: 0.0, end: ratio),
+      duration: const Duration(milliseconds: 550),
+      curve: Curves.easeOutCubic,
+      builder: (context, animatedRatio, _) {
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(3),
+          child: LinearProgressIndicator(
+            value: animatedRatio,
+            minHeight: widget.compact ? 4 : 5,
+            backgroundColor:
+                widget.isLight && LiquidGlassEffectService.configuration.enabled
                 ? _colors.onPrimary.withValues(alpha: 0.18)
                 : _colors.surfaceContainerHighest,
-        valueColor: AlwaysStoppedAnimation(barColor),
-      ),
+            valueColor: AlwaysStoppedAnimation(barColor),
+          ),
+        );
+      },
     );
   }
 
@@ -330,7 +435,7 @@ class _HabitCardState extends State<HabitCard> {
       case HabitSourceType.recurringTodo:
         return _buildCompletionAction(progress);
       case HabitSourceType.pomodoroTag:
-        return _buildDurationAction();
+        return _buildDurationAction(progress, status);
       case HabitSourceType.durationCheckIn:
         return _buildSleepDurationAction();
       case HabitSourceType.quantityCheckIn:
@@ -345,26 +450,67 @@ class _HabitCardState extends State<HabitCard> {
     return Row(
       children: [
         Expanded(
-          child: FilledButton.tonal(
-            onPressed: done || _busy ? null : () => _toggleDone(progress),
-            style: FilledButton.styleFrom(
-              padding: EdgeInsets.symmetric(
-                vertical: widget.compact ? 8 : 12,
-              ),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(widget.compact ? 10 : 12),
-              ),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(done ? Icons.check_circle_rounded : Icons.check_rounded,
-                    size: widget.compact ? 16 : 18),
-                SizedBox(width: widget.compact ? 4 : 6),
-                Text(done ? '已完成' : '完成'),
-              ],
-            ),
-          ),
+          child: done
+              ? FilledButton.tonal(
+                  onPressed: null,
+                  style: FilledButton.styleFrom(
+                    padding: EdgeInsets.symmetric(
+                      vertical: widget.compact ? 8 : 12,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(
+                        widget.compact ? 10 : 12,
+                      ),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.check_circle_rounded,
+                        size: widget.compact ? 16 : 18,
+                      ),
+                      SizedBox(width: widget.compact ? 4 : 6),
+                      const Text('已完成'),
+                    ],
+                  ),
+                )
+              : HabitCelebrationTrigger(
+                  enabled: !_busy,
+                  burstColor: _colors.cdtSuccess,
+                  borderRadius: BorderRadius.circular(widget.compact ? 10 : 12),
+                  holdHint: '长按以完成习惯',
+                  onCheckIn: () => _toggleDone(progress),
+                  child: IgnorePointer(
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.tonal(
+                        onPressed: () {},
+                        style: FilledButton.styleFrom(
+                          padding: EdgeInsets.symmetric(
+                            vertical: widget.compact ? 8 : 12,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(
+                              widget.compact ? 10 : 12,
+                            ),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.check_rounded,
+                              size: widget.compact ? 16 : 18,
+                            ),
+                            SizedBox(width: widget.compact ? 4 : 6),
+                            const Text('完成'),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
         ),
         if (done) ...[
           const SizedBox(width: 8),
@@ -387,39 +533,110 @@ class _HabitCardState extends State<HabitCard> {
   }
 
   Future<void> _toggleDone(HabitProgress progress) async {
+    final wasGoalMet = progress.goalMet;
+    if (wasGoalMet) {
+      setState(() => _justStamped = false);
+    }
     setState(() => _busy = true);
     try {
       await HabitRepository.setCompletion(
         goal: widget.goal,
         logicalDate: DateTime.now(),
-        done: !progress.goalMet,
+        done: !wasGoalMet,
         username: widget.username,
       );
+      if (!wasGoalMet && mounted) {
+        _triggerStampAnimation();
+        _checkAndTriggerCelebration();
+      } else if (mounted) {
+        setState(() => _justStamped = false);
+      }
       widget.onChanged();
     } finally {
       if (mounted) setState(() => _busy = false);
     }
   }
 
-  Widget _buildDurationAction() {
+  Widget _buildDurationAction(HabitProgress progress, HabitDayStatus status) {
+    final currentSeconds = progress.currentValue;
+    final isMet = progress.goalMet;
+
+    if (isMet) {
+      return Row(
+        children: [
+          Expanded(
+            child: FilledButton.tonal(
+              onPressed: null,
+              style: FilledButton.styleFrom(
+                padding: EdgeInsets.symmetric(
+                  vertical: widget.compact ? 8 : 12,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(widget.compact ? 10 : 12),
+                ),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.check_circle_rounded,
+                    size: widget.compact ? 16 : 18,
+                  ),
+                  SizedBox(width: widget.compact ? 4 : 6),
+                  Text(
+                    widget.compact
+                        ? '已达标'
+                        : '已达标 (${(currentSeconds / 60).round()}分钟)',
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (widget.onStartFocus != null) ...[
+            const SizedBox(width: 8),
+            IconButton.filledTonal(
+              tooltip: '继续专注',
+              onPressed: _busy ? null : _startFocus,
+              icon: Icon(
+                Icons.play_arrow_rounded,
+                size: widget.compact ? 16 : 18,
+              ),
+              style: IconButton.styleFrom(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(widget.compact ? 10 : 12),
+                ),
+              ),
+            ),
+          ],
+          if (widget.onViewRecords != null) ...[
+            const SizedBox(width: 8),
+            TextButton(
+              onPressed: widget.onViewRecords,
+              style: TextButton.styleFrom(
+                padding: EdgeInsets.symmetric(
+                  horizontal: widget.compact ? 10 : 16,
+                  vertical: widget.compact ? 8 : 12,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(widget.compact ? 10 : 12),
+                ),
+              ),
+              child: const Text('记录'),
+            ),
+          ],
+        ],
+      );
+    }
+
     return Row(
       children: [
         Expanded(
           child: FilledButton.tonal(
             onPressed: _busy || widget.onStartFocus == null
                 ? null
-                : () async {
-                    setState(() => _busy = true);
-                    try {
-                      await widget.onStartFocus?.call(widget.goal);
-                    } finally {
-                      if (mounted) setState(() => _busy = false);
-                    }
-                  },
+                : _startFocus,
             style: FilledButton.styleFrom(
-              padding: EdgeInsets.symmetric(
-                vertical: widget.compact ? 8 : 12,
-              ),
+              padding: EdgeInsets.symmetric(vertical: widget.compact ? 8 : 12),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(widget.compact ? 10 : 12),
               ),
@@ -429,7 +646,7 @@ class _HabitCardState extends State<HabitCard> {
               children: [
                 Icon(Icons.play_arrow_rounded, size: widget.compact ? 16 : 18),
                 SizedBox(width: widget.compact ? 4 : 6),
-                Text('开始专注'),
+                const Text('开始专注'),
               ],
             ),
           ),
@@ -447,11 +664,22 @@ class _HabitCardState extends State<HabitCard> {
                 borderRadius: BorderRadius.circular(widget.compact ? 10 : 12),
               ),
             ),
-            child: const Text('查看记录'),
+            child: const Text('记录'),
           ),
         ],
       ],
     );
+  }
+
+  Future<void> _startFocus() async {
+    final onStartFocus = widget.onStartFocus;
+    if (_busy || onStartFocus == null) return;
+    setState(() => _busy = true);
+    try {
+      await onStartFocus(widget.goal);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   Widget _buildSleepDurationAction() {
@@ -471,9 +699,7 @@ class _HabitCardState extends State<HabitCard> {
                     );
                   },
             style: FilledButton.styleFrom(
-              padding: EdgeInsets.symmetric(
-                vertical: widget.compact ? 8 : 12,
-              ),
+              padding: EdgeInsets.symmetric(vertical: widget.compact ? 8 : 12),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(widget.compact ? 10 : 12),
               ),
@@ -481,8 +707,10 @@ class _HabitCardState extends State<HabitCard> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.edit_calendar_rounded,
-                    size: widget.compact ? 16 : 18),
+                Icon(
+                  Icons.edit_calendar_rounded,
+                  size: widget.compact ? 16 : 18,
+                ),
                 SizedBox(width: widget.compact ? 4 : 6),
                 Text('手动修正睡眠时长'),
               ],
@@ -507,9 +735,7 @@ class _HabitCardState extends State<HabitCard> {
   }
 
   Widget _buildQuantityAction(HabitDayStatus status) {
-    final adaptation = HabitAdaptationService.forHabit(
-      widget.goal,
-    );
+    final adaptation = HabitAdaptationService.forHabit(widget.goal);
     final quickValues = widget.rule.quickValues.isNotEmpty
         ? widget.rule.quickValues
         : adaptation?.suggestedQuickValues ?? const [1];
@@ -520,7 +746,9 @@ class _HabitCardState extends State<HabitCard> {
       runSpacing: widget.compact ? 4 : 8,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        ...quickValues.take(3).map(
+        ...quickValues
+            .take(3)
+            .map(
               (v) => _quickValueChip(
                 v.toDouble(),
                 unit,
@@ -546,23 +774,33 @@ class _HabitCardState extends State<HabitCard> {
     final text = value == value.roundToDouble()
         ? value.round().toString()
         : value.toString();
-    return FilledButton.tonal(
-      onPressed: _busy ? null : () => _quickCheckIn(value, text),
-      style: FilledButton.styleFrom(
-        padding: EdgeInsets.symmetric(
-          horizontal: widget.compact ? 12 : 16,
-          vertical: widget.compact ? 6 : 8,
-        ),
-        minimumSize: Size(0, widget.compact ? 32 : 36),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(widget.compact ? 10 : 12),
+    final chipLabel = label ?? (unit.isNotEmpty ? '$text $unit' : text);
+    return HabitCelebrationTrigger(
+      burstColor: _colors.primary,
+      holdHint: '长按打卡 $chipLabel',
+      enabled: !_busy,
+      onCheckIn: () => _quickCheckIn(value, text),
+      child: IgnorePointer(
+        child: FilledButton.tonal(
+          onPressed: () {},
+          style: FilledButton.styleFrom(
+            padding: EdgeInsets.symmetric(
+              horizontal: widget.compact ? 12 : 16,
+              vertical: widget.compact ? 6 : 8,
+            ),
+            minimumSize: Size(0, widget.compact ? 32 : 36),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(widget.compact ? 10 : 12),
+            ),
+          ),
+          child: Text(chipLabel),
         ),
       ),
-      child: Text(label ?? (unit.isNotEmpty ? '$text $unit' : text)),
     );
   }
 
   Future<void> _quickCheckIn(double value, String label) async {
+    final wasGoalMet = widget.dayProgress.progress.goalMet;
     setState(() => _busy = true);
     try {
       final checkIn = await HabitRepository.addCheckIn(
@@ -571,6 +809,15 @@ class _HabitCardState extends State<HabitCard> {
         localOccurredAt: DateTime.now(),
         value: value,
       );
+      final target = widget.rule.targetValue;
+      final current = widget.dayProgress.progress.currentValue;
+      final isNowGoalMet = (current + value >= target);
+      if (isNowGoalMet && mounted) {
+        _triggerStampAnimation();
+        if (!wasGoalMet) {
+          _checkAndTriggerCelebration();
+        }
+      }
       widget.onChanged();
       _showUndoSnackBar('已记录 $label${widget.rule.unit}', checkIn);
     } finally {
@@ -615,25 +862,108 @@ class _HabitCardState extends State<HabitCard> {
           SizedBox(width: widget.compact ? 6 : 8),
         ],
         Expanded(
-          child: FilledButton.tonal(
-            onPressed: _busy ? null : () => _openTimePicker(actual),
-            style: FilledButton.styleFrom(
-              padding: EdgeInsets.symmetric(
-                vertical: widget.compact ? 8 : 12,
+          child: HabitCelebrationTrigger(
+            enabled: !_busy,
+            burstColor: _colors.cdtSuccess,
+            borderRadius: BorderRadius.circular(widget.compact ? 10 : 12),
+            holdHint: actual == null ? '长按完成打卡' : '长按重新打卡',
+            onCheckIn: actual == null
+                ? () => _recordTimeCheckInDirectly()
+                : () => _openTimePicker(actual),
+            child: IgnorePointer(
+              child: SizedBox(
+                width: double.infinity,
+                child: FilledButton.tonal(
+                  onPressed: () {},
+                  style: FilledButton.styleFrom(
+                    padding: EdgeInsets.symmetric(
+                      vertical: widget.compact ? 8 : 12,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(
+                        widget.compact ? 10 : 12,
+                      ),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        actual == null
+                            ? Icons.check_rounded
+                            : Icons.edit_calendar_rounded,
+                        size: widget.compact ? 16 : 18,
+                      ),
+                      SizedBox(width: widget.compact ? 4 : 6),
+                      Text(actual == null ? '打卡' : '重新打卡'),
+                    ],
+                  ),
+                ),
               ),
+            ),
+          ),
+        ),
+        if (actual == null) ...[
+          const SizedBox(width: 8),
+          IconButton.filledTonal(
+            tooltip: '指定时间打卡',
+            onPressed: _busy ? null : () => _openTimePicker(null),
+            icon: Icon(Icons.schedule_rounded, size: widget.compact ? 16 : 18),
+            style: IconButton.styleFrom(
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(widget.compact ? 10 : 12),
               ),
             ),
-            child: Text(actual == null ? '打卡' : '重新打卡'),
           ),
-        ),
+        ],
       ],
+    );
+  }
+
+  Future<void> _recordTimeCheckInDirectly() async {
+    final now = DateTime.now();
+    final wasGoalMet = widget.dayProgress.progress.goalMet;
+    setState(() => _busy = true);
+    try {
+      final checkIn = await HabitRepository.addCheckIn(
+        goal: widget.goal,
+        rule: widget.rule,
+        localOccurredAt: now,
+        source: HabitCheckInSource.manual,
+      );
+      if (mounted) {
+        _triggerStampAnimation();
+        if (!wasGoalMet) {
+          _checkAndTriggerCelebration();
+        }
+      }
+      widget.onChanged();
+      _showTimeCheckInSnackBar(now, checkIn);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  void _showTimeCheckInSnackBar(DateTime occurred, HabitCheckIn checkIn) {
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    AppSnackBars.hideCurrent(messenger);
+    AppSnackBars.showSnackBar(
+      context,
+      SnackBar(
+        content: Text('已打卡 ${HabitText.timeOfDay(occurred)}'),
+        duration: const Duration(seconds: 4),
+        action: SnackBarAction(
+          label: '修改时间',
+          onPressed: () => _openTimePicker(occurred),
+        ),
+      ),
     );
   }
 
   Future<void> _openTimePicker(DateTime? existing) async {
     final now = DateTime.now();
+    final wasGoalMet = widget.dayProgress.progress.goalMet;
     final picked = await showAppTimePicker(
       context: context,
       initialTime: TimeOfDay.fromDateTime(existing ?? now),
@@ -642,21 +972,49 @@ class _HabitCardState extends State<HabitCard> {
     if (picked == null || !mounted) return;
     setState(() => _busy = true);
     try {
-      final occurred =
-          DateTime(now.year, now.month, now.day, picked.hour, picked.minute);
+      final occurred = DateTime(
+        now.year,
+        now.month,
+        now.day,
+        picked.hour,
+        picked.minute,
+      );
       final checkIn = await HabitRepository.addCheckIn(
         goal: widget.goal,
         rule: widget.rule,
         localOccurredAt: occurred,
         source: HabitCheckInSource.manual,
       );
+      if (mounted) {
+        _triggerStampAnimation();
+        if (!wasGoalMet) {
+          _checkAndTriggerCelebration();
+        }
+      }
       widget.onChanged();
-      _showUndoSnackBar(
-        '已记录 ${HabitText.timeOfDay(occurred)}',
-        checkIn,
-      );
+      _showUndoSnackBar('已记录 ${HabitText.timeOfDay(occurred)}', checkIn);
     } finally {
       if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _checkAndTriggerCelebration() async {
+    _triggerStampAnimation();
+    HabitStreakSummary? streakSummary;
+    try {
+      streakSummary = await HabitStreakService.summarize(
+        habit: widget.goal,
+        rules: [widget.rule],
+      );
+    } catch (_) {}
+    // 延迟 420ms 先让卡片上的印章猛烈盖下，随后升起全屏庆祝
+    await Future.delayed(const Duration(milliseconds: 420));
+    if (mounted) {
+      await showHabitGoalMetCelebration(
+        context,
+        goal: widget.goal,
+        streakDays: streakSummary?.currentStreak ?? 0,
+      );
     }
   }
 
@@ -667,9 +1025,7 @@ class _HabitCardState extends State<HabitCard> {
     AppSnackBars.showSnackBar(
       context,
       SnackBar(
-        content: Text(
-          wasReplacement ? '$message（已覆盖上一条记录）' : message,
-        ),
+        content: Text(wasReplacement ? '$message（已覆盖上一条记录）' : message),
         duration: const Duration(seconds: 4),
         action: wasReplacement
             ? null

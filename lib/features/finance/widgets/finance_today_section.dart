@@ -82,45 +82,52 @@ class _FinanceTodaySectionState extends State<FinanceTodaySection> {
       );
       if (!mounted || generation != _loadGeneration) return;
       final asOfAt = widget.clock().millisecondsSinceEpoch;
-      final occurredTransactions = transactions
-          .where((transaction) => transaction.balanceEventAt() <= asOfAt)
-          .toList(growable: false);
-      final upcomingTransaction = transactions
-          .where((transaction) => transaction.balanceEventAt() > asOfAt)
-          .fold<FinanceTransaction?>(null, (upcoming, transaction) {
-            if (upcoming == null) return transaction;
-            final upcomingEventAt = upcoming.balanceEventAt();
-            final transactionEventAt = transaction.balanceEventAt();
-            if (transactionEventAt != upcomingEventAt) {
-              return transactionEventAt < upcomingEventAt
-                  ? transaction
-                  : upcoming;
-            }
-            return transaction.updatedAt > upcoming.updatedAt
-                ? transaction
-                : upcoming;
-          });
-      final latestTransaction = occurredTransactions
-          .fold<FinanceTransaction?>(null, (latest, transaction) {
-        if (latest == null) return transaction;
-        final latestEventAt = latest.balanceEventAt();
-        final transactionEventAt = transaction.balanceEventAt();
-        if (transactionEventAt != latestEventAt) {
-          return transactionEventAt > latestEventAt ? transaction : latest;
+      final occurredTransactions = <FinanceTransaction>[];
+      FinanceTransaction? upcomingTransaction;
+      int? upcomingEventAt;
+      FinanceTransaction? latestTransaction;
+      int? latestEventAt;
+      final nowAt = DateTime.fromMillisecondsSinceEpoch(asOfAt);
+      var nextEventAt = DateTime(
+        nowAt.year,
+        nowAt.month + 1,
+      ).millisecondsSinceEpoch;
+
+      for (final transaction in transactions) {
+        final eventAt = transaction.balanceEventAt();
+        if (eventAt > asOfAt) {
+          if (upcomingTransaction == null ||
+              eventAt < upcomingEventAt! ||
+              (eventAt == upcomingEventAt &&
+                  transaction.updatedAt > upcomingTransaction.updatedAt)) {
+            upcomingTransaction = transaction;
+            upcomingEventAt = eventAt;
+          }
+          if (eventAt < nextEventAt) nextEventAt = eventAt;
+          continue;
         }
-        return transaction.updatedAt > latest.updatedAt ? transaction : latest;
-      });
+
+        occurredTransactions.add(transaction);
+        if (latestTransaction == null ||
+            eventAt > latestEventAt! ||
+            (eventAt == latestEventAt &&
+                transaction.updatedAt > latestTransaction.updatedAt)) {
+          latestTransaction = transaction;
+          latestEventAt = eventAt;
+        }
+      }
+      final summary = FinanceSummary.fromTransactions(occurredTransactions);
       setState(() {
-        _summary = FinanceSummary.fromTransactions(
-          transactions,
-          asOfAt: asOfAt,
-        );
+        _summary = summary;
         _latestTransaction = latestTransaction;
         _upcomingTransaction = upcomingTransaction;
         _isLoading = false;
         _hasError = false;
       });
-      _scheduleUpcomingTransactionRefresh(transactions, asOfAt);
+      _scheduleUpcomingTransactionRefresh(
+        asOfAt: asOfAt,
+        nextEventAt: nextEventAt,
+      );
     } catch (_) {
       if (!mounted || generation != _loadGeneration) return;
       setState(() {
@@ -130,23 +137,12 @@ class _FinanceTodaySectionState extends State<FinanceTodaySection> {
     }
   }
 
-  void _scheduleUpcomingTransactionRefresh(
-    Iterable<FinanceTransaction> transactions,
-    int asOfAt,
-  ) {
+  void _scheduleUpcomingTransactionRefresh({
+    required int asOfAt,
+    required int nextEventAt,
+  }) {
     _upcomingTransactionTimer?.cancel();
     _upcomingTransactionTimer = null;
-    final now = DateTime.fromMillisecondsSinceEpoch(asOfAt);
-    int? nextEventAt =
-        DateTime(now.year, now.month + 1).millisecondsSinceEpoch;
-    for (final transaction in transactions) {
-      final eventAt = transaction.balanceEventAt();
-      if (eventAt > asOfAt &&
-          (nextEventAt == null || eventAt < nextEventAt)) {
-        nextEventAt = eventAt;
-      }
-    }
-    if (nextEventAt == null) return;
     final delayMs = (nextEventAt - asOfAt + 1)
         .clamp(1, const Duration(days: 24).inMilliseconds)
         .toInt();
@@ -255,8 +251,8 @@ class _FinanceTodaySectionState extends State<FinanceTodaySection> {
                       ),
                     )
                   : _hasError
-                      ? _buildError(subColor)
-                      : _buildSummary(colorScheme, subColor),
+                  ? _buildError(subColor)
+                  : _buildSummary(colorScheme, subColor),
             ),
           ),
         ),
@@ -387,8 +383,8 @@ class _FinanceTodaySectionState extends State<FinanceTodaySection> {
     final amountColor = widget.isLight
         ? Colors.white
         : transaction.type == FinanceTransactionType.expense
-            ? colorScheme.error
-            : colorScheme.primary;
+        ? colorScheme.error
+        : colorScheme.primary;
 
     return Row(
       children: [
@@ -440,10 +436,7 @@ class _FinanceTodaySectionState extends State<FinanceTodaySection> {
         children: [
           Icon(Icons.receipt_long_outlined, size: 20, color: subColor),
           const SizedBox(width: 8),
-          Text(
-            '暂时无法读取本月账单',
-            style: TextStyle(color: subColor),
-          ),
+          Text('暂时无法读取本月账单', style: TextStyle(color: subColor)),
         ],
       ),
     );

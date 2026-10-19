@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import 'island_config.dart';
 
 /// Interface for custom island state handlers.
@@ -35,7 +36,7 @@ abstract class IslandStateHandler {
 /// Context provided to state handlers for interaction
 class IslandStateContext {
   final void Function(String action, [int? modifiedSecs, String? data])?
-      onAction;
+  onAction;
   final void Function(IslandStateConfig nextState) transitionTo;
   final void Function(Size targetSize) resizeWithAnimation;
   final Map<String, dynamic>? Function() getCurrentPayload;

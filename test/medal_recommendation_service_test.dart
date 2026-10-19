@@ -28,7 +28,7 @@ void main() {
         subjectDistribution: {
           'Math': 200.0,
           'English': 150.0,
-          'Science': 100.0
+          'Science': 100.0,
         },
         peakHour: 14,
         hourlyDistribution: List.filled(24, 0),
@@ -42,19 +42,23 @@ void main() {
     });
 
     test('All medals are properly defined', () {
-      expect(MedalRecommendationService.allMedals.length,
-          greaterThanOrEqualTo(21));
+      expect(
+        MedalRecommendationService.allMedals.length,
+        greaterThanOrEqualTo(21),
+      );
       expect(MedalRecommendationService.allMedals.isEmpty, false);
 
       // Check uniqueness of IDs
-      final ids =
-          MedalRecommendationService.allMedals.map((m) => m.id).toList();
+      final ids = MedalRecommendationService.allMedals
+          .map((m) => m.id)
+          .toList();
       expect(ids.length, equals(ids.toSet().length));
     });
 
     test('Calculate medal progress - focus_starter', () {
-      final medal = MedalRecommendationService.allMedals
-          .firstWhere((m) => m.id == 'focus_starter');
+      final medal = MedalRecommendationService.allMedals.firstWhere(
+        (m) => m.id == 'focus_starter',
+      );
       final progress = MedalRecommendationService.calculateMedalProgress(
         medal,
         mockSummary,
@@ -76,8 +80,9 @@ void main() {
     });
 
     test('Calculate medal progress - two_hour_guardian (incomplete)', () {
-      final medal = MedalRecommendationService.allMedals
-          .firstWhere((m) => m.id == 'two_hour_guardian');
+      final medal = MedalRecommendationService.allMedals.firstWhere(
+        (m) => m.id == 'two_hour_guardian',
+      );
       final progress = MedalRecommendationService.calculateMedalProgress(
         medal,
         mockSummary,
@@ -100,8 +105,9 @@ void main() {
     });
 
     test('Calculate medal progress - two_hour_guardian (complete)', () {
-      final medal = MedalRecommendationService.allMedals
-          .firstWhere((m) => m.id == 'two_hour_guardian');
+      final medal = MedalRecommendationService.allMedals.firstWhere(
+        (m) => m.id == 'two_hour_guardian',
+      );
       final progress = MedalRecommendationService.calculateMedalProgress(
         medal,
         mockSummary,
@@ -123,8 +129,9 @@ void main() {
     });
 
     test('Calculate medal progress - task_harvester', () {
-      final medal = MedalRecommendationService.allMedals
-          .firstWhere((m) => m.id == 'task_harvester');
+      final medal = MedalRecommendationService.allMedals.firstWhere(
+        (m) => m.id == 'task_harvester',
+      );
       final progress = MedalRecommendationService.calculateMedalProgress(
         medal,
         mockSummary,
@@ -145,8 +152,9 @@ void main() {
     });
 
     test('Calculate medal progress - plan_fulfiller', () {
-      final medal = MedalRecommendationService.allMedals
-          .firstWhere((m) => m.id == 'plan_fulfiller');
+      final medal = MedalRecommendationService.allMedals.firstWhere(
+        (m) => m.id == 'plan_fulfiller',
+      );
 
       // Test incomplete: 60% completion rate
       var progress = MedalRecommendationService.calculateMedalProgress(
@@ -184,8 +192,9 @@ void main() {
     });
 
     test('Calculate medal progress - stable_output', () {
-      final medal = MedalRecommendationService.allMedals
-          .firstWhere((m) => m.id == 'stable_output');
+      final medal = MedalRecommendationService.allMedals.firstWhere(
+        (m) => m.id == 'stable_output',
+      );
 
       // Create summary with low interruption rate
       final summaryLowInterruption = TimelineSummary(
@@ -250,8 +259,9 @@ void main() {
         );
       }).toList();
 
-      final recommendations =
-          MedalRecommendationService.recommendNext(allProgresses);
+      final recommendations = MedalRecommendationService.recommendNext(
+        allProgresses,
+      );
 
       expect(recommendations.length, lessThanOrEqualTo(3));
       // All should be unearned
@@ -313,7 +323,7 @@ void main() {
         'completion',
         'persistence',
         'efficiency',
-        'breadth'
+        'breadth',
       };
       for (final medal in MedalRecommendationService.allMedals) {
         expect(validCategories.contains(medal.category), true);
@@ -326,21 +336,20 @@ void main() {
       int consecutiveActiveDays = 0,
       DateTime? actualStartTime,
       DateTime? actualEndTime,
-    }) =>
-        TimelineSummary(
-          searchCount: 0,
-          todoCreatedCount: 0,
-          todoEditedCount: 0,
-          todoCompletedCount: 0,
-          countdownCreatedCount: 0,
-          countdownEditedCount: 0,
-          countdownCompletedCount: 0,
-          attendedCourses: const [],
-          pomodoroCount: 0,
-          consecutiveActiveDays: consecutiveActiveDays,
-          actualStartTime: actualStartTime,
-          actualEndTime: actualEndTime,
-        );
+    }) => TimelineSummary(
+      searchCount: 0,
+      todoCreatedCount: 0,
+      todoEditedCount: 0,
+      todoCompletedCount: 0,
+      countdownCreatedCount: 0,
+      countdownEditedCount: 0,
+      countdownCompletedCount: 0,
+      attendedCourses: const [],
+      pomodoroCount: 0,
+      consecutiveActiveDays: consecutiveActiveDays,
+      actualStartTime: actualStartTime,
+      actualEndTime: actualEndTime,
+    );
 
     test('persistence affinity counts calendar dates across spring DST', () {
       final features = MedalFeatureExtractor.extractFeatures(

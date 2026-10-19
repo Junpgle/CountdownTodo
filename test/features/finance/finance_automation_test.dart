@@ -20,11 +20,7 @@ void main() {
   }
 
   test('月末不存在指定日期时会落在当月最后一天', () {
-    final due = FinanceAutomationService.dueDateFor(
-      monthlyRule(),
-      2026,
-      2,
-    );
+    final due = FinanceAutomationService.dueDateFor(monthlyRule(), 2026, 2);
 
     expect(due, DateTime(2026, 2, 28, 9));
   });
@@ -195,10 +191,11 @@ void main() {
       now: DateTime(2026, 8, 20),
     );
 
-    expect(
-      dues.map((item) => item.periodKey),
-      ['2026-06', '2026-07', '2026-08'],
-    );
+    expect(dues.map((item) => item.periodKey), [
+      '2026-06',
+      '2026-07',
+      '2026-08',
+    ]);
   });
 
   test('无生成标记的历史规则只生成当前周期', () {

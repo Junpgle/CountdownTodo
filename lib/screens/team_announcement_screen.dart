@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+
 import '../services/api_service.dart';
 import '../models.dart';
 import '../utils/app_dialogs.dart';
@@ -18,6 +19,15 @@ class TeamAnnouncementScreen extends StatefulWidget {
 class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
   bool _isLoading = true;
   List<TeamAnnouncement> _announcements = [];
+  final Map<(String?, String), DateFormat> _dateFormatters = {};
+
+  DateFormat _cachedDateFormat(String pattern) {
+    final locale = Intl.defaultLocale;
+    return _dateFormatters.putIfAbsent((
+      locale,
+      pattern,
+    ), () => DateFormat(pattern, locale));
+  }
 
   @override
   void initState() {
@@ -31,8 +41,9 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
       final list = await ApiService.fetchTeamAnnouncements(widget.team.uuid);
       if (mounted) {
         setState(() {
-          _announcements =
-              list.map((e) => TeamAnnouncement.fromJson(e)).toList();
+          _announcements = list
+              .map((e) => TeamAnnouncement.fromJson(e))
+              .toList();
           _isLoading = false;
         });
       }
@@ -56,11 +67,13 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
         content: const Text('确定要撤回这条公告吗？撤回后所有成员将无法查看。'),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('取消')),
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
           TextButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('确定撤回', style: TextStyle(color: Colors.red))),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('确定撤回', style: TextStyle(color: Colors.red)),
+          ),
         ],
       ),
     );
@@ -70,8 +83,10 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
     if (!mounted) return;
     if (res['success'] == true) {
       _loadAnnouncements();
-      AppSnackBars.showSnackBar(context,
-          const SnackBar(content: Text('公告已撤回')));
+      AppSnackBars.showSnackBar(
+        context,
+        const SnackBar(content: Text('公告已撤回')),
+      );
     }
   }
 
@@ -102,9 +117,7 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const AppSheetDragHandle(
-                margin: EdgeInsets.only(bottom: 20),
-              ),
+              const AppSheetDragHandle(margin: EdgeInsets.only(bottom: 20)),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -113,27 +126,35 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
                       Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                            color: Theme.of(context)
-                                .colorScheme
-                                .secondary
-                                .withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(12)),
-                        child: Icon(Icons.campaign_rounded,
-                            color: Theme.of(context).colorScheme.secondary),
+                          color: Theme.of(context).colorScheme.secondary
+                              .withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(
+                          Icons.campaign_rounded,
+                          color: Theme.of(context).colorScheme.secondary,
+                        ),
                       ),
                       const SizedBox(width: 12),
-                      const Text('发布新公告',
-                          style: TextStyle(
-                              fontSize: 18, fontWeight: FontWeight.bold)),
+                      const Text(
+                        '发布新公告',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ],
                   ),
                   Row(
                     children: [
-                      Text('重要置顶',
-                          style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                              color: Theme.of(context).colorScheme.secondary)),
+                      Text(
+                        '重要置顶',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: Theme.of(context).colorScheme.secondary,
+                        ),
+                      ),
                       LiquidGlassSwitch(
                         value: isPriority,
                         activeColor: Theme.of(context).colorScheme.secondary,
@@ -145,32 +166,38 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
                 ],
               ),
               const SizedBox(height: 16),
-              const Text('有效期设置',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+              const Text(
+                '有效期设置',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+              ),
               const SizedBox(height: 8),
               Wrap(
                 spacing: 8,
                 children: [
                   ChoiceChip(
-                      label: const Text('永久'),
-                      selected: selectedExpiryHours == null,
-                      onSelected: (s) =>
-                          setModalState(() => selectedExpiryHours = null)),
+                    label: const Text('永久'),
+                    selected: selectedExpiryHours == null,
+                    onSelected: (s) =>
+                        setModalState(() => selectedExpiryHours = null),
+                  ),
                   ChoiceChip(
-                      label: const Text('1天'),
-                      selected: selectedExpiryHours == 24,
-                      onSelected: (s) =>
-                          setModalState(() => selectedExpiryHours = 24)),
+                    label: const Text('1天'),
+                    selected: selectedExpiryHours == 24,
+                    onSelected: (s) =>
+                        setModalState(() => selectedExpiryHours = 24),
+                  ),
                   ChoiceChip(
-                      label: const Text('3天'),
-                      selected: selectedExpiryHours == 72,
-                      onSelected: (s) =>
-                          setModalState(() => selectedExpiryHours = 72)),
+                    label: const Text('3天'),
+                    selected: selectedExpiryHours == 72,
+                    onSelected: (s) =>
+                        setModalState(() => selectedExpiryHours = 72),
+                  ),
                   ChoiceChip(
-                      label: const Text('7天'),
-                      selected: selectedExpiryHours == 168,
-                      onSelected: (s) =>
-                          setModalState(() => selectedExpiryHours = 168)),
+                    label: const Text('7天'),
+                    selected: selectedExpiryHours == 168,
+                    onSelected: (s) =>
+                        setModalState(() => selectedExpiryHours = 168),
+                  ),
                 ],
               ),
               const SizedBox(height: 24),
@@ -180,7 +207,8 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
                   labelText: '公告标题',
                   hintText: '输入一个吸引人的标题...',
                   border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16)),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
                   filled: true,
                   fillColor: Colors.grey.withValues(alpha: 0.05),
                 ),
@@ -193,7 +221,8 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
                   labelText: '公告内容',
                   hintText: '详细描述公告信息...',
                   border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16)),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
                   filled: true,
                   fillColor: Colors.grey.withValues(alpha: 0.05),
                 ),
@@ -209,7 +238,8 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
                         : Theme.of(context).colorScheme.secondary,
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16)),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
                     elevation: 0,
                   ),
                   onPressed: isPosting
@@ -218,8 +248,9 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
                           if (titleController.text.isEmpty ||
                               contentController.text.isEmpty) {
                             AppSnackBars.showSnackBar(
-                                context,
-                                const SnackBar(content: Text('标题和内容不能为空')));
+                              context,
+                              const SnackBar(content: Text('标题和内容不能为空')),
+                            );
                             return;
                           }
                           setModalState(() => isPosting = true);
@@ -242,23 +273,29 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
                             Navigator.pop(context);
                             _loadAnnouncements();
                             AppSnackBars.showSnackBarFromMessenger(
-                                messenger,
-                                const SnackBar(
-                                    content: Text('公告已发布 🚀'),
-                                    backgroundColor: Colors.green));
+                              messenger,
+                              const SnackBar(
+                                content: Text('公告已发布 🚀'),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
                           } else {
                             AppSnackBars.showSnackBar(
-                                context,
-                                SnackBar(
-                                    content: Text(res['error'] ?? '发布失败')));
+                              context,
+                              SnackBar(content: Text(res['error'] ?? '发布失败')),
+                            );
                             setModalState(() => isPosting = false);
                           }
                         },
                   child: isPosting
                       ? const CircularProgressIndicator(color: Colors.white)
-                      : Text(isPriority ? '发布重要公告' : '立即发布',
+                      : Text(
+                          isPriority ? '发布重要公告' : '立即发布',
                           style: const TextStyle(
-                              fontSize: 16, fontWeight: FontWeight.bold)),
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                 ),
               ),
             ],
@@ -300,11 +337,11 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const AppSheetDragHandle(
-                margin: EdgeInsets.only(bottom: 16),
+              const AppSheetDragHandle(margin: EdgeInsets.only(bottom: 16)),
+              const Text(
+                '阅读率统计',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
-              const Text('阅读率统计',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               const SizedBox(height: 16),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -312,17 +349,22 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
                   _buildStatItem('已读人数', '${res['read_count']}'),
                   _buildStatItem('总人数', '${res['total_members']}'),
                   _buildStatItem(
-                      '阅读率', '${(readRate * 100).toStringAsFixed(1)}%'),
+                    '阅读率',
+                    '${(readRate * 100).toStringAsFixed(1)}%',
+                  ),
                 ],
               ),
               const SizedBox(height: 16),
               const Divider(),
               const SizedBox(height: 8),
-              const Text('已读成员列表',
-                  style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.grey)),
+              const Text(
+                '已读成员列表',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey,
+                ),
+              ),
               const SizedBox(height: 12),
               ConstrainedBox(
                 constraints: BoxConstraints(
@@ -339,22 +381,29 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
                         itemBuilder: (context, index) {
                           final member = readMembers[index] is Map
                               ? (readMembers[index] as Map)
-                                  .cast<String, dynamic>()
+                                    .cast<String, dynamic>()
                               : const <String, dynamic>{};
                           final readAt = JsonValueParser.toInt(
                             member['read_at'],
                             fallback: DateTime.now().millisecondsSinceEpoch,
                           );
-                          final time = DateFormat('MM-dd HH:mm').format(
-                              DateTime.fromMillisecondsSinceEpoch(readAt));
+                          final time = _cachedDateFormat(
+                            'MM-dd HH:mm',
+                          ).format(DateTime.fromMillisecondsSinceEpoch(readAt));
                           return ListTile(
                             leading: const CircleAvatar(
-                                child: Icon(Icons.person, size: 16)),
-                            title:
-                                Text(member['username']?.toString() ?? '未知成员'),
-                            trailing: Text(time,
-                                style: const TextStyle(
-                                    fontSize: 12, color: Colors.grey)),
+                              child: Icon(Icons.person, size: 16),
+                            ),
+                            title: Text(
+                              member['username']?.toString() ?? '未知成员',
+                            ),
+                            trailing: Text(
+                              time,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey,
+                              ),
+                            ),
                           );
                         },
                       ),
@@ -369,11 +418,14 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
   Widget _buildStatItem(String label, String value) {
     return Column(
       children: [
-        Text(value,
-            style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: Theme.of(context).colorScheme.secondary)),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+            color: Theme.of(context).colorScheme.secondary,
+          ),
+        ),
         Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
       ],
     );
@@ -386,19 +438,23 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
     final topBarHeight = floatingGlassTopBarHeight(context);
 
     return Scaffold(
-      backgroundColor:
-          isDark ? const Color(0xFF121212) : const Color(0xFFF7F8FA),
+      backgroundColor: isDark
+          ? const Color(0xFF121212)
+          : const Color(0xFFF7F8FA),
       extendBodyBehindAppBar: true,
       appBar: FloatingGlassAppBar(
-        title: Text('${widget.team.name} 公告',
-            style: const TextStyle(fontWeight: FontWeight.bold)),
+        title: Text(
+          '${widget.team.name} 公告',
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
         elevation: 0,
         backgroundColor: Colors.transparent,
         flexibleSpace: const FloatingGlassTopBarBackground(),
         actions: [
           IconButton(
-              icon: const Icon(Icons.refresh_rounded),
-              onPressed: _loadAnnouncements),
+            icon: const Icon(Icons.refresh_rounded),
+            onPressed: _loadAnnouncements,
+          ),
         ],
       ),
       body: FloatingGlassTopBarContentFade(
@@ -406,17 +462,19 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
         child: _isLoading
             ? const Center(child: CircularProgressIndicator())
             : _announcements.isEmpty
-                ? _buildEmptyState(isDark)
-                : RefreshIndicator(
-                    onRefresh: _loadAnnouncements,
-                    child: ListView.builder(
-                      padding:
-                          EdgeInsets.fromLTRB(16, topBarHeight + 12, 16, 12),
-                      itemCount: _announcements.length,
-                      itemBuilder: (context, index) => _buildAnnouncementCard(
-                          _announcements[index], isDark, isAdmin),
-                    ),
+            ? _buildEmptyState(isDark)
+            : RefreshIndicator(
+                onRefresh: _loadAnnouncements,
+                child: ListView.builder(
+                  padding: EdgeInsets.fromLTRB(16, topBarHeight + 12, 16, 12),
+                  itemCount: _announcements.length,
+                  itemBuilder: (context, index) => _buildAnnouncementCard(
+                    _announcements[index],
+                    isDark,
+                    isAdmin,
                   ),
+                ),
+              ),
       ),
       floatingActionButton: isAdmin
           ? FloatingGlassActionButton.extended(
@@ -435,8 +493,11 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.campaign_outlined,
-              size: 64, color: Colors.grey.withValues(alpha: 0.3)),
+          Icon(
+            Icons.campaign_outlined,
+            size: 64,
+            color: Colors.grey.withValues(alpha: 0.3),
+          ),
           const SizedBox(height: 16),
           Text('暂无团队公告', style: TextStyle(color: Colors.grey.shade500)),
         ],
@@ -445,12 +506,15 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
   }
 
   Widget _buildAnnouncementCard(
-      TeamAnnouncement ann, bool isDark, bool isAdmin) {
-    final timeStr = DateFormat('yyyy-MM-dd HH:mm')
+    TeamAnnouncement ann,
+    bool isDark,
+    bool isAdmin,
+  ) {
+    final timeStr = _cachedDateFormat('yyyy-MM-dd HH:mm')
         .format(DateTime.fromMillisecondsSinceEpoch(ann.createdAt));
     final expiryStr = ann.expiresAt != null
-        ? DateFormat('MM-dd HH:mm')
-            .format(DateTime.fromMillisecondsSinceEpoch(ann.expiresAt!))
+        ? _cachedDateFormat('MM-dd HH:mm')
+              .format(DateTime.fromMillisecondsSinceEpoch(ann.expiresAt!))
         : '永久';
 
     return Container(
@@ -465,9 +529,10 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
             ? []
             : [
                 BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.02),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4))
+                  color: Colors.black.withValues(alpha: 0.02),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
               ],
       ),
       child: Column(
@@ -489,22 +554,30 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
                               padding: const EdgeInsets.only(right: 8),
                               child: Container(
                                 padding: const EdgeInsets.symmetric(
-                                    horizontal: 6, vertical: 2),
+                                  horizontal: 6,
+                                  vertical: 2,
+                                ),
                                 decoration: BoxDecoration(
-                                    color: Colors.orange,
-                                    borderRadius: BorderRadius.circular(4)),
-                                child: const Text('重要',
-                                    style: TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.bold)),
+                                  color: Colors.orange,
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: const Text(
+                                  '重要',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
                               ),
                             ),
                           Expanded(
                             child: Text(
                               ann.title,
                               style: const TextStyle(
-                                  fontSize: 18, fontWeight: FontWeight.bold),
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
@@ -514,54 +587,83 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
                     if (!ann.isRead)
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 4),
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
                         decoration: BoxDecoration(
-                            color: Colors.redAccent.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(8)),
-                        child: const Text('未读',
-                            style: TextStyle(
-                                fontSize: 10,
-                                color: Colors.redAccent,
-                                fontWeight: FontWeight.bold)),
+                          color: Colors.redAccent.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Text(
+                          '未读',
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: Colors.redAccent,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                       ),
                   ],
                 ),
                 const SizedBox(height: 8),
                 Row(
                   children: [
-                    Icon(Icons.person_rounded,
-                        size: 14, color: Colors.grey.shade500),
+                    Icon(
+                      Icons.person_rounded,
+                      size: 14,
+                      color: Colors.grey.shade500,
+                    ),
                     const SizedBox(width: 4),
-                    Text(ann.creatorName ?? '管理员',
-                        style: TextStyle(
-                            fontSize: 12, color: Colors.grey.shade500)),
+                    Text(
+                      ann.creatorName ?? '管理员',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade500,
+                      ),
+                    ),
                     const SizedBox(width: 12),
-                    Icon(Icons.access_time_rounded,
-                        size: 14, color: Colors.grey.shade500),
+                    Icon(
+                      Icons.access_time_rounded,
+                      size: 14,
+                      color: Colors.grey.shade500,
+                    ),
                     const SizedBox(width: 4),
-                    Text(timeStr,
-                        style: TextStyle(
-                            fontSize: 12, color: Colors.grey.shade500)),
+                    Text(
+                      timeStr,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade500,
+                      ),
+                    ),
                     if (ann.expiresAt != null) ...[
                       const SizedBox(width: 12),
-                      Icon(Icons.timer_off_outlined,
-                          size: 14, color: Colors.orange.shade300),
+                      Icon(
+                        Icons.timer_off_outlined,
+                        size: 14,
+                        color: Colors.orange.shade300,
+                      ),
                       const SizedBox(width: 4),
-                      Text('到期: $expiryStr',
-                          style: TextStyle(
-                              fontSize: 12, color: Colors.orange.shade300)),
-                    ]
+                      Text(
+                        '到期: $expiryStr',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.orange.shade300,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
                 const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 16),
-                    child: Divider(height: 1)),
+                  padding: EdgeInsets.symmetric(vertical: 16),
+                  child: Divider(height: 1),
+                ),
                 Text(
                   ann.content,
                   style: TextStyle(
-                      fontSize: 15,
-                      color: isDark ? Colors.white70 : Colors.black87,
-                      height: 1.5),
+                    fontSize: 15,
+                    color: isDark ? Colors.white70 : Colors.black87,
+                    height: 1.5,
+                  ),
                 ),
               ],
             ),
@@ -577,16 +679,17 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
                     icon: const Icon(Icons.bar_chart_rounded, size: 18),
                     label: const Text('统计'),
                     style: TextButton.styleFrom(
-                        foregroundColor:
-                            Theme.of(context).colorScheme.secondary),
+                      foregroundColor: Theme.of(context).colorScheme.secondary,
+                    ),
                   ),
                   const SizedBox(width: 8),
                   TextButton.icon(
                     onPressed: () => _deleteAnnouncement(ann.uuid),
                     icon: const Icon(Icons.undo_rounded, size: 18),
                     label: const Text('撤回'),
-                    style:
-                        TextButton.styleFrom(foregroundColor: Colors.redAccent),
+                    style: TextButton.styleFrom(
+                      foregroundColor: Colors.redAccent,
+                    ),
                   ),
                 ],
                 const Spacer(),
@@ -596,23 +699,27 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
                     icon: const Icon(Icons.check_circle_rounded, size: 18),
                     label: const Text('确认已读'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Theme.of(context)
-                          .colorScheme
-                          .secondary
+                      backgroundColor: Theme.of(context).colorScheme.secondary
                           .withValues(alpha: 0.1),
                       foregroundColor: Theme.of(context).colorScheme.secondary,
                       elevation: 0,
                       shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                     ),
                   )
                 else
                   TextButton.icon(
                     onPressed: null,
-                    icon: const Icon(Icons.check_circle_rounded,
-                        size: 18, color: Colors.green),
-                    label:
-                        const Text('已读', style: TextStyle(color: Colors.green)),
+                    icon: const Icon(
+                      Icons.check_circle_rounded,
+                      size: 18,
+                      color: Colors.green,
+                    ),
+                    label: const Text(
+                      '已读',
+                      style: TextStyle(color: Colors.green),
+                    ),
                   ),
               ],
             ),

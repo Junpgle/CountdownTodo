@@ -1,6 +1,6 @@
 import '../../../widgets/floating_glass_control.dart';
+
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../models/journal_entry.dart';
@@ -10,6 +10,7 @@ import '../services/journal_picker_context.dart';
 import '../services/journal_storage.dart';
 import '../../../widgets/optional_liquid_glass_surface.dart';
 import '../../../utils/app_dialogs.dart';
+import '../../../utils/time_utils.dart';
 
 class JournalEditorScreen extends StatefulWidget {
   final String accountId;
@@ -87,20 +88,20 @@ class _JournalEditorScreenState extends State<JournalEditorScreen> {
   }
 
   JournalImagePickContext get _pickerContext => JournalImagePickContext(
-        accountId: widget.accountId,
-        entryId: _entryId,
-        draftId: _draftId,
-        isEditing: _isEditing,
-      );
+    accountId: widget.accountId,
+    entryId: _entryId,
+    draftId: _draftId,
+    isEditing: _isEditing,
+  );
 
   Future<void> _restoreAfterRestart() async {
     if (widget.restoredDraftId != null) {
-      final draftAttachments =
-          await JournalMediaService.instance.restoreDraftAttachments(
-        accountId: widget.accountId,
-        draftId: _draftId,
-        entryId: _entryId,
-      );
+      final draftAttachments = await JournalMediaService.instance
+          .restoreDraftAttachments(
+            accountId: widget.accountId,
+            draftId: _draftId,
+            entryId: _entryId,
+          );
       if (!mounted) return;
       if (draftAttachments.isNotEmpty) {
         setState(() {
@@ -129,13 +130,15 @@ class _JournalEditorScreenState extends State<JournalEditorScreen> {
     final added = <JournalAttachment>[];
     try {
       for (final file in files.take(remaining)) {
-        added.add(await JournalMediaService.instance.importImage(
-          accountId: widget.accountId,
-          draftId: _draftId,
-          entryId: _entryId,
-          file: file,
-          sortOrder: _attachments.length + added.length,
-        ));
+        added.add(
+          await JournalMediaService.instance.importImage(
+            accountId: widget.accountId,
+            draftId: _draftId,
+            entryId: _entryId,
+            file: file,
+            sortOrder: _attachments.length + added.length,
+          ),
+        );
       }
       if (!mounted) {
         for (final attachment in added) {
@@ -161,7 +164,8 @@ class _JournalEditorScreenState extends State<JournalEditorScreen> {
   }
 
   Future<void> _takePhoto() async {
-    final isDesktop = Theme.of(context).platform == TargetPlatform.windows ||
+    final isDesktop =
+        Theme.of(context).platform == TargetPlatform.windows ||
         Theme.of(context).platform == TargetPlatform.macOS ||
         Theme.of(context).platform == TargetPlatform.linux;
     XFile? file;
@@ -315,8 +319,7 @@ class _JournalEditorScreenState extends State<JournalEditorScreen> {
   }
 
   void _showMessage(String message) {
-    AppSnackBars.showSnackBar(
-        context, SnackBar(content: Text(message)));
+    AppSnackBars.showSnackBar(context, SnackBar(content: Text(message)));
   }
 
   @override
@@ -372,15 +375,24 @@ class _JournalEditorScreenState extends State<JournalEditorScreen> {
                   children: [
                     TextButton.icon(
                       onPressed: _selectDate,
-                      style:
-                          TextButton.styleFrom(alignment: Alignment.centerLeft),
-                      icon: Icon(Icons.calendar_today_rounded,
-                          size: 18, color: scheme.primary),
+                      style: TextButton.styleFrom(
+                        alignment: Alignment.centerLeft,
+                      ),
+                      icon: Icon(
+                        Icons.calendar_today_rounded,
+                        size: 18,
+                        color: scheme.primary,
+                      ),
                       label: Text(
-                        DateFormat('yyyy年MM月dd日 · E', 'zh_CN')
-                            .format(_occurredAt),
+                        AppTimeFormats.format(
+                          _occurredAt,
+                          'yyyy年MM月dd日 · E',
+                          locale: 'zh_CN',
+                        ),
                         style: TextStyle(
-                            color: scheme.primary, fontWeight: FontWeight.w700),
+                          color: scheme.primary,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -420,8 +432,9 @@ class _JournalEditorScreenState extends State<JournalEditorScreen> {
                           Divider(
                             height: 1,
                             thickness: 0.8,
-                            color:
-                                scheme.outlineVariant.withValues(alpha: 0.35),
+                            color: scheme.outlineVariant.withValues(
+                              alpha: 0.35,
+                            ),
                           ),
                           const SizedBox(height: 8),
                           TextField(
@@ -430,8 +443,9 @@ class _JournalEditorScreenState extends State<JournalEditorScreen> {
                             maxLines: null,
                             keyboardType: TextInputType.multiline,
                             textCapitalization: TextCapitalization.sentences,
-                            style: theme.textTheme.bodyLarge
-                                ?.copyWith(height: 1.65),
+                            style: theme.textTheme.bodyLarge?.copyWith(
+                              height: 1.65,
+                            ),
                             decoration: const InputDecoration(
                               hintText: '写下此刻想留下的东西……',
                               filled: false,
@@ -460,7 +474,9 @@ class _JournalEditorScreenState extends State<JournalEditorScreen> {
                     OptionalLiquidGlassCard(
                       borderRadius: 24,
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 8),
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
                       highContrast: true,
                       tint: scheme.primary.withValues(alpha: 0.06),
                       fallbackDecoration: BoxDecoration(

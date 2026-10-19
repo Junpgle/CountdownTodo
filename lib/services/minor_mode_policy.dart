@@ -18,11 +18,11 @@ enum MinorModeAvailability {
 
 extension MinorModeAvailabilityLabel on MinorModeAvailability {
   String get label => switch (this) {
-        MinorModeAvailability.available => '可用',
-        MinorModeAvailability.parentAuthentication => '家长认证',
-        MinorModeAvailability.unavailable => '不可用',
-        MinorModeAvailability.systemManaged => '系统管理',
-      };
+    MinorModeAvailability.available => '可用',
+    MinorModeAvailability.parentAuthentication => '家长认证',
+    MinorModeAvailability.unavailable => '不可用',
+    MinorModeAvailability.systemManaged => '系统管理',
+  };
 }
 
 class MinorModeCapabilityRow {
@@ -37,13 +37,13 @@ class MinorModeCapabilityRow {
 
 extension MinorModeActionLabel on MinorModeAction {
   String get label => switch (this) {
-        MinorModeAction.aiInteraction => 'AI 功能',
-        MinorModeAction.llmConfiguration => '大模型配置',
-        MinorModeAction.dataImport => '数据导入',
-        MinorModeAction.dataExport => '数据导出',
-        MinorModeAction.updateSource => '更新源切换',
-        MinorModeAction.sensitive => '此操作',
-      };
+    MinorModeAction.aiInteraction => 'AI 功能',
+    MinorModeAction.llmConfiguration => '大模型配置',
+    MinorModeAction.dataImport => '数据导入',
+    MinorModeAction.dataExport => '数据导出',
+    MinorModeAction.updateSource => '更新源切换',
+    MinorModeAction.sensitive => '此操作',
+  };
 }
 
 class MinorModeAccessException implements Exception {
@@ -173,15 +173,10 @@ class MinorModePolicy {
   static bool requiresParentAuthentication(MinorModeState state) =>
       state.effectiveMinorMode;
 
-  static bool allowWhenParentAuthenticationUnavailable(
-    MinorModeState state,
-  ) =>
+  static bool allowWhenParentAuthenticationUnavailable(MinorModeState state) =>
       state.effectiveMinorMode && !state.parentAuthenticationSupported;
 
-  static bool isAllowedByAge(
-    MinorModeState state,
-    MinorModeAction action,
-  ) {
+  static bool isAllowedByAge(MinorModeState state, MinorModeAction action) {
     if (action != MinorModeAction.aiInteraction) return true;
     return allowsAdvancedAiInteraction(state);
   }
@@ -195,10 +190,7 @@ class MinorModePolicy {
     return true;
   }
 
-  static String denialMessage(
-    MinorModeState state,
-    MinorModeAction action,
-  ) {
+  static String denialMessage(MinorModeState state, MinorModeAction action) {
     if (!isAllowedByAge(state, action)) {
       return '当前未成年人模式年龄段暂不允许使用高级 AI 功能';
     }
@@ -213,8 +205,7 @@ class MinorModePolicy {
       MinorAgeBand.age3to7 ||
       MinorAgeBand.age8to11 ||
       MinorAgeBand.age13to15 ||
-      MinorAgeBand.age12to15 =>
-        false,
+      MinorAgeBand.age12to15 => false,
       MinorAgeBand.age16to17 || MinorAgeBand.adult => true,
       // An enabled minor mode with no usable age range must not silently
       // fall through to the adult/allowed branch.

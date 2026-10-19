@@ -1,17 +1,23 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter/services.dart';
+
 import '../update_service.dart';
 import 'login_screen.dart';
 import 'home_dashboard.dart';
 import '../services/tai_service.dart';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:video_player/video_player.dart';
+
 import '../storage_service.dart';
+
 import 'package:intl/intl.dart';
+
 import '../services/api_service.dart';
 import '../utils/app_platform.dart';
 import '../utils/page_transitions.dart';
@@ -38,11 +44,7 @@ import 'settings/device_calendar_read_page.dart';
 import '../utils/app_dialogs.dart';
 
 /// 控制功能页的入口展示范围。
-enum FeatureGuideMode {
-  automatic,
-  changelog,
-  guide,
-}
+enum FeatureGuideMode { automatic, changelog, guide }
 
 /// 首次安装或重大版本升级引导页 (v1.9.4+)
 class FeatureGuideScreen extends StatefulWidget {
@@ -88,10 +90,12 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
   int _currentPage = 0;
   // 标记是否为首次安装（用于决定引导结束后是否设置默认服务器）
   bool _isFirstLaunch = false;
-  static const platform =
-      MethodChannel('com.math_quiz.junpgle.com.math_quiz_app/notifications');
-  static const screenTimeChannel =
-      MethodChannel('com.math_quiz_app/screen_time');
+  static const platform = MethodChannel(
+    'com.math_quiz.junpgle.com.math_quiz_app/notifications',
+  );
+  static const screenTimeChannel = MethodChannel(
+    'com.math_quiz_app/screen_time',
+  );
   late final PermissionRequestCoordinator _permissionCoordinator;
 
   // 从远端加载的数据
@@ -359,7 +363,8 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
     final platformGuidePages = _buildPlatformGuidePages(
       onlyUnconfigured: onlyUnconfigured,
     );
-    final shouldShowGuide = widget.mode == FeatureGuideMode.guide ||
+    final shouldShowGuide =
+        widget.mode == FeatureGuideMode.guide ||
         (widget.mode == FeatureGuideMode.automatic &&
             (isFirstLaunch ||
                 widget.isManualReview ||
@@ -506,7 +511,8 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
         final map = Map<String, dynamic>.from(e as Map);
         // The API uses `semester`, while CourseItem accepts the local storage
         // name `semester_id`; preserve it before deserializing.
-        map['semester_id'] = map['semester_id'] ??
+        map['semester_id'] =
+            map['semester_id'] ??
             map['semester'] ??
             map['semesterId'] ??
             'default';
@@ -519,11 +525,13 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
     if (cloudSettings != null) {
       if (cloudSettings['semester_start'] != null) {
         semStart = DateTime.fromMillisecondsSinceEpoch(
-            (cloudSettings['semester_start'] as num).toInt());
+          (cloudSettings['semester_start'] as num).toInt(),
+        );
       }
       if (cloudSettings['semester_end'] != null) {
         semEnd = DateTime.fromMillisecondsSinceEpoch(
-            (cloudSettings['semester_end'] as num).toInt());
+          (cloudSettings['semester_end'] as num).toInt(),
+        );
       }
     }
 
@@ -584,8 +592,9 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
       );
       if (mounted) {
         setState(() {
-          _semesterStart =
-              CourseScheduleSemantics.mondayOf(_cloudSemesterStart!);
+          _semesterStart = CourseScheduleSemantics.mondayOf(
+            _cloudSemesterStart!,
+          );
           _semesterEnd = _cloudSemesterEnd;
           _hasCloudSemester = false;
         });
@@ -631,8 +640,9 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
           shownVersion,
           preferArchiveCache: !isFirstSplashAfterUpdate,
         );
-        final showDatabaseUpdatePage =
-            _shouldShowDatabaseUpdatePage(changelogHistory);
+        final showDatabaseUpdatePage = _shouldShowDatabaseUpdatePage(
+          changelogHistory,
+        );
         setState(() {
           _changelogHistory = changelogHistory;
           _showDatabaseUpdatePage = showDatabaseUpdatePage;
@@ -655,8 +665,9 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
             shownVersion,
             preferArchiveCache: true,
           );
-          final showDatabaseUpdatePage =
-              _shouldShowDatabaseUpdatePage(changelogHistory);
+          final showDatabaseUpdatePage = _shouldShowDatabaseUpdatePage(
+            changelogHistory,
+          );
           setState(() {
             _changelogHistory = changelogHistory;
             _showDatabaseUpdatePage = showDatabaseUpdatePage;
@@ -744,9 +755,11 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
 
     // 当前版本未发布更新日志时，展示清单中最近一个有内容的旧版本。
     return entries
-        .where((entry) =>
-            _compareVersionNames(entry.versionName, current) < 0 &&
-            entry.items.isNotEmpty)
+        .where(
+          (entry) =>
+              _compareVersionNames(entry.versionName, current) < 0 &&
+              entry.items.isNotEmpty,
+        )
         .take(1)
         .toList();
   }
@@ -798,7 +811,8 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
   }
 
   Future<void> _loadTaiConfig() async {
-    final path = await TaiService.getSavedDbPath() ??
+    final path =
+        await TaiService.getSavedDbPath() ??
         await TaiService.detectDefaultPath();
     if (path != null && mounted) {
       setState(() => _taiDbPath = path);
@@ -817,7 +831,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
       try {
         hasUsage =
             await screenTimeChannel.invokeMethod('checkUsagePermission') ??
-                false;
+            false;
       } catch (_) {}
       try {
         hasExact =
@@ -919,10 +933,8 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
       final dest = (username != null && username.isNotEmpty)
           ? HomeDashboard(username: username)
           : const LoginScreen();
-      Navigator.of(context).pushAndRemoveUntil(
-        PageTransitions.fadeThrough(dest),
-        (_) => false,
-      );
+      Navigator.of(context)
+          .pushAndRemoveUntil(PageTransitions.fadeThrough(dest), (_) => false);
     }
   }
 
@@ -940,19 +952,20 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
       child: ConstrainedBox(
         constraints: BoxConstraints(
-            maxHeight: MediaQuery.of(context).size.height * 0.45),
+          maxHeight: MediaQuery.of(context).size.height * 0.45,
+        ),
         child: Container(
           decoration: BoxDecoration(
             color: Theme.of(context).colorScheme.surfaceContainerHighest,
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-                color: Theme.of(context)
-                    .colorScheme
-                    .primary
-                    .withValues(alpha: 0.3)),
+              color: Theme.of(context).colorScheme.primary
+                  .withValues(alpha: 0.3),
+            ),
           ),
           clipBehavior: Clip.antiAlias,
-          child: assetPath.toLowerCase().endsWith('.mp4') ||
+          child:
+              assetPath.toLowerCase().endsWith('.mp4') ||
                   assetPath.toLowerCase().endsWith('.webm')
               ? AssetVideoPlayer(assetPath: assetPath)
               : Image.asset(assetPath, fit: fit),
@@ -982,35 +995,43 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
     required String title,
     required String subtitle,
   }) {
-    return Column(children: [
-      Container(
-        width: 72,
-        height: 72,
-        decoration: BoxDecoration(
-            color: iconColor.withValues(alpha: 0.12), shape: BoxShape.circle),
-        child: Icon(icon, size: 36, color: iconColor),
-      ),
-      const SizedBox(height: 16),
-      Text(title,
-          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-      const SizedBox(height: 10),
-      Text(subtitle,
+    return Column(
+      children: [
+        Container(
+          width: 72,
+          height: 72,
+          decoration: BoxDecoration(
+            color: iconColor.withValues(alpha: 0.12),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, size: 36, color: iconColor),
+        ),
+        const SizedBox(height: 16),
+        Text(
+          title,
+          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 10),
+        Text(
+          subtitle,
           textAlign: TextAlign.center,
           style: TextStyle(
-              fontSize: 14,
-              color: Theme.of(context)
-                  .colorScheme
-                  .onSurface
-                  .withValues(alpha: 0.6),
-              height: 1.5)),
-    ]);
+            fontSize: 14,
+            color: Theme.of(context).colorScheme.onSurface
+                .withValues(alpha: 0.6),
+            height: 1.5,
+          ),
+        ),
+      ],
+    );
   }
 
   // ── 页面 1: 更新日志 (基于原有旧代码迁移) ───────────────────
 
   Widget _buildChangelogPage() {
-    final current =
-        _changelogHistory.isNotEmpty ? _changelogHistory.first : null;
+    final current = _changelogHistory.isNotEmpty
+        ? _changelogHistory.first
+        : null;
     final history = _changelogHistory.length > 1
         ? _changelogHistory.sublist(1)
         : <ChangelogEntry>[];
@@ -1018,161 +1039,210 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
     final previous = _normalizeVersion(_previousShownVersion);
     final currentVersion = _normalizeVersion(_currentVersion);
     final displayVersion = current?.versionName ?? currentVersion;
-    final showVersionRange = previous.isNotEmpty &&
+    final showVersionRange =
+        previous.isNotEmpty &&
         _compareVersionNames(previous, currentVersion) < 0 &&
         _changelogHistory.length > 1;
 
     return _buildPageContainer(
-        content: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(top: 16.0),
-          child: Row(children: [
-            Icon(Icons.system_update_rounded, size: 28, color: scheme.primary),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                _loadingChangelog ? '版本更新 (Loading)' : 'v$displayVersion 更新日志',
-                style:
-                    const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-              ),
-            ),
-          ]),
-        ),
-        const SizedBox(height: 16),
-        if (showVersionRange) ...[
-          Text(
-            '从 v$previous 升级到 v$currentVersion，以下是本次跨版本变动。',
-            style: TextStyle(
-              fontSize: 13,
-              color: scheme.onSurface.withValues(alpha: 0.65),
-              height: 1.45,
-            ),
-          ),
-          const SizedBox(height: 12),
-        ],
-        if (_changelogNotice != null) ...[
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: BoxDecoration(
-              color: Colors.orange.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: Colors.orange.withValues(alpha: 0.25)),
-            ),
+      content: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 16.0),
             child: Row(
               children: [
-                Icon(Icons.wifi_off, size: 16, color: Colors.orange[700]),
-                const SizedBox(width: 8),
+                Icon(
+                  Icons.system_update_rounded,
+                  size: 28,
+                  color: scheme.primary,
+                ),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    _changelogNotice!,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Theme.of(context)
-                          .colorScheme
-                          .onSurface
-                          .withValues(alpha: 0.75),
+                    _loadingChangelog
+                        ? '版本更新 (Loading)'
+                        : 'v$displayVersion 更新日志',
+                    style: const TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 12),
-        ],
-        // 当前版本
-        OptionalLiquidGlassCard(
-          width: double.infinity,
-          padding: const EdgeInsets.all(16),
-          borderRadius: 16,
-          highContrast: true,
-          tint: scheme.primary.withValues(alpha: 0.16),
-          fallbackDecoration: BoxDecoration(
-            color: scheme.primaryContainer.withValues(alpha: 0.45),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: scheme.primary.withValues(alpha: 0.3)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(children: [
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                      color: scheme.primary,
-                      borderRadius: BorderRadius.circular(20)),
-                  child: Text('v${current?.versionName ?? _currentVersion}',
+          const SizedBox(height: 16),
+          if (showVersionRange) ...[
+            Text(
+              '从 v$previous 升级到 v$currentVersion，以下是本次跨版本变动。',
+              style: TextStyle(
+                fontSize: 13,
+                color: scheme.onSurface.withValues(alpha: 0.65),
+                height: 1.45,
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+          if (_changelogNotice != null) ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: Colors.orange.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: Colors.orange.withValues(alpha: 0.25),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.wifi_off, size: 16, color: Colors.orange[700]),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _changelogNotice!,
                       style: TextStyle(
+                        fontSize: 12,
+                        color: Theme.of(context).colorScheme.onSurface
+                            .withValues(alpha: 0.75),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+          // 当前版本
+          OptionalLiquidGlassCard(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            borderRadius: 16,
+            highContrast: true,
+            tint: scheme.primary.withValues(alpha: 0.16),
+            fallbackDecoration: BoxDecoration(
+              color: scheme.primaryContainer.withValues(alpha: 0.45),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: scheme.primary.withValues(alpha: 0.3)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: scheme.primary,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        'v${current?.versionName ?? _currentVersion}',
+                        style: TextStyle(
                           color: scheme.onPrimary,
                           fontSize: 13,
-                          fontWeight: FontWeight.bold)),
-                ),
-                const SizedBox(width: 8),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                      color: Colors.green,
-                      borderRadius: BorderRadius.circular(10)),
-                  child: const Text('NEW',
-                      style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.green,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Text(
+                        'NEW',
+                        style: TextStyle(
                           color: Colors.white,
                           fontSize: 11,
-                          fontWeight: FontWeight.bold)),
-                ),
-                const Spacer(),
-                if (current?.date.isNotEmpty == true)
-                  Text(current!.date,
-                      style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    const Spacer(),
+                    if (current?.date.isNotEmpty == true)
+                      Text(
+                        current!.date,
+                        style: TextStyle(
                           fontSize: 12,
-                          color: scheme.onSurface.withValues(alpha: 0.45))),
-              ]),
-              const SizedBox(height: 14),
-              if (_loadingChangelog)
-                const Center(child: CircularProgressIndicator(strokeWidth: 2))
-              else if (_changelogFetchFailed)
-                Text('请联网后查看详细更新内容。',
+                          color: scheme.onSurface.withValues(alpha: 0.45),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                if (_loadingChangelog)
+                  const Center(child: CircularProgressIndicator(strokeWidth: 2))
+                else if (_changelogFetchFailed)
+                  Text(
+                    '请联网后查看详细更新内容。',
                     style: TextStyle(
-                        fontSize: 13,
-                        color: scheme.onSurface.withValues(alpha: 0.6)))
-              else if (current == null || current.items.isEmpty)
-                Text('本版本暂无更新日志。',
+                      fontSize: 13,
+                      color: scheme.onSurface.withValues(alpha: 0.6),
+                    ),
+                  )
+                else if (current == null || current.items.isEmpty)
+                  Text(
+                    '本版本暂无更新日志。',
                     style: TextStyle(
-                        fontSize: 13,
-                        color: scheme.onSurface.withValues(alpha: 0.6)))
-              else
-                ...current.items.map((item) => _buildBulletItem(item, scheme)),
-            ],
+                      fontSize: 13,
+                      color: scheme.onSurface.withValues(alpha: 0.6),
+                    ),
+                  )
+                else
+                  ...current.items.map(
+                    (item) => _buildBulletItem(item, scheme),
+                  ),
+              ],
+            ),
           ),
-        ),
-        const SizedBox(height: 24),
-        // 🚀 最近更新功能
-        _buildRecentFeaturesSection(scheme),
-        const SizedBox(height: 24),
-        // 历史版本
-        if (history.isNotEmpty) ...[
-          Row(children: [
-            Icon(Icons.history_rounded,
-                size: 16, color: scheme.onSurface.withValues(alpha: 0.45)),
-            const SizedBox(width: 6),
-            Text('历史版本',
-                style: TextStyle(
+          const SizedBox(height: 24),
+          // 🚀 最近更新功能
+          _buildRecentFeaturesSection(scheme),
+          const SizedBox(height: 24),
+          // 历史版本
+          if (history.isNotEmpty) ...[
+            Row(
+              children: [
+                Icon(
+                  Icons.history_rounded,
+                  size: 16,
+                  color: scheme.onSurface.withValues(alpha: 0.45),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  '历史版本',
+                  style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
-                    color: scheme.onSurface.withValues(alpha: 0.45))),
-          ]),
-          const SizedBox(height: 8),
-          ...history.map((e) => _buildHistoryVersionTile(e)),
+                    color: scheme.onSurface.withValues(alpha: 0.45),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            ...history.map((e) => _buildHistoryVersionTile(e)),
+          ],
         ],
-      ],
-    ));
+      ),
+    );
   }
 
-  Widget _buildBulletItem(String item, ColorScheme scheme,
-      {double textAlpha = 0.75, double fontSize = 13.5}) {
+  Widget _buildBulletItem(
+    String item,
+    ColorScheme scheme, {
+    double textAlpha = 0.75,
+    double fontSize = 13.5,
+  }) {
     Color dotColor = scheme.onSurface.withValues(alpha: 0.4);
     if (item.startsWith('【新增】')) {
       dotColor = Colors.green;
@@ -1194,18 +1264,25 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
           Padding(
             padding: const EdgeInsets.only(top: 5),
             child: Container(
-                width: 6,
-                height: 6,
-                decoration:
-                    BoxDecoration(color: dotColor, shape: BoxShape.circle)),
+              width: 6,
+              height: 6,
+              decoration: BoxDecoration(
+                color: dotColor,
+                shape: BoxShape.circle,
+              ),
+            ),
           ),
           const SizedBox(width: 10),
           Expanded(
-              child: Text(item,
-                  style: TextStyle(
-                      fontSize: fontSize,
-                      color: scheme.onSurface.withValues(alpha: textAlpha),
-                      height: 1.45))),
+            child: Text(
+              item,
+              style: TextStyle(
+                fontSize: fontSize,
+                color: scheme.onSurface.withValues(alpha: textAlpha),
+                height: 1.45,
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -1230,62 +1307,85 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
             borderRadius: 12,
             highContrast: true,
             fallbackDecoration: BoxDecoration(
-                color: scheme.surfaceContainerHighest.withValues(alpha: 0.4),
-                borderRadius: BorderRadius.circular(12)),
-            child: Row(children: [
-              Text('v${entry.versionName}',
+              color: scheme.surfaceContainerHighest.withValues(alpha: 0.4),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: [
+                Text(
+                  'v${entry.versionName}',
                   style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: scheme.onSurface.withValues(alpha: 0.75))),
-              const SizedBox(width: 8),
-              if (entry.date.isNotEmpty)
-                Text(entry.date,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: scheme.onSurface.withValues(alpha: 0.75),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                if (entry.date.isNotEmpty)
+                  Text(
+                    entry.date,
                     style: TextStyle(
-                        fontSize: 12,
-                        color: scheme.onSurface.withValues(alpha: 0.4))),
-              const Spacer(),
-              if (!isExpanded && entry.items.isNotEmpty)
-                Flexible(
-                    child: Text(entry.items.first,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                            fontSize: 11,
-                            color: scheme.onSurface.withValues(alpha: 0.35)))),
-              const SizedBox(width: 4),
-              Icon(
+                      fontSize: 12,
+                      color: scheme.onSurface.withValues(alpha: 0.4),
+                    ),
+                  ),
+                const Spacer(),
+                if (!isExpanded && entry.items.isNotEmpty)
+                  Flexible(
+                    child: Text(
+                      entry.items.first,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: scheme.onSurface.withValues(alpha: 0.35),
+                      ),
+                    ),
+                  ),
+                const SizedBox(width: 4),
+                Icon(
                   isExpanded
                       ? Icons.keyboard_arrow_up_rounded
                       : Icons.keyboard_arrow_down_rounded,
                   size: 18,
-                  color: scheme.onSurface.withValues(alpha: 0.4)),
-            ]),
+                  color: scheme.onSurface.withValues(alpha: 0.4),
+                ),
+              ],
+            ),
           ),
         ),
         AnimatedCrossFade(
           duration: const Duration(milliseconds: 200),
-          crossFadeState:
-              isExpanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+          crossFadeState: isExpanded
+              ? CrossFadeState.showSecond
+              : CrossFadeState.showFirst,
           firstChild: const SizedBox.shrink(),
           secondChild: OptionalLiquidGlassCard(
             margin: const EdgeInsets.only(top: 2, bottom: 4),
             padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
             borderRadiusGeometry: const BorderRadius.only(
-                bottomLeft: Radius.circular(12),
-                bottomRight: Radius.circular(12)),
+              bottomLeft: Radius.circular(12),
+              bottomRight: Radius.circular(12),
+            ),
             highContrast: true,
             fallbackDecoration: BoxDecoration(
               color: scheme.surfaceContainerHighest.withValues(alpha: 0.25),
               borderRadius: const BorderRadius.only(
-                  bottomLeft: Radius.circular(12),
-                  bottomRight: Radius.circular(12)),
+                bottomLeft: Radius.circular(12),
+                bottomRight: Radius.circular(12),
+              ),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: entry.items
-                  .map((item) => _buildBulletItem(item, scheme,
-                      textAlpha: 0.65, fontSize: 12.5))
+                  .map(
+                    (item) => _buildBulletItem(
+                      item,
+                      scheme,
+                      textAlpha: 0.65,
+                      fontSize: 12.5,
+                    ),
+                  )
                   .toList(),
             ),
           ),
@@ -1299,23 +1399,33 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(children: [
-          Icon(Icons.auto_awesome_rounded,
-              size: 16, color: scheme.onSurface.withValues(alpha: 0.45)),
-          const SizedBox(width: 6),
-          Text('最近更新功能',
+        Row(
+          children: [
+            Icon(
+              Icons.auto_awesome_rounded,
+              size: 16,
+              color: scheme.onSurface.withValues(alpha: 0.45),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              '最近更新功能',
               style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: scheme.onSurface.withValues(alpha: 0.45))),
-        ]),
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: scheme.onSurface.withValues(alpha: 0.45),
+              ),
+            ),
+          ],
+        ),
         const SizedBox(height: 10),
         Column(
           children: _recentFeatures
-              .map((feature) => Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: _buildRecentFeatureCard(feature, scheme),
-                  ))
+              .map(
+                (feature) => Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: _buildRecentFeatureCard(feature, scheme),
+                ),
+              )
               .toList(),
         ),
       ],
@@ -1330,7 +1440,8 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
           // 更新后查看：直接跳转
           Navigator.of(context, rootNavigator: true).push(
             PageTransitions.material(
-                builder: (_) => feature.destinationBuilder!()),
+              builder: (_) => feature.destinationBuilder!(),
+            ),
           );
         } else {
           // 首次使用：仅提示位置
@@ -1580,7 +1691,9 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
                     if (isLimited)
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 3),
+                          horizontal: 8,
+                          vertical: 3,
+                        ),
                         decoration: BoxDecoration(
                           color: color.withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(999),
@@ -1617,69 +1730,75 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
 
   Widget _buildAndroidFeaturePage1() {
     return _buildPageContainer(
-        content: Column(
-      children: [
-        const SizedBox(height: 16),
-        _buildStepHeader(
-          icon: Icons.bar_chart_outlined,
-          iconColor: Colors.purple,
-          title: '屏幕时间统计与时间全览',
-          subtitle: '全天候统计你的手机使用情况，智能合并番茄钟与各 App 的使用时长，生成一目了然的时间网格。',
-        ),
-        _buildMediaAsset('assets/guide_media/android_lock_screen.webp',
-            fit: BoxFit.contain),
-        const SizedBox(height: 24),
-        _buildPermissionTile(
-          title: '应用使用情况权限',
-          subtitle: '用于记录你使用了哪些应用以进行时间分配分析',
-          isGranted: _hasUsageStats,
-          onRequest: () async {
-            await _permissionCoordinator.request(
-              AppPermissionKind.usageStats,
-            );
-          },
-        ),
-      ],
-    ));
+      content: Column(
+        children: [
+          const SizedBox(height: 16),
+          _buildStepHeader(
+            icon: Icons.bar_chart_outlined,
+            iconColor: Colors.purple,
+            title: '屏幕时间统计与时间全览',
+            subtitle: '全天候统计你的手机使用情况，智能合并番茄钟与各 App 的使用时长，生成一目了然的时间网格。',
+          ),
+          _buildMediaAsset(
+            'assets/guide_media/android_lock_screen.webp',
+            fit: BoxFit.contain,
+          ),
+          const SizedBox(height: 24),
+          _buildPermissionTile(
+            title: '应用使用情况权限',
+            subtitle: '用于记录你使用了哪些应用以进行时间分配分析',
+            isGranted: _hasUsageStats,
+            onRequest: () async {
+              await _permissionCoordinator.request(
+                AppPermissionKind.usageStats,
+              );
+            },
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildAndroidFeaturePage2() {
     return _buildPageContainer(
-        content: Column(
-      children: [
-        const SizedBox(height: 16),
-        _buildStepHeader(
-          icon: Icons.notifications_active_outlined,
-          iconColor: Theme.of(context).colorScheme.primary,
-          title: '精确保活的通知唤醒',
-          subtitle: '不论是日程、倒计时、还是番茄钟，我们确保即使应用在后台，也会准时向您推送提醒。',
-        ),
-        _buildMediaAsset('assets/guide_media/android_notification.webp',
-            fit: BoxFit.contain),
-        const SizedBox(height: 24),
-        _buildPermissionTile(
-          title: '通知权限',
-          subtitle: '核心功能：用于提醒代办与专属通知栏状态',
-          isGranted: _notificationStatus?.isGranted == true,
-          onRequest: () async {
-            await _permissionCoordinator.request(
-              AppPermissionKind.notification,
-            );
-          },
-        ),
-        const SizedBox(height: 12),
-        _buildPermissionTile(
-          title: '精确闹钟权限',
-          subtitle: '用于应用在指定秒数准时唤醒推送（如倒数结束）',
-          isGranted: _hasExactAlarm,
-          onRequest: () async {
-            await _permissionCoordinator.request(
-              AppPermissionKind.exactAlarm,
-            );
-          },
-        ),
-      ],
-    ));
+      content: Column(
+        children: [
+          const SizedBox(height: 16),
+          _buildStepHeader(
+            icon: Icons.notifications_active_outlined,
+            iconColor: Theme.of(context).colorScheme.primary,
+            title: '精确保活的通知唤醒',
+            subtitle: '不论是日程、倒计时、还是番茄钟，我们确保即使应用在后台，也会准时向您推送提醒。',
+          ),
+          _buildMediaAsset(
+            'assets/guide_media/android_notification.webp',
+            fit: BoxFit.contain,
+          ),
+          const SizedBox(height: 24),
+          _buildPermissionTile(
+            title: '通知权限',
+            subtitle: '核心功能：用于提醒代办与专属通知栏状态',
+            isGranted: _notificationStatus?.isGranted == true,
+            onRequest: () async {
+              await _permissionCoordinator.request(
+                AppPermissionKind.notification,
+              );
+            },
+          ),
+          const SizedBox(height: 12),
+          _buildPermissionTile(
+            title: '精确闹钟权限',
+            subtitle: '用于应用在指定秒数准时唤醒推送（如倒数结束）',
+            isGranted: _hasExactAlarm,
+            onRequest: () async {
+              await _permissionCoordinator.request(
+                AppPermissionKind.exactAlarm,
+              );
+            },
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildMinorModeGuidePage() {
@@ -1690,8 +1809,8 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
     final selectedDateLabel = _minorBirthDate == null
         ? '未设置'
         : '${_minorBirthDate!.year.toString().padLeft(4, '0')}-'
-            '${_minorBirthDate!.month.toString().padLeft(2, '0')}-'
-            '${_minorBirthDate!.day.toString().padLeft(2, '0')}';
+              '${_minorBirthDate!.month.toString().padLeft(2, '0')}-'
+              '${_minorBirthDate!.day.toString().padLeft(2, '0')}';
 
     return ValueListenableBuilder<MinorModeState>(
       valueListenable: MinorModeService.instance.stateNotifier,
@@ -1724,9 +1843,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
                           : Icons.cake_outlined,
                       color: scheme.primary,
                     ),
-                    title: Text(
-                      state.systemEnabled ? '已跟随手机系统开启' : '设置出生日期',
-                    ),
+                    title: Text(state.systemEnabled ? '已跟随手机系统开启' : '设置出生日期'),
                     subtitle: Text(
                       state.systemEnabled
                           ? '系统年龄范围：${state.ageBand.label}；由系统管理，应用内无法绕过。'
@@ -1738,9 +1855,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
                             onPressed: _minorBirthDateSaving
                                 ? null
                                 : _pickMinorBirthDate,
-                            child: Text(
-                              _minorBirthDate == null ? '选择' : '修改',
-                            ),
+                            child: Text(_minorBirthDate == null ? '选择' : '修改'),
                           ),
                   ),
                 ),
@@ -1751,8 +1866,10 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
                   title: '当前选择',
                   children: [
                     ListTile(
-                      leading: Icon(Icons.calendar_month_outlined,
-                          color: scheme.primary),
+                      leading: Icon(
+                        Icons.calendar_month_outlined,
+                        color: scheme.primary,
+                      ),
                       title: const Text('出生日期'),
                       trailing: Text(
                         selectedDateLabel,
@@ -1761,8 +1878,10 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
                     ),
                     const Divider(height: 1, indent: 56),
                     ListTile(
-                      leading: Icon(Icons.groups_2_outlined,
-                          color: scheme.onSurfaceVariant),
+                      leading: Icon(
+                        Icons.groups_2_outlined,
+                        color: scheme.onSurfaceVariant,
+                      ),
                       title: const Text('年龄段'),
                       trailing: Text(
                         ageBand.label,
@@ -1786,8 +1905,8 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
                     _minorBirthDate == null
                         ? '可以跳过，之后在 设置 > 未成年人模式 中补充。'
                         : ageBand == MinorAgeBand.adult
-                            ? '当前年龄段为成人，App 未成年人模式不会开启。'
-                            : '当前年龄段为${ageBand.label}，App 未成年人模式已按年龄策略准备。',
+                        ? '当前年龄段为成人，App 未成年人模式不会开启。'
+                        : '当前年龄段为${ageBand.label}，App 未成年人模式已按年龄策略准备。',
                     style: TextStyle(
                       color: scheme.onPrimaryContainer,
                       height: 1.45,
@@ -1807,125 +1926,164 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
   Widget _buildAndroidWidgetGuidePage() {
     final scheme = Theme.of(context).colorScheme;
     return _buildPageContainer(
-        content: Column(
-      children: [
-        const SizedBox(height: 16),
-        _buildStepHeader(
-          icon: Icons.widgets_outlined,
-          iconColor: Colors.indigo,
-          title: '桌面小部件',
-          subtitle: '无需打开应用，直接在桌面查看今日课程、待办任务与番茄钟状态。',
-        ),
-        _buildMediaAsset('assets/guide_media/android_widget_guide.webm'),
-        const SizedBox(height: 20),
+      content: Column(
+        children: [
+          const SizedBox(height: 16),
+          _buildStepHeader(
+            icon: Icons.widgets_outlined,
+            iconColor: Colors.indigo,
+            title: '桌面小部件',
+            subtitle: '无需打开应用，直接在桌面查看今日课程、待办任务与番茄钟状态。',
+          ),
+          _buildMediaAsset('assets/guide_media/android_widget_guide.webm'),
+          const SizedBox(height: 20),
 
-        // 🚀 一键添加到桌面按钮 (Android 8.0+)
-        SizedBox(
-          width: double.infinity,
-          child: FilledButton.icon(
-            onPressed: () async {
-              try {
-                // 调用 MethodChannel (对应 MainActivity.kt 中的 requestPinWidget)
-                final result = await platform.invokeMethod('requestPinWidget');
-                if (result == false && mounted) {
-                  AppSnackBars.showSnackBar(
-                    context,
-                    const SnackBar(content: Text('您的系统/启动器不支持一键添加，请按下方步骤手动添加')),
+          // 🚀 一键添加到桌面按钮 (Android 8.0+)
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: () async {
+                try {
+                  // 调用 MethodChannel (对应 MainActivity.kt 中的 requestPinWidget)
+                  final result = await platform.invokeMethod(
+                    'requestPinWidget',
                   );
+                  if (result == false && mounted) {
+                    AppSnackBars.showSnackBar(
+                      context,
+                      const SnackBar(
+                        content: Text('您的系统/启动器不支持一键添加，请按下方步骤手动添加'),
+                      ),
+                    );
+                  }
+                } catch (e) {
+                  if (mounted) {
+                    AppSnackBars.showSnackBar(
+                      context,
+                      const SnackBar(content: Text('自动添加失败，请手动添加')),
+                    );
+                  }
                 }
-              } catch (e) {
-                if (mounted) {
-                  AppSnackBars.showSnackBar(
-                    context,
-                    const SnackBar(content: Text('自动添加失败，请手动添加')),
-                  );
-                }
-              }
-            },
-            icon: const Icon(Icons.add_to_home_screen_rounded),
-            label: const Text('一键添加到桌面',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
-            style: FilledButton.styleFrom(
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              backgroundColor: Colors.indigo,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
-            ),
-          ),
-        ),
-        const SizedBox(height: 20),
-
-        // 手动步骤说明卡片
-        OptionalLiquidGlassCard(
-          width: double.infinity,
-          padding: const EdgeInsets.all(16),
-          borderRadius: 14,
-          highContrast: true,
-          tint: Colors.indigo.withValues(alpha: 0.16),
-          fallbackDecoration: BoxDecoration(
-            color: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: Colors.indigo.withValues(alpha: 0.25)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(children: [
-                Icon(Icons.touch_app_outlined,
-                    size: 16, color: Colors.indigo.withValues(alpha: 0.8)),
-                const SizedBox(width: 6),
-                Text('若一键添加失败，可手动添加',
-                    style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: scheme.onSurface.withValues(alpha: 0.7))),
-              ]),
-              const SizedBox(height: 12),
-              _buildWidgetStep(
-                  '1', '长按手机桌面空白处', Icons.touch_app_rounded, Colors.indigo),
-              const SizedBox(height: 8),
-              _buildWidgetStep('2', '点击「小部件」或「Widget」选项',
-                  Icons.grid_view_rounded, Colors.indigo),
-              const SizedBox(height: 8),
-              _buildWidgetStep(
-                  '3', '找到本应用，选择想要的小部件样式', Icons.search_rounded, Colors.indigo),
-              const SizedBox(height: 8),
-              _buildWidgetStep('4', '拖拽到合适位置，松手即完成添加', Icons.open_with_rounded,
-                  Colors.indigo),
-            ],
-          ),
-        ),
-        const SizedBox(height: 14),
-        // 提示条
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          decoration: BoxDecoration(
-            color: Colors.indigo.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: Colors.indigo.withValues(alpha: 0.2)),
-          ),
-          child: Row(
-            children: [
-              Icon(Icons.info_outline_rounded,
-                  size: 18, color: Colors.indigo.withValues(alpha: 0.75)),
-              const SizedBox(width: 10),
-              const Expanded(
-                child: Text(
-                  '部分国产 ROM（如 MIUI、ColorOS）需在「负一屏」或「桌面设置」中单独开启小部件功能。',
-                  style: TextStyle(fontSize: 12, height: 1.45),
+              },
+              icon: const Icon(Icons.add_to_home_screen_rounded),
+              label: const Text(
+                '一键添加到桌面',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+              ),
+              style: FilledButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                backgroundColor: Colors.indigo,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
                 ),
               ),
-            ],
+            ),
           ),
-        ),
-      ],
-    ));
+          const SizedBox(height: 20),
+
+          // 手动步骤说明卡片
+          OptionalLiquidGlassCard(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            borderRadius: 14,
+            highContrast: true,
+            tint: Colors.indigo.withValues(alpha: 0.16),
+            fallbackDecoration: BoxDecoration(
+              color: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: Colors.indigo.withValues(alpha: 0.25)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      Icons.touch_app_outlined,
+                      size: 16,
+                      color: Colors.indigo.withValues(alpha: 0.8),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      '若一键添加失败，可手动添加',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: scheme.onSurface.withValues(alpha: 0.7),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                _buildWidgetStep(
+                  '1',
+                  '长按手机桌面空白处',
+                  Icons.touch_app_rounded,
+                  Colors.indigo,
+                ),
+                const SizedBox(height: 8),
+                _buildWidgetStep(
+                  '2',
+                  '点击「小部件」或「Widget」选项',
+                  Icons.grid_view_rounded,
+                  Colors.indigo,
+                ),
+                const SizedBox(height: 8),
+                _buildWidgetStep(
+                  '3',
+                  '找到本应用，选择想要的小部件样式',
+                  Icons.search_rounded,
+                  Colors.indigo,
+                ),
+                const SizedBox(height: 8),
+                _buildWidgetStep(
+                  '4',
+                  '拖拽到合适位置，松手即完成添加',
+                  Icons.open_with_rounded,
+                  Colors.indigo,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+          // 提示条
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: Colors.indigo.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.indigo.withValues(alpha: 0.2)),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.info_outline_rounded,
+                  size: 18,
+                  color: Colors.indigo.withValues(alpha: 0.75),
+                ),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Text(
+                    '部分国产 ROM（如 MIUI、ColorOS）需在「负一屏」或「桌面设置」中单独开启小部件功能。',
+                    style: TextStyle(fontSize: 12, height: 1.45),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   /// 桌面小部件引导的单步骤行
   Widget _buildWidgetStep(
-      String stepNum, String desc, IconData icon, Color color) {
+    String stepNum,
+    String desc,
+    IconData icon,
+    Color color,
+  ) {
     return Row(
       children: [
         Container(
@@ -1936,23 +2094,27 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
             shape: BoxShape.circle,
           ),
           alignment: Alignment.center,
-          child: Text(stepNum,
-              style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  color: color.withValues(alpha: 0.9))),
+          child: Text(
+            stepNum,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: color.withValues(alpha: 0.9),
+            ),
+          ),
         ),
         const SizedBox(width: 10),
         Icon(icon, size: 16, color: color.withValues(alpha: 0.6)),
         const SizedBox(width: 8),
         Expanded(
-          child: Text(desc,
-              style: TextStyle(
-                  fontSize: 13,
-                  color: Theme.of(context)
-                      .colorScheme
-                      .onSurface
-                      .withValues(alpha: 0.75))),
+          child: Text(
+            desc,
+            style: TextStyle(
+              fontSize: 13,
+              color: Theme.of(context).colorScheme.onSurface
+                  .withValues(alpha: 0.75),
+            ),
+          ),
         ),
       ],
     );
@@ -1962,129 +2124,147 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
 
   Widget _buildWinFeaturePage1() {
     return _buildPageContainer(
-        content: Column(children: [
-      const SizedBox(height: 16),
-      _buildStepHeader(
-        icon: Icons.timer_outlined,
-        iconColor: Colors.redAccent,
-        title: '全端番茄钟与大屏专注',
-        subtitle: '在 Windows 桌面端享受沉浸式或浮窗式的番茄钟体验。而且，现在支持跨屏自动无缝流转同步！',
+      content: Column(
+        children: [
+          const SizedBox(height: 16),
+          _buildStepHeader(
+            icon: Icons.timer_outlined,
+            iconColor: Colors.redAccent,
+            title: '全端番茄钟与大屏专注',
+            subtitle: '在 Windows 桌面端享受沉浸式或浮窗式的番茄钟体验。而且，现在支持跨屏自动无缝流转同步！',
+          ),
+          _buildMediaAsset('assets/guide_media/windows_pomodoro.webm'),
+        ],
       ),
-      _buildMediaAsset('assets/guide_media/windows_pomodoro.webm'),
-    ]));
+    );
   }
 
   Widget _buildWinFeaturePage2() {
     return _buildPageContainer(
-        content: Column(children: [
-      const SizedBox(height: 16),
-      _buildStepHeader(
-        icon: Icons.web_asset_rounded,
-        iconColor: Theme.of(context).colorScheme.secondary,
-        title: '无缝接入 Windows 屏幕时间',
-        subtitle: '利用本地读取 Tai 软件（专业 Windows 时间追踪应用）的数据库，轻松在应用内部汇总双端时长。',
+      content: Column(
+        children: [
+          const SizedBox(height: 16),
+          _buildStepHeader(
+            icon: Icons.web_asset_rounded,
+            iconColor: Theme.of(context).colorScheme.secondary,
+            title: '无缝接入 Windows 屏幕时间',
+            subtitle: '利用本地读取 Tai 软件（专业 Windows 时间追踪应用）的数据库，轻松在应用内部汇总双端时长。',
+          ),
+          _buildMediaAsset('assets/guide_media/windows_screen_time.webm'),
+        ],
       ),
-      _buildMediaAsset('assets/guide_media/windows_screen_time.webm'),
-    ]));
+    );
   }
 
   Widget _buildTaiSetupPage() {
     return _buildPageContainer(
-        content: Column(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        const SizedBox(height: 16),
-        _buildStepHeader(
-          icon: Icons.folder_special_outlined,
-          iconColor: Colors.teal,
-          title: '配置 Tai 数据库路径',
-          subtitle: '如果要启用 Windows 的时常追踪聚合（可选），请指定已安装的 Tai 软件数据文件路径 (data.db)。',
-        ),
-        const SizedBox(height: 32),
-        OptionalLiquidGlassCard(
-          padding: const EdgeInsets.all(16),
-          width: double.infinity,
-          borderRadius: 12,
-          highContrast: true,
-          fallbackDecoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(12),
-            border:
-                Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+      content: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          const SizedBox(height: 16),
+          _buildStepHeader(
+            icon: Icons.folder_special_outlined,
+            iconColor: Colors.teal,
+            title: '配置 Tai 数据库路径',
+            subtitle:
+                '如果要启用 Windows 的时常追踪聚合（可选），请指定已安装的 Tai 软件数据文件路径 (data.db)。',
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('当数据库文件路径:',
-                  style: TextStyle(fontWeight: FontWeight.bold)),
-              const SizedBox(height: 8),
-              Text(
-                _taiDbPath.isNotEmpty ? _taiDbPath : '未设置，功能无法生效',
-                style: TextStyle(
+          const SizedBox(height: 32),
+          OptionalLiquidGlassCard(
+            padding: const EdgeInsets.all(16),
+            width: double.infinity,
+            borderRadius: 12,
+            highContrast: true,
+            fallbackDecoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: Theme.of(context).colorScheme.outlineVariant,
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  '当数据库文件路径:',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _taiDbPath.isNotEmpty ? _taiDbPath : '未设置，功能无法生效',
+                  style: TextStyle(
                     color: _taiDbPath.isNotEmpty
                         ? Theme.of(context).colorScheme.primary
                         : Colors.red,
-                    fontSize: 13),
-              ),
-              const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  icon: const Icon(Icons.folder_open),
-                  label: const Text('手动选择 data.db 文件'),
-                  onPressed: () async {
-                    final pickedFile = await FilePicker.pickFile(
-                      type: FileType.custom,
-                      allowedExtensions: ['db'],
-                      dialogTitle: '选择 Tai 的 data.db 文件',
-                    );
-                    if (!mounted) return;
-                    if (pickedFile?.path != null) {
-                      String path = pickedFile!.path!;
-                      bool isValid = await TaiService.validateDb(path);
+                    fontSize: 13,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    icon: const Icon(Icons.folder_open),
+                    label: const Text('手动选择 data.db 文件'),
+                    onPressed: () async {
+                      final pickedFile = await FilePicker.pickFile(
+                        type: FileType.custom,
+                        allowedExtensions: ['db'],
+                        dialogTitle: '选择 Tai 的 data.db 文件',
+                      );
                       if (!mounted) return;
-                      if (isValid) {
+                      if (pickedFile?.path != null) {
+                        String path = pickedFile!.path!;
+                        bool isValid = await TaiService.validateDb(path);
+                        if (!mounted) return;
+                        if (isValid) {
+                          await TaiService.saveDbPath(path);
+                          setState(() => _taiDbPath = path);
+                        } else {
+                          if (!mounted) return;
+                          AppSnackBars.showSnackBar(
+                            context,
+                            const SnackBar(content: Text('⚠️ 选定的文件无效Tai数据库')),
+                          );
+                        }
+                      }
+                    },
+                  ),
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: TextButton.icon(
+                    icon: const Icon(Icons.flash_auto),
+                    label: const Text('尝试自动检测默认安装路径'),
+                    onPressed: () async {
+                      final path = await TaiService.detectDefaultPath();
+                      if (!mounted) return;
+                      if (path != null) {
                         await TaiService.saveDbPath(path);
+                        if (!mounted) return;
                         setState(() => _taiDbPath = path);
+                        AppSnackBars.showSnackBar(
+                          context,
+                          const SnackBar(content: Text('✅ 自动检测并绑定成功！')),
+                        );
                       } else {
                         if (!mounted) return;
-                        AppSnackBars.showSnackBar(context,
-                            const SnackBar(content: Text('⚠️ 选定的文件无效Tai数据库')));
-                      }
-                    }
-                  },
-                ),
-              ),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: TextButton.icon(
-                  icon: const Icon(Icons.flash_auto),
-                  label: const Text('尝试自动检测默认安装路径'),
-                  onPressed: () async {
-                    final path = await TaiService.detectDefaultPath();
-                    if (!mounted) return;
-                    if (path != null) {
-                      await TaiService.saveDbPath(path);
-                      if (!mounted) return;
-                      setState(() => _taiDbPath = path);
-                      AppSnackBars.showSnackBar(context,
-                          const SnackBar(content: Text('✅ 自动检测并绑定成功！')));
-                    } else {
-                      if (!mounted) return;
-                      AppSnackBars.showSnackBar(
+                        AppSnackBars.showSnackBar(
                           context,
                           const SnackBar(
-                              content: Text('⚠️ 未能找到默认路径，请确认是否安装或手动选择。')));
-                    }
-                  },
+                            content: Text('⚠️ 未能找到默认路径，请确认是否安装或手动选择。'),
+                          ),
+                        );
+                      }
+                    },
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        )
-      ],
-    ));
+        ],
+      ),
+    );
   }
 
   // ── 全局通用配置引导 ──────────────────────────────
@@ -2093,106 +2273,125 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
     final scheme = Theme.of(context).colorScheme;
     final isWeb = AppPlatform.isWeb;
     return _buildPageContainer(
-        content: Column(
-      children: [
-        const SizedBox(height: 16),
-        _buildStepHeader(
-          icon: Icons.calendar_month_outlined,
-          iconColor: Colors.teal,
-          title: '课表导入与学期同步',
-          subtitle: isWeb
-              ? '网页版支持浏览器文件导入、云端课表同步和学期进度设置。\n受浏览器限制，教务 WebView 导入和系统本地路径能力会降级。'
-              : '全平台均支持智能课表解析。你可以在首页设置中导入本地课表，或直接从云端同步。\n设置开学与放假日期，以开启学期进度条。',
-        ),
-        const SizedBox(height: 24),
-        OptionalLiquidGlassCard(
-          margin: EdgeInsets.zero,
-          borderRadius: 12,
-          highContrast: true,
-          fallbackDecoration: BoxDecoration(
-            color: scheme.surfaceContainerLow,
-            borderRadius: BorderRadius.circular(12),
+      content: Column(
+        children: [
+          const SizedBox(height: 16),
+          _buildStepHeader(
+            icon: Icons.calendar_month_outlined,
+            iconColor: Colors.teal,
+            title: '课表导入与学期同步',
+            subtitle: isWeb
+                ? '网页版支持浏览器文件导入、云端课表同步和学期进度设置。\n受浏览器限制，教务 WebView 导入和系统本地路径能力会降级。'
+                : '全平台均支持智能课表解析。你可以在首页设置中导入本地课表，或直接从云端同步。\n设置开学与放假日期，以开启学期进度条。',
           ),
-          child: Material(
-            type: MaterialType.transparency,
-            child: Column(
+          const SizedBox(height: 24),
+          OptionalLiquidGlassCard(
+            margin: EdgeInsets.zero,
+            borderRadius: 12,
+            highContrast: true,
+            fallbackDecoration: BoxDecoration(
+              color: scheme.surfaceContainerLow,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Material(
+              type: MaterialType.transparency,
+              child: Column(
+                children: [
+                  LiquidGlassSwitchListTile(
+                    secondary: const Icon(Icons.linear_scale),
+                    title: const Text(
+                      '首页学期进度条',
+                      style: TextStyle(fontSize: 14),
+                    ),
+                    value: _semesterEnabled,
+                    onChanged: (val) {
+                      setState(() => _semesterEnabled = val);
+                      StorageService.saveAppSetting(
+                        StorageService.keySemesterProgressEnabled,
+                        val,
+                      );
+                    },
+                  ),
+                  const Divider(height: 1, indent: 56),
+                  ListTile(
+                    contentPadding: const EdgeInsets.only(left: 56, right: 16),
+                    title: const Text('开学日期', style: TextStyle(fontSize: 14)),
+                    trailing: Text(
+                      _semesterStart == null
+                          ? "未设置"
+                          : DateFormat('yyyy-MM-dd').format(_semesterStart!),
+                    ),
+                    onTap: () => _pickSemesterDate(true),
+                  ),
+                  ListTile(
+                    contentPadding: const EdgeInsets.only(left: 56, right: 16),
+                    title: const Text('放假日期', style: TextStyle(fontSize: 14)),
+                    trailing: Text(
+                      _semesterEnd == null
+                          ? "未设置"
+                          : DateFormat('yyyy-MM-dd').format(_semesterEnd!),
+                    ),
+                    onTap: () => _pickSemesterDate(false),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: scheme.primaryContainer.withValues(alpha: 0.4),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
               children: [
-                LiquidGlassSwitchListTile(
-                  secondary: const Icon(Icons.linear_scale),
-                  title: const Text('首页学期进度条', style: TextStyle(fontSize: 14)),
-                  value: _semesterEnabled,
-                  onChanged: (val) {
-                    setState(() => _semesterEnabled = val);
-                    StorageService.saveAppSetting(
-                        StorageService.keySemesterProgressEnabled, val);
-                  },
+                Icon(
+                  Icons.tips_and_updates_outlined,
+                  color: scheme.primary,
+                  size: 20,
                 ),
-                const Divider(height: 1, indent: 56),
-                ListTile(
-                  contentPadding: const EdgeInsets.only(left: 56, right: 16),
-                  title: const Text('开学日期', style: TextStyle(fontSize: 14)),
-                  trailing: Text(_semesterStart == null
-                      ? "未设置"
-                      : DateFormat('yyyy-MM-dd').format(_semesterStart!)),
-                  onTap: () => _pickSemesterDate(true),
-                ),
-                ListTile(
-                  contentPadding: const EdgeInsets.only(left: 56, right: 16),
-                  title: const Text('放假日期', style: TextStyle(fontSize: 14)),
-                  trailing: Text(_semesterEnd == null
-                      ? "未设置"
-                      : DateFormat('yyyy-MM-dd').format(_semesterEnd!)),
-                  onTap: () => _pickSemesterDate(false),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    isWeb
+                        ? '提示：网页版请使用浏览器文件选择或云端同步导入课表。'
+                        : '提示：进入应用后，请前往 设置 > 课程设置 导入或同步您的课表！',
+                    style: TextStyle(fontSize: 12),
+                  ),
                 ),
               ],
             ),
           ),
-        ),
-        const SizedBox(height: 16),
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: scheme.primaryContainer.withValues(alpha: 0.4),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Row(
-            children: [
-              Icon(Icons.tips_and_updates_outlined,
-                  color: scheme.primary, size: 20),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  isWeb
-                      ? '提示：网页版请使用浏览器文件选择或云端同步导入课表。'
-                      : '提示：进入应用后，请前往 设置 > 课程设置 导入或同步您的课表！',
-                  style: TextStyle(fontSize: 12),
+          if (_checkingCloudData) ...[
+            const SizedBox(height: 16),
+            const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+          ] else if (_hasCloudCourses || _hasCloudSemester) ...[
+            const SizedBox(height: 20),
+            Row(
+              children: [
+                Icon(
+                  Icons.cloud_sync_rounded,
+                  size: 16,
+                  color: scheme.onSurface.withValues(alpha: 0.5),
                 ),
-              ),
-            ],
-          ),
-        ),
-        if (_checkingCloudData) ...[
-          const SizedBox(height: 16),
-          const Center(child: CircularProgressIndicator(strokeWidth: 2)),
-        ] else if (_hasCloudCourses || _hasCloudSemester) ...[
-          const SizedBox(height: 20),
-          Row(
-            children: [
-              Icon(Icons.cloud_sync_rounded,
-                  size: 16, color: scheme.onSurface.withValues(alpha: 0.5)),
-              const SizedBox(width: 6),
-              Text('检测到云端数据',
+                const SizedBox(width: 6),
+                Text(
+                  '检测到云端数据',
                   style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: scheme.onSurface.withValues(alpha: 0.5))),
-            ],
-          ),
-          const SizedBox(height: 10),
-          _buildCloudSyncActions(scheme),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: scheme.onSurface.withValues(alpha: 0.5),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            _buildCloudSyncActions(scheme),
+          ],
         ],
-      ],
-    ));
+      ),
+    );
   }
 
   Widget _buildCloudSyncActions(ColorScheme scheme) {
@@ -2225,7 +2424,8 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
             builder: (context, constraints) {
               const gap = 12.0;
               const maxActionWidth = 320.0;
-              final canFitSideBySide = hasBothActions &&
+              final canFitSideBySide =
+                  hasBothActions &&
                   constraints.maxWidth >= maxActionWidth * 2 + gap;
 
               if (canFitSideBySide) {
@@ -2319,9 +2519,9 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                              color: labelColor,
-                              fontWeight: FontWeight.w600,
-                            ),
+                          color: labelColor,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
                   ],
@@ -2356,10 +2556,14 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
       final prefs = await SharedPreferences.getInstance();
       if (isStart) {
         await prefs.setString(
-            StorageService.keySemesterStart, picked.toIso8601String());
+          StorageService.keySemesterStart,
+          picked.toIso8601String(),
+        );
       } else {
         await prefs.setString(
-            StorageService.keySemesterEnd, picked.toIso8601String());
+          StorageService.keySemesterEnd,
+          picked.toIso8601String(),
+        );
       }
     }
   }
@@ -2368,52 +2572,55 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
     final isWeb = AppPlatform.isWeb;
     final scheme = Theme.of(context).colorScheme;
     return _buildPageContainer(
-        content: Column(
-      children: [
-        const SizedBox(height: 16),
-        _buildStepHeader(
-          icon: Icons.palette_outlined,
-          iconColor: Colors.deepPurple,
-          title: '个性化：模块排序与主题',
-          subtitle: isWeb
-              ? '你可以自由决定首页模块顺序，选择跟随系统、浅色或深色主题，还可以开启液态玻璃效果。'
-              : '你可以自由决定首页上哪个模块显示在最上面。进入设置找到 "模块管理" 即可自由拖拽模块进行排序。\n开启深色模式让你在夜晚操作更舒适，也可以打开下方的液态玻璃效果。',
-        ),
-        const SizedBox(height: 24),
-        const GuideAppearanceOptions(),
-        if (isWeb) ...[
-          const SizedBox(height: 12),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: scheme.secondaryContainer.withValues(alpha: 0.45),
-              borderRadius: BorderRadius.circular(10),
-              border:
-                  Border.all(color: scheme.secondary.withValues(alpha: 0.22)),
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(Icons.info_outline_rounded,
-                    size: 18, color: scheme.secondary),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    '网页版的跟随系统会读取浏览器/操作系统的亮暗偏好，浏览器偏好变化后界面会随应用主题刷新。',
-                    style: TextStyle(
-                      fontSize: 12,
-                      height: 1.45,
-                      color: scheme.onSurface.withValues(alpha: 0.72),
+      content: Column(
+        children: [
+          const SizedBox(height: 16),
+          _buildStepHeader(
+            icon: Icons.palette_outlined,
+            iconColor: Colors.deepPurple,
+            title: '个性化：模块排序与主题',
+            subtitle: isWeb ? '你可以自由决定首页模块顺序，选择跟随系统、浅色或深色主题，还可以开启液态玻璃效果。' : '你可以自由决定首页上哪个模块显示在最上面。进入设置找到 "模块管理" 即可自由拖拽模块进行排序。\n开启深色模式让你在夜晚操作更舒适，也可以打开下方的液态玻璃效果。',
+          ),
+          const SizedBox(height: 24),
+          const GuideAppearanceOptions(),
+          if (isWeb) ...[
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: scheme.secondaryContainer.withValues(alpha: 0.45),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: scheme.secondary.withValues(alpha: 0.22),
+                ),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    Icons.info_outline_rounded,
+                    size: 18,
+                    color: scheme.secondary,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      '网页版的跟随系统会读取浏览器/操作系统的亮暗偏好，浏览器偏好变化后界面会随应用主题刷新。',
+                      style: TextStyle(
+                        fontSize: 12,
+                        height: 1.45,
+                        color: scheme.onSurface.withValues(alpha: 0.72),
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
+          ],
         ],
-      ],
-    ));
+      ),
+    );
   }
 
   Widget _buildDeviceCalendarReadSetupPage() {
@@ -2470,26 +2677,40 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
               children: [
                 Icon(Icons.verified_user_rounded, color: Colors.teal, size: 48),
                 SizedBox(height: 16),
-                Text("本地数据迁移完成",
-                    style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.teal)),
+                Text(
+                  "本地数据迁移完成",
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.teal,
+                  ),
+                ),
                 SizedBox(height: 8),
-                Text("单一事实来源 (SSoT) 架构已激活",
-                    style: TextStyle(fontSize: 12, color: Colors.teal)),
+                Text(
+                  "单一事实来源 (SSoT) 架构已激活",
+                  style: TextStyle(fontSize: 12, color: Colors.teal),
+                ),
               ],
             ),
           ),
           const SizedBox(height: 40),
           _buildMigrationPoint(
-              Icons.bolt_rounded, "极致搜索性能", "基于 FTS5 全文索引，即便万条待办，检索只需毫秒。"),
+            Icons.bolt_rounded,
+            "极致搜索性能",
+            "基于 FTS5 全文索引，即便万条待办，检索只需毫秒。",
+          ),
           const SizedBox(height: 20),
-          _buildMigrationPoint(Icons.offline_pin_rounded, "离线操作拦截",
-              "内置 Oplog 离线记录仪，断网改动自动入库，联网秒速对齐。"),
+          _buildMigrationPoint(
+            Icons.offline_pin_rounded,
+            "离线操作拦截",
+            "内置 Oplog 离线记录仪，断网改动自动入库，联网秒速对齐。",
+          ),
           const SizedBox(height: 20),
-          _buildMigrationPoint(Icons.security_rounded, "核心数据双活",
-              "本地 SQL 与 Prefs 互为备份，最大限度抵御外部文件损毁风险。"),
+          _buildMigrationPoint(
+            Icons.security_rounded,
+            "核心数据双活",
+            "本地 SQL 与 Prefs 互为备份，最大限度抵御外部文件损毁风险。",
+          ),
         ],
       ),
     );
@@ -2505,13 +2726,22 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title,
-                  style: const TextStyle(
-                      fontSize: 15, fontWeight: FontWeight.bold)),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
               const SizedBox(height: 4),
-              Text(desc,
-                  style: TextStyle(
-                      fontSize: 13, color: Colors.grey[600], height: 1.4)),
+              Text(
+                desc,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Colors.grey[600],
+                  height: 1.4,
+                ),
+              ),
             ],
           ),
         ),
@@ -2534,15 +2764,14 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
       fallbackDecoration: BoxDecoration(
         color: isGranted
             ? Colors.green.withValues(alpha: 0.1)
-            : Theme.of(context)
-                .colorScheme
-                .surfaceContainerHighest
-                .withValues(alpha: 0.5),
+            : Theme.of(context).colorScheme.surfaceContainerHighest
+                  .withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-            color: isGranted
-                ? Colors.green.withValues(alpha: 0.3)
-                : Theme.of(context).colorScheme.outlineVariant),
+          color: isGranted
+              ? Colors.green.withValues(alpha: 0.3)
+              : Theme.of(context).colorScheme.outlineVariant,
+        ),
       ),
       child: Row(
         children: [
@@ -2552,31 +2781,41 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
               children: [
                 Row(
                   children: [
-                    Text(title,
-                        style: const TextStyle(
-                            fontWeight: FontWeight.bold, fontSize: 16)),
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
                     if (optional) ...[
                       const SizedBox(width: 8),
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 6, vertical: 2),
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
                         decoration: BoxDecoration(
-                            color: Colors.grey.withValues(alpha: 0.2),
-                            borderRadius: BorderRadius.circular(4)),
-                        child: const Text('强烈推荐',
-                            style: TextStyle(fontSize: 10, color: Colors.grey)),
-                      )
-                    ]
+                          color: Colors.grey.withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const Text(
+                          '强烈推荐',
+                          style: TextStyle(fontSize: 10, color: Colors.grey),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
                 const SizedBox(height: 4),
-                Text(subtitle,
-                    style: TextStyle(
-                        fontSize: 12,
-                        color: Theme.of(context)
-                            .colorScheme
-                            .onSurface
-                            .withValues(alpha: 0.7))),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(context).colorScheme.onSurface
+                        .withValues(alpha: 0.7),
+                  ),
+                ),
               ],
             ),
           ),
@@ -2586,11 +2825,14 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
               children: [
                 Icon(Icons.check_circle_rounded, color: Colors.green, size: 20),
                 SizedBox(width: 4),
-                Text('已授权',
-                    style: TextStyle(
-                        color: Colors.green,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 13)),
+                Text(
+                  '已授权',
+                  style: TextStyle(
+                    color: Colors.green,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                  ),
+                ),
               ],
             )
           else
@@ -2601,7 +2843,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
                 visualDensity: VisualDensity.compact,
               ),
               child: const Text('去开启'),
-            )
+            ),
         ],
       ),
     );
@@ -2623,10 +2865,8 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
           decoration: BoxDecoration(
             color: isActive
                 ? Theme.of(context).colorScheme.primary
-                : Theme.of(context)
-                    .colorScheme
-                    .onSurface
-                    .withValues(alpha: 0.2),
+                : Theme.of(context).colorScheme.onSurface
+                      .withValues(alpha: 0.2),
             borderRadius: BorderRadius.circular(3),
           ),
         );
@@ -2666,9 +2906,9 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
                 Text(
                   label,
                   style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                        color: foregroundColor,
-                        fontWeight: FontWeight.w600,
-                      ),
+                    color: foregroundColor,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ],
             ),
@@ -2739,8 +2979,8 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
           );
     final guideBottomBarHorizontalPadding =
         floatingBottomBarShouldFloat(context)
-            ? floatingBottomBarMarginFor(context).left
-            : 16.0;
+        ? floatingBottomBarMarginFor(context).left
+        : 16.0;
     final bottomBar = SafeArea(
       top: false,
       child: Padding(
@@ -2774,10 +3014,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
       bottomNavigationBar: isSinglePage
           ? SafeArea(
               top: false,
-              child: SizedBox(
-                height: 64,
-                child: Center(child: primaryAction),
-              ),
+              child: SizedBox(height: 64, child: Center(child: primaryAction)),
             )
           : bottomBar,
     );
@@ -2790,8 +3027,13 @@ class _RecentFeature {
   final String title;
   final String subtitle;
   final Widget Function()? destinationBuilder; // null = 不支持跳转（首次引导）
-  const _RecentFeature(this.icon, this.color, this.title, this.subtitle,
-      {this.destinationBuilder});
+  const _RecentFeature(
+    this.icon,
+    this.color,
+    this.title,
+    this.subtitle, {
+    this.destinationBuilder,
+  });
 }
 
 class AssetVideoPlayer extends StatefulWidget {
@@ -2906,7 +3148,9 @@ class _GuideAppearanceOptionsState extends State<GuideAppearanceOptions> {
                   if (val != null) {
                     setState(() => _themeMode = val);
                     StorageService.saveAppSetting(
-                        StorageService.keyThemeMode, val);
+                      StorageService.keyThemeMode,
+                      val,
+                    );
                     StorageService.themeNotifier.value = val;
                   }
                 },

@@ -14,8 +14,7 @@ class JournalStorage {
   @visibleForTesting
   factory JournalStorage.forTesting({
     required Future<Database> Function(String accountId) databaseLoader,
-  }) =>
-      JournalStorage._(databaseLoader: databaseLoader, reconcileMedia: false);
+  }) => JournalStorage._(databaseLoader: databaseLoader, reconcileMedia: false);
 
   static final instance = JournalStorage._(
     databaseLoader: DatabaseHelper.instance.databaseForUser,
@@ -36,6 +35,14 @@ class JournalStorage {
   ];
   String? _reconciledMediaAccountId;
 
+  static bool _isSqlLikeCaseInvariant(String term) {
+    for (final rune in term.runes) {
+      final character = String.fromCharCode(rune);
+      if (character.toLowerCase() != character.toUpperCase()) return false;
+    }
+    return true;
+  }
+
   /// Loads a compact page for the timeline/photo wall. Image bytes are loaded
   /// only for an entry opened by the user or for a visible web preview.
   Future<List<JournalEntry>> loadEntries({
@@ -43,17 +50,43 @@ class JournalStorage {
     int limit = 40,
     int offset = 0,
     String? searchQuery,
+    List<String> searchTerms = const [],
+    DateTime? occurredOn,
   }) async {
     final db = await databaseLoader(accountId);
     if (reconcileMedia) await _reconcileMediaIfNeeded(db, accountId);
     final query = searchQuery?.trim() ?? '';
     final hasQuery = query.isNotEmpty;
+    final where = <String>['is_deleted = 0'];
+    final whereArgs = <Object?>[];
+    if (hasQuery) {
+      where.add('(title LIKE ? OR content LIKE ?)');
+      whereArgs.addAll(['%$query%', '%$query%']);
+    }
+    for (final rawTerm in searchTerms) {
+      final term = rawTerm.trim();
+      // Keep the first keyword's legacy LIKE filter. Push only case-invariant
+      // additional terms down; Dart handles the rest without Unicode misses.
+      if (term.isEmpty || !_isSqlLikeCaseInvariant(term)) continue;
+      where.add('(title LIKE ? OR content LIKE ?)');
+      whereArgs.addAll(['%$term%', '%$term%']);
+    }
+    if (occurredOn != null) {
+      final start = DateTime(occurredOn.year, occurredOn.month, occurredOn.day);
+      final end = DateTime(
+        occurredOn.year,
+        occurredOn.month,
+        occurredOn.day + 1,
+      );
+      where.add('occurred_at >= ? AND occurred_at < ?');
+      whereArgs
+        ..add(start.millisecondsSinceEpoch)
+        ..add(end.millisecondsSinceEpoch);
+    }
     final entryRows = await db.query(
       'journal_entries',
-      where: hasQuery
-          ? 'is_deleted = 0 AND (title LIKE ? OR content LIKE ?)'
-          : 'is_deleted = 0',
-      whereArgs: hasQuery ? ['%$query%', '%$query%'] : null,
+      where: where.join(' AND '),
+      whereArgs: whereArgs.isEmpty ? null : whereArgs,
       orderBy: 'occurred_at DESC, created_at DESC',
       limit: limit,
       offset: offset,
@@ -78,10 +111,12 @@ class JournalStorage {
       grouped.putIfAbsent(attachment.entryId, () => []).add(attachment);
     }
     return entryRows
-        .map((row) => JournalEntry.fromMap(
-              row,
-              attachments: grouped[row['uuid']?.toString()] ?? const [],
-            ))
+        .map(
+          (row) => JournalEntry.fromMap(
+            row,
+            attachments: grouped[row['uuid']?.toString()] ?? const [],
+          ),
+        )
         .toList();
   }
 
@@ -108,8 +143,10 @@ class JournalStorage {
 
   /// Retrieves one attachment's bytes when a web preview becomes visible.
   /// Native previews use the local path and do not need this query.
-  Future<JournalAttachment?> loadAttachment(String id,
-      {String? accountId}) async {
+  Future<JournalAttachment?> loadAttachment(
+    String id, {
+    String? accountId,
+  }) async {
     final db = await _databaseFor(accountId);
     final rows = await db.query(
       'journal_attachments',
@@ -121,8 +158,10 @@ class JournalStorage {
   }
 
   Future<void> saveEntry(
-      JournalEntry entry, List<JournalAttachment> attachments,
-      {String? accountId}) async {
+    JournalEntry entry,
+    List<JournalAttachment> attachments, {
+    String? accountId,
+  }) async {
     final db = await _databaseFor(accountId);
     await db.transaction((txn) async {
       await txn.insert(
@@ -160,8 +199,11 @@ class JournalStorage {
       whereArgs: [id],
     );
     await db.transaction((txn) async {
-      await txn.delete('journal_attachments',
-          where: 'entry_uuid = ?', whereArgs: [id]);
+      await txn.delete(
+        'journal_attachments',
+        where: 'entry_uuid = ?',
+        whereArgs: [id],
+      );
       await txn.delete('journal_entries', where: 'uuid = ?', whereArgs: [id]);
     });
     return rows.map(JournalAttachment.fromMap).toList();

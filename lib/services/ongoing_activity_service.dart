@@ -29,21 +29,21 @@ class OngoingActivity {
   final int endMs;
 
   Map<String, dynamic> toMap() => {
-        'id': id,
-        'kind': switch (kind) {
-          OngoingActivityKind.fixedSchedule => 'fixed_schedule',
-          OngoingActivityKind.course => 'course',
-          OngoingActivityKind.planBlock => 'plan_block',
-          OngoingActivityKind.todo => 'todo',
-        },
-        'title': title,
-        'subtitle': subtitle,
-        'detail': detail,
-        if (relatedTodoId.isNotEmpty) 'relatedTodoId': relatedTodoId,
-        if (groupName.isNotEmpty) 'groupName': groupName,
-        'startMs': startMs,
-        'endMs': endMs,
-      };
+    'id': id,
+    'kind': switch (kind) {
+      OngoingActivityKind.fixedSchedule => 'fixed_schedule',
+      OngoingActivityKind.course => 'course',
+      OngoingActivityKind.planBlock => 'plan_block',
+      OngoingActivityKind.todo => 'todo',
+    },
+    'title': title,
+    'subtitle': subtitle,
+    'detail': detail,
+    if (relatedTodoId.isNotEmpty) 'relatedTodoId': relatedTodoId,
+    if (groupName.isNotEmpty) 'groupName': groupName,
+    'startMs': startMs,
+    'endMs': endMs,
+  };
 }
 
 class TodayTodoSummary {
@@ -62,12 +62,12 @@ class TodayTodoSummary {
   final String groupName;
 
   Map<String, dynamic> toMap() => {
-        'id': id,
-        'title': title,
-        'dueMs': dueMs,
-        'isDateOnly': isDateOnly,
-        if (groupName.isNotEmpty) 'groupName': groupName,
-      };
+    'id': id,
+    'title': title,
+    'dueMs': dueMs,
+    'isDateOnly': isDateOnly,
+    if (groupName.isNotEmpty) 'groupName': groupName,
+  };
 }
 
 class OngoingActivityResolution {
@@ -126,32 +126,40 @@ class OngoingActivityService {
     final todoById = {for (final todo in todos) todo.id: todo};
     final groupById = {for (final group in todoGroups) group.id: group};
     final activePlanTodoIds = <String>{};
-    final todayTodos = todos
-        .where((todo) {
-          if (todo.isDone || todo.isDeleted || todo.dueDate == null) {
-            return false;
-          }
-          return AppTimeFormats.isSameDay(todo.dueDate!.toLocal(), localNow);
-        })
-        .map((todo) => TodayTodoSummary(
-              id: todo.id,
-              title: _firstNonEmpty([todo.title, '未命名待办']),
-              dueMs: todo.dueDate!.millisecondsSinceEpoch,
-              isDateOnly: todo.isDateOnly,
-              groupName: groupById[todo.groupId]?.name ?? '',
-            ))
-        .toList()
-      ..sort((a, b) {
-        final dueOrder = a.dueMs.compareTo(b.dueMs);
-        if (dueOrder != 0) return dueOrder;
-        return a.title.compareTo(b.title);
-      });
+    final todayTodos =
+        todos
+            .where((todo) {
+              if (todo.isDone || todo.isDeleted || todo.dueDate == null) {
+                return false;
+              }
+              return AppTimeFormats.isSameDay(
+                todo.dueDate!.toLocal(),
+                localNow,
+              );
+            })
+            .map(
+              (todo) => TodayTodoSummary(
+                id: todo.id,
+                title: _firstNonEmpty([todo.title, '未命名待办']),
+                dueMs: todo.dueDate!.millisecondsSinceEpoch,
+                isDateOnly: todo.isDateOnly,
+                groupName: groupById[todo.groupId]?.name ?? '',
+              ),
+            )
+            .toList()
+          ..sort((a, b) {
+            final dueOrder = a.dueMs.compareTo(b.dueMs);
+            if (dueOrder != 0) return dueOrder;
+            return a.title.compareTo(b.title);
+          });
     if (todayTodos.isNotEmpty) {
-      boundaries.add(DateTime(
-        localNow.year,
-        localNow.month,
-        localNow.day + 1,
-      ).millisecondsSinceEpoch);
+      boundaries.add(
+        DateTime(
+          localNow.year,
+          localNow.month,
+          localNow.day + 1,
+        ).millisecondsSinceEpoch,
+      );
     }
 
     for (final item in fixedSchedules) {
@@ -206,10 +214,10 @@ class OngoingActivityService {
     for (final block in planBlocks) {
       if (block.isDeleted || !_isDisplayablePlanStatus(block.status)) continue;
       if (block.endTime <= block.startTime) continue;
-      final blockStart =
-          DateTime.fromMillisecondsSinceEpoch(block.startTime).toLocal();
-      final blockEnd =
-          DateTime.fromMillisecondsSinceEpoch(block.endTime).toLocal();
+      final blockStart = DateTime.fromMillisecondsSinceEpoch(block.startTime)
+          .toLocal();
+      final blockEnd = DateTime.fromMillisecondsSinceEpoch(block.endTime)
+          .toLocal();
       if (!AppTimeFormats.isSameDay(blockStart, blockEnd)) continue;
       _addFutureBoundaries(boundaries, block.startTime, block.endTime, nowMs);
       final linkedTodo = todoById[block.todoId];
@@ -220,8 +228,11 @@ class OngoingActivityService {
         OngoingActivity(
           id: block.id,
           kind: OngoingActivityKind.planBlock,
-          title:
-              _firstNonEmpty([block.titleSnapshot, linkedTodo?.title, '计划事项']),
+          title: _firstNonEmpty([
+            block.titleSnapshot,
+            linkedTodo?.title,
+            '计划事项',
+          ]),
           subtitle: block.remark ?? linkedTodo?.remark ?? '',
           detail: linkedTodo?.title ?? '',
           relatedTodoId: block.todoId,
@@ -304,9 +315,10 @@ class OngoingActivityService {
     });
     final nextActivity = nextCandidates.isEmpty ? null : nextCandidates.first;
     final nextTodoId = switch (nextActivity?.kind) {
-      OngoingActivityKind.todo => nextActivity!.relatedTodoId.isEmpty
-          ? nextActivity.id
-          : nextActivity.relatedTodoId,
+      OngoingActivityKind.todo =>
+        nextActivity!.relatedTodoId.isEmpty
+            ? nextActivity.id
+            : nextActivity.relatedTodoId,
       OngoingActivityKind.planBlock => nextActivity!.relatedTodoId,
       _ => '',
     };
@@ -385,11 +397,11 @@ class OngoingActivityService {
       status != TodoPlanStatus.skipped;
 
   static int _kindPriority(OngoingActivityKind kind) => switch (kind) {
-        OngoingActivityKind.fixedSchedule => 0,
-        OngoingActivityKind.course => 0,
-        OngoingActivityKind.planBlock => 1,
-        OngoingActivityKind.todo => 2,
-      };
+    OngoingActivityKind.fixedSchedule => 0,
+    OngoingActivityKind.course => 0,
+    OngoingActivityKind.planBlock => 1,
+    OngoingActivityKind.todo => 2,
+  };
 
   static String _firstNonEmpty(List<String?> values) {
     for (final value in values) {

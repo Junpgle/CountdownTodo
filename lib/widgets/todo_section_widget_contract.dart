@@ -21,7 +21,7 @@ mixin _TodoSectionContract {
     ChatUsageSummary? initialVoiceUsageSummary,
   });
 
-  bool _isHistoricalTodo(TodoItem t);
+  bool _isHistoricalTodoAt(TodoItem t, DateTime today);
 
   void showAddTodoDialog();
 
@@ -87,10 +87,7 @@ mixin _TodoSectionContract {
 
   void _editTodo(TodoItem todo, BuildContext cardCtx);
 
-  void _openTodoEditor(
-    TodoItem todo, {
-    bool applyToFutureOccurrences = false,
-  });
+  void _openTodoEditor(TodoItem todo, {bool applyToFutureOccurrences = false});
 
   String _buildTimeLabel(
     TodoItem todo,
@@ -107,6 +104,7 @@ mixin _TodoSectionContract {
   Future<void> _handleRecurrenceNodeTap(
     TodoItem current,
     TodoRecurrenceProgressNode node,
+    _TodoRecurrenceDateStructure dateStructure,
   );
 
   Future<void> _showRecurrenceOccurrenceActions(
@@ -122,6 +120,7 @@ mixin _TodoSectionContract {
     TodoItem todo, {
     required bool isPast,
     required bool isFuture,
+    required DateTime now,
     Key? key,
   });
 

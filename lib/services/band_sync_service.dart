@@ -1,12 +1,15 @@
 import 'dart:async';
 import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+
 import 'storage/app_settings_storage.dart';
 
 class BandSyncService {
-  static const MethodChannel _channel =
-      MethodChannel('com.math_quiz_app/band_communication');
+  static const MethodChannel _channel = MethodChannel(
+    'com.math_quiz_app/band_communication',
+  );
   static const int _maxPlatformMessageBytes = 64 * 1024;
   static const int _maxSyncStringLength = 512;
   static const Set<String> _excludedSyncKeys = {
@@ -31,8 +34,9 @@ class BandSyncService {
   static String _bandVersion = '';
   static final ValueNotifier<String> bandVersionNotifier =
       ValueNotifier<String>('');
-  static final ValueNotifier<bool> serviceEnabledNotifier =
-      ValueNotifier<bool>(false);
+  static final ValueNotifier<bool> serviceEnabledNotifier = ValueNotifier<bool>(
+    false,
+  );
   static DateTime? _lastSyncTime;
   static final List<String> _logs = [];
   static final List<Map<String, dynamic>> _receivedMessages = [];
@@ -70,10 +74,11 @@ class BandSyncService {
 
   // 同步数据提供者（由外部设置，默认从本地存储读取）
   static Future<List<Map<String, dynamic>>> Function(String type)?
-      _syncDataProvider;
+  _syncDataProvider;
 
   static void setSyncDataProvider(
-      Future<List<Map<String, dynamic>>> Function(String type) provider) {
+    Future<List<Map<String, dynamic>>> Function(String type) provider,
+  ) {
     _syncDataProvider = provider;
   }
 
@@ -296,8 +301,8 @@ class BandSyncService {
                 (jsonData['action'] == 'finish' ||
                     jsonData['action'] == 'abandon')) {
               _addLog('手环番茄钟操作: ${jsonData['action']}');
-//               debugPrint(
-//                   '[BandSyncService] Emitting pomodoro action: ${jsonData['action']}');
+              //               debugPrint(
+              //                   '[BandSyncService] Emitting pomodoro action: ${jsonData['action']}');
               if (!_pomodoroActionCtrl.isClosed) {
                 _pomodoroActionCtrl.add(jsonData);
               }
@@ -407,11 +412,13 @@ class BandSyncService {
     try {
       final dataList = await provider(type);
       final success = await _sendListData(type, dataList);
-      _addLog(success
-          ? (_supportsSyncResult
-              ? '已同步 $type: ${dataList.length} 条'
-              : '已发送 $type: ${dataList.length} 条，手环未提供回执')
-          : '同步 $type 失败，未确认手环完整写入');
+      _addLog(
+        success
+            ? (_supportsSyncResult
+                  ? '已同步 $type: ${dataList.length} 条'
+                  : '已发送 $type: ${dataList.length} 条，手环未提供回执')
+            : '同步 $type 失败，未确认手环完整写入',
+      );
     } catch (e) {
       _addLog('同步 $type 异常: $e');
     }
@@ -433,8 +440,13 @@ class BandSyncService {
   }
 
   /// 发送数据到手环（带批次信息）
-  static Future<bool> sendData(String type, dynamic data,
-      {int batchNum = 1, int totalBatches = 1, String? transferId}) async {
+  static Future<bool> sendData(
+    String type,
+    dynamic data, {
+    int batchNum = 1,
+    int totalBatches = 1,
+    String? transferId,
+  }) async {
     if (!_nativeServiceStarted || !serviceEnabledNotifier.value) {
       _addLog('手环服务未开启');
       return false;
@@ -466,14 +478,14 @@ class BandSyncService {
       final messageBytes = utf8.encode(message).length;
       if (messageBytes > _maxPlatformMessageBytes) {
         _addLog(
-            '发送数据失败: $type 第 $batchNum/$totalBatches 批过大 (${(messageBytes / 1024).toStringAsFixed(1)}KB)');
+          '发送数据失败: $type 第 $batchNum/$totalBatches 批过大 (${(messageBytes / 1024).toStringAsFixed(1)}KB)',
+        );
         return false;
       }
 
       return await _channel
-              .invokeMethod<bool>('sendMessage', {'data': message}).timeout(
-                  const Duration(seconds: 15),
-                  onTimeout: () => false) ==
+              .invokeMethod<bool>('sendMessage', {'data': message})
+              .timeout(const Duration(seconds: 15), onTimeout: () => false) ==
           true;
     } catch (e) {
       _addLog('发送数据失败: $e');
@@ -497,7 +509,8 @@ class BandSyncService {
 
   /// 同步倒计时
   static Future<bool> syncCountdowns(
-      List<Map<String, dynamic>> countdowns) async {
+    List<Map<String, dynamic>> countdowns,
+  ) async {
     final success = await _sendListData('countdown', countdowns);
     if (success) _updateLastSyncTime();
     return success;
@@ -505,7 +518,8 @@ class BandSyncService {
 
   /// 同步番茄钟运行状态
   static Future<bool> syncPomodoro(
-      List<Map<String, dynamic>> pomodoroData) async {
+    List<Map<String, dynamic>> pomodoroData,
+  ) async {
     final success = await _sendListData('pomodoro', pomodoroData);
     if (success) _updateLastSyncTime();
     return success;
@@ -540,7 +554,9 @@ class BandSyncService {
   }
 
   static Future<bool> _sendListData(
-      String type, List<Map<String, dynamic>> items) async {
+    String type,
+    List<Map<String, dynamic>> items,
+  ) async {
     final previous = _sendTails[type];
     final completion = Completer<void>();
     final completionFuture = completion.future;
@@ -557,15 +573,18 @@ class BandSyncService {
   }
 
   static Future<bool> _sendListDataUnlocked(
-      String type, List<Map<String, dynamic>> items) async {
+    String type,
+    List<Map<String, dynamic>> items,
+  ) async {
     final transferId =
         '$type-${DateTime.now().microsecondsSinceEpoch}-${++_transferSequence}';
     final chunks = <List<Map<String, dynamic>>>[];
     var current = <Map<String, dynamic>>[];
 
     for (final item in items) {
-      final sanitizedItem =
-          Map<String, dynamic>.from(_sanitizeForBand(item) as Map);
+      final sanitizedItem = Map<String, dynamic>.from(
+        _sanitizeForBand(item) as Map,
+      );
       final candidate = [...current, sanitizedItem];
       if (candidate.length > 5 ||
           _estimatePayloadBytes(type, candidate, transferId) >
@@ -634,7 +653,10 @@ class BandSyncService {
   }
 
   static int _estimatePayloadBytes(
-      String type, List<Map<String, dynamic>> data, String transferId) {
+    String type,
+    List<Map<String, dynamic>> data,
+    String transferId,
+  ) {
     final payload = {
       'type': type,
       'data': data,

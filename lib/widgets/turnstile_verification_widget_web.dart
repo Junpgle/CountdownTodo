@@ -38,9 +38,15 @@ class _TurnstileVerificationWidgetState
   late final web.HTMLDivElement _container;
   final GlobalKey _anchorKey = GlobalKey();
   String? _widgetId;
-  Timer? _scriptPollTimer;
+  web.HTMLScriptElement? _waitingScript;
+  JSFunction? _scriptLoadListener;
+  JSFunction? _scriptErrorListener;
   Timer? _loadTimeoutTimer;
   Timer? _positionTimer;
+  double? _lastContainerLeft;
+  double? _lastContainerTop;
+  double? _lastContainerWidth;
+  double? _lastContainerHeight;
   bool _isLoading = true;
   bool _isVerified = false;
   bool _hasError = false;
@@ -76,7 +82,7 @@ class _TurnstileVerificationWidgetState
   @override
   void dispose() {
     _disposed = true;
-    _scriptPollTimer?.cancel();
+    _removeScriptLoadListeners();
     _loadTimeoutTimer?.cancel();
     _positionTimer?.cancel();
     _removeWidget();
@@ -99,11 +105,27 @@ class _TurnstileVerificationWidgetState
         _anchorKey.currentContext?.findRenderObject() as RenderBox?;
     if (box == null || !box.attached) return;
     final offset = box.localToGlobal(Offset.zero);
-    _container.style
-      ..left = '${offset.dx}px'
-      ..top = '${offset.dy}px'
-      ..width = '${box.size.width}px'
-      ..height = '${box.size.height}px';
+    final left = offset.dx;
+    final top = offset.dy;
+    final width = box.size.width;
+    final height = box.size.height;
+    final style = _container.style;
+    if (left != _lastContainerLeft) {
+      style.left = '${left}px';
+    }
+    if (top != _lastContainerTop) {
+      style.top = '${top}px';
+    }
+    if (width != _lastContainerWidth) {
+      style.width = '${width}px';
+    }
+    if (height != _lastContainerHeight) {
+      style.height = '${height}px';
+    }
+    _lastContainerLeft = left;
+    _lastContainerTop = top;
+    _lastContainerWidth = width;
+    _lastContainerHeight = height;
   }
 
   void _startPositionTracking() {
@@ -119,7 +141,7 @@ class _TurnstileVerificationWidgetState
 
   void reset() {
     _loadTimeoutTimer?.cancel();
-    _scriptPollTimer?.cancel();
+    _removeScriptLoadListeners();
     setState(() {
       _isLoading = true;
       _isVerified = false;
@@ -165,6 +187,7 @@ class _TurnstileVerificationWidgetState
   }
 
   void _loadScriptAndRender() {
+    _removeScriptLoadListeners();
     if (_hasTurnstile) {
       _renderWidget();
       return;
@@ -174,30 +197,49 @@ class _TurnstileVerificationWidgetState
       'script[src="https://challenges.cloudflare.com/turnstile/v0/api.js"]',
     );
 
+    final script = existing == null
+        ? (web.HTMLScriptElement()
+            ..src = 'https://challenges.cloudflare.com/turnstile/v0/api.js'
+            ..async = true
+            ..defer = true)
+        : existing as web.HTMLScriptElement;
+    _listenForScriptLoad(script);
     if (existing == null) {
-      final script = web.HTMLScriptElement()
-        ..src = 'https://challenges.cloudflare.com/turnstile/v0/api.js'
-        ..async = true
-        ..defer = true;
-      script.addEventListener(
-        'load',
-        ((web.Event _) => _renderWidget()).toJS,
-      );
-      script.addEventListener(
-        'error',
-        ((web.Event _) => _fail('无法加载验证服务')).toJS,
-      );
       web.document.head?.appendChild(script);
     }
+  }
 
-    _scriptPollTimer?.cancel();
-    _scriptPollTimer =
-        Timer.periodic(const Duration(milliseconds: 100), (timer) {
-      if (_hasTurnstile) {
-        timer.cancel();
-        _renderWidget();
+  void _listenForScriptLoad(web.HTMLScriptElement script) {
+    final loadListener = ((web.Event _) {
+      _removeScriptLoadListeners();
+      if (_hasTurnstile) _renderWidget();
+    }).toJS;
+    final errorListener = ((web.Event _) {
+      _removeScriptLoadListeners();
+      _fail('无法加载验证服务');
+    }).toJS;
+    _waitingScript = script;
+    _scriptLoadListener = loadListener;
+    _scriptErrorListener = errorListener;
+    script.addEventListener('load', loadListener);
+    script.addEventListener('error', errorListener);
+  }
+
+  void _removeScriptLoadListeners() {
+    final script = _waitingScript;
+    if (script != null) {
+      final loadListener = _scriptLoadListener;
+      if (loadListener != null) {
+        script.removeEventListener('load', loadListener);
       }
-    });
+      final errorListener = _scriptErrorListener;
+      if (errorListener != null) {
+        script.removeEventListener('error', errorListener);
+      }
+    }
+    _waitingScript = null;
+    _scriptLoadListener = null;
+    _scriptErrorListener = null;
   }
 
   void _renderWidget() {
@@ -300,10 +342,10 @@ class _TurnstileVerificationWidgetState
             color: _isVerified
                 ? const Color(0xFF4CAF50)
                 : _hasError
-                    ? const Color(0xFFE53E3E)
-                    : widget.isDarkMode
-                        ? const Color(0x1AFFFFFF)
-                        : const Color(0xFFDDDDEE),
+                ? const Color(0xFFE53E3E)
+                : widget.isDarkMode
+                ? const Color(0x1AFFFFFF)
+                : const Color(0xFFDDDDEE),
           ),
         ),
         child: ClipRRect(
@@ -347,8 +389,11 @@ class _TurnstileVerificationWidgetState
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.check_circle_outline,
-                  color: Color(0xFF4CAF50), size: 20),
+              Icon(
+                Icons.check_circle_outline,
+                color: Color(0xFF4CAF50),
+                size: 20,
+              ),
               SizedBox(width: 8),
               Text('验证已通过'),
             ],

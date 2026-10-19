@@ -30,8 +30,17 @@ class _TodoRecurrenceOccurrencePickerState
   static const double _spacing = 8;
 
   final ScrollController _scrollController = ScrollController();
+  final Map<(String?, String), DateFormat> _dateFormats = {};
   bool _needsCenter = true;
   bool _animateNextCenter = false;
+
+  DateFormat _cachedDateFormat(String pattern) {
+    final locale = Intl.defaultLocale;
+    return _dateFormats.putIfAbsent((
+      locale,
+      pattern,
+    ), () => DateFormat(pattern, locale));
+  }
 
   @override
   void didUpdateWidget(covariant TodoRecurrenceOccurrencePicker oldWidget) {
@@ -106,8 +115,9 @@ class _TodoRecurrenceOccurrencePickerState
                 for (var index = 0; index < widget.occurrences.length; index++)
                   Padding(
                     padding: EdgeInsets.only(
-                      right:
-                          index == widget.occurrences.length - 1 ? 0 : _spacing,
+                      right: index == widget.occurrences.length - 1
+                          ? 0
+                          : _spacing,
                     ),
                     child: _buildOccurrenceCard(
                       context,
@@ -133,12 +143,18 @@ class _TodoRecurrenceOccurrencePickerState
       occurrence.createdDate ?? occurrence.createdAt,
       isUtc: true,
     ).toLocal();
+    final dateLabel = _cachedDateFormat('M月d日').format(start);
 
     return Semantics(
       selected: isCurrent,
       button: !isCurrent,
-      label: '${DateFormat('M月d日').format(start)}，'
-          '${isCurrent ? '正在编辑' : occurrence.isDone ? '已完成' : '待完成'}',
+      label:
+          '$dateLabel，'
+          '${isCurrent
+              ? '正在编辑'
+              : occurrence.isDone
+              ? '已完成'
+              : '待完成'}',
       child: InkWell(
         key: ValueKey('related_recurrence_${occurrence.id}'),
         borderRadius: BorderRadius.circular(12),
@@ -170,7 +186,7 @@ class _TodoRecurrenceOccurrencePickerState
               ),
               const SizedBox(height: 4),
               Text(
-                DateFormat('M月d日').format(start),
+                dateLabel,
                 style: const TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
@@ -180,8 +196,8 @@ class _TodoRecurrenceOccurrencePickerState
                 isCurrent
                     ? '正在编辑'
                     : occurrence.isDone
-                        ? '已完成'
-                        : '待完成',
+                    ? '已完成'
+                    : '待完成',
                 style: TextStyle(
                   fontSize: 10,
                   color: colorScheme.onSurfaceVariant,

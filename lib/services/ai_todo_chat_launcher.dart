@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -34,8 +36,8 @@ class AiTodoChatLauncher {
     String? initialMessage,
     bool sendInitialMessage = true,
     ChatUsageSummary? initialVoiceUsageSummary,
-    void Function(List<TodoItem> inserted, List<TodoItem> updated)?
-        onTodosBatchAction,
+    FutureOr<void> Function(List<TodoItem> inserted, List<TodoItem> updated)?
+    onTodosBatchAction,
     void Function(List<TodoGroup> groups)? onTodoGroupsChanged,
     void Function(List<FixedScheduleItem> schedules)? onFixedSchedulesChanged,
   }) async {
@@ -63,11 +65,9 @@ class AiTodoChatLauncher {
             groups: todoGroups,
             categoryReminderDefaults: categoryReminderDefaults,
           );
-    final resolvedFixedSchedules = fixedSchedules ??
-        await StorageService.getFixedSchedules(
-          username,
-          includeDeleted: true,
-        );
+    final resolvedFixedSchedules =
+        fixedSchedules ??
+        await StorageService.getFixedSchedules(username, includeDeleted: true);
     if (!context.mounted) return;
     final page = TodoChatScreen(
       username: username,
@@ -104,13 +104,19 @@ class AiTodoChatLauncher {
 
   static String buildCategorizationMessage(List<AiTodoAction> actions) {
     if (actions.isEmpty) return '';
-    final lines = actions.map((action) {
-      final groupName =
-          action.metadata['groupName']?.toString() ?? action.groupId ?? '目标文件夹';
-      final priority = action.metadata['priorityLabel']?.toString();
-      final suffix = priority == null || priority.isEmpty ? '' : '，$priority';
-      return '- ${action.title ?? '未命名待办'} -> $groupName$suffix';
-    }).join('\n');
+    final lines = actions
+        .map((action) {
+          final groupName =
+              action.metadata['groupName']?.toString() ??
+              action.groupId ??
+              '目标文件夹';
+          final priority = action.metadata['priorityLabel']?.toString();
+          final suffix = priority == null || priority.isEmpty
+              ? ''
+              : '，$priority';
+          return '- ${action.title ?? '未命名待办'} -> $groupName$suffix';
+        })
+        .join('\n');
     return '我根据标题、备注和已有文件夹匹配到这些整理建议：\n\n$lines\n\n可以直接执行所选操作，也可以逐条忽略或编辑。';
   }
 
@@ -155,8 +161,8 @@ class AiTodoChatLauncher {
         'recurrenceRole': seriesId == null || seriesId.isEmpty
             ? 'standalone'
             : t.id == rule.id
-                ? 'activeRule'
-                : 'occurrence',
+            ? 'activeRule'
+            : 'occurrence',
         'customIntervalDays': rule.customIntervalDays,
         'recurrenceEndDate': _formatDateTime(rule.recurrenceEndDate),
         'groupId': t.groupId ?? '',
@@ -182,8 +188,9 @@ class AiTodoChatLauncher {
 
   static String _formatEpochMillis(int? value) {
     if (value == null) return '';
-    return _localDateTimeFormat
-        .format(DateTime.fromMillisecondsSinceEpoch(value).toLocal());
+    return _localDateTimeFormat.format(
+      DateTime.fromMillisecondsSinceEpoch(value).toLocal(),
+    );
   }
 
   static String _formatDateTime(DateTime? value) {

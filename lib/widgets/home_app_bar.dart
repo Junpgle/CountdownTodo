@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter_zoom_drawer/flutter_zoom_drawer.dart';
+
 import '../screens/course_screens.dart';
 import '../utils/page_transitions.dart';
 import 'floating_glass_control.dart';
@@ -52,23 +53,22 @@ class _ShimmerWidgetState extends State<ShimmerWidget>
     final highlightColor = widget.isLight
         ? Colors.white.withValues(alpha: 0.6)
         : Colors.grey[700]!;
+    final width = widget.width == double.infinity ? null : widget.width;
+    final borderRadius = BorderRadius.circular(widget.borderRadius);
+    final gradientColors = [baseColor, highlightColor, baseColor];
 
     return AnimatedBuilder(
       animation: _animation,
       builder: (context, child) {
         return Container(
-          width: widget.width == double.infinity ? null : widget.width,
+          width: width,
           height: widget.height,
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(widget.borderRadius),
+            borderRadius: borderRadius,
             gradient: LinearGradient(
               begin: Alignment(_animation.value, 0),
               end: Alignment(_animation.value + 0.5, 0),
-              colors: [
-                baseColor,
-                highlightColor,
-                baseColor,
-              ],
+              colors: gradientColors,
               stops: const [0.0, 0.5, 1.0],
             ),
           ),
@@ -158,6 +158,8 @@ class HomeAppBar extends StatefulWidget implements PreferredSizeWidget {
 class _HomeAppBarState extends State<HomeAppBar>
     with SingleTickerProviderStateMixin {
   late final AnimationController _syncRotationController;
+  String? _cachedDateFormatPattern;
+  DateFormat? _cachedDateFormat;
 
   @override
   void initState() {
@@ -190,15 +192,25 @@ class _HomeAppBarState extends State<HomeAppBar>
     return format.replaceAll('{name}', username);
   }
 
-  Widget _buildActionButton(BuildContext context,
-      {required IconData icon,
-      required VoidCallback onPressed,
-      bool isLoading = false,
-      int badgeCount = 0,
-      bool showAlertDot = false,
-      EdgeInsetsGeometry? margin,
-      bool isSmall = false,
-      Key? buttonKey}) {
+  String _formatDate(DateTime date, String pattern) {
+    if (_cachedDateFormatPattern != pattern) {
+      _cachedDateFormatPattern = pattern;
+      _cachedDateFormat = DateFormat(pattern, 'zh_CN');
+    }
+    return _cachedDateFormat!.format(date);
+  }
+
+  Widget _buildActionButton(
+    BuildContext context, {
+    required IconData icon,
+    required VoidCallback onPressed,
+    bool isLoading = false,
+    int badgeCount = 0,
+    bool showAlertDot = false,
+    EdgeInsetsGeometry? margin,
+    bool isSmall = false,
+    Key? buttonKey,
+  }) {
     final double iconSize = isSmall ? 22.0 : 28.0;
     final double padding = isSmall ? 4.0 : 8.0;
     final colorScheme = Theme.of(context).colorScheme;
@@ -214,17 +226,21 @@ class _HomeAppBarState extends State<HomeAppBar>
           icon: isLoading
               ? RotationTransition(
                   turns: _syncRotationController,
-                  child: Icon(icon,
-                      size: iconSize,
-                      color: widget.isLight
-                          ? colorScheme.onInverseSurface
-                          : colorScheme.primary),
+                  child: Icon(
+                    icon,
+                    size: iconSize,
+                    color: widget.isLight
+                        ? colorScheme.onInverseSurface
+                        : colorScheme.primary,
+                  ),
                 )
-              : Icon(icon,
+              : Icon(
+                  icon,
                   size: iconSize,
                   color: widget.isLight
                       ? colorScheme.onInverseSurface
-                      : colorScheme.onSurface),
+                      : colorScheme.onSurface,
+                ),
           onPressed: onPressed,
         ),
         if (badgeCount > 0)
@@ -238,13 +254,16 @@ class _HomeAppBarState extends State<HomeAppBar>
                 shape: BoxShape.circle,
               ),
               constraints: BoxConstraints(
-                  minWidth: isSmall ? 12 : 16, minHeight: isSmall ? 12 : 16),
+                minWidth: isSmall ? 12 : 16,
+                minHeight: isSmall ? 12 : 16,
+              ),
               child: Text(
                 badgeCount > 9 ? '9+' : badgeCount.toString(),
                 style: TextStyle(
-                    color: colorScheme.onError,
-                    fontSize: isSmall ? 7 : 8,
-                    fontWeight: FontWeight.bold),
+                  color: colorScheme.onError,
+                  fontSize: isSmall ? 7 : 8,
+                  fontWeight: FontWeight.bold,
+                ),
                 textAlign: TextAlign.center,
               ),
             ),
@@ -292,10 +311,7 @@ class _HomeAppBarState extends State<HomeAppBar>
           opacity: clamped,
           child: Transform.translate(
             offset: Offset(0, (1 - clamped) * 8),
-            child: Transform.scale(
-              scale: 0.92 + clamped * 0.08,
-              child: c,
-            ),
+            child: Transform.scale(scale: 0.92 + clamped * 0.08, child: c),
           ),
         );
       },
@@ -323,8 +339,10 @@ class _HomeAppBarState extends State<HomeAppBar>
         config?.customTimeSalutation ?? widget.timeSalutation;
     final displayGreeting = widget.currentGreeting;
     final displayDateFormat = config?.dateFormat ?? 'MM月dd日 EEEE';
-    final displayUsername =
-        _formatUsername(widget.username, config?.usernameFormat);
+    final displayUsername = _formatUsername(
+      widget.username,
+      config?.usernameFormat,
+    );
 
     final searchBtn = _buildActionButton(
       context,
@@ -372,8 +390,9 @@ class _HomeAppBarState extends State<HomeAppBar>
 
     return FloatingGlassAppBar(
       backgroundColor: widget.isLight ? Colors.transparent : null,
-      floatingControlTint:
-          widget.isLight ? colorScheme.scrim.withValues(alpha: 0.32) : null,
+      floatingControlTint: widget.isLight
+          ? colorScheme.scrim.withValues(alpha: 0.32)
+          : null,
       floatingControlIsDark: widget.isLight ? true : null,
       elevation: 0,
       flexibleSpace: FloatingGlassTopBarBackground(
@@ -419,7 +438,7 @@ class _HomeAppBarState extends State<HomeAppBar>
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               Text(
-                DateFormat(displayDateFormat, 'zh_CN').format(DateTime.now()),
+                _formatDate(DateTime.now(), displayDateFormat),
                 style: TextStyle(
                   fontSize: dateSize,
                   fontWeight: FontWeight.w500,

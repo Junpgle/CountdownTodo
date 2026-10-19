@@ -1,4 +1,5 @@
 import 'package:shared_preferences/shared_preferences.dart';
+
 import '../models.dart';
 import '../features/finance/services/finance_automation_service.dart';
 import '../storage_service.dart';
@@ -56,9 +57,11 @@ class ReminderScheduleService {
   static const int _debounceMs = 2000;
 
   /// 根据最新的待办 + 课程列表，重新调度所有未来提醒。
+  /// `loadCourses` 会在账号校验及防抖后调用，查询日期范围的结束日不包含在内。
   static Future<void> scheduleAll({
     required List<TodoItem> todos,
     required List<CourseItem> courses,
+    Future<List<CourseItem>> Function(DateTime from, DateTime to)? loadCourses,
     String? expectedUsername,
     bool force = false,
   }) async {
@@ -87,13 +90,29 @@ class ReminderScheduleService {
 
     final now = DateTime.now();
     final limit = now.add(const Duration(days: 7));
+    var scheduledCourses = courses;
+    int? loadedCourseReminderMinutes;
+    if (loadCourses != null) {
+      loadedCourseReminderMinutes =
+          await StorageService.getCourseReminderMinutes();
+      final lastRelevantCourseStart = limit.add(
+        Duration(minutes: loadedCourseReminderMinutes),
+      );
+      final courseDateEndExclusive = DateTime(
+        lastRelevantCourseStart.year,
+        lastRelevantCourseStart.month,
+        lastRelevantCourseStart.day + 1,
+      );
+      scheduledCourses = await loadCourses(now, courseDateEndExclusive);
+    }
     final reminders = <Map<String, dynamic>>[];
 
     // ── 获取当前用户 ────────────────────────────────────────────────
     final effectiveUsername = username.isEmpty ? 'default' : username;
 
-    final fixedSchedules =
-        await StorageService.getFixedSchedules(effectiveUsername);
+    final fixedSchedules = await StorageService.getFixedSchedules(
+      effectiveUsername,
+    );
 
     // ── 记账自动化 ──────────────────────────────────────────────────
     // 自动生成当前已到期周期账单，并把未来 7 天的账单加入同一套系统提醒。
@@ -115,9 +134,6 @@ class ReminderScheduleService {
       final t = todos[i];
       if (t.isDeleted || t.isDone) continue;
 
-      final todoType = ItemSemanticsService.specialTodoTypeForTitle(t.title);
-      final isSpecialTodo = todoType != 'default';
-
       // 日期待办没有“开始时刻”。旧数据会把它表示为当天 00:00 到
       // 23:59（或次日 00:00），不能直接拿 createdDate 做提前提醒，
       // 否则默认提前几分钟会在前一天晚上触发。
@@ -128,9 +144,10 @@ class ReminderScheduleService {
         dateOnlyDayStart = DateTime(date.year, date.month, date.day);
         refTime = DateTime(date.year, date.month, date.day, 23, 59);
       } else if (t.createdDate != null && t.createdDate! > 0) {
-        refTime =
-            DateTime.fromMillisecondsSinceEpoch(t.createdDate!, isUtc: true)
-                .toLocal();
+        refTime = DateTime.fromMillisecondsSinceEpoch(
+          t.createdDate!,
+          isUtc: true,
+        ).toLocal();
       } else if (t.dueDate != null) {
         refTime = t.dueDate!.toLocal();
       }
@@ -140,7 +157,8 @@ class ReminderScheduleService {
       // 提醒提前量
       final advance = t.reminderMinutes ?? _todoAdvanceMinutes;
       final requestedTriggerAt = refTime.subtract(Duration(minutes: advance));
-      final triggerAt = dateOnlyDayStart != null &&
+      final triggerAt =
+          dateOnlyDayStart != null &&
               requestedTriggerAt.isBefore(dateOnlyDayStart)
           ? dateOnlyDayStart
           : requestedTriggerAt;
@@ -152,51 +170,44 @@ class ReminderScheduleService {
         now: now,
         limit: limit,
       )) {
+        final todoType = ItemSemanticsService.specialTodoTypeForTitle(t.title);
+        final isSpecialTodo = todoType != 'default';
+        final startTimeText = _hm(refTime);
+        final hasTimeRange = t.dueDate != null && t.createdDate != null;
+        final timeText = hasTimeRange
+            ? '$startTimeText - ${_hm(t.dueDate!.toLocal())}'
+            : startTimeText;
         if (isSpecialTodo) {
           final label = _getSpecialTodoLabel(todoType);
-          // 如果有时间段，显示范围，否则只显示参考时间
-          String timeStr = _hm(refTime);
-          if (t.dueDate != null && t.createdDate != null) {
-            final end = t.dueDate!.toLocal();
-            timeStr = '${_hm(refTime)} - ${_hm(end)}';
-          }
 
           reminders.add({
             'triggerAtMs': triggerAt.toUtc().millisecondsSinceEpoch,
             'startAtMs': refTime.toUtc().millisecondsSinceEpoch,
             'title': '$label ${t.title}',
             'text': t.remark?.isNotEmpty == true
-                ? '${t.remark!} · $timeStr'
-                : timeStr,
+                ? '${t.remark!} · $timeText'
+                : timeText,
             'notifId': _specialTodoBaseId + i,
             'type': 'special_todo',
             'todoId': t.id,
             'todoType': todoType,
-            'timeStr': timeStr,
+            'timeStr': timeText,
             'analysisImagePath': t.imagePath,
             'originalText': t.originalText,
           });
         } else {
           // 普通待办
-          String text = t.remark?.isNotEmpty == true ? t.remark! : '即将开始';
-          if (t.dueDate != null && t.createdDate != null) {
-            final end = t.dueDate!.toLocal();
-            text += ' · ${_hm(refTime)} - ${_hm(end)}';
-          } else {
-            text += ' · ${_hm(refTime)}';
-          }
+          final description = t.remark?.isNotEmpty == true ? t.remark! : '即将开始';
 
           reminders.add({
             'triggerAtMs': triggerAt.toUtc().millisecondsSinceEpoch,
             'startAtMs': refTime.toUtc().millisecondsSinceEpoch,
             'title': '⏰ ${t.title}',
-            'text': text,
+            'text': '$description · $timeText',
             'notifId': _todoBaseId + i,
             'type': 'upcoming_todo',
             'todoId': t.id,
-            'timeStr': t.dueDate != null && t.createdDate != null
-                ? '${_hm(refTime)} - ${_hm(t.dueDate!.toLocal())}'
-                : _hm(refTime),
+            'timeStr': timeText,
             'analysisImagePath': t.imagePath,
             'originalText': t.originalText,
           });
@@ -206,9 +217,10 @@ class ReminderScheduleService {
 
     // ── 课程提醒 ──────────────────────────────────────────────────
     final courseAdvanceMinutes =
+        loadedCourseReminderMinutes ??
         await StorageService.getCourseReminderMinutes();
-    for (int i = 0; i < courses.length && i < 999; i++) {
-      final c = courses[i];
+    for (int i = 0; i < scheduledCourses.length && i < 999; i++) {
+      final c = scheduledCourses[i];
       // 课程 date 是 yyyy-MM-dd，startTime 是 800/1000 等整数
       try {
         final dateParts = c.date.split('-');
@@ -219,31 +231,39 @@ class ReminderScheduleService {
         final hour = c.startTime ~/ 100;
         final minute = c.startTime % 100;
         final courseStart = DateTime(year, month, day, hour, minute);
-        final triggerAt =
-            courseStart.subtract(Duration(minutes: courseAdvanceMinutes));
+        final triggerAt = courseStart.subtract(
+          Duration(minutes: courseAdvanceMinutes),
+        );
         if (shouldSchedulePreStart(
           startAt: courseStart,
           triggerAt: triggerAt,
           now: now,
           limit: limit,
         )) {
+          final courseEnd = DateTime(
+            year,
+            month,
+            day,
+            c.endTime ~/ 100,
+            c.endTime % 100,
+          );
+          final courseStartMs = courseStart.toUtc().millisecondsSinceEpoch;
+          final courseEndMs = courseEnd.toUtc().millisecondsSinceEpoch;
+          final courseStartText = _hm(courseStart);
+          final courseTimeRange = '$courseStartText - ${_hm(courseEnd)}';
           reminders.add({
             'triggerAtMs': triggerAt.toUtc().millisecondsSinceEpoch,
-            'startAtMs': courseStart.toUtc().millisecondsSinceEpoch,
-            'courseStartMs': courseStart.toUtc().millisecondsSinceEpoch,
-            'courseEndMs':
-                DateTime(year, month, day, c.endTime ~/ 100, c.endTime % 100)
-                    .toUtc()
-                    .millisecondsSinceEpoch,
+            'startAtMs': courseStartMs,
+            'courseStartMs': courseStartMs,
+            'courseEndMs': courseEndMs,
             'title': '📚 ${c.courseName}',
-            'text': '${_hm(courseStart)} · ${c.roomName}',
+            'text': '$courseStartText · ${c.roomName}',
             'notifId': _courseBaseId + i,
             'type': 'course',
             'courseId': c.uuid,
             'courseName': c.courseName,
             'room': c.roomName,
-            'timeStr':
-                '${_hm(courseStart)} - ${_hm(DateTime(year, month, day, c.endTime ~/ 100, c.endTime % 100))}',
+            'timeStr': courseTimeRange,
             'teacher': c.teacherName,
           });
         }
@@ -252,14 +272,20 @@ class ReminderScheduleService {
       }
     }
 
-    reminders.addAll(buildFixedScheduleReminders(
-      fixedSchedules: fixedSchedules,
-      now: now,
-      limit: limit,
-    ));
+    reminders.addAll(
+      buildFixedScheduleReminders(
+        fixedSchedules: fixedSchedules,
+        now: now,
+        limit: limit,
+      ),
+    );
 
     // ── 规划块提醒 ──────────────────────────────────────────────────
-    final planBlocks = await StorageService.getPlanBlocks(effectiveUsername);
+    final planBlocks = await StorageService.getPlanBlocksForReminderWindow(
+      effectiveUsername,
+      now: now,
+      limit: limit,
+    );
     final remindedBlocks = <TodoPlanBlock>[];
     for (int i = 0; i < planBlocks.length && i < 999; i++) {
       final pb = planBlocks[i];
@@ -293,16 +319,16 @@ class ReminderScheduleService {
         now: now,
         limit: limit,
       )) {
+        final endTime = DateTime.fromMillisecondsSinceEpoch(pb.endTime);
+        final timeRange = '${_hm(startTime)} - ${_hm(endTime)}';
         reminders.add({
           'triggerAtMs': triggerAt.toUtc().millisecondsSinceEpoch,
           'startAtMs': startTime.toUtc().millisecondsSinceEpoch,
           'title': '📅 计划: ${pb.titleSnapshot ?? "未命名任务"}',
-          'text':
-              '${_hm(startTime)} - ${_hm(DateTime.fromMillisecondsSinceEpoch(pb.endTime))}${pb.remark != null ? " · ${pb.remark}" : ""}',
+          'text': '$timeRange${pb.remark != null ? " · ${pb.remark}" : ""}',
           'notifId': _planBlockBaseId + i,
           'type': 'plan_block',
-          'timeStr':
-              '${_hm(startTime)} - ${_hm(DateTime.fromMillisecondsSinceEpoch(pb.endTime))}',
+          'timeStr': timeRange,
           'planBlockId': pb.uuid,
           'todoId': pb.todoId,
         });
@@ -320,10 +346,12 @@ class ReminderScheduleService {
       await UserSessionStorage.ensureCurrentSession(session);
     }
     final ownedReminders = reminders
-        .map((reminder) => ScheduledReminderRegistry.withSource(
-              reminder,
-              ScheduledReminderSources.reminderSchedule,
-            ))
+        .map(
+          (reminder) => ScheduledReminderRegistry.withSource(
+            reminder,
+            ScheduledReminderSources.reminderSchedule,
+          ),
+        )
         .toList(growable: false);
     await NotificationService.scheduleReminders(
       ownedReminders,
@@ -384,13 +412,24 @@ class ReminderScheduleService {
           item.startTime == null) {
         continue;
       }
-      final start =
-          DateTime.fromMillisecondsSinceEpoch(item.startTime!).toLocal();
-      final advances = item.reminderMinutes
-          .where((minutes) => minutes >= 0)
-          .toSet()
-          .toList()
-        ..sort((left, right) => right.compareTo(left));
+      final start = DateTime.fromMillisecondsSinceEpoch(item.startTime!)
+          .toLocal();
+      if (!start.isAfter(now)) continue;
+
+      var maxAdvance = -1;
+      for (final minutes in item.reminderMinutes) {
+        if (minutes > maxAdvance) maxAdvance = minutes;
+      }
+      if (maxAdvance < 0 ||
+          !start.subtract(Duration(minutes: maxAdvance)).isBefore(limit)) {
+        continue;
+      }
+
+      final advances =
+          item.reminderMinutes.where((minutes) => minutes >= 0).toSet().toList()
+            ..sort((left, right) => right.compareTo(left));
+      if (advances.isEmpty) continue;
+
       final timeText = item.endTime == null
           ? '${_hm(start)} · 结束时间待定'
           : '${_hm(start)} - ${_hm(DateTime.fromMillisecondsSinceEpoch(item.endTime!).toLocal())}';
@@ -399,10 +438,14 @@ class ReminderScheduleService {
         if (item.remark?.trim().isNotEmpty == true) item.remark!.trim(),
         timeText,
       ];
-      for (var reminderIndex = 0;
-          reminderIndex < advances.length &&
-              reminderIndex < _fixedScheduleReminderStride;
-          reminderIndex++) {
+      final reminderTitle = '📌 ${item.title}';
+      final reminderText = detailParts.join(' · ');
+      for (
+        var reminderIndex = 0;
+        reminderIndex < advances.length &&
+            reminderIndex < _fixedScheduleReminderStride;
+        reminderIndex++
+      ) {
         final advance = advances[reminderIndex];
         final triggerAt = start.subtract(Duration(minutes: advance));
         if (!shouldSchedulePreStart(
@@ -416,9 +459,10 @@ class ReminderScheduleService {
         reminders.add({
           'triggerAtMs': triggerAt.toUtc().millisecondsSinceEpoch,
           'startAtMs': start.toUtc().millisecondsSinceEpoch,
-          'title': '📌 ${item.title}',
-          'text': detailParts.join(' · '),
-          'notifId': _fixedScheduleBaseId +
+          'title': reminderTitle,
+          'text': reminderText,
+          'notifId':
+              _fixedScheduleBaseId +
               index * _fixedScheduleReminderStride +
               reminderIndex,
           'type': 'fixed_schedule',

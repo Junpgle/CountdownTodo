@@ -95,7 +95,10 @@ void main() {
     final storedMethods = await tester.runAsync(
       () => FinanceStorage.getPaymentMethods(includeArchived: true),
     );
-    expect(storedMethods!.any((item) => item.uuid == remoteMethod.uuid), isTrue);
+    expect(
+      storedMethods!.any((item) => item.uuid == remoteMethod.uuid),
+      isTrue,
+    );
     await tester.runAsync(
       () => Future<void>.delayed(const Duration(milliseconds: 150)),
     );

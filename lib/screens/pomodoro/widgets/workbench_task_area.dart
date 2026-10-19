@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../../../models.dart';
 
 class WorkbenchTaskArea extends StatelessWidget {
@@ -27,23 +28,22 @@ class WorkbenchTaskArea extends StatelessWidget {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
         decoration: BoxDecoration(
-          color: Theme.of(context)
-              .colorScheme
-              .surfaceContainerHighest
+          color: Theme.of(context).colorScheme.surfaceContainerHighest
               .withValues(alpha: 0.4),
           borderRadius: BorderRadius.circular(30),
           border: Border.all(
-              color: Theme.of(context)
-                  .colorScheme
-                  .outlineVariant
-                  .withValues(alpha: 0.6)),
+            color: Theme.of(context).colorScheme.outlineVariant
+                .withValues(alpha: 0.6),
+          ),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.track_changes_outlined,
-                size: 15,
-                color: const Color(0xFFFF6B6B).withValues(alpha: 0.7)),
+            Icon(
+              Icons.track_changes_outlined,
+              size: 15,
+              color: const Color(0xFFFF6B6B).withValues(alpha: 0.7),
+            ),
             const SizedBox(width: 8),
             Flexible(
               child: Text(
@@ -51,8 +51,9 @@ class WorkbenchTaskArea extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  fontWeight:
-                      boundTodo != null ? FontWeight.w500 : FontWeight.normal,
+                  fontWeight: boundTodo != null
+                      ? FontWeight.w500
+                      : FontWeight.normal,
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
               ),
@@ -98,43 +99,42 @@ class WorkbenchTaskArea extends StatelessWidget {
     }
 
     return GestureDetector(
-        key: bindKey,
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-          decoration: BoxDecoration(
-            color: Theme.of(context)
-                .colorScheme
-                .surfaceContainerHighest
+      key: bindKey,
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surfaceContainerHighest
+              .withValues(alpha: 0.4),
+          borderRadius: BorderRadius.circular(30),
+          border: Border.all(
+            color: Theme.of(context).colorScheme.outlineVariant
                 .withValues(alpha: 0.4),
-            borderRadius: BorderRadius.circular(30),
-            border: Border.all(
-                color: Theme.of(context)
-                    .colorScheme
-                    .outlineVariant
-                    .withValues(alpha: 0.4)),
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.track_changes_outlined,
-                  size: 15,
-                  color: Theme.of(context)
-                      .colorScheme
-                      .onSurfaceVariant
-                      .withValues(alpha: 0.6)),
-              const SizedBox(width: 8),
-              Flexible(
-                child: Text(
-                  boundTodo?.title ?? '自由专注',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.track_changes_outlined,
+              size: 15,
+              color: Theme.of(context).colorScheme.onSurfaceVariant
+                  .withValues(alpha: 0.6),
+            ),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                boundTodo?.title ?? '自由专注',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
               ),
-            ],
-          ),
-        ));
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

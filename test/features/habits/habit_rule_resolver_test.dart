@@ -14,7 +14,9 @@ void main() {
       final boundary = 4 * 60;
       expect(
         HabitRuleResolver.logicalDateFor(
-            DateTime(2026, 7, 31, 23, 30), boundary),
+          DateTime(2026, 7, 31, 23, 30),
+          boundary,
+        ),
         DateTime(2026, 7, 31),
       );
       expect(
@@ -81,17 +83,17 @@ void main() {
       );
 
       expect(
-        HabitRuleResolver.effectiveRule(
-          [earlier, later],
-          DateTime(2026, 8, 2),
-        )!.uuid,
+        HabitRuleResolver.effectiveRule([
+          earlier,
+          later,
+        ], DateTime(2026, 8, 2))!.uuid,
         later.uuid,
       );
       expect(
-        HabitRuleResolver.effectiveRule(
-          [later, earlier],
-          DateTime(2026, 8, 2),
-        )!.uuid,
+        HabitRuleResolver.effectiveRule([
+          later,
+          earlier,
+        ], DateTime(2026, 8, 2))!.uuid,
         later.uuid,
       );
 
@@ -110,17 +112,17 @@ void main() {
         updatedAt: 300,
       );
       expect(
-        HabitRuleResolver.effectiveRule(
-          [sameInstantLowUuid, sameInstantHighUuid],
-          DateTime(2026, 8, 2),
-        )!.uuid,
+        HabitRuleResolver.effectiveRule([
+          sameInstantLowUuid,
+          sameInstantHighUuid,
+        ], DateTime(2026, 8, 2))!.uuid,
         sameInstantHighUuid.uuid,
       );
       expect(
-        HabitRuleResolver.effectiveRule(
-          [sameInstantHighUuid, sameInstantLowUuid],
-          DateTime(2026, 8, 2),
-        )!.uuid,
+        HabitRuleResolver.effectiveRule([
+          sameInstantHighUuid,
+          sameInstantLowUuid,
+        ], DateTime(2026, 8, 2))!.uuid,
         sameInstantHighUuid.uuid,
       );
     });
@@ -138,7 +140,9 @@ void main() {
 
     test('无规则时返回 null', () {
       expect(
-          HabitRuleResolver.effectiveRule([], DateTime(2026, 7, 15)), isNull);
+        HabitRuleResolver.effectiveRule([], DateTime(2026, 7, 15)),
+        isNull,
+      );
     });
   });
 
@@ -199,25 +203,30 @@ void main() {
       );
 
       expect(HabitRuleResolver.isPlannedDay(rule, DateTime(2026, 3, 9)), true);
-      expect(HabitRuleResolver.isPlannedDay(rule, DateTime(2026, 3, 10)), false);
+      expect(
+        HabitRuleResolver.isPlannedDay(rule, DateTime(2026, 3, 10)),
+        false,
+      );
     });
   });
 
   group('HabitRuleResolver 周期计算', () {
-    HabitGoalRuleRevision rule(HabitPeriodType type) => HabitGoalRuleRevision(
-          habitUuid: 'h1',
-          periodType: type,
-        );
+    HabitGoalRuleRevision rule(HabitPeriodType type) =>
+        HabitGoalRuleRevision(habitUuid: 'h1', periodType: type);
 
     test('每日周期', () {
       expect(
         HabitRuleResolver.periodStart(
-            rule(HabitPeriodType.daily), DateTime(2026, 8, 5, 12)),
+          rule(HabitPeriodType.daily),
+          DateTime(2026, 8, 5, 12),
+        ),
         DateTime(2026, 8, 5),
       );
       expect(
         HabitRuleResolver.periodEndExclusive(
-            rule(HabitPeriodType.daily), DateTime(2026, 8, 5)),
+          rule(HabitPeriodType.daily),
+          DateTime(2026, 8, 5),
+        ),
         DateTime(2026, 8, 6),
       );
     });
@@ -226,17 +235,23 @@ void main() {
       // 2026-08-05 是周三
       expect(
         HabitRuleResolver.periodStart(
-            rule(HabitPeriodType.weekly), DateTime(2026, 8, 5)),
+          rule(HabitPeriodType.weekly),
+          DateTime(2026, 8, 5),
+        ),
         DateTime(2026, 8, 3),
       );
       expect(
         HabitRuleResolver.periodEndExclusive(
-            rule(HabitPeriodType.weekly), DateTime(2026, 8, 5)),
+          rule(HabitPeriodType.weekly),
+          DateTime(2026, 8, 5),
+        ),
         DateTime(2026, 8, 10),
       );
       expect(
         HabitRuleResolver.nextPeriodStart(
-            rule(HabitPeriodType.weekly), DateTime(2026, 8, 5)),
+          rule(HabitPeriodType.weekly),
+          DateTime(2026, 8, 5),
+        ),
         DateTime(2026, 8, 10),
       );
     });
@@ -244,12 +259,16 @@ void main() {
     test('每月周期从 1 号开始', () {
       expect(
         HabitRuleResolver.periodStart(
-            rule(HabitPeriodType.monthly), DateTime(2026, 8, 20)),
+          rule(HabitPeriodType.monthly),
+          DateTime(2026, 8, 20),
+        ),
         DateTime(2026, 8, 1),
       );
       expect(
         HabitRuleResolver.periodEndExclusive(
-            rule(HabitPeriodType.monthly), DateTime(2026, 8, 20)),
+          rule(HabitPeriodType.monthly),
+          DateTime(2026, 8, 20),
+        ),
         DateTime(2026, 9, 1),
       );
     });
@@ -300,24 +319,36 @@ void main() {
       final daily = rule(HabitPeriodType.daily);
       expect(
         HabitRuleResolver.isPeriodFinished(
-            daily, DateTime(2026, 8, 5), DateTime(2026, 8, 5, 23, 59)),
+          daily,
+          DateTime(2026, 8, 5),
+          DateTime(2026, 8, 5, 23, 59),
+        ),
         false,
       );
       expect(
         HabitRuleResolver.isPeriodFinished(
-            daily, DateTime(2026, 8, 5), DateTime(2026, 8, 6, 0, 0, 1)),
+          daily,
+          DateTime(2026, 8, 5),
+          DateTime(2026, 8, 6, 0, 0, 1),
+        ),
         true,
       );
 
       final weekly = rule(HabitPeriodType.weekly);
       expect(
         HabitRuleResolver.isPeriodFinished(
-            weekly, DateTime(2026, 8, 5), DateTime(2026, 8, 9, 23, 59)),
+          weekly,
+          DateTime(2026, 8, 5),
+          DateTime(2026, 8, 9, 23, 59),
+        ),
         false,
       );
       expect(
         HabitRuleResolver.isPeriodFinished(
-            weekly, DateTime(2026, 8, 5), DateTime(2026, 8, 10, 0, 0, 1)),
+          weekly,
+          DateTime(2026, 8, 5),
+          DateTime(2026, 8, 10, 0, 0, 1),
+        ),
         true,
       );
     });
@@ -352,7 +383,10 @@ void main() {
         );
         expect(
           HabitRuleResolver.isPeriodFinished(
-              boundaryRule, logicalDate, justBeforeEnd),
+            boundaryRule,
+            logicalDate,
+            justBeforeEnd,
+          ),
           false,
         );
         expect(

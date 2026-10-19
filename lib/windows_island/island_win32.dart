@@ -1,18 +1,22 @@
 import 'dart:ffi';
 import 'dart:io';
+
 import 'package:ffi/ffi.dart';
 import 'package:flutter/foundation.dart';
 import 'package:win32/win32.dart';
+
 import 'island_config.dart';
 
 // ── Win32 Window Utilities ────────────────────────────────────────────────
 
 /// Cached HWND for the island window
 HWND? _islandHwndCache;
+HWND? _framelessConfiguredHwnd;
 
 /// Clear the cached HWND (call on new window creation)
 void clearIslandHwndCache() {
   _islandHwndCache = null;
+  _framelessConfiguredHwnd = null;
 }
 
 /// Get the smallest Flutter window HWND owned by current process.
@@ -30,8 +34,10 @@ HWND? getSmallestFlutterWindow() {
     final foundHwnds = <HWND>[];
     final emptyTitleHwnds = <HWND>[];
 
-    final lpEnumFunc = NativeCallable<WNDENUMPROC>.isolateLocal(
-        (Pointer hwndPointer, int lParam) {
+    final lpEnumFunc = NativeCallable<WNDENUMPROC>.isolateLocal((
+      Pointer hwndPointer,
+      int lParam,
+    ) {
       final hwnd = HWND(hwndPointer);
       using((arena) {
         final pidPtr = arena<Uint32>();
@@ -77,11 +83,13 @@ HWND? getSmallestFlutterWindow() {
       lpEnumFunc.close();
     }
 
-    final candidates =
-        emptyTitleHwnds.isNotEmpty ? emptyTitleHwnds : foundHwnds;
+    final candidates = emptyTitleHwnds.isNotEmpty
+        ? emptyTitleHwnds
+        : foundHwnds;
 
     if (candidates.isNotEmpty) {
       HWND? bestHwnd;
+      bool bestFitsIslandSize = false;
       int minArea = 999999999;
       for (final h in candidates) {
         using((arena) {
@@ -94,9 +102,17 @@ HWND? getSmallestFlutterWindow() {
             if (area > 0 && area < minArea) {
               minArea = area;
               bestHwnd = h;
+              bestFitsIslandSize =
+                  w <= IslandConfig.detectionMaxWidth &&
+                  hSize <= IslandConfig.detectionMaxHeight;
             }
           }
         });
+      }
+      if (bestHwnd != null && bestFitsIslandSize) {
+        // Keep searching until the island has been resized, so the host
+        // window is not cached as the island during startup.
+        _islandHwndCache = bestHwnd;
       }
       return bestHwnd;
     }
@@ -129,31 +145,54 @@ void applyFramelessTransparent(HWND hwnd) {
     const wsMinimizebox = 0x00020000;
     const wsMaximizebox = 0x00010000;
 
-    var style = GetWindowLongPtr(hwnd, GWL_STYLE).value;
-    style &= ~wsCaption;
-    style &= ~wsThickframe;
-    style &= ~wsSysmenu;
-    style &= ~wsMinimizebox;
-    style &= ~wsMaximizebox;
-    SetWindowLongPtr(hwnd, GWL_STYLE, style);
+    final style = GetWindowLongPtr(hwnd, GWL_STYLE).value;
+    final framelessStyle =
+        style &
+        ~(wsCaption | wsThickframe | wsSysmenu | wsMinimizebox | wsMaximizebox);
+    final windowStyleChanged = framelessStyle != style;
+    if (windowStyleChanged) {
+      SetWindowLongPtr(hwnd, GWL_STYLE, framelessStyle);
+    }
 
-    var exStyle = GetWindowLongPtr(hwnd, GWL_EXSTYLE).value;
-    exStyle |= WS_EX_LAYERED | WS_EX_TOPMOST;
-    SetWindowLongPtr(hwnd, GWL_EXSTYLE, exStyle);
+    final exStyle = GetWindowLongPtr(hwnd, GWL_EXSTYLE).value;
+    final layeredTopmostStyle = exStyle | WS_EX_LAYERED | WS_EX_TOPMOST;
+    final extendedStyleChanged = layeredTopmostStyle != exStyle;
+    if (extendedStyleChanged) {
+      SetWindowLongPtr(hwnd, GWL_EXSTYLE, layeredTopmostStyle);
+    }
 
-    SetLayeredWindowAttributes(hwnd, COLORREF(0), 0, LWA_COLORKEY);
-    SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0,
-        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+    if (windowStyleChanged ||
+        extendedStyleChanged ||
+        _framelessConfiguredHwnd != hwnd) {
+      final transparencyApplied = SetLayeredWindowAttributes(
+        hwnd,
+        COLORREF(0),
+        0,
+        LWA_COLORKEY,
+      ).value;
+      final frameApplied = SetWindowPos(
+        hwnd,
+        HWND_TOPMOST,
+        0,
+        0,
+        0,
+        0,
+        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED,
+      ).value;
+      if (transparencyApplied && frameApplied) {
+        _framelessConfiguredHwnd = hwnd;
+      }
+    }
   } catch (e) {
     debugPrint('[IslandWin32] applyFramelessTransparent failed: $e');
   }
 }
 
-void ensureIslandFrameless() {
-  final hwnd = getSmallestFlutterWindow();
-  if (hwnd == null) return;
-  _islandHwndCache = hwnd;
-  applyFramelessTransparent(hwnd);
+void ensureIslandFrameless({HWND? hwnd}) {
+  final targetHwnd = hwnd ?? getSmallestFlutterWindow();
+  if (targetHwnd == null) return;
+  _islandHwndCache = targetHwnd;
+  applyFramelessTransparent(targetHwnd);
 }
 
 /// Initialize FFI: wait for HWND to appear and shrink, then apply transparency
@@ -171,7 +210,8 @@ Future<void> initFfiTransparent() async {
           if (w <= IslandConfig.detectionMaxWidth &&
               hSize <= IslandConfig.detectionMaxHeight) {
             debugPrint(
-                '[IslandWin32] HWND found and shrunk on attempt $i: $hwnd (${w}x$hSize)');
+              '[IslandWin32] HWND found and shrunk on attempt $i: $hwnd (${w}x$hSize)',
+            );
             _islandHwndCache = hwnd;
             applyFramelessTransparent(hwnd);
             matched = true;
@@ -185,7 +225,8 @@ Future<void> initFfiTransparent() async {
     await Future.delayed(IslandConfig.ffiRetryInterval);
   }
   debugPrint(
-      '[IslandWin32] WARNING: Valid shrunk HWND not found after ${IslandConfig.ffiMaxAttempts} attempts');
+    '[IslandWin32] WARNING: Valid shrunk HWND not found after ${IslandConfig.ffiMaxAttempts} attempts',
+  );
 }
 
 /// Resize the current island window
@@ -210,8 +251,15 @@ void resizeCurrentWindow(int targetW, int targetH) {
         if (curW > 0 && curW != physicalW) {
           newX = curX - ((physicalW - curW) ~/ 2);
         }
-        SetWindowPos(hwnd, HWND_TOPMOST, newX, newY, physicalW, physicalH,
-            SWP_NOACTIVATE | SWP_FRAMECHANGED);
+        SetWindowPos(
+          hwnd,
+          HWND_TOPMOST,
+          newX,
+          newY,
+          physicalW,
+          physicalH,
+          SWP_NOACTIVATE | SWP_FRAMECHANGED | SWP_ASYNCWINDOWPOS,
+        );
       }
     });
   } catch (e) {
@@ -235,8 +283,15 @@ void moveCurrentWindow(int targetX, int targetY) {
         final curW = rectPtr.ref.right - rectPtr.ref.left;
         final curH = rectPtr.ref.bottom - rectPtr.ref.top;
 
-        SetWindowPos(hwnd, HWND_TOPMOST, physicalX, physicalY, curW, curH,
-            SWP_NOACTIVATE | SWP_NOSIZE | SWP_FRAMECHANGED);
+        SetWindowPos(
+          hwnd,
+          HWND_TOPMOST,
+          physicalX,
+          physicalY,
+          curW,
+          curH,
+          SWP_NOACTIVATE | SWP_NOSIZE | SWP_FRAMECHANGED,
+        );
       }
     });
   } catch (e) {
@@ -245,14 +300,14 @@ void moveCurrentWindow(int targetX, int targetY) {
 }
 
 /// Get current window rect as a map
-Map<String, double>? getWindowRect() {
+Map<String, double>? getWindowRect({HWND? hwnd}) {
   try {
-    final hwnd = getSmallestFlutterWindow();
-    if (hwnd != null) {
+    final targetHwnd = hwnd ?? getSmallestFlutterWindow();
+    if (targetHwnd != null) {
       RECT? result;
       using((arena) {
         final rectPtr = arena<RECT>();
-        if (GetWindowRect(hwnd, rectPtr).value) {
+        if (GetWindowRect(targetHwnd, rectPtr).value) {
           result = rectPtr.ref;
         }
       });
@@ -281,12 +336,7 @@ void startWindowDragging() {
       const int wmNclbuttondown = 0x00A1;
       const int htCaption = 2;
       ReleaseCapture();
-      PostMessage(
-        hwnd,
-        wmNclbuttondown,
-        WPARAM(htCaption),
-        LPARAM(0),
-      );
+      PostMessage(hwnd, wmNclbuttondown, WPARAM(htCaption), LPARAM(0));
     }
   } catch (e) {
     debugPrint('[IslandWin32] startWindowDragging error: $e');
@@ -305,13 +355,14 @@ void setWindowPosition(int left, int top, int width, int height) {
         rectPtr.ref.right = left + width;
         rectPtr.ref.bottom = top + height;
         SetWindowPos(
-            hwnd,
-            HWND_TOPMOST,
-            rectPtr.ref.left,
-            rectPtr.ref.top,
-            rectPtr.ref.right - rectPtr.ref.left,
-            rectPtr.ref.bottom - rectPtr.ref.top,
-            SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_FRAMECHANGED);
+          hwnd,
+          HWND_TOPMOST,
+          rectPtr.ref.left,
+          rectPtr.ref.top,
+          rectPtr.ref.right - rectPtr.ref.left,
+          rectPtr.ref.bottom - rectPtr.ref.top,
+          SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_FRAMECHANGED,
+        );
       });
     }
   } catch (e) {

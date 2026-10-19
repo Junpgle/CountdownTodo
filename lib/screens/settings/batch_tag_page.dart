@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+
 import '../../models.dart';
 import '../../services/pomodoro_service.dart';
 import '../../storage_service.dart';
@@ -40,6 +41,16 @@ class _BatchTagPageState extends State<BatchTagPage>
   final Set<String> _selectedPomodoros = {};
   final Set<String> _selectedTimeLogs = {};
 
+  final Map<(String?, String), DateFormat> _dateFormatters = {};
+
+  DateFormat _cachedDateFormat(String pattern) {
+    final locale = Intl.defaultLocale;
+    return _dateFormatters.putIfAbsent((
+      locale,
+      pattern,
+    ), () => DateFormat(pattern, locale));
+  }
+
   // 待添加的标签（支持多选）
   final Set<String> _targetTagUuids = {};
 
@@ -77,8 +88,9 @@ class _BatchTagPageState extends State<BatchTagPage>
       _allPomodoros = (results[1] as List<PomodoroRecord>)
           .where((p) => !p.isDeleted)
           .toList();
-      _allTimeLogs =
-          (results[2] as List<TimeLogItem>).where((l) => !l.isDeleted).toList();
+      _allTimeLogs = (results[2] as List<TimeLogItem>)
+          .where((l) => !l.isDeleted)
+          .toList();
       _isLoading = false;
     });
   }
@@ -204,7 +216,8 @@ class _BatchTagPageState extends State<BatchTagPage>
       builder: (ctx) => AlertDialog(
         title: const Text('确认添加'),
         content: Text(
-            '将为 $pomodoroCount 条番茄钟记录和 $timeLogCount 条时间日志添加 $tagCount 个标签'),
+          '将为 $pomodoroCount 条番茄钟记录和 $timeLogCount 条时间日志添加 $tagCount 个标签',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -258,8 +271,11 @@ class _BatchTagPageState extends State<BatchTagPage>
             }
           }
         }
-        await StorageService.saveTimeLogs(widget.username, _allTimeLogs,
-            sync: true);
+        await StorageService.saveTimeLogs(
+          widget.username,
+          _allTimeLogs,
+          sync: true,
+        );
       }
 
       if (!mounted) return;
@@ -281,10 +297,7 @@ class _BatchTagPageState extends State<BatchTagPage>
       await _loadData();
     } catch (e) {
       if (!mounted) return;
-      AppSnackBars.showSnackBar(
-        context,
-        SnackBar(content: Text('保存失败: $e')),
-      );
+      AppSnackBars.showSnackBar(context, SnackBar(content: Text('保存失败: $e')));
       setState(() => _isLoading = false);
     }
   }
@@ -293,6 +306,14 @@ class _BatchTagPageState extends State<BatchTagPage>
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final useFloatingBottomBar = floatingBottomBarShouldFloat(context);
+    final tabBar = TabBar(
+      controller: _tabController,
+      tabs: const [
+        Tab(text: '番茄钟', icon: Icon(Icons.timer_outlined)),
+        Tab(text: '时间日志', icon: Icon(Icons.schedule_outlined)),
+      ],
+    );
+    final topBarHeight = floatingGlassTopBarHeight(context, bottom: tabBar);
 
     return Scaffold(
       extendBody: useFloatingBottomBar,
@@ -311,7 +332,9 @@ class _BatchTagPageState extends State<BatchTagPage>
                     child: Center(
                       child: Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 4),
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
                         decoration: BoxDecoration(
                           color: colorScheme.primaryContainer,
                           borderRadius: BorderRadius.circular(12),
@@ -327,26 +350,17 @@ class _BatchTagPageState extends State<BatchTagPage>
                     ),
                   ),
               ],
-        bottom: TabBar(
-          controller: _tabController,
-          tabs: const [
-            Tab(text: '番茄钟', icon: Icon(Icons.timer_outlined)),
-            Tab(text: '时间日志', icon: Icon(Icons.schedule_outlined)),
-          ],
-        ),
+        bottom: tabBar,
       ),
       body: floatingGlassSettingsBody(
         context,
         standalone: !widget.isEmbedded,
-        topBarHeight: kToolbarHeight + kTextTabBarHeight,
+        topBarHeight: topBarHeight,
         child: _isLoading
             ? const Center(child: CircularProgressIndicator())
             : Padding(
                 padding: EdgeInsets.only(
-                  top: widget.isEmbedded
-                      ? 0
-                      : floatingGlassSettingsContentTopInset(context) +
-                          kTextTabBarHeight,
+                  top: widget.isEmbedded ? 0 : topBarHeight,
                 ),
                 child: Column(
                   children: [
@@ -355,10 +369,7 @@ class _BatchTagPageState extends State<BatchTagPage>
                     Expanded(
                       child: TabBarView(
                         controller: _tabController,
-                        children: [
-                          _buildPomodoroList(),
-                          _buildTimeLogList(),
-                        ],
+                        children: [_buildPomodoroList(), _buildTimeLogList()],
                       ),
                     ),
                   ],
@@ -370,6 +381,7 @@ class _BatchTagPageState extends State<BatchTagPage>
   }
 
   Widget _buildFilterBar() {
+    final dateFormat = _cachedDateFormat('MM/dd');
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       color: Theme.of(context).colorScheme.surface,
@@ -398,8 +410,10 @@ class _BatchTagPageState extends State<BatchTagPage>
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(20),
                     ),
-                    contentPadding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
                   ),
                 ),
               ),
@@ -408,7 +422,7 @@ class _BatchTagPageState extends State<BatchTagPage>
               FilterChip(
                 label: Text(
                   _dateRange != null
-                      ? '${DateFormat('MM/dd').format(_dateRange!.start)}-${DateFormat('MM/dd').format(_dateRange!.end)}'
+                      ? '${dateFormat.format(_dateRange!.start)}-${dateFormat.format(_dateRange!.end)}'
                       : '时间',
                   style: const TextStyle(fontSize: 12),
                 ),
@@ -450,8 +464,10 @@ class _BatchTagPageState extends State<BatchTagPage>
         itemCount: _tags.length,
         itemBuilder: (ctx, i) {
           final tag = _tags[i];
-          final color =
-              AppColorUtils.hexToColor(tag.color, fallback: Colors.grey);
+          final color = AppColorUtils.hexToColor(
+            tag.color,
+            fallback: Colors.grey,
+          );
           final isSelected = _targetTagUuids.contains(tag.uuid);
           return Padding(
             padding: const EdgeInsets.only(right: 8),
@@ -467,8 +483,10 @@ class _BatchTagPageState extends State<BatchTagPage>
               },
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 150),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: isSelected
                       ? color.withValues(alpha: 0.2)
@@ -499,8 +517,9 @@ class _BatchTagPageState extends State<BatchTagPage>
                       style: TextStyle(
                         fontSize: 12,
                         color: color,
-                        fontWeight:
-                            isSelected ? FontWeight.bold : FontWeight.normal,
+                        fontWeight: isSelected
+                            ? FontWeight.bold
+                            : FontWeight.normal,
                       ),
                     ),
                   ],
@@ -521,49 +540,61 @@ class _BatchTagPageState extends State<BatchTagPage>
         child: Text('没有符合条件的番茄钟记录', style: TextStyle(color: Colors.grey)),
       );
     }
+    final startDateFormat = _cachedDateFormat('MM/dd HH:mm');
+    final endTimeFormat = _cachedDateFormat('HH:mm');
 
     return Column(
       children: [
         _buildSelectAllBar(true, filtered.length),
         Expanded(
-          child: ListView.builder(
-            itemCount: filtered.length,
-            itemBuilder: (ctx, i) {
-              final pom = filtered[i];
-              final isSelected = _selectedPomodoros.contains(pom.uuid);
-              final startTime =
-                  DateTime.fromMillisecondsSinceEpoch(pom.startTime);
-              final endTime = pom.endTime != null
-                  ? DateTime.fromMillisecondsSinceEpoch(pom.endTime!)
-                  : startTime.add(Duration(seconds: pom.effectiveDuration));
-              final duration = pom.effectiveDuration ~/ 60;
+          child: Builder(
+            builder: (context) {
+              final listPadding = MediaQuery.paddingOf(context)
+                  .copyWith(top: 0);
+              return ListView.builder(
+                padding: listPadding,
+                itemCount: filtered.length,
+                itemBuilder: (ctx, i) {
+                  final pom = filtered[i];
+                  final isSelected = _selectedPomodoros.contains(pom.uuid);
+                  final startTime = DateTime.fromMillisecondsSinceEpoch(
+                    pom.startTime,
+                  );
+                  final endTime = pom.endTime != null
+                      ? DateTime.fromMillisecondsSinceEpoch(pom.endTime!)
+                      : startTime.add(Duration(seconds: pom.effectiveDuration));
+                  final duration = pom.effectiveDuration ~/ 60;
 
-              return ListTile(
-                leading: Checkbox(
-                  value: isSelected,
-                  onChanged: (v) {
-                    setState(() {
-                      if (v == true) {
-                        _selectedPomodoros.add(pom.uuid);
-                      } else {
-                        _selectedPomodoros.remove(pom.uuid);
-                      }
-                    });
-                  },
-                ),
-                title: Text(
-                  pom.todoTitle ?? '番茄钟',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                subtitle: Text(
-                  '${DateFormat('MM/dd HH:mm').format(startTime)} → ${DateFormat('HH:mm').format(endTime)}  ${duration}min',
-                  style: const TextStyle(fontSize: 11),
-                ),
-                trailing: pom.tagUuids.isNotEmpty
-                    ? _buildTagChips(pom.tagUuids)
-                    : const Text('无标签',
-                        style: TextStyle(fontSize: 11, color: Colors.grey)),
+                  return ListTile(
+                    leading: Checkbox(
+                      value: isSelected,
+                      onChanged: (v) {
+                        setState(() {
+                          if (v == true) {
+                            _selectedPomodoros.add(pom.uuid);
+                          } else {
+                            _selectedPomodoros.remove(pom.uuid);
+                          }
+                        });
+                      },
+                    ),
+                    title: Text(
+                      pom.todoTitle ?? '番茄钟',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    subtitle: Text(
+                      '${startDateFormat.format(startTime)} → ${endTimeFormat.format(endTime)}  ${duration}min',
+                      style: const TextStyle(fontSize: 11),
+                    ),
+                    trailing: pom.tagUuids.isNotEmpty
+                        ? _buildTagChips(pom.tagUuids)
+                        : const Text(
+                            '无标签',
+                            style: TextStyle(fontSize: 11, color: Colors.grey),
+                          ),
+                  );
+                },
               );
             },
           ),
@@ -580,47 +611,61 @@ class _BatchTagPageState extends State<BatchTagPage>
         child: Text('没有符合条件的时间日志', style: TextStyle(color: Colors.grey)),
       );
     }
+    final startDateFormat = _cachedDateFormat('MM/dd HH:mm');
+    final endTimeFormat = _cachedDateFormat('HH:mm');
 
     return Column(
       children: [
         _buildSelectAllBar(false, filtered.length),
         Expanded(
-          child: ListView.builder(
-            itemCount: filtered.length,
-            itemBuilder: (ctx, i) {
-              final log = filtered[i];
-              final isSelected = _selectedTimeLogs.contains(log.id);
-              final startTime =
-                  DateTime.fromMillisecondsSinceEpoch(log.startTime);
-              final endTime = DateTime.fromMillisecondsSinceEpoch(log.endTime);
-              final duration = (log.endTime - log.startTime) ~/ 60000;
+          child: Builder(
+            builder: (context) {
+              final listPadding = MediaQuery.paddingOf(context)
+                  .copyWith(top: 0);
+              return ListView.builder(
+                padding: listPadding,
+                itemCount: filtered.length,
+                itemBuilder: (ctx, i) {
+                  final log = filtered[i];
+                  final isSelected = _selectedTimeLogs.contains(log.id);
+                  final startTime = DateTime.fromMillisecondsSinceEpoch(
+                    log.startTime,
+                  );
+                  final endTime = DateTime.fromMillisecondsSinceEpoch(
+                    log.endTime,
+                  );
+                  final duration = (log.endTime - log.startTime) ~/ 60000;
 
-              return ListTile(
-                leading: Checkbox(
-                  value: isSelected,
-                  onChanged: (v) {
-                    setState(() {
-                      if (v == true) {
-                        _selectedTimeLogs.add(log.id);
-                      } else {
-                        _selectedTimeLogs.remove(log.id);
-                      }
-                    });
-                  },
-                ),
-                title: Text(
-                  log.title.isNotEmpty ? log.title : '时间日志',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                subtitle: Text(
-                  '${DateFormat('MM/dd HH:mm').format(startTime)} → ${DateFormat('HH:mm').format(endTime)}  ${duration}min',
-                  style: const TextStyle(fontSize: 11),
-                ),
-                trailing: log.tagUuids.isNotEmpty
-                    ? _buildTagChips(log.tagUuids)
-                    : const Text('无标签',
-                        style: TextStyle(fontSize: 11, color: Colors.grey)),
+                  return ListTile(
+                    leading: Checkbox(
+                      value: isSelected,
+                      onChanged: (v) {
+                        setState(() {
+                          if (v == true) {
+                            _selectedTimeLogs.add(log.id);
+                          } else {
+                            _selectedTimeLogs.remove(log.id);
+                          }
+                        });
+                      },
+                    ),
+                    title: Text(
+                      log.title.isNotEmpty ? log.title : '时间日志',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    subtitle: Text(
+                      '${startDateFormat.format(startTime)} → ${endTimeFormat.format(endTime)}  ${duration}min',
+                      style: const TextStyle(fontSize: 11),
+                    ),
+                    trailing: log.tagUuids.isNotEmpty
+                        ? _buildTagChips(log.tagUuids)
+                        : const Text(
+                            '无标签',
+                            style: TextStyle(fontSize: 11, color: Colors.grey),
+                          ),
+                  );
+                },
               );
             },
           ),
@@ -630,8 +675,9 @@ class _BatchTagPageState extends State<BatchTagPage>
   }
 
   Widget _buildSelectAllBar(bool isPomodoro, int totalCount) {
-    final selectedCount =
-        isPomodoro ? _selectedPomodoros.length : _selectedTimeLogs.length;
+    final selectedCount = isPomodoro
+        ? _selectedPomodoros.length
+        : _selectedTimeLogs.length;
     final allSelected = selectedCount == totalCount && totalCount > 0;
 
     final useFloating = floatingBottomBarShouldFloat(context);
@@ -679,19 +725,18 @@ class _BatchTagPageState extends State<BatchTagPage>
         spacing: 2,
         children: tagUuids.take(2).map((uuid) {
           final tag = _tags.cast<PomodoroTag?>().firstWhere(
-                (t) => t?.uuid == uuid,
-                orElse: () => null,
-              );
+            (t) => t?.uuid == uuid,
+            orElse: () => null,
+          );
           if (tag == null) return const SizedBox();
-          final color =
-              AppColorUtils.hexToColor(tag.color, fallback: Colors.grey);
+          final color = AppColorUtils.hexToColor(
+            tag.color,
+            fallback: Colors.grey,
+          );
           return Container(
             width: 6,
             height: 6,
-            decoration: BoxDecoration(
-              color: color,
-              shape: BoxShape.circle,
-            ),
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
           );
         }).toList(),
       ),
@@ -722,9 +767,7 @@ class _BatchTagPageState extends State<BatchTagPage>
               ),
               boxShadow: [
                 BoxShadow(
-                  color: Theme.of(context)
-                      .colorScheme
-                      .shadow
+                  color: Theme.of(context).colorScheme.shadow
                       .withValues(alpha: 0.08),
                   blurRadius: 8,
                   offset: const Offset(0, -2),
@@ -748,10 +791,7 @@ class _BatchTagPageState extends State<BatchTagPage>
                 if (selectedTagNames.isNotEmpty)
                   Text(
                     '将添加: ${selectedTagNames.join(", ")}',
-                    style: const TextStyle(
-                      fontSize: 11,
-                      color: Colors.grey,
-                    ),
+                    style: const TextStyle(fontSize: 11, color: Colors.grey),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),

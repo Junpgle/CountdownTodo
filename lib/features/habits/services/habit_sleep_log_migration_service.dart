@@ -11,16 +11,10 @@ import 'habit_sleep_duration_service.dart';
 import 'habit_sleep_goal_resolver.dart';
 
 /// 只有时间格占位（例如 15 / 30 分钟）时，早睡节点采用的时间。
-enum HabitSleepLogTimeSelection {
-  startTime,
-  midpoint,
-}
+enum HabitSleepLogTimeSelection { startTime, midpoint }
 
 /// 短时间格记录的语义。
-enum HabitSleepLogKind {
-  fullSleep,
-  nap,
-}
+enum HabitSleepLogKind { fullSleep, nap }
 
 /// 睡眠日志迁移时的用户确认口径。
 class HabitSleepLogMigrationOptions {
@@ -106,10 +100,7 @@ class HabitTimeLogImportPreview {
 }
 
 /// 一条睡眠时间日志要导入到哪个时间点习惯。
-enum HabitTimeLogImportPart {
-  bedtime,
-  wakeTime,
-}
+enum HabitTimeLogImportPart { bedtime, wakeTime }
 
 /// 一次“迁移到早睡早起”的执行结果。
 class HabitSleepLogMigrationResult {
@@ -203,15 +194,14 @@ abstract final class HabitSleepLogMigrationService {
           .map((uuid) => tagNames[uuid] ?? '')
           .where((name) => name.isNotEmpty)
           .join(' ');
-      final searchable = _normalize([
-        log.title,
-        log.remark ?? '',
-        tagText,
-      ].join(' '));
+      final searchable = _normalize(
+        [log.title, log.remark ?? '', tagText].join(' '),
+      );
       if (!_sleepKeywords.any(searchable.contains)) continue;
 
-      final night =
-          start.hour < 12 ? start.subtract(const Duration(days: 1)) : start;
+      final night = start.hour < 12
+          ? start.subtract(const Duration(days: 1))
+          : start;
       final nightKey = _dateKey(night);
       final sample = _SleepSample(
         log: log,
@@ -243,13 +233,15 @@ abstract final class HabitSleepLogMigrationService {
     final bedtime = _normalizeMinute(
       _median(samples.map((sample) => sample.bedtimeMinute).toList()),
     );
-    final reliableSamples =
-        samples.where((sample) => !sample.gridOnly).toList();
+    final reliableSamples = samples
+        .where((sample) => !sample.gridOnly)
+        .toList();
     final wake = _normalizeMinute(
       reliableSamples.isEmpty
           ? 7 * 60
           : _median(
-              reliableSamples.map((sample) => sample.wakeMinute).toList()),
+              reliableSamples.map((sample) => sample.wakeMinute).toList(),
+            ),
     );
 
     final proposal = HabitSleepLogMigrationProposal(
@@ -293,10 +285,11 @@ abstract final class HabitSleepLogMigrationService {
     final candidates = proposal?.matchedLogs ?? const <TimeLogItem>[];
     final importCandidates =
         part == HabitTimeLogImportPart.wakeTime && proposal != null
-            ? candidates.where((log) => !proposal.isGridOnlyLog(log)).toList()
-            : candidates;
+        ? candidates.where((log) => !proposal.isGridOnlyLog(log)).toList()
+        : candidates;
     final goals = await HabitRepository.getGoals();
-    final canonicalGoal = HabitSleepGoalResolver.canonical(
+    final canonicalGoal =
+        HabitSleepGoalResolver.canonical(
           goals,
           part == HabitTimeLogImportPart.bedtime
               ? HabitAdaptationKind.earlySleep
@@ -357,10 +350,10 @@ abstract final class HabitSleepLogMigrationService {
       )) {
         continue;
       }
-      final localStart =
-          DateTime.fromMillisecondsSinceEpoch(log.startTime).toLocal();
-      final localEnd =
-          DateTime.fromMillisecondsSinceEpoch(log.endTime).toLocal();
+      final localStart = DateTime.fromMillisecondsSinceEpoch(log.startTime)
+          .toLocal();
+      final localEnd = DateTime.fromMillisecondsSinceEpoch(log.endTime)
+          .toLocal();
       final isGridOnly = preview.gridOnlyLogIds.contains(log.id);
       if (part == HabitTimeLogImportPart.wakeTime && isGridOnly) continue;
       final localOccurredAt = part == HabitTimeLogImportPart.bedtime
@@ -374,23 +367,26 @@ abstract final class HabitSleepLogMigrationService {
       final durationMinutes = localEnd.difference(localStart).inMinutes;
       final hours = durationMinutes ~/ 60;
       final minutes = durationMinutes % 60;
-      final durationLabel =
-          minutes == 0 ? '$hours 小时' : '$hours 小时 $minutes 分钟';
+      final durationLabel = minutes == 0
+          ? '$hours 小时'
+          : '$hours 小时 $minutes 分钟';
       final timeRange =
           '${formatMinute(localStart.hour * 60 + localStart.minute)}–'
           '${formatMinute(localEnd.hour * 60 + localEnd.minute)}';
-      final selectionLabel = isGridOnly &&
+      final selectionLabel =
+          isGridOnly &&
               options.timeSelection == HabitSleepLogTimeSelection.midpoint
           ? '取时间格中点'
           : isGridOnly
-              ? '取时间格开始'
-              : null;
+          ? '取时间格开始'
+          : null;
       await HabitRepository.addCheckIn(
         goal: importGoal,
         rule: importRule,
         localOccurredAt: localOccurredAt,
         source: HabitCheckInSource.import,
-        note: '从时间日志导入 · $timeRange · $durationLabel'
+        note:
+            '从时间日志导入 · $timeRange · $durationLabel'
             '${selectionLabel == null ? '' : ' · $selectionLabel'}',
         dedupeKey: dedupeKey,
       );
@@ -417,9 +413,7 @@ abstract final class HabitSleepLogMigrationService {
   /// 迁移打卡会随习惯数据同步，因此这个判断可以跨设备生效；普通手动
   /// 打卡不会误触发，即使用户已经手动创建了“早睡”或“早起”习惯也不影响
   /// 首次迁移入口。
-  static bool hasImportedTimeLogCheckIns(
-    Iterable<HabitCheckIn> checkIns,
-  ) {
+  static bool hasImportedTimeLogCheckIns(Iterable<HabitCheckIn> checkIns) {
     return checkIns.any(
       (checkIn) =>
           !checkIn.isDeleted &&
@@ -456,7 +450,9 @@ abstract final class HabitSleepLogMigrationService {
   }
 
   static bool _shouldReplaceSample(
-      _SleepSample sample, _SleepSample? previous) {
+    _SleepSample sample,
+    _SleepSample? previous,
+  ) {
     if (previous == null) return true;
     if (sample.durationMinutes != previous.durationMinutes) {
       return sample.durationMinutes > previous.durationMinutes;
@@ -619,9 +615,7 @@ abstract final class HabitSleepLogMigrationService {
             HabitAdaptationKind.sleepDuration;
   }
 
-  static Future<HabitGoalRuleRevision?> _currentRuleFor(
-    HabitGoal goal,
-  ) async {
+  static Future<HabitGoalRuleRevision?> _currentRuleFor(HabitGoal goal) async {
     final rules = await HabitRepository.getRules(habitUuid: goal.uuid);
     final activeRules = rules.where((rule) => !rule.isDeleted).toList();
     if (activeRules.isEmpty) return null;
@@ -694,8 +688,9 @@ abstract final class HabitSleepLogMigrationService {
   ) {
     if (proposal.matchedLogs.isEmpty) return null;
     final first = proposal.matchedLogs
-        .map((log) =>
-            DateTime.fromMillisecondsSinceEpoch(log.startTime).toLocal())
+        .map(
+          (log) => DateTime.fromMillisecondsSinceEpoch(log.startTime).toLocal(),
+        )
         .reduce((a, b) => a.isBefore(b) ? a : b);
     return HabitRuleResolver.dayKey(
       HabitRuleResolver.logicalDateFor(
@@ -710,27 +705,40 @@ abstract final class HabitSleepLogMigrationService {
     HabitSleepLogMigrationProposal proposal,
     HabitSleepLogMigrationOptions options,
   ) {
+    final proposalGridOnlyIdSet =
+        options.kind == HabitSleepLogKind.nap &&
+            proposal.gridOnlyLogIds.isNotEmpty
+        ? proposal.gridOnlyLogIds.toSet()
+        : const <String>{};
     final logs = proposal.matchedLogs
         .where(
           (log) =>
               options.kind == HabitSleepLogKind.fullSleep ||
-              !proposal.isGridOnlyLog(log),
+              !proposalGridOnlyIdSet.contains(log.id),
         )
         .toList(growable: false);
     if (logs.isEmpty) return null;
 
+    final logIdSet = proposal.gridOnlyLogIds.isEmpty
+        ? const <String>{}
+        : logs.map((log) => log.id).toSet();
     final gridOnlyIds = proposal.gridOnlyLogIds
-        .where((id) => logs.any((log) => log.id == id))
+        .where(logIdSet.contains)
         .toList(growable: false);
-    final reliableLogs = logs.where((log) => !gridOnlyIds.contains(log.id));
+    final selectedGridOnlyIdSet = gridOnlyIds.isEmpty
+        ? const <String>{}
+        : gridOnlyIds.toSet();
+    final reliableLogs = logs.where(
+      (log) => !selectedGridOnlyIdSet.contains(log.id),
+    );
     final bedtime = _median(
       logs.map((log) {
-        final start =
-            DateTime.fromMillisecondsSinceEpoch(log.startTime).toLocal();
+        final start = DateTime.fromMillisecondsSinceEpoch(log.startTime)
+            .toLocal();
         return _bedtimeMinute(
           start,
           end: DateTime.fromMillisecondsSinceEpoch(log.endTime).toLocal(),
-          gridOnly: gridOnlyIds.contains(log.id),
+          gridOnly: selectedGridOnlyIdSet.contains(log.id),
           selection: options.timeSelection,
         );
       }).toList(),
@@ -740,8 +748,8 @@ abstract final class HabitSleepLogMigrationService {
         ? 7 * 60
         : _median(
             reliableList.map((log) {
-              final end =
-                  DateTime.fromMillisecondsSinceEpoch(log.endTime).toLocal();
+              final end = DateTime.fromMillisecondsSinceEpoch(log.endTime)
+                  .toLocal();
               return end.hour * 60 + end.minute;
             }).toList(),
           );
@@ -754,8 +762,9 @@ abstract final class HabitSleepLogMigrationService {
           ? 0
           : _median(
               reliableList.map((log) {
-                final start =
-                    DateTime.fromMillisecondsSinceEpoch(log.startTime);
+                final start = DateTime.fromMillisecondsSinceEpoch(
+                  log.startTime,
+                );
                 final end = DateTime.fromMillisecondsSinceEpoch(log.endTime);
                 return end.difference(start).inMinutes;
               }).toList(),

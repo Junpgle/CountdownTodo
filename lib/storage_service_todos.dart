@@ -1,4 +1,5 @@
 part of 'storage_service.dart';
+
 // ignore_for_file: annotate_overrides, unused_element, unused_element_parameter
 
 int? _parseNullableIntForIsolate(dynamic raw) {
@@ -7,50 +8,61 @@ int? _parseNullableIntForIsolate(dynamic raw) {
 
 List<TodoItem> _parseTodoItemsIsolate(List<Map<String, dynamic>> maps) {
   return maps
-      .map((m) => TodoItem(
-            id: m['uuid'],
-            title: m['content'] ?? '',
-            remark: m['remark'],
-            isDone: m['is_completed'] == 1,
-            isDeleted: m['is_deleted'] == 1,
-            version: m['version'] ?? 1,
-            updatedAt: m['updated_at'] ?? DateTime.now().millisecondsSinceEpoch,
-            createdAt: m['created_at'] ?? DateTime.now().millisecondsSinceEpoch,
-            createdDate: JsonValueParser.toNullableInt(m['created_date']),
-            dueDate: (m['due_date'] != null &&
-                    m['due_date'].toString() != '0' &&
-                    m['due_date'].toString() != 'null' &&
-                    m['due_date'].toString().isNotEmpty)
-                ? DateTime.fromMillisecondsSinceEpoch(
-                    JsonValueParser.toInt(m['due_date']))
-                : null,
-            teamUuid: m['team_uuid'],
-            teamName: m['team_name'],
-            creatorId: m['creator_id'],
-            creatorName: m['creator_name'],
-            groupId: m['group_id'],
-            collabType: m['collab_type'] ?? 0,
-            recurrence: RecurrenceType.values[
-                (_parseNullableIntForIsolate(m['recurrence']) ?? 0)
-                    .clamp(0, RecurrenceType.values.length - 1)],
-            recurrenceSeriesId: m['recurrence_series_id']?.toString(),
-            customIntervalDays:
-                _parseNullableIntForIsolate(m['custom_interval_days']),
-            recurrenceEndDate: (m['recurrence_end_date'] != null &&
-                    m['recurrence_end_date'].toString() != '0')
-                ? DateTime.fromMillisecondsSinceEpoch(
-                    JsonValueParser.toInt(m['recurrence_end_date']))
-                : null,
-            reminderMinutes: (m['reminder_minutes'] != null &&
-                    m['reminder_minutes'].toString() != '-1')
-                ? JsonValueParser.toNullableInt(m['reminder_minutes'])
-                : null,
-            imagePath: m['image_path']?.toString(),
-            originalText: m['original_text']?.toString(),
-            isAllDay: m['is_all_day'] == 1 || m['is_all_day'] == true,
-            hasConflict: m['has_conflict'] == 1 || m['has_conflict'] == true,
-            serverVersionData: JsonValueParser.toMap(m['conflict_data']),
-          ))
+      .map(
+        (m) => TodoItem(
+          id: m['uuid'],
+          title: m['content'] ?? '',
+          remark: m['remark'],
+          isDone: m['is_completed'] == 1,
+          isDeleted: m['is_deleted'] == 1,
+          version: m['version'] ?? 1,
+          updatedAt: m['updated_at'] ?? DateTime.now().millisecondsSinceEpoch,
+          createdAt: m['created_at'] ?? DateTime.now().millisecondsSinceEpoch,
+          createdDate: JsonValueParser.toNullableInt(m['created_date']),
+          dueDate:
+              (m['due_date'] != null &&
+                  m['due_date'].toString() != '0' &&
+                  m['due_date'].toString() != 'null' &&
+                  m['due_date'].toString().isNotEmpty)
+              ? DateTime.fromMillisecondsSinceEpoch(
+                  JsonValueParser.toInt(m['due_date']),
+                )
+              : null,
+          teamUuid: m['team_uuid'],
+          teamName: m['team_name'],
+          creatorId: m['creator_id'],
+          creatorName: m['creator_name'],
+          groupId: m['group_id'],
+          collabType: m['collab_type'] ?? 0,
+          recurrence:
+              RecurrenceType.values[(_parseNullableIntForIsolate(
+                        m['recurrence'],
+                      ) ??
+                      0)
+                  .clamp(0, RecurrenceType.values.length - 1)],
+          recurrenceSeriesId: m['recurrence_series_id']?.toString(),
+          customIntervalDays: _parseNullableIntForIsolate(
+            m['custom_interval_days'],
+          ),
+          recurrenceEndDate:
+              (m['recurrence_end_date'] != null &&
+                  m['recurrence_end_date'].toString() != '0')
+              ? DateTime.fromMillisecondsSinceEpoch(
+                  JsonValueParser.toInt(m['recurrence_end_date']),
+                )
+              : null,
+          reminderMinutes:
+              (m['reminder_minutes'] != null &&
+                  m['reminder_minutes'].toString() != '-1')
+              ? JsonValueParser.toNullableInt(m['reminder_minutes'])
+              : null,
+          imagePath: m['image_path']?.toString(),
+          originalText: m['original_text']?.toString(),
+          isAllDay: m['is_all_day'] == 1 || m['is_all_day'] == true,
+          hasConflict: m['has_conflict'] == 1 || m['has_conflict'] == true,
+          serverVersionData: JsonValueParser.toMap(m['conflict_data']),
+        ),
+      )
       .toList();
 }
 
@@ -67,22 +79,83 @@ List<TodoItem> _parseTodoJsonItemsIsolate(List<String> jsonList) {
       .toList();
 }
 
-mixin _StorageTodos on _StorageServiceBase {
-  Future<void> saveTodos(String username, List<TodoItem> items,
-      {bool sync = true,
-      bool isSyncSource = false,
-      bool recomputeScheduleConflicts = true}) async {
-    final Map<String, TodoItem> dedupeMap = {};
-
-    // 🚀 核心优化：只有在非同步源保存时才清理，防止 saveTodos -> getTodos 循环触发
-    if (sync && !isSyncSource) {
-      _recurrenceCheckCache.clear();
+class _TodoRecurrenceOccurrenceIndex {
+  _TodoRecurrenceOccurrenceIndex(Iterable<TodoItem> todos, this._dayKeyFor) {
+    for (final todo in todos) {
+      add(todo);
     }
+  }
 
-    for (var item in items) {
+  final String Function(int) _dayKeyFor;
+  final Map<String, List<TodoItem>> _bySeries = {};
+  final Map<String, Map<String, List<TodoItem>>> _bySeriesDay = {};
+
+  void add(TodoItem todo) {
+    final seriesId = todo.recurrenceSeriesId;
+    if (seriesId == null || seriesId.isEmpty) return;
+
+    final dayKey = _dayKeyFor(todo.createdDate ?? todo.createdAt);
+    _bySeries.putIfAbsent(seriesId, () => []).add(todo);
+    _bySeriesDay
+        .putIfAbsent(seriesId, () => {})
+        .putIfAbsent(dayKey, () => [])
+        .add(todo);
+  }
+
+  List<TodoItem> forSeries(String seriesId) =>
+      _bySeries[seriesId] ?? const <TodoItem>[];
+
+  List<TodoItem> forSeriesDay(String seriesId, String dayKey) =>
+      _bySeriesDay[seriesId]?[dayKey] ?? const <TodoItem>[];
+}
+
+mixin _StorageTodos on _StorageServiceBase {
+  static const _todoSnapshotFields = <String>[
+    'content',
+    'remark',
+    'is_completed',
+    'is_deleted',
+    'created_date',
+    'due_date',
+    'group_id',
+    'team_uuid',
+    'collab_type',
+    'recurrence',
+    'recurrence_series_id',
+    'custom_interval_days',
+    'recurrence_end_date',
+    'is_all_day',
+    'reminder_minutes',
+    'has_conflict',
+    'conflict_data',
+    'image_path',
+    'original_text',
+    'version',
+    'updated_at',
+    'created_at',
+    'team_name',
+    'creator_id',
+    'creator_name',
+  ];
+
+  Future<void> saveTodos(
+    String username,
+    List<TodoItem> items, {
+    bool sync = true,
+    bool isSyncSource = false,
+    bool recomputeScheduleConflicts = true,
+    Set<String> authoritativeTodoIds = const {},
+    Map<String, TodoItem>? recurrenceBaselines,
+    Map<String, TodoItem?>? recurrenceUploadBaselines,
+    List<TodoItem>? bandSyncSnapshot,
+  }) async {
+    final dedupeMap = <String, TodoItem>{};
+    if (sync && !isSyncSource) _recurrenceCheckCache.clear();
+    for (final source in items) {
+      // Async reads must not share mutable UI objects with this write.
+      final item = source.detachedCopy();
       if (item.recurrence != RecurrenceType.none &&
-          (item.recurrenceSeriesId == null ||
-              item.recurrenceSeriesId!.isEmpty)) {
+          item.recurrenceSeriesId?.isNotEmpty != true) {
         item.recurrenceSeriesId = item.id;
       }
       final existing = dedupeMap[item.id];
@@ -96,287 +169,357 @@ mixin _StorageTodos on _StorageServiceBase {
         dedupeMap[item.id] = item;
       }
     }
-
-    List<TodoItem> dedupeList = dedupeMap.values.toList()
-      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
-
-    // SQL 已是主存储。超大 Todo 列表写回 SharedPreferences 会在 Android 上触发 OOM，
-    // 因此这里仅清理旧镜像，不再持续维护整份 prefs 缓存。
-    unawaited(_clearTodoPrefsMirror(username));
-
+    final candidates = dedupeMap.values.toList();
+    final maintenanceSeries = candidates
+        .map((item) => item.recurrenceSeriesId)
+        .toSet();
+    final ruleBaselines =
+        recurrenceBaselines?.values
+            .where(
+              (item) =>
+                  item.recurrence != RecurrenceType.none &&
+                  maintenanceSeries.contains(
+                    item.recurrenceSeriesId ?? item.id,
+                  ),
+            )
+            .toList() ??
+        const <TodoItem>[];
+    final rulesBySeries = <String, TodoItem>{};
+    for (final rule in ruleBaselines) {
+      rulesBySeries.putIfAbsent(rule.recurrenceSeriesId ?? rule.id, () => rule);
+    }
+    final validationIds = {
+      ...dedupeMap.keys,
+      ...ruleBaselines.map((item) => item.id),
+    }.toList();
     final db = await DatabaseHelper.instance.databaseForUser(username);
-
-    // 🚀 核心优化：批量获取现有数据，用于审计对比，避免循环中重复查询 DB
-    Map<String, Map<String, dynamic>> existingItemsMap = {};
-    if (!isSyncSource && dedupeList.isNotEmpty) {
-      final List<Map<String, dynamic>> existing =
-          await DatabaseHelper.instance.getTodoMaps(
-        includeDeleted: true,
-        uuids: dedupeList.map((e) => e.id).toList(),
-        includeConflictData: true,
-        databaseOverride: db,
-      );
-      for (var row in existing) {
-        existingItemsMap[row['uuid']] = row;
-      }
-    }
-    // 同步来源也需要旧的时间字段，用来只重算被修改待办所在的日期；它不参与
-    // 审计或 LWW 判定，避免改变同步写入语义。
-    Map<String, Map<String, dynamic>> existingScheduleItemsMap =
-        existingItemsMap;
-    if (isSyncSource && dedupeList.isNotEmpty) {
-      final existing = await DatabaseHelper.instance.getTodoMaps(
-        includeDeleted: true,
-        uuids: dedupeList.map((item) => item.id).toList(),
-        databaseOverride: db,
-      );
-      existingScheduleItemsMap = {
-        for (final row in existing) row['uuid'].toString(): row,
-      };
-    }
-    final affectedScheduleConflictDays = <String>{};
-    // 🚀 同步写入时，查询 force-flush 保护或有待同步 oplog 的待办的 is_completed，防止同步覆盖用户本地修改
-    // 优先级：force-flush > pending oplog > normal sync
-    Map<String, int> existingCompletionMap = {};
-    if (isSyncSource && dedupeList.isNotEmpty) {
-      // 同步请求返回后到真正落库前，UI 仍可能产生新的完成/取消完成操作。
-      // 在写入边界再读一次 oplog，避免仅依赖请求结束时的内存快照。
-      final allItemIds = dedupeList.map((item) => item.id).toList();
-      const chunkSize = 500;
-      for (var start = 0; start < allItemIds.length; start += chunkSize) {
-        final end = start + chunkSize < allItemIds.length
-            ? start + chunkSize
-            : allItemIds.length;
-        final chunk = allItemIds.sublist(start, end);
-        final placeholders = List.filled(chunk.length, '?').join(',');
-        final rows = await db.query(
-          'op_logs',
-          columns: const ['target_uuid'],
-          where:
-              "is_synced = 0 AND target_table = 'todos' AND target_uuid IN ($placeholders)",
-          whereArgs: chunk,
-        );
-        _pendingSyncOplogUuids.addAll(
-          rows
-              .map((row) => row['target_uuid']?.toString() ?? '')
-              .where((uuid) => uuid.isNotEmpty),
-        );
-      }
-    }
-    if (isSyncSource &&
-        dedupeList.isNotEmpty &&
-        (_forceFlushProtectedUuids.isNotEmpty ||
-            _pendingSyncOplogUuids.isNotEmpty)) {
-      final localPrefs = await prefs;
-      final int currentUserId = localPrefs.getInt('current_user_id') ?? 0;
-      if (currentUserId > 0) {
-        // 需要保护的 UUID = force-flush 的 + pending oplog 的
-        final uuidsToPreserve = dedupeList
-            .where((item) =>
-                _forceFlushProtectedUuids.contains(item.id) ||
-                _pendingSyncOplogUuids.contains(item.id))
-            .map((item) => item.id)
-            .toList();
-        if (uuidsToPreserve.isNotEmpty) {
-          final placeholders =
-              List.filled(uuidsToPreserve.length, '?').join(',');
-          final rows = await db.rawQuery(
-            'SELECT t.uuid, CASE WHEN t.collab_type = 1 AND c.is_completed IS NOT NULL THEN c.is_completed ELSE t.is_completed END AS is_completed '
-            'FROM todos t LEFT JOIN todo_completions c ON t.uuid = c.todo_uuid AND c.user_id = ? '
-            'WHERE t.uuid IN ($placeholders)',
-            [currentUserId, ...uuidsToPreserve],
-          );
-          for (var row in rows) {
-            existingCompletionMap[row['uuid'] as String] =
-                (row['is_completed'] as int?) ?? 0;
-          }
-          //debugPrint(
-          //  '🧪 [SyncDiag][saveTodos-sync] preserving ${existingCompletionMap.length} protected completions (force-flush=${_forceFlushProtectedUuids.length}, pending-oplog=${_pendingSyncOplogUuids.length})');
-        }
-      }
-    }
-
-    // databaseForUser() rejects an account switch before the handle is
-    // captured. Re-check before committing after the reads above so a stale
-    // save fails closed instead of writing after a logout/login transition.
+    final localPrefs = await prefs;
+    final userId = localPrefs.getInt('current_user_id') ?? 0;
+    final affectedDays = <String>{};
+    final writtenIds = <String>{};
+    final persistedItems = <String, TodoItem>{};
     if (username.trim() != 'default') {
       await UserSessionStorage.ensureCurrentUsername(username);
     }
 
-    // 🚀 Batch 极速批量写入
-    final batch = db.batch();
-    for (var item in dedupeList) {
-      bool hasChanged = true;
-      final oldData = existingItemsMap[item.id];
-
-      if (oldData != null) {
-        // 检测是否有实质性变更，如果没有则跳过审计和 Oplog
-        hasChanged = _hasSubstantialChange(oldData, item.toJson(), [
-          'content',
-          'title',
-          'remark',
-          'is_completed',
-          'is_deleted',
-          'due_date',
-          'group_id',
-          'recurrence',
-          'recurrence_series_id',
-          'is_all_day',
-          'reminder_minutes',
-          'has_conflict',
-          'conflict_data',
-          'image_path',
-          'original_text',
-          'version',
-          'updated_at',
-        ]);
-      }
-
-      if (!isSyncSource && hasChanged) {
-        final syncPayload = _stripClientOnlyConflictForSync(item.toJson());
-        if (item.isDeleted && _recurrenceDedupeTombstoneIds.contains(item.id)) {
-          syncPayload['_recurrence_delete_reason'] = 'dedupe';
+    // The current row, pending operations, row write and oplog must share the
+    // same transaction. A pre-transaction check leaves a second rollback race.
+    await db.transaction((txn) async {
+      final existingById = <String, Map<String, dynamic>>{};
+      final pendingIds = <String>{};
+      const chunkSize = 400;
+      for (var start = 0; start < validationIds.length; start += chunkSize) {
+        final ids = validationIds.skip(start).take(chunkSize).toList();
+        final rows = await DatabaseHelper.instance.getTodoMaps(
+          includeDeleted: true,
+          uuids: ids,
+          includeConflictData: true,
+          databaseOverride: txn,
+        );
+        for (final row in rows) {
+          existingById[row['uuid'].toString()] = row;
         }
-        // 记录审计日志 (传入已有的 oldData 避免再次查询)
-        unawaited(_recordLocalAuditOptimized(
-            username, 'todos', item.id, item.toJson(), item.teamUuid, oldData));
-
-        batch.insert('op_logs', {
-          'op_type': 'UPSERT',
-          'target_table': 'todos',
-          'target_uuid': item.id,
-          'data_json': jsonEncode(syncPayload),
-          'timestamp': DateTime.now().millisecondsSinceEpoch,
-          'is_synced': 0,
-          'sync_error': '',
-        });
-        //if (!isSyncSource) {
-        //debugPrint(
-        //    '🧪 [SyncDiag][oplog] CREATE UUID=${item.id} isDone=${item.isDone} is_completed=${item.isDone ? 1 : 0} collabType=${item.collabType}');
-        //}
+        if (isSyncSource) {
+          final placeholders = List.filled(ids.length, '?').join(',');
+          final ops = await txn.query(
+            'op_logs',
+            columns: const ['target_uuid'],
+            where:
+                "is_synced = 0 AND target_table = 'todos' AND target_uuid IN ($placeholders)",
+            whereArgs: ids,
+          );
+          pendingIds.addAll(ops.map((row) => row['target_uuid'].toString()));
+        }
       }
-
-      if (hasChanged || oldData == null) {
-        final previousScheduleData = existingScheduleItemsMap[item.id];
-        if (_requiresScheduleConflictRefresh(item, previousScheduleData)) {
-          affectedScheduleConflictDays.addAll(
-            _scheduleConflictDayKeysFor(
-              item,
-              previousData: previousScheduleData,
-            ),
+      final staleRuleSeries = <String>{};
+      for (final rule in ruleBaselines) {
+        final current = existingById[rule.id];
+        if (current == null ||
+            _hasSubstantialChange(
+              TodoItem.fromSql(current).toJson(),
+              rule.toJson(),
+              _todoSnapshotFields,
+            )) {
+          staleRuleSeries.add(rule.recurrenceSeriesId ?? rule.id);
+        }
+      }
+      final batch = txn.batch();
+      for (final item in candidates) {
+        final oldData = existingById[item.id];
+        final current = oldData == null ? null : TodoItem.fromSql(oldData);
+        if (current != null) persistedItems[item.id] = current;
+        final baseline = recurrenceBaselines?[item.id];
+        if (recurrenceBaselines != null) {
+          // Missing baseline means insert-only automatic generation. Existing
+          // maintenance is conditional on exactly the snapshot it inspected.
+          if (staleRuleSeries.contains(item.recurrenceSeriesId) ||
+              (baseline == null && current != null) ||
+              (baseline != null &&
+                  (current == null ||
+                      _hasSubstantialChange(
+                        current.toJson(),
+                        baseline.toJson(),
+                        _todoSnapshotFields,
+                      )))) {
+            _recurrenceCheckCache.clear();
+            continue;
+          }
+        } else if (current != null &&
+            !(isSyncSource && authoritativeTodoIds.contains(item.id)) &&
+            TodoLwwService.compare(
+                  incomingUpdatedAt: item.updatedAt,
+                  incomingVersion: item.version,
+                  currentUpdatedAt: current.updatedAt,
+                  currentVersion: current.version,
+                ) <
+                0) {
+          continue;
+        }
+        if (isSyncSource &&
+            current != null &&
+            (pendingIds.contains(item.id) ||
+                _pendingSyncOplogUuids.contains(item.id) ||
+                _forceFlushProtectedUuids.contains(item.id))) {
+          // Protect dates, recurrence and LWW metadata as well as completion.
+          continue;
+        }
+        final data = item.toJson();
+        final hasChanged =
+            current == null ||
+            _hasSubstantialChange(current.toJson(), data, _todoSnapshotFields);
+        if (!hasChanged) continue;
+        if (!isSyncSource) {
+          final payload = _stripClientOnlyConflictForSync(data);
+          if (recurrenceBaselines != null) {
+            final uploadBaseline =
+                recurrenceUploadBaselines?.containsKey(item.id) == true
+                ? recurrenceUploadBaselines![item.id]
+                : baseline;
+            payload['_recurrence_maintenance'] = {
+              'create_only': uploadBaseline == null,
+              'base_version': uploadBaseline?.version,
+              'base_updated_at': uploadBaseline?.updatedAt,
+            };
+            final rule = rulesBySeries[item.recurrenceSeriesId];
+            if (rule != null && rule.id != item.id) {
+              final ruleBaseline = recurrenceUploadBaselines?[rule.id] ?? rule;
+              (payload['_recurrence_maintenance'] as Map)['rule'] = {
+                'uuid': rule.id,
+                'version': ruleBaseline.version,
+                'updated_at': ruleBaseline.updatedAt,
+              };
+            }
+          }
+          if (item.isDeleted &&
+              _recurrenceDedupeTombstoneIds.contains(item.id)) {
+            payload['_recurrence_delete_reason'] = 'dedupe';
+          }
+          batch.insert('op_logs', {
+            'op_type': 'UPSERT',
+            'target_table': 'todos',
+            'target_uuid': item.id,
+            'data_json': jsonEncode(payload),
+            'timestamp': DateTime.now().millisecondsSinceEpoch,
+            'is_synced': 0,
+            'sync_error': '',
+          });
+          try {
+            await DatabaseHelper.instance.insertLocalAuditLog(
+              databaseOverride: txn,
+              userId: ApiService.currentUserId,
+              targetTable: 'todos',
+              targetUuid: item.id,
+              opType: current == null ? 'INSERT' : 'UPDATE',
+              beforeData: oldData,
+              afterData: data,
+              teamUuid: item.teamUuid,
+              operatorName: '本人(离线)',
+            );
+          } catch (error) {
+            debugPrint('⚠️ 记录待办审计失败: $error');
+          }
+        }
+        if (_requiresScheduleConflictRefresh(item, oldData)) {
+          affectedDays.addAll(
+            _scheduleConflictDayKeysFor(item, previousData: oldData),
           );
         }
-        // 🚀 同步写入时，如果有待同步 oplog，保留 DB 中的 is_completed，
-        // 防止 syncData 的 saveTodos 覆盖用户本地修改（force-flush 写入的值）
-        final int isCompleted;
-        if (isSyncSource && existingCompletionMap.containsKey(item.id)) {
-          isCompleted = existingCompletionMap[item.id]!;
-          /*debugPrint(
-              '🧪 [SyncDiag][saveTodos-sync] PRESERVED UUID=${item.id} isCompleted=$isCompleted');
-              */
-        } else {
-          isCompleted = item.isDone ? 1 : 0;
-          if (isSyncSource) {
-            /*debugPrint(
-                '🧪 [SyncDiag][saveTodos-sync] OVERWRITE UUID=${item.id} isCompleted=$isCompleted (from merge)');
-          */
-          }
+        batch.insert('todos', {
+          'uuid': item.id,
+          'content': item.title,
+          'remark': item.remark,
+          'team_uuid': item.teamUuid,
+          'team_name': item.teamName,
+          'creator_id': item.creatorId,
+          'creator_name': item.creatorName,
+          'is_completed': item.isDone ? 1 : 0,
+          'is_deleted': item.isDeleted ? 1 : 0,
+          'version': item.version,
+          'due_date': item.dueDate?.millisecondsSinceEpoch ?? 0,
+          'group_id': item.groupId,
+          'created_date': item.createdDate, // 业务开始时间可空，不回退到物理创建时间
+          'created_at': item.createdAt,
+          'updated_at': item.updatedAt,
+          'collab_type': item.collabType,
+          'recurrence': _normalizedRecurrenceIndex(item),
+          'recurrence_series_id': item.recurrenceSeriesId,
+          'custom_interval_days': _normalizedCustomIntervalDays(item),
+          'recurrence_end_date':
+              item.recurrenceEndDate?.millisecondsSinceEpoch ?? 0,
+          'reminder_minutes': item.reminderMinutes ?? -1,
+          'is_all_day': item.isAllDay ? 1 : 0,
+          'has_conflict': item.hasConflict ? 1 : 0,
+          'image_path': item.imagePath,
+          'original_text': item.originalText,
+          'conflict_data': item.serverVersionData != null
+              ? jsonEncode(item.serverVersionData)
+              : null,
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+        // Maintenance does not constitute a new independent completion.
+        if (!isSyncSource &&
+            recurrenceBaselines == null &&
+            item.collabType == 1 &&
+            userId > 0) {
+          batch.insert('todo_completions', {
+            'todo_uuid': item.id,
+            'user_id': userId,
+            'is_completed': item.isDone ? 1 : 0,
+            'updated_at': item.updatedAt,
+          }, conflictAlgorithm: ConflictAlgorithm.replace);
         }
-        batch.insert(
-            'todos',
-            {
-              'uuid': item.id,
-              'content': item.title,
-              'remark': item.remark,
-              'team_uuid': item.teamUuid,
-              'team_name': item.teamName,
-              'creator_id': item.creatorId,
-              'creator_name': item.creatorName,
-              'is_completed': isCompleted,
-              'is_deleted': item.isDeleted ? 1 : 0,
-              'version': item.version,
-              'due_date': item.dueDate?.millisecondsSinceEpoch ?? 0,
-              'group_id': item.groupId,
-              'created_date': item.createdDate ?? item.createdAt,
-              'created_at': item.createdAt,
-              'updated_at': item.updatedAt,
-              'collab_type': item.collabType,
-              'recurrence': _normalizedRecurrenceIndex(item),
-              'recurrence_series_id': item.recurrenceSeriesId,
-              'custom_interval_days': _normalizedCustomIntervalDays(item),
-              'recurrence_end_date':
-                  item.recurrenceEndDate?.millisecondsSinceEpoch ?? 0,
-              'reminder_minutes': item.reminderMinutes ?? -1,
-              'is_all_day': item.isAllDay ? 1 : 0,
-              'has_conflict': item.hasConflict ? 1 : 0,
-              'image_path': item.imagePath,
-              'original_text': item.originalText,
-              'conflict_data': item.serverVersionData != null
-                  ? jsonEncode(item.serverVersionData)
-                  : null,
-            },
-            conflictAlgorithm: ConflictAlgorithm.replace);
+        writtenIds.add(item.id);
+        persistedItems[item.id] = item;
       }
-    }
-
-    if (dedupeList.isNotEmpty) {
+      if (username.trim() != 'default') {
+        await UserSessionStorage.ensureCurrentUsername(username);
+      }
       await batch.commit(noResult: true);
+    });
+    await _clearTodoPrefsMirror(username);
+    if (writtenIds.isNotEmpty) {
       _inflightTodoRequests.clear();
-
-      // 🚀 针对各自独立团队待办（collabType == 1），同步写入 todo_completions
-      if (!isSyncSource) {
-        try {
-          final localPrefs = await prefs;
-          final int userId = localPrefs.getInt('current_user_id') ?? 0;
-          if (userId > 0) {
-            final compBatch = db.batch();
-            for (var item in dedupeList) {
-              if (item.collabType == 1) {
-                compBatch.insert(
-                    'todo_completions',
-                    {
-                      'todo_uuid': item.id,
-                      'user_id': userId,
-                      'is_completed': item.isDone ? 1 : 0,
-                      'updated_at': DateTime.now().millisecondsSinceEpoch,
-                    },
-                    conflictAlgorithm: ConflictAlgorithm.replace);
-              }
-            }
-            await compBatch.commit(noResult: true);
-          }
-        } catch (e) {
-          debugPrint("⚠️ StorageService: 写入本地 todo_completions 状态失败: $e");
-        }
-      }
+      _inflightTodoSearchDateRequests.clear();
+      _inflightTimelineTodoRequests.clear();
     }
-
-    if (recomputeScheduleConflicts && affectedScheduleConflictDays.isNotEmpty) {
+    if (recomputeScheduleConflicts && affectedDays.isNotEmpty) {
       await _refreshTodoScheduleConflicts(
         username,
-        affectedDayKeys: affectedScheduleConflictDays,
-        affectedTodoIds: dedupeList.map((item) => item.id).toSet(),
+        affectedDayKeys: affectedDays,
+        affectedTodoIds: writtenIds,
       );
     }
-
     if (sync) requestSync(username);
-    Future.microtask(() => _syncTodosToBand(dedupeList));
+    if (persistedItems.isNotEmpty) {
+      final bandItems = bandSyncSnapshot == null
+          ? persistedItems.values.toList()
+          : bandSyncSnapshot
+                .map((item) => persistedItems[item.id] ?? item)
+                .toList();
+      Future.microtask(() => _syncTodosToBand(bandItems));
+    }
     triggerRefresh(const {DataRefreshDomain.todos});
   }
 
-  bool _hasSubstantialChange(Map<String, dynamic> before,
-      Map<String, dynamic> after, List<String> fields) {
+  Future<bool> _saveRecurrenceMaintenance(
+    String username,
+    List<TodoItem> todos,
+    Map<String, TodoItem> baselines, {
+    Map<String, TodoItem?>? uploadBaselines,
+  }) async {
+    final changed = todos.where((item) {
+      final baseline = baselines[item.id];
+      return baseline == null ||
+          _hasSubstantialChange(
+            baseline.toJson(),
+            item.toJson(),
+            _todoSnapshotFields,
+          );
+    }).toList();
+    if (changed.isEmpty) return true;
+    for (final item in changed) {
+      final baseline = baselines[item.id];
+      if (baseline != null &&
+          TodoLwwService.compare(
+                incomingUpdatedAt: item.updatedAt,
+                incomingVersion: item.version,
+                currentUpdatedAt: baseline.updatedAt,
+                currentVersion: baseline.version,
+              ) <=
+              0) {
+        item.updatedAt = baseline.updatedAt;
+        item.version = baseline.version + 1;
+      }
+    }
+    await saveTodos(
+      username,
+      changed,
+      recurrenceBaselines: baselines,
+      recurrenceUploadBaselines: uploadBaselines,
+      recomputeScheduleConflicts: false,
+    );
+    // A concurrent edit can reject maintenance. Return the committed state,
+    // including completion/date changes, instead of the obsolete read result.
+    final db = await DatabaseHelper.instance.databaseForUser(username);
+    final currentById = <String, TodoItem>{};
+    final seriesIds = changed.map((item) => item.recurrenceSeriesId).toSet();
+    final readIdSet = {
+      ...changed.map((item) => item.id),
+      ...baselines.values
+          .where(
+            (item) =>
+                item.recurrence != RecurrenceType.none &&
+                seriesIds.contains(item.recurrenceSeriesId ?? item.id),
+          )
+          .map((item) => item.id),
+    };
+    final readIds = readIdSet.toList();
+    const chunkSize = 400;
+    for (var start = 0; start < readIds.length; start += chunkSize) {
+      final rows = await DatabaseHelper.instance.getTodoMaps(
+        includeDeleted: true,
+        includeConflictData: true,
+        uuids: readIds.skip(start).take(chunkSize).toList(),
+        databaseOverride: db,
+      );
+      for (final row in rows) {
+        currentById[row['uuid'].toString()] = TodoItem.fromSql(row);
+      }
+    }
+    var saved = true;
+    for (var i = 0; i < todos.length; i++) {
+      final current = currentById[todos[i].id];
+      if (readIdSet.contains(todos[i].id) &&
+          (current == null ||
+              _hasSubstantialChange(
+                current.toJson(),
+                todos[i].toJson(),
+                _todoSnapshotFields,
+              ))) {
+        saved = false;
+      }
+      todos[i] = currentById[todos[i].id] ?? todos[i];
+    }
+    return saved;
+  }
+
+  bool _hasSubstantialChange(
+    Map<String, dynamic> before,
+    Map<String, dynamic> after,
+    List<String> fields,
+  ) {
     for (var field in fields) {
       var valA = after[field];
       var valB = before[field];
 
       // 归一化处理
-      bool isAEmpty = valA == null ||
+      bool isAEmpty =
+          valA == null ||
           valA == 0 ||
           valA == "" ||
           valA == false ||
           (field == 'reminder_minutes' && valA == -1);
-      bool isBEmpty = valB == null ||
+      bool isBEmpty =
+          valB == null ||
           valB == 0 ||
           valB == "" ||
           valB == false ||
@@ -384,6 +527,9 @@ mixin _StorageTodos on _StorageServiceBase {
 
       if (isAEmpty && isBEmpty) continue;
       if (isAEmpty || isBEmpty) return true;
+      if (valA is Map && valB is Map && jsonEncode(valA) == jsonEncode(valB)) {
+        continue;
+      }
       if (valA != valB) return true;
     }
     return false;
@@ -409,9 +555,11 @@ mixin _StorageTodos on _StorageServiceBase {
       if (!await getConflictDetectionEnabled()) {
         _clearLocalTodoScheduleConflicts(todos);
         final changedTodos = todos
-            .where((todo) =>
-                beforeConflictState[todo.id] !=
-                '${todo.hasConflict}:${jsonEncode(todo.serverVersionData)}')
+            .where(
+              (todo) =>
+                  beforeConflictState[todo.id] !=
+                  '${todo.hasConflict}:${jsonEncode(todo.serverVersionData)}',
+            )
             .toList();
         if (changedTodos.isNotEmpty) {
           await saveTodos(
@@ -425,12 +573,16 @@ mixin _StorageTodos on _StorageServiceBase {
         return;
       }
       final ignoredKeys = await _getIgnoredScheduleConflictKeys(username);
-      _recomputeLocalTodoScheduleConflicts(todos,
-          ignoredScheduleConflictKeys: ignoredKeys);
+      _recomputeLocalTodoScheduleConflicts(
+        todos,
+        ignoredScheduleConflictKeys: ignoredKeys,
+      );
       final changedTodos = todos
-          .where((todo) =>
-              beforeConflictState[todo.id] !=
-              '${todo.hasConflict}:${jsonEncode(todo.serverVersionData)}')
+          .where(
+            (todo) =>
+                beforeConflictState[todo.id] !=
+                '${todo.hasConflict}:${jsonEncode(todo.serverVersionData)}',
+          )
           .toList();
       if (changedTodos.isNotEmpty) {
         await saveTodos(
@@ -471,12 +623,15 @@ mixin _StorageTodos on _StorageServiceBase {
       final day = DateTime.tryParse(dayKey);
       if (day == null) continue;
       final startMs = day.millisecondsSinceEpoch;
-      final endMs = time_utils.AppTimeFormats.localDayStartOffset(day, 1)
-          .millisecondsSinceEpoch;
+      final endMs = time_utils.AppTimeFormats.localDayStartOffset(
+        day,
+        1,
+      ).millisecondsSinceEpoch;
       final rows = await DatabaseHelper.instance.getTodoMaps(
         includeDeleted: true,
         includeConflictData: true,
-        where: '(t.created_date >= $startMs AND t.created_date < $endMs) '
+        where:
+            '(t.created_date >= $startMs AND t.created_date < $endMs) '
             'OR (t.due_date >= $startMs AND t.due_date < $endMs)',
       );
       for (final row in rows) {
@@ -535,7 +690,8 @@ mixin _StorageTodos on _StorageServiceBase {
     if (previousData != null) {
       addRange(
         _parseMillis(
-            previousData['created_date'] ?? previousData['createdDate']),
+          previousData['created_date'] ?? previousData['createdDate'],
+        ),
         _parseMillis(previousData['due_date'] ?? previousData['dueDate']),
         previousData['is_all_day'] == 1 || previousData['is_all_day'] == true,
       );
@@ -635,7 +791,9 @@ mixin _StorageTodos on _StorageServiceBase {
       if (todo.isDeleted) continue;
       if (!todo.hasConflict) continue;
       final data = todo.serverVersionData;
-      if (!_isLocalScheduleConflict(data)) continue;
+      if (!ConflictVisibilityService.isLocalScheduleConflictData(data)) {
+        continue;
+      }
       total++;
       switch (data?['relation_type']) {
         case 'personal_personal':
@@ -671,9 +829,11 @@ mixin _StorageTodos on _StorageServiceBase {
   }
 
   Future<void> ignoreLocalScheduleConflict(
-      String username, TodoItem item) async {
+    String username,
+    TodoItem item,
+  ) async {
     final data = item.serverVersionData;
-    if (!_isLocalScheduleConflict(data)) return;
+    if (!ConflictVisibilityService.isLocalScheduleConflictData(data)) return;
 
     final ignoredKeys = await _getIgnoredScheduleConflictKeys(username);
     final startMs =
@@ -690,14 +850,16 @@ mixin _StorageTodos on _StorageServiceBase {
         final peerStart = _parseMillis(peer['start_time']);
         final peerEnd = _parseMillis(peer['end_time']);
         if (peerId.isEmpty || peerStart == null || peerEnd == null) continue;
-        ignoredKeys.add(_scheduleConflictPairKey(
-          item.id,
-          startMs,
-          endMs,
-          peerId,
-          peerStart,
-          peerEnd,
-        ));
+        ignoredKeys.add(
+          _scheduleConflictPairKey(
+            item.id,
+            startMs,
+            endMs,
+            peerId,
+            peerStart,
+            peerEnd,
+          ),
+        );
       }
     }
 
@@ -711,7 +873,11 @@ mixin _StorageTodos on _StorageServiceBase {
     var changed = false;
     for (final todo in allTodos) {
       final conflictData = todo.serverVersionData;
-      if (!_isLocalScheduleConflict(conflictData)) continue;
+      if (!ConflictVisibilityService.isLocalScheduleConflictData(
+        conflictData,
+      )) {
+        continue;
+      }
 
       if (todo.id == item.id) {
         todo.hasConflict = false;
@@ -759,12 +925,13 @@ mixin _StorageTodos on _StorageServiceBase {
   }
 
   Future<void> _recordLocalAuditOptimized(
-      String username,
-      String table,
-      String uuid,
-      Map<String, dynamic> afterData,
-      String? teamUuid,
-      Map<String, dynamic>? existingData) async {
+    String username,
+    String table,
+    String uuid,
+    Map<String, dynamic> afterData,
+    String? teamUuid,
+    Map<String, dynamic>? existingData,
+  ) async {
     try {
       final db = await DatabaseHelper.instance.databaseForUser(username);
       if (existingData == null) {
@@ -799,13 +966,21 @@ mixin _StorageTodos on _StorageServiceBase {
     }
   }
 
-  Future<void> _recordLocalAudit(String username, String table, String uuid,
-      Map<String, dynamic> afterData, String? teamUuid) async {
+  Future<void> _recordLocalAudit(
+    String username,
+    String table,
+    String uuid,
+    Map<String, dynamic> afterData,
+    String? teamUuid,
+  ) async {
     try {
       final db = await DatabaseHelper.instance.databaseForUser(username);
       // 1. 获取旧数据快照
-      final List<Map<String, dynamic>> existing =
-          await db.query(table, where: 'uuid = ?', whereArgs: [uuid]);
+      final List<Map<String, dynamic>> existing = await db.query(
+        table,
+        where: 'uuid = ?',
+        whereArgs: [uuid],
+      );
       if (existing.isEmpty) {
         // 新增操作，直接记录
         await DatabaseHelper.instance.insertLocalAuditLog(
@@ -822,8 +997,9 @@ mixin _StorageTodos on _StorageServiceBase {
         return;
       }
 
-      Map<String, dynamic> beforeData =
-          Map<String, dynamic>.from(existing.first);
+      Map<String, dynamic> beforeData = Map<String, dynamic>.from(
+        existing.first,
+      );
 
       // 🚀 核心优化：实质性变更检测
       // 排除掉 version, updated_at 等会自动变动的字段，只对比业务字段
@@ -843,7 +1019,7 @@ mixin _StorageTodos on _StorageServiceBase {
         'is_all_day',
         'reminder_minutes',
         'recurrence_end_date',
-        'custom_interval_days'
+        'custom_interval_days',
       ];
 
       for (var field in businessFields) {
@@ -854,12 +1030,14 @@ mixin _StorageTodos on _StorageServiceBase {
           // 🚀 核心修复：全面的值归一化处理
           // 处理 null 和 0/""/"false" 的等价性
           // 特别处理 reminder_minutes: -1 和 null 的等价性
-          bool isAEmpty = valA == null ||
+          bool isAEmpty =
+              valA == null ||
               valA == 0 ||
               valA == "" ||
               valA == false ||
               (field == 'reminder_minutes' && valA == -1);
-          bool isBEmpty = valB == null ||
+          bool isBEmpty =
+              valB == null ||
               valB == 0 ||
               valB == "" ||
               valB == false ||
@@ -889,8 +1067,12 @@ mixin _StorageTodos on _StorageServiceBase {
       Future<String?> lookupName(String targetTable, String? targetUuid) async {
         if (targetUuid == null || targetUuid.isEmpty) return null;
         try {
-          final List<Map<String, dynamic>> res = await db.query(targetTable,
-              columns: ['name'], where: 'uuid = ?', whereArgs: [targetUuid]);
+          final List<Map<String, dynamic>> res = await db.query(
+            targetTable,
+            columns: ['name'],
+            where: 'uuid = ?',
+            whereArgs: [targetUuid],
+          );
           return res.isNotEmpty ? res.first['name'] as String? : null;
         } catch (_) {
           return null;
@@ -898,20 +1080,28 @@ mixin _StorageTodos on _StorageServiceBase {
       }
 
       if (beforeData['group_id'] != null) {
-        beforeData['group_name'] =
-            await lookupName('todo_groups', beforeData['group_id']);
+        beforeData['group_name'] = await lookupName(
+          'todo_groups',
+          beforeData['group_id'],
+        );
       }
       if (beforeData['team_uuid'] != null) {
-        beforeData['team_name'] =
-            await lookupName('teams', beforeData['team_uuid']);
+        beforeData['team_name'] = await lookupName(
+          'teams',
+          beforeData['team_uuid'],
+        );
       }
       if (enrichedAfter['group_id'] != null) {
-        enrichedAfter['group_name'] =
-            await lookupName('todo_groups', enrichedAfter['group_id']);
+        enrichedAfter['group_name'] = await lookupName(
+          'todo_groups',
+          enrichedAfter['group_id'],
+        );
       }
       if (enrichedAfter['team_uuid'] != null) {
-        enrichedAfter['team_name'] =
-            await lookupName('teams', enrichedAfter['team_uuid']);
+        enrichedAfter['team_name'] = await lookupName(
+          'teams',
+          enrichedAfter['team_uuid'],
+        );
       }
 
       // 2. 存入本地审计表
@@ -947,115 +1137,11 @@ mixin _StorageTodos on _StorageServiceBase {
     } catch (_) {}
   }
 
-  Future<void> updateSingleTodo(String username, TodoItem item,
-      {bool sync = true}) async {
-    if (item.recurrence != RecurrenceType.none &&
-        (item.recurrenceSeriesId == null || item.recurrenceSeriesId!.isEmpty)) {
-      item.recurrenceSeriesId = item.id;
-    }
-    // 1. 记录本地审计日志 (必须在更新前，因为需要获取旧快照)
-    await _recordLocalAudit(
-        username, 'todos', item.id, item.toJson(), item.teamUuid);
-
-    final db = await DatabaseHelper.instance.databaseForUser(username);
-    final previousRows = await db.query(
-      'todos',
-      where: 'uuid = ?',
-      whereArgs: [item.id],
-      limit: 1,
-    );
-    final previousData = previousRows.isEmpty
-        ? null
-        : Map<String, dynamic>.from(previousRows.first);
-
-    // 2. 同步更新 SQLite
-    await db.insert(
-        'todos',
-        {
-          'uuid': item.id,
-          'content': item.title,
-          'remark': item.remark,
-          'team_uuid': item.teamUuid,
-          'team_name': item.teamName,
-          'creator_id': item.creatorId,
-          'creator_name': item.creatorName,
-          'is_completed': item.isDone ? 1 : 0,
-          'is_deleted': item.isDeleted ? 1 : 0,
-          'version': item.version,
-          'updated_at': item.updatedAt,
-          'created_at': item.createdAt,
-          // 🚀 核心防御：0 兜底
-          'due_date': item.dueDate?.millisecondsSinceEpoch ?? 0,
-          'group_id': item.groupId,
-          'created_date': item.createdDate,
-          'collab_type': item.collabType,
-          'recurrence': _normalizedRecurrenceIndex(item),
-          'recurrence_series_id': item.recurrenceSeriesId,
-          'custom_interval_days': _normalizedCustomIntervalDays(item),
-          // 🚀 核心防御：0 兜底
-          'recurrence_end_date':
-              item.recurrenceEndDate?.millisecondsSinceEpoch ?? 0,
-          'reminder_minutes': item.reminderMinutes ?? -1,
-          'is_all_day': item.isAllDay ? 1 : 0,
-          'has_conflict': item.hasConflict ? 1 : 0,
-          'conflict_data': item.serverVersionData != null
-              ? jsonEncode(item.serverVersionData)
-              : null,
-          'image_path': item.imagePath,
-          'original_text': item.originalText,
-        },
-        conflictAlgorithm: ConflictAlgorithm.replace);
-
-    // 2.1 针对各自独立团队待办（collabType == 1），同步在本地 todo_completions 表中为当前用户写入/更新完成状态
-    if (item.collabType == 1) {
-      try {
-        final localPrefs = await prefs;
-        final int userId = localPrefs.getInt('current_user_id') ?? 0;
-        if (userId > 0) {
-          await db.insert(
-              'todo_completions',
-              {
-                'todo_uuid': item.id,
-                'user_id': userId,
-                'is_completed': item.isDone ? 1 : 0,
-                'updated_at': DateTime.now().millisecondsSinceEpoch,
-              },
-              conflictAlgorithm: ConflictAlgorithm.replace);
-        }
-      } catch (e) {
-        debugPrint("⚠️ StorageService: 写入本地 todo_completions 状态失败: $e");
-      }
-    }
-
-    // 3. 补齐 Oplog，确保离线更新能被同步
-    await db.insert('op_logs', {
-      'op_type': 'UPSERT',
-      'target_table': 'todos',
-      'target_uuid': item.id,
-      'data_json': jsonEncode(_stripClientOnlyConflictForSync(item.toJson())),
-      'timestamp': DateTime.now().millisecondsSinceEpoch,
-      'is_synced': 0,
-      'sync_error': '',
-    });
-
-    // 不再维护超大的 SharedPreferences Todo 镜像，避免 Android 插件层 OOM
-    await _clearTodoPrefsMirror(username);
-
-    if (_requiresScheduleConflictRefresh(item, previousData)) {
-      final affectedDayKeys =
-          _scheduleConflictDayKeysFor(item, previousData: previousData);
-      if (affectedDayKeys.isNotEmpty) {
-        await _refreshTodoScheduleConflicts(
-          username,
-          affectedDayKeys: affectedDayKeys,
-          affectedTodoIds: {item.id},
-        );
-      }
-    }
-
-    if (sync) requestSync(username);
-    triggerRefresh(const {DataRefreshDomain.todos});
-  }
+  Future<void> updateSingleTodo(
+    String username,
+    TodoItem item, {
+    bool sync = true,
+  }) => saveTodos(username, [item], sync: sync);
 
   Future<TodoItem?> getTodoByUuid(String username, String uuid) async {
     final db = await DatabaseHelper.instance.databaseForUser(username);
@@ -1184,8 +1270,11 @@ mixin _StorageTodos on _StorageServiceBase {
     final now = DateTime.now().millisecondsSinceEpoch;
     final batch = db.batch();
     for (final uuid in historicalIds) {
-      batch.delete('todo_completions',
-          where: 'todo_uuid = ?', whereArgs: [uuid]);
+      batch.delete(
+        'todo_completions',
+        where: 'todo_uuid = ?',
+        whereArgs: [uuid],
+      );
       batch.delete('todos', where: 'uuid = ?', whereArgs: [uuid]);
       batch.insert('op_logs', {
         'op_type': 'DELETE',
@@ -1235,8 +1324,12 @@ mixin _StorageTodos on _StorageServiceBase {
     triggerRefresh(const {DataRefreshDomain.countdowns});
   }
 
-  Future<List<TodoItem>> getTodos(String username,
-      {bool includeDeleted = false, int? limit, int offset = 0}) async {
+  Future<List<TodoItem>> getTodos(
+    String username, {
+    bool includeDeleted = false,
+    int? limit,
+    int offset = 0,
+  }) async {
     final requestKey = _todoRequestKey(
       username,
       includeDeleted: includeDeleted,
@@ -1268,15 +1361,292 @@ mixin _StorageTodos on _StorageServiceBase {
     }
   }
 
-  Future<List<TodoItem>> _getTodosInternal(String username,
-      {bool includeDeleted = false, int? limit, int offset = 0}) async {
+  Future<List<TodoItem>> getTodosForWidget(String username) async {
+    final now = DateTime.now();
+    final todayKey = '${now.year}-${now.month}-${now.day}';
+    if (_lastRecurrenceCheckDate != todayKey) {
+      _lastRecurrenceCheckDate = todayKey;
+      _recurrenceCheckCache.clear();
+    }
+
+    final recurrenceCacheKey = 'recurrence_instances_v4_$username';
+    final prefs = await StorageService.prefs;
+    final migrationComplete =
+        prefs.getBool('migration_marker_${username}_v4') ?? false;
+    final cleanupComplete =
+        prefs.getBool('cleanup_done_${username}_v4_repair') ?? false;
+    if (!_recurrenceCheckCache.containsKey(recurrenceCacheKey) ||
+        !migrationComplete) {
+      return getTodos(username);
+    }
+
+    try {
+      if (!cleanupComplete) {
+        await _clearTodoPrefsMirror(username);
+        await prefs.setBool('cleanup_done_${username}_v4_repair', true);
+      }
+      final maps = await DatabaseHelper.instance.getTodoWidgetMaps(username);
+      return maps.map(TodoItem.fromSql).toList(growable: false);
+    } catch (_) {
+      return getTodos(username);
+    }
+  }
+
+  Future<List<TodoItem>> getTodosForSearchDateRange(
+    String username, {
+    required DateTime from,
+    required DateTime to,
+  }) async {
+    final startMs = from.millisecondsSinceEpoch;
+    final endMs = to.millisecondsSinceEpoch;
+    final requestKey = (username, startMs, endMs);
+    final inflight = _inflightTodoSearchDateRequests[requestKey];
+    if (inflight != null) return _cloneTodoItems(await inflight);
+
+    final future = _getTodosForSearchDateRangeInternal(
+      username,
+      startMs: startMs,
+      endMs: endMs,
+    );
+    _inflightTodoSearchDateRequests[requestKey] = future;
+    try {
+      return _cloneTodoItems(await future);
+    } finally {
+      if (identical(_inflightTodoSearchDateRequests[requestKey], future)) {
+        _inflightTodoSearchDateRequests.remove(requestKey);
+      }
+    }
+  }
+
+  Future<List<TodoItem>> _getTodosForSearchDateRangeInternal(
+    String username, {
+    required int startMs,
+    required int endMs,
+  }) async {
+    if (endMs <= startMs) return const <TodoItem>[];
+
+    final now = DateTime.now();
+    final todayKey = '${now.year}-${now.month}-${now.day}';
+    if (_lastRecurrenceCheckDate != todayKey) {
+      _lastRecurrenceCheckDate = todayKey;
+      _recurrenceCheckCache.clear();
+    }
+
+    final recurrenceCacheKey = 'recurrence_instances_v4_$username';
+    final prefs = await StorageService.prefs;
+    final migrationComplete =
+        prefs.getBool('migration_marker_${username}_v4') ?? false;
+    if (!_recurrenceCheckCache.containsKey(recurrenceCacheKey) ||
+        !migrationComplete) {
+      final allTodos = await getTodos(username);
+      return _filterTodosForSearchDateRange(allTodos, startMs, endMs);
+    }
+
+    try {
+      final db = await DatabaseHelper.instance.databaseForUser(username);
+      final maps = await DatabaseHelper.instance.getTodoMaps(
+        where:
+            't.is_deleted IS NOT 1 AND '
+            '((t.due_date >= $startMs AND t.due_date < $endMs) OR '
+            '(t.created_date >= $startMs AND t.created_date < $endMs))',
+        includeConflictData: true,
+        databaseOverride: db,
+      );
+      if (maps.isEmpty) return const <TodoItem>[];
+
+      // getTodos normally repairs these flags while loading the full table.
+      // For this indexed subset, apply the same normalization only to rows
+      // returned for the requested day instead of scanning every todo.
+      for (final map in maps) {
+        final hasConflict = _parseNullableInt(map['has_conflict']) ?? 0;
+        final conflictData = map['conflict_data']?.toString();
+        final hasConflictData =
+            conflictData != null &&
+            conflictData.trim().isNotEmpty &&
+            conflictData != 'null';
+        if ((hasConflict == 1 && !hasConflictData) ||
+            (hasConflict == 0 && hasConflictData)) {
+          map['has_conflict'] = hasConflict == 1 && hasConflictData ? 1 : 0;
+          map['conflict_data'] = null;
+        }
+      }
+
+      final candidates = maps.length > 50
+          ? await compute(_parseTodoItemsIsolate, maps)
+          : maps.map(TodoItem.fromSql).toList();
+      final todos = _filterTodosForSearchDateRange(candidates, startMs, endMs);
+      final clearedScheduleConflicts = todos
+          .where(ConflictVisibilityService.clearImpossibleTodoScheduleConflict)
+          .toList();
+      if (clearedScheduleConflicts.isNotEmpty) {
+        await saveTodos(
+          username,
+          clearedScheduleConflicts,
+          sync: false,
+          isSyncSource: true,
+          recomputeScheduleConflicts: false,
+        );
+      }
+      return todos;
+    } catch (_) {
+      return _filterTodosForSearchDateRange(
+        await getTodos(username),
+        startMs,
+        endMs,
+      );
+    }
+  }
+
+  List<TodoItem> _filterTodosForSearchDateRange(
+    Iterable<TodoItem> todos,
+    int startMs,
+    int endMs,
+  ) {
+    return todos.where((todo) {
+      if (todo.isDeleted) return false;
+      final dueAt = todo.dueDate?.millisecondsSinceEpoch;
+      final createdAt = todo.createdDate;
+      return (dueAt != null && dueAt >= startMs && dueAt < endMs) ||
+          (createdAt != null && createdAt >= startMs && createdAt < endMs);
+    }).toList();
+  }
+
+  Future<List<TodoItem>> getTodosForTimelineRange(
+    String username, {
+    required DateTime from,
+    required DateTime to,
+  }) async {
+    final startMs = from.millisecondsSinceEpoch;
+    final endMs = to.millisecondsSinceEpoch;
+    final requestKey = (username, startMs, endMs);
+    final inflight = _inflightTimelineTodoRequests[requestKey];
+    if (inflight != null) return _cloneTodoItems(await inflight);
+
+    final future = _getTodosForTimelineRangeInternal(
+      username,
+      startMs: startMs,
+      endMs: endMs,
+    );
+    _inflightTimelineTodoRequests[requestKey] = future;
+    try {
+      return _cloneTodoItems(await future);
+    } finally {
+      if (identical(_inflightTimelineTodoRequests[requestKey], future)) {
+        _inflightTimelineTodoRequests.remove(requestKey);
+      }
+    }
+  }
+
+  Future<List<TodoItem>> _getTodosForTimelineRangeInternal(
+    String username, {
+    required int startMs,
+    required int endMs,
+  }) async {
+    if (endMs <= startMs) return const <TodoItem>[];
+
+    final now = DateTime.now();
+    final todayKey = '${now.year}-${now.month}-${now.day}';
+    if (_lastRecurrenceCheckDate != todayKey) {
+      _lastRecurrenceCheckDate = todayKey;
+      _recurrenceCheckCache.clear();
+    }
+
+    final recurrenceCacheKey = 'recurrence_instances_v4_$username';
+    if (!_recurrenceCheckCache.containsKey(recurrenceCacheKey)) {
+      final allTodos = await getTodos(username);
+      return _filterTodosForTimelineRange(allTodos, startMs, endMs);
+    }
+
+    try {
+      final db = await DatabaseHelper.instance.databaseForUser(username);
+      await _clearGhostConflictFlags(db, tables: const ['todos']);
+      final where =
+          """
+        t.is_deleted IS NOT 1 AND (
+          (t.created_at >= $startMs AND t.created_at < $endMs) OR
+          (t.due_date >= $startMs AND t.due_date < $endMs) OR
+          (t.updated_at >= $startMs AND t.updated_at < $endMs) OR
+          (TRIM(COALESCE(t.recurrence_series_id, '')) != '' AND
+            COALESCE(t.created_date, t.created_at) >= $startMs AND
+            COALESCE(t.created_date, t.created_at) < $endMs)
+        )
+      """;
+      final maps = await DatabaseHelper.instance.getTodoMaps(
+        where: where,
+        includeConflictData: true,
+        databaseOverride: db,
+      );
+      if (maps.isEmpty) {
+        final activeTodos = await db.rawQuery(
+          'SELECT 1 FROM todos WHERE is_deleted IS NOT 1 LIMIT 1',
+        );
+        if (activeTodos.isNotEmpty) return const <TodoItem>[];
+        return _filterTodosForTimelineRange(
+          await getTodos(username),
+          startMs,
+          endMs,
+        );
+      }
+
+      final todos = maps.length > 50
+          ? await compute(_parseTodoItemsIsolate, maps)
+          : maps.map(TodoItem.fromSql).toList();
+      final clearedScheduleConflicts = todos
+          .where(ConflictVisibilityService.clearImpossibleTodoScheduleConflict)
+          .toList();
+      if (clearedScheduleConflicts.isNotEmpty) {
+        await saveTodos(
+          username,
+          clearedScheduleConflicts,
+          sync: false,
+          isSyncSource: true,
+          recomputeScheduleConflicts: false,
+        );
+      }
+      return todos;
+    } catch (_) {
+      return _filterTodosForTimelineRange(
+        await getTodos(username),
+        startMs,
+        endMs,
+      );
+    }
+  }
+
+  List<TodoItem> _filterTodosForTimelineRange(
+    Iterable<TodoItem> todos,
+    int startMs,
+    int endMs,
+  ) {
+    bool isInRange(int timestamp) => timestamp >= startMs && timestamp < endMs;
+
+    return todos.where((todo) {
+      final seriesId = todo.recurrenceSeriesId?.trim();
+      final recurrenceStartInRange =
+          seriesId != null &&
+          seriesId.isNotEmpty &&
+          isInRange(todo.createdDate ?? todo.createdAt);
+      final dueAt = todo.dueDate?.millisecondsSinceEpoch;
+      return isInRange(todo.createdAt) ||
+          (dueAt != null && isInRange(dueAt)) ||
+          isInRange(todo.updatedAt) ||
+          recurrenceStartInRange;
+    }).toList();
+  }
+
+  Future<List<TodoItem>> _getTodosInternal(
+    String username, {
+    bool includeDeleted = false,
+    int? limit,
+    int offset = 0,
+  }) async {
     final prefs = await StorageService.prefs;
     final startedAt = DateTime.now();
     // 🚀 Uni-Sync 安全方案：双轨读取 + 逃生通道
     try {
       final dbHelper = DatabaseHelper.instance;
       final db = await dbHelper.databaseForUser(username);
-      await _clearGhostConflictFlags(db);
+      await _clearGhostConflictFlags(db, tables: const ['todos']);
 
       final migrationKey = "migration_marker_${username}_v4";
       bool alreadyMigrated = prefs.getBool(migrationKey) ?? false;
@@ -1310,8 +1680,12 @@ mixin _StorageTodos on _StorageServiceBase {
             } catch (_) {}
           }
           // 本地存储迁移不是用户修改，不生成 oplog，避免用迁移时间和云端制造冲突。
-          await saveTodos(username, legacyItems,
-              sync: false, isSyncSource: true);
+          await saveTodos(
+            username,
+            legacyItems,
+            sync: false,
+            isSyncSource: true,
+          );
           // 🚀 迁移成功后，必须物理清除 SharedPreferences 中的巨大 JSON 块
           // 否则 Android 的原生 SharedPreferences 会一直将此 170MB+ 的数据留在内存中导致 OOM
           await prefs.remove(_scopedKey(keyTodos, username));
@@ -1357,59 +1731,81 @@ mixin _StorageTodos on _StorageServiceBase {
           todos = await compute(_parseTodoItemsIsolate, maps);
         } else {
           todos = maps
-              .map((m) => TodoItem(
-                    id: m['uuid'],
-                    title: m['content'] ?? '',
-                    remark: m['remark'],
-                    isDone: m['is_completed'] == 1,
-                    isDeleted: m['is_deleted'] == 1,
-                    version: m['version'] ?? 1,
-                    updatedAt: m['updated_at'] ??
-                        DateTime.now().millisecondsSinceEpoch,
-                    createdAt: m['created_at'] ??
-                        DateTime.now().millisecondsSinceEpoch,
-                    createdDate: JsonValueParser.toNullableInt(
-                      m['created_date'],
-                    ),
-                    dueDate: (m['due_date'] != null &&
-                            m['due_date'].toString() != '0' &&
-                            m['due_date'].toString() != 'null' &&
-                            m['due_date'].toString().isNotEmpty)
-                        ? DateTime.fromMillisecondsSinceEpoch(
-                            JsonValueParser.toInt(m['due_date']))
-                        : null,
-                    teamUuid: m['team_uuid'],
-                    teamName: m['team_name'],
-                    creatorId: m['creator_id'],
-                    creatorName: m['creator_name'],
-                    groupId: m['group_id'],
-                    collabType: m['collab_type'] ?? 0,
-                    recurrence: RecurrenceType.values[
-                        (_parseNullableInt(m['recurrence']) ?? 0)
-                            .clamp(0, RecurrenceType.values.length - 1)],
-                    recurrenceSeriesId: m['recurrence_series_id']?.toString(),
-                    customIntervalDays:
-                        _parseNullableInt(m['custom_interval_days']),
-                    recurrenceEndDate: (m['recurrence_end_date'] != null &&
-                            m['recurrence_end_date'].toString() != '0')
-                        ? DateTime.fromMillisecondsSinceEpoch(
-                            JsonValueParser.toInt(m['recurrence_end_date']))
-                        : null,
-                    reminderMinutes: (m['reminder_minutes'] != null &&
-                            m['reminder_minutes'].toString() != '-1')
-                        ? JsonValueParser.toNullableInt(m['reminder_minutes'])
-                        : null,
-                    imagePath: m['image_path']?.toString(),
-                    originalText: m['original_text']?.toString(),
-                    isAllDay: m['is_all_day'] == 1 || m['is_all_day'] == true,
-                    hasConflict:
-                        m['has_conflict'] == 1 || m['has_conflict'] == true,
-                    serverVersionData:
-                        JsonValueParser.toMap(m['conflict_data']),
-                  ))
+              .map(
+                (m) => TodoItem(
+                  id: m['uuid'],
+                  title: m['content'] ?? '',
+                  remark: m['remark'],
+                  isDone: m['is_completed'] == 1,
+                  isDeleted: m['is_deleted'] == 1,
+                  version: m['version'] ?? 1,
+                  updatedAt:
+                      m['updated_at'] ?? DateTime.now().millisecondsSinceEpoch,
+                  createdAt:
+                      m['created_at'] ?? DateTime.now().millisecondsSinceEpoch,
+                  createdDate: JsonValueParser.toNullableInt(m['created_date']),
+                  dueDate:
+                      (m['due_date'] != null &&
+                          m['due_date'].toString() != '0' &&
+                          m['due_date'].toString() != 'null' &&
+                          m['due_date'].toString().isNotEmpty)
+                      ? DateTime.fromMillisecondsSinceEpoch(
+                          JsonValueParser.toInt(m['due_date']),
+                        )
+                      : null,
+                  teamUuid: m['team_uuid'],
+                  teamName: m['team_name'],
+                  creatorId: m['creator_id'],
+                  creatorName: m['creator_name'],
+                  groupId: m['group_id'],
+                  collabType: m['collab_type'] ?? 0,
+                  recurrence:
+                      RecurrenceType.values[(_parseNullableInt(
+                                m['recurrence'],
+                              ) ??
+                              0)
+                          .clamp(0, RecurrenceType.values.length - 1)],
+                  recurrenceSeriesId: m['recurrence_series_id']?.toString(),
+                  customIntervalDays: _parseNullableInt(
+                    m['custom_interval_days'],
+                  ),
+                  recurrenceEndDate:
+                      (m['recurrence_end_date'] != null &&
+                          m['recurrence_end_date'].toString() != '0')
+                      ? DateTime.fromMillisecondsSinceEpoch(
+                          JsonValueParser.toInt(m['recurrence_end_date']),
+                        )
+                      : null,
+                  reminderMinutes:
+                      (m['reminder_minutes'] != null &&
+                          m['reminder_minutes'].toString() != '-1')
+                      ? JsonValueParser.toNullableInt(m['reminder_minutes'])
+                      : null,
+                  imagePath: m['image_path']?.toString(),
+                  originalText: m['original_text']?.toString(),
+                  isAllDay: m['is_all_day'] == 1 || m['is_all_day'] == true,
+                  hasConflict:
+                      m['has_conflict'] == 1 || m['has_conflict'] == true,
+                  serverVersionData: JsonValueParser.toMap(m['conflict_data']),
+                ),
+              )
               .toList();
         }
         final handledTodos = await _handleRecurrenceLogic(username, todos);
+        final clearedScheduleConflicts = handledTodos
+            .where(
+              ConflictVisibilityService.clearImpossibleTodoScheduleConflict,
+            )
+            .toList();
+        if (clearedScheduleConflicts.isNotEmpty) {
+          await saveTodos(
+            username,
+            clearedScheduleConflicts,
+            sync: false,
+            isSyncSource: true,
+            recomputeScheduleConflicts: false,
+          );
+        }
         //debugPrint(
         //    "📦 getTodos(SQL) 完成: count=${handledTodos.length}, includeDeleted=$includeDeleted, limit=$limit, cost=${DateTime.now().difference(startedAt).inMilliseconds}ms");
         if (!includeDeleted) {
@@ -1438,8 +1834,19 @@ mixin _StorageTodos on _StorageServiceBase {
         } catch (_) {}
       }
     }
-    final handledLegacyTodos =
-        await _handleRecurrenceLogic(username, legacyTodos);
+    final handledLegacyTodos = await _handleRecurrenceLogic(
+      username,
+      legacyTodos,
+    );
+    final clearedLegacyScheduleConflicts = handledLegacyTodos
+        .where(ConflictVisibilityService.clearImpossibleTodoScheduleConflict)
+        .toList();
+    if (clearedLegacyScheduleConflicts.isNotEmpty) {
+      await prefs.setStringList(
+        _scopedKey(keyTodos, username),
+        handledLegacyTodos.map((todo) => jsonEncode(todo.toJson())).toList(),
+      );
+    }
     Iterable<TodoItem> filtered = handledLegacyTodos;
     if (!includeDeleted) {
       filtered = filtered.where((todo) => !todo.isDeleted);
@@ -1450,7 +1857,8 @@ mixin _StorageTodos on _StorageServiceBase {
     }
     final result = filtered.toList();
     debugPrint(
-        "📦 getTodos(Prefs Fallback) 完成: count=${result.length}, includeDeleted=$includeDeleted, limit=$limit, cost=${DateTime.now().difference(startedAt).inMilliseconds}ms");
+      "📦 getTodos(Prefs Fallback) 完成: count=${result.length}, includeDeleted=$includeDeleted, limit=$limit, cost=${DateTime.now().difference(startedAt).inMilliseconds}ms",
+    );
     return result;
   }
 
@@ -1460,30 +1868,39 @@ mixin _StorageTodos on _StorageServiceBase {
 
     // 1. 软删除 (标记 isDeleted，通过同步传播到服务器)
     await db.rawUpdate(
-        "UPDATE todos SET is_deleted = 1, version = version + 1, updated_at = ? WHERE team_uuid = ? AND is_deleted = 0",
-        [now, teamUuid]);
+      "UPDATE todos SET is_deleted = 1, version = version + 1, updated_at = ? WHERE team_uuid = ? AND is_deleted = 0",
+      [now, teamUuid],
+    );
     await db.rawUpdate(
-        "UPDATE todo_groups SET is_deleted = 1, version = version + 1, updated_at = ? WHERE team_uuid = ? AND is_deleted = 0",
-        [now, teamUuid]);
+      "UPDATE todo_groups SET is_deleted = 1, version = version + 1, updated_at = ? WHERE team_uuid = ? AND is_deleted = 0",
+      [now, teamUuid],
+    );
     await db.rawUpdate(
-        "UPDATE countdowns SET is_deleted = 1, version = version + 1, updated_at = ? WHERE team_uuid = ? AND is_deleted = 0",
-        [now, teamUuid]);
+      "UPDATE countdowns SET is_deleted = 1, version = version + 1, updated_at = ? WHERE team_uuid = ? AND is_deleted = 0",
+      [now, teamUuid],
+    );
     await db.rawUpdate(
-        "UPDATE time_logs SET is_deleted = 1, version = version + 1, updated_at = ? WHERE team_uuid = ? AND is_deleted = 0",
-        [now, teamUuid]);
+      "UPDATE time_logs SET is_deleted = 1, version = version + 1, updated_at = ? WHERE team_uuid = ? AND is_deleted = 0",
+      [now, teamUuid],
+    );
     await db.rawUpdate(
-        "UPDATE courses SET is_deleted = 1, version = version + 1, updated_at = ? WHERE team_uuid = ? AND is_deleted = 0",
-        [now, teamUuid]);
+      "UPDATE courses SET is_deleted = 1, version = version + 1, updated_at = ? WHERE team_uuid = ? AND is_deleted = 0",
+      [now, teamUuid],
+    );
     await db.rawUpdate(
-        "UPDATE fixed_schedules SET is_deleted = 1, version = version + 1, updated_at = ? WHERE team_uuid = ? AND is_deleted = 0",
-        [now, teamUuid]);
+      "UPDATE fixed_schedules SET is_deleted = 1, version = version + 1, updated_at = ? WHERE team_uuid = ? AND is_deleted = 0",
+      [now, teamUuid],
+    );
     // 规划块本身不保存 team_uuid，需通过关联待办级联清理；否则退出团队后
     // 仍会在首页计划区看到已经失去权限的团队安排。
-    await db.rawUpdate('''UPDATE todo_plan_blocks
+    await db.rawUpdate(
+      '''UPDATE todo_plan_blocks
            SET is_deleted = 1, version = version + 1, updated_at = ?
            WHERE todo_uuid IN (
              SELECT uuid FROM todos WHERE team_uuid = ?
-           ) AND is_deleted = 0''', [now, teamUuid]);
+           ) AND is_deleted = 0''',
+      [now, teamUuid],
+    );
 
     await db.delete(
       'todo_completions',
@@ -1492,10 +1909,12 @@ mixin _StorageTodos on _StorageServiceBase {
     );
 
     // 🚀 关键：为软删除的项创建 op_log，使同步引擎能将删除传播到服务端
-    final deletedTodos = await db.query('todos',
-        columns: ['uuid', 'version', 'updated_at'],
-        where: 'team_uuid = ? AND is_deleted = 1 AND updated_at = ?',
-        whereArgs: [teamUuid, now]);
+    final deletedTodos = await db.query(
+      'todos',
+      columns: ['uuid', 'version', 'updated_at'],
+      where: 'team_uuid = ? AND is_deleted = 1 AND updated_at = ?',
+      whereArgs: [teamUuid, now],
+    );
     for (var row in deletedTodos) {
       await db.insert('op_logs', {
         'op_type': 'UPSERT',
@@ -1512,10 +1931,12 @@ mixin _StorageTodos on _StorageServiceBase {
         'sync_error': '',
       });
     }
-    final deletedGroups = await db.query('todo_groups',
-        columns: ['uuid', 'version', 'updated_at'],
-        where: 'team_uuid = ? AND is_deleted = 1 AND updated_at = ?',
-        whereArgs: [teamUuid, now]);
+    final deletedGroups = await db.query(
+      'todo_groups',
+      columns: ['uuid', 'version', 'updated_at'],
+      where: 'team_uuid = ? AND is_deleted = 1 AND updated_at = ?',
+      whereArgs: [teamUuid, now],
+    );
     for (var row in deletedGroups) {
       await db.insert('op_logs', {
         'op_type': 'UPSERT',
@@ -1532,10 +1953,12 @@ mixin _StorageTodos on _StorageServiceBase {
         'sync_error': '',
       });
     }
-    final deletedCountdowns = await db.query('countdowns',
-        columns: ['uuid', 'version', 'updated_at'],
-        where: 'team_uuid = ? AND is_deleted = 1 AND updated_at = ?',
-        whereArgs: [teamUuid, now]);
+    final deletedCountdowns = await db.query(
+      'countdowns',
+      columns: ['uuid', 'version', 'updated_at'],
+      where: 'team_uuid = ? AND is_deleted = 1 AND updated_at = ?',
+      whereArgs: [teamUuid, now],
+    );
     for (var row in deletedCountdowns) {
       await db.insert('op_logs', {
         'op_type': 'UPSERT',
@@ -1552,10 +1975,12 @@ mixin _StorageTodos on _StorageServiceBase {
         'sync_error': '',
       });
     }
-    final deletedTimeLogs = await db.query('time_logs',
-        columns: ['uuid', 'version', 'updated_at'],
-        where: 'team_uuid = ? AND is_deleted = 1 AND updated_at = ?',
-        whereArgs: [teamUuid, now]);
+    final deletedTimeLogs = await db.query(
+      'time_logs',
+      columns: ['uuid', 'version', 'updated_at'],
+      where: 'team_uuid = ? AND is_deleted = 1 AND updated_at = ?',
+      whereArgs: [teamUuid, now],
+    );
     for (var row in deletedTimeLogs) {
       await db.insert('op_logs', {
         'op_type': 'UPSERT',
@@ -1572,12 +1997,14 @@ mixin _StorageTodos on _StorageServiceBase {
         'sync_error': '',
       });
     }
-    final deletedPlanBlocks = await db.query('todo_plan_blocks',
-        columns: ['uuid', 'version', 'updated_at'],
-        where: '''todo_uuid IN (
+    final deletedPlanBlocks = await db.query(
+      'todo_plan_blocks',
+      columns: ['uuid', 'version', 'updated_at'],
+      where: '''todo_uuid IN (
                    SELECT uuid FROM todos WHERE team_uuid = ?
                  ) AND is_deleted = 1 AND updated_at = ?''',
-        whereArgs: [teamUuid, now]);
+      whereArgs: [teamUuid, now],
+    );
     for (var row in deletedPlanBlocks) {
       await db.insert('op_logs', {
         'op_type': 'UPSERT',
@@ -1638,7 +2065,9 @@ mixin _StorageTodos on _StorageServiceBase {
   }
 
   Future<List<TodoItem>> _handleRecurrenceLogic(
-      String username, List<TodoItem> todos) async {
+    String username,
+    List<TodoItem> todos,
+  ) async {
     final today = DateTime.now();
     final todayKey = '${today.year}-${today.month}-${today.day}';
 
@@ -1655,25 +2084,38 @@ mixin _StorageTodos on _StorageServiceBase {
     _isCheckingRecurrence = true;
 
     try {
+      final baselines = {
+        for (final todo in todos) todo.id: todo.detachedCopy(),
+      };
       bool needSave = false;
+      var maintenanceSaved = true;
       if (_deduplicatePersistedRecurrenceOccurrences(todos)) {
         needSave = true;
       }
+      final occurrenceIndex = todos.length > 50
+          ? _TodoRecurrenceOccurrenceIndex(todos, _recurrenceLocalDayKey)
+          : null;
       final List<TodoItem> generatedOccurrences = [];
       final Set<String> generatedRecurrenceConflictKeys = {};
       final processedSeriesIds = <String>{};
-      for (final todo in List<TodoItem>.from(todos)) {
+      // Generated occurrences stay in their own buffer until this pass ends.
+      for (final todo in todos) {
         if (todo.isDeleted || todo.recurrence == RecurrenceType.none) continue;
 
-        final hasSeriesId = todo.recurrenceSeriesId != null &&
+        final hasSeriesId =
+            todo.recurrenceSeriesId != null &&
             todo.recurrenceSeriesId!.isNotEmpty;
         final seriesId = hasSeriesId ? todo.recurrenceSeriesId! : todo.id;
         todo.recurrenceSeriesId = seriesId;
+        if (!hasSeriesId) occurrenceIndex?.add(todo);
         if (!processedSeriesIds.add(seriesId)) continue;
 
         final DateTime baseLocal = _getRecurrenceBaseDate(todo);
-        final DateTime baseDay =
-            DateTime(baseLocal.year, baseLocal.month, baseLocal.day);
+        final DateTime baseDay = DateTime(
+          baseLocal.year,
+          baseLocal.month,
+          baseLocal.day,
+        );
         final DateTime todayDay = DateTime(today.year, today.month, today.day);
         final rollOffsets = _recurrenceRollOffsets(todo, baseDay, todayDay);
         final recurrence = todo.recurrence;
@@ -1691,10 +2133,11 @@ mixin _StorageTodos on _StorageServiceBase {
           // 依赖编辑页一定把所有未来实例一起带回来。存储层每次处理规则
           // 时都清理结束日期之后的旧实例，避免它们继续留在系列中，或在
           // 旧锚点仍存活时被再次生成。
+          final seriesOccurrences =
+              occurrenceIndex?.forSeries(seriesId) ??
+              todos.followedBy(generatedOccurrences);
           if (_pruneRecurrenceOccurrencesAfterEndDate(
-            todos
-                .where((occurrence) => occurrence.id != todo.id)
-                .followedBy(generatedOccurrences),
+            seriesOccurrences.where((occurrence) => occurrence.id != todo.id),
             seriesId: seriesId,
             recurrenceEndDate: recurrenceEndDay,
           )) {
@@ -1712,15 +2155,16 @@ mixin _StorageTodos on _StorageServiceBase {
             seriesId: seriesId,
             todos: todos,
             generatedOccurrences: generatedOccurrences,
+            occurrenceIndex: occurrenceIndex,
           );
           final occurrence = result.occurrence;
           final targetRecurrence =
               i == rollOffsets.length - 1 && keepSeriesActive
-                  ? recurrence
-                  : RecurrenceType.none;
+              ? recurrence
+              : RecurrenceType.none;
           if (occurrence.recurrence != targetRecurrence) {
             occurrence.recurrence = targetRecurrence;
-            if (!result.isNew) occurrence.markAsChanged();
+            if (!result.isNew) occurrence.markRecurrenceMaintenanceChanged();
             needSave = true;
           }
           if (result.didChange) needSave = true;
@@ -1736,6 +2180,7 @@ mixin _StorageTodos on _StorageServiceBase {
               activeOccurrence.createdDate ?? activeOccurrence.createdAt,
           todos: todos,
           generatedOccurrences: generatedOccurrences,
+          occurrenceIndex: occurrenceIndex,
         );
         if (repairedPastOccurrences.isNotEmpty) {
           seriesChain.addAll(repairedPastOccurrences);
@@ -1756,7 +2201,7 @@ mixin _StorageTodos on _StorageServiceBase {
         }
 
         if (todoChanged) {
-          todo.markAsChanged();
+          todo.markRecurrenceMaintenanceChanged();
           needSave = true;
         }
 
@@ -1773,11 +2218,12 @@ mixin _StorageTodos on _StorageServiceBase {
               seriesId: seriesId,
               todos: todos,
               generatedOccurrences: generatedOccurrences,
+              occurrenceIndex: occurrenceIndex,
             );
             final occurrence = result.occurrence;
             if (occurrence.recurrence != RecurrenceType.none) {
               occurrence.recurrence = RecurrenceType.none;
-              if (!result.isNew) occurrence.markAsChanged();
+              if (!result.isNew) occurrence.markRecurrenceMaintenanceChanged();
               needSave = true;
             }
             if (result.didChange) needSave = true;
@@ -1788,17 +2234,10 @@ mixin _StorageTodos on _StorageServiceBase {
         final uniqueSeriesChain = <String, TodoItem>{
           for (final occurrence in seriesChain) occurrence.id: occurrence,
         }.values.toList();
-        for (var i = 0; i < uniqueSeriesChain.length; i++) {
-          for (var j = i + 1; j < uniqueSeriesChain.length; j++) {
-            final conflictKey = _overlappingRecurrencePairKey(
-              uniqueSeriesChain[i],
-              uniqueSeriesChain[j],
-            );
-            if (conflictKey != null) {
-              generatedRecurrenceConflictKeys.add(conflictKey);
-            }
-          }
-        }
+        _addRecurrenceOverlapKeys(
+          uniqueSeriesChain,
+          generatedRecurrenceConflictKeys,
+        );
       }
 
       if (needSave) {
@@ -1813,9 +2252,13 @@ mixin _StorageTodos on _StorageServiceBase {
           );
         }
         debugPrint("🚀 [Recurrence] 发现重复任务需要滚动，正在保存...");
-        await saveTodos(username, todos, sync: true);
+        maintenanceSaved = await _saveRecurrenceMaintenance(
+          username,
+          todos,
+          baselines,
+        );
       }
-      _recurrenceCheckCache[cacheKey] = true;
+      if (maintenanceSaved) _recurrenceCheckCache[cacheKey] = true;
       _isCheckingRecurrence = false;
       return todos;
     } catch (e) {
@@ -1827,12 +2270,16 @@ mixin _StorageTodos on _StorageServiceBase {
 
   DateTime _getRecurrenceBaseDate(TodoItem todo) {
     if (todo.createdDate != null) {
-      return DateTime.fromMillisecondsSinceEpoch(todo.createdDate!, isUtc: true)
-          .toLocal();
+      return DateTime.fromMillisecondsSinceEpoch(
+        todo.createdDate!,
+        isUtc: true,
+      ).toLocal();
     }
     return todo.dueDate ??
-        DateTime.fromMillisecondsSinceEpoch(todo.createdAt, isUtc: true)
-            .toLocal();
+        DateTime.fromMillisecondsSinceEpoch(
+          todo.createdAt,
+          isUtc: true,
+        ).toLocal();
   }
 
   List<int> _recurrenceRollOffsets(
@@ -1849,34 +2296,58 @@ mixin _StorageTodos on _StorageServiceBase {
     if (!targetDay.isAfter(baseDay)) return const [];
 
     final offsets = <int>[];
+    const maxBackfilledOccurrences = 90;
     final diffDays = CalendarDateMath.daysBetween(baseDay, targetDay);
     switch (todo.recurrence) {
       case RecurrenceType.daily:
-        for (var day = 1; day <= diffDays; day++) {
+        final firstDay = diffDays > maxBackfilledOccurrences
+            ? diffDays - maxBackfilledOccurrences + 1
+            : 1;
+        for (var day = firstDay; day <= diffDays; day++) {
           offsets.add(day);
         }
       case RecurrenceType.customDays:
         final interval = todo.customIntervalDays ?? 0;
         if (interval > 0) {
-          for (var day = interval; day <= diffDays; day += interval) {
-            offsets.add(day);
+          final occurrenceCount = diffDays ~/ interval;
+          final firstOccurrence = occurrenceCount > maxBackfilledOccurrences
+              ? occurrenceCount - maxBackfilledOccurrences + 1
+              : 1;
+          for (
+            var occurrence = firstOccurrence;
+            occurrence <= occurrenceCount;
+            occurrence++
+          ) {
+            offsets.add(occurrence * interval);
           }
         }
       case RecurrenceType.weekdays:
-        for (var day = 1; day <= diffDays; day++) {
-          final candidate = DateTime(
-            baseDay.year,
-            baseDay.month,
-            baseDay.day + day,
-          );
-          if (candidate.weekday != DateTime.saturday &&
-              candidate.weekday != DateTime.sunday) {
+        // A 126-day window contains exactly 90 weekdays. Start at the
+        // earliest offset in that window, avoiding work for older dates that
+        // would be discarded by the backfill cap below.
+        final firstDay = diffDays > 126 ? diffDays - 125 : 1;
+        var weekday = DateTime(
+          baseDay.year,
+          baseDay.month,
+          baseDay.day + firstDay,
+        ).weekday;
+        for (var day = firstDay; day <= diffDays; day++) {
+          if (weekday != DateTime.saturday && weekday != DateTime.sunday) {
             offsets.add(day);
           }
+          weekday = weekday == DateTime.sunday ? DateTime.monday : weekday + 1;
         }
       case RecurrenceType.weekly:
-        for (var day = 7; day <= diffDays; day += 7) {
-          offsets.add(day);
+        final occurrenceCount = diffDays ~/ 7;
+        final firstOccurrence = occurrenceCount > maxBackfilledOccurrences
+            ? occurrenceCount - maxBackfilledOccurrences + 1
+            : 1;
+        for (
+          var occurrence = firstOccurrence;
+          occurrence <= occurrenceCount;
+          occurrence++
+        ) {
+          offsets.add(occurrence * 7);
         }
       case RecurrenceType.monthly:
       case RecurrenceType.yearly:
@@ -1890,7 +2361,6 @@ mixin _StorageTodos on _StorageServiceBase {
     }
 
     // 防止长期未启动后一次性生成过量记录，同时优先保留最近周期。
-    const maxBackfilledOccurrences = 90;
     if (offsets.length <= maxBackfilledOccurrences) return offsets;
     return offsets.sublist(offsets.length - maxBackfilledOccurrences);
   }
@@ -1899,8 +2369,7 @@ mixin _StorageTodos on _StorageServiceBase {
     TodoItem todo,
     DateTime baseDay,
     DateTime todayDay,
-  ) =>
-      _recurrenceRollOffsets(todo, baseDay, todayDay);
+  ) => _recurrenceRollOffsets(todo, baseDay, todayDay);
   List<TodoItem> futureRecurrenceOccurrencesForTest(
     TodoItem source,
     List<TodoItem> existing,
@@ -1943,26 +2412,19 @@ mixin _StorageTodos on _StorageServiceBase {
     List<TodoItem> todos, {
     required String seriesId,
     required DateTime recurrenceEndDate,
-  }) =>
-      _pruneRecurrenceOccurrencesAfterEndDate(
-        todos,
-        seriesId: seriesId,
-        recurrenceEndDate: recurrenceEndDate,
-      );
+  }) => _pruneRecurrenceOccurrencesAfterEndDate(
+    todos,
+    seriesId: seriesId,
+    recurrenceEndDate: recurrenceEndDate,
+  );
 
   Set<String> pruneRecurrenceOccurrencesAfterEndDatesForTest(
     List<TodoItem> todos,
-  ) =>
-      _pruneRecurrenceOccurrencesAfterEndDates(todos);
+  ) => _pruneRecurrenceOccurrencesAfterEndDates(todos);
 
-  String recurrenceOccurrenceIdForTest(
-    String seriesId,
-    int startMs,
-  ) =>
+  String recurrenceOccurrenceIdForTest(String seriesId, int startMs) =>
       _recurrenceOccurrenceId(seriesId, startMs);
-  bool deduplicatePersistedRecurrenceOccurrencesForTest(
-    List<TodoItem> todos,
-  ) =>
+  bool deduplicatePersistedRecurrenceOccurrencesForTest(List<TodoItem> todos) =>
       _deduplicatePersistedRecurrenceOccurrences(todos);
   Future<int> mergeRecurrenceSeries(
     String username, {
@@ -1977,8 +2439,9 @@ mixin _StorageTodos on _StorageServiceBase {
     );
     if (changedIds.isEmpty) return 0;
 
-    final changedItems =
-        todos.where((todo) => changedIds.contains(todo.id)).toList();
+    final changedItems = todos
+        .where((todo) => changedIds.contains(todo.id))
+        .toList();
     await saveTodos(
       username,
       changedItems,
@@ -1994,12 +2457,11 @@ mixin _StorageTodos on _StorageServiceBase {
     List<TodoItem> todos, {
     required String targetSeriesId,
     required Set<String> seriesIds,
-  }) =>
-      _mergeRecurrenceSeries(
-        todos,
-        targetSeriesId: targetSeriesId,
-        seriesIds: seriesIds,
-      );
+  }) => _mergeRecurrenceSeries(
+    todos,
+    targetSeriesId: targetSeriesId,
+    seriesIds: seriesIds,
+  );
   Set<String> _mergeRecurrenceSeries(
     List<TodoItem> todos, {
     required String targetSeriesId,
@@ -2008,9 +2470,11 @@ mixin _StorageTodos on _StorageServiceBase {
     final selectedSeriesIds = <String>{...seriesIds, targetSeriesId}
       ..removeWhere((seriesId) => seriesId.trim().isEmpty);
     final participating = todos
-        .where((todo) =>
-            todo.recurrenceSeriesId != null &&
-            selectedSeriesIds.contains(todo.recurrenceSeriesId))
+        .where(
+          (todo) =>
+              todo.recurrenceSeriesId != null &&
+              selectedSeriesIds.contains(todo.recurrenceSeriesId),
+        )
         .toList();
     final activeSeriesIds = participating
         .where((todo) => !todo.isDeleted)
@@ -2023,16 +2487,20 @@ mixin _StorageTodos on _StorageServiceBase {
     }
 
     TodoItem? canonicalActive;
-    final activeRules = participating
-        .where(
-            (todo) => !todo.isDeleted && todo.recurrence != RecurrenceType.none)
-        .toList()
-      ..sort((a, b) {
-        final startCompare = (b.createdDate ?? b.createdAt)
-            .compareTo(a.createdDate ?? a.createdAt);
-        if (startCompare != 0) return startCompare;
-        return b.version.compareTo(a.version);
-      });
+    final activeRules =
+        participating
+            .where(
+              (todo) =>
+                  !todo.isDeleted && todo.recurrence != RecurrenceType.none,
+            )
+            .toList()
+          ..sort((a, b) {
+            final startCompare = (b.createdDate ?? b.createdAt).compareTo(
+              a.createdDate ?? a.createdAt,
+            );
+            if (startCompare != 0) return startCompare;
+            return b.version.compareTo(a.version);
+          });
     for (final todo in activeRules) {
       if (todo.recurrenceSeriesId == targetSeriesId) {
         canonicalActive = todo;
@@ -2050,18 +2518,18 @@ mixin _StorageTodos on _StorageServiceBase {
     // 重复实例上。合并时按发生日期取完成状态并集，再写回该日仍可见的
     // 实例；目标系列中早已删除的旧状态不参与，避免覆盖用户后续的取消完成。
     final completedDays = participating
-        .where((todo) =>
-            todo.isDone &&
-            (!todo.isDeleted || todo.recurrenceSeriesId != targetSeriesId))
-        .map((todo) => _recurrenceLocalDayKey(
-              todo.createdDate ?? todo.createdAt,
-            ))
+        .where(
+          (todo) =>
+              todo.isDone &&
+              (!todo.isDeleted || todo.recurrenceSeriesId != targetSeriesId),
+        )
+        .map(
+          (todo) => _recurrenceLocalDayKey(todo.createdDate ?? todo.createdAt),
+        )
         .toSet();
     for (final todo in participating) {
       if (todo.isDeleted || todo.isDone) continue;
-      final dayKey = _recurrenceLocalDayKey(
-        todo.createdDate ?? todo.createdAt,
-      );
+      final dayKey = _recurrenceLocalDayKey(todo.createdDate ?? todo.createdAt);
       if (!completedDays.contains(dayKey)) continue;
       todo.isDone = true;
       fieldChangedIds.add(todo.id);
@@ -2088,23 +2556,24 @@ mixin _StorageTodos on _StorageServiceBase {
     }
     for (final todo in participating) {
       if (!fieldChangedIds.contains(todo.id)) continue;
-      if (todo.version == versionsBefore[todo.id]) {
-        todo.markAsChanged();
-      }
       changedIds.add(todo.id);
+    }
+    // This entry point is an explicit user merge, unlike automatic repair.
+    for (final todo in participating) {
+      if (changedIds.contains(todo.id)) todo.markAsChanged();
     }
     return changedIds;
   }
 
-  List<int> _futureRecurrenceRollOffsets(
-    TodoItem todo,
-    DateTime baseLocal,
-  ) {
+  List<int> _futureRecurrenceRollOffsets(TodoItem todo, DateTime baseLocal) {
     final baseDay = DateTime(baseLocal.year, baseLocal.month, baseLocal.day);
     final recurrenceEnd = todo.recurrenceEndDate;
     if (recurrenceEnd != null) {
-      final endDay =
-          DateTime(recurrenceEnd.year, recurrenceEnd.month, recurrenceEnd.day);
+      final endDay = DateTime(
+        recurrenceEnd.year,
+        recurrenceEnd.month,
+        recurrenceEnd.day,
+      );
       return _recurrenceRollOffsets(todo, baseDay, endDay);
     }
 
@@ -2124,12 +2593,13 @@ mixin _StorageTodos on _StorageServiceBase {
   }
 
   ({TodoItem occurrence, bool isNew, bool didChange})
-      _getOrCreateRecurrenceOccurrence({
+  _getOrCreateRecurrenceOccurrence({
     required TodoItem source,
     required int rollByDays,
     required String seriesId,
     required List<TodoItem> todos,
     required List<TodoItem> generatedOccurrences,
+    _TodoRecurrenceOccurrenceIndex? occurrenceIndex,
   }) {
     final candidate = _copyForNextRecurrence(source);
     candidate.recurrenceSeriesId = seriesId;
@@ -2138,49 +2608,50 @@ mixin _StorageTodos on _StorageServiceBase {
     final candidateDayKey = _recurrenceLocalDayKey(candidateStart);
     candidate.id = _recurrenceOccurrenceId(seriesId, candidateStart);
 
-    final matches = <TodoItem>[];
-    for (final existing in todos.followedBy(generatedOccurrences)) {
-      if (existing.recurrenceSeriesId != seriesId ||
-          _recurrenceLocalDayKey(
-                existing.createdDate ?? existing.createdAt,
-              ) !=
-              candidateDayKey) {
-        continue;
+    final List<TodoItem> matches;
+    if (occurrenceIndex != null) {
+      matches = occurrenceIndex.forSeriesDay(seriesId, candidateDayKey);
+    } else {
+      matches = <TodoItem>[];
+      for (final existing in todos.followedBy(generatedOccurrences)) {
+        if (existing.recurrenceSeriesId != seriesId ||
+            _recurrenceLocalDayKey(
+                  existing.createdDate ?? existing.createdAt,
+                ) !=
+                candidateDayKey) {
+          continue;
+        }
+        matches.add(existing);
       }
-      matches.add(existing);
     }
 
     final liveMatches = matches.where((todo) => !todo.isDeleted).toList();
     if (liveMatches.isNotEmpty) {
       liveMatches.sort(_compareRecurrenceOccurrenceIdentity);
-      return (
-        occurrence: liveMatches.first,
-        isNew: false,
-        didChange: false,
-      );
+      return (occurrence: liveMatches.first, isNew: false, didChange: false);
     }
 
-    final deletedDeterministic =
-        matches.where((todo) => todo.id == candidate.id).firstOrNull;
+    final deletedDeterministic = matches
+        .where((todo) => todo.id == candidate.id)
+        .firstOrNull;
     if (deletedDeterministic != null) {
       _copyRecurrenceOccurrenceData(candidate, deletedDeterministic);
       deletedDeterministic.isDeleted = false;
-      deletedDeterministic.markAsChanged();
+      deletedDeterministic.markRecurrenceMaintenanceChanged();
       _recurrenceDedupeTombstoneIds.remove(deletedDeterministic.id);
-      return (
-        occurrence: deletedDeterministic,
-        isNew: false,
-        didChange: true,
-      );
+      return (occurrence: deletedDeterministic, isNew: false, didChange: true);
     }
 
     generatedOccurrences.add(candidate);
+    occurrenceIndex?.add(candidate);
     return (occurrence: candidate, isNew: true, didChange: true);
   }
 
   String _recurrenceLocalDayKey(int startMs) {
-    final start =
-        DateTime.fromMillisecondsSinceEpoch(startMs, isUtc: true).toLocal();
+    final start = DateTime.fromMillisecondsSinceEpoch(
+      startMs,
+      isUtc: true,
+    ).toLocal();
     final month = start.month.toString().padLeft(2, '0');
     final day = start.day.toString().padLeft(2, '0');
     return '${start.year}-$month-$day';
@@ -2201,16 +2672,22 @@ mixin _StorageTodos on _StorageServiceBase {
     required int throughStartMs,
     required List<TodoItem> todos,
     required List<TodoItem> generatedOccurrences,
+    _TodoRecurrenceOccurrenceIndex? occurrenceIndex,
   }) {
     final knownByDay = <String, DateTime>{};
-    for (final occurrence in todos.followedBy(generatedOccurrences)) {
+    final occurrences =
+        occurrenceIndex?.forSeries(seriesId) ??
+        todos.followedBy(generatedOccurrences);
+    for (final occurrence in occurrences) {
       if (occurrence.isDeleted || occurrence.recurrenceSeriesId != seriesId) {
         continue;
       }
       final startMs = occurrence.createdDate ?? occurrence.createdAt;
       if (startMs > throughStartMs) continue;
-      final start =
-          DateTime.fromMillisecondsSinceEpoch(startMs, isUtc: true).toLocal();
+      final start = DateTime.fromMillisecondsSinceEpoch(
+        startMs,
+        isUtc: true,
+      ).toLocal();
       final day = DateTime(start.year, start.month, start.day);
       knownByDay['${day.year}-${day.month}-${day.day}'] = day;
     }
@@ -2247,6 +2724,7 @@ mixin _StorageTodos on _StorageServiceBase {
           seriesId: seriesId,
           todos: todos,
           generatedOccurrences: generatedOccurrences,
+          occurrenceIndex: occurrenceIndex,
         );
         if (!result.didChange) continue;
         result.occurrence.recurrence = RecurrenceType.none;
@@ -2256,8 +2734,10 @@ mixin _StorageTodos on _StorageServiceBase {
     return repaired;
   }
 
-  bool _deduplicatePersistedRecurrenceOccurrences(List<TodoItem> todos,
-      {Set<String>? changedIds}) {
+  bool _deduplicatePersistedRecurrenceOccurrences(
+    List<TodoItem> todos, {
+    Set<String>? changedIds,
+  }) {
     final occurrencesBySeriesDay = <String, List<TodoItem>>{};
     for (final todo in todos) {
       final seriesId = todo.recurrenceSeriesId;
@@ -2270,8 +2750,9 @@ mixin _StorageTodos on _StorageServiceBase {
     var changed = false;
     for (final occurrences in occurrencesBySeriesDay.values) {
       if (occurrences.length <= 1) continue;
-      final liveOccurrences =
-          occurrences.where((todo) => !todo.isDeleted).toList();
+      final liveOccurrences = occurrences
+          .where((todo) => !todo.isDeleted)
+          .toList();
       if (liveOccurrences.isEmpty) continue;
 
       // Identity must not depend on mutable LWW fields. Every device will
@@ -2285,10 +2766,11 @@ mixin _StorageTodos on _StorageServiceBase {
       liveOccurrences.sort(_compareRecurrenceOccurrenceLwwDescending);
       final dataWinner = liveOccurrences.first;
       final completionWinner = dataWinner;
-      final activeOccurrences = liveOccurrences
-          .where((todo) => todo.recurrence != RecurrenceType.none)
-          .toList()
-        ..sort(_compareRecurrenceOccurrenceLwwDescending);
+      final activeOccurrences =
+          liveOccurrences
+              .where((todo) => todo.recurrence != RecurrenceType.none)
+              .toList()
+            ..sort(_compareRecurrenceOccurrenceLwwDescending);
       final mergedRecurrence = activeOccurrences.isEmpty
           ? RecurrenceType.none
           : activeOccurrences.first.recurrence;
@@ -2297,7 +2779,7 @@ mixin _StorageTodos on _StorageServiceBase {
       if (!identical(canonical, dataWinner)) {
         canonicalChanged =
             _copyRecurrenceOccurrenceData(dataWinner, canonical) ||
-                canonicalChanged;
+            canonicalChanged;
       }
       if (canonical.isDeleted) {
         canonical.isDeleted = false;
@@ -2329,7 +2811,7 @@ mixin _StorageTodos on _StorageServiceBase {
         }
         duplicate.isDeleted = true;
         duplicate.recurrence = RecurrenceType.none;
-        duplicate.markAsChanged();
+        duplicate.markRecurrenceMaintenanceChanged();
         _recurrenceDedupeTombstoneIds.add(duplicate.id);
         changedIds?.add(duplicate.id);
         changed = true;
@@ -2364,16 +2846,14 @@ mixin _StorageTodos on _StorageServiceBase {
 
       occurrence.isDeleted = true;
       occurrence.recurrence = RecurrenceType.none;
-      occurrence.markAsChanged();
+      occurrence.markRecurrenceMaintenanceChanged();
       changedIds?.add(occurrence.id);
       changed = true;
     }
     return changed;
   }
 
-  Set<String> _pruneRecurrenceOccurrencesAfterEndDates(
-    List<TodoItem> todos,
-  ) {
+  Set<String> _pruneRecurrenceOccurrencesAfterEndDates(List<TodoItem> todos) {
     final activeRulesBySeries = <String, TodoItem>{};
     for (final todo in todos) {
       if (todo.isDeleted || todo.recurrence == RecurrenceType.none) continue;
@@ -2390,7 +2870,21 @@ mixin _StorageTodos on _StorageServiceBase {
     final changedIds = <String>{};
     final now = DateTime.now();
     final todayDay = DateTime(now.year, now.month, now.day);
-    for (final entry in activeRulesBySeries.entries) {
+    final rulesToPrune = activeRulesBySeries.entries
+        .where((entry) => entry.value.recurrenceEndDate != null)
+        .toList(growable: false);
+    Map<String, List<TodoItem>>? todosBySeries;
+    if (rulesToPrune.length > 1) {
+      final seriesIds = {for (final entry in rulesToPrune) entry.key};
+      todosBySeries = {};
+      for (final todo in todos) {
+        final seriesId = todo.recurrenceSeriesId;
+        if (seriesId == null || !seriesIds.contains(seriesId)) continue;
+        todosBySeries.putIfAbsent(seriesId, () => []).add(todo);
+      }
+    }
+
+    for (final entry in rulesToPrune) {
       final rule = entry.value;
       final recurrenceEndDate = rule.recurrenceEndDate;
       if (recurrenceEndDate == null) continue;
@@ -2402,12 +2896,15 @@ mixin _StorageTodos on _StorageServiceBase {
 
       if (todayDay.isAfter(endDay) && rule.recurrence != RecurrenceType.none) {
         rule.recurrence = RecurrenceType.none;
-        rule.markAsChanged();
+        rule.markRecurrenceMaintenanceChanged();
         changedIds.add(rule.id);
       }
 
+      final seriesTodos = todosBySeries == null
+          ? todos
+          : todosBySeries[entry.key] ?? const <TodoItem>[];
       _pruneRecurrenceOccurrencesAfterEndDate(
-        todos.where((todo) => todo.id != rule.id),
+        seriesTodos.where((todo) => todo.id != rule.id),
         seriesId: entry.key,
         recurrenceEndDate: endDay,
         changedIds: changedIds,
@@ -2433,10 +2930,7 @@ mixin _StorageTodos on _StorageServiceBase {
     return a.id.compareTo(b.id);
   }
 
-  bool _copyRecurrenceOccurrenceData(
-    TodoItem source,
-    TodoItem target,
-  ) {
+  bool _copyRecurrenceOccurrenceData(TodoItem source, TodoItem target) {
     var changed = false;
 
     void assign<T>(T current, T next, void Function(T) setter) {
@@ -2446,38 +2940,124 @@ mixin _StorageTodos on _StorageServiceBase {
     }
 
     assign(target.title, source.title, (value) => target.title = value);
-    assign(target.createdDate, source.createdDate,
-        (value) => target.createdDate = value);
+    assign(
+      target.createdDate,
+      source.createdDate,
+      (value) => target.createdDate = value,
+    );
     assign(target.dueDate, source.dueDate, (value) => target.dueDate = value);
-    assign(target.recurrenceSeriesId, source.recurrenceSeriesId,
-        (value) => target.recurrenceSeriesId = value);
-    assign(target.customIntervalDays, source.customIntervalDays,
-        (value) => target.customIntervalDays = value);
-    assign(target.recurrenceEndDate, source.recurrenceEndDate,
-        (value) => target.recurrenceEndDate = value);
+    assign(
+      target.recurrenceSeriesId,
+      source.recurrenceSeriesId,
+      (value) => target.recurrenceSeriesId = value,
+    );
+    assign(
+      target.customIntervalDays,
+      source.customIntervalDays,
+      (value) => target.customIntervalDays = value,
+    );
+    assign(
+      target.recurrenceEndDate,
+      source.recurrenceEndDate,
+      (value) => target.recurrenceEndDate = value,
+    );
     assign(target.remark, source.remark, (value) => target.remark = value);
-    assign(target.imagePath, source.imagePath,
-        (value) => target.imagePath = value);
-    assign(target.originalText, source.originalText,
-        (value) => target.originalText = value);
+    assign(
+      target.imagePath,
+      source.imagePath,
+      (value) => target.imagePath = value,
+    );
+    assign(
+      target.originalText,
+      source.originalText,
+      (value) => target.originalText = value,
+    );
     assign(target.groupId, source.groupId, (value) => target.groupId = value);
-    assign(target.reminderMinutes, source.reminderMinutes,
-        (value) => target.reminderMinutes = value);
     assign(
-        target.teamUuid, source.teamUuid, (value) => target.teamUuid = value);
-    assign(target.creatorId, source.creatorId,
-        (value) => target.creatorId = value);
-    assign(target.creatorName, source.creatorName,
-        (value) => target.creatorName = value);
+      target.reminderMinutes,
+      source.reminderMinutes,
+      (value) => target.reminderMinutes = value,
+    );
     assign(
-        target.teamName, source.teamName, (value) => target.teamName = value);
-    assign(target.collabType, source.collabType,
-        (value) => target.collabType = value);
+      target.teamUuid,
+      source.teamUuid,
+      (value) => target.teamUuid = value,
+    );
     assign(
-        target.isAllDay, source.isAllDay, (value) => target.isAllDay = value);
-    assign(target.categoryId, source.categoryId,
-        (value) => target.categoryId = value);
+      target.creatorId,
+      source.creatorId,
+      (value) => target.creatorId = value,
+    );
+    assign(
+      target.creatorName,
+      source.creatorName,
+      (value) => target.creatorName = value,
+    );
+    assign(
+      target.teamName,
+      source.teamName,
+      (value) => target.teamName = value,
+    );
+    assign(
+      target.collabType,
+      source.collabType,
+      (value) => target.collabType = value,
+    );
+    assign(
+      target.isAllDay,
+      source.isAllDay,
+      (value) => target.isAllDay = value,
+    );
+    assign(
+      target.categoryId,
+      source.categoryId,
+      (value) => target.categoryId = value,
+    );
     return changed;
+  }
+
+  void _addRecurrenceOverlapKeys(
+    List<TodoItem> seriesChain,
+    Set<String> conflictKeys,
+  ) {
+    if (seriesChain.length <= 16) {
+      for (var i = 0; i < seriesChain.length; i++) {
+        for (var j = i + 1; j < seriesChain.length; j++) {
+          final conflictKey = _overlappingRecurrencePairKey(
+            seriesChain[i],
+            seriesChain[j],
+          );
+          if (conflictKey != null) conflictKeys.add(conflictKey);
+        }
+      }
+      return;
+    }
+
+    final intervals = seriesChain.where((todo) => todo.dueDate != null).toList()
+      ..sort((a, b) {
+        final startCompare = (a.createdDate ?? a.createdAt).compareTo(
+          b.createdDate ?? b.createdAt,
+        );
+        return startCompare != 0 ? startCompare : a.id.compareTo(b.id);
+      });
+    final active = <TodoItem>[];
+    for (final next in intervals) {
+      final nextStart = next.createdDate ?? next.createdAt;
+      final nextEnd = next.dueDate!.millisecondsSinceEpoch;
+      active.removeWhere(
+        (previous) => previous.dueDate!.millisecondsSinceEpoch <= nextStart,
+      );
+
+      // Active intervals stay start-sorted. Later starts cannot overlap this
+      // interval when its end is already at or before their start.
+      for (final previous in active) {
+        if ((previous.createdDate ?? previous.createdAt) >= nextEnd) break;
+        final conflictKey = _overlappingRecurrencePairKey(previous, next);
+        if (conflictKey != null) conflictKeys.add(conflictKey);
+      }
+
+      if (nextEnd > nextStart) active.add(next);
+    }
   }
 
   String? _overlappingRecurrencePairKey(TodoItem previous, TodoItem next) {
@@ -2500,6 +3080,8 @@ mixin _StorageTodos on _StorageServiceBase {
   TodoItem _copyForNextRecurrence(TodoItem source) {
     return TodoItem(
       title: source.title,
+      updatedAt: source.updatedAt,
+      version: source.version,
       createdDate: source.createdDate,
       recurrence: source.recurrence,
       recurrenceSeriesId: source.recurrenceSeriesId ?? source.id,
@@ -2536,9 +3118,10 @@ mixin _StorageTodos on _StorageServiceBase {
       );
     }
     if (todo.createdDate != null) {
-      final originalCreatedDate =
-          DateTime.fromMillisecondsSinceEpoch(todo.createdDate!, isUtc: true)
-              .toLocal();
+      final originalCreatedDate = DateTime.fromMillisecondsSinceEpoch(
+        todo.createdDate!,
+        isUtc: true,
+      ).toLocal();
       todo.createdDate = DateTime(
         originalCreatedDate.year,
         originalCreatedDate.month,
@@ -2570,8 +3153,12 @@ mixin _StorageTodos on _StorageServiceBase {
     return true;
   }
 
-  Future<void> saveTodoGroups(String username, List<TodoGroup> items,
-      {bool sync = true, bool isSyncSource = false}) async {
+  Future<void> saveTodoGroups(
+    String username,
+    List<TodoGroup> items, {
+    bool sync = true,
+    bool isSyncSource = false,
+  }) async {
     final Map<String, TodoGroup> dedupeMap = {};
 
     for (var item in items) {
@@ -2616,30 +3203,29 @@ mixin _StorageTodos on _StorageServiceBase {
       }
 
       if (hasChanged || oldData == null) {
-        batch.insert(
-            'todo_groups',
-            {
-              'uuid': item.id,
-              'team_uuid': item.teamUuid,
-              'team_name': item.teamName,
-              'creator_id': item.creatorId,
-              'creator_name': item.creatorName,
-              'name': item.name,
-              'is_expanded': item.isExpanded ? 1 : 0,
-              'is_deleted': item.isDeleted ? 1 : 0,
-              'version': item.version,
-              'updated_at': item.updatedAt,
-              'created_at': item.createdAt,
-              'has_conflict': item.hasConflict ? 1 : 0,
-              'conflict_data': item.conflictData != null
-                  ? jsonEncode(item.conflictData)
-                  : null
-            },
-            conflictAlgorithm: ConflictAlgorithm.replace);
+        batch.insert('todo_groups', {
+          'uuid': item.id,
+          'team_uuid': item.teamUuid,
+          'team_name': item.teamName,
+          'creator_id': item.creatorId,
+          'creator_name': item.creatorName,
+          'name': item.name,
+          'is_expanded': item.isExpanded ? 1 : 0,
+          'is_deleted': item.isDeleted ? 1 : 0,
+          'version': item.version,
+          'updated_at': item.updatedAt,
+          'created_at': item.createdAt,
+          'has_conflict': item.hasConflict ? 1 : 0,
+          'conflict_data': item.conflictData != null
+              ? jsonEncode(item.conflictData)
+              : null,
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
       }
     }
     await batch.commit(noResult: true);
     _inflightTodoRequests.clear();
+    _inflightTodoSearchDateRequests.clear();
+    _inflightTimelineTodoRequests.clear();
 
     unawaited(_clearTodoGroupPrefsMirror(username));
     if (sync) requestSync(username);
@@ -2652,18 +3238,21 @@ mixin _StorageTodos on _StorageServiceBase {
     await prefs.remove(keyTodoGroups);
   }
 
-  Future<List<TodoGroup>> getTodoGroups(String username,
-      {bool includeDeleted = false}) async {
+  Future<List<TodoGroup>> getTodoGroups(
+    String username, {
+    bool includeDeleted = false,
+  }) async {
     try {
       final dbHelper = DatabaseHelper.instance;
       final db = await dbHelper.databaseForUser(username);
-      await _clearGhostConflictFlags(db);
+      await _clearGhostConflictFlags(db, tables: const ['todo_groups']);
       final prefs = await SharedPreferences.getInstance();
 
       // 1. 迁移检查
-      final List<Map<String, dynamic>> sqliteCount =
-          await db.rawQuery('SELECT COUNT(*) as cnt FROM todo_groups');
-      if (sqliteCount.first['cnt'] == 0) {
+      final hasSqliteRows = await db.rawQuery(
+        'SELECT 1 FROM todo_groups LIMIT 1',
+      );
+      if (hasSqliteRows.isEmpty) {
         List<String> legacyJsonList =
             prefs.getStringList(_scopedKey(keyTodoGroups, username)) ?? [];
 
@@ -2683,35 +3272,43 @@ mixin _StorageTodos on _StorageServiceBase {
           List<TodoGroup> legacyData = legacyJsonList
               .map((e) => TodoGroup.fromJson(jsonDecode(e)))
               .toList();
-          await saveTodoGroups(username, legacyData,
-              sync: false, isSyncSource: true);
+          await saveTodoGroups(
+            username,
+            legacyData,
+            sync: false,
+            isSyncSource: true,
+          );
         }
       }
 
       // 2. 从 SQL 读取 (排除逻辑删除)
-      final List<Map<String, dynamic>> maps = await db.query('todo_groups',
-          where: includeDeleted ? null : 'is_deleted = 0');
+      final List<Map<String, dynamic>> maps = await db.query(
+        'todo_groups',
+        where: includeDeleted ? null : 'is_deleted = 0',
+      );
       if (maps.isNotEmpty) {
         return maps
-            .map((m) => TodoGroup(
-                  id: m['uuid'],
-                  name: m['name'] ?? '',
-                  isExpanded: m['is_expanded'] == 1,
-                  isDeleted: m['is_deleted'] == 1,
-                  version: m['version'] ?? 1,
-                  updatedAt:
-                      m['updated_at'] ?? DateTime.now().millisecondsSinceEpoch,
-                  createdAt:
-                      m['created_at'] ?? DateTime.now().millisecondsSinceEpoch,
-                  teamUuid: m['team_uuid'],
-                  teamName: m['team_name'],
-                  creatorId: m['creator_id'],
-                  creatorName: m['creator_name'],
-                  hasConflict: m['has_conflict'] == 1,
-                  conflictData: m['conflict_data'] != null
-                      ? jsonDecode(m['conflict_data'])
-                      : null,
-                ))
+            .map(
+              (m) => TodoGroup(
+                id: m['uuid'],
+                name: m['name'] ?? '',
+                isExpanded: m['is_expanded'] == 1,
+                isDeleted: m['is_deleted'] == 1,
+                version: m['version'] ?? 1,
+                updatedAt:
+                    m['updated_at'] ?? DateTime.now().millisecondsSinceEpoch,
+                createdAt:
+                    m['created_at'] ?? DateTime.now().millisecondsSinceEpoch,
+                teamUuid: m['team_uuid'],
+                teamName: m['team_name'],
+                creatorId: m['creator_id'],
+                creatorName: m['creator_name'],
+                hasConflict: m['has_conflict'] == 1,
+                conflictData: m['conflict_data'] != null
+                    ? jsonDecode(m['conflict_data'])
+                    : null,
+              ),
+            )
             .toList();
       } else {
         return [];
@@ -2737,7 +3334,9 @@ mixin _StorageTodos on _StorageServiceBase {
   }
 
   Future<void> deleteTodoGroupGlobally(
-      String username, String idToDelete) async {
+    String username,
+    String idToDelete,
+  ) async {
     List<TodoGroup> localGroups = await getTodoGroups(username);
     int index = localGroups.indexWhere((t) => t.id == idToDelete);
 

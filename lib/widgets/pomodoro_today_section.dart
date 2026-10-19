@@ -1,10 +1,11 @@
-import 'dart:ui';
 import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../screens/course_screens.dart';
 import '../services/pomodoro_service.dart';
+import '../utils/app_image_filters.dart';
 import '../utils/page_transitions.dart';
 import '../utils/theme_color_tokens.dart';
 import 'optional_liquid_glass_surface.dart';
@@ -38,10 +39,23 @@ class PomodoroTodaySection extends StatefulWidget {
 class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
     with SingleTickerProviderStateMixin {
   List<PomodoroRecord> _records = [];
+  final Map<String, GlobalKey> _recordCardKeys = {};
   bool _loading = true;
   bool _collapsed = false;
   bool _isToday = true;
   late AnimationController _chartAnimationController;
+  int _totalSeconds = 0;
+  List<int> _hourlySeconds = List<int>.filled(24, 0);
+  int _maxHourlySeconds = 0;
+  final Map<(String?, String), DateFormat> _dateFormatters = {};
+
+  DateFormat _cachedDateFormat(String pattern) {
+    final locale = Intl.defaultLocale;
+    return _dateFormatters.putIfAbsent((
+      locale,
+      pattern,
+    ), () => DateFormat(pattern, locale));
+  }
 
   @override
   void initState() {
@@ -72,15 +86,38 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
     if (!mounted) return;
     setState(() => _loading = true);
     final result = await PomodoroService.getRecentRecords();
-    if (mounted) {
-      setState(() {
-        _records = result.records;
-        _isToday = result.isToday;
-        _loading = false;
-      });
-      _chartAnimationController.forward(from: 0.0);
+    if (!mounted) return;
+
+    final hourlySeconds = List<int>.filled(24, 0);
+    var totalSeconds = 0;
+    for (final record in result.records) {
+      final duration = record.effectiveDuration;
+      totalSeconds += duration;
+      final startLocal = DateTime.fromMillisecondsSinceEpoch(
+        record.startTime,
+        isUtc: true,
+      ).toLocal();
+      hourlySeconds[startLocal.hour] += duration;
     }
+    final maxHourlySeconds = hourlySeconds.reduce(max);
+    final activeRecordUuids = result.records
+        .map((record) => record.uuid)
+        .toSet();
+    _recordCardKeys.removeWhere((uuid, _) => !activeRecordUuids.contains(uuid));
+
+    setState(() {
+      _records = result.records;
+      _isToday = result.isToday;
+      _totalSeconds = totalSeconds;
+      _hourlySeconds = hourlySeconds;
+      _maxHourlySeconds = maxHourlySeconds;
+      _loading = false;
+    });
+    _chartAnimationController.forward(from: 0.0);
   }
+
+  GlobalKey _recordCardKeyFor(String recordUuid) =>
+      _recordCardKeys.putIfAbsent(recordUuid, GlobalKey.new);
 
   Widget _buildGlassCard({
     required double borderRadius,
@@ -103,14 +140,12 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
     return ClipRRect(
       borderRadius: BorderRadius.circular(borderRadius),
       child: PlatformBackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        filter: AppImageFilters.blur10,
         bypassWhenLiquidGlassEnabled: true,
         child: card,
       ),
     );
   }
-
-  int get _totalSeconds => _records.fold(0, (s, r) => s + r.effectiveDuration);
 
   @override
   Widget build(BuildContext context) {
@@ -135,33 +170,36 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
                   decoration: BoxDecoration(
                     color: widget.isLight
                         ? Colors.white.withValues(alpha: 0.15)
-                        : Theme.of(context)
-                            .colorScheme
-                            .primary
-                            .withValues(alpha: 0.15),
+                        : Theme.of(context).colorScheme.primary
+                              .withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Icon(Icons.bar_chart_rounded,
-                      size: 20,
-                      color: widget.isLight
-                          ? Colors.white
-                          : Theme.of(context).colorScheme.primary),
+                  child: Icon(
+                    Icons.bar_chart_rounded,
+                    size: 20,
+                    color: widget.isLight
+                        ? Colors.white
+                        : Theme.of(context).colorScheme.primary,
+                  ),
                 ),
                 const SizedBox(width: 10),
                 Text(
                   '最近专注',
                   style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 0.5,
-                      color: textColor),
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 0.5,
+                    color: textColor,
+                  ),
                 ),
                 const SizedBox(width: 8),
                 // 今日 / 昨日 标签
                 if (!_loading)
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 3,
+                    ),
                     decoration: BoxDecoration(
                       color: widget.isLight
                           ? Colors.white.withValues(alpha: 0.2)
@@ -184,11 +222,12 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
                   Text(
                     PomodoroService.formatDuration(_totalSeconds),
                     style: TextStyle(
-                        fontSize: 15,
-                        color: widget.isLight
-                            ? Colors.white.withValues(alpha: 0.9)
-                            : Theme.of(context).colorScheme.primary,
-                        fontWeight: FontWeight.w800),
+                      fontSize: 15,
+                      color: widget.isLight
+                          ? Colors.white.withValues(alpha: 0.9)
+                          : Theme.of(context).colorScheme.primary,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 const Spacer(),
                 // 跳转箭头
@@ -215,49 +254,57 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
           // ── 统计视图 ──
           if (_loading)
             const Center(
-                child: Padding(
-                    padding: EdgeInsets.all(30),
-                    child: CircularProgressIndicator()))
+              child: Padding(
+                padding: EdgeInsets.all(30),
+                child: CircularProgressIndicator(),
+              ),
+            )
           else if (_records.isEmpty)
             RepaintBoundary(
               child: _buildGlassCard(
                 borderRadius: 20,
-                padding:
-                    const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+                padding: const EdgeInsets.symmetric(
+                  vertical: 24,
+                  horizontal: 16,
+                ),
                 alignment: Alignment.center,
                 fallbackDecoration: BoxDecoration(
                   color: widget.isLight
                       ? Colors.white.withValues(alpha: 0.15)
-                      : Theme.of(context)
-                          .colorScheme
-                          .surfaceContainerHighest
-                          .withValues(alpha: 0.3),
+                      : Theme.of(context).colorScheme.surfaceContainerHighest
+                            .withValues(alpha: 0.3),
                   borderRadius: BorderRadius.circular(20),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black
-                          .withValues(alpha: widget.isLight ? 0.1 : 0.05),
+                      color: Colors.black.withValues(
+                        alpha: widget.isLight ? 0.1 : 0.05,
+                      ),
                       blurRadius: 10,
                       offset: const Offset(0, 4),
-                    )
+                    ),
                   ],
                   border: Border.all(
-                      color: widget.isLight
-                          ? Colors.white.withValues(alpha: 0.2)
-                          : Theme.of(context)
-                              .dividerColor
-                              .withValues(alpha: 0.5)),
+                    color: widget.isLight
+                        ? Colors.white.withValues(alpha: 0.2)
+                        : Theme.of(context).dividerColor.withValues(alpha: 0.5),
+                  ),
                 ),
                 child: Column(
                   children: [
-                    Icon(Icons.timer_outlined,
-                        size: 32, color: subColor.withValues(alpha: 0.5)),
+                    Icon(
+                      Icons.timer_outlined,
+                      size: 32,
+                      color: subColor.withValues(alpha: 0.5),
+                    ),
                     const SizedBox(height: 8),
-                    Text('暂无专注记录，开始你的第一个番茄钟吧！',
-                        style: TextStyle(
-                            color: subColor,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500)),
+                    Text(
+                      '暂无专注记录，开始你的第一个番茄钟吧！',
+                      style: TextStyle(
+                        color: subColor,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -279,17 +326,11 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
   // 24小时分布条形图
   // ==========================================
   Widget _buildHourlyChart(Color? subColor) {
-    List<int> hourlySeconds = List.filled(24, 0);
-    for (var r in _records) {
-      final startLocal =
-          DateTime.fromMillisecondsSinceEpoch(r.startTime, isUtc: true)
-              .toLocal();
-      hourlySeconds[startLocal.hour] += r.effectiveDuration;
-    }
-
-    final maxSeconds = hourlySeconds.reduce(max);
-    final primaryColor =
-        widget.isLight ? Colors.white : Theme.of(context).colorScheme.primary;
+    final hourlySeconds = _hourlySeconds;
+    final maxSeconds = _maxHourlySeconds;
+    final primaryColor = widget.isLight
+        ? Colors.white
+        : Theme.of(context).colorScheme.primary;
 
     return _buildGlassCard(
       borderRadius: 24,
@@ -304,7 +345,7 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
             color: Colors.black.withValues(alpha: widget.isLight ? 0.1 : 0.05),
             blurRadius: 10,
             offset: const Offset(0, 4),
-          )
+          ),
         ],
         border: widget.isLight
             ? Border.all(color: Colors.white.withValues(alpha: 0.2))
@@ -313,13 +354,16 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('时段分布',
-              style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.bold,
-                  color: widget.isLight
-                      ? Colors.white70
-                      : Theme.of(context).colorScheme.outline)),
+          Text(
+            '时段分布',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+              color: widget.isLight
+                  ? Colors.white70
+                  : Theme.of(context).colorScheme.outline,
+            ),
+          ),
           const SizedBox(height: 16),
           SizedBox(
             height: 90,
@@ -338,6 +382,21 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
                         Expanded(
                           child: AnimatedBuilder(
                             animation: _chartAnimationController,
+                            child: factor > 0
+                                ? Container(
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(
+                                        begin: Alignment.bottomCenter,
+                                        end: Alignment.topCenter,
+                                        colors: [
+                                          primaryColor.withValues(alpha: 0.5),
+                                          primaryColor,
+                                        ],
+                                      ),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                  )
+                                : const SizedBox.shrink(),
                             builder: (context, child) {
                               final animatedFactor =
                                   factor * _chartAnimationController.value;
@@ -347,24 +406,7 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
                                   heightFactor: animatedFactor > 0
                                       ? max(animatedFactor, 0.05)
                                       : 0,
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      gradient: animatedFactor > 0
-                                          ? LinearGradient(
-                                              begin: Alignment.bottomCenter,
-                                              end: Alignment.topCenter,
-                                              colors: [
-                                                  primaryColor.withValues(
-                                                      alpha: 0.5),
-                                                  primaryColor,
-                                                ])
-                                          : null,
-                                      color: animatedFactor > 0
-                                          ? null
-                                          : Colors.transparent,
-                                      borderRadius: BorderRadius.circular(4),
-                                    ),
-                                  ),
+                                  child: child,
                                 ),
                               );
                             },
@@ -375,9 +417,10 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
                           Text(
                             '$index',
                             style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                                color: subColor?.withValues(alpha: 0.6)),
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: subColor?.withValues(alpha: 0.6),
+                            ),
                           )
                         else
                           const SizedBox(height: 14),
@@ -398,6 +441,7 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
   // ==========================================
   Widget _buildRecordsList() {
     final colorScheme = Theme.of(context).colorScheme;
+    final timeFormat = _cachedDateFormat('HH:mm');
 
     return _buildGlassCard(
       borderRadius: 20,
@@ -412,7 +456,7 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
             color: Colors.black.withValues(alpha: widget.isLight ? 0.1 : 0.05),
             blurRadius: 10,
             offset: const Offset(0, 4),
-          )
+          ),
         ],
         border: widget.isLight
             ? Border.all(color: Colors.white.withValues(alpha: 0.2))
@@ -430,17 +474,18 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
             ),
           ),
           const SizedBox(height: 8),
-          ..._records.map((record) => _buildRecordItem(record)),
+          ..._records.map((record) => _buildRecordItem(record, timeFormat)),
         ],
       ),
     );
   }
 
-  Widget _buildRecordItem(PomodoroRecord record) {
+  Widget _buildRecordItem(PomodoroRecord record, DateFormat timeFormat) {
     final colorScheme = Theme.of(context).colorScheme;
-    final startLocal =
-        DateTime.fromMillisecondsSinceEpoch(record.startTime, isUtc: true)
-            .toLocal();
+    final startLocal = DateTime.fromMillisecondsSinceEpoch(
+      record.startTime,
+      isUtc: true,
+    ).toLocal();
     final durationMin = record.effectiveDuration ~/ 60;
     final statusIcon = record.isCompleted
         ? Icons.check_circle_rounded
@@ -449,7 +494,7 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
         ? (widget.isLight ? Colors.greenAccent : colorScheme.cdtSuccess)
         : (widget.isLight ? Colors.amber : colorScheme.cdtWarning);
     final hasPause = (record.totalPauseSeconds ?? 0) > 0;
-    final cardKey = GlobalKey();
+    final cardKey = _recordCardKeyFor(record.uuid);
 
     return Padding(
       key: ValueKey(record.uuid),
@@ -462,10 +507,7 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
           onTap: () {
             PageTransitions.pushFromRect(
               context: context,
-              page: PomodoroDetailScreen(
-                record: record,
-                tags: [],
-              ),
+              page: PomodoroDetailScreen(record: record, tags: []),
               sourceKey: cardKey,
               sourceBorderRadius: const BorderRadius.all(Radius.circular(12)),
             );
@@ -482,7 +524,7 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '${DateFormat('HH:mm').format(startLocal)} · $durationMin 分钟',
+                        '${timeFormat.format(startLocal)} · $durationMin 分钟',
                         style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w500,
@@ -509,13 +551,16 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
                 ),
                 if (hasPause)
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
-                      color: (widget.isLight
-                              ? Colors.orange
-                              : colorScheme.cdtWarning)
-                          .withValues(alpha: 0.15),
+                      color:
+                          (widget.isLight
+                                  ? Colors.orange
+                                  : colorScheme.cdtWarning)
+                              .withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Text(

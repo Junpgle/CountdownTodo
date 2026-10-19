@@ -5,6 +5,7 @@ import 'package:sqflite/sqflite.dart';
 
 import '../models.dart';
 import '../models/plan_availability.dart';
+import 'conflict_visibility_service.dart';
 import 'pomodoro_service.dart';
 import 'storage/storage_key_scope.dart';
 
@@ -75,7 +76,7 @@ class PlanTodoGuard {
       throw const PlanAvailabilityException('待办已完成或失效，请选择未完成的待办');
     }
     if (requireEligible &&
-        (todo.hasConflict ||
+        (ConflictVisibilityService.blocksTodoPlanning(todo) ||
             todo.id.trim().isEmpty ||
             todo.title.trim().isEmpty)) {
       throw const PlanAvailabilityException('待办存在同步冲突或内容无效，请查看待办');

@@ -8,23 +8,24 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 List<FinanceCategory> _categories() => [
-      FinanceCategory(uuid: 'food', name: '餐饮', icon: '🍜', isSystem: true),
-      FinanceCategory(
-        uuid: 'milk-tea',
-        name: '奶茶',
-        icon: '🧋',
-        parentUuid: 'food',
-        isSystem: true,
-      ),
-      FinanceCategory(uuid: 'coffee', name: '咖啡', icon: '☕'),
-      FinanceCategory(uuid: 'archived', name: '旧分类', isArchived: true),
-      FinanceCategory(uuid: 'deleted', name: '已删除分类', isDeleted: true),
-      FinanceCategory(
-          uuid: 'salary',
-          name: '工资',
-          type: FinanceCategoryType.income,
-          isSystem: true),
-    ];
+  FinanceCategory(uuid: 'food', name: '餐饮', icon: '🍜', isSystem: true),
+  FinanceCategory(
+    uuid: 'milk-tea',
+    name: '奶茶',
+    icon: '🧋',
+    parentUuid: 'food',
+    isSystem: true,
+  ),
+  FinanceCategory(uuid: 'coffee', name: '咖啡', icon: '☕'),
+  FinanceCategory(uuid: 'archived', name: '旧分类', isArchived: true),
+  FinanceCategory(uuid: 'deleted', name: '已删除分类', isDeleted: true),
+  FinanceCategory(
+    uuid: 'salary',
+    name: '工资',
+    type: FinanceCategoryType.income,
+    isSystem: true,
+  ),
+];
 
 const _searchKey = ValueKey('finance-catalog-search');
 const _nameKey = ValueKey('finance-catalog-name');
@@ -47,38 +48,49 @@ Future<void> _pumpCatalog(
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
-  await tester.pumpWidget(MaterialApp(
-    theme: ThemeData(
+  await tester.pumpWidget(
+    MaterialApp(
+      theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
-            seedColor: Colors.teal, brightness: brightness)),
-    builder: (context, child) => MediaQuery(
-      data: MediaQuery.of(context)
-          .copyWith(textScaler: TextScaler.linear(textScale)),
-      child: child!,
-    ),
-    home: Scaffold(
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: FinanceCatalogManager(
-          categories: categories ?? _categories(),
-          paymentMethods: paymentMethods ?? [
-            FinancePaymentMethod(
-                uuid: 'wechat', name: '微信', icon: '💬', isSystem: true),
-            FinancePaymentMethod(uuid: 'card', name: '日常银行卡', icon: '💳'),
-          ],
-          onAddCategory: onAdd ?? (_) async => null,
-          onAddSubcategory: onAddSubcategory,
-          onAddPaymentMethod: () async => false,
-          onEditCategory: onEdit ?? (_) async {},
-          onArchiveCategory: onArchive ?? (_) async {},
-          onRestoreCategory: onRestore ?? (_) async {},
-          onEditPaymentMethod: (_) async {},
-          onArchivePaymentMethod: (_) async {},
-          onRestorePaymentMethod: (_) async {},
+          seedColor: Colors.teal,
+          brightness: brightness,
+        ),
+      ),
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context)
+            .copyWith(textScaler: TextScaler.linear(textScale)),
+        child: child!,
+      ),
+      home: Scaffold(
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: FinanceCatalogManager(
+            categories: categories ?? _categories(),
+            paymentMethods:
+                paymentMethods ??
+                [
+                  FinancePaymentMethod(
+                    uuid: 'wechat',
+                    name: '微信',
+                    icon: '💬',
+                    isSystem: true,
+                  ),
+                  FinancePaymentMethod(uuid: 'card', name: '日常银行卡', icon: '💳'),
+                ],
+            onAddCategory: onAdd ?? (_) async => null,
+            onAddSubcategory: onAddSubcategory,
+            onAddPaymentMethod: () async => false,
+            onEditCategory: onEdit ?? (_) async {},
+            onArchiveCategory: onArchive ?? (_) async {},
+            onRestoreCategory: onRestore ?? (_) async {},
+            onEditPaymentMethod: (_) async {},
+            onArchivePaymentMethod: (_) async {},
+            onRestorePaymentMethod: (_) async {},
+          ),
         ),
       ),
     ),
-  ));
+  );
   await tester.pumpAndSettle();
 }
 
@@ -99,34 +111,39 @@ Future<void> _openEditor(
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
-  await tester.pumpWidget(MaterialApp(
-    theme: ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal)),
-    builder: (context, child) => MediaQuery(
-      data: MediaQuery.of(context)
-          .copyWith(textScaler: TextScaler.linear(textScale)),
-      child: child!,
-    ),
-    home: Scaffold(
-      body: Builder(
+  await tester.pumpWidget(
+    MaterialApp(
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
+      ),
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context)
+            .copyWith(textScaler: TextScaler.linear(textScale)),
+        child: child!,
+      ),
+      home: Scaffold(
+        body: Builder(
           builder: (context) => TextButton(
-                onPressed: () => showDialog<bool>(
-                  context: context,
-                  builder: (_) => FinanceCatalogEditor(
-                    initialName: name,
-                    initialIcon: '📦',
-                    categoryType: type,
-                    isEditing: editing,
-                    availableParents: availableParents,
-                    initialParentUuid: initialParentUuid,
-                    lockParent: lockParent,
-                    systemCategory: systemCategory,
-                    onSave: onSave,
-                  ),
-                ),
-                child: const Text('打开编辑'),
-              )),
+            onPressed: () => showDialog<bool>(
+              context: context,
+              builder: (_) => FinanceCatalogEditor(
+                initialName: name,
+                initialIcon: '📦',
+                categoryType: type,
+                isEditing: editing,
+                availableParents: availableParents,
+                initialParentUuid: initialParentUuid,
+                lockParent: lockParent,
+                systemCategory: systemCategory,
+                onSave: onSave,
+              ),
+            ),
+            child: const Text('打开编辑'),
+          ),
+        ),
+      ),
     ),
-  ));
+  );
   await tester.tap(find.text('打开编辑'));
   await tester.pumpAndSettle();
 }
@@ -138,16 +155,22 @@ void main() {
     expect(find.text('一级分类 · 2'), findsOneWidget);
     expect(find.textContaining('个二级分类'), findsNWidgets(2));
     expect(
-        find.descendant(of: parent, matching: find.text('奶茶')), findsNothing);
+      find.descendant(of: parent, matching: find.text('奶茶')),
+      findsNothing,
+    );
     await tester.tap(find.text('餐饮'));
     await tester.pumpAndSettle();
     expect(
-        find.descendant(of: parent, matching: find.text('奶茶')), findsOneWidget);
+      find.descendant(of: parent, matching: find.text('奶茶')),
+      findsOneWidget,
+    );
     expect(find.text('餐饮 - 奶茶'), findsNothing);
     await tester.tap(find.text('餐饮'));
     await tester.pumpAndSettle();
     expect(
-        find.descendant(of: parent, matching: find.text('奶茶')), findsNothing);
+      find.descendant(of: parent, matching: find.text('奶茶')),
+      findsNothing,
+    );
   });
 
   testWidgets('分类目录区分同级重名分类', (tester) async {
@@ -190,8 +213,10 @@ void main() {
 
   testWidgets('分类按收支分开，搜索与归档筛选不会显示已删除项目', (tester) async {
     String? restored;
-    await _pumpCatalog(tester,
-        onRestore: (category) async => restored = category.uuid);
+    await _pumpCatalog(
+      tester,
+      onRestore: (category) async => restored = category.uuid,
+    );
     expect(find.text('咖啡'), findsOneWidget);
     expect(find.text('餐饮'), findsOneWidget);
     expect(find.text('工资'), findsNothing);
@@ -203,8 +228,9 @@ void main() {
     expect(find.text('餐饮'), findsNothing);
     await tester.tap(find.byTooltip('清空搜索'));
     await tester.pumpAndSettle();
-    await tester
-        .tap(find.byKey(const ValueKey('finance-catalog-filter-archived')));
+    await tester.tap(
+      find.byKey(const ValueKey('finance-catalog-filter-archived')),
+    );
     await tester.pumpAndSettle();
     expect(find.text('旧分类'), findsOneWidget);
     expect(find.text('咖啡'), findsNothing);
@@ -253,11 +279,7 @@ void main() {
     String? restored;
     final categories = [
       ..._categories(),
-      FinanceCategory(
-        uuid: 'archived-parent',
-        name: '已归档大类',
-        isArchived: true,
-      ),
+      FinanceCategory(uuid: 'archived-parent', name: '已归档大类', isArchived: true),
       FinanceCategory(
         uuid: 'legacy-active-child',
         name: '历史活跃小类',
@@ -271,8 +293,9 @@ void main() {
     );
 
     expect(find.text('历史活跃小类'), findsNothing);
-    await tester
-        .tap(find.byKey(const ValueKey('finance-catalog-filter-archived')));
+    await tester.tap(
+      find.byKey(const ValueKey('finance-catalog-filter-archived')),
+    );
     await tester.pumpAndSettle();
     await tester.tap(find.text('已归档大类'));
     await tester.pumpAndSettle();
@@ -293,9 +316,12 @@ void main() {
     );
     final system = find.byKey(const ValueKey('finance-catalog-item-food'));
     expect(
-        find.descendant(
-            of: system, matching: find.byType(PopupMenuButton<String>)),
-        findsNothing);
+      find.descendant(
+        of: system,
+        matching: find.byType(PopupMenuButton<String>),
+      ),
+      findsNothing,
+    );
     await tester.tap(find.byTooltip('自定义餐饮名称和图标'));
     await tester.pumpAndSettle();
     expect(edited, 'food');
@@ -327,10 +353,7 @@ void main() {
       onSave: (draft) async => saved = draft,
     );
 
-    expect(
-      tester.widget<TextFormField>(find.byKey(_nameKey)).enabled,
-      isTrue,
-    );
+    expect(tester.widget<TextFormField>(find.byKey(_nameKey)).enabled, isTrue);
     expect(find.byType(ChoiceChip), findsNothing);
     expect(find.byKey(const ValueKey('finance-catalog-parent')), findsNothing);
     await tester.enterText(find.byKey(_nameKey), '伙食');
@@ -358,41 +381,53 @@ void main() {
   testWidgets('新增默认使用当前分类类型，保存后自动显示新增项目', (tester) async {
     final categories = _categories();
     FinanceCategoryType? requested;
-    await _pumpCatalog(tester, categories: categories, onAdd: (type) async {
-      requested = type;
-      final category = FinanceCategory(uuid: 'new', name: '新分类');
-      categories.add(category);
-      return category;
-    });
+    await _pumpCatalog(
+      tester,
+      categories: categories,
+      onAdd: (type) async {
+        requested = type;
+        final category = FinanceCategory(uuid: 'new', name: '新分类');
+        categories.add(category);
+        return category;
+      },
+    );
     await tester.tap(find.text('收入分类'));
     await tester.pumpAndSettle();
-    await tester
-        .tap(find.byKey(const ValueKey('finance-catalog-filter-archived')));
+    await tester.tap(
+      find.byKey(const ValueKey('finance-catalog-filter-archived')),
+    );
     await tester.enterText(find.byKey(_searchKey), '找不到');
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('finance-catalog-add')));
     await tester.pumpAndSettle();
     expect(requested, FinanceCategoryType.income);
     expect(find.text('新分类'), findsOneWidget);
-    expect(tester.widget<TextField>(find.byKey(_searchKey)).controller!.text,
-        isEmpty);
     expect(
-        tester
-            .widget<ChoiceChip>(
-                find.byKey(const ValueKey('finance-catalog-filter-active')))
-            .selected,
-        isTrue);
+      tester.widget<TextField>(find.byKey(_searchKey)).controller!.text,
+      isEmpty,
+    );
+    expect(
+      tester
+          .widget<ChoiceChip>(
+            find.byKey(const ValueKey('finance-catalog-filter-active')),
+          )
+          .selected,
+      isTrue,
+    );
   });
 
   testWidgets('图标选择和名称校验有效，失败保留输入并阻止重复保存', (tester) async {
     var attempts = 0;
     FinanceCatalogDraft? saved;
     final firstSave = Completer<void>();
-    await _openEditor(tester, onSave: (draft) async {
-      attempts++;
-      saved = draft;
-      if (attempts == 1) await firstSave.future;
-    });
+    await _openEditor(
+      tester,
+      onSave: (draft) async {
+        attempts++;
+        saved = draft;
+        if (attempts == 1) await firstSave.future;
+      },
+    );
     await tester.tap(find.byKey(_saveKey));
     await tester.pumpAndSettle();
     expect(find.text('请填写分类名称'), findsOneWidget);
@@ -413,8 +448,10 @@ void main() {
     firstSave.completeError(StateError('storage unavailable'));
     await tester.pumpAndSettle();
     expect(find.text('保存失败，填写的内容已保留，请重试'), findsOneWidget);
-    expect(tester.widget<TextFormField>(find.byKey(_nameKey)).controller!.text,
-        '  宠物用品  ');
+    expect(
+      tester.widget<TextFormField>(find.byKey(_nameKey)).controller!.text,
+      '  宠物用品  ',
+    );
     await tester.tap(find.byKey(_saveKey));
     await tester.pumpAndSettle();
     expect(attempts, 2);
@@ -433,7 +470,9 @@ void main() {
       onSave: (draft) async => saved = draft,
     );
     expect(
-        find.byKey(const ValueKey('finance-catalog-parent')), findsOneWidget);
+      find.byKey(const ValueKey('finance-catalog-parent')),
+      findsOneWidget,
+    );
     final parentField = tester.widget<DropdownButtonFormField<String>>(
       find.byKey(const ValueKey('finance-catalog-parent')),
     );
@@ -449,11 +488,13 @@ void main() {
   });
 
   testWidgets('编辑已有分类时类型固定，取消后表单安全销毁', (tester) async {
-    await _openEditor(tester,
-        editing: true,
-        name: '兼职',
-        type: FinanceCategoryType.income,
-        onSave: (_) async {});
+    await _openEditor(
+      tester,
+      editing: true,
+      name: '兼职',
+      type: FinanceCategoryType.income,
+      onSave: (_) async {},
+    );
     for (final chip in tester.widgetList<ChoiceChip>(find.byType(ChoiceChip))) {
       expect(chip.onSelected, isNull);
     }
@@ -464,8 +505,12 @@ void main() {
   });
 
   testWidgets('小屏深色大字体和桌面布局不溢出', (tester) async {
-    await _pumpCatalog(tester,
-        size: const Size(320, 600), textScale: 2, brightness: Brightness.dark);
+    await _pumpCatalog(
+      tester,
+      size: const Size(320, 600),
+      textScale: 2,
+      brightness: Brightness.dark,
+    );
     expect(tester.takeException(), isNull);
     await tester.ensureVisible(find.text('付款方式'));
     await tester.tap(find.text('付款方式'));
@@ -477,11 +522,13 @@ void main() {
   });
 
   testWidgets('小屏键盘弹出时仍可滚动编辑并使用底部操作', (tester) async {
-    await _openEditor(tester,
-        size: const Size(320, 640),
-        textScale: 1.6,
-        type: null,
-        onSave: (_) async {});
+    await _openEditor(
+      tester,
+      size: const Size(320, 640),
+      textScale: 1.6,
+      type: null,
+      onSave: (_) async {},
+    );
     tester.view.viewInsets = const FakeViewPadding(bottom: 260);
     addTearDown(tester.view.resetViewInsets);
     await tester.pumpAndSettle();
@@ -497,11 +544,7 @@ void main() {
   });
 
   testWidgets('没有小类时，大类账单直接显示自定义大类名称', (tester) async {
-    final root = FinanceCategory(
-      uuid: 'food',
-      name: '日常饮食',
-      icon: '🍜',
-    );
+    final root = FinanceCategory(uuid: 'food', name: '日常饮食', icon: '🍜');
     final transaction = FinanceTransaction(
       uuid: 'food-entry',
       amountMinor: 1280,
@@ -509,31 +552,29 @@ void main() {
       transactionDate: '2026-09-24',
     );
 
-    await tester.pumpWidget(MaterialApp(
-      home: FinanceCategoryDetailScreen(
-        periodTitle: '本月',
-        rootCategoryUuid: root.uuid,
-        transactions: [transaction],
-        categories: {root.uuid: root},
+    await tester.pumpWidget(
+      MaterialApp(
+        home: FinanceCategoryDetailScreen(
+          periodTitle: '本月',
+          rootCategoryUuid: root.uuid,
+          transactions: [transaction],
+          categories: {root.uuid: root},
+        ),
       ),
-    ));
-
-    final item = find.byKey(
-      const ValueKey('finance-category-detail-food'),
     );
+
+    final item = find.byKey(const ValueKey('finance-category-detail-food'));
     expect(find.text('分类'), findsOneWidget);
     expect(find.text('未细分'), findsNothing);
     expect(
-        find.descendant(of: item, matching: find.text('日常饮食')), findsOneWidget);
+      find.descendant(of: item, matching: find.text('日常饮食')),
+      findsOneWidget,
+    );
     expect(tester.takeException(), isNull);
   });
 
   testWidgets('有小类时，大类直接记账显示大类名称', (tester) async {
-    final root = FinanceCategory(
-      uuid: 'food',
-      name: '日常饮食',
-      icon: '🍜',
-    );
+    final root = FinanceCategory(uuid: 'food', name: '日常饮食', icon: '🍜');
     final child = FinanceCategory(
       uuid: 'takeout',
       name: '外卖',
@@ -546,19 +587,19 @@ void main() {
       transactionDate: '2026-09-24',
     );
 
-    await tester.pumpWidget(MaterialApp(
-      home: FinanceCategoryDetailScreen(
-        periodTitle: '本月',
-        rootCategoryUuid: root.uuid,
-        transactions: [transaction],
-        categories: {root.uuid: root, child.uuid: child},
+    await tester.pumpWidget(
+      MaterialApp(
+        home: FinanceCategoryDetailScreen(
+          periodTitle: '本月',
+          rootCategoryUuid: root.uuid,
+          transactions: [transaction],
+          categories: {root.uuid: root, child.uuid: child},
+        ),
       ),
-    ));
+    );
 
     expect(find.text('小类'), findsOneWidget);
-    final item = find.byKey(
-      const ValueKey('finance-category-detail-food'),
-    );
+    final item = find.byKey(const ValueKey('finance-category-detail-food'));
     expect(
       find.descendant(of: item, matching: find.text('日常饮食')),
       findsOneWidget,
@@ -577,18 +618,20 @@ void main() {
     String? selectedCategoryUuid;
     List<FinanceTransaction>? selectedPeriodTransactions;
 
-    await tester.pumpWidget(MaterialApp(
-      home: FinanceCategoryDetailScreen(
-        periodTitle: '本月',
-        rootCategoryUuid: null,
-        transactions: [transaction],
-        categories: const {},
-        onCategorySelected: (categoryUuid, _, periodTransactions) async {
-          selectedCategoryUuid = categoryUuid;
-          selectedPeriodTransactions = periodTransactions;
-        },
+    await tester.pumpWidget(
+      MaterialApp(
+        home: FinanceCategoryDetailScreen(
+          periodTitle: '本月',
+          rootCategoryUuid: null,
+          transactions: [transaction],
+          categories: const {},
+          onCategorySelected: (categoryUuid, _, periodTransactions) async {
+            selectedCategoryUuid = categoryUuid;
+            selectedPeriodTransactions = periodTransactions;
+          },
+        ),
       ),
-    ));
+    );
 
     final item = find.byKey(
       const ValueKey(
@@ -648,18 +691,20 @@ void main() {
       ),
     ];
 
-    await tester.pumpWidget(MaterialApp(
-      home: FinanceCategoryDetailScreen(
-        periodTitle: '2026年9月',
-        rootCategoryUuid: root.uuid,
-        transactions: transactions,
-        categories: {
-          root.uuid: root,
-          dining.uuid: dining,
-          transport.uuid: transport,
-        },
+    await tester.pumpWidget(
+      MaterialApp(
+        home: FinanceCategoryDetailScreen(
+          periodTitle: '2026年9月',
+          rootCategoryUuid: root.uuid,
+          transactions: transactions,
+          categories: {
+            root.uuid: root,
+            dining.uuid: dining,
+            transport.uuid: transport,
+          },
+        ),
       ),
-    ));
+    );
 
     final transportItem = find.byKey(
       const ValueKey('finance-category-detail-transport'),
@@ -670,10 +715,7 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.descendant(
-        of: transportItem,
-        matching: find.text('2 笔账单 · 点击查看'),
-      ),
+      find.descendant(of: transportItem, matching: find.text('2 笔账单 · 点击查看')),
       findsOneWidget,
     );
     expect(tester.takeException(), isNull);

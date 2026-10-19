@@ -19,10 +19,10 @@ class JournalEntry {
     DateTime? createdAt,
     DateTime? updatedAt,
     this.attachments = const [],
-  })  : id = id ?? const Uuid().v4(),
-        occurredAt = occurredAt ?? DateTime.now(),
-        createdAt = createdAt ?? DateTime.now(),
-        updatedAt = updatedAt ?? DateTime.now();
+  }) : id = id ?? const Uuid().v4(),
+       occurredAt = occurredAt ?? DateTime.now(),
+       createdAt = createdAt ?? DateTime.now(),
+       updatedAt = updatedAt ?? DateTime.now();
 
   bool get isEmpty => content.trim().isEmpty && attachments.isEmpty;
 
@@ -105,8 +105,8 @@ class JournalAttachment {
     this.sortOrder = 0,
     this.fileSize = 0,
     DateTime? createdAt,
-  })  : id = id ?? const Uuid().v4(),
-        createdAt = createdAt ?? DateTime.now();
+  }) : id = id ?? const Uuid().v4(),
+       createdAt = createdAt ?? DateTime.now();
 
   JournalAttachment copyWith({
     String? entryId,
@@ -152,8 +152,8 @@ class JournalAttachment {
     final imageData = rawData is Uint8List
         ? rawData
         : rawData is List<int>
-            ? Uint8List.fromList(rawData)
-            : null;
+        ? Uint8List.fromList(rawData)
+        : null;
     final createdAtMillis = map['created_at'] is num
         ? (map['created_at'] as num).toInt()
         : int.tryParse('${map['created_at']}');

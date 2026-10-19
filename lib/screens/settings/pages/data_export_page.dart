@@ -48,8 +48,9 @@ class _DataExportPageState extends State<DataExportPage> {
     if (mounted) {
       setState(() {
         _types = types;
-        _selectedTypes
-            .addAll(types.where((t) => t.count > 0).map((t) => t.key));
+        _selectedTypes.addAll(
+          types.where((t) => t.count > 0).map((t) => t.key),
+        );
         _isLoading = false;
       });
     }
@@ -59,8 +60,9 @@ class _DataExportPageState extends State<DataExportPage> {
     if (select == null) return;
     setState(() {
       if (select) {
-        _selectedTypes
-            .addAll(_types.where((t) => t.count > 0).map((t) => t.key));
+        _selectedTypes.addAll(
+          _types.where((t) => t.count > 0).map((t) => t.key),
+        );
       } else {
         _selectedTypes.clear();
       }
@@ -126,7 +128,9 @@ class _DataExportPageState extends State<DataExportPage> {
         AppSnackBars.showSnackBar(
           context,
           SnackBar(
-              content: Text(message), duration: const Duration(seconds: 3)),
+            content: Text(message),
+            duration: const Duration(seconds: 3),
+          ),
         );
       } else {
         AppSnackBars.showSnackBar(
@@ -270,8 +274,10 @@ class _DataExportPageState extends State<DataExportPage> {
             const SizedBox(height: 8),
             Text(
               '导出的数据将保存为 JSON 格式文件，可用于备份或在其他设备上导入。',
-              style:
-                  TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
+              style: TextStyle(
+                fontSize: 13,
+                color: colorScheme.onSurfaceVariant,
+              ),
             ),
           ],
         ),
@@ -283,7 +289,8 @@ class _DataExportPageState extends State<DataExportPage> {
     return Row(
       children: [
         Checkbox(
-          value: _selectedTypes.length ==
+          value:
+              _selectedTypes.length ==
                   _types.where((t) => t.count > 0).length &&
               _selectedTypes.isNotEmpty,
           tristate: true,
@@ -322,8 +329,9 @@ class _DataExportPageState extends State<DataExportPage> {
                 children: [
                   RadioListTile<bool>(
                     title: Text(AppPlatform.isWeb ? '浏览器下载' : '保存到文件'),
-                    subtitle:
-                        Text(AppPlatform.isWeb ? '下载 JSON 备份文件' : '保存到本地文档目录'),
+                    subtitle: Text(
+                      AppPlatform.isWeb ? '下载 JSON 备份文件' : '保存到本地文档目录',
+                    ),
                     value: true,
                     contentPadding: EdgeInsets.zero,
                   ),
@@ -363,8 +371,10 @@ class _DataExportPageState extends State<DataExportPage> {
             const SizedBox(height: 8),
             Text(
               '选择要清理的数据，使导出文件更适合跨设备或跨账号使用',
-              style:
-                  TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+              style: TextStyle(
+                fontSize: 12,
+                color: colorScheme.onSurfaceVariant,
+              ),
             ),
             const SizedBox(height: 12),
             CheckboxListTile(
@@ -415,7 +425,9 @@ class _DataExportPageState extends State<DataExportPage> {
                 width: 18,
                 height: 18,
                 child: CircularProgressIndicator(
-                    strokeWidth: 2, color: Colors.white),
+                  strokeWidth: 2,
+                  color: Colors.white,
+                ),
               )
             : const Icon(Icons.upload_file),
         label: Text(_isExporting ? '导出中...' : '开始导出'),

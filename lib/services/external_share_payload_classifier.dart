@@ -67,7 +67,10 @@ abstract final class ExternalSharePayloadClassifier {
       return true;
     }
 
-    final lastSegment = lower.split(RegExp(r'[\\/]')).last;
+    final slash = lower.lastIndexOf('/');
+    final backslash = lower.lastIndexOf('\\');
+    final lastSeparator = slash > backslash ? slash : backslash;
+    final lastSegment = lower.substring(lastSeparator + 1);
     return const {
       'json',
       'txt',

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
+
 import '../../services/file_open_service.dart';
 import '../../services/lan_sync_service.dart';
 import '../../services/permission_request_coordinator.dart';
@@ -53,10 +54,12 @@ class _LanSyncScreenState extends State<LanSyncScreen>
     _progressValueSubscription = _service.onProgressChanged.listen((value) {
       if (mounted) setState(() => _progressValue = value);
     });
-    _incomingRequestSubscription =
-        _service.onIncomingRequest.listen(_showIncomingRequestDialog);
-    _fileReceivedSubscription =
-        _service.onFileReceived.listen(_showFileReceivedDialog);
+    _incomingRequestSubscription = _service.onIncomingRequest.listen(
+      _showIncomingRequestDialog,
+    );
+    _fileReceivedSubscription = _service.onFileReceived.listen(
+      _showFileReceivedDialog,
+    );
 
     _devices = _service.devices;
     _status = _service.isRunning ? '运行中' : '已停止';
@@ -86,9 +89,7 @@ class _LanSyncScreenState extends State<LanSyncScreen>
     setState(() => _status = '已停止');
     AppSnackBars.showSnackBar(
       context,
-      const SnackBar(
-        content: Text('局域网访问权限已撤销，局域网同步已停止。'),
-      ),
+      const SnackBar(content: Text('局域网访问权限已撤销，局域网同步已停止。')),
     );
   }
 
@@ -244,9 +245,11 @@ class _LanSyncScreenState extends State<LanSyncScreen>
       AppSnackBars.showSnackBar(
         context,
         SnackBar(
-          content: Text(result.success
-              ? '同步成功: 待办${result.todosSynced} 倒数日${result.countdownsSynced} 时间日志${result.timeLogsSynced} 番茄标签${result.pomodoroTagsSynced} 番茄记录${result.pomodoroRecordsSynced} 课程${result.coursesSynced}'
-              : result.message),
+          content: Text(
+            result.success
+                ? '同步成功: 待办${result.todosSynced} 倒数日${result.countdownsSynced} 时间日志${result.timeLogsSynced} 番茄标签${result.pomodoroTagsSynced} 番茄记录${result.pomodoroRecordsSynced} 课程${result.coursesSynced}'
+                : result.message,
+          ),
           backgroundColor: result.success ? Colors.green : Colors.red,
           duration: const Duration(seconds: 4),
         ),
@@ -266,9 +269,7 @@ class _LanSyncScreenState extends State<LanSyncScreen>
         if (!permission.granted) {
           AppSnackBars.showSnackBar(
             context,
-            const SnackBar(
-              content: Text('未获得局域网访问权限，局域网同步未启动。'),
-            ),
+            const SnackBar(content: Text('未获得局域网访问权限，局域网同步未启动。')),
           );
           return;
         }
@@ -288,7 +289,8 @@ class _LanSyncScreenState extends State<LanSyncScreen>
       builder: (context) => AlertDialog(
         title: const Text('账号不匹配'),
         content: const Text(
-            '该设备登录的是其他账号，数据同步（加密）可能会失败。是否继续尝试？\n\n提示：\n1. 建议跨账号使用“发送文件”功能。\n2. 若要同步，请确保对方设备也将“搜索范围”设置为“所有设备”，否则连接会被拒绝。'),
+          '该设备登录的是其他账号，数据同步（加密）可能会失败。是否继续尝试？\n\n提示：\n1. 建议跨账号使用“发送文件”功能。\n2. 若要同步，请确保对方设备也将“搜索范围”设置为“所有设备”，否则连接会被拒绝。',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -336,8 +338,10 @@ class _LanSyncScreenState extends State<LanSyncScreen>
       final pickedFile = await FilePicker.pickFile();
       if (pickedFile?.path != null) {
         setState(() => _isLoading = true);
-        final syncResult =
-            await _service.sendFilePath(device, pickedFile!.path!);
+        final syncResult = await _service.sendFilePath(
+          device,
+          pickedFile!.path!,
+        );
         if (mounted) {
           setState(() {
             _isLoading = false;
@@ -472,8 +476,9 @@ class _LanSyncScreenState extends State<LanSyncScreen>
                     tooltip: '手动添加设备',
                   ),
                 IconButton(
-                  icon:
-                      Icon(_service.isRunning ? Icons.stop : Icons.play_arrow),
+                  icon: Icon(
+                    _service.isRunning ? Icons.stop : Icons.play_arrow,
+                  ),
                   onPressed: _toggleService,
                   tooltip: _service.isRunning ? '停止' : '启动',
                 ),
@@ -609,8 +614,10 @@ class _LanSyncScreenState extends State<LanSyncScreen>
                 ),
               if (widget.isEmbedded)
                 IconButton(
-                  icon: Icon(_service.isRunning ? Icons.stop : Icons.play_arrow,
-                      size: 20),
+                  icon: Icon(
+                    _service.isRunning ? Icons.stop : Icons.play_arrow,
+                    size: 20,
+                  ),
                   onPressed: _toggleService,
                   tooltip: _service.isRunning ? '停止' : '启动',
                   color: _service.isRunning ? Colors.red : Colors.green,
@@ -663,8 +670,10 @@ class _LanSyncScreenState extends State<LanSyncScreen>
                 if (device.userId != _service.currentUserId) ...[
                   const SizedBox(width: 8),
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.orange.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(4),
@@ -701,12 +710,14 @@ class _LanSyncScreenState extends State<LanSyncScreen>
                   child: OutlinedButton.icon(
                     icon: const Icon(Icons.file_upload, size: 18),
                     label: const Text('发送文件'),
-                    onPressed:
-                        !isOnline ? null : () => _pickAndSendFile(device),
+                    onPressed: !isOnline
+                        ? null
+                        : () => _pickAndSendFile(device),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: Theme.of(context).colorScheme.primary,
                       side: BorderSide(
-                          color: Theme.of(context).colorScheme.primary),
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
                     ),
                   ),
                 ),
@@ -718,9 +729,11 @@ class _LanSyncScreenState extends State<LanSyncScreen>
                     onPressed: !isOnline
                         ? null
                         : (device.userId != _service.currentUserId
-                            ? () => _showCrossAccountWarning(
-                                device, LanSyncConfig())
-                            : () => _showSelectSyncTypeDialog(device)),
+                              ? () => _showCrossAccountWarning(
+                                  device,
+                                  LanSyncConfig(),
+                                )
+                              : () => _showSelectSyncTypeDialog(device)),
                   ),
                 ),
               ],
@@ -748,15 +761,14 @@ class _LanSyncScreenState extends State<LanSyncScreen>
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: Text(
-                  _progress,
-                  style: const TextStyle(fontSize: 13),
-                ),
+                child: Text(_progress, style: const TextStyle(fontSize: 13)),
               ),
               Text(
                 '${(_progressValue * 100).toInt()}%',
-                style:
-                    const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ],
           ),
@@ -765,7 +777,8 @@ class _LanSyncScreenState extends State<LanSyncScreen>
             value: _progressValue,
             backgroundColor: Colors.grey[300],
             valueColor: AlwaysStoppedAnimation<Color>(
-                Theme.of(context).colorScheme.primary),
+              Theme.of(context).colorScheme.primary,
+            ),
           ),
         ],
       ),

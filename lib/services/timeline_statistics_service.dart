@@ -92,22 +92,34 @@ class TimelineRangeStatistics {
   int get recurrenceSeriesCount => recurrenceSeries.length;
 
   int get recurringLongestStreak => recurrenceSeries.fold<int>(
-        0,
-        (longest, series) => math.max(longest, series.longestStreak),
-      );
+    0,
+    (longest, series) => math.max(longest, series.longestStreak),
+  );
 
   TimelineRecurrenceSeriesStatistics? get bestRecurrenceSeries {
-    final resolved =
-        recurrenceSeries.where((series) => series.resolvedCount > 0).toList();
-    if (resolved.isEmpty) return null;
-    resolved.sort((a, b) {
-      final rate = b.completionRate.compareTo(a.completionRate);
-      if (rate != 0) return rate;
-      final completed = b.completedCount.compareTo(a.completedCount);
-      if (completed != 0) return completed;
-      return b.longestStreak.compareTo(a.longestStreak);
-    });
-    return resolved.first;
+    TimelineRecurrenceSeriesStatistics? best;
+    for (final series in recurrenceSeries) {
+      if (series.resolvedCount <= 0) continue;
+      final currentBest = best;
+      if (currentBest == null) {
+        best = series;
+        continue;
+      }
+      final rate = currentBest.completionRate.compareTo(series.completionRate);
+      if (rate != 0) {
+        if (rate < 0) best = series;
+        continue;
+      }
+      final completed = currentBest.completedCount.compareTo(
+        series.completedCount,
+      );
+      if (completed != 0) {
+        if (completed < 0) best = series;
+        continue;
+      }
+      if (currentBest.longestStreak < series.longestStreak) best = series;
+    }
+    return best;
   }
 }
 
@@ -129,53 +141,81 @@ class TimelineStatisticsService {
     final startMs = start.millisecondsSinceEpoch;
     final endMs = end.millisecondsSinceEpoch;
     final records = pomodoroRecords
-        .where((record) =>
-            !record.isDeleted &&
-            record.startTime >= startMs &&
-            record.startTime < endMs)
-        .toList();
-    final logs = timeLogs
-        .where((log) =>
-            !log.isDeleted &&
-            log.startTime >= startMs &&
-            log.startTime < endMs &&
-            log.endTime > log.startTime)
+        .where(
+          (record) =>
+              !record.isDeleted &&
+              record.startTime >= startMs &&
+              record.startTime < endMs,
+        )
         .toList();
     final blocks = planBlocks
-        .where((block) =>
-            !block.isDeleted &&
-            block.startTime >= startMs &&
-            block.startTime < endMs)
+        .where(
+          (block) =>
+              !block.isDeleted &&
+              block.startTime >= startMs &&
+              block.startTime < endMs,
+        )
         .toList();
 
-    final pomodoroSeconds = records.fold<int>(
-      0,
-      (sum, record) => sum + math.max(0, record.effectiveDuration),
-    );
-    final timeLogSeconds = logs.fold<int>(
-      0,
-      (sum, log) => sum + math.max(0, (log.endTime - log.startTime) ~/ 1000),
-    );
-    final pauseSeconds = records.fold<int>(
-      0,
-      (sum, record) => sum + math.max(0, record.totalPauseSeconds ?? 0),
-    );
-    final pauseCount = records.fold<int>(0, (sum, record) {
+    final tagNames = <String, String>{
+      for (final tag in tags) tag.uuid: tag.name,
+    };
+    final focusByTag = <String, int>{};
+    final seenTagUuids = <String>{};
+    void addTaggedDuration(List<String> tagUuids, int seconds) {
+      if (seconds <= 0) return;
+      if (tagUuids.isEmpty) {
+        focusByTag['未分类'] = (focusByTag['未分类'] ?? 0) + seconds;
+        return;
+      }
+      seenTagUuids.clear();
+      for (final uuid in tagUuids) {
+        if (!seenTagUuids.add(uuid)) continue;
+        final name = tagNames[uuid]?.trim();
+        final displayName = name == null || name.isEmpty ? '已删除标签' : name;
+        focusByTag[displayName] = (focusByTag[displayName] ?? 0) + seconds;
+      }
+    }
+
+    var pomodoroSeconds = 0;
+    var timeLogSeconds = 0;
+    var timeLogCount = 0;
+    var pauseSeconds = 0;
+    var pauseCount = 0;
+    for (final record in records) {
+      final duration = record.effectiveDuration;
+      pomodoroSeconds += math.max(0, duration);
+      pauseSeconds += math.max(0, record.totalPauseSeconds ?? 0);
       final intervals = record.pauseIntervals?.length ?? 0;
-      return sum +
-          (intervals > 0
-              ? intervals
-              : ((record.totalPauseSeconds ?? 0) > 0 ? 1 : 0));
-    });
+      pauseCount += intervals > 0
+          ? intervals
+          : ((record.totalPauseSeconds ?? 0) > 0 ? 1 : 0);
+      addTaggedDuration(record.tagUuids, duration);
+    }
+    for (final log in timeLogs) {
+      if (log.isDeleted ||
+          log.startTime < startMs ||
+          log.startTime >= endMs ||
+          log.endTime <= log.startTime) {
+        continue;
+      }
+      timeLogCount++;
+      final seconds = math.max(0, (log.endTime - log.startTime) ~/ 1000);
+      timeLogSeconds += seconds;
+      addTaggedDuration(log.tagUuids, seconds);
+    }
 
     var planActualSeconds = 0;
     var planCompletedCount = 0;
     var planMissedCount = 0;
     var planSkippedCount = 0;
-    for (final block in blocks) {
-      final actualSeconds = _actualSecondsForBlock(block, records);
+    final actualSecondsByBlock = _actualSecondsByBlock(blocks, records);
+    for (var blockIndex = 0; blockIndex < blocks.length; blockIndex++) {
+      final block = blocks[blockIndex];
+      final actualSeconds = actualSecondsByBlock[blockIndex];
       planActualSeconds += actualSeconds;
-      final reachedTarget = block.plannedMinutes > 0 &&
+      final reachedTarget =
+          block.plannedMinutes > 0 &&
           actualSeconds >= block.plannedMinutes * 60 * 0.8;
       if (block.status == TodoPlanStatus.finished || reachedTarget) {
         planCompletedCount++;
@@ -187,32 +227,6 @@ class TimelineStatisticsService {
       }
     }
 
-    final tagNames = <String, String>{
-      for (final tag in tags) tag.uuid: tag.name,
-    };
-    final focusByTag = <String, int>{};
-    void addTaggedDuration(List<String> tagUuids, int seconds) {
-      if (seconds <= 0) return;
-      if (tagUuids.isEmpty) {
-        focusByTag['未分类'] = (focusByTag['未分类'] ?? 0) + seconds;
-        return;
-      }
-      for (final uuid in tagUuids.toSet()) {
-        final name = tagNames[uuid]?.trim();
-        final displayName = name == null || name.isEmpty ? '已删除标签' : name;
-        focusByTag[displayName] = (focusByTag[displayName] ?? 0) + seconds;
-      }
-    }
-
-    for (final record in records) {
-      addTaggedDuration(record.tagUuids, record.effectiveDuration);
-    }
-    for (final log in logs) {
-      addTaggedDuration(
-        log.tagUuids,
-        math.max(0, (log.endTime - log.startTime) ~/ 1000),
-      );
-    }
     final topFocusTags = focusByTag.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
 
@@ -223,38 +237,35 @@ class TimelineStatisticsService {
       now: effectiveNow,
       excludedSeriesIds: excludedRecurrenceSeriesIds,
     );
-    final recurringCompletedCount = recurrenceSeries.fold<int>(
-      0,
-      (sum, series) => sum + series.completedCount,
-    );
-    final recurringMissedCount = recurrenceSeries.fold<int>(
-      0,
-      (sum, series) => sum + series.missedCount,
-    );
-    final recurringPendingCount = recurrenceSeries.fold<int>(
-      0,
-      (sum, series) => sum + series.pendingCount,
-    );
+    var recurringCompletedCount = 0;
+    var recurringMissedCount = 0;
+    var recurringPendingCount = 0;
+    var recurringScheduledCount = 0;
+    for (final series in recurrenceSeries) {
+      recurringCompletedCount += series.completedCount;
+      recurringMissedCount += series.missedCount;
+      recurringPendingCount += series.pendingCount;
+      recurringScheduledCount += series.scheduledCount;
+    }
 
     final result = TimelineRangeStatistics(
       pomodoroFocusSeconds: pomodoroSeconds,
       timeLogSeconds: timeLogSeconds,
       pomodoroCount: records.length,
-      timeLogCount: logs.length,
+      timeLogCount: timeLogCount,
       pauseSeconds: pauseSeconds,
       pauseCount: pauseCount,
-      plannedMinutes:
-          blocks.fold<int>(0, (sum, block) => sum + block.plannedMinutes),
+      plannedMinutes: blocks.fold<int>(
+        0,
+        (sum, block) => sum + block.plannedMinutes,
+      ),
       planActualSeconds: planActualSeconds,
       planBlockCount: blocks.length,
       planCompletedCount: planCompletedCount,
       planMissedCount: planMissedCount,
       planSkippedCount: planSkippedCount,
       recurringCompletedCount: recurringCompletedCount,
-      recurringScheduledCount: recurrenceSeries.fold<int>(
-        0,
-        (sum, series) => sum + series.scheduledCount,
-      ),
+      recurringScheduledCount: recurringScheduledCount,
       recurringMissedCount: recurringMissedCount,
       recurringPendingCount: recurringPendingCount,
       recurrenceSeries: recurrenceSeries,
@@ -271,6 +282,75 @@ class TimelineStatisticsService {
         .where((record) => _recordBelongsToBlock(record, block))
         .fold<int>(0, (sum, record) => sum + record.effectiveDuration);
     return math.max(block.actualFocusSeconds, linkedRecordSeconds);
+  }
+
+  static List<int> _actualSecondsByBlock(
+    List<TodoPlanBlock> blocks,
+    List<PomodoroRecord> records,
+  ) {
+    if (blocks.isEmpty) return const <int>[];
+    if (blocks.length * records.length <= 64) {
+      return [
+        for (final block in blocks) _actualSecondsForBlock(block, records),
+      ];
+    }
+
+    final blocksById = <String, List<int>>{};
+    final blocksByTodoId = <String, List<int>>{};
+    final explicitBlocksByRecordId = <String, Set<int>>{};
+    for (var blockIndex = 0; blockIndex < blocks.length; blockIndex++) {
+      final block = blocks[blockIndex];
+      blocksById.putIfAbsent(block.uuid, () => []).add(blockIndex);
+      blocksByTodoId.putIfAbsent(block.todoId, () => []).add(blockIndex);
+      for (final recordId in block.pomodoroRecordIds) {
+        explicitBlocksByRecordId
+            .putIfAbsent(recordId, () => <int>{})
+            .add(blockIndex);
+      }
+    }
+
+    final linkedSecondsByBlock = List<int>.filled(blocks.length, 0);
+    for (final record in records) {
+      final explicitlyLinked = explicitBlocksByRecordId[record.uuid];
+      if (explicitlyLinked != null) {
+        for (final blockIndex in explicitlyLinked) {
+          linkedSecondsByBlock[blockIndex] += record.effectiveDuration;
+        }
+      }
+
+      final planBlockId = record.planBlockId;
+      final directlyLinked = planBlockId == null
+          ? null
+          : blocksById[planBlockId];
+      if (directlyLinked != null) {
+        for (final blockIndex in directlyLinked) {
+          if (explicitlyLinked?.contains(blockIndex) == true) continue;
+          linkedSecondsByBlock[blockIndex] += record.effectiveDuration;
+        }
+      }
+
+      final todoUuid = record.todoUuid;
+      if (planBlockId?.isNotEmpty == true || todoUuid == null) continue;
+      final candidateBlocks = blocksByTodoId[todoUuid];
+      if (candidateBlocks == null) continue;
+
+      final recordEnd =
+          record.endTime ?? record.startTime + record.effectiveDuration * 1000;
+      for (final blockIndex in candidateBlocks) {
+        final block = blocks[blockIndex];
+        if (planBlockId == block.uuid ||
+            explicitlyLinked?.contains(blockIndex) == true) {
+          continue;
+        }
+        if (record.startTime < block.endTime && recordEnd > block.startTime) {
+          linkedSecondsByBlock[blockIndex] += record.effectiveDuration;
+        }
+      }
+    }
+    return [
+      for (var i = 0; i < blocks.length; i++)
+        math.max(blocks[i].actualFocusSeconds, linkedSecondsByBlock[i]),
+    ];
   }
 
   static bool _recordBelongsToBlock(
@@ -321,22 +401,23 @@ class TimelineStatisticsService {
     for (final entry in occurrencesBySeriesDay.entries) {
       final todosOnDay = entry.value;
       var representative = todosOnDay.first;
+      var isCompleted = representative.isDone;
+      var due = _todoDueEnd(representative);
       for (final candidate in todosOnDay.skip(1)) {
         if (_preferRecurrenceOccurrence(candidate, representative)) {
           representative = candidate;
         }
+        isCompleted = isCompleted || candidate.isDone;
+        final candidateDue = _todoDueEnd(candidate);
+        if (candidateDue != null &&
+            (due == null || candidateDue.isAfter(due))) {
+          due = candidateDue;
+        }
       }
       final seriesId = representative.recurrenceSeriesId!.trim();
       final occurrenceStart = _todoStart(representative);
-      final isCompleted = todosOnDay.any((todo) => todo.isDone);
-      final due = todosOnDay
-          .map(_todoDueEnd)
-          .whereType<DateTime>()
-          .fold<DateTime?>(null, (latest, value) {
-        if (latest == null || value.isAfter(latest)) return value;
-        return latest;
-      });
-      final effectiveDue = due ??
+      final effectiveDue =
+          due ??
           DateTime(
             occurrenceStart.year,
             occurrenceStart.month,
@@ -346,7 +427,9 @@ class TimelineStatisticsService {
             59,
             999,
           );
-      occurrencesBySeries.putIfAbsent(seriesId, () => []).add(
+      occurrencesBySeries
+          .putIfAbsent(seriesId, () => [])
+          .add(
             _RecurrenceOccurrence(
               start: occurrenceStart,
               title: representative.title,
@@ -384,16 +467,18 @@ class TimelineStatisticsService {
         if (!occurrence.isCompleted) break;
         endingStreak++;
       }
-      result.add(TimelineRecurrenceSeriesStatistics(
-        seriesId: entry.key,
-        title: occurrences.last.title,
-        scheduledCount: occurrences.length,
-        completedCount: completed,
-        missedCount: missed,
-        pendingCount: pending,
-        longestStreak: longestStreak,
-        endingStreak: endingStreak,
-      ));
+      result.add(
+        TimelineRecurrenceSeriesStatistics(
+          seriesId: entry.key,
+          title: occurrences.last.title,
+          scheduledCount: occurrences.length,
+          completedCount: completed,
+          missedCount: missed,
+          pendingCount: pending,
+          longestStreak: longestStreak,
+          endingStreak: endingStreak,
+        ),
+      );
     }
     result.sort((a, b) {
       final completed = b.completedCount.compareTo(a.completedCount);
@@ -428,7 +513,8 @@ class TimelineStatisticsService {
   static DateTime? _todoDueEnd(TodoItem todo) {
     final due = todo.dueDate?.toLocal();
     if (due == null) return null;
-    final looksDateOnly = due.hour == 0 &&
+    final looksDateOnly =
+        due.hour == 0 &&
         due.minute == 0 &&
         due.second == 0 &&
         due.millisecond == 0;

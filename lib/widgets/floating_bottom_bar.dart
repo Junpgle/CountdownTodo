@@ -193,19 +193,22 @@ class _FloatingBottomNavigationBarState
     final dark = widget.isDark ?? colorScheme.brightness == Brightness.dark;
     final primaryColor = widget.primaryColor ?? colorScheme.primary;
     final inactiveColor = widget.inactiveColor ?? colorScheme.onSurfaceVariant;
-    final selectedBackgroundColor = widget.selectedBackgroundColor ??
+    final selectedBackgroundColor =
+        widget.selectedBackgroundColor ??
         homeBottomBarSelectedBackgroundColor(
           colorScheme: colorScheme,
           primaryColor: primaryColor,
           isDark: dark,
         );
-    final tint = widget.tint ??
+    final tint =
+        widget.tint ??
         Color.alphaBlend(
           primaryColor.withValues(alpha: 0.08),
           colorScheme.surface,
         ).withValues(alpha: dark ? 0.24 : 0.32);
     final height = widget.height ?? floatingBottomBarHeightFor(context);
-    final margin = widget.margin ??
+    final margin =
+        widget.margin ??
         floatingBottomNavigationMarginFor(
           context,
           itemCount: widget.items.length,

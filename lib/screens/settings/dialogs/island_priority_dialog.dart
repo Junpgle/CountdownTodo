@@ -15,7 +15,7 @@ class _IslandPriorityDialogState extends State<IslandPriorityDialog> {
     'todo',
     'focus',
     'date',
-    'weekday'
+    'weekday',
   ];
 
   final Map<String, String> _labels = {
@@ -95,10 +95,13 @@ class _IslandPriorityDialogState extends State<IslandPriorityDialog> {
                       child: ListTile(
                         leading: Icon(_icons[_items[i]] ?? Icons.info_outline),
                         title: Text(_labels[_items[i]] ?? _items[i]),
-                        leadingAndTrailingTextStyle:
-                            const TextStyle(fontSize: 14),
-                        trailing:
-                            const Icon(Icons.drag_handle, color: Colors.grey),
+                        leadingAndTrailingTextStyle: const TextStyle(
+                          fontSize: 14,
+                        ),
+                        trailing: const Icon(
+                          Icons.drag_handle,
+                          color: Colors.grey,
+                        ),
                       ),
                     ),
                 ],

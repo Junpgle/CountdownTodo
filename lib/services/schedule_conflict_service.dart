@@ -44,7 +44,9 @@ class ScheduleConflictService {
     List<TodoPlanBlock> planBlocks = const [],
   }) {
     final hardIntervals = <_ScheduleInterval>[
-      ...fixedSchedules.where(_isActiveFixedSchedule).map(
+      ...fixedSchedules
+          .where(_isActiveFixedSchedule)
+          .map(
             (item) => _ScheduleInterval(
               id: item.id,
               title: item.title,
@@ -59,21 +61,22 @@ class ScheduleConflictService {
           .whereType<_ScheduleInterval>(),
     ]..sort((a, b) => a.start.compareTo(b.start));
 
-    final softIntervals = planBlocks
-        .where(_isActivePlanBlock)
-        .map(
-          (block) => _ScheduleInterval(
-            id: block.id,
-            title: block.titleSnapshot?.trim().isNotEmpty == true
-                ? block.titleSnapshot!.trim()
-                : '未命名规划',
-            kind: ScheduleEntityKind.planBlock,
-            start: block.startTime,
-            end: block.endTime,
-          ),
-        )
-        .toList()
-      ..sort((a, b) => a.start.compareTo(b.start));
+    final softIntervals =
+        planBlocks
+            .where(_isActivePlanBlock)
+            .map(
+              (block) => _ScheduleInterval(
+                id: block.id,
+                title: block.titleSnapshot?.trim().isNotEmpty == true
+                    ? block.titleSnapshot!.trim()
+                    : '未命名规划',
+                kind: ScheduleEntityKind.planBlock,
+                start: block.startTime,
+                end: block.endTime,
+              ),
+            )
+            .toList()
+          ..sort((a, b) => a.start.compareTo(b.start));
 
     final conflicts = <ScheduleConflict>[];
     for (var i = 0; i < hardIntervals.length; i++) {
@@ -82,22 +85,18 @@ class ScheduleConflictService {
         final right = hardIntervals[j];
         if (right.start >= left.end) break;
         if (_overlaps(left, right)) {
-          conflicts.add(_buildConflict(
-            ScheduleConflictSeverity.hard,
-            left,
-            right,
-          ));
+          conflicts.add(
+            _buildConflict(ScheduleConflictSeverity.hard, left, right),
+          );
         }
       }
 
       for (final plan in softIntervals) {
         if (plan.start >= left.end) break;
         if (_overlaps(left, plan)) {
-          conflicts.add(_buildConflict(
-            ScheduleConflictSeverity.soft,
-            left,
-            plan,
-          ));
+          conflicts.add(
+            _buildConflict(ScheduleConflictSeverity.soft, left, plan),
+          );
         }
       }
     }

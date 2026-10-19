@@ -1,5 +1,7 @@
 import 'dart:math';
+
 import 'package:flutter/material.dart';
+
 import '../models.dart';
 import 'timeline_service.dart';
 import 'pomodoro_service.dart';
@@ -28,7 +30,7 @@ class FocusPatternPrediction {
   final int predictedOptimalHour; // 0-23
   final double confidence;
   final String
-      patternType; // 'morning', 'afternoon', 'evening', 'night', 'distributed'
+  patternType; // 'morning', 'afternoon', 'evening', 'night', 'distributed'
   final List<int> recommendedHours;
   final String reason;
 
@@ -138,27 +140,39 @@ class TimelineMLService {
 
     try {
       // Load historical data for pattern analysis
-      final historicalData =
-          await _loadHistoricalData(username, startDate, endDate);
+      final historicalData = await _loadHistoricalData(
+        username,
+        startDate,
+        endDate,
+      );
 
       // 1. Focus pattern analysis
-      final focusPattern =
-          _analyzeFocusPattern(summary.hourlyDistribution, historicalData);
+      final focusPattern = _analyzeFocusPattern(
+        summary.hourlyDistribution,
+        historicalData,
+      );
       if (focusPattern.confidence > 0.3) {
-        final totalActivity =
-            summary.hourlyDistribution.fold<int>(0, (a, b) => a + b);
-        insights.add(TimelineMLInsight(
-          title: '专注模式分析',
-          description: _buildFocusPatternDescription(
-              focusPattern, summary.hourlyDistribution, totalActivity),
-          confidence: focusPattern.confidence,
-          category: 'focus',
-          icon: Icons.psychology_rounded,
-          supportingData: [
-            '最佳时段: ${focusPattern.predictedOptimalHour}:00',
-            '模式: ${focusPattern.patternType}'
-          ],
-        ));
+        final totalActivity = summary.hourlyDistribution.fold<int>(
+          0,
+          (a, b) => a + b,
+        );
+        insights.add(
+          TimelineMLInsight(
+            title: '专注模式分析',
+            description: _buildFocusPatternDescription(
+              focusPattern,
+              summary.hourlyDistribution,
+              totalActivity,
+            ),
+            confidence: focusPattern.confidence,
+            category: 'focus',
+            icon: Icons.psychology_rounded,
+            supportingData: [
+              '最佳时段: ${focusPattern.predictedOptimalHour}:00',
+              '模式: ${focusPattern.patternType}',
+            ],
+          ),
+        );
       }
 
       // 2. Task completion analysis
@@ -170,19 +184,22 @@ class TimelineMLService {
         deadlineSprintCount,
       );
       if (completionAnalysis.confidence > 0.3) {
-        insights.add(TimelineMLInsight(
-          title: '任务执行分析',
-          description: _buildCompletionDescription(
+        insights.add(
+          TimelineMLInsight(
+            title: '任务执行分析',
+            description: _buildCompletionDescription(
               completionAnalysis,
               completedCount,
               totalCount,
               earlyCompletionCount,
-              deadlineSprintCount),
-          confidence: completionAnalysis.confidence,
-          category: 'completion',
-          icon: Icons.task_alt_rounded,
-          supportingData: completionAnalysis.riskFactors.take(2).toList(),
-        ));
+              deadlineSprintCount,
+            ),
+            confidence: completionAnalysis.confidence,
+            category: 'completion',
+            icon: Icons.task_alt_rounded,
+            supportingData: completionAnalysis.riskFactors.take(2).toList(),
+          ),
+        );
       }
 
       // 3. Efficiency pattern analysis
@@ -231,7 +248,11 @@ class TimelineMLService {
     required List<PomodoroRecord> historicalPomodoros,
   }) {
     return _predictTaskCompletion(
-        taskTitle, plannedMinutes, historicalTodos, historicalPomodoros);
+      taskTitle,
+      plannedMinutes,
+      historicalTodos,
+      historicalPomodoros,
+    );
   }
 
   // === Internal Analysis Methods ===
@@ -246,34 +267,37 @@ class TimelineMLService {
     try {
       // Load pomodoro records for the past 90 days
       final ninetyDaysAgo = startDate.subtract(const Duration(days: 90));
-      final records =
-          await PomodoroService.getRecordsInRange(ninetyDaysAgo, endDate);
+      final records = await PomodoroService.getRecordsInRange(
+        ninetyDaysAgo,
+        endDate,
+      );
 
-      // Group by day
-      final byDay = <String, List<PomodoroRecord>>{};
+      // Aggregate by day without retaining a separate record list per day.
+      final byDay = <String, _HistoricalDayAccumulator>{};
       for (final r in records) {
         final date = DateTime.fromMillisecondsSinceEpoch(r.createdAt);
         final key =
             '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
-        byDay.putIfAbsent(key, () => []).add(r);
+        final day = byDay.putIfAbsent(key, () => _HistoricalDayAccumulator());
+        day.focusSeconds += r.effectiveDuration;
+        day.totalSessions++;
+        if (r.status == PomodoroRecordStatus.completed) {
+          day.completedSessions++;
+        }
       }
 
       // Create snapshots
       for (final entry in byDay.entries) {
-        final dayRecords = entry.value;
-        final totalMinutes =
-            dayRecords.fold<int>(0, (sum, r) => sum + r.effectiveDuration) ~/
-                60;
-        final completedCount = dayRecords
-            .where((r) => r.status == PomodoroRecordStatus.completed)
-            .length;
+        final day = entry.value;
 
-        snapshots.add(_HistoricalSnapshot(
-          date: entry.key,
-          focusMinutes: totalMinutes,
-          completedSessions: completedCount,
-          totalSessions: dayRecords.length,
-        ));
+        snapshots.add(
+          _HistoricalSnapshot(
+            date: entry.key,
+            focusMinutes: day.focusSeconds ~/ 60,
+            completedSessions: day.completedSessions,
+            totalSessions: day.totalSessions,
+          ),
+        );
       }
     } catch (e) {
       debugPrint('TimelineMLService: historical data load error: $e');
@@ -426,10 +450,12 @@ class TimelineMLService {
 
     // Analyze task complexity
     final lowerTitle = taskTitle.toLowerCase();
-    bool isHighComplexity =
-        _highComplexityKeywords.any((kw) => lowerTitle.contains(kw));
-    bool isLowComplexity =
-        _lowComplexityKeywords.any((kw) => lowerTitle.contains(kw));
+    bool isHighComplexity = _highComplexityKeywords.any(
+      (kw) => lowerTitle.contains(kw),
+    );
+    bool isLowComplexity = _lowComplexityKeywords.any(
+      (kw) => lowerTitle.contains(kw),
+    );
 
     if (isHighComplexity) {
       completionProb -= 0.15;
@@ -450,7 +476,8 @@ class TimelineMLService {
 
     // Analyze historical completion rate
     if (historicalTodos.isNotEmpty) {
-      final completedRate = historicalTodos.where((t) => t.isDone).length /
+      final completedRate =
+          historicalTodos.where((t) => t.isDone).length /
           historicalTodos.length;
       completionProb = (completionProb + completedRate) / 2;
 
@@ -538,12 +565,14 @@ class TimelineMLService {
     if (historicalData.length < 7) return null;
 
     // Calculate coefficient of variation for focus minutes
-    final focusMinutes =
-        historicalData.map((s) => s.focusMinutes.toDouble()).toList();
+    final focusMinutes = historicalData
+        .map((s) => s.focusMinutes.toDouble())
+        .toList();
     final mean = focusMinutes.reduce((a, b) => a + b) / focusMinutes.length;
     if (mean == 0) return null;
 
-    final variance = focusMinutes
+    final variance =
+        focusMinutes
             .map((m) => (m - mean) * (m - mean))
             .reduce((a, b) => a + b) /
         focusMinutes.length;
@@ -583,8 +612,10 @@ class TimelineMLService {
   TimelineMLInsight? _analyzeSubjectDiversity(TimelineSummary summary) {
     if (summary.subjectDistribution.isEmpty) return null;
 
-    final total =
-        summary.subjectDistribution.values.fold<double>(0, (a, b) => a + b);
+    final total = summary.subjectDistribution.values.fold<double>(
+      0,
+      (a, b) => a + b,
+    );
     if (total == 0) return null;
 
     // Calculate entropy
@@ -596,8 +627,9 @@ class TimelineMLService {
       }
     }
 
-    final maxEntropy =
-        log(max(summary.subjectDistribution.length, 2).toDouble());
+    final maxEntropy = log(
+      max(summary.subjectDistribution.length, 2).toDouble(),
+    );
     final normalizedEntropy = maxEntropy > 0 ? entropy / maxEntropy : 0.0;
 
     String description;
@@ -614,8 +646,9 @@ class TimelineMLService {
       description = '覆盖 $subjectCount 个学科，最高占比「$topSubject」$topPct%，分布均衡知识面广';
       confidence = 0.75;
     } else if (normalizedEntropy > 0.5) {
-      final secondSubject =
-          sortedSubjects.length > 1 ? sortedSubjects[1].key : '无';
+      final secondSubject = sortedSubjects.length > 1
+          ? sortedSubjects[1].key
+          : '无';
       description =
           '覆盖 $subjectCount 个学科，「$topSubject」$topPct%，「$secondSubject」为辅';
       confidence = 0.7;
@@ -637,8 +670,11 @@ class TimelineMLService {
     );
   }
 
-  String _buildFocusPatternDescription(FocusPatternPrediction prediction,
-      List<int> hourlyDistribution, int totalActivity) {
+  String _buildFocusPatternDescription(
+    FocusPatternPrediction prediction,
+    List<int> hourlyDistribution,
+    int totalActivity,
+  ) {
     final hourStr = '${prediction.predictedOptimalHour}:00';
     final peakCount = hourlyDistribution[prediction.predictedOptimalHour];
     final peakPct = totalActivity > 0
@@ -675,7 +711,7 @@ class TimelineMLService {
     switch (prediction.riskLevel) {
       case 'low':
         final parts = <String>[
-          '已完成 $completedCount/$totalCount（$completeRate%）'
+          '已完成 $completedCount/$totalCount（$completeRate%）',
         ];
         if (earlyCompletionCount > 0) {
           parts.add('提前完成 $earlyCompletionCount 次');
@@ -709,4 +745,10 @@ class _HistoricalSnapshot {
     required this.completedSessions,
     required this.totalSessions,
   });
+}
+
+class _HistoricalDayAccumulator {
+  int focusSeconds = 0;
+  int completedSessions = 0;
+  int totalSessions = 0;
 }

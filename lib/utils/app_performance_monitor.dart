@@ -59,6 +59,7 @@ class AppPerformanceMonitor {
   static const String _screenTrackingKey =
       'debug_performance_monitor_screen_tracking';
   static const String _thresholdKey = 'debug_performance_monitor_threshold';
+  static final RegExp _leadingPrivateTypePrefixPattern = RegExp(r'^_+');
 
   static final ValueNotifier<int> changes = ValueNotifier<int>(0);
 
@@ -102,14 +103,14 @@ class AppPerformanceMonitor {
       List.unmodifiable(_allowedThresholds);
 
   static AppPerformanceSnapshot get snapshot => AppPerformanceSnapshot(
-        frameCount: _diagnosticFrameCount,
-        slowBuildCount: _diagnosticSlowBuildCount,
-        slowRasterCount: _diagnosticSlowRasterCount,
-        overThresholdCount: _diagnosticOverThresholdCount,
-        maxFrameSpan: _diagnosticMaxFrameSpan,
-        thresholdMilliseconds: _thresholdMilliseconds,
-        events: List.unmodifiable(_events),
-      );
+    frameCount: _diagnosticFrameCount,
+    slowBuildCount: _diagnosticSlowBuildCount,
+    slowRasterCount: _diagnosticSlowRasterCount,
+    overThresholdCount: _diagnosticOverThresholdCount,
+    maxFrameSpan: _diagnosticMaxFrameSpan,
+    thresholdMilliseconds: _thresholdMilliseconds,
+    events: List.unmodifiable(_events),
+  );
 
   /// Installs the low-level callback used by both the existing log and the
   /// opt-in diagnostics panel.
@@ -212,7 +213,8 @@ class AppPerformanceMonitor {
       'HabitCenterScreen': '习惯中心',
       'FeatureGuideScreen': '功能引导',
     };
-    return knownNames[typeName] ?? typeName.replaceFirst(RegExp(r'^_+'), '');
+    return knownNames[typeName] ??
+        typeName.replaceFirst(_leadingPrivateTypePrefixPattern, '');
   }
 
   static void _recordTimings(List<FrameTiming> timings) {

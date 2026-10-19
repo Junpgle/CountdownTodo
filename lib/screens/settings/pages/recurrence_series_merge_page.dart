@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../models.dart';
+import '../../../services/conflict_visibility_service.dart';
 import '../../../storage_service.dart';
 import '../../../widgets/floating_bottom_bar.dart';
 import '../../../utils/app_dialogs.dart';
@@ -55,16 +56,15 @@ class _RecurrenceSeriesMergePageState extends State<RecurrenceSeriesMergePage> {
         (seriesId) => !summaries.any((summary) => summary.id == seriesId),
       );
       if (!_selectedSeriesIds.contains(_targetSeriesId)) {
-        _targetSeriesId =
-            _selectedSeriesIds.isEmpty ? null : _selectedSeriesIds.first;
+        _targetSeriesId = _selectedSeriesIds.isEmpty
+            ? null
+            : _selectedSeriesIds.first;
       }
       _isLoading = false;
     });
   }
 
-  static List<_RecurrenceSeriesSummary> _buildSummaries(
-    List<TodoItem> todos,
-  ) {
+  static List<_RecurrenceSeriesSummary> _buildSummaries(List<TodoItem> todos) {
     final grouped = <String, List<TodoItem>>{};
     for (final todo in todos) {
       final seriesId = todo.recurrenceSeriesId;
@@ -75,8 +75,11 @@ class _RecurrenceSeriesMergePageState extends State<RecurrenceSeriesMergePage> {
     final summaries = <_RecurrenceSeriesSummary>[];
     for (final entry in grouped.entries) {
       final visible = entry.value.where((todo) => !todo.isDeleted).toList()
-        ..sort((a, b) => (a.createdDate ?? a.createdAt)
-            .compareTo(b.createdDate ?? b.createdAt));
+        ..sort(
+          (a, b) => (a.createdDate ?? a.createdAt).compareTo(
+            b.createdDate ?? b.createdAt,
+          ),
+        );
       if (visible.isEmpty) continue;
 
       TodoItem representative = visible.last;
@@ -94,9 +97,12 @@ class _RecurrenceSeriesMergePageState extends State<RecurrenceSeriesMergePage> {
           lastStart: visible.last.createdDate ?? visible.last.createdAt,
           occurrenceCount: visible.length,
           completedCount: visible.where((todo) => todo.isDone).length,
-          conflictCount: visible.where((todo) => todo.hasConflict).length,
-          hasActiveRule:
-              visible.any((todo) => todo.recurrence != RecurrenceType.none),
+          conflictCount: visible
+              .where(ConflictVisibilityService.isVisibleTodoConflict)
+              .length,
+          hasActiveRule: visible.any(
+            (todo) => todo.recurrence != RecurrenceType.none,
+          ),
         ),
       );
     }
@@ -116,8 +122,9 @@ class _RecurrenceSeriesMergePageState extends State<RecurrenceSeriesMergePage> {
       } else {
         _selectedSeriesIds.remove(seriesId);
         if (_targetSeriesId == seriesId) {
-          _targetSeriesId =
-              _selectedSeriesIds.isEmpty ? null : _selectedSeriesIds.first;
+          _targetSeriesId = _selectedSeriesIds.isEmpty
+              ? null
+              : _selectedSeriesIds.first;
         }
       }
     });

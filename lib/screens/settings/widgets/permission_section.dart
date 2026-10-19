@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
+
 import '../../../utils/theme_color_tokens.dart';
 import '../../../widgets/app_settings_widgets.dart';
 import '../../../widgets/app_state_views.dart';
@@ -38,8 +39,9 @@ class PermissionSection extends StatelessWidget {
           s != PermissionStatus.limited;
     }).length;
 
-    final statusColor =
-        allGranted ? colorScheme.cdtSuccess : colorScheme.cdtWarning;
+    final statusColor = allGranted
+        ? colorScheme.cdtSuccess
+        : colorScheme.cdtWarning;
 
     return AppSettingsSection(
       title: '权限管理',
@@ -68,8 +70,11 @@ class PermissionSection extends StatelessWidget {
               tooltip: '一键撤回授权',
               onPressed: isCheckingPermissions ? null : onRevokeAll,
               visualDensity: VisualDensity.compact,
-              icon: Icon(Icons.remove_moderator_outlined,
-                  size: 18, color: colorScheme.onSurfaceVariant),
+              icon: Icon(
+                Icons.remove_moderator_outlined,
+                size: 18,
+                color: colorScheme.onSurfaceVariant,
+              ),
             ),
             const SizedBox(width: 4),
           ],
@@ -78,8 +83,11 @@ class PermissionSection extends StatelessWidget {
             visualDensity: VisualDensity.compact,
             icon: isCheckingPermissions
                 ? const AppLoadingIndicator(size: 16)
-                : Icon(Icons.refresh,
-                    size: 18, color: colorScheme.onSurfaceVariant),
+                : Icon(
+                    Icons.refresh,
+                    size: 18,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
           ),
         ],
       ),
@@ -102,14 +110,17 @@ class PermissionSection extends StatelessWidget {
     final Color color = _permissionColor(colorScheme, key, critical);
 
     final PermissionStatus? status = permissionStatuses[key];
-    final bool granted = status == PermissionStatus.granted ||
+    final bool granted =
+        status == PermissionStatus.granted ||
         status == PermissionStatus.limited;
     final bool denied = status != null && !granted;
 
     Widget statusIcon;
     if (isCheckingPermissions && status == null) {
       statusIcon = const SizedBox(
-          key: ValueKey('checking'), child: AppLoadingIndicator(size: 18));
+        key: ValueKey('checking'),
+        child: AppLoadingIndicator(size: 18),
+      );
     } else if (status == null) {
       statusIcon = Icon(
         Icons.help_outline,
@@ -146,11 +157,14 @@ class PermissionSection extends StatelessWidget {
       ),
       title: Row(
         children: [
-          Text(label,
-              style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                  color: denied && critical ? colorScheme.error : null)),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              color: denied && critical ? colorScheme.error : null,
+            ),
+          ),
           if (critical) ...[
             const SizedBox(width: 4),
             Container(
@@ -159,22 +173,25 @@ class PermissionSection extends StatelessWidget {
                 color: colorScheme.errorContainer,
                 borderRadius: BorderRadius.circular(4),
               ),
-              child: Text('必要',
-                  style: TextStyle(
-                      fontSize: 10,
-                      color: colorScheme.onErrorContainer,
-                      fontWeight: FontWeight.bold)),
+              child: Text(
+                '必要',
+                style: TextStyle(
+                  fontSize: 10,
+                  color: colorScheme.onErrorContainer,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
           ],
         ],
       ),
-      subtitle: Text(desc,
-          style: TextStyle(
-              fontSize: 12,
-              color: Theme.of(context)
-                  .colorScheme
-                  .onSurface
-                  .withValues(alpha: 0.5))),
+      subtitle: Text(
+        desc,
+        style: TextStyle(
+          fontSize: 12,
+          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
+        ),
+      ),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [

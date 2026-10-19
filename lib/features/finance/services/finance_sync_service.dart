@@ -60,67 +60,72 @@ class FinanceSyncRequest {
   }) {
     final raw = bundle[key];
     if (raw is! List) return const [];
-    return raw.whereType<Map>().map(Map<String, dynamic>.from).where((item) {
-      if (excludeSystem &&
-          (_asBool(item['is_system']) ||
-              _isSystemFinanceUuid(item['uuid']?.toString()))) {
-        return false;
-      }
-      // Built-in category rows are created locally on every device. Only
-      // explicit user name/icon overrides are worth uploading; otherwise a
-      // new device's initialization timestamp could overwrite a cloud value
-      // during the first full sync.
-      if (key == 'categories' &&
-          _isSystemCategoryUuid(item['uuid']?.toString())) {
-        final iconCustomized =
-            _asBool(item['icon_customized'] ?? item['iconCustomized']);
-        final nameCustomized =
-            _asBool(item['name_customized'] ?? item['nameCustomized']);
-        if (nameCustomized && !supportsCategoryNames) return false;
-        if (iconCustomized && !supportsCategoryIcons) return false;
-        if (!iconCustomized && !nameCustomized) return false;
-      }
-      if (fullSync) return true;
-      // After schema V48 the marker is authoritative. This prevents a
-      // downloaded row with a future device timestamp from being uploaded
-      // again, while still allowing a locally edited old-timestamp row to be
-      // sent.
-      return _asBool(item['pending_sync'] ?? item['pendingSync']);
-    }).toList(growable: false);
+    return raw
+        .whereType<Map>()
+        .map(Map<String, dynamic>.from)
+        .where((item) {
+          if (excludeSystem &&
+              (_asBool(item['is_system']) ||
+                  _isSystemFinanceUuid(item['uuid']?.toString()))) {
+            return false;
+          }
+          // Built-in category rows are created locally on every device. Only
+          // explicit user name/icon overrides are worth uploading; otherwise a
+          // new device's initialization timestamp could overwrite a cloud value
+          // during the first full sync.
+          if (key == 'categories' &&
+              _isSystemCategoryUuid(item['uuid']?.toString())) {
+            final iconCustomized = _asBool(
+              item['icon_customized'] ?? item['iconCustomized'],
+            );
+            final nameCustomized = _asBool(
+              item['name_customized'] ?? item['nameCustomized'],
+            );
+            if (nameCustomized && !supportsCategoryNames) return false;
+            if (iconCustomized && !supportsCategoryIcons) return false;
+            if (!iconCustomized && !nameCustomized) return false;
+          }
+          if (fullSync) return true;
+          // After schema V48 the marker is authoritative. This prevents a
+          // downloaded row with a future device timestamp from being uploaded
+          // again, while still allowing a locally edited old-timestamp row to be
+          // sent.
+          return _asBool(item['pending_sync'] ?? item['pendingSync']);
+        })
+        .toList(growable: false);
   }
 
   Map<String, dynamic> get payload => {
-        'finance_categories_changes': _changes(
-          'categories',
-        ),
-        'finance_payment_methods_changes': _changes(
-          'payment_methods',
-          excludeSystem: true,
-        ),
-        'finance_transactions_changes': _changes('transactions'),
-        'finance_loans_changes': _changes('loans'),
-        'finance_loan_installments_changes': _changes('loan_installments')
-            .where((item) => !_hasPaymentMethod(item))
-            .toList(),
-        // Dedicated fields are ignored by older servers. A cached capability
-        // must never let an old server turn a balance into an overall budget
-        // or acknowledge a repayment after discarding its account.
-        'finance_loan_account_changes':
-            _changes('loan_installments').where(_hasPaymentMethod).toList(),
-        'finance_budgets_changes': _changes('budgets')
-            .where((item) => !_hasPaymentMethod(item))
-            .toList(),
-        'finance_balance_snapshots_changes':
-            _changes('budgets').where(_hasPaymentMethod).toList(),
-        'finance_recurring_rules_changes': _changes('recurring_rules'),
-        'finance_entry_templates_changes': _changes('templates'),
-        'finance_full_sync': fullSync,
-        'finance_last_sync_time': cursor,
-      };
+    'finance_categories_changes': _changes('categories'),
+    'finance_payment_methods_changes': _changes(
+      'payment_methods',
+      excludeSystem: true,
+    ),
+    'finance_transactions_changes': _changes('transactions'),
+    'finance_loans_changes': _changes('loans'),
+    'finance_loan_installments_changes': _changes('loan_installments')
+        .where((item) => !_hasPaymentMethod(item))
+        .toList(),
+    // Dedicated fields are ignored by older servers. A cached capability
+    // must never let an old server turn a balance into an overall budget
+    // or acknowledge a repayment after discarding its account.
+    'finance_loan_account_changes': _changes('loan_installments')
+        .where(_hasPaymentMethod)
+        .toList(),
+    'finance_budgets_changes': _changes('budgets')
+        .where((item) => !_hasPaymentMethod(item))
+        .toList(),
+    'finance_balance_snapshots_changes': _changes('budgets')
+        .where(_hasPaymentMethod)
+        .toList(),
+    'finance_recurring_rules_changes': _changes('recurring_rules'),
+    'finance_entry_templates_changes': _changes('templates'),
+    'finance_full_sync': fullSync,
+    'finance_last_sync_time': cursor,
+  };
 
-  bool get hasPendingChanges => payload.values.any(
-        (value) => value is List && value.isNotEmpty,
-      );
+  bool get hasPendingChanges =>
+      payload.values.any((value) => value is List && value.isNotEmpty);
 }
 
 class FinanceSyncResult {
@@ -193,7 +198,8 @@ abstract final class FinanceSyncService {
       cursorKey: cursorKey,
       bootstrapKey: bootstrapKey,
       cursor: cursor,
-      fullSync: forceFullSync ||
+      fullSync:
+          forceFullSync ||
           !initialized ||
           (supportsBalances && prefs.getBool(balanceBootstrapKey) != true),
       bundle: bundle,
@@ -217,7 +223,8 @@ abstract final class FinanceSyncService {
     // so an intermediary or partially deployed old server cannot make the
     // client acknowledge a payload it did not actually return.
     final hasProtocolPayload = _hasProtocolPayload(response);
-    final supportsBalances = supported &&
+    final supportsBalances =
+        supported &&
         hasProtocolPayload &&
         SyncCapabilityService.supportsFinanceAccountBalances(
           response['sync_capabilities'],
@@ -306,37 +313,47 @@ abstract final class FinanceSyncService {
     if (!request.supportsCategoryNames) {
       final localNameOverrides = (currentBundle['categories'] as List? ?? [])
           .whereType<Map>()
-          .where((item) =>
-              _isSystemCategoryUuid(item['uuid']?.toString()) &&
-              _asBool(item['name_customized'] ?? item['nameCustomized']))
+          .where(
+            (item) =>
+                _isSystemCategoryUuid(item['uuid']?.toString()) &&
+                _asBool(item['name_customized'] ?? item['nameCustomized']),
+          )
           .map((item) => item['uuid']?.toString())
           .whereType<String>()
           .toSet();
       if (localNameOverrides.isNotEmpty) {
-        remoteBundle['categories'] = (remoteBundle['categories'] as List? ??
-                const [])
-            .whereType<Map>()
-            .where((item) => !localNameOverrides
-                .contains(item['uuid']?.toString() ?? item['id']?.toString()))
-            .toList(growable: false);
+        remoteBundle['categories'] =
+            (remoteBundle['categories'] as List? ?? const [])
+                .whereType<Map>()
+                .where(
+                  (item) => !localNameOverrides.contains(
+                    item['uuid']?.toString() ?? item['id']?.toString(),
+                  ),
+                )
+                .toList(growable: false);
       }
     }
     if (!request.supportsCategoryIcons) {
       final localIconOverrides = (currentBundle['categories'] as List? ?? [])
           .whereType<Map>()
-          .where((item) =>
-              _isSystemCategoryUuid(item['uuid']?.toString()) &&
-              _asBool(item['icon_customized'] ?? item['iconCustomized']))
+          .where(
+            (item) =>
+                _isSystemCategoryUuid(item['uuid']?.toString()) &&
+                _asBool(item['icon_customized'] ?? item['iconCustomized']),
+          )
           .map((item) => item['uuid']?.toString())
           .whereType<String>()
           .toSet();
       if (localIconOverrides.isNotEmpty) {
-        remoteBundle['categories'] = (remoteBundle['categories'] as List? ??
-                const [])
-            .whereType<Map>()
-            .where((item) => !localIconOverrides
-                .contains(item['uuid']?.toString() ?? item['id']?.toString()))
-            .toList(growable: false);
+        remoteBundle['categories'] =
+            (remoteBundle['categories'] as List? ?? const [])
+                .whereType<Map>()
+                .where(
+                  (item) => !localIconOverrides.contains(
+                    item['uuid']?.toString() ?? item['id']?.toString(),
+                  ),
+                )
+                .toList(growable: false);
       }
     }
     final conflictKeys = _conflictKeys(response['finance_conflicts']);
@@ -346,9 +363,8 @@ abstract final class FinanceSyncService {
     // whole remote snapshot to the next round. Otherwise a newer server clock
     // could make an unrelated response win over the just-created local row
     // before that row has ever been uploaded.
-    final remoteChangeCount = shouldMergeRemoteSnapshot(
-      localChangesDuringRequest: localChanged,
-    )
+    final remoteChangeCount =
+        shouldMergeRemoteSnapshot(localChangesDuringRequest: localChanged)
         ? await FinanceStorage.mergeRemoteBundle(
             remoteBundle,
             forceRemoteKeys: conflictKeys,
@@ -360,11 +376,11 @@ abstract final class FinanceSyncService {
     final rawAcknowledgements = response['finance_acknowledged_changes'];
     final acknowledgedChangeCount =
         await FinanceStorage.acknowledgePendingChanges(
-      request.payload,
-      rawAcknowledgements is List
-          ? List<dynamic>.from(rawAcknowledgements)
-          : const [],
-    );
+          request.payload,
+          rawAcknowledgements is List
+              ? List<dynamic>.from(rawAcknowledgements)
+              : const [],
+        );
 
     final rawCursor = response['new_finance_sync_time'];
     final serverCursor = _asInt(rawCursor);
@@ -379,8 +395,9 @@ abstract final class FinanceSyncService {
     }
     if (!localChanged && !remoteChangesDeferred && serverCursor > 0) {
       final prefs = await SharedPreferences.getInstance();
-      final nextCursor =
-          serverCursor > request.cursor ? serverCursor : request.cursor;
+      final nextCursor = serverCursor > request.cursor
+          ? serverCursor
+          : request.cursor;
       await prefs.setInt(request.cursorKey, nextCursor);
       await prefs.setBool(request.bootstrapKey, true);
       if (supportsBalances &&
@@ -424,11 +441,10 @@ abstract final class FinanceSyncService {
   static bool shouldAcknowledge({
     required bool syncEnabled,
     required dynamic rawCapabilities,
-  }) =>
-      SyncCapabilityService.shouldAcknowledgeFinanceChanges(
-        syncEnabled: syncEnabled,
-        rawCapabilities: rawCapabilities,
-      );
+  }) => SyncCapabilityService.shouldAcknowledgeFinanceChanges(
+    syncEnabled: syncEnabled,
+    rawCapabilities: rawCapabilities,
+  );
 
   /// Exposed for focused tests without opening a platform database.
   static Map<String, List<Map<String, dynamic>>> buildChangesForTest(
@@ -452,7 +468,8 @@ abstract final class FinanceSyncService {
     final payload = request.payload;
     return {
       'categories': List<Map<String, dynamic>>.from(
-          payload['finance_categories_changes']),
+        payload['finance_categories_changes'],
+      ),
       'payment_methods': List<Map<String, dynamic>>.from(
         payload['finance_payment_methods_changes'],
       ),
@@ -485,16 +502,14 @@ abstract final class FinanceSyncService {
   static bool hasConcurrentChangesForTest(
     Map<String, String> before,
     Map<String, String> after,
-  ) =>
-      !_sameFingerprint(before, after);
+  ) => !_sameFingerprint(before, after);
 
   /// A request-time local write defers the response snapshot until the next
   /// request, so the just-created local value is never overwritten before it
   /// has had a chance to upload.
   static bool shouldMergeRemoteSnapshot({
     required bool localChangesDuringRequest,
-  }) =>
-      !localChangesDuringRequest;
+  }) => !localChangesDuringRequest;
 
   static String _serverScope(String value) =>
       base64Url.encode(utf8.encode(value)).replaceAll('=', '');

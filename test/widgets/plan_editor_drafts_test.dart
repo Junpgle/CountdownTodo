@@ -518,6 +518,8 @@ void main() {
     await seed();
     await open(t, list: true);
     expect(find.text('仅保存在本机 · 1/5份'), findsOneWidget);
+    expect(find.text('10月8日 09:00 — 10月8日 10:00'), findsOneWidget);
+    expect(find.text('保留于 10月7日 12:00'), findsOneWidget);
     await action(t, find.text('删除'));
     await action(t, find.text('删除草稿'));
     expect(find.textContaining('暂无规划草稿'), findsOneWidget);

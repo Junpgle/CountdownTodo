@@ -1,14 +1,12 @@
 import 'dart:math';
+
 import '../../../utils/json_value_parser.dart';
 
 class ChallengeDraft {
   final String title;
   final List<String> taskTitles;
 
-  const ChallengeDraft({
-    required this.title,
-    required this.taskTitles,
-  });
+  const ChallengeDraft({required this.title, required this.taskTitles});
 }
 
 /// 一次性挑战中的单项任务。
@@ -47,16 +45,16 @@ class ThirtyDayChallengeTask {
       customTitle!.trim() != originalTitle;
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'original_title': originalTitle,
-        'custom_title': customTitle,
-        'is_completed': isCompleted,
-        'completed_at': completedAt?.toIso8601String(),
-        'feeling': feeling,
-        'feeling_updated_at': feelingUpdatedAt?.toIso8601String(),
-        'image_base64': imageBase64,
-        'image_updated_at': imageUpdatedAt?.toIso8601String(),
-      };
+    'id': id,
+    'original_title': originalTitle,
+    'custom_title': customTitle,
+    'is_completed': isCompleted,
+    'completed_at': completedAt?.toIso8601String(),
+    'feeling': feeling,
+    'feeling_updated_at': feelingUpdatedAt?.toIso8601String(),
+    'image_base64': imageBase64,
+    'image_updated_at': imageUpdatedAt?.toIso8601String(),
+  };
 
   factory ThirtyDayChallengeTask.fromJson(Map<String, dynamic> json) {
     return ThirtyDayChallengeTask(
@@ -171,31 +169,34 @@ class ThirtyDayChallengeState {
   }
 
   Map<String, dynamic> toJson() => {
-        'version': version,
-        'challenge_title': challengeTitle,
-        'started_at': startedAt.toIso8601String(),
-        'tasks': tasks.map((task) => task.toJson()).toList(),
-        'is_built_in': isBuiltIn,
-      };
+    'version': version,
+    'challenge_title': challengeTitle,
+    'started_at': startedAt.toIso8601String(),
+    'tasks': tasks.map((task) => task.toJson()).toList(),
+    'is_built_in': isBuiltIn,
+  };
 
   factory ThirtyDayChallengeState.fromJson(Map<String, dynamic> json) {
     final rawTasks = json['tasks'];
     final tasks = rawTasks is List
         ? rawTasks
-            .whereType<Map>()
-            .map((item) => ThirtyDayChallengeTask.fromJson(
+              .whereType<Map>()
+              .map(
+                (item) => ThirtyDayChallengeTask.fromJson(
                   Map<String, dynamic>.from(item),
-                ))
-            .where((task) => task.originalTitle.isNotEmpty)
-            .toList()
+                ),
+              )
+              .where((task) => task.originalTitle.isNotEmpty)
+              .toList()
         : <ThirtyDayChallengeTask>[];
 
     // v1 没有挑战标题，且任务列表可能只有用户修改过的部分；继续按旧逻辑
     // 合并默认的 30 项任务，避免升级后丢失已有进度。v2 起任务清单完全由
     // 保存内容决定，可以是任意数量。
     final hasCustomSchema = json.containsKey('challenge_title');
-    final normalizedTasks =
-        hasCustomSchema ? _normalizeTaskIds(tasks) : _restoreLegacyTasks(tasks);
+    final normalizedTasks = hasCustomSchema
+        ? _normalizeTaskIds(tasks)
+        : _restoreLegacyTasks(tasks);
     final safeTasks = normalizedTasks.isEmpty
         ? ThirtyDayChallengeState.initial().tasks
         : normalizedTasks;
@@ -214,7 +215,8 @@ class ThirtyDayChallengeState {
           ? json['version'] as int
           : int.tryParse(json['version']?.toString() ?? '') ?? currentVersion,
       challengeTitle: challengeTitle,
-      startedAt: DateTime.tryParse(json['started_at']?.toString() ?? '') ??
+      startedAt:
+          DateTime.tryParse(json['started_at']?.toString() ?? '') ??
           DateTime.now(),
       tasks: safeTasks,
       isClassicChallenge: isBuiltIn,

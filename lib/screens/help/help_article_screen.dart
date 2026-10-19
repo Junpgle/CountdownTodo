@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../../models/help_article.dart';
 import '../../widgets/floating_glass_control.dart';
 
@@ -6,8 +7,11 @@ class HelpArticleScreen extends StatelessWidget {
   final HelpArticle article;
   final bool isEmbedded;
 
-  const HelpArticleScreen(
-      {super.key, required this.article, this.isEmbedded = false});
+  const HelpArticleScreen({
+    super.key,
+    required this.article,
+    this.isEmbedded = false,
+  });
 
   @override
   Widget build(BuildContext context) {

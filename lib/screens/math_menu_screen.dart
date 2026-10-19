@@ -1,5 +1,7 @@
 import '../widgets/floating_glass_control.dart';
+
 import 'package:flutter/material.dart';
+
 import 'quiz_screen.dart';
 import 'other_screens.dart';
 import 'settings_screen.dart';
@@ -15,7 +17,12 @@ class MathMenuScreen extends StatefulWidget {
 
 class _MathMenuScreenState extends State<MathMenuScreen>
     with SingleTickerProviderStateMixin {
-  late AnimationController _animationController;
+  static const _menuCardCount = 4;
+  static const _menuCardStagger = Duration(milliseconds: 150);
+  static const _menuCardEntranceDuration = Duration(milliseconds: 600);
+
+  late final AnimationController _animationController;
+  late final List<Animation<double>> _menuCardAnimations;
   final GlobalKey _quizCardKey = GlobalKey();
   final GlobalKey _settingsCardKey = GlobalKey();
   final GlobalKey _leaderboardCardKey = GlobalKey();
@@ -24,10 +31,28 @@ class _MathMenuScreenState extends State<MathMenuScreen>
   @override
   void initState() {
     super.initState();
+    final totalDurationMs =
+        _menuCardEntranceDuration.inMilliseconds +
+        _menuCardStagger.inMilliseconds * (_menuCardCount - 1);
     _animationController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 800),
+      duration: Duration(milliseconds: totalDurationMs),
     );
+    _menuCardAnimations = List<Animation<double>>.generate(_menuCardCount, (
+      index,
+    ) {
+      final startMs = _menuCardStagger.inMilliseconds * index;
+      final endMs = startMs + _menuCardEntranceDuration.inMilliseconds;
+      return _animationController.drive(
+        CurveTween(
+          curve: Interval(
+            startMs / totalDurationMs,
+            endMs / totalDurationMs,
+            curve: Curves.easeOutCubic,
+          ),
+        ),
+      );
+    });
     _animationController.forward();
   }
 
@@ -78,33 +103,40 @@ class _MathMenuScreenState extends State<MathMenuScreen>
                             horizontal: isTablet ? 40 : 20,
                           ),
                           decoration: BoxDecoration(
-                            gradient: LinearGradient(colors: [
-                              Theme.of(context).colorScheme.secondary,
-                              Colors.lightBlue
-                            ]),
-                            borderRadius:
-                                BorderRadius.circular(isTablet ? 24 : 16),
+                            gradient: LinearGradient(
+                              colors: [
+                                Theme.of(context).colorScheme.secondary,
+                                Colors.lightBlue,
+                              ],
+                            ),
+                            borderRadius: BorderRadius.circular(
+                              isTablet ? 24 : 16,
+                            ),
                           ),
                           child: Column(
                             children: [
-                              Icon(Icons.calculate,
-                                  size: isTablet ? 64 : 48,
-                                  color: Colors.white),
+                              Icon(
+                                Icons.calculate,
+                                size: isTablet ? 64 : 48,
+                                color: Colors.white,
+                              ),
                               SizedBox(height: isTablet ? 16 : 10),
                               Text(
                                 "保持大脑活跃！",
                                 style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: isTablet ? 26 : 20,
-                                    fontWeight: FontWeight.bold),
+                                  color: Colors.white,
+                                  fontSize: isTablet ? 26 : 20,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                               const SizedBox(height: 6),
                               Text(
                                 "每日坚持练习，提高计算速度",
                                 style: TextStyle(
-                                    color: Colors.white70,
-                                    fontSize: isTablet ? 16 : 14),
-                              )
+                                  color: Colors.white70,
+                                  fontSize: isTablet ? 16 : 14,
+                                ),
+                              ),
                             ],
                           ),
                         ),
@@ -112,7 +144,8 @@ class _MathMenuScreenState extends State<MathMenuScreen>
                     ),
                     SliverPadding(
                       padding: EdgeInsets.symmetric(
-                          horizontal: isTablet ? 24.0 : 16.0),
+                        horizontal: isTablet ? 24.0 : 16.0,
+                      ),
                       sliver: SliverGrid.count(
                         crossAxisCount: columns,
                         crossAxisSpacing: isTablet ? 20 : 16,
@@ -120,8 +153,7 @@ class _MathMenuScreenState extends State<MathMenuScreen>
                         childAspectRatio: isWideScreen ? 1.0 : 1.1,
                         children: [
                           _AnimatedMenuCard(
-                            index: 0,
-                            animationController: _animationController,
+                            animation: _menuCardAnimations[0],
                             child: _MenuCard(
                               key: _quizCardKey,
                               title: "开始答题",
@@ -137,8 +169,7 @@ class _MathMenuScreenState extends State<MathMenuScreen>
                             ),
                           ),
                           _AnimatedMenuCard(
-                            index: 1,
-                            animationController: _animationController,
+                            animation: _menuCardAnimations[1],
                             child: _MenuCard(
                               key: _settingsCardKey,
                               title: "题目设置",
@@ -154,8 +185,7 @@ class _MathMenuScreenState extends State<MathMenuScreen>
                             ),
                           ),
                           _AnimatedMenuCard(
-                            index: 2,
-                            animationController: _animationController,
+                            animation: _menuCardAnimations[2],
                             child: _MenuCard(
                               key: _leaderboardCardKey,
                               title: "排行榜",
@@ -171,8 +201,7 @@ class _MathMenuScreenState extends State<MathMenuScreen>
                             ),
                           ),
                           _AnimatedMenuCard(
-                            index: 3,
-                            animationController: _animationController,
+                            animation: _menuCardAnimations[3],
                             child: _MenuCard(
                               key: _historyCardKey,
                               title: "历史记录",
@@ -223,95 +252,94 @@ class _MenuCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(builder: (context, constraints) {
-      final bool isLargeCard = constraints.maxWidth > 180;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final bool isLargeCard = constraints.maxWidth > 180;
 
-      return Card(
-        elevation: 2,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(16),
-          child: Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
-              gradient: LinearGradient(
+        return Card(
+          elevation: 2,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(16),
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                gradient: LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
-                  colors: [colorStart, colorEnd]),
-            ),
-            child: Padding(
-              padding: EdgeInsets.all(isLargeCard ? 20.0 : 16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Container(
+                  colors: [colorStart, colorEnd],
+                ),
+              ),
+              child: Padding(
+                padding: EdgeInsets.all(isLargeCard ? 20.0 : 16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Container(
                       padding: EdgeInsets.all(isLargeCard ? 10 : 8),
                       decoration: BoxDecoration(
-                          color: Colors.white24,
-                          borderRadius: BorderRadius.circular(10)),
-                      child: Icon(icon,
-                          color: Colors.white, size: isLargeCard ? 32 : 28)),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(title,
+                        color: Colors.white24,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(
+                        icon,
+                        color: Colors.white,
+                        size: isLargeCard ? 32 : 28,
+                      ),
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
                           style: TextStyle(
-                              fontSize: isLargeCard ? 18 : 16,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white)),
-                      const SizedBox(height: 4),
-                      Text(subtitle,
+                            fontSize: isLargeCard ? 18 : 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          subtitle,
                           style: TextStyle(
-                              fontSize: isLargeCard ? 14 : 12,
-                              color: Colors.white70)),
-                    ],
-                  ),
-                ],
+                            fontSize: isLargeCard ? 14 : 12,
+                            color: Colors.white70,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
-        ),
-      );
-    });
+        );
+      },
+    );
   }
 }
 
 class _AnimatedMenuCard extends StatelessWidget {
-  final int index;
-  final AnimationController animationController;
+  final Animation<double> animation;
   final Widget child;
 
-  const _AnimatedMenuCard({
-    required this.index,
-    required this.animationController,
-    required this.child,
-  });
+  const _AnimatedMenuCard({required this.animation, required this.child});
 
   @override
   Widget build(BuildContext context) {
-    final delay = index * 0.15;
-    return FutureBuilder<void>(
-      future: Future.delayed(Duration(milliseconds: (delay * 1000).round())),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState != ConnectionState.done) {
-          return const SizedBox.shrink();
-        }
-        return TweenAnimationBuilder<double>(
-          tween: Tween(begin: 0.0, end: 1.0),
-          duration: const Duration(milliseconds: 600),
-          curve: Curves.easeOutCubic,
-          builder: (context, value, child) {
-            return Transform.translate(
-              offset: Offset(0, 30 * (1 - value)),
-              child: Opacity(
-                opacity: value,
-                child: child,
-              ),
-            );
-          },
-          child: child,
+    return AnimatedBuilder(
+      animation: animation,
+      child: child,
+      builder: (context, child) {
+        final value = animation.value;
+        if (value == 0) return const SizedBox.shrink();
+        return Transform.translate(
+          offset: Offset(0, 30 * (1 - value)),
+          child: Opacity(opacity: value, child: child),
         );
       },
     );

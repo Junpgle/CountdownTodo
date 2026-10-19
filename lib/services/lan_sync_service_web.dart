@@ -20,32 +20,32 @@ class LanDevice {
   });
 
   Map<String, dynamic> toJson() => {
-        'deviceId': deviceId,
-        'userId': userId,
-        'deviceName': deviceName,
-        'ip': ip,
-        'port': port,
-        'lastSeen': lastSeen,
-      };
+    'deviceId': deviceId,
+    'userId': userId,
+    'deviceName': deviceName,
+    'ip': ip,
+    'port': port,
+    'lastSeen': lastSeen,
+  };
 
   factory LanDevice.fromJson(Map<String, dynamic> j) => LanDevice(
-        deviceId: j['deviceId'] ?? '',
-        userId: j['userId'] ?? '',
-        deviceName: j['deviceName'] ?? '',
-        ip: j['ip'] ?? '',
-        port: j['port'] ?? 0,
-        lastSeen: j['lastSeen'] ?? 0,
-      );
+    deviceId: j['deviceId'] ?? '',
+    userId: j['userId'] ?? '',
+    deviceName: j['deviceName'] ?? '',
+    ip: j['ip'] ?? '',
+    port: j['port'] ?? 0,
+    lastSeen: j['lastSeen'] ?? 0,
+  );
 
   LanDevice copyWith({bool? pendingApproval}) => LanDevice(
-        deviceId: deviceId,
-        userId: userId,
-        deviceName: deviceName,
-        ip: ip,
-        port: port,
-        lastSeen: lastSeen,
-        pendingApproval: pendingApproval ?? this.pendingApproval,
-      );
+    deviceId: deviceId,
+    userId: userId,
+    deviceName: deviceName,
+    ip: ip,
+    port: port,
+    lastSeen: lastSeen,
+    pendingApproval: pendingApproval ?? this.pendingApproval,
+  );
 }
 
 class LanSyncResult {
@@ -137,14 +137,12 @@ class LanSyncService {
   Future<LanSyncResult> syncWithDevice(
     LanDevice device, {
     LanSyncConfig? config,
-  }) async =>
-      LanSyncResult(message: '浏览器不支持局域网同步');
+  }) async => LanSyncResult(message: '浏览器不支持局域网同步');
 
   Future<LanSyncResult> confirmAndSync(
     LanDevice device, {
     LanSyncConfig? config,
-  }) async =>
-      LanSyncResult(message: '浏览器不支持局域网同步');
+  }) async => LanSyncResult(message: '浏览器不支持局域网同步');
 
   Future<LanSyncResult> sendFilePath(LanDevice device, String path) async =>
       LanSyncResult(message: '浏览器不支持局域网文件发送');

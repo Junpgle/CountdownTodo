@@ -27,10 +27,7 @@ void main() {
   test('parses query and path share routes', () {
     expect(TeamShareLink.codeFromRoute('/share?code=ABC123'), 'ABC123');
     expect(TeamShareLink.codeFromRoute('/share/ABC123'), 'ABC123');
-    expect(
-      TeamShareLink.codeFromRoute('#/share?code=ABC123'),
-      'ABC123',
-    );
+    expect(TeamShareLink.codeFromRoute('#/share?code=ABC123'), 'ABC123');
     expect(
       TeamShareLink.codeFromRoute('https://cdt.junpgle.me/#/share?code=ABC123'),
       'ABC123',

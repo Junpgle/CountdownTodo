@@ -1,5 +1,3 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -8,6 +6,7 @@ import '../services/api_service.dart';
 import '../services/sidebar_menu_service.dart';
 import '../update_service.dart';
 import '../utils/calendar_date_math.dart';
+import '../utils/app_image_filters.dart';
 import 'optional_liquid_glass_surface.dart';
 import 'platform_backdrop_filter.dart';
 
@@ -39,8 +38,10 @@ DateTime? _parseRegistrationDate(dynamic raw) {
   if (raw is num) {
     final value = raw.toInt();
     final milliseconds = value.abs() < 100000000000 ? value * 1000 : value;
-    return DateTime.fromMillisecondsSinceEpoch(milliseconds, isUtc: true)
-        .toLocal();
+    return DateTime.fromMillisecondsSinceEpoch(
+      milliseconds,
+      isUtc: true,
+    ).toLocal();
   }
   if (raw is! String || raw.trim().isEmpty) return null;
 
@@ -95,10 +96,14 @@ class _VersionReleaseInfo {
 }
 
 int _compareVersionNames(String left, String right) {
-  final leftParts =
-      left.split('.').map((part) => int.tryParse(part) ?? 0).toList();
-  final rightParts =
-      right.split('.').map((part) => int.tryParse(part) ?? 0).toList();
+  final leftParts = left
+      .split('.')
+      .map((part) => int.tryParse(part) ?? 0)
+      .toList();
+  final rightParts = right
+      .split('.')
+      .map((part) => int.tryParse(part) ?? 0)
+      .toList();
   final length = leftParts.length > rightParts.length
       ? leftParts.length
       : rightParts.length;
@@ -260,14 +265,26 @@ class _HomeDrawerMenuState extends State<HomeDrawerMenu> {
       );
       if (manifest == null) return const _VersionReleaseInfo();
 
-      final currentVersion =
-          packageInfo.version.trim().split('+').first.split('-').first;
-      final latestVersion =
-          manifest.versionName.trim().split('+').first.split('-').first;
+      final currentVersion = packageInfo.version
+          .trim()
+          .split('+')
+          .first
+          .split('-')
+          .first;
+      final latestVersion = manifest.versionName
+          .trim()
+          .split('+')
+          .first
+          .split('-')
+          .first;
       final hasUpdate = _compareVersionNames(latestVersion, currentVersion) > 0;
       for (final entry in manifest.changelogHistory) {
-        final entryVersion =
-            entry.versionName.trim().split('+').first.split('-').first;
+        final entryVersion = entry.versionName
+            .trim()
+            .split('+')
+            .first
+            .split('-')
+            .first;
         if (entryVersion == currentVersion) {
           return _VersionReleaseInfo(
             date: entry.date.isNotEmpty ? entry.date : null,
@@ -275,10 +292,7 @@ class _HomeDrawerMenuState extends State<HomeDrawerMenu> {
           );
         }
       }
-      return _VersionReleaseInfo(
-        isInternalBuild: true,
-        hasUpdate: hasUpdate,
-      );
+      return _VersionReleaseInfo(isInternalBuild: true, hasUpdate: hasUpdate);
     } catch (_) {
       // 清单不可用时无法判断版本是否为内部测试版，保留纯版本号显示。
       return const _VersionReleaseInfo();
@@ -328,8 +342,9 @@ class _HomeDrawerMenuState extends State<HomeDrawerMenu> {
                 shape: BoxShape.circle,
                 gradient: RadialGradient(
                   colors: [
-                    colorScheme.secondary
-                        .withValues(alpha: isDark ? 0.25 : 0.15),
+                    colorScheme.secondary.withValues(
+                      alpha: isDark ? 0.25 : 0.15,
+                    ),
                     Colors.transparent,
                   ],
                   stops: const [0.2, 1.0],
@@ -347,10 +362,8 @@ class _HomeDrawerMenuState extends State<HomeDrawerMenu> {
                 colorScheme.surface,
               ).withValues(alpha: isDark ? 0.3 : 0.38),
               fallback: PlatformBackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
-                child: Container(
-                  color: Colors.transparent,
-                ),
+                filter: AppImageFilters.blur40,
+                child: Container(color: Colors.transparent),
               ),
               child: const SizedBox.expand(),
             ),
@@ -360,7 +373,11 @@ class _HomeDrawerMenuState extends State<HomeDrawerMenu> {
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.only(
-                  left: 20.0, right: 16.0, top: 40.0, bottom: 24.0),
+                left: 20.0,
+                right: 16.0,
+                top: 40.0,
+                bottom: 24.0,
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -376,7 +393,7 @@ class _HomeDrawerMenuState extends State<HomeDrawerMenu> {
                               color: colorScheme.primary.withValues(alpha: 0.2),
                               blurRadius: 15,
                               spreadRadius: 2,
-                            )
+                            ),
                           ],
                           border: Border.all(
                             color: colorScheme.primary.withValues(alpha: 0.3),
@@ -408,14 +425,18 @@ class _HomeDrawerMenuState extends State<HomeDrawerMenu> {
                             // Greeting Pill Badge
                             Container(
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: 10, vertical: 4),
+                                horizontal: 10,
+                                vertical: 4,
+                              ),
                               decoration: BoxDecoration(
-                                color:
-                                    colorScheme.primary.withValues(alpha: 0.1),
+                                color: colorScheme.primary.withValues(
+                                  alpha: 0.1,
+                                ),
                                 borderRadius: BorderRadius.circular(12),
                                 border: Border.all(
-                                  color: colorScheme.primary
-                                      .withValues(alpha: 0.2),
+                                  color: colorScheme.primary.withValues(
+                                    alpha: 0.2,
+                                  ),
                                   width: 1,
                                 ),
                               ),
@@ -452,8 +473,9 @@ class _HomeDrawerMenuState extends State<HomeDrawerMenu> {
                                     '已陪伴您${days.toString()}天',
                                     style: TextStyle(
                                       fontSize: 11,
-                                      color: colorScheme.onSurface
-                                          .withValues(alpha: 0.55),
+                                      color: colorScheme.onSurface.withValues(
+                                        alpha: 0.55,
+                                      ),
                                     ),
                                   ),
                                 );
@@ -476,26 +498,33 @@ class _HomeDrawerMenuState extends State<HomeDrawerMenu> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           ..._featureOrder
-                              .map((key) =>
-                                  _buildConfiguredMenuItem(context, key))
+                              .map(
+                                (key) => _buildConfiguredMenuItem(context, key),
+                              )
                               .whereType<Widget>(),
                           const SizedBox(height: 12),
                           Container(
                             decoration: BoxDecoration(
-                              color: colorScheme.surface
-                                  .withValues(alpha: isDark ? 0.3 : 0.5),
+                              color: colorScheme.surface.withValues(
+                                alpha: isDark ? 0.3 : 0.5,
+                              ),
                               borderRadius: BorderRadius.circular(20),
                               border: Border.all(
-                                color: colorScheme.onSurface
-                                    .withValues(alpha: 0.05),
+                                color: colorScheme.onSurface.withValues(
+                                  alpha: 0.05,
+                                ),
                               ),
                             ),
                             padding: const EdgeInsets.symmetric(vertical: 8),
                             child: Column(
                               children: [
                                 ..._utilityOrder
-                                    .map((key) =>
-                                        _buildConfiguredMenuItem(context, key))
+                                    .map(
+                                      (key) => _buildConfiguredMenuItem(
+                                        context,
+                                        key,
+                                      ),
+                                    )
                                     .whereType<Widget>(),
                                 _buildMenuItem(
                                   context,
@@ -524,17 +553,20 @@ class _HomeDrawerMenuState extends State<HomeDrawerMenu> {
                         padding: const EdgeInsets.only(left: 8.0, top: 8.0),
                         child: Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 4),
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
                           decoration: BoxDecoration(
-                            color:
-                                colorScheme.onSurface.withValues(alpha: 0.05),
+                            color: colorScheme.onSurface.withValues(
+                              alpha: 0.05,
+                            ),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: FutureBuilder<_VersionReleaseInfo>(
                             future: _releaseInfoFuture,
                             builder: (context, dateSnapshot) {
-                              final versionColor =
-                                  colorScheme.onSurface.withValues(alpha: 0.5);
+                              final versionColor = colorScheme.onSurface
+                                  .withValues(alpha: 0.5);
                               final versionStyle = TextStyle(
                                 fontSize: 11,
                                 color: versionColor,
@@ -545,8 +577,8 @@ class _HomeDrawerMenuState extends State<HomeDrawerMenu> {
                               final updateLabel = releaseInfo == null
                                   ? null
                                   : releaseInfo.isInternalBuild
-                                      ? '内部测试版'
-                                      : releaseInfo.date;
+                                  ? '内部测试版'
+                                  : releaseInfo.date;
                               return Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 mainAxisSize: MainAxisSize.min,
@@ -554,8 +586,10 @@ class _HomeDrawerMenuState extends State<HomeDrawerMenu> {
                                   Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      Text('v${snapshot.data!.version}',
-                                          style: versionStyle),
+                                      Text(
+                                        'v${snapshot.data!.version}',
+                                        style: versionStyle,
+                                      ),
                                       if (updateLabel != null) ...[
                                         const SizedBox(width: 8),
                                         Container(
@@ -586,7 +620,9 @@ class _HomeDrawerMenuState extends State<HomeDrawerMenu> {
                                         ),
                                         child: Padding(
                                           padding: const EdgeInsets.symmetric(
-                                              horizontal: 2, vertical: 2),
+                                            horizontal: 2,
+                                            vertical: 2,
+                                          ),
                                           child: Row(
                                             mainAxisSize: MainAxisSize.min,
                                             children: [
@@ -645,7 +681,9 @@ class _HomeDrawerMenuState extends State<HomeDrawerMenu> {
 
     return Padding(
       padding: EdgeInsets.symmetric(
-          vertical: isCompact ? 0.0 : 2.0, horizontal: 8.0),
+        vertical: isCompact ? 0.0 : 2.0,
+        horizontal: 8.0,
+      ),
       child: Material(
         key: sourceKey,
         color: Colors.transparent,
@@ -656,7 +694,9 @@ class _HomeDrawerMenuState extends State<HomeDrawerMenu> {
           highlightColor: colorScheme.primary.withValues(alpha: 0.05),
           child: Padding(
             padding: EdgeInsets.symmetric(
-                vertical: isCompact ? 8.0 : 10.0, horizontal: 12.0),
+              vertical: isCompact ? 8.0 : 10.0,
+              horizontal: 12.0,
+            ),
             child: Row(
               children: [
                 // Icon inside a rounded squircle
@@ -680,10 +720,7 @@ class _HomeDrawerMenuState extends State<HomeDrawerMenu> {
                     style: TextStyle(
                       fontSize: isCompact ? 15 : 16,
                       fontWeight: FontWeight.w600,
-                      color: Theme.of(context)
-                          .textTheme
-                          .bodyLarge
-                          ?.color
+                      color: Theme.of(context).textTheme.bodyLarge?.color
                           ?.withValues(alpha: 0.9),
                     ),
                   ),
@@ -691,8 +728,10 @@ class _HomeDrawerMenuState extends State<HomeDrawerMenu> {
 
                 if (badgeCount > 0)
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.redAccent,
                       borderRadius: BorderRadius.circular(12),
@@ -700,9 +739,10 @@ class _HomeDrawerMenuState extends State<HomeDrawerMenu> {
                     child: Text(
                       badgeCount > 9 ? '9+' : badgeCount.toString(),
                       style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold),
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   )
                 else if (showAlertDot)
@@ -718,9 +758,7 @@ class _HomeDrawerMenuState extends State<HomeDrawerMenu> {
                   Icon(
                     Icons.chevron_right_rounded,
                     size: 18,
-                    color: Theme.of(context)
-                        .iconTheme
-                        .color
+                    color: Theme.of(context).iconTheme.color
                         ?.withValues(alpha: 0.3),
                   ),
               ],

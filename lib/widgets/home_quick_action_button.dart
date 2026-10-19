@@ -15,10 +15,10 @@ class HomeQuickActionButton extends StatelessWidget {
     required this.isDark,
     this.useLiquidGlass = true,
     required Widget child,
-  })  : _extended = false,
-        _compactChild = child,
-        icon = null,
-        label = null;
+  }) : _extended = false,
+       _compactChild = child,
+       icon = null,
+       label = null;
 
   const HomeQuickActionButton.extended({
     super.key,
@@ -31,8 +31,8 @@ class HomeQuickActionButton extends StatelessWidget {
     this.useLiquidGlass = true,
     required this.icon,
     required this.label,
-  })  : _extended = true,
-        _compactChild = null;
+  }) : _extended = true,
+       _compactChild = null;
 
   final Object heroTag;
   final VoidCallback onPressed;

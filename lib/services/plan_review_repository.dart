@@ -83,6 +83,32 @@ class PlanReviewOverview {
   int log(String key) => (logs[key] as num?)?.toInt() ?? 0;
 }
 
+class PlanTodayRow {
+  PlanTodayRow(Map<String, Object?> row)
+    : entry = PlanReviewEntry(row),
+      status = row['status'] as int,
+      focusSeconds = (row['focusSeconds'] as num).toInt();
+  final PlanReviewEntry entry;
+  final int status, focusSeconds;
+}
+
+class PlanTodayCard {
+  const PlanTodayCard(this.overview, this.rows, this.nextBoundary);
+  final PlanReviewOverview overview;
+  final List<PlanTodayRow> rows;
+  final DateTime nextBoundary;
+  int get total => overview.plan('n');
+}
+
+/// Up to five candidates per time/status group, before mixing other sources.
+/// Counts include every valid candidate; focus attribution remains shared.
+class PlanAgendaProjection {
+  const PlanAgendaProjection(this.card, this.counts, this.plannedTodoIds);
+  final PlanTodayCard card;
+  final Map<int, int> counts;
+  final Set<String> plannedTodoIds;
+}
+
 class PlanReviewSummary extends PlanReviewOverview {
   const PlanReviewSummary({
     required super.identity,
@@ -109,6 +135,9 @@ class PlanReviewRepository {
   final DateTime Function()? clock;
   final void Function(String sql, int rowCount)? onQuery;
   static final _databaseTokens = Expando<int>();
+  static final _conflictFlagsByDatabase = Expando<Future<Map<String, bool>>>(
+    'planReviewConflictFlags',
+  );
   static int _nextDatabaseToken = 0;
   DateTime get now => clock?.call() ?? DateTime.now();
 
@@ -165,19 +194,51 @@ class PlanReviewRepository {
     DateTime start,
     DateTime end,
     DateTime instant, {
+    required Database schemaOwner,
     String? planId,
+    bool overlappingPlans = false,
   }) async {
-    final flags = <String, bool>{};
-    for (final table in ['todo_plan_blocks', 'pomodoro_records', 'time_logs']) {
-      flags[table] = (await _query(
-        db,
-        'PRAGMA table_info($table)',
-      )).any((row) => row['name'] == 'has_conflict');
-    }
+    final flags = await _conflictColumnFlags(db, schemaOwner);
     if (!end.isAfter(start) || CalendarDateMath.daysBetween(start, end) > 32) {
       throw ArgumentError('请选择有效的日、周或月范围');
     }
-    return _ReviewSql(start, end, instant, flags, planId);
+    return _ReviewSql(start, end, instant, flags, planId, overlappingPlans);
+  }
+
+  Future<Map<String, bool>> _conflictColumnFlags(
+    DatabaseExecutor tx,
+    Database schemaOwner,
+  ) async {
+    var pending = _conflictFlagsByDatabase[schemaOwner];
+    if (pending == null) {
+      pending = _readConflictColumnFlags(tx);
+      _conflictFlagsByDatabase[schemaOwner] = pending;
+    }
+    try {
+      return await pending;
+    } catch (error, stackTrace) {
+      if (identical(_conflictFlagsByDatabase[schemaOwner], pending)) {
+        _conflictFlagsByDatabase[schemaOwner] = null;
+      }
+      Error.throwWithStackTrace(error, stackTrace);
+    }
+  }
+
+  Future<Map<String, bool>> _readConflictColumnFlags(
+    DatabaseExecutor tx,
+  ) async {
+    final flags = <String, bool>{};
+    for (final table in const [
+      'todo_plan_blocks',
+      'pomodoro_records',
+      'time_logs',
+    ]) {
+      flags[table] = (await _query(
+        tx,
+        'PRAGMA table_info($table)',
+      )).any((row) => row['name'] == 'has_conflict');
+    }
+    return Map.unmodifiable(flags);
   }
 
   Future<PlanReviewOverview> _overview(
@@ -186,26 +247,51 @@ class PlanReviewRepository {
     PlanTodoIdentity identity,
     DateTime instant,
   ) async {
-    final plans = (await _query(
-      tx,
-      '${sql.cte} ${sql.planAggregate}',
-      sql.args,
-    )).single;
-    final focus = (await _query(
-      tx,
-      '${sql.cte} ${sql.focusAggregate}',
-      sql.args,
-    )).single;
-    final logs = (await _query(
-      tx,
-      '${sql.cte} ${sql.logAggregate}',
-      sql.args,
-    )).single;
-    final issues = (await _query(
-      tx,
-      '${sql.cte} SELECT COUNT(*) n FROM (${sql.entries(PlanReviewFilter.issues)})',
-      sql.args,
-    )).single;
+    const planColumns = [
+      'seconds',
+      'n',
+      'ended',
+      'done',
+      'missed',
+      'upcoming',
+      'cancelled',
+      'skipped',
+      'boundary',
+    ];
+    const focusColumns = [
+      'seconds',
+      'n',
+      'unlinkedN',
+      'linked',
+      'unlinked',
+      'attribution',
+    ];
+    const logColumns = ['seconds', 'n'];
+    String columnList(String table, String prefix, List<String> columns) =>
+        columns.map((column) => '$table.$column ${prefix}_$column').join(', ');
+
+    final aggregate = (await _query(tx, '''${sql.cte},
+        plan_result AS (${sql.planAggregate}),
+        focus_result AS (${sql.focusAggregate}),
+        log_result AS (${sql.logAggregate}),
+        issue_result AS (
+          SELECT COUNT(*) n FROM (${sql.entries(PlanReviewFilter.issues)})
+        )
+        SELECT
+          ${columnList('plan_result', 'plan', planColumns)},
+          ${columnList('focus_result', 'focus', focusColumns)},
+          ${columnList('log_result', 'log', logColumns)},
+          issue_result.n issue_n
+        FROM plan_result
+        CROSS JOIN focus_result
+        CROSS JOIN log_result
+        CROSS JOIN issue_result''', sql.args)).single;
+    Map<String, Object?> aggregateValues(String prefix, List<String> columns) =>
+        {for (final column in columns) column: aggregate['${prefix}_$column']};
+    final plans = aggregateValues('plan', planColumns);
+    final focus = aggregateValues('focus', focusColumns);
+    final logs = aggregateValues('log', logColumns);
+    final issueCount = aggregate['issue_n'];
     final boundary = plans['boundary'] as int?;
     final midnight = DateTime(instant.year, instant.month, instant.day + 1);
     return PlanReviewOverview(
@@ -215,7 +301,7 @@ class PlanReviewRepository {
       plans: Map.unmodifiable(plans),
       focus: Map.unmodifiable(focus),
       logs: Map.unmodifiable(logs),
-      issues: (issues['n'] as num).toInt(),
+      issues: (issueCount as num).toInt(),
       nextBoundary:
           boundary != null && boundary < midnight.millisecondsSinceEpoch
           ? DateTime.fromMillisecondsSinceEpoch(boundary)
@@ -233,8 +319,117 @@ class PlanReviewRepository {
     final db = await _database(username);
     final instant = now;
     final result = await db.transaction((tx) async {
-      final sql = await _sql(tx, start, end, instant);
+      final sql = await _sql(tx, start, end, instant, schemaOwner: db);
       return _overview(tx, sql, identity, instant);
+    });
+    await identity.check();
+    return result;
+  }
+
+  /// Fixed-size homepage projection; attribution still includes every candidate.
+  Future<PlanTodayCard> readTodayCard(String username) async {
+    final identity = await PlanTodoIdentity.capture(username);
+    final db = await _database(username);
+    final instant = now;
+    final start = DateTime(instant.year, instant.month, instant.day);
+    final end = DateTime(start.year, start.month, start.day + 1);
+    final result = await db.transaction((tx) async {
+      final sql = await _sql(tx, start, end, instant, schemaOwner: db);
+      final overview = await _overview(tx, sql, identity, instant);
+      final rows = await _query(
+        tx,
+        '''${sql.cte},
+        card_rows AS (SELECT *, CASE
+          WHEN status=1 THEN 3 WHEN status=5 THEN 0
+          WHEN status=6 OR end<=${sql.instant} THEN 2
+          WHEN start<=${sql.instant} THEN 0 ELSE 1 END priority
+          FROM plans WHERE ${sql.planRange} AND valid=1 AND status NOT IN (3,7)),
+        need AS (SELECT id FROM card_rows WHERE priority=2 ORDER BY start,id LIMIT 1),
+        chosen AS (SELECT * FROM card_rows
+          ORDER BY CASE WHEN id=(SELECT id FROM need) THEN 0 ELSE 1 END,priority,start,id LIMIT 5),
+        measured AS (SELECT ownerPlan, SUM(seconds) seconds FROM focus
+          WHERE valid=1 AND category='linked' GROUP BY ownerPlan)
+        SELECT p.id,'plan' kind,p.title,p.start,p.end,p.minutes*60 seconds,
+          p.id planId,p.todoId,p.status,1 verified,COALESCE(m.seconds,0) focusSeconds,
+          (SELECT MIN(start) FROM card_rows WHERE status<>1 AND start>${sql.instant}) nextStart
+        FROM chosen p LEFT JOIN measured m ON m.ownerPlan=p.id ORDER BY p.priority,p.start,p.id''',
+        sql.args,
+      );
+      final next = rows.isEmpty ? null : rows.first['nextStart'] as int?;
+      final boundary =
+          next != null && next < overview.nextBoundary.millisecondsSinceEpoch
+          ? DateTime.fromMillisecondsSinceEpoch(next)
+          : overview.nextBoundary;
+      return PlanTodayCard(
+        overview,
+        List.unmodifiable(rows.map(PlanTodayRow.new)),
+        boundary,
+      );
+    });
+    await identity.check();
+    return result;
+  }
+
+  Future<PlanAgendaProjection> readAgendaCard(String username) async {
+    final identity = await PlanTodoIdentity.capture(username);
+    final db = await _database(username);
+    final instant = now;
+    final start = DateTime(instant.year, instant.month, instant.day);
+    final end = DateTime(start.year, start.month, start.day + 1);
+    final result = await db.transaction((tx) async {
+      final sql = await _sql(
+        tx,
+        start,
+        end,
+        instant,
+        schemaOwner: db,
+        overlappingPlans: true,
+      );
+      final overview = await _overview(tx, sql, identity, instant);
+      final rows = await _query(tx, '''${sql.cte},
+        agenda_rows AS (SELECT *, CASE
+          WHEN status=1 THEN 3 WHEN status=5 THEN 0
+          WHEN status=6 OR end<=${sql.instant} THEN 2
+          WHEN start<=${sql.instant} THEN 0 ELSE 1 END priority
+          FROM plans WHERE start<${sql.hi} AND end>${sql.lo}
+            AND deleted=0 AND valid=1 AND status NOT IN (3,7)),
+        ranked AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY priority ORDER BY start,id) position,
+          COUNT(*) OVER (PARTITION BY priority) groupCount FROM agenda_rows),
+        measured AS (SELECT ownerPlan,SUM(seconds) seconds FROM focus
+          WHERE valid=1 AND category='linked' GROUP BY ownerPlan)
+        SELECT p.id,'plan' kind,p.title,p.start,p.end,p.minutes*60 seconds,
+          p.id planId,p.todoId,p.status,1 verified,COALESCE(m.seconds,0) focusSeconds,
+          p.priority,p.groupCount,
+          (SELECT MIN(start) FROM agenda_rows WHERE priority=1) nextStart,
+          (SELECT MIN(end) FROM agenda_rows
+            WHERE priority=0 AND end>${sql.instant}) nextEnd
+        FROM ranked p LEFT JOIN measured m ON m.ownerPlan=p.id
+        WHERE p.position<=5 ORDER BY p.priority,p.start,p.id''', sql.args);
+      final todoIds = await _query(
+        tx,
+        '''SELECT DISTINCT todo_uuid FROM todo_plan_blocks
+        WHERE COALESCE(is_deleted,0)=0 AND start_time<${sql.hi} AND end_time>${sql.lo}
+          AND LENGTH(TRIM(COALESCE(todo_uuid,'')))>0''',
+      );
+      var boundary = overview.nextBoundary;
+      for (final key in ['nextStart', 'nextEnd']) {
+        final value = rows.isEmpty ? null : rows.first[key] as int?;
+        if (value != null && value < boundary.millisecondsSinceEpoch) {
+          boundary = DateTime.fromMillisecondsSinceEpoch(value);
+        }
+      }
+      return PlanAgendaProjection(
+        PlanTodayCard(
+          overview,
+          List.unmodifiable(rows.map(PlanTodayRow.new)),
+          boundary,
+        ),
+        Map.unmodifiable({
+          for (final row in rows)
+            row['priority'] as int: row['groupCount'] as int,
+        }),
+        Set.unmodifiable(todoIds.map((row) => row['todo_uuid'] as String)),
+      );
     });
     await identity.check();
     return result;
@@ -249,7 +444,7 @@ class PlanReviewRepository {
     final db = await _database(username);
     final instant = now;
     final result = await db.transaction((tx) async {
-      final sql = await _sql(tx, start, end, instant);
+      final sql = await _sql(tx, start, end, instant, schemaOwner: db);
       final overview = await _overview(tx, sql, identity, instant);
       final days = await _query(tx, '${sql.cte} ${sql.dayAggregate}', sql.args);
       final ranking = await _query(
@@ -300,6 +495,7 @@ class PlanReviewRepository {
         start,
         end,
         instant,
+        schemaOwner: db,
         planId: cumulative ? planId : null,
       );
       final where = [
@@ -460,10 +656,18 @@ class PlanReviewRepository {
 }
 
 class _ReviewSql {
-  _ReviewSql(this.start, this.end, this.now, this.flags, this.planId);
+  _ReviewSql(
+    this.start,
+    this.end,
+    this.now,
+    this.flags,
+    this.planId,
+    this.overlappingPlans,
+  );
   final DateTime start, end, now;
   final Map<String, bool> flags;
   final String? planId;
+  final bool overlappingPlans;
   int get lo => start.millisecondsSinceEpoch;
   int get hi => end.millisecondsSinceEpoch;
   int get instant => now.millisecondsSinceEpoch;
@@ -486,7 +690,7 @@ class _ReviewSql {
         AND typeof(p.planned_minutes)='integer' AND p.planned_minutes>0
         AND p.status IN (0,1,2,3,4,5,6,7) AND LENGTH(TRIM(COALESCE(p.uuid,'')))>0
         THEN 1 ELSE 0 END valid FROM todo_plan_blocks p
-      WHERE (p.start_time >= $lo AND p.start_time < $hi)
+      WHERE (${overlappingPlans ? 'p.start_time < $hi AND p.end_time > $lo' : 'p.start_time >= $lo AND p.start_time < $hi'})
         OR p.uuid IN (SELECT planId FROM raw_focus WHERE planId IS NOT NULL)
         OR (p.todo_uuid IN (SELECT todoId FROM raw_focus WHERE todoId IS NOT NULL)
           AND EXISTS (SELECT 1 FROM raw_focus r WHERE r.todoId=p.todo_uuid
@@ -557,6 +761,7 @@ class _ReviewSql {
   String get focusAggregate =>
       '''SELECT COALESCE(SUM(CASE WHEN valid=1 THEN seconds ELSE 0 END),0) seconds,
     SUM(CASE WHEN valid=1 THEN 1 ELSE 0 END) n,
+    SUM(CASE WHEN valid=1 AND category='unlinked' THEN 1 ELSE 0 END) unlinkedN,
     ${['linked', 'unlinked', 'attribution'].map((c) => "COALESCE(SUM(CASE WHEN valid=1 AND category='$c' THEN seconds ELSE 0 END),0) $c").join(',')}
     FROM focus''';
   String get logAggregate =>

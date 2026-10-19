@@ -37,7 +37,8 @@ class _FinanceTextRecognitionScreenState
 
   void _useExample() {
     setState(() {
-      _controller.text = '''#记账
+      _controller.text =
+          '''#记账
 类型: 支出
 金额: 28.50
 分类: 餐饮
@@ -114,8 +115,10 @@ class _FinanceTextRecognitionScreenState
                   children: [
                     Row(
                       children: [
-                        Icon(Icons.receipt_long_outlined,
-                            color: colorScheme.primary),
+                        Icon(
+                          Icons.receipt_long_outlined,
+                          color: colorScheme.primary,
+                        ),
                         const SizedBox(width: 10),
                         const Expanded(
                           child: Text(

@@ -7,6 +7,7 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
     TodoItem todo, {
     required bool isPast,
     required bool isFuture,
+    required DateTime now,
     Key? key,
     Widget? dragHandle,
   }) {
@@ -40,12 +41,13 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
       todo.createdDate ?? todo.createdAt,
       isUtc: true,
     ).toLocal();
-    final DateTime now = DateTime.now();
     double progress = 0.0;
     if (todo.dueDate != null) {
-      final start = cDate;
-      final end = todo.isDateOnly
-          ? todo.effectiveDueAt!
+      final startMicros = cDate.microsecondsSinceEpoch;
+      final nowMicros = now.microsecondsSinceEpoch;
+      final timeMode = todo.timeModeForStartTime(cDate);
+      final end = timeMode == TodoTimeMode.dateOnly
+          ? todo.effectiveDueAtForTimeMode(timeMode)!
           : DateTime(
               todo.dueDate!.year,
               todo.dueDate!.month,
@@ -54,15 +56,19 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
               todo.dueDate!.minute,
               59,
             );
-      var totalMinutes = end.difference(start).inMinutes;
+      var totalMinutes =
+          (end.microsecondsSinceEpoch - startMicros) ~/
+          Duration.microsecondsPerMinute;
       if (totalMinutes <= 0) totalMinutes = 1;
-      if (now.isAfter(start)) {
-        progress = (now.difference(start).inMinutes / totalMinutes).clamp(
-          0.0,
-          1.0,
-        );
+      if (nowMicros > startMicros) {
+        final elapsedMinutes =
+            (nowMicros - startMicros) ~/ Duration.microsecondsPerMinute;
+        progress = (elapsedMinutes / totalMinutes).clamp(0.0, 1.0);
       }
     }
+    final Color? progressFillColor = todo.isDone
+        ? null
+        : _getProgressFillColor(progress, isPast);
 
     // ── 时间徽章文本 ──
     String badge = "";
@@ -91,7 +97,7 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
         badgeBg = Colors.orange.withValues(alpha: 0.12);
       }
     } else {
-      badge = DateFormat('MM/dd').format(cDate);
+      badge = _cachedDateFormat('MM/dd').format(cDate);
       badgeColor = colorScheme.onSurface.withValues(alpha: 0.45);
       badgeBg = colorScheme.onSurface.withValues(alpha: 0.06);
     }
@@ -320,31 +326,28 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                                     : progress.clamp(0.0, 1.0),
                               ),
                               builder: (context, value, child) {
-                                final fillColor = _getProgressFillColor(
-                                  progress,
-                                  isPast,
-                                );
                                 return FractionallySizedBox(
                                   alignment: Alignment.centerLeft,
                                   widthFactor: value,
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      gradient: LinearGradient(
-                                        colors: [
-                                          fillColor.withValues(
-                                            alpha: isLight ? 0.32 : 0.18,
-                                          ),
-                                          fillColor.withValues(
-                                            alpha: isLight ? 0.15 : 0.08,
-                                          ),
-                                        ],
-                                        begin: Alignment.centerLeft,
-                                        end: Alignment.centerRight,
-                                      ),
-                                    ),
-                                  ),
+                                  child: child!,
                                 );
                               },
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    colors: [
+                                      progressFillColor!.withValues(
+                                        alpha: isLight ? 0.32 : 0.18,
+                                      ),
+                                      progressFillColor.withValues(
+                                        alpha: isLight ? 0.15 : 0.08,
+                                      ),
+                                    ],
+                                    begin: Alignment.centerLeft,
+                                    end: Alignment.centerRight,
+                                  ),
+                                ),
+                              ),
                             ),
                           ),
                         Material(
@@ -405,6 +408,7 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                                                 // 🚀 乐观 UI 更新：立即修改状态并通知父组件
                                                 final bool wasDone =
                                                     todo.isDone;
+                                                _invalidateTodoViewModel();
                                                 setState(() {
                                                   todo.isDone = val;
                                                   if (val) {
@@ -531,7 +535,9 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                                                       const SizedBox(width: 4),
                                                       recurrenceIcon,
                                                     ],
-                                                    if (todo.hasConflict) ...[
+                                                    if (ConflictVisibilityService.isVisibleTodoConflict(
+                                                      todo,
+                                                    )) ...[
                                                       const SizedBox(width: 4),
                                                       Icon(
                                                         Icons
@@ -987,12 +993,12 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
   Widget _buildTodoList() {
     final DateTime now = DateTime.now();
     final DateTime today = DateTime(now.year, now.month, now.day);
-    final viewModelSignature = _computeViewModelSignature(today);
-    if ((_cachedVm != null && _cachedVm!.today != today) ||
-        _cachedVmSignature != viewModelSignature) {
-      _cachedVm = null;
-      _cachedVmSignature = viewModelSignature;
+    if (_cachedVmSignatureDate != today ||
+        (_cachedVm != null && _cachedVm!.today != today)) {
+      _invalidateTodoViewModel();
     }
+    _cachedVmSignature ??= _computeViewModelSignature(today);
+    _cachedVmSignatureDate ??= today;
     _cachedVm ??= _computeViewModel();
     final vm = _cachedVm!;
 
@@ -1004,7 +1010,7 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
     final bool separateFolders =
         _folderDisplayMode == _TodoFolderDisplayMode.separate;
 
-    if (vm.activeTodos.isEmpty && vm.activeGroups.isEmpty) {
+    if (vm.activeTodoCount == 0 && vm.activeGroups.isEmpty) {
       return EmptyState(text: "暂无待办，去添加一个吧", isLight: widget.isLight);
     }
 
@@ -1015,8 +1021,11 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
     final List<_GroupDisplayData> separateGroupData = vm.separateGroupData;
 
     final List<Widget> sections = [];
+    final bool allTodayDone = vm.allTodayDone;
 
-    if (separateFolders && separateGroupData.isNotEmpty) {
+    if (_isWholeListExpanded &&
+        separateFolders &&
+        separateGroupData.isNotEmpty) {
       sections.add(
         _buildGroupLabel(
           text: "📂 文件夹",
@@ -1035,11 +1044,8 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
       );
     }
 
-    if (pastItems.isNotEmpty) {
-      final List<TodoItem> overdueTodos = [
-        ...pastItems.map((e) => e.todo).whereType<TodoItem>(),
-        ...pastItems.expand((e) => e.groupTodos ?? const <TodoItem>[]),
-      ].where((t) => !t.isDone && !t.isDeleted && t.dueDate != null).toList();
+    if (_isWholeListExpanded && pastItems.isNotEmpty) {
+      final List<TodoItem> overdueTodos = vm.overdueTodos;
 
       if (overdueTodos.isNotEmpty) {
         sections.add(
@@ -1082,286 +1088,295 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
       sections.add(
         _buildAnimatedSection(
           expanded: _isPastTodosExpanded,
-          child: Column(
-            children: pastItems.map((item) {
-              final todo = item.todo;
-              if (todo != null) {
-                return _buildTodoItemCard(
-                  todo,
-                  isPast: true,
-                  isFuture: false,
-                  key: _getTodoDismissKey('dismiss', todo.id),
-                );
-              }
-              return _buildGroupWidget(item.group!, item.groupTodos!);
-            }).toList(),
-          ),
+          child: _isPastTodosExpanded
+              ? Column(
+                  children: pastItems
+                      .map((item) {
+                        final todo = item.todo;
+                        if (todo != null) {
+                          return _buildTodoItemCard(
+                            todo,
+                            isPast: true,
+                            isFuture: false,
+                            now: now,
+                            key: _getTodoDismissKey('dismiss', todo.id),
+                          );
+                        }
+                        return _buildGroupWidget(item.group!, item.groupTodos!);
+                      })
+                      .toList(growable: false),
+                )
+              : const SizedBox.shrink(),
         ),
       );
     }
 
-    final bool allTodayDone =
-        todayItems.isNotEmpty && todayItems.every((t) => t.isDone);
     final bool showTodayItems =
         _isTodayManuallyExpanded || (!allTodayDone && _isTodayExpanded);
 
     // ── 今日板块动画封装 ──
-    sections.add(
-      AnimatedSwitcher(
-        duration: const Duration(milliseconds: 400),
-        transitionBuilder: (child, animation) {
-          return FadeTransition(
-            opacity: animation,
-            child: SizeTransition(
-              sizeFactor: animation,
-              alignment: AlignmentDirectional.topStart,
-              child: child,
-            ),
-          );
-        },
-        child: (!showTodayItems && todayItems.isNotEmpty)
-            ? GestureDetector(
-                key: const ValueKey('today_summary_card'),
-                onTap: () => setState(() {
-                  _isTodayManuallyExpanded = true;
-                  _isTodayExpanded = true;
-                }),
-                child: Container(
-                  margin: const EdgeInsets.symmetric(vertical: 10),
-                  decoration: BoxDecoration(
-                    color: widget.isLight
-                        ? (isDarkTheme
-                              ? Colors.grey[850]!.withValues(alpha: 0.95)
-                              : Colors.white.withValues(alpha: 0.95))
-                        : (allTodayDone
-                              ? (isDarkTheme
-                                    ? Colors.green.withValues(alpha: 0.15)
-                                    : Colors.green.withValues(alpha: 0.08))
-                              : (isDarkTheme
-                                    ? Colors.white.withValues(alpha: 0.08)
-                                    : Theme.of(context).colorScheme.primary
-                                          .withValues(alpha: 0.04))),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: allTodayDone
-                          ? Colors.green.withValues(alpha: 0.4)
-                          : (widget.isLight
+    if (_isWholeListExpanded) {
+      sections.add(
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 400),
+          transitionBuilder: (child, animation) {
+            return FadeTransition(
+              opacity: animation,
+              child: SizeTransition(
+                sizeFactor: animation,
+                alignment: AlignmentDirectional.topStart,
+                child: child,
+              ),
+            );
+          },
+          child: (!showTodayItems && todayItems.isNotEmpty)
+              ? GestureDetector(
+                  key: const ValueKey('today_summary_card'),
+                  onTap: () => setState(() {
+                    _isTodayManuallyExpanded = true;
+                    _isTodayExpanded = true;
+                  }),
+                  child: Container(
+                    margin: const EdgeInsets.symmetric(vertical: 10),
+                    decoration: BoxDecoration(
+                      color: widget.isLight
+                          ? (isDarkTheme
+                                ? Colors.grey[850]!.withValues(alpha: 0.95)
+                                : Colors.white.withValues(alpha: 0.95))
+                          : (allTodayDone
                                 ? (isDarkTheme
-                                      ? Colors.white.withValues(alpha: 0.15)
-                                      : Colors.black.withValues(alpha: 0.1))
+                                      ? Colors.green.withValues(alpha: 0.15)
+                                      : Colors.green.withValues(alpha: 0.08))
                                 : (isDarkTheme
-                                      ? Colors.white.withValues(alpha: 0.22)
+                                      ? Colors.white.withValues(alpha: 0.08)
                                       : Theme.of(context).colorScheme.primary
-                                            .withValues(alpha: 0.25))),
-                      width: 1.5,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(
-                          alpha: widget.isLight ? 0.15 : 0.08,
-                        ),
-                        blurRadius: 12,
-                        offset: const Offset(0, 5),
+                                            .withValues(alpha: 0.04))),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: allTodayDone
+                            ? Colors.green.withValues(alpha: 0.4)
+                            : (widget.isLight
+                                  ? (isDarkTheme
+                                        ? Colors.white.withValues(alpha: 0.15)
+                                        : Colors.black.withValues(alpha: 0.1))
+                                  : (isDarkTheme
+                                        ? Colors.white.withValues(alpha: 0.22)
+                                        : Theme.of(context).colorScheme.primary
+                                              .withValues(alpha: 0.25))),
+                        width: 1.5,
                       ),
-                    ],
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 16,
-                    ),
-                    child: Row(
-                      children: [
-                        GestureDetector(
-                          onTap: allTodayDone
-                              ? () {
-                                  TodoCompletionCelebrationService.playCelebrationImpact();
-                                  showTodoAllDoneCelebration(
-                                    context,
-                                    completedTodayCount: todayItems.length,
-                                  );
-                                }
-                              : null,
-                          child: Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: allTodayDone
-                                  ? Colors.green.withValues(alpha: 0.1)
-                                  : Theme.of(context).colorScheme.primary
-                                        .withValues(alpha: 0.1),
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(
-                              allTodayDone
-                                  ? Icons.celebration_rounded
-                                  : Icons.task_alt_rounded,
-                              size: 20,
-                              color: allTodayDone
-                                  ? Colors.green
-                                  : Theme.of(context).colorScheme.primary,
-                            ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(
+                            alpha: widget.isLight ? 0.15 : 0.08,
                           ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                allTodayDone ? "任务已全部达成！" : "今日事今日毕",
-                                style: TextStyle(
-                                  color: allTodayDone
-                                      ? (isDarkTheme
-                                            ? Colors.green.shade200
-                                            : Colors.green.shade900)
-                                      : (widget.isLight
-                                            ? (isDarkTheme
-                                                  ? Colors.white
-                                                  : Colors.black)
-                                            : (isDarkTheme
-                                                  ? Colors.white.withValues(
-                                                      alpha: 0.9,
-                                                    )
-                                                  : Colors.black.withValues(
-                                                      alpha: 0.85,
-                                                    ))),
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
-                                  letterSpacing: 0.2,
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                allTodayDone
-                                    ? "今天也很努力呢，休息一下吧 ✨"
-                                    : "今日还有 ${todayItems.where((t) => !t.isDone).length} 个待办等待完成",
-                                style: TextStyle(
-                                  color: (allTodayDone
-                                      ? (isDarkTheme
-                                            ? Colors.green[200]
-                                            : Colors.green[800])
-                                      : (widget.isLight
-                                            ? (isDarkTheme
-                                                  ? Colors.white.withValues(
-                                                      alpha: 0.7,
-                                                    )
-                                                  : Colors.black.withValues(
-                                                      alpha: 0.6,
-                                                    ))
-                                            : (isDarkTheme
-                                                  ? Colors.white
-                                                  : Colors.black))),
-                                  fontSize: 12.5,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Icon(
-                          Icons.arrow_forward_ios_rounded,
-                          size: 14,
-                          color: (allTodayDone ? Colors.green : Colors.grey)
-                              .withValues(alpha: 0.5),
+                          blurRadius: 12,
+                          offset: const Offset(0, 5),
                         ),
                       ],
                     ),
-                  ),
-                ),
-              )
-            : (showTodayItems && todayItems.isNotEmpty)
-            ? Column(
-                key: const ValueKey('today_expanded_items'),
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildGroupLabel(
-                    text:
-                        "今日 · ${todayItems.where((t) => t.isDone).length}/${todayItems.length} 已完成",
-                    expanded: true,
-                    onTap: () => setState(() {
-                      _isTodayExpanded = false;
-                      _isTodayManuallyExpanded = false;
-                    }),
-                  ),
-                  _buildAnimatedSection(
-                    expanded: _isTodayExpanded,
-                    child: ReorderableListView(
-                      padding: EdgeInsets.zero,
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      buildDefaultDragHandles: false,
-                      onReorderItem: (oldIndex, newIndex) {
-                        final List<int> todayIndices = [];
-                        for (int i = 0; i < widget.todos.length; i++) {
-                          final t = widget.todos[i];
-                          if (_isHistoricalTodo(t) ||
-                              t.isDeleted ||
-                              (!hideFolders && t.groupId != null)) {
-                            continue;
-                          }
-                          if (t.dueDate == null ||
-                              (t.dueDate!.year == today.year &&
-                                  t.dueDate!.month == today.month &&
-                                  t.dueDate!.day == today.day)) {
-                            todayIndices.add(i);
-                          }
-                        }
-                        final reordered = List<_SortedDisplayItem>.from(
-                          todayItems,
-                        );
-                        final item = reordered.removeAt(oldIndex);
-                        reordered.insert(newIndex, item);
-                        final updatedList = List<TodoItem>.from(widget.todos);
-                        final reorderedTodos = reordered
-                            .where((e) => e.todo != null)
-                            .map((e) => e.todo!)
-                            .toList();
-                        for (
-                          int i = 0;
-                          i < todayIndices.length && i < reorderedTodos.length;
-                          i++
-                        ) {
-                          updatedList[todayIndices[i]] = reorderedTodos[i];
-                        }
-                        widget.onTodosChanged(updatedList);
-                      },
-                      children: todayItems.asMap().entries.map((entry) {
-                        final int index = entry.key;
-                        final item = entry.value;
-                        if (item.todo != null) {
-                          return _buildTodoItemCard(
-                            item.todo!,
-                            isPast: false,
-                            isFuture: false,
-                            key: _getTodoDismissKey('dismiss', item.todo!.id),
-                            dragHandle: ReorderableDelayedDragStartListener(
-                              index: index,
-                              child: _buildTodoDragHandleIcon(
-                                item.todo!,
-                                Theme.of(context).colorScheme.onSurfaceVariant,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 16,
+                      ),
+                      child: Row(
+                        children: [
+                          GestureDetector(
+                            onTap: allTodayDone
+                                ? () {
+                                    TodoCompletionCelebrationService.playCelebrationImpact();
+                                    showTodoAllDoneCelebration(
+                                      context,
+                                      completedTodayCount: todayItems.length,
+                                    );
+                                  }
+                                : null,
+                            child: Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: allTodayDone
+                                    ? Colors.green.withValues(alpha: 0.1)
+                                    : Theme.of(context).colorScheme.primary
+                                          .withValues(alpha: 0.1),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                allTodayDone
+                                    ? Icons.celebration_rounded
+                                    : Icons.task_alt_rounded,
+                                size: 20,
+                                color: allTodayDone
+                                    ? Colors.green
+                                    : Theme.of(context).colorScheme.primary,
                               ),
                             ),
-                          );
-                        }
-                        return Container(
-                          key: ValueKey('group_${item.group!.id}'),
-                          child: _buildGroupWidget(
-                            item.group!,
-                            item.groupTodos!,
                           ),
-                        );
-                      }).toList(),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  allTodayDone ? "任务已全部达成！" : "今日事今日毕",
+                                  style: TextStyle(
+                                    color: allTodayDone
+                                        ? (isDarkTheme
+                                              ? Colors.green.shade200
+                                              : Colors.green.shade900)
+                                        : (widget.isLight
+                                              ? (isDarkTheme
+                                                    ? Colors.white
+                                                    : Colors.black)
+                                              : (isDarkTheme
+                                                    ? Colors.white.withValues(
+                                                        alpha: 0.9,
+                                                      )
+                                                    : Colors.black.withValues(
+                                                        alpha: 0.85,
+                                                      ))),
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                    letterSpacing: 0.2,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  allTodayDone
+                                      ? "今天也很努力呢，休息一下吧 ✨"
+                                      : "今日还有 ${vm.todayUndoneCount} 个待办等待完成",
+                                  style: TextStyle(
+                                    color: (allTodayDone
+                                        ? (isDarkTheme
+                                              ? Colors.green[200]
+                                              : Colors.green[800])
+                                        : (widget.isLight
+                                              ? (isDarkTheme
+                                                    ? Colors.white.withValues(
+                                                        alpha: 0.7,
+                                                      )
+                                                    : Colors.black.withValues(
+                                                        alpha: 0.6,
+                                                      ))
+                                              : (isDarkTheme
+                                                    ? Colors.white
+                                                    : Colors.black))),
+                                    fontSize: 12.5,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Icon(
+                            Icons.arrow_forward_ios_rounded,
+                            size: 14,
+                            color: (allTodayDone ? Colors.green : Colors.grey)
+                                .withValues(alpha: 0.5),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                ],
-              )
-            : const SizedBox.shrink(key: ValueKey('today_empty')),
-      ),
-    );
+                )
+              : (showTodayItems && todayItems.isNotEmpty)
+              ? Column(
+                  key: const ValueKey('today_expanded_items'),
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildGroupLabel(
+                      text:
+                          "今日 · ${vm.todayDoneCount}/${todayItems.length} 已完成",
+                      expanded: true,
+                      onTap: () => setState(() {
+                        _isTodayExpanded = false;
+                        _isTodayManuallyExpanded = false;
+                      }),
+                    ),
+                    _buildAnimatedSection(
+                      expanded: _isTodayExpanded,
+                      child: ReorderableListView.builder(
+                        itemCount: todayItems.length,
+                        itemBuilder: (context, index) {
+                          final item = todayItems[index];
+                          if (item.todo != null) {
+                            return _buildTodoItemCard(
+                              item.todo!,
+                              isPast: false,
+                              isFuture: false,
+                              now: now,
+                              key: _getTodoDismissKey('dismiss', item.todo!.id),
+                              dragHandle: ReorderableDelayedDragStartListener(
+                                index: index,
+                                child: _buildTodoDragHandleIcon(
+                                  item.todo!,
+                                  Theme.of(context)
+                                      .colorScheme
+                                      .onSurfaceVariant,
+                                ),
+                              ),
+                            );
+                          }
+                          return Container(
+                            key: ValueKey('group_${item.group!.id}'),
+                            child: _buildGroupWidget(
+                              item.group!,
+                              item.groupTodos!,
+                            ),
+                          );
+                        },
+                        padding: EdgeInsets.zero,
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        buildDefaultDragHandles: false,
+                        onReorderItem: (oldIndex, newIndex) {
+                          final List<int> todayIndices = [];
+                          for (int i = 0; i < widget.todos.length; i++) {
+                            final t = widget.todos[i];
+                            if (_isHistoricalTodoAt(t, today) ||
+                                t.isDeleted ||
+                                (!hideFolders && t.groupId != null)) {
+                              continue;
+                            }
+                            if (t.dueDate == null ||
+                                (t.dueDate!.year == today.year &&
+                                    t.dueDate!.month == today.month &&
+                                    t.dueDate!.day == today.day)) {
+                              todayIndices.add(i);
+                            }
+                          }
+                          final reordered = List<_SortedDisplayItem>.from(
+                            todayItems,
+                          );
+                          final item = reordered.removeAt(oldIndex);
+                          reordered.insert(newIndex, item);
+                          final updatedList = List<TodoItem>.from(widget.todos);
+                          final reorderedTodos = reordered
+                              .where((e) => e.todo != null)
+                              .map((e) => e.todo!)
+                              .toList();
+                          for (
+                            int i = 0;
+                            i < todayIndices.length &&
+                                i < reorderedTodos.length;
+                            i++
+                          ) {
+                            updatedList[todayIndices[i]] = reorderedTodos[i];
+                          }
+                          widget.onTodosChanged(updatedList);
+                        },
+                      ),
+                    ),
+                  ],
+                )
+              : const SizedBox.shrink(key: ValueKey('today_empty')),
+        ),
+      );
+    }
 
-    if (futureItems.isNotEmpty) {
+    if (_isWholeListExpanded && futureItems.isNotEmpty) {
       sections.add(
         _buildGroupLabel(
-          text: "将来 · ${futureItems.where((t) => !t.isDone).length} 未完成",
+          text: "将来 · ${vm.futureUndoneCount} 未完成",
           expanded: _isFutureExpanded,
           icon: Icons.calendar_month_rounded,
           onTap: () => setState(() => _isFutureExpanded = !_isFutureExpanded),
@@ -1370,20 +1385,25 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
       sections.add(
         _buildAnimatedSection(
           expanded: _isFutureExpanded,
-          child: Column(
-            children: futureItems.map((item) {
-              final todo = item.todo;
-              if (todo != null) {
-                return _buildTodoItemCard(
-                  todo,
-                  isPast: false,
-                  isFuture: true,
-                  key: _getTodoDismissKey('dismiss', todo.id),
-                );
-              }
-              return _buildGroupWidget(item.group!, item.groupTodos!);
-            }).toList(),
-          ),
+          child: _isFutureExpanded
+              ? Column(
+                  children: futureItems
+                      .map((item) {
+                        final todo = item.todo;
+                        if (todo != null) {
+                          return _buildTodoItemCard(
+                            todo,
+                            isPast: false,
+                            isFuture: true,
+                            now: now,
+                            key: _getTodoDismissKey('dismiss', todo.id),
+                          );
+                        }
+                        return _buildGroupWidget(item.group!, item.groupTodos!);
+                      })
+                      .toList(growable: false),
+                )
+              : const SizedBox.shrink(),
         ),
       );
     }
@@ -1549,27 +1569,37 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
 
     final seriesRepresentativeIds = _buildRecurrenceSeriesRepresentativeIds(
       seriesOccurrences,
+      occurrencesSortedByStart: true,
     );
 
     // Build groupById map for O(1) lookup - avoid todoGroups.any() per todo
     final groupById = <String, TodoGroup>{};
-    for (final g in widget.todoGroups) {
-      if (g.isDeleted) continue;
-      if (_selectedSubTeamUuid != null && g.teamUuid != _selectedSubTeamUuid) {
-        continue;
+    if (!hideFolders) {
+      for (final g in widget.todoGroups) {
+        if (g.isDeleted) continue;
+        if (_selectedSubTeamUuid != null &&
+            g.teamUuid != _selectedSubTeamUuid) {
+          continue;
+        }
+        groupById[g.id] = g;
       }
-      groupById[g.id] = g;
     }
 
     // Build todosByGroup map and orphaned list in one pass
     final todosByGroup = <String, List<TodoItem>>{};
     final orphanedTodos = <TodoItem>[];
-    final displayTodos = _filterHabitOnlyRecurringTodos(
-      widget.todos,
-      _habitOnlyRecurringSeriesIds,
-    );
-    for (final t in displayTodos) {
-      if (t.isDeleted || _isHistoricalTodo(t)) continue;
+    var activeTodoCount = 0;
+    var undoneCount = 0;
+    for (final t in widget.todos) {
+      if (t.isDeleted || _isHistoricalTodoAt(t, today)) continue;
+      if (_habitOnlyRecurringSeriesIds.isNotEmpty) {
+        final seriesId = t.recurrenceSeriesId;
+        if (seriesId != null &&
+            seriesId.isNotEmpty &&
+            _habitOnlyRecurringSeriesIds.contains(seriesId)) {
+          continue;
+        }
+      }
       if (_selectedSubTeamUuid != null && t.teamUuid != _selectedSubTeamUuid) {
         continue;
       }
@@ -1577,6 +1607,7 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
         continue;
       }
 
+      activeTodoCount++;
       final tid = t.groupId;
       if (!hideFolders &&
           tid != null &&
@@ -1586,18 +1617,12 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
       } else {
         orphanedTodos.add(t);
       }
+      if (!t.isDone) undoneCount++;
     }
 
     final Iterable<TodoGroup> activeGroups = hideFolders
         ? const <TodoGroup>[]
         : groupById.values;
-
-    final List<TodoItem> activeTodos = [
-      ...todosByGroup.values.expand((list) => list),
-      ...orphanedTodos,
-    ];
-
-    final int undoneCount = activeTodos.where((t) => !t.isDone).length;
 
     List<_SortedDisplayItem> pastItems = [];
     List<_SortedDisplayItem> todayItems = [];
@@ -1621,50 +1646,46 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
 
     // 1. Process Folders - iterate over active groups (already filtered)
     for (final g in activeGroups) {
-      final allGTodos = todosByGroup[g.id] ?? [];
-      final gTodos = _selectedSubTeamUuid == null
-          ? allGTodos
-          : allGTodos.where((t) => t.teamUuid == _selectedSubTeamUuid).toList();
+      final gTodos = todosByGroup[g.id] ?? [];
 
       if (gTodos.isEmpty) continue;
 
-      bool isAllDone = gTodos.isNotEmpty && gTodos.every((t) => t.isDone);
-      DateTime? minDate;
+      var isAllDone = true;
+      DateTime? earliestUndoneDate;
+      DateTime? earliestAnyDate;
+      var groupProgress = 0.0;
       for (var t in gTodos) {
-        if (!t.isDone && t.dueDate != null) {
-          if (minDate == null || t.dueDate!.isBefore(minDate)) {
-            minDate = t.dueDate;
-          }
-        }
-      }
-      if (minDate == null) {
-        for (var t in gTodos) {
-          if (t.dueDate != null) {
-            if (minDate == null || t.dueDate!.isBefore(minDate)) {
-              minDate = t.dueDate;
-            }
-          }
-        }
-      }
+        if (!t.isDone) isAllDone = false;
 
-      // Calculate folder progress
-      double groupProgress = 0.0;
-      for (var t in gTodos) {
-        if (t.isDone || t.effectiveDueAt == null) continue;
+        final dueDate = t.dueDate;
+        if (dueDate != null) {
+          if (earliestAnyDate == null || dueDate.isBefore(earliestAnyDate)) {
+            earliestAnyDate = dueDate;
+          }
+          if (!t.isDone &&
+              (earliestUndoneDate == null ||
+                  dueDate.isBefore(earliestUndoneDate))) {
+            earliestUndoneDate = dueDate;
+          }
+        }
+
+        final end = t.effectiveDueAt;
+        if (t.isDone || end == null) continue;
+
         final cDate = DateTime.fromMillisecondsSinceEpoch(
           t.createdDate ?? t.createdAt,
           isUtc: true,
         ).toLocal();
-        final end = t.effectiveDueAt!;
         final totalMin = end.difference(cDate).inMinutes;
         if (totalMin > 0 && now.isAfter(cDate)) {
-          final p = (now.difference(cDate).inMinutes / totalMin).clamp(
+          final progress = (now.difference(cDate).inMinutes / totalMin).clamp(
             0.0,
             1.0,
           );
-          if (p > groupProgress) groupProgress = p;
+          if (progress > groupProgress) groupProgress = progress;
         }
       }
+      final minDate = earliestUndoneDate ?? earliestAnyDate;
 
       final groupData = _GroupDisplayData(
         group: g,
@@ -1739,7 +1760,7 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
 
     return _TodoSectionViewModel(
       today: today,
-      activeTodos: activeTodos,
+      activeTodoCount: activeTodoCount,
       activeGroups: activeGroups,
       undoneCount: undoneCount,
       pastItems: pastItems,
@@ -1749,7 +1770,21 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
     );
   }
 
+  /// The dashboard revision keeps validation O(1). Other callers fall back to
+  /// hashing mutable fields and identities to detect in-place changes.
   int _computeViewModelSignature(DateTime today) {
+    final dataRevision = widget.dataRevision;
+    if (dataRevision != null) {
+      return Object.hash(
+        today.millisecondsSinceEpoch,
+        _selectedSubTeamUuid,
+        _folderDisplayMode.index,
+        dataRevision,
+        identityHashCode(widget.todos),
+        identityHashCode(widget.todoGroups),
+      );
+    }
+
     return Object.hash(
       today.millisecondsSinceEpoch,
       _selectedSubTeamUuid,
@@ -1758,16 +1793,12 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
         widget.todos.map(
           (todo) => Object.hash(
             todo.id,
+            identityHashCode(todo),
             todo.isDeleted,
             todo.isDone,
             todo.version,
-            todo.createdDate,
-            todo.createdAt,
-            todo.dueDate?.millisecondsSinceEpoch,
-            todo.recurrence.index,
-            todo.recurrenceSeriesId,
-            todo.groupId,
             todo.teamUuid,
+            todo.teamName,
           ),
         ),
       ),
@@ -1775,10 +1806,11 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
         widget.todoGroups.map(
           (group) => Object.hash(
             group.id,
+            identityHashCode(group),
             group.isDeleted,
-            group.isExpanded,
             group.version,
             group.teamUuid,
+            group.teamName,
           ),
         ),
       ),
@@ -1800,6 +1832,7 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
         recurrenceProgressBuilder: (todo) =>
             _buildRecurrenceProgress(todo, DateTime.now()),
         onToggle: () {
+          _invalidateTodoViewModel();
           setState(() {
             g.isExpanded = !g.isExpanded;
             g.markAsChanged();
@@ -1808,6 +1841,7 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
         },
         onTodoToggle: (todo) {
           final bool wasDone = todo.isDone;
+          _invalidateTodoViewModel();
           if (!todo.isDone) {
             PomodoroSyncService().sendStopSignal(todoUuid: todo.id);
           }
@@ -1822,6 +1856,7 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
         onTodoDropped: (todoId) {
           final idx = widget.todos.indexWhere((t) => t.id == todoId);
           if (idx != -1) {
+            _invalidateTodoViewModel();
             setState(() {
               widget.todos[idx].groupId = g.id;
               widget.todos[idx].version += 10;
@@ -1834,6 +1869,7 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
         onTodoRemoved: (todoId) {
           final idx = widget.todos.indexWhere((t) => t.id == todoId);
           if (idx != -1 && widget.todos[idx].groupId != null) {
+            _invalidateTodoViewModel();
             setState(() {
               widget.todos[idx].groupId = null;
               widget.todos[idx].version += 10;
@@ -1851,6 +1887,7 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
         onDelete: () async {
           final idx = widget.todoGroups.indexWhere((x) => x.id == g.id);
           if (idx != -1) {
+            _invalidateTodoViewModel();
             widget.todoGroups[idx].isDeleted = true;
             widget.todoGroups[idx].markAsChanged();
           }
@@ -1858,8 +1895,9 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
           widget.onGroupsChanged(widget.todoGroups);
           widget.onRefreshRequested();
         },
-        onTodoTap: (todo) => _editTodo(todo, context),
+        onTodoTapWithContext: _editTodo,
         onTodoDelete: (todo) async {
+          _invalidateTodoViewModel();
           setState(() {
             PomodoroSyncService().sendStopSignal(todoUuid: todo.id);
             todo.isDeleted = true;
@@ -1874,17 +1912,23 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
 
   /// 🚀 Uni-Sync 4.0: 首页动态团队切换 Tab
   Widget _buildTeamFilterTabs() {
-    // 1. 提取所有关联的团队信息 (同时扫描任务和文件夹)
-    final Map<String, String> teamMap = {};
-    for (var t in widget.todos) {
-      if (t.teamUuid != null && t.teamName != null) {
-        teamMap[t.teamUuid!] = t.teamName!;
+    final signature = _cachedVmSignature!;
+    var teamMap = _cachedTeamFilterMap;
+    if (teamMap == null || _cachedTeamFilterSignature != signature) {
+      // Extract all associated teams from todos and folders on cache misses.
+      teamMap = {};
+      for (final todo in widget.todos) {
+        if (todo.teamUuid != null && todo.teamName != null) {
+          teamMap[todo.teamUuid!] = todo.teamName!;
+        }
       }
-    }
-    for (var g in widget.todoGroups) {
-      if (g.teamUuid != null && g.teamName != null) {
-        teamMap[g.teamUuid!] = g.teamName!;
+      for (final group in widget.todoGroups) {
+        if (group.teamUuid != null && group.teamName != null) {
+          teamMap[group.teamUuid!] = group.teamName!;
+        }
       }
+      _cachedTeamFilterMap = teamMap;
+      _cachedTeamFilterSignature = signature;
     }
 
     if (teamMap.isEmpty) return const SizedBox.shrink();
@@ -1907,7 +1951,7 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
               onTap: () {
                 setState(() {
                   _selectedSubTeamUuid = null;
-                  _cachedVm = null;
+                  _invalidateTodoViewModel();
                 });
                 widget.onTeamChanged?.call(null, null);
               },
@@ -1924,7 +1968,7 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                   onTap: () {
                     setState(() {
                       _selectedSubTeamUuid = entry.key;
-                      _cachedVm = null;
+                      _invalidateTodoViewModel();
                     });
                     widget.onTeamChanged?.call(entry.key, entry.value);
                   },

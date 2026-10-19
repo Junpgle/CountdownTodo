@@ -36,8 +36,7 @@ class SyncCapabilityService {
   static bool shouldAcknowledgeFixedScheduleOps({
     required bool syncEnabled,
     required dynamic rawCapabilities,
-  }) =>
-      syncEnabled && supportsFixedSchedules(rawCapabilities);
+  }) => syncEnabled && supportsFixedSchedules(rawCapabilities);
 
   /// 习惯云同步能力（服务端声明 habits>=1 时开启）。
   static bool supportsHabits(dynamic rawCapabilities) =>
@@ -67,16 +66,14 @@ class SyncCapabilityService {
   static bool shouldAcknowledgeFinanceChanges({
     required bool syncEnabled,
     required dynamic rawCapabilities,
-  }) =>
-      syncEnabled && supportsFinance(rawCapabilities);
+  }) => syncEnabled && supportsFinance(rawCapabilities);
 
   /// 只有本轮实际同步习惯数据，并且服务端明确声明协议版本时，
   /// 才能确认对应 oplog。未知能力必须按旧服务端处理并保留本地操作。
   static bool shouldAcknowledgeHabitOps({
     required bool syncEnabled,
     required dynamic rawCapabilities,
-  }) =>
-      syncEnabled && supportsHabits(rawCapabilities);
+  }) => syncEnabled && supportsHabits(rawCapabilities);
 
   static int capabilityVersion(dynamic rawCapabilities, String name) {
     if (rawCapabilities is Map) {

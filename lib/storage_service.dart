@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+
 import 'package:countdown_todo/services/pomodoro_sync_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -7,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
+
 import 'models.dart';
 import 'models/plan_cleanup.dart';
 
@@ -19,6 +21,7 @@ import 'services/sync_capability_service.dart';
 import 'services/sync_oplog_policy.dart';
 import 'services/todo_lww_service.dart';
 import 'services/todo_recurrence_date_service.dart';
+import 'services/conflict_visibility_service.dart';
 import 'services/storage/app_settings_storage.dart';
 import 'services/storage/countdown_storage.dart';
 import 'services/storage/habit_storage.dart';
@@ -65,8 +68,8 @@ class DataRefreshSignal {
   const DataRefreshSignal({required this.revision, required this.domains});
 
   const DataRefreshSignal.initial()
-      : revision = 0,
-        domains = const {DataRefreshDomain.all};
+    : revision = 0,
+      domains = const {DataRefreshDomain.all};
 
   final int revision;
   final Set<DataRefreshDomain> domains;
@@ -114,8 +117,7 @@ class StorageService {
 
   static const String keyDeviceId = _storageService_keyDeviceId;
 
-  static const String keyDeviceInstallId =
-      _storageService_keyDeviceInstallId;
+  static const String keyDeviceInstallId = _storageService_keyDeviceInstallId;
 
   static const String keySyncInterval = _storageService_keySyncInterval;
 
@@ -293,27 +295,33 @@ class StorageService {
     List<FixedScheduleItem> items, {
     bool sync = true,
     bool isSyncSource = false,
-  }) =>
-      _storage.saveFixedSchedules(username, items,
-          sync: sync, isSyncSource: isSyncSource);
+  }) => _storage.saveFixedSchedules(
+    username,
+    items,
+    sync: sync,
+    isSyncSource: isSyncSource,
+  );
 
   static Future<List<FixedScheduleItem>> getFixedSchedules(
     String username, {
     bool includeDeleted = false,
-  }) =>
-      _storage.getFixedSchedules(username, includeDeleted: includeDeleted);
+  }) => _storage.getFixedSchedules(username, includeDeleted: includeDeleted);
 
   static Future<List<FixedScheduleItem>> getFixedSchedulesByDay(
     String username,
     DateTime day,
-  ) =>
-      _storage.getFixedSchedulesByDay(username, day);
+  ) => _storage.getFixedSchedulesByDay(username, day);
+
+  static Future<List<FixedScheduleItem>> getFixedSchedulesByDateRange(
+    String username, {
+    required DateTime from,
+    required DateTime to,
+  }) => _storage.getFixedSchedulesByDateRange(username, from: from, to: to);
 
   static Future<void> deleteFixedSchedule(
     String username,
     FixedScheduleItem item,
-  ) =>
-      _storage.deleteFixedSchedule(username, item);
+  ) => _storage.deleteFixedSchedule(username, item);
 
   static Future<List<HabitGoal>> getHabitGoals() => _storage.getHabitGoals();
 
@@ -322,42 +330,61 @@ class StorageService {
 
   static Future<List<HabitGoalRuleRevision>> getHabitRules({
     String? habitUuid,
-  }) =>
-      _storage.getHabitRules(habitUuid: habitUuid);
+  }) => _storage.getHabitRules(habitUuid: habitUuid);
 
-  static Future<void> saveHabitRules(
-    List<HabitGoalRuleRevision> items,
-  ) =>
+  static Future<void> saveHabitRules(List<HabitGoalRuleRevision> items) =>
       _storage.saveHabitRules(items);
 
   static Future<List<HabitCheckIn>> getHabitCheckIns({
     String? habitUuid,
     String? fromDate,
     String? toDate,
-  }) =>
-      _storage.getHabitCheckIns(
-          habitUuid: habitUuid, fromDate: fromDate, toDate: toDate);
+  }) => _storage.getHabitCheckIns(
+    habitUuid: habitUuid,
+    fromDate: fromDate,
+    toDate: toDate,
+  );
 
   static Future<void> saveHabitCheckIns(List<HabitCheckIn> items) =>
       _storage.saveHabitCheckIns(items);
 
-  static Future<void> savePlanBlocks(String username, List<TodoPlanBlock> items,
-          {bool sync = true, bool isSyncSource = false}) =>
-      _storage.savePlanBlocks(username, items,
-          sync: sync, isSyncSource: isSyncSource);
+  static Future<void> savePlanBlocks(
+    String username,
+    List<TodoPlanBlock> items, {
+    bool sync = true,
+    bool isSyncSource = false,
+  }) => _storage.savePlanBlocks(
+    username,
+    items,
+    sync: sync,
+    isSyncSource: isSyncSource,
+  );
 
   /// Editor-only conditional write; synchronization retains its existing path.
   static Future<List<TodoPlanBlock>> cancelPlanBlocksReviewed(
-    String username, PlanCleanupRequest request, {
-    required Future<void> Function(DatabaseExecutor executor, bool retry) validate,
+    String username,
+    PlanCleanupRequest request, {
+    required Future<void> Function(DatabaseExecutor executor, bool retry)
+    validate,
     bool sync = true,
-  }) => _storage.cancelPlanBlocksReviewed(username, request, validate: validate, sync: sync);
+  }) => _storage.cancelPlanBlocksReviewed(
+    username,
+    request,
+    validate: validate,
+    sync: sync,
+  );
 
   static Future<List<TodoPlanBlock>> savePlanBlocksCreated(
-    String username, List<TodoPlanBlock> drafts, {
+    String username,
+    List<TodoPlanBlock> drafts, {
     required Future<void> Function(DatabaseExecutor executor) beforeWrite,
     bool sync = true,
-  }) => _storage.savePlanBlocksCreated(username, drafts, beforeWrite: beforeWrite, sync: sync);
+  }) => _storage.savePlanBlocksCreated(
+    username,
+    drafts,
+    beforeWrite: beforeWrite,
+    sync: sync,
+  );
 
   static Future<TodoPlanBlock> savePlanBlockEdited(
     String username,
@@ -377,26 +404,48 @@ class StorageService {
     newStatus: newStatus,
   );
 
-  static Future<List<TodoPlanBlock>> getPlanBlocks(String username,
-          {bool includeDeleted = false}) =>
-      _storage.getPlanBlocks(username, includeDeleted: includeDeleted);
+  static Future<List<TodoPlanBlock>> getPlanBlocks(
+    String username, {
+    bool includeDeleted = false,
+    DateTime? from,
+    DateTime? to,
+  }) => _storage.getPlanBlocks(
+    username,
+    includeDeleted: includeDeleted,
+    from: from,
+    to: to,
+  );
+
+  static Future<List<TodoPlanBlock>> getPlanBlocksForReminderWindow(
+    String username, {
+    required DateTime now,
+    required DateTime limit,
+  }) =>
+      _storage.getPlanBlocksForReminderWindow(username, now: now, limit: limit);
+
+  static Future<List<TodoPlanBlock>> getDashboardPlanBlocks(
+    String username, {
+    required DateTime now,
+  }) => _storage.getDashboardPlanBlocks(username, now: now);
 
   static Future<void> deletePlanBlockGlobally(
-          String username, String idToDelete) =>
-      _storage.deletePlanBlockGlobally(username, idToDelete);
+    String username,
+    String idToDelete,
+  ) => _storage.deletePlanBlockGlobally(username, idToDelete);
 
   static Future<List<TodoPlanBlock>> getPlanBlocksByTodo(
-          String username, String todoId) =>
-      _storage.getPlanBlocksByTodo(username, todoId);
+    String username,
+    String todoId,
+  ) => _storage.getPlanBlocksByTodo(username, todoId);
 
   static Future<List<TodoPlanBlock>> getPlanBlocksByDay(
-          String username, DateTime day) =>
-      _storage.getPlanBlocksByDay(username, day);
+    String username,
+    DateTime day,
+  ) => _storage.getPlanBlocksByDay(username, day);
 
   static void triggerRefresh([
     Set<DataRefreshDomain> domains = const {DataRefreshDomain.all},
-  ]) =>
-      _storage.triggerRefresh(domains);
+  ]) => _storage.triggerRefresh(domains);
 
   static void triggerWallpaperRefresh() => _storage.triggerWallpaperRefresh();
 
@@ -409,8 +458,7 @@ class StorageService {
     required String table,
     required String uuid,
     String? teamUuid,
-  }) =>
-      _storage.ignoreRemoteItem(table: table, uuid: uuid, teamUuid: teamUuid);
+  }) => _storage.ignoreRemoteItem(table: table, uuid: uuid, teamUuid: teamUuid);
 
   static Future<void> unignoreRemoteItem(String uuid) =>
       _storage.unignoreRemoteItem(uuid);
@@ -424,8 +472,10 @@ class StorageService {
   static Future<String?> getCurrentUsername() => _storage.getCurrentUsername();
 
   static Future<bool> rollbackLocalItem(
-          String table, int logId, String username) =>
-      _storage.rollbackLocalItem(table, logId, username);
+    String table,
+    int logId,
+    String username,
+  ) => _storage.rollbackLocalItem(table, logId, username);
 
   static Future<String> getDeviceId() => _storage.getDeviceId();
 
@@ -452,19 +502,23 @@ class StorageService {
   static Future<Map<String, dynamic>> getSettings() => _storage.getSettings();
 
   static Future<void> saveWindowsScheduledReminders(
-          List<Map<String, dynamic>> reminders) =>
-      _storage.saveWindowsScheduledReminders(reminders);
+    List<Map<String, dynamic>> reminders,
+  ) => _storage.saveWindowsScheduledReminders(reminders);
 
   static Future<List<Map<String, dynamic>>> getWindowsScheduledReminders() =>
       _storage.getWindowsScheduledReminders();
 
   static Future<void> savePomodoroTags(
-          String username, List<Map<String, dynamic>> tags) =>
-      _storage.savePomodoroTags(username, tags);
+    String username,
+    List<Map<String, dynamic>> tags,
+  ) => _storage.savePomodoroTags(username, tags);
 
   static Future<void> saveHistory(
-          String username, int score, int duration, String details) =>
-      _storage.saveHistory(username, score, duration, details);
+    String username,
+    int score,
+    int duration,
+    String details,
+  ) => _storage.saveHistory(username, score, duration, details);
 
   static Future<List<String>> getHistory(String username) =>
       _storage.getHistory(username);
@@ -473,33 +527,58 @@ class StorageService {
       _storage.getMathStats(username);
 
   static Future<void> updateLeaderboard(
-          String username, int score, int duration) =>
-      _storage.updateLeaderboard(username, score, duration);
+    String username,
+    int score,
+    int duration,
+  ) => _storage.updateLeaderboard(username, score, duration);
 
   static Future<List<Map<String, dynamic>>> getLeaderboard() =>
       _storage.getLeaderboard();
 
-  static Future<void> saveCountdowns(String username, List<CountdownItem> items,
-          {bool sync = true, bool isSyncSource = false}) =>
-      _storage.saveCountdowns(username, items,
-          sync: sync, isSyncSource: isSyncSource);
+  static Future<void> saveCountdowns(
+    String username,
+    List<CountdownItem> items, {
+    bool sync = true,
+    bool isSyncSource = false,
+  }) => _storage.saveCountdowns(
+    username,
+    items,
+    sync: sync,
+    isSyncSource: isSyncSource,
+  );
 
-  static Future<List<CountdownItem>> getCountdowns(String username,
-          {bool includeDeleted = false}) =>
-      _storage.getCountdowns(username, includeDeleted: includeDeleted);
+  static Future<List<CountdownItem>> getCountdowns(
+    String username, {
+    bool includeDeleted = false,
+    DateTime? from,
+    DateTime? to,
+  }) => _storage.getCountdowns(
+    username,
+    includeDeleted: includeDeleted,
+    from: from,
+    to: to,
+  );
 
   static Future<void> deleteCountdownGlobally(
-          String username, String idToDelete) =>
-      _storage.deleteCountdownGlobally(username, idToDelete);
+    String username,
+    String idToDelete,
+  ) => _storage.deleteCountdownGlobally(username, idToDelete);
 
-  static Future<void> saveTodos(String username, List<TodoItem> items,
-          {bool sync = true,
-          bool isSyncSource = false,
-          bool recomputeScheduleConflicts = true}) =>
-      _storage.saveTodos(username, items,
-          sync: sync,
-          isSyncSource: isSyncSource,
-          recomputeScheduleConflicts: recomputeScheduleConflicts);
+  static Future<void> saveTodos(
+    String username,
+    List<TodoItem> items, {
+    bool sync = true,
+    bool isSyncSource = false,
+    bool recomputeScheduleConflicts = true,
+    List<TodoItem>? bandSyncSnapshot,
+  }) => _storage.saveTodos(
+    username,
+    items,
+    sync: sync,
+    isSyncSource: isSyncSource,
+    recomputeScheduleConflicts: recomputeScheduleConflicts,
+    bandSyncSnapshot: bandSyncSnapshot,
+  );
 
   static Future<Map<String, int>> scanAllTodoConflicts(String username) =>
       _storage.scanAllTodoConflicts(username);
@@ -508,12 +587,15 @@ class StorageService {
       _storage.clearLocalTodoScheduleConflicts(username);
 
   static Future<void> ignoreLocalScheduleConflict(
-          String username, TodoItem item) =>
-      _storage.ignoreLocalScheduleConflict(username, item);
+    String username,
+    TodoItem item,
+  ) => _storage.ignoreLocalScheduleConflict(username, item);
 
-  static Future<void> updateSingleTodo(String username, TodoItem item,
-          {bool sync = true}) =>
-      _storage.updateSingleTodo(username, item, sync: sync);
+  static Future<void> updateSingleTodo(
+    String username,
+    TodoItem item, {
+    bool sync = true,
+  }) => _storage.updateSingleTodo(username, item, sync: sync);
 
   static Future<TodoItem?> getTodoByUuid(String username, String uuid) =>
       _storage.getTodoByUuid(username, uuid);
@@ -528,13 +610,36 @@ class StorageService {
       _storage.clearHistoricalTodos(username);
 
   static Future<void> permanentlyDeleteCountdown(
-          String username, String uuid) =>
-      _storage.permanentlyDeleteCountdown(username, uuid);
+    String username,
+    String uuid,
+  ) => _storage.permanentlyDeleteCountdown(username, uuid);
 
-  static Future<List<TodoItem>> getTodos(String username,
-          {bool includeDeleted = false, int? limit, int offset = 0}) =>
-      _storage.getTodos(username,
-          includeDeleted: includeDeleted, limit: limit, offset: offset);
+  static Future<List<TodoItem>> getTodos(
+    String username, {
+    bool includeDeleted = false,
+    int? limit,
+    int offset = 0,
+  }) => _storage.getTodos(
+    username,
+    includeDeleted: includeDeleted,
+    limit: limit,
+    offset: offset,
+  );
+
+  static Future<List<TodoItem>> getTodosForWidget(String username) =>
+      _storage.getTodosForWidget(username);
+
+  static Future<List<TodoItem>> getTodosForSearchDateRange(
+    String username, {
+    required DateTime from,
+    required DateTime to,
+  }) => _storage.getTodosForSearchDateRange(username, from: from, to: to);
+
+  static Future<List<TodoItem>> getTodosForTimelineRange(
+    String username, {
+    required DateTime from,
+    required DateTime to,
+  }) => _storage.getTodosForTimelineRange(username, from: from, to: to);
 
   static Future<void> clearTeamItems(String teamUuid) =>
       _storage.clearTeamItems(teamUuid);
@@ -543,106 +648,114 @@ class StorageService {
     TodoItem todo,
     DateTime baseDay,
     DateTime todayDay,
-  ) =>
-      _storage.recurrenceRollOffsetsForTest(todo, baseDay, todayDay);
+  ) => _storage.recurrenceRollOffsetsForTest(todo, baseDay, todayDay);
 
   static List<TodoItem> futureRecurrenceOccurrencesForTest(
     TodoItem source,
     List<TodoItem> existing,
-  ) =>
-      _storage.futureRecurrenceOccurrencesForTest(source, existing);
+  ) => _storage.futureRecurrenceOccurrencesForTest(source, existing);
 
   static List<TodoItem> repairMissingPastRecurrenceOccurrencesForTest(
     TodoItem active,
     List<TodoItem> existing,
-  ) =>
-      _storage.repairMissingPastRecurrenceOccurrencesForTest(active, existing);
+  ) => _storage.repairMissingPastRecurrenceOccurrencesForTest(active, existing);
 
-  static String recurrenceOccurrenceIdForTest(
-    String seriesId,
-    int startMs,
-  ) =>
+  static String recurrenceOccurrenceIdForTest(String seriesId, int startMs) =>
       _storage.recurrenceOccurrenceIdForTest(seriesId, startMs);
 
   static bool deduplicatePersistedRecurrenceOccurrencesForTest(
     List<TodoItem> todos,
-  ) =>
-      _storage.deduplicatePersistedRecurrenceOccurrencesForTest(todos);
+  ) => _storage.deduplicatePersistedRecurrenceOccurrencesForTest(todos);
 
   static bool pruneRecurrenceOccurrencesAfterEndDateForTest(
     List<TodoItem> todos, {
     required String seriesId,
     required DateTime recurrenceEndDate,
-  }) =>
-      _storage.pruneRecurrenceOccurrencesAfterEndDateForTest(
-        todos,
-        seriesId: seriesId,
-        recurrenceEndDate: recurrenceEndDate,
-      );
+  }) => _storage.pruneRecurrenceOccurrencesAfterEndDateForTest(
+    todos,
+    seriesId: seriesId,
+    recurrenceEndDate: recurrenceEndDate,
+  );
 
   static Set<String> pruneRecurrenceOccurrencesAfterEndDatesForTest(
     List<TodoItem> todos,
-  ) =>
-      _storage.pruneRecurrenceOccurrencesAfterEndDatesForTest(todos);
+  ) => _storage.pruneRecurrenceOccurrencesAfterEndDatesForTest(todos);
 
   static Future<int> mergeRecurrenceSeries(
     String username, {
     required String targetSeriesId,
     required Set<String> seriesIds,
-  }) =>
-      _storage.mergeRecurrenceSeries(username,
-          targetSeriesId: targetSeriesId, seriesIds: seriesIds);
+  }) => _storage.mergeRecurrenceSeries(
+    username,
+    targetSeriesId: targetSeriesId,
+    seriesIds: seriesIds,
+  );
 
   static Set<String> mergeRecurrenceSeriesForTest(
     List<TodoItem> todos, {
     required String targetSeriesId,
     required Set<String> seriesIds,
-  }) =>
-      _storage.mergeRecurrenceSeriesForTest(todos,
-          targetSeriesId: targetSeriesId, seriesIds: seriesIds);
+  }) => _storage.mergeRecurrenceSeriesForTest(
+    todos,
+    targetSeriesId: targetSeriesId,
+    seriesIds: seriesIds,
+  );
 
   static Future<bool> deleteTodoGlobally(String username, String idToDelete) =>
       _storage.deleteTodoGlobally(username, idToDelete);
 
-  static Future<void> saveTodoGroups(String username, List<TodoGroup> items,
-          {bool sync = true, bool isSyncSource = false}) =>
-      _storage.saveTodoGroups(username, items,
-          sync: sync, isSyncSource: isSyncSource);
+  static Future<void> saveTodoGroups(
+    String username,
+    List<TodoGroup> items, {
+    bool sync = true,
+    bool isSyncSource = false,
+  }) => _storage.saveTodoGroups(
+    username,
+    items,
+    sync: sync,
+    isSyncSource: isSyncSource,
+  );
 
-  static Future<List<TodoGroup>> getTodoGroups(String username,
-          {bool includeDeleted = false}) =>
-      _storage.getTodoGroups(username, includeDeleted: includeDeleted);
+  static Future<List<TodoGroup>> getTodoGroups(
+    String username, {
+    bool includeDeleted = false,
+  }) => _storage.getTodoGroups(username, includeDeleted: includeDeleted);
 
   static Future<void> deleteTodoGroupGlobally(
-          String username, String idToDelete) =>
-      _storage.deleteTodoGroupGlobally(username, idToDelete);
+    String username,
+    String idToDelete,
+  ) => _storage.deleteTodoGroupGlobally(username, idToDelete);
 
-  static Future<void> saveTimeLogs(String username, List<TimeLogItem> items,
-          {bool sync = true}) =>
-      _storage.saveTimeLogs(username, items, sync: sync);
+  static Future<void> saveTimeLogs(
+    String username,
+    List<TimeLogItem> items, {
+    bool sync = true,
+  }) => _storage.saveTimeLogs(username, items, sync: sync);
 
-  static Future<List<TimeLogItem>> getTimeLogs(String username, {int? limit}) =>
-      _storage.getTimeLogs(username, limit: limit);
+  static Future<List<TimeLogItem>> getTimeLogs(
+    String username, {
+    int? limit,
+    DateTime? from,
+    DateTime? to,
+  }) => _storage.getTimeLogs(username, limit: limit, from: from, to: to);
 
   static Future<bool> deleteTimeLogGlobally(
-          String username, String idToDelete) =>
-      _storage.deleteTimeLogGlobally(username, idToDelete);
+    String username,
+    String idToDelete,
+  ) => _storage.deleteTimeLogGlobally(username, idToDelete);
 
   static Future<void> saveLocalScreenTime(
     Map<dynamic, dynamic> stats, {
     String? username,
-  }) =>
-      _storage.saveLocalScreenTime(stats, username: username);
+  }) => _storage.saveLocalScreenTime(stats, username: username);
 
   static Future<Map<String, dynamic>?> getLocalScreenTimePackage({
     String? username,
-  }) =>
-      _storage.getLocalScreenTimePackage(username: username);
+  }) => _storage.getLocalScreenTimePackage(username: username);
 
   static Future<Map<String, dynamic>> getLocalScreenTimeMap({
     String? username,
-  }) =>
-      _storage.getLocalScreenTimeMap(username: username);
+  }) => _storage.getLocalScreenTimeMap(username: username);
 
   static Future<List<dynamic>> getLocalScreenTime({String? username}) =>
       _storage.getLocalScreenTime(username: username);
@@ -650,23 +763,26 @@ class StorageService {
   static Future<void> saveScreenTimeCache(
     List<dynamic> stats, {
     String? username,
-  }) =>
-      _storage.saveScreenTimeCache(stats, username: username);
+  }) => _storage.saveScreenTimeCache(stats, username: username);
 
   static Future<void> saveScreenTimeHistoryToSql(
     String date,
     List<dynamic> stats, {
     String? username,
-  }) =>
-      _storage.saveScreenTimeHistoryToSql(date, stats, username: username);
+  }) => _storage.saveScreenTimeHistoryToSql(date, stats, username: username);
 
   static Future<List<dynamic>> getScreenTimeCache() =>
       _storage.getScreenTimeCache();
 
   static Future<Map<String, List<dynamic>>> getScreenTimeHistory({
     String? username,
-  }) =>
-      _storage.getScreenTimeHistory(username: username);
+    String? fromDate,
+    String? toDate,
+  }) => _storage.getScreenTimeHistory(
+    username: username,
+    fromDate: fromDate,
+    toDate: toDate,
+  );
 
   static Future<void> updateLastScreenTimeSync({String? username}) =>
       _storage.updateLastScreenTimeSync(username: username);
@@ -697,55 +813,53 @@ class StorageService {
     bool syncHabits = true,
     bool syncFinance = true,
     bool financeSyncExplicitlyAuthorized = false,
-  }) =>
-      _storage.syncData(username,
-          syncTodos: syncTodos,
-          syncCountdowns: syncCountdowns,
-          forceFullSync: forceFullSync,
-          uploadAllLocal: uploadAllLocal,
-          context: context,
-          syncScreenTime: syncScreenTime,
-          syncTimeLogs: syncTimeLogs,
-          syncPomodoro: syncPomodoro,
-          syncPlanBlocks: syncPlanBlocks,
-          syncFixedSchedules: syncFixedSchedules,
-          syncHabits: syncHabits,
-          syncFinance: syncFinance,
-          financeSyncExplicitlyAuthorized: financeSyncExplicitlyAuthorized);
+  }) => _storage.syncData(
+    username,
+    syncTodos: syncTodos,
+    syncCountdowns: syncCountdowns,
+    forceFullSync: forceFullSync,
+    uploadAllLocal: uploadAllLocal,
+    context: context,
+    syncScreenTime: syncScreenTime,
+    syncTimeLogs: syncTimeLogs,
+    syncPomodoro: syncPomodoro,
+    syncPlanBlocks: syncPlanBlocks,
+    syncFixedSchedules: syncFixedSchedules,
+    syncHabits: syncHabits,
+    syncFinance: syncFinance,
+    financeSyncExplicitlyAuthorized: financeSyncExplicitlyAuthorized,
+  );
 
   static bool recomputeLocalTodoScheduleConflictsForTest(
     List<TodoItem> todos,
-  ) =>
-      _storage.recomputeLocalTodoScheduleConflictsForTest(todos);
+  ) => _storage.recomputeLocalTodoScheduleConflictsForTest(todos);
 
   static List<TodoItem> clearResolvedRecurrenceMigrationConflictsForTest(
     List<TodoItem> todos,
-  ) =>
-      _storage.clearResolvedRecurrenceMigrationConflictsForTest(todos);
+  ) => _storage.clearResolvedRecurrenceMigrationConflictsForTest(todos);
 
   static Set<String> repairMissingRemoteRecurrenceSeriesIdsForTest(
     List<TodoItem> incoming,
     List<TodoItem> local,
-  ) =>
-      _storage.repairMissingRemoteRecurrenceSeriesIdsForTest(incoming, local);
+  ) => _storage.repairMissingRemoteRecurrenceSeriesIdsForTest(incoming, local);
 
   static Set<String> repairLocalRecurrenceSeriesAliasesFromHistoryForTest(
     List<TodoItem> todos,
     Map<String, List<String>> historicalSeriesByTodoId,
-  ) =>
-      _storage.repairLocalRecurrenceSeriesAliasesFromHistoryForTest(
-          todos, historicalSeriesByTodoId);
+  ) => _storage.repairLocalRecurrenceSeriesAliasesFromHistoryForTest(
+    todos,
+    historicalSeriesByTodoId,
+  );
 
   static Future<bool> syncScreenTimeAlone(
     String username,
     String deviceName, {
     int? expectedUserId,
-  }) =>
-      _storage.syncScreenTimeAlone(
-        username,
-        deviceName,
-        expectedUserId: expectedUserId,
-      );
+  }) => _storage.syncScreenTimeAlone(
+    username,
+    deviceName,
+    expectedUserId: expectedUserId,
+  );
 
   static Future<void> saveAppSetting(String key, dynamic value) =>
       _storage.saveAppSetting(key, value);
@@ -806,8 +920,9 @@ class StorageService {
       _storage.getLastAutoSyncTime(username);
 
   static Future<void> saveIslandBounds(
-          String islandId, Map<String, dynamic> bounds) =>
-      _storage.saveIslandBounds(islandId, bounds);
+    String islandId,
+    Map<String, dynamic> bounds,
+  ) => _storage.saveIslandBounds(islandId, bounds);
 
   static Future<Map<String, dynamic>?> getIslandBounds(String islandId) =>
       _storage.getIslandBounds(islandId);
@@ -830,20 +945,20 @@ class StorageService {
     int currentAttempt = 1,
     int maxAttempts = 1,
     String? errorMsg,
-  }) =>
-      _storage.savePendingTodoConfirm(
-          imagePath: imagePath,
-          results: results,
-          financeResults: financeResults,
-          status: status,
-          compressedPath: compressedPath,
-          sourceKey: sourceKey,
-          processingSessionId: processingSessionId,
-          recognitionChatSessionId: recognitionChatSessionId,
-          recognitionChatMessageId: recognitionChatMessageId,
-          currentAttempt: currentAttempt,
-          maxAttempts: maxAttempts,
-          errorMsg: errorMsg);
+  }) => _storage.savePendingTodoConfirm(
+    imagePath: imagePath,
+    results: results,
+    financeResults: financeResults,
+    status: status,
+    compressedPath: compressedPath,
+    sourceKey: sourceKey,
+    processingSessionId: processingSessionId,
+    recognitionChatSessionId: recognitionChatSessionId,
+    recognitionChatMessageId: recognitionChatMessageId,
+    currentAttempt: currentAttempt,
+    maxAttempts: maxAttempts,
+    errorMsg: errorMsg,
+  );
 
   static Future<void> updatePendingTodoConfirmStatus({
     required String status,
@@ -855,17 +970,17 @@ class StorageService {
     String? processingSessionId,
     String? recognitionChatSessionId,
     String? recognitionChatMessageId,
-  }) =>
-      _storage.updatePendingTodoConfirmStatus(
-          status: status,
-          currentAttempt: currentAttempt,
-          maxAttempts: maxAttempts,
-          errorMsg: errorMsg,
-          results: results,
-          financeResults: financeResults,
-          processingSessionId: processingSessionId,
-          recognitionChatSessionId: recognitionChatSessionId,
-          recognitionChatMessageId: recognitionChatMessageId);
+  }) => _storage.updatePendingTodoConfirmStatus(
+    status: status,
+    currentAttempt: currentAttempt,
+    maxAttempts: maxAttempts,
+    errorMsg: errorMsg,
+    results: results,
+    financeResults: financeResults,
+    processingSessionId: processingSessionId,
+    recognitionChatSessionId: recognitionChatSessionId,
+    recognitionChatMessageId: recognitionChatMessageId,
+  );
 
   static Future<Map<String, dynamic>?> getPendingTodoConfirm() =>
       _storage.getPendingTodoConfirm();
@@ -1023,8 +1138,9 @@ class StorageService {
       _storage.getCategoryReminderMinutes(username);
 
   static Future<void> saveCategoryReminderMinutes(
-          String username, Map<String, int> data) =>
-      _storage.saveCategoryReminderMinutes(username, data);
+    String username,
+    Map<String, int> data,
+  ) => _storage.saveCategoryReminderMinutes(username, data);
 
   static Future<List<Map<String, dynamic>>> getSyncFailures() =>
       _storage.getSyncFailures();
@@ -1035,11 +1151,11 @@ class StorageService {
     required Map<String, dynamic> resolvedData,
     bool createOplog = false,
     bool touchUpdatedAt = true,
-  }) =>
-      _storage.resolveConflictLocally(
-          uuid: uuid,
-          table: table,
-          resolvedData: resolvedData,
-          createOplog: createOplog,
-          touchUpdatedAt: touchUpdatedAt);
+  }) => _storage.resolveConflictLocally(
+    uuid: uuid,
+    table: table,
+    resolvedData: resolvedData,
+    createOplog: createOplog,
+    touchUpdatedAt: touchUpdatedAt,
+  );
 }

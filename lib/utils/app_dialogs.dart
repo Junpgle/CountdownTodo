@@ -834,7 +834,9 @@ class AppSnackBars {
         () {
           final active = _activeGlassToasts[messenger];
           if (active?.expiryTimer == expiryTimer) {
-            _activeGlassToasts[messenger] = null;
+            // Backstop the toast package's own timer in case its overlay
+            // entry did not finish dismissing.
+            _dismissGlassToast(messenger);
           }
         },
       );
@@ -920,7 +922,8 @@ class AppDialogs {
     final glassConfiguration = LiquidGlassEffectService.configuration;
     if (glassConfiguration.enabled) {
       final colorScheme = Theme.of(context).colorScheme;
-      final effectiveContent = content ??
+      final effectiveContent =
+          content ??
           (message == null
               ? null
               : Text(
@@ -937,11 +940,7 @@ class AppDialogs {
         content: icon != null
             ? Column(
                 mainAxisSize: MainAxisSize.min,
-                children: [
-                  icon,
-                  const SizedBox(height: 12),
-                  ?effectiveContent,
-                ],
+                children: [icon, const SizedBox(height: 12), ?effectiveContent],
               )
             : effectiveContent,
         barrierDismissible: barrierDismissible,
@@ -975,20 +974,22 @@ class AppDialogs {
         final colorScheme = Theme.of(dialogContext).colorScheme;
         final buttonColor =
             confirmColor ?? (destructive ? colorScheme.error : null);
-        final buttonTextColor = confirmTextColor ??
+        final buttonTextColor =
+            confirmTextColor ??
             (destructive
                 ? colorScheme.onError
                 : (buttonColor != null
-                    ? (ThemeData.estimateBrightnessForColor(buttonColor) ==
-                            Brightness.dark
-                        ? Colors.white
-                        : Colors.black)
-                    : null));
+                      ? (ThemeData.estimateBrightnessForColor(buttonColor) ==
+                                Brightness.dark
+                            ? Colors.white
+                            : Colors.black)
+                      : null));
 
         return AlertDialog(
           icon: icon,
           title: Text(title),
-          content: content ??
+          content:
+              content ??
               (message == null
                   ? null
                   : Text(
@@ -1059,15 +1060,16 @@ class AppDialogs {
         final colorScheme = Theme.of(sheetContext).colorScheme;
         final buttonColor =
             confirmColor ?? (destructive ? colorScheme.error : null);
-        final buttonTextColor = confirmTextColor ??
+        final buttonTextColor =
+            confirmTextColor ??
             (destructive
                 ? colorScheme.onError
                 : (buttonColor != null
-                    ? (ThemeData.estimateBrightnessForColor(buttonColor) ==
-                            Brightness.dark
-                        ? Colors.white
-                        : Colors.black)
-                    : null));
+                      ? (ThemeData.estimateBrightnessForColor(buttonColor) ==
+                                Brightness.dark
+                            ? Colors.white
+                            : Colors.black)
+                      : null));
 
         return SafeArea(
           top: false,
@@ -1087,9 +1089,10 @@ class AppDialogs {
                           color: destructive
                               ? colorScheme.errorContainer
                               : (confirmColor != null
-                                  ? confirmColor.withValues(alpha: 0.15)
-                                  : colorScheme.primaryContainer
-                                      .withValues(alpha: 0.7)),
+                                    ? confirmColor.withValues(alpha: 0.15)
+                                    : colorScheme.primaryContainer.withValues(
+                                        alpha: 0.7,
+                                      )),
                           shape: BoxShape.circle,
                         ),
                         child: Icon(
@@ -1108,9 +1111,7 @@ class AppDialogs {
                         children: [
                           Text(
                             title,
-                            style: Theme.of(sheetContext)
-                                .textTheme
-                                .titleLarge
+                            style: Theme.of(sheetContext).textTheme.titleLarge
                                 ?.copyWith(
                                   fontWeight: FontWeight.bold,
                                   fontSize: 18,
@@ -1120,9 +1121,7 @@ class AppDialogs {
                             const SizedBox(height: 2),
                             Text(
                               subtitle,
-                              style: Theme.of(sheetContext)
-                                  .textTheme
-                                  .bodySmall
+                              style: Theme.of(sheetContext).textTheme.bodySmall
                                   ?.copyWith(
                                     color: colorScheme.onSurfaceVariant,
                                   ),
@@ -1169,22 +1168,26 @@ class AppDialogs {
                             ? FilledButton.styleFrom(
                                 backgroundColor: buttonColor,
                                 foregroundColor: buttonTextColor,
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 12),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 12,
+                                ),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(14),
                                 ),
                               )
                             : FilledButton.styleFrom(
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 12),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 12,
+                                ),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(14),
                                 ),
                               ),
                         onPressed: () => Navigator.of(sheetContext).pop(true),
-                        icon:
-                            Icon(confirmIcon ?? Icons.check_rounded, size: 18),
+                        icon: Icon(
+                          confirmIcon ?? Icons.check_rounded,
+                          size: 18,
+                        ),
                         label: Text(confirmLabel),
                       ),
                     ),

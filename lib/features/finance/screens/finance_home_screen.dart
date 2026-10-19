@@ -102,31 +102,69 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
   bool _guideAttempted = false;
   bool _showingGuide = false;
   bool _quickEntryInProgress = false;
+  List<FinanceCategory>? _categoryMapSource;
+  Map<String, FinanceCategory>? _cachedCategoryMap;
+  List<FinancePaymentMethod>? _paymentMethodMapSource;
+  Map<String, FinancePaymentMethod>? _cachedPaymentMethodMap;
 
-  Map<String, FinanceCategory> get _categoryMap => {
-    for (final item in _categories) item.uuid: item,
-  };
+  Map<String, FinanceCategory> get _categoryMap {
+    if (!identical(_categoryMapSource, _categories)) {
+      _categoryMapSource = _categories;
+      _cachedCategoryMap = {for (final item in _categories) item.uuid: item};
+    }
+    return _cachedCategoryMap!;
+  }
 
-  Map<String, FinancePaymentMethod> get _paymentMethodMap => {
-    for (final item in _paymentMethods) item.uuid: item,
-  };
-
-  bool get _hasLedgerFilters =>
-      _keyword.trim().isNotEmpty ||
-      _filterType != null ||
-      _categoryFilterUuid != null;
+  Map<String, FinancePaymentMethod> get _paymentMethodMap {
+    if (!identical(_paymentMethodMapSource, _paymentMethods)) {
+      _paymentMethodMapSource = _paymentMethods;
+      _cachedPaymentMethodMap = {
+        for (final item in _paymentMethods) item.uuid: item,
+      };
+    }
+    return _cachedPaymentMethodMap!;
+  }
 
   bool get _isCategoryLedgerRoute => widget.initialCategoryFilterUuid != null;
 
-  bool get _hasManualLedgerFilters =>
-      _keyword.trim().isNotEmpty || _filterType != null;
+  bool _shouldClearFiltersBeforePop({
+    required String keyword,
+    required FinanceTransactionType? filterType,
+    required String? categoryUuid,
+  }) {
+    final hasManualFilters = keyword.trim().isNotEmpty || filterType != null;
+    return _isCategoryLedgerRoute
+        ? hasManualFilters
+        : hasManualFilters || categoryUuid != null;
+  }
 
-  bool get _clearFiltersBeforePop =>
-      _isCategoryLedgerRoute ? _hasManualLedgerFilters : _hasLedgerFilters;
+  bool get _clearFiltersBeforePop => _shouldClearFiltersBeforePop(
+    keyword: _keyword,
+    filterType: _filterType,
+    categoryUuid: _categoryFilterUuid,
+  );
 
   bool get _handleLedgerBack =>
       _selectedIndex == 1 &&
       (!_isCategoryLedgerRoute || _clearFiltersBeforePop);
+
+  void _updateLedgerFilter({
+    required VoidCallback update,
+    required String keyword,
+    required FinanceTransactionType? filterType,
+    required String? categoryUuid,
+  }) {
+    final willHaveClearableFilters = _shouldClearFiltersBeforePop(
+      keyword: keyword,
+      filterType: filterType,
+      categoryUuid: categoryUuid,
+    );
+    if (willHaveClearableFilters != _clearFiltersBeforePop) {
+      setState(update);
+    } else {
+      update();
+    }
+  }
 
   void _clearLedgerFilters() {
     if (!_clearFiltersBeforePop) return;
@@ -344,32 +382,34 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
   }
 
   String _recurringRuleSignature(Iterable<FinanceRecurringRule> rules) {
-    final values = rules
-        .map(
-          (rule) => [
-            rule.uuid,
-            rule.name,
-            rule.type.name,
-            rule.amountMinor,
-            rule.currencyCode,
-            rule.categoryUuid,
-            rule.paymentMethodUuid,
-            rule.merchant,
-            rule.note,
-            rule.frequency.name,
-            rule.dayOfMonth,
-            rule.monthOfYear,
-            rule.startDate,
-            rule.endDate,
-            rule.reminderMinutes,
-            rule.autoGenerate,
-            rule.isEnabled,
-          ],
-        )
-        .toList()
-      ..sort(
-        (left, right) => left.first.toString().compareTo(right.first.toString()),
-      );
+    final values =
+        rules
+            .map(
+              (rule) => [
+                rule.uuid,
+                rule.name,
+                rule.type.name,
+                rule.amountMinor,
+                rule.currencyCode,
+                rule.categoryUuid,
+                rule.paymentMethodUuid,
+                rule.merchant,
+                rule.note,
+                rule.frequency.name,
+                rule.dayOfMonth,
+                rule.monthOfYear,
+                rule.startDate,
+                rule.endDate,
+                rule.reminderMinutes,
+                rule.autoGenerate,
+                rule.isEnabled,
+              ],
+            )
+            .toList()
+          ..sort(
+            (left, right) =>
+                left.first.toString().compareTo(right.first.toString()),
+          );
     return jsonEncode(values);
   }
 
@@ -633,9 +673,19 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
   }
 
   Future<void> _openBudgets() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => FinanceBudgetScreen(initialMonth: _month),
+    final colorScheme = Theme.of(context).colorScheme;
+    await PageTransitions.pushFromRect<void>(
+      context: context,
+      page: FinanceBudgetScreen(initialMonth: _month),
+      sourceKey: _budgetActionKey,
+      sourceColor: colorScheme.brightness == Brightness.dark
+          ? Colors.black
+          : Colors.white,
+      sourceBorderRadius: BorderRadius.circular(24),
+      placeholderBuilder: (_) => Icon(
+        Icons.track_changes_outlined,
+        color: colorScheme.primary,
+        size: 30,
       ),
     );
     if (mounted) await _load();
@@ -689,15 +739,18 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
     }
 
     return switch (transaction.type) {
-      FinanceTransactionType.expense => hasPaymentMethod
-          ? '删除后，这笔支出不再计入统计，付款方式余额会相应增加。确认继续吗？'
-          : '删除后不会计入统计，确认继续吗？',
-      FinanceTransactionType.income => hasPaymentMethod
-          ? '删除后，这笔收入不再计入统计，到账账户余额会相应减少。确认继续吗？'
-          : '删除后不会计入统计，确认继续吗？',
-      FinanceTransactionType.refund => hasPaymentMethod
-          ? '删除后，这笔退款不再抵扣净支出，也不再增加退款到账账户的余额。确认继续吗？'
-          : '删除后，这笔退款不再抵扣净支出。确认继续吗？',
+      FinanceTransactionType.expense =>
+        hasPaymentMethod
+            ? '删除后，这笔支出不再计入统计，付款方式余额会相应增加。确认继续吗？'
+            : '删除后不会计入统计，确认继续吗？',
+      FinanceTransactionType.income =>
+        hasPaymentMethod
+            ? '删除后，这笔收入不再计入统计，到账账户余额会相应减少。确认继续吗？'
+            : '删除后不会计入统计，确认继续吗？',
+      FinanceTransactionType.refund =>
+        hasPaymentMethod
+            ? '删除后，这笔退款不再抵扣净支出，也不再增加退款到账账户的余额。确认继续吗？'
+            : '删除后，这笔退款不再抵扣净支出。确认继续吗？',
     };
   }
 
@@ -736,19 +789,22 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
       includedInBalanceSnapshot: includedInBalanceSnapshot,
     );
     final installmentDeleteDescription = switch (transaction.type) {
-      FinanceTransactionType.expense => hasPaymentMethod
-          ? '删除后不会计入统计；已发生期次会从账户流水中移除，余额按余额快照和剩余流水重新计算，'
-              '未发生期次会从未来计划中移除。'
-          : '删除后不会计入统计；未发生期次会从未来计划中移除。',
-      FinanceTransactionType.income => hasPaymentMethod
-          ? '删除后不会计入统计；已发生期次会从账户流水中移除，余额按余额快照和剩余流水重新计算，'
-              '未发生期次会从未来计划中移除。'
-          : '删除后不会计入统计；未发生期次会从未来计划中移除。',
-      FinanceTransactionType.refund => hasPaymentMethod
-          ? '删除后不会计入统计，也不再抵扣净支出；已发生期次会从账户流水中移除，'
-              '余额按余额快照和剩余流水重新计算，'
-              '未发生期次会从未来计划中移除。'
-          : '删除后不会计入统计；未发生期次会从未来计划中移除。',
+      FinanceTransactionType.expense =>
+        hasPaymentMethod
+            ? '删除后不会计入统计；已发生期次会从账户流水中移除，余额按余额快照和剩余流水重新计算，'
+                  '未发生期次会从未来计划中移除。'
+            : '删除后不会计入统计；未发生期次会从未来计划中移除。',
+      FinanceTransactionType.income =>
+        hasPaymentMethod
+            ? '删除后不会计入统计；已发生期次会从账户流水中移除，余额按余额快照和剩余流水重新计算，'
+                  '未发生期次会从未来计划中移除。'
+            : '删除后不会计入统计；未发生期次会从未来计划中移除。',
+      FinanceTransactionType.refund =>
+        hasPaymentMethod
+            ? '删除后不会计入统计，也不再抵扣净支出；已发生期次会从账户流水中移除，'
+                  '余额按余额快照和剩余流水重新计算，'
+                  '未发生期次会从未来计划中移除。'
+            : '删除后不会计入统计；未发生期次会从未来计划中移除。',
     };
     final deleteMode = transaction.isInstallment
         ? await showAppDialog<String>(
@@ -891,8 +947,8 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
     final now = widget.clock();
     final today = dateKey(now);
     final storedStartDate = _openingBalanceStartDate;
-    final initialStartDate = storedStartDate != null &&
-            storedStartDate.compareTo(today) <= 0
+    final initialStartDate =
+        storedStartDate != null && storedStartDate.compareTo(today) <= 0
         ? storedStartDate
         : FinanceRepository.defaultCumulativeBalanceStartDate(
             events: _cumulativeBalanceEvents,
@@ -1141,12 +1197,24 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
                           filterType: _filterType,
                           categoryUuid: _categoryFilterUuid,
                           onOpenDetail: _openDetail,
-                          onKeywordChanged: (value) =>
-                              setState(() => _keyword = value),
-                          onFilterChanged: (value) =>
-                              setState(() => _filterType = value),
-                          onCategoryChanged: (value) =>
-                              setState(() => _categoryFilterUuid = value),
+                          onKeywordChanged: (value) => _updateLedgerFilter(
+                            update: () => _keyword = value,
+                            keyword: value,
+                            filterType: _filterType,
+                            categoryUuid: _categoryFilterUuid,
+                          ),
+                          onFilterChanged: (value) => _updateLedgerFilter(
+                            update: () => _filterType = value,
+                            keyword: _keyword,
+                            filterType: value,
+                            categoryUuid: _categoryFilterUuid,
+                          ),
+                          onCategoryChanged: (value) => _updateLedgerFilter(
+                            update: () => _categoryFilterUuid = value,
+                            keyword: _keyword,
+                            filterType: _filterType,
+                            categoryUuid: value,
+                          ),
                           onEdit: (transaction) =>
                               _openEntry(transaction: transaction),
                           onDelete: _deleteTransaction,
@@ -1410,10 +1478,7 @@ class _FinanceOpeningBalanceDialogState
             if (_dateError != null)
               Padding(
                 padding: const EdgeInsets.only(top: 6),
-                child: Text(
-                  _dateError!,
-                  style: TextStyle(color: colors.error),
-                ),
+                child: Text(_dateError!, style: TextStyle(color: colors.error)),
               ),
             const SizedBox(height: 8),
             Text(

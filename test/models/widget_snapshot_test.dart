@@ -128,10 +128,9 @@ void main() {
       createdDate: start.millisecondsSinceEpoch,
     );
 
-    final series = buildWidgetRecurrenceSeries(
-      [todo],
-      now: DateTime(2026, 9, 27, 10),
-    ).single;
+    final series = buildWidgetRecurrenceSeries([
+      todo,
+    ], now: DateTime(2026, 9, 27, 10)).single;
 
     expect(series.isActive, isFalse);
     expect(series.recurrenceText, '循环间隔无效');
@@ -213,6 +212,10 @@ void main() {
     expect(restored.finance.balanceMinor, 81350);
     expect(restored.finance.transactionCount, 12);
     expect(restored.finance.latestTitle, '咖啡');
+    expect(
+      restored.finance.toAndroidWidgetData(),
+      containsPair('finance_income', '¥1,200.00'),
+    );
     expect(
       restored.finance.toAndroidWidgetData(),
       containsPair('finance_latest_amount', '-¥28.00'),

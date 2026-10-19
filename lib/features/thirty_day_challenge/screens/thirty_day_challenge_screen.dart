@@ -13,6 +13,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../../services/browser_file_service.dart';
 import '../../../utils/app_platform.dart';
+import '../../../utils/app_image_filters.dart';
 import '../../../../widgets/optional_liquid_glass_surface.dart';
 import '../../../widgets/floating_glass_control.dart';
 import '../models/thirty_day_challenge.dart';
@@ -33,6 +34,16 @@ String _safeFileName(String value) {
 String _safeHashTag(String value) {
   final sanitized = value.replaceAll(RegExp(r'\s+'), '');
   return sanitized.isEmpty ? '我的挑战' : sanitized;
+}
+
+final Map<(String?, String), DateFormat> _challengeDateFormats = {};
+
+DateFormat _challengeDateFormat(String pattern) {
+  final locale = Intl.defaultLocale;
+  return _challengeDateFormats.putIfAbsent((
+    locale,
+    pattern,
+  ), () => DateFormat(pattern, locale));
 }
 
 class ThirtyDayChallengeScreen extends StatefulWidget {
@@ -98,7 +109,8 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
     final isPaused = widget.showBuiltInIntroduction
         ? false
         : await ThirtyDayChallengeRepository.isPaused();
-    final hasCorruptBackup = !widget.showBuiltInIntroduction &&
+    final hasCorruptBackup =
+        !widget.showBuiltInIntroduction &&
         await ThirtyDayChallengeRepository.getCorruptStateBackup() != null;
     if (!mounted) return;
     setState(() {
@@ -113,9 +125,7 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
         AppSnackBars.showSnackBar(
           context,
           const SnackBar(
-            content: Text(
-              '旧挑战记录无法读取，原始副本已保留。请在“数据导出”中备份“30 天挑战”数据。',
-            ),
+            content: Text('旧挑战记录无法读取，原始副本已保留。请在“数据导出”中备份“30 天挑战”数据。'),
           ),
         );
       });
@@ -258,7 +268,8 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
           if (shouldReplace != true || !mounted) return;
         }
 
-        final state = await ThirtyDayChallengeRepository.startBuiltInChallenge();
+        final state =
+            await ThirtyDayChallengeRepository.startBuiltInChallenge();
         if (!mounted) return;
         setState(() {
           _state = state;
@@ -461,10 +472,7 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                         devicePixelRatio: 1,
                         textScaler: TextScaler.noScaling,
                       ),
-                      child: _buildChallengeReportPoster(
-                        state,
-                        colorScheme,
-                      ),
+                      child: _buildChallengeReportPoster(state, colorScheme),
                     ),
                   ),
                 ),
@@ -477,8 +485,9 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
       await WidgetsBinding.instance.endOfFrame;
       await Future<void>.delayed(const Duration(milliseconds: 120));
 
-      final boundary = posterKey.currentContext?.findRenderObject()
-          as RenderRepaintBoundary?;
+      final boundary =
+          posterKey.currentContext?.findRenderObject()
+              as RenderRepaintBoundary?;
       if (boundary == null) {
         throw StateError('报告长图渲染失败');
       }
@@ -512,11 +521,7 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
       if (!mounted) return;
       AppSnackBars.showSnackBar(
         context,
-        SnackBar(
-          content: Text(
-            kIsWeb ? '报告长图已下载' : '报告长图已生成，已打开分享面板',
-          ),
-        ),
+        SnackBar(content: Text(kIsWeb ? '报告长图已下载' : '报告长图已生成，已打开分享面板')),
       );
     } catch (error) {
       if (!mounted) return;
@@ -539,21 +544,14 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
 
     try {
       final sharedText = ChallengeShareCodec.encode(
-        ChallengeDraft(
-          title: state.challengeTitle,
-          taskTitles: tasks,
-        ),
+        ChallengeDraft(title: state.challengeTitle, taskTitles: tasks),
       );
-      await Clipboard.setData(
-        ClipboardData(text: sharedText),
-      );
+      await Clipboard.setData(ClipboardData(text: sharedText));
       await ClipboardSharePayload.markLocallyGenerated(sharedText);
       if (!mounted) return;
       AppSnackBars.showSnackBar(
         context,
-        const SnackBar(
-          content: Text('已复制挑战分享内容，朋友可通过剪贴板识别并导入'),
-        ),
+        const SnackBar(content: Text('已复制挑战分享内容，朋友可通过剪贴板识别并导入')),
       );
     } catch (_) {
       if (!mounted) return;
@@ -569,21 +567,14 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
     if (state == null) return;
 
     try {
-      await ThirtyDayChallengeRepository.setCompleted(
-        state,
-        taskId,
-        completed,
-      );
+      await ThirtyDayChallengeRepository.setCompleted(state, taskId, completed);
       if (!mounted) return;
       setState(() {});
       if (completed) {
         final message = state.isCompleted
             ? '${state.tasks.length} 项挑战全部完成了，恭喜你遇见新的自己！'
             : '已完成 ${state.completedCount}/${state.tasks.length}，继续感受生活吧';
-        AppSnackBars.showSnackBar(
-          context,
-          SnackBar(content: Text(message)),
-        );
+        AppSnackBars.showSnackBar(context, SnackBar(content: Text(message)));
       }
     } catch (_) {
       if (!mounted) return;
@@ -667,9 +658,7 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
   Future<void> _editTask(ThirtyDayChallengeTask task) async {
     final editedTitle = await showAppDialog<String>(
       context: context,
-      builder: (_) => _ChallengeTaskEditDialog(
-        task: task,
-      ),
+      builder: (_) => _ChallengeTaskEditDialog(task: task),
     );
 
     if (editedTitle == null || !mounted) return;
@@ -717,8 +706,9 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
   Future<void> _goToPage(int offset) async {
     final state = _state;
     if (state == null || state.tasks.isEmpty) return;
-    final nextIndex =
-        (_currentIndex + offset).clamp(0, state.tasks.length - 1).toInt();
+    final nextIndex = (_currentIndex + offset)
+        .clamp(0, state.tasks.length - 1)
+        .toInt();
     if (nextIndex == _currentIndex) return;
     await _pageController.animateToPage(
       nextIndex,
@@ -755,8 +745,9 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
               surfaceTintColor: Colors.transparent,
               shadowColor: Colors.transparent,
               forceMaterialTransparency: true,
-              systemOverlayStyle:
-                  floatingGlassTopBarSystemOverlayStyle(context),
+              systemOverlayStyle: floatingGlassTopBarSystemOverlayStyle(
+                context,
+              ),
               flexibleSpace: const FloatingGlassTopBarBackground(),
             )
           : FloatingGlassAppBar(
@@ -767,18 +758,17 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
               surfaceTintColor: Colors.transparent,
               shadowColor: Colors.transparent,
               forceMaterialTransparency: true,
-              systemOverlayStyle:
-                  floatingGlassTopBarSystemOverlayStyle(context),
+              systemOverlayStyle: floatingGlassTopBarSystemOverlayStyle(
+                context,
+              ),
               flexibleSpace: const FloatingGlassTopBarBackground(),
               title: Text(
                 state?.challengeTitle ?? ThirtyDayChallengeState.defaultTitle,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: isCompactMobile
-                    ? Theme.of(context)
-                        .textTheme
-                        .titleLarge
-                        ?.copyWith(fontSize: 18)
+                    ? Theme.of(context).textTheme.titleLarge
+                          ?.copyWith(fontSize: 18)
                     : null,
               ),
               actions: [
@@ -821,16 +811,18 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
       padding: EdgeInsets.only(top: MediaQuery.paddingOf(context).top),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final isLandscape = constraints.maxWidth > constraints.maxHeight &&
+          final isLandscape =
+              constraints.maxWidth > constraints.maxHeight &&
               constraints.maxHeight > 0;
           final isCompactMobile = !isLandscape && constraints.maxWidth < 600;
-          final titleStyle = Theme.of(context).textTheme.displaySmall?.copyWith(
-                    fontSize: isCompactMobile ? 30 : null,
-                    color: scheme.onSurface,
-                    fontWeight: FontWeight.w900,
-                    height: 1.15,
-                    letterSpacing: -1,
-                  ) ??
+          final titleStyle =
+              Theme.of(context).textTheme.displaySmall?.copyWith(
+                fontSize: isCompactMobile ? 30 : null,
+                color: scheme.onSurface,
+                fontWeight: FontWeight.w900,
+                height: 1.15,
+                letterSpacing: -1,
+              ) ??
               TextStyle(
                 color: scheme.onSurface,
                 fontWeight: FontWeight.w900,
@@ -851,14 +843,14 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
               availableHeight: constraints.maxHeight,
             );
           }
-          final contentHorizontalPadding =
-              isLandscape ? 48.0 : (isCompactMobile ? 20.0 : 24.0);
-          final contentTopPadding =
-              isLandscape ? 32.0 : (isCompactMobile ? 72.0 : 48.0);
+          final contentHorizontalPadding = isLandscape
+              ? 48.0
+              : (isCompactMobile ? 20.0 : 24.0);
+          final contentTopPadding = isLandscape
+              ? 32.0
+              : (isCompactMobile ? 72.0 : 48.0);
           return DecoratedBox(
-            decoration: BoxDecoration(
-              color: scheme.surface,
-            ),
+            decoration: BoxDecoration(color: scheme.surface),
             child: Stack(
               children: [
                 // Background blurred blobs
@@ -902,7 +894,7 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                   child: AppPlatform.isAndroid
                       ? const SizedBox.shrink()
                       : BackdropFilter(
-                          filter: ui.ImageFilter.blur(sigmaX: 60, sigmaY: 60),
+                          filter: AppImageFilters.blur60,
                           child: const SizedBox(),
                         ),
                 ),
@@ -936,15 +928,14 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                                   color: scheme.surfaceContainerHighest,
                                   borderRadius: BorderRadius.circular(99),
                                   border: Border.all(
-                                    color: scheme.outlineVariant
-                                        .withValues(alpha: 0.5),
+                                    color: scheme.outlineVariant.withValues(
+                                      alpha: 0.5,
+                                    ),
                                   ),
                                 ),
                                 child: Text(
                                   'A LITTLE LIFE EXPERIMENT',
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .labelMedium
+                                  style: Theme.of(context).textTheme.labelMedium
                                       ?.copyWith(
                                         color: welcomePrimary,
                                         fontWeight: FontWeight.w900,
@@ -970,26 +961,31 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                                   ),
                                   shape: BoxShape.circle,
                                   border: Border.all(
-                                    color: scheme.onSurface
-                                        .withValues(alpha: 0.14),
+                                    color: scheme.onSurface.withValues(
+                                      alpha: 0.14,
+                                    ),
                                     width: 6,
                                   ),
                                   boxShadow: [
                                     BoxShadow(
                                       color: welcomePrimary.withValues(
-                                          alpha: 0.42),
-                                      blurRadius:
-                                          AppPlatform.isAndroid ? 14 : 32,
+                                        alpha: 0.42,
+                                      ),
+                                      blurRadius: AppPlatform.isAndroid
+                                          ? 14
+                                          : 32,
                                       offset: AppPlatform.isAndroid
                                           ? const Offset(0, 6)
                                           : const Offset(0, 16),
                                     ),
                                     BoxShadow(
-                                      color: scheme.tertiary
-                                          .withValues(alpha: 0.18),
+                                      color: scheme.tertiary.withValues(
+                                        alpha: 0.18,
+                                      ),
                                       blurRadius: AppPlatform.isAndroid ? 4 : 8,
-                                      spreadRadius:
-                                          AppPlatform.isAndroid ? 2 : 4,
+                                      spreadRadius: AppPlatform.isAndroid
+                                          ? 2
+                                          : 4,
                                     ),
                                   ],
                                 ),
@@ -1039,9 +1035,7 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                                 ],
                               ),
                               textAlign: TextAlign.center,
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .displaySmall
+                              style: Theme.of(context).textTheme.displaySmall
                                   ?.copyWith(
                                     fontSize: isCompactMobile ? 26 : null,
                                     color: scheme.onSurface,
@@ -1054,9 +1048,7 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                             Text(
                               '给平淡生活加一点新鲜感，重新找回生命的感受力。',
                               textAlign: TextAlign.center,
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .titleLarge
+                              style: Theme.of(context).textTheme.titleLarge
                                   ?.copyWith(
                                     fontSize: isCompactMobile ? 17 : null,
                                     color: scheme.onSurfaceVariant,
@@ -1068,19 +1060,22 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                             OptionalLiquidGlassCard(
                               borderRadius: 32,
                               highContrast: true,
-                              padding:
-                                  EdgeInsets.all(isCompactMobile ? 22 : 28),
+                              padding: EdgeInsets.all(
+                                isCompactMobile ? 22 : 28,
+                              ),
                               fallbackDecoration: BoxDecoration(
                                 color: scheme.surfaceContainerHigh,
                                 borderRadius: BorderRadius.circular(32),
                                 border: Border.all(
-                                  color: scheme.outlineVariant
-                                      .withValues(alpha: 0.5),
+                                  color: scheme.outlineVariant.withValues(
+                                    alpha: 0.5,
+                                  ),
                                 ),
                                 boxShadow: [
                                   BoxShadow(
-                                    color:
-                                        scheme.shadow.withValues(alpha: 0.05),
+                                    color: scheme.shadow.withValues(
+                                      alpha: 0.05,
+                                    ),
                                     blurRadius: AppPlatform.isAndroid ? 10 : 24,
                                     offset: AppPlatform.isAndroid
                                         ? const Offset(0, 4)
@@ -1103,8 +1098,9 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                                               scheme.tertiary,
                                             ],
                                           ),
-                                          borderRadius:
-                                              BorderRadius.circular(14),
+                                          borderRadius: BorderRadius.circular(
+                                            14,
+                                          ),
                                         ),
                                         child: Icon(
                                           Icons.explore_rounded,
@@ -1130,9 +1126,7 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                                     '每天两点一线的生活实在枯燥，休假的时间要么被工作填满，'
                                     '要么宅在家里玩手机，好久没做一些新奇的事情了。\n'
                                     '做新事情会减缓我们对时间流逝的主观感觉，并破坏根深蒂固的思维模式。',
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .bodyLarge
+                                    style: Theme.of(context).textTheme.bodyLarge
                                         ?.copyWith(
                                           color: scheme.onSurface,
                                           height: isCompactMobile ? 1.7 : 1.8,
@@ -1145,14 +1139,16 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                             OptionalLiquidGlassCard(
                               borderRadius: 32,
                               highContrast: true,
-                              padding:
-                                  EdgeInsets.all(isCompactMobile ? 22 : 28),
+                              padding: EdgeInsets.all(
+                                isCompactMobile ? 22 : 28,
+                              ),
                               fallbackDecoration: BoxDecoration(
                                 color: scheme.surfaceContainer,
                                 borderRadius: BorderRadius.circular(32),
                                 border: Border.all(
-                                  color: scheme.outlineVariant
-                                      .withValues(alpha: 0.5),
+                                  color: scheme.outlineVariant.withValues(
+                                    alpha: 0.5,
+                                  ),
                                 ),
                               ),
                               child: Row(
@@ -1162,8 +1158,9 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                                     width: 44,
                                     height: 44,
                                     decoration: BoxDecoration(
-                                      color: scheme.primary
-                                          .withValues(alpha: 0.16),
+                                      color: scheme.primary.withValues(
+                                        alpha: 0.16,
+                                      ),
                                       shape: BoxShape.circle,
                                     ),
                                     child: Icon(
@@ -1213,14 +1210,16 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                             OptionalLiquidGlassCard(
                               borderRadius: 32,
                               highContrast: true,
-                              padding:
-                                  EdgeInsets.all(isCompactMobile ? 22 : 28),
+                              padding: EdgeInsets.all(
+                                isCompactMobile ? 22 : 28,
+                              ),
                               fallbackDecoration: BoxDecoration(
                                 color: scheme.surfaceContainerHigh,
                                 borderRadius: BorderRadius.circular(32),
                                 border: Border.all(
-                                  color: scheme.outlineVariant
-                                      .withValues(alpha: 0.5),
+                                  color: scheme.outlineVariant.withValues(
+                                    alpha: 0.5,
+                                  ),
                                 ),
                               ),
                               child: Row(
@@ -1256,8 +1255,9 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                               style: FilledButton.styleFrom(
                                 minimumSize: const Size.fromHeight(64),
                                 elevation: 6,
-                                shadowColor:
-                                    scheme.primary.withValues(alpha: 0.35),
+                                shadowColor: scheme.primary.withValues(
+                                  alpha: 0.35,
+                                ),
                                 textStyle: const TextStyle(
                                   fontSize: 18,
                                   fontWeight: FontWeight.w800,
@@ -1273,12 +1273,8 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                             Text(
                               '记录感受和照片，让这段改变真正留下来。',
                               textAlign: TextAlign.center,
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .bodyMedium
-                                  ?.copyWith(
-                                    color: scheme.onSurfaceVariant,
-                                  ),
+                              style: Theme.of(context).textTheme.bodyMedium
+                                  ?.copyWith(color: scheme.onSurfaceVariant),
                             ),
                           ],
                         ),
@@ -1294,18 +1290,12 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
     );
   }
 
-  Widget _buildDeferButton(
-    ColorScheme scheme, {
-    bool compact = false,
-  }) {
+  Widget _buildDeferButton(ColorScheme scheme, {bool compact = false}) {
     final buttonHeight = compact ? 50.0 : 64.0;
     final buttonRadius = compact ? 18.0 : 24.0;
     return OutlinedButton.icon(
       onPressed: _deferChallenge,
-      icon: Icon(
-        Icons.schedule_outlined,
-        size: compact ? 18 : null,
-      ),
+      icon: Icon(Icons.schedule_outlined, size: compact ? 18 : null),
       label: const Text('暂不参与'),
       style: OutlinedButton.styleFrom(
         minimumSize: Size.fromHeight(buttonHeight),
@@ -1329,13 +1319,14 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
     required Color welcomeTertiary,
     required double availableHeight,
   }) {
-    final titleStyle = Theme.of(context).textTheme.displaySmall?.copyWith(
-              fontSize: 24,
-              color: scheme.onSurface,
-              fontWeight: FontWeight.w900,
-              height: 1.05,
-              letterSpacing: -0.8,
-            ) ??
+    final titleStyle =
+        Theme.of(context).textTheme.displaySmall?.copyWith(
+          fontSize: 24,
+          color: scheme.onSurface,
+          fontWeight: FontWeight.w900,
+          height: 1.05,
+          letterSpacing: -0.8,
+        ) ??
         TextStyle(
           color: scheme.onSurface,
           fontSize: 24,
@@ -1343,13 +1334,12 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
           height: 1.05,
           letterSpacing: -0.8,
         );
-    final minContentHeight =
-        availableHeight.isFinite ? max(0.0, availableHeight - 24) : 0.0;
+    final minContentHeight = availableHeight.isFinite
+        ? max(0.0, availableHeight - 24)
+        : 0.0;
 
     return DecoratedBox(
-      decoration: BoxDecoration(
-        color: scheme.surface,
-      ),
+      decoration: BoxDecoration(color: scheme.surface),
       child: Stack(
         children: [
           Positioned(
@@ -1380,7 +1370,7 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
             child: AppPlatform.isAndroid
                 ? const SizedBox.shrink()
                 : BackdropFilter(
-                    filter: ui.ImageFilter.blur(sigmaX: 48, sigmaY: 48),
+                    filter: AppImageFilters.blur48,
                     child: const SizedBox(),
                   ),
           ),
@@ -1411,15 +1401,14 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                               color: scheme.surfaceContainerHighest,
                               borderRadius: BorderRadius.circular(99),
                               border: Border.all(
-                                color: scheme.outlineVariant
-                                    .withValues(alpha: 0.5),
+                                color: scheme.outlineVariant.withValues(
+                                  alpha: 0.5,
+                                ),
                               ),
                             ),
                             child: Text(
                               'A LITTLE LIFE EXPERIMENT',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .labelSmall
+                              style: Theme.of(context).textTheme.labelSmall
                                   ?.copyWith(
                                     fontSize: 10,
                                     color: welcomePrimary,
@@ -1467,8 +1456,9 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                                   child: Icon(
                                     Icons.star_rounded,
                                     size: 12,
-                                    color: scheme.onPrimary
-                                        .withValues(alpha: 0.75),
+                                    color: scheme.onPrimary.withValues(
+                                      alpha: 0.75,
+                                    ),
                                   ),
                                 ),
                               ],
@@ -1483,8 +1473,9 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                               TextSpan(text: '30天找到', style: titleStyle),
                               TextSpan(
                                 text: '全新自我',
-                                style:
-                                    titleStyle.copyWith(color: welcomePrimary),
+                                style: titleStyle.copyWith(
+                                  color: welcomePrimary,
+                                ),
                               ),
                             ],
                           ),
@@ -1494,13 +1485,13 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                         Text(
                           '给平淡生活加一点新鲜感，重新找回生命的感受力。',
                           textAlign: TextAlign.center,
-                          style:
-                              Theme.of(context).textTheme.bodyLarge?.copyWith(
-                                    fontSize: 14,
-                                    color: scheme.onSurfaceVariant,
-                                    height: 1.25,
-                                    fontWeight: FontWeight.w600,
-                                  ),
+                          style: Theme.of(context).textTheme.bodyLarge
+                              ?.copyWith(
+                                fontSize: 14,
+                                color: scheme.onSurfaceVariant,
+                                height: 1.25,
+                                fontWeight: FontWeight.w600,
+                              ),
                         ),
                         const SizedBox(height: 14),
                         Container(
@@ -1509,8 +1500,9 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                             color: scheme.surfaceContainerHigh,
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(
-                              color:
-                                  scheme.outlineVariant.withValues(alpha: 0.5),
+                              color: scheme.outlineVariant.withValues(
+                                alpha: 0.5,
+                              ),
                             ),
                           ),
                           child: Row(
@@ -1601,11 +1593,11 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                         Text(
                           '记录感受和照片，让这段改变真正留下来。',
                           textAlign: TextAlign.center,
-                          style:
-                              Theme.of(context).textTheme.bodySmall?.copyWith(
-                                    color: scheme.onSurfaceVariant,
-                                    fontSize: 12,
-                                  ),
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
+                                color: scheme.onSurfaceVariant,
+                                fontSize: 12,
+                              ),
                         ),
                       ],
                     ),
@@ -1631,9 +1623,7 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
       fallbackDecoration: BoxDecoration(
         color: scheme.surfaceContainer,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: scheme.outlineVariant.withValues(alpha: 0.5),
-        ),
+        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.5)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1659,22 +1649,22 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                 Text(
                   '一句话提醒',
                   style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        fontSize: 10,
-                        color: scheme.primary,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.4,
-                      ),
+                    fontSize: 10,
+                    color: scheme.primary,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.4,
+                  ),
                 ),
                 const SizedBox(height: 1),
                 Text(
                   '“单调瓦解了时间，而新奇展开了时间。”\n——乔舒亚·福尔《与爱因斯坦月球漫步》',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        fontSize: 11,
-                        color: scheme.onPrimaryContainer,
-                        height: 1.25,
-                        fontWeight: FontWeight.w700,
-                        fontStyle: FontStyle.italic,
-                      ),
+                    fontSize: 11,
+                    color: scheme.onPrimaryContainer,
+                    height: 1.25,
+                    fontWeight: FontWeight.w700,
+                    fontStyle: FontStyle.italic,
+                  ),
                 ),
               ],
             ),
@@ -1696,28 +1686,22 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
       fallbackDecoration: BoxDecoration(
         color: scheme.surfaceContainerHigh,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: scheme.outlineVariant.withValues(alpha: 0.5),
-        ),
+        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.5)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
-            Icons.local_activity_rounded,
-            color: scheme.secondary,
-            size: 22,
-          ),
+          Icon(Icons.local_activity_rounded, color: scheme.secondary, size: 22),
           const SizedBox(width: 6),
           Expanded(
             child: Text(
               '如果你也想在乏味的生活中来点不一样的调味剂，不妨看看这份火爆外网的自我挑战人生清单。\n'
               '📍 清单里有 30 件小事，顺序随意，你自己调整，也不需要连续 30 天打卡。空闲时间挑一件事去尝试就好。',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    fontSize: 11,
-                    color: scheme.onSurface,
-                    height: 1.35,
-                  ),
+                fontSize: 11,
+                color: scheme.onSurface,
+                height: 1.35,
+              ),
             ),
           ),
         ],
@@ -1739,8 +1723,9 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
           child: _buildHeader(state, isLandscape: false),
         ),
         Expanded(
-          child:
-              _showOverview ? _buildGridOverview(state) : _buildCardArea(state),
+          child: _showOverview
+              ? _buildGridOverview(state)
+              : _buildCardArea(state),
         ),
         if (!_showOverview)
           _isShuffling ? _buildShuffleFooter() : _buildPager(state),
@@ -1793,16 +1778,13 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
     );
   }
 
-  Widget _buildGridOverview(ThirtyDayChallengeState state,
-      {bool isLandscapeSidebar = false}) {
+  Widget _buildGridOverview(
+    ThirtyDayChallengeState state, {
+    bool isLandscapeSidebar = false,
+  }) {
     final scheme = Theme.of(context).colorScheme;
     return GridView.builder(
-      padding: EdgeInsets.fromLTRB(
-        16,
-        12,
-        isLandscapeSidebar ? 8 : 16,
-        16,
-      ),
+      padding: EdgeInsets.fromLTRB(16, 12, isLandscapeSidebar ? 8 : 16, 16),
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: isLandscapeSidebar ? 4 : 5,
         mainAxisSpacing: 12,
@@ -1866,8 +1848,8 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                 color: isSelected
                     ? taskColors.first
                     : task.isCompleted
-                        ? taskColors[1].withValues(alpha: 0.62)
-                        : taskColors.first.withValues(alpha: 0.32),
+                    ? taskColors[1].withValues(alpha: 0.62)
+                    : taskColors.first.withValues(alpha: 0.32),
                 width: isSelected ? 2 : 1,
               ),
               boxShadow: isSelected
@@ -1876,7 +1858,7 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                         color: scheme.primary.withValues(alpha: 0.2),
                         blurRadius: 8,
                         offset: const Offset(0, 2),
-                      )
+                      ),
                     ]
                   : null,
             ),
@@ -1903,11 +1885,11 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                         )
                       : Text(
                           '${task.id}',
-                          style:
-                              Theme.of(context).textTheme.titleMedium?.copyWith(
-                                    color: scheme.onSurface,
-                                    fontWeight: FontWeight.bold,
-                                  ),
+                          style: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(
+                                color: scheme.onSurface,
+                                fontWeight: FontWeight.bold,
+                              ),
                         ),
                 ),
               ],
@@ -1918,8 +1900,10 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
     );
   }
 
-  Widget _buildCardArea(ThirtyDayChallengeState state,
-      {bool isLandscapeDetail = false}) {
+  Widget _buildCardArea(
+    ThirtyDayChallengeState state, {
+    bool isLandscapeDetail = false,
+  }) {
     return _isShuffling
         ? _ShuffleCardStack(
             tasks: state.unfinishedTasks,
@@ -1949,8 +1933,10 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
           );
   }
 
-  Widget _buildHeader(ThirtyDayChallengeState state,
-      {bool isLandscape = false}) {
+  Widget _buildHeader(
+    ThirtyDayChallengeState state, {
+    bool isLandscape = false,
+  }) {
     final scheme = Theme.of(context).colorScheme;
     final isCompactMobile =
         !isLandscape && MediaQuery.sizeOf(context).width < 600;
@@ -1983,28 +1969,26 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                       state.isCompleted
                           ? '挑战完成！'
                           : _isPaused
-                              ? '挑战已暂停'
-                              : '今天想做点不一样的事',
+                          ? '挑战已暂停'
+                          : '今天想做点不一样的事',
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontSize: isCompactMobile ? 17 : null,
-                            fontWeight: FontWeight.w900,
-                            color: scheme.onPrimaryContainer,
-                            letterSpacing: -0.5,
-                          ),
+                        fontSize: isCompactMobile ? 17 : null,
+                        fontWeight: FontWeight.w900,
+                        color: scheme.onPrimaryContainer,
+                        letterSpacing: -0.5,
+                      ),
                     ),
                     const SizedBox(height: 6),
                     Text(
                       _isPaused
                           ? '首页 Banner 已隐藏，记录仍然保留。'
                           : state.isBuiltIn
-                              ? '左右滑动，找一件让生活重新有感觉的小事。'
-                              : '左右滑动，按自己的节奏完成这一项挑战。',
+                          ? '左右滑动，找一件让生活重新有感觉的小事。'
+                          : '左右滑动，按自己的节奏完成这一项挑战。',
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            fontSize: isCompactMobile ? 12 : null,
-                            color: scheme.onPrimaryContainer.withValues(
-                              alpha: 0.8,
-                            ),
-                          ),
+                        fontSize: isCompactMobile ? 12 : null,
+                        color: scheme.onPrimaryContainer.withValues(alpha: 0.8),
+                      ),
                     ),
                   ],
                 ),
@@ -2014,8 +1998,9 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   IconButton(
-                    tooltip:
-                        state.isCompleted || _isShuffling ? '挑战已完成' : '随机一个任务',
+                    tooltip: state.isCompleted || _isShuffling
+                        ? '挑战已完成'
+                        : '随机一个任务',
                     onPressed: state.isCompleted || _isShuffling
                         ? null
                         : _showRandomTask,
@@ -2041,9 +2026,11 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                           });
                         }
                       },
-                      icon: Icon(_showOverview
-                          ? Icons.view_agenda_rounded
-                          : Icons.grid_view_rounded),
+                      icon: Icon(
+                        _showOverview
+                            ? Icons.view_agenda_rounded
+                            : Icons.grid_view_rounded,
+                      ),
                       style: IconButton.styleFrom(
                         backgroundColor: scheme.surface.withValues(alpha: 0.35),
                         foregroundColor: scheme.onSurface,
@@ -2051,7 +2038,7 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                     ),
                   ],
                 ],
-              )
+              ),
             ],
           ),
           const SizedBox(height: 18),
@@ -2076,17 +2063,15 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
               const SizedBox(width: 16),
               AnimatedSwitcher(
                 duration: const Duration(milliseconds: 300),
-                transitionBuilder: (child, animation) => ScaleTransition(
-                  scale: animation,
-                  child: child,
-                ),
+                transitionBuilder: (child, animation) =>
+                    ScaleTransition(scale: animation, child: child),
                 child: Text(
                   '${state.completedCount}/${state.tasks.length}',
                   key: ValueKey(state.completedCount),
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w900,
-                        color: scheme.onPrimaryContainer,
-                      ),
+                    fontWeight: FontWeight.w900,
+                    color: scheme.onPrimaryContainer,
+                  ),
                 ),
               ),
             ],
@@ -2185,9 +2170,9 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                     '第 ${currentTask.id} 项 / ${state.tasks.length}',
                     key: ValueKey(currentTask.id),
                     style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                          color: scheme.onSurfaceVariant,
-                          fontWeight: FontWeight.w800,
-                        ),
+                      color: scheme.onSurfaceVariant,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -2235,9 +2220,9 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
           Text(
             '正在从未完成的任务中洗牌…',
             style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                  color: scheme.onSurfaceVariant,
-                  fontWeight: FontWeight.w600,
-                ),
+              color: scheme.onSurfaceVariant,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ],
       ),
@@ -2248,13 +2233,15 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
     ThirtyDayChallengeState state,
     ColorScheme scheme,
   ) {
-    final feelingCount =
-        state.tasks.where((task) => task.feeling.trim().isNotEmpty).length;
+    final feelingCount = state.tasks
+        .where((task) => task.feeling.trim().isNotEmpty)
+        .length;
     final imageCount = state.tasks
         .where((task) => task.imageBase64?.isNotEmpty == true)
         .length;
-    final generatedAt = DateFormat('yyyy年M月d日').format(DateTime.now());
-    final startedAt = DateFormat('yyyy年M月d日').format(state.startedAt);
+    final reportDateFormat = _challengeDateFormat('yyyy年M月d日');
+    final generatedAt = reportDateFormat.format(DateTime.now());
+    final startedAt = reportDateFormat.format(state.startedAt);
 
     return Container(
       width: 1080,
@@ -2403,9 +2390,7 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
             ),
           ),
           const SizedBox(height: 16),
-          ...state.tasks.map(
-            (task) => _buildChallengeReportTask(task, scheme),
-          ),
+          ...state.tasks.map((task) => _buildChallengeReportTask(task, scheme)),
           const SizedBox(height: 28),
           Center(
             child: Text(
@@ -2534,8 +2519,8 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
         border: Border.all(
           color: task.isCompleted
               ? (hasImage
-                  ? scheme.onInverseSurface.withValues(alpha: 0.64)
-                  : taskColors.first.withValues(alpha: 0.66))
+                    ? scheme.onInverseSurface.withValues(alpha: 0.64)
+                    : taskColors.first.withValues(alpha: 0.66))
               : taskColors.first.withValues(alpha: 0.42),
           width: task.isCompleted ? 1.5 : 1,
         ),
@@ -2553,8 +2538,8 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                 color: task.isCompleted
                     ? scheme.primary
                     : (hasImage
-                        ? scheme.scrim.withValues(alpha: 0.48)
-                        : scheme.secondaryContainer),
+                          ? scheme.scrim.withValues(alpha: 0.48)
+                          : scheme.secondaryContainer),
                 shape: BoxShape.circle,
               ),
               child: task.isCompleted
@@ -2582,8 +2567,9 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                       fontSize: 27,
                       fontWeight: FontWeight.w900,
                       height: 1.25,
-                      decoration:
-                          task.isCompleted ? TextDecoration.lineThrough : null,
+                      decoration: task.isCompleted
+                          ? TextDecoration.lineThrough
+                          : null,
                       decorationColor: mutedForeground,
                     ),
                   ),
@@ -2645,7 +2631,7 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
 
   String _formatReportDate(DateTime? date) {
     if (date == null) return '日期未知';
-    return DateFormat('yyyy年M月d日').format(date);
+    return _challengeDateFormat('yyyy年M月d日').format(date);
   }
 }
 
@@ -2711,10 +2697,7 @@ class _ShuffleCardStack extends StatefulWidget {
   final List<ThirtyDayChallengeTask> tasks;
   final Future<void> Function(ThirtyDayChallengeTask) onFinished;
 
-  const _ShuffleCardStack({
-    required this.tasks,
-    required this.onFinished,
-  });
+  const _ShuffleCardStack({required this.tasks, required this.onFinished});
 
   @override
   State<_ShuffleCardStack> createState() => _ShuffleCardStackState();
@@ -2725,6 +2708,7 @@ class _ShuffleCardStackState extends State<_ShuffleCardStack>
   late final List<ThirtyDayChallengeTask> _sequence;
   late final AnimationController _controller;
   late final Animation<int> _stepAnimation;
+  late final ValueNotifier<int> _stepNotifier;
   bool _hasNotified = false;
 
   @override
@@ -2735,12 +2719,11 @@ class _ShuffleCardStackState extends State<_ShuffleCardStack>
       vsync: this,
       duration: const Duration(milliseconds: 1750),
     );
-    _stepAnimation = IntTween(
-      begin: 0,
-      end: _sequence.length - 1,
-    ).animate(
+    _stepAnimation = IntTween(begin: 0, end: _sequence.length - 1).animate(
       CurvedAnimation(parent: _controller, curve: Curves.easeInOutCubic),
     );
+    _stepNotifier = ValueNotifier<int>(_stepAnimation.value);
+    _controller.addListener(_updateStepNotifier);
     _controller.addStatusListener((status) {
       if (status == AnimationStatus.completed && !_hasNotified) {
         _hasNotified = true;
@@ -2752,8 +2735,15 @@ class _ShuffleCardStackState extends State<_ShuffleCardStack>
 
   @override
   void dispose() {
+    _controller.removeListener(_updateStepNotifier);
+    _stepNotifier.dispose();
     _controller.dispose();
     super.dispose();
+  }
+
+  void _updateStepNotifier() {
+    final step = _stepAnimation.value;
+    if (_stepNotifier.value != step) _stepNotifier.value = step;
   }
 
   List<ThirtyDayChallengeTask> _buildSequence(
@@ -2787,10 +2777,9 @@ class _ShuffleCardStackState extends State<_ShuffleCardStack>
           child: SizedBox(
             height: height,
             width: double.infinity,
-            child: AnimatedBuilder(
-              animation: _stepAnimation,
-              builder: (context, _) {
-                final step = _stepAnimation.value;
+            child: ValueListenableBuilder<int>(
+              valueListenable: _stepNotifier,
+              builder: (context, step, _) {
                 final current = _sequence[step];
                 return Stack(
                   fit: StackFit.expand,
@@ -2821,12 +2810,9 @@ class _ShuffleCardStackState extends State<_ShuffleCardStack>
                         switchOutCurve: Curves.easeIn,
                         layoutBuilder: (currentChild, previousChildren) =>
                             Stack(
-                          fit: StackFit.expand,
-                          children: [
-                            ...previousChildren,
-                            ?currentChild,
-                          ],
-                        ),
+                              fit: StackFit.expand,
+                              children: [...previousChildren, ?currentChild],
+                            ),
                         transitionBuilder: (child, animation) {
                           final slide = Tween<Offset>(
                             begin: const Offset(0, 0.8),
@@ -2877,8 +2863,9 @@ class _ShuffleCardSurface extends StatelessWidget {
     final isCompact =
         MediaQuery.of(context).orientation == Orientation.landscape;
     final taskColors = _challengeTaskGradientColors(task, scheme);
-    final cardTextColor =
-        isFront ? scheme.onPrimaryContainer : scheme.onSurfaceVariant;
+    final cardTextColor = isFront
+        ? scheme.onPrimaryContainer
+        : scheme.onSurfaceVariant;
     final colors = isFront
         ? taskColors
         : [
@@ -2922,9 +2909,9 @@ class _ShuffleCardSurface extends StatelessWidget {
               Text(
                 '第 ${task.id} 项',
                 style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                      color: cardTextColor,
-                      fontWeight: FontWeight.w800,
-                    ),
+                  color: cardTextColor,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
               Icon(
                 isFront ? Icons.auto_awesome_rounded : Icons.layers_rounded,
@@ -2943,31 +2930,31 @@ class _ShuffleCardSurface extends StatelessWidget {
             isFront ? '正在寻找一项没做过的事' : '下一张体验',
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  color: scheme.onSurfaceVariant,
-                  fontWeight: FontWeight.w700,
-                ),
+              color: scheme.onSurfaceVariant,
+              fontWeight: FontWeight.w700,
+            ),
           ),
           SizedBox(height: isCompact ? 6 : 12),
           Text(
             task.title,
             textAlign: TextAlign.center,
-            style: (isCompact
-                    ? Theme.of(context).textTheme.titleLarge
-                    : Theme.of(context).textTheme.headlineSmall)
-                ?.copyWith(
-              color: cardTextColor,
-              fontWeight: FontWeight.w900,
-              height: 1.25,
-            ),
+            style:
+                (isCompact
+                        ? Theme.of(context).textTheme.titleLarge
+                        : Theme.of(context).textTheme.headlineSmall)
+                    ?.copyWith(
+                      color: cardTextColor,
+                      fontWeight: FontWeight.w900,
+                      height: 1.25,
+                    ),
           ),
           const Spacer(),
           if (isFront)
             Text(
               '这项任务还没有完成，准备好了吗？',
               textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: cardTextColor,
-                  ),
+              style: Theme.of(context).textTheme.bodyMedium
+                  ?.copyWith(color: cardTextColor),
             ),
         ],
       ),
@@ -3128,7 +3115,9 @@ Color _vividChallengeColor(
   final vibrantColor = HSLColor.fromAHSL(1, hue, 0.85, 0.5).toColor();
   final opacity = scheme.brightness == Brightness.dark ? 0.35 : 0.18;
   return Color.alphaBlend(
-      vibrantColor.withValues(alpha: opacity), scheme.surface);
+    vibrantColor.withValues(alpha: opacity),
+    scheme.surface,
+  );
 }
 
 class _ChallengeTaskCardState extends State<_ChallengeTaskCard> {
@@ -3179,7 +3168,8 @@ class _ChallengeTaskCardState extends State<_ChallengeTaskCard> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final task = widget.task;
-    final isCompactMobile = MediaQuery.sizeOf(context).width < 600 &&
+    final isCompactMobile =
+        MediaQuery.sizeOf(context).width < 600 &&
         MediaQuery.of(context).orientation == Orientation.portrait;
     final imageBytes = _decodeChallengeImage(task.imageBase64);
     final hasImage = imageBytes != null;
@@ -3203,8 +3193,8 @@ class _ChallengeTaskCardState extends State<_ChallengeTaskCard> {
         : scheme.onSurfaceVariant;
     final borderColor = task.isCompleted
         ? (hasImage
-            ? Colors.white.withValues(alpha: 0.5)
-            : taskColors.first.withValues(alpha: 0.66))
+              ? Colors.white.withValues(alpha: 0.5)
+              : taskColors.first.withValues(alpha: 0.66))
         : taskColors.first.withValues(alpha: 0.48);
 
     return AnimatedContainer(
@@ -3263,7 +3253,7 @@ class _ChallengeTaskCardState extends State<_ChallengeTaskCard> {
                         ),
                       )
                     : BackdropFilter(
-                        filter: ui.ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+                        filter: AppImageFilters.blur5,
                         child: DecoratedBox(
                           decoration: BoxDecoration(
                             gradient: LinearGradient(
@@ -3305,20 +3295,24 @@ class _ChallengeTaskCardState extends State<_ChallengeTaskCard> {
                                 children: [
                                   Container(
                                     padding: const EdgeInsets.symmetric(
-                                        horizontal: 16, vertical: 8),
+                                      horizontal: 16,
+                                      vertical: 8,
+                                    ),
                                     decoration: BoxDecoration(
                                       color: task.isCompleted
                                           ? scheme.primary
                                           : hasImage
-                                              ? Colors.white
-                                                  .withValues(alpha: 0.25)
-                                              : scheme.surface
-                                                  .withValues(alpha: 0.4),
+                                          ? Colors.white.withValues(alpha: 0.25)
+                                          : scheme.surface.withValues(
+                                              alpha: 0.4,
+                                            ),
                                       borderRadius: BorderRadius.circular(20),
                                       border: hasImage && !task.isCompleted
                                           ? Border.all(
-                                              color: Colors.white
-                                                  .withValues(alpha: 0.5))
+                                              color: Colors.white.withValues(
+                                                alpha: 0.5,
+                                              ),
+                                            )
                                           : null,
                                     ),
                                     child: Row(
@@ -3340,8 +3334,8 @@ class _ChallengeTaskCardState extends State<_ChallengeTaskCard> {
                                             color: task.isCompleted
                                                 ? scheme.onPrimary
                                                 : (hasImage
-                                                    ? Colors.white
-                                                    : scheme.onSurface),
+                                                      ? Colors.white
+                                                      : scheme.onSurface),
                                             fontSize: 15,
                                             fontWeight: FontWeight.w900,
                                             letterSpacing: 0.5,
@@ -3355,14 +3349,17 @@ class _ChallengeTaskCardState extends State<_ChallengeTaskCard> {
                                       IconButton(
                                         tooltip: '调整任务',
                                         onPressed: widget.onEdit,
-                                        icon:
-                                            const Icon(Icons.edit_note_rounded),
+                                        icon: const Icon(
+                                          Icons.edit_note_rounded,
+                                        ),
                                         style: IconButton.styleFrom(
                                           backgroundColor: hasImage
-                                              ? Colors.white
-                                                  .withValues(alpha: 0.25)
-                                              : scheme.surface
-                                                  .withValues(alpha: 0.4),
+                                              ? Colors.white.withValues(
+                                                  alpha: 0.25,
+                                                )
+                                              : scheme.surface.withValues(
+                                                  alpha: 0.4,
+                                                ),
                                           foregroundColor: hasImage
                                               ? Colors.white
                                               : scheme.onSurface,
@@ -3378,10 +3375,12 @@ class _ChallengeTaskCardState extends State<_ChallengeTaskCard> {
                                             : widget.onPickImage,
                                         style: IconButton.styleFrom(
                                           backgroundColor: hasImage
-                                              ? Colors.white
-                                                  .withValues(alpha: 0.25)
-                                              : scheme.surface
-                                                  .withValues(alpha: 0.4),
+                                              ? Colors.white.withValues(
+                                                  alpha: 0.25,
+                                                )
+                                              : scheme.surface.withValues(
+                                                  alpha: 0.4,
+                                                ),
                                           foregroundColor: hasImage
                                               ? Colors.white
                                               : scheme.onSurface,
@@ -3392,13 +3391,13 @@ class _ChallengeTaskCardState extends State<_ChallengeTaskCard> {
                                                 height: 18,
                                                 child:
                                                     CircularProgressIndicator(
-                                                  strokeWidth: 2,
-                                                ),
+                                                      strokeWidth: 2,
+                                                    ),
                                               )
                                             : Icon(
                                                 task.imageBase64 == null
                                                     ? Icons
-                                                        .add_photo_alternate_outlined
+                                                          .add_photo_alternate_outlined
                                                     : Icons.image_outlined,
                                               ),
                                       ),
@@ -3431,13 +3430,17 @@ class _ChallengeTaskCardState extends State<_ChallengeTaskCard> {
                                   if (task.isCompleted)
                                     Container(
                                       padding: const EdgeInsets.symmetric(
-                                          horizontal: 10, vertical: 4),
+                                        horizontal: 10,
+                                        vertical: 4,
+                                      ),
                                       decoration: BoxDecoration(
                                         color: hasImage
-                                            ? Colors.white
-                                                .withValues(alpha: 0.2)
-                                            : scheme.surface
-                                                .withValues(alpha: 0.4),
+                                            ? Colors.white.withValues(
+                                                alpha: 0.2,
+                                              )
+                                            : scheme.surface.withValues(
+                                                alpha: 0.4,
+                                              ),
                                         borderRadius: BorderRadius.circular(12),
                                       ),
                                       child: Text(
@@ -3467,13 +3470,17 @@ class _ChallengeTaskCardState extends State<_ChallengeTaskCard> {
                                   if (task.isCustomized)
                                     Container(
                                       padding: const EdgeInsets.symmetric(
-                                          horizontal: 10, vertical: 4),
+                                        horizontal: 10,
+                                        vertical: 4,
+                                      ),
                                       decoration: BoxDecoration(
                                         color: hasImage
-                                            ? Colors.white
-                                                .withValues(alpha: 0.2)
-                                            : scheme.surface
-                                                .withValues(alpha: 0.4),
+                                            ? Colors.white.withValues(
+                                                alpha: 0.2,
+                                              )
+                                            : scheme.surface.withValues(
+                                                alpha: 0.4,
+                                              ),
                                         borderRadius: BorderRadius.circular(12),
                                       ),
                                       child: Text(
@@ -3496,31 +3503,30 @@ class _ChallengeTaskCardState extends State<_ChallengeTaskCard> {
                         ),
                       ),
                       if (task.feeling.trim().isNotEmpty)
-                        _buildFeelingPreview(
-                          context,
-                          task,
-                          scheme,
-                          hasImage,
-                        ),
+                        _buildFeelingPreview(context, task, scheme, hasImage),
                       AnimatedSize(
                         duration: const Duration(milliseconds: 350),
                         curve: Curves.easeOutCubic,
                         alignment: Alignment.topCenter,
                         child: _expanded
                             ? Padding(
-                                padding:
-                                    const EdgeInsets.fromLTRB(28, 0, 28, 28),
+                                padding: const EdgeInsets.fromLTRB(
+                                  28,
+                                  0,
+                                  28,
+                                  28,
+                                ),
                                 child: Column(
                                   crossAxisAlignment:
                                       CrossAxisAlignment.stretch,
                                   children: [
                                     Divider(
-                                        color: hasImage
-                                            ? Colors.white
-                                                .withValues(alpha: 0.2)
-                                            : taskColors.first.withValues(
-                                                alpha: 0.32,
-                                              )),
+                                      color: hasImage
+                                          ? Colors.white.withValues(alpha: 0.2)
+                                          : taskColors.first.withValues(
+                                              alpha: 0.32,
+                                            ),
+                                    ),
                                     const SizedBox(height: 12),
                                     Text(
                                       '记下这次的感受',
@@ -3540,20 +3546,24 @@ class _ChallengeTaskCardState extends State<_ChallengeTaskCard> {
                                       textCapitalization:
                                           TextCapitalization.sentences,
                                       style: TextStyle(
-                                          color: hasImage
-                                              ? Colors.white
-                                              : scheme.onSurface),
+                                        color: hasImage
+                                            ? Colors.white
+                                            : scheme.onSurface,
+                                      ),
                                       decoration: InputDecoration(
                                         hintText: '当时发生了什么？你有什么感觉？',
                                         hintStyle: TextStyle(
-                                            color: hasImage
-                                                ? Colors.white
-                                                    .withValues(alpha: 0.6)
-                                                : null),
+                                          color: hasImage
+                                              ? Colors.white.withValues(
+                                                  alpha: 0.6,
+                                                )
+                                              : null,
+                                        ),
                                         filled: true,
                                         fillColor: hasImage
-                                            ? Colors.white
-                                                .withValues(alpha: 0.1)
+                                            ? Colors.white.withValues(
+                                                alpha: 0.1,
+                                              )
                                             : Color.alphaBlend(
                                                 taskColors.first.withValues(
                                                   alpha: 0.12,
@@ -3561,8 +3571,9 @@ class _ChallengeTaskCardState extends State<_ChallengeTaskCard> {
                                                 scheme.surfaceContainerHighest,
                                               ),
                                         border: OutlineInputBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(16),
+                                          borderRadius: BorderRadius.circular(
+                                            16,
+                                          ),
                                           borderSide: BorderSide(
                                             color: hasImage
                                                 ? Colors.transparent
@@ -3570,18 +3581,21 @@ class _ChallengeTaskCardState extends State<_ChallengeTaskCard> {
                                           ),
                                         ),
                                         enabledBorder: OutlineInputBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(16),
+                                          borderRadius: BorderRadius.circular(
+                                            16,
+                                          ),
                                           borderSide: BorderSide(
                                             color: hasImage
-                                                ? Colors.white
-                                                    .withValues(alpha: 0.3)
+                                                ? Colors.white.withValues(
+                                                    alpha: 0.3,
+                                                  )
                                                 : scheme.outlineVariant,
                                           ),
                                         ),
                                         focusedBorder: OutlineInputBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(16),
+                                          borderRadius: BorderRadius.circular(
+                                            16,
+                                          ),
                                           borderSide: BorderSide(
                                             color: hasImage
                                                 ? Colors.white
@@ -3595,40 +3609,45 @@ class _ChallengeTaskCardState extends State<_ChallengeTaskCard> {
                                     Row(
                                       children: [
                                         OutlinedButton.icon(
-                                          onPressed:
-                                              _saving ? null : _saveFeeling,
+                                          onPressed: _saving
+                                              ? null
+                                              : _saveFeeling,
                                           icon: _saving
                                               ? const SizedBox(
                                                   width: 16,
                                                   height: 16,
                                                   child:
                                                       CircularProgressIndicator(
-                                                    strokeWidth: 2,
-                                                  ),
+                                                        strokeWidth: 2,
+                                                      ),
                                                 )
                                               : const Icon(
-                                                  Icons.bookmark_add_outlined),
+                                                  Icons.bookmark_add_outlined,
+                                                ),
                                           label: const Text('保存感受'),
                                           style: hasImage
                                               ? OutlinedButton.styleFrom(
                                                   foregroundColor: Colors.white,
                                                   side: BorderSide(
-                                                      color: Colors.white
-                                                          .withValues(
-                                                              alpha: 0.5)),
+                                                    color: Colors.white
+                                                        .withValues(alpha: 0.5),
+                                                  ),
                                                 )
                                               : null,
                                         ),
                                         const Spacer(),
                                         FilledButton.icon(
-                                          onPressed: () => widget
-                                              .onComplete(!task.isCompleted),
-                                          icon: Icon(task.isCompleted
-                                              ? Icons.undo_rounded
-                                              : Icons.check_rounded),
-                                          label: Text(task.isCompleted
-                                              ? '撤销完成'
-                                              : '完成打卡'),
+                                          onPressed: () => widget.onComplete(
+                                            !task.isCompleted,
+                                          ),
+                                          icon: Icon(
+                                            task.isCompleted
+                                                ? Icons.undo_rounded
+                                                : Icons.check_rounded,
+                                          ),
+                                          label: Text(
+                                            task.isCompleted ? '撤销完成' : '完成打卡',
+                                          ),
                                           style: hasImage
                                               ? FilledButton.styleFrom(
                                                   backgroundColor: Colors.white,
@@ -3650,9 +3669,7 @@ class _ChallengeTaskCardState extends State<_ChallengeTaskCard> {
                           child: IconButton(
                             tooltip: '展开记录感受',
                             onPressed: () => setState(() => _expanded = true),
-                            icon: const Icon(
-                              Icons.keyboard_arrow_down_rounded,
-                            ),
+                            icon: const Icon(Icons.keyboard_arrow_down_rounded),
                             color: mutedForeground,
                           ),
                         ),
@@ -3669,7 +3686,7 @@ class _ChallengeTaskCardState extends State<_ChallengeTaskCard> {
 
   String _formatDate(DateTime? date) {
     if (date == null) return '日期未知';
-    return DateFormat('M月d日').format(date);
+    return _challengeDateFormat('M月d日').format(date);
   }
 
   Widget _buildFeelingPreview(
@@ -3710,10 +3727,10 @@ class _ChallengeTaskCardState extends State<_ChallengeTaskCard> {
                 maxLines: 4,
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: foreground,
-                      fontWeight: FontWeight.w600,
-                      height: 1.35,
-                    ),
+                  color: foreground,
+                  fontWeight: FontWeight.w600,
+                  height: 1.35,
+                ),
               ),
             ),
           ],

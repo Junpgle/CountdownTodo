@@ -13,8 +13,21 @@ import 'plan_block_editor_sheet.dart';
 
 final _openingRecovery = <String>{};
 
-String _period(int start, int end) =>
-    '${DateFormat('MM-dd HH:mm').format(DateTime.fromMillisecondsSinceEpoch(start))}–${DateFormat('MM-dd HH:mm').format(DateTime.fromMillisecondsSinceEpoch(end))}';
+final Map<String?, DateFormat> _periodDateFormats = {};
+
+DateFormat _periodDateFormat() {
+  final locale = Intl.defaultLocale;
+  return _periodDateFormats.putIfAbsent(
+    locale,
+    () => DateFormat('MM-dd HH:mm', locale),
+  );
+}
+
+String _period(int start, int end) {
+  final dateFormat = _periodDateFormat();
+  return '${dateFormat.format(DateTime.fromMillisecondsSinceEpoch(start))}–'
+      '${dateFormat.format(DateTime.fromMillisecondsSinceEpoch(end))}';
+}
 
 Future<int?> _recoveryDialog(
   BuildContext context,

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../../../services/pomodoro_service.dart';
 import '../../../utils/app_color_utils.dart';
 import '../../../utils/app_dialogs.dart';
@@ -53,8 +54,9 @@ class _TagManagerSheetState extends State<TagManagerSheet>
       builder: (ctx) => StatefulBuilder(
         builder: (context, sd) => AlertDialog(
           title: const Text('新增标签'),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -63,7 +65,8 @@ class _TagManagerSheetState extends State<TagManagerSheet>
                 decoration: InputDecoration(
                   labelText: '标签名称',
                   border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12)),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
               ),
               const SizedBox(height: 16),
@@ -78,8 +81,11 @@ class _TagManagerSheetState extends State<TagManagerSheet>
                       radius: 18,
                       backgroundColor: col,
                       child: pickedColor == c
-                          ? const Icon(Icons.check,
-                              color: Colors.white, size: 20)
+                          ? const Icon(
+                              Icons.check,
+                              color: Colors.white,
+                              size: 20,
+                            )
                           : null,
                     ),
                   );
@@ -89,16 +95,22 @@ class _TagManagerSheetState extends State<TagManagerSheet>
           ),
           actions: [
             TextButton(
-                onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('取消'),
+            ),
             FilledButton(
               onPressed: () {
                 if (ctrl.text.trim().isNotEmpty) {
-                  final tag =
-                      PomodoroTag(name: ctrl.text.trim(), color: pickedColor);
+                  final tag = PomodoroTag(
+                    name: ctrl.text.trim(),
+                    color: pickedColor,
+                  );
                   final index = _tags.length;
                   setState(() => _tags.add(tag));
-                  _listKey.currentState?.insertItem(index,
-                      duration: const Duration(milliseconds: 300));
+                  _listKey.currentState?.insertItem(
+                    index,
+                    duration: const Duration(milliseconds: 300),
+                  );
                   widget.onChanged(_tags, _selected);
                   Navigator.pop(ctx);
                 }
@@ -123,9 +135,10 @@ class _TagManagerSheetState extends State<TagManagerSheet>
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('管理标签',
-                    style:
-                        TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                const Text(
+                  '管理标签',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
                 IconButton(
                   icon: const Icon(Icons.add_circle),
                   color: Theme.of(context).colorScheme.primary,
@@ -139,8 +152,10 @@ class _TagManagerSheetState extends State<TagManagerSheet>
           if (_tags.isEmpty)
             const Padding(
               padding: EdgeInsets.all(32),
-              child:
-                  Text('还没有标签，点击右上角添加', style: TextStyle(color: Colors.grey)),
+              child: Text(
+                '还没有标签，点击右上角添加',
+                style: TextStyle(color: Colors.grey),
+              ),
             )
           else
             ConstrainedBox(
@@ -158,19 +173,24 @@ class _TagManagerSheetState extends State<TagManagerSheet>
                       curve: Curves.easeOutCubic,
                     ),
                     child: SlideTransition(
-                      position: Tween<Offset>(
-                        begin: const Offset(1.0, 0.0),
-                        end: Offset.zero,
-                      ).animate(CurvedAnimation(
-                        parent: animation,
-                        curve: Curves.easeOutCubic,
-                      )),
+                      position:
+                          Tween<Offset>(
+                            begin: const Offset(1.0, 0.0),
+                            end: Offset.zero,
+                          ).animate(
+                            CurvedAnimation(
+                              parent: animation,
+                              curve: Curves.easeOutCubic,
+                            ),
+                          ),
                       child: FadeTransition(
                         opacity: animation,
                         child: ListTile(
                           key: ValueKey(tag.uuid),
-                          leading:
-                              CircleAvatar(radius: 8, backgroundColor: color),
+                          leading: CircleAvatar(
+                            radius: 8,
+                            backgroundColor: color,
+                          ),
                           title: Text(tag.name),
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
@@ -190,8 +210,11 @@ class _TagManagerSheetState extends State<TagManagerSheet>
                                 },
                               ),
                               IconButton(
-                                icon: const Icon(Icons.delete_outline,
-                                    size: 20, color: Colors.grey),
+                                icon: const Icon(
+                                  Icons.delete_outline,
+                                  size: 20,
+                                  color: Colors.grey,
+                                ),
                                 onPressed: () {
                                   final removedTag = _tags[index];
                                   final removedIndex = index;
@@ -203,40 +226,51 @@ class _TagManagerSheetState extends State<TagManagerSheet>
                                         curve: Curves.easeInCubic,
                                       ),
                                       child: SlideTransition(
-                                        position: Tween<Offset>(
-                                          begin: Offset.zero,
-                                          end: const Offset(-1.0, 0.0),
-                                        ).animate(CurvedAnimation(
-                                          parent: animation,
-                                          curve: Curves.easeInCubic,
-                                        )),
+                                        position:
+                                            Tween<Offset>(
+                                              begin: Offset.zero,
+                                              end: const Offset(-1.0, 0.0),
+                                            ).animate(
+                                              CurvedAnimation(
+                                                parent: animation,
+                                                curve: Curves.easeInCubic,
+                                              ),
+                                            ),
                                         child: FadeTransition(
                                           opacity: animation,
                                           child: ListTile(
                                             key: ValueKey(removedTag.uuid),
                                             leading: CircleAvatar(
-                                                radius: 8,
-                                                backgroundColor:
-                                                    AppColorUtils.parseHex(
-                                                        removedTag.color)),
+                                              radius: 8,
+                                              backgroundColor:
+                                                  AppColorUtils.parseHex(
+                                                    removedTag.color,
+                                                  ),
+                                            ),
                                             title: Text(removedTag.name),
                                             trailing: Row(
                                               mainAxisSize: MainAxisSize.min,
                                               children: [
                                                 Checkbox(
                                                   value: _selected.contains(
-                                                      removedTag.uuid),
+                                                    removedTag.uuid,
+                                                  ),
                                                   activeColor:
                                                       AppColorUtils.parseHex(
-                                                          removedTag.color),
+                                                        removedTag.color,
+                                                      ),
                                                   onChanged: null,
                                                 ),
-                                                const Icon(Icons.delete_outline,
-                                                    size: 20,
-                                                    color: Colors.grey),
-                                                const Icon(Icons.drag_handle,
-                                                    size: 20,
-                                                    color: Colors.grey),
+                                                const Icon(
+                                                  Icons.delete_outline,
+                                                  size: 20,
+                                                  color: Colors.grey,
+                                                ),
+                                                const Icon(
+                                                  Icons.drag_handle,
+                                                  size: 20,
+                                                  color: Colors.grey,
+                                                ),
                                                 const SizedBox(width: 4),
                                               ],
                                             ),
@@ -253,8 +287,11 @@ class _TagManagerSheetState extends State<TagManagerSheet>
                                   widget.onChanged(_tags, _selected);
                                 },
                               ),
-                              const Icon(Icons.drag_handle,
-                                  size: 20, color: Colors.grey),
+                              const Icon(
+                                Icons.drag_handle,
+                                size: 20,
+                                color: Colors.grey,
+                              ),
                               const SizedBox(width: 4),
                             ],
                           ),

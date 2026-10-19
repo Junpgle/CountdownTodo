@@ -1,12 +1,15 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+
 import 'package:flutter/foundation.dart';
+
 import 'island_channel.dart';
 import 'island_config.dart';
 import 'island_ipc_paths.dart';
 import 'island_payload.dart';
 import '../storage_service.dart';
+
 import 'package:window_manager/window_manager.dart';
 
 class IslandManager {
@@ -48,13 +51,15 @@ class IslandManager {
     try {
       final file = await _payloadFile();
       final sequence = ++_payloadSequence;
-      await file.writeAsString(jsonEncode({
-        'islandId': islandId,
-        'windowId': ?windowId,
-        'sequence': sequence,
-        'timestamp': DateTime.now().millisecondsSinceEpoch,
-        'payload': payload,
-      }));
+      await file.writeAsString(
+        jsonEncode({
+          'islandId': islandId,
+          'windowId': ?windowId,
+          'sequence': sequence,
+          'timestamp': DateTime.now().millisecondsSinceEpoch,
+          'payload': payload,
+        }),
+      );
       await appendIslandIpcLog(
         'main wrote payload seq=$sequence windowId=${windowId ?? '-'} state=${payload['state']}',
       );
@@ -84,8 +89,11 @@ class IslandManager {
 
   // ── Public API ─────────────────────────────────────────────────────────
 
-  Future<String?> createIsland(String islandId,
-      {Map<String, dynamic>? initialPayload}) async {
+  Future<String?> createIsland(
+    String islandId, {
+    Map<String, dynamic>? initialPayload,
+    Map<String, dynamic>? startupPayload,
+  }) async {
     if (kIsWeb) return null;
 
     // Return cached id if present
@@ -102,8 +110,11 @@ class IslandManager {
     }
 
     // 立即注册 future 到 _creating, 阻止后续调用进入 (在任何 await 之前!)
-    final future =
-        _createIslandInternal(islandId, initialPayload: initialPayload);
+    final future = _createIslandInternal(
+      islandId,
+      initialPayload: initialPayload,
+      startupPayload: startupPayload,
+    );
     _creating[islandId] = future;
     try {
       final res = await future;
@@ -117,18 +128,28 @@ class IslandManager {
     }
   }
 
-  Future<String?> _createIslandInternal(String islandId,
-      {Map<String, dynamic>? initialPayload}) async {
+  Future<String?> _createIslandInternal(
+    String islandId, {
+    Map<String, dynamic>? initialPayload,
+    Map<String, dynamic>? startupPayload,
+  }) async {
     // 只清缓存, 不销毁旧窗口 (避免 native 崩溃)
     _windowIdCache.remove(islandId);
     try {
       await _clearPersistedWindowId(islandId);
     } catch (_) {}
-    return await _doCreate(islandId, initialPayload: initialPayload);
+    return await _doCreate(
+      islandId,
+      initialPayload: initialPayload,
+      startupPayload: startupPayload,
+    );
   }
 
-  Future<String?> _doCreate(String islandId,
-      {Map<String, dynamic>? initialPayload}) async {
+  Future<String?> _doCreate(
+    String islandId, {
+    Map<String, dynamic>? initialPayload,
+    Map<String, dynamic>? startupPayload,
+  }) async {
     final initialLegacy = IslandPayload.fromMap(null).toMap();
     final initialStructured = {
       'state': 'idle',
@@ -138,7 +159,7 @@ class IslandManager {
         'timeLabel': '',
         'isCountdown': true,
         'tags': [],
-        'syncMode': 'local'
+        'syncMode': 'local',
       },
       'reminderData': {},
       'dashboardData': {'leftSlot': '', 'rightSlot': ''},
@@ -147,7 +168,9 @@ class IslandManager {
     };
 
     final structuredPayload = initialPayload ?? initialStructured;
-    await _persistLatestPayload(islandId, structuredPayload);
+    // Persist live state before spawning the child engine. The child reads this
+    // file as soon as its IPC watcher starts, avoiding an idle first frame.
+    await _persistLatestPayload(islandId, startupPayload ?? structuredPayload);
 
     final args = {
       'arguments': 'islandMain',
@@ -158,7 +181,8 @@ class IslandManager {
       'payload': structuredPayload,
     };
     try {
-      final bounds = await loadIslandBounds(islandId) ??
+      final bounds =
+          await loadIslandBounds(islandId) ??
           await StorageService.getIslandBounds(islandId);
       if (bounds != null && bounds.isNotEmpty) {
         args['initialBounds'] = bounds;
@@ -172,10 +196,10 @@ class IslandManager {
           final mainBounds = await windowManager.getBounds();
           const double defaultW = 160.0;
           const double defaultH = 56.0;
-          final left =
-              (mainBounds.left + (mainBounds.width - defaultW) / 2).toInt();
-          final top =
-              (mainBounds.top + (mainBounds.height - defaultH) / 2).toInt();
+          final left = (mainBounds.left + (mainBounds.width - defaultW) / 2)
+              .toInt();
+          final top = (mainBounds.top + (mainBounds.height - defaultH) / 2)
+              .toInt();
           args['initialBounds'] = {
             'left': left,
             'top': top,
@@ -183,7 +207,8 @@ class IslandManager {
             'height': defaultH,
           };
           debugPrint(
-              '[IslandManager] applying computed initialBounds for $islandId: ${args['initialBounds']}');
+            '[IslandManager] applying computed initialBounds for $islandId: ${args['initialBounds']}',
+          );
         } catch (_) {}
       }
     } catch (_) {}
@@ -192,38 +217,49 @@ class IslandManager {
         'left': 100,
         'top': 100,
         'width': 160.0,
-        'height': 56.0
+        'height': 56.0,
       };
       debugPrint(
-          '[IslandManager] applied fallback initialBounds for $islandId: ${args['initialBounds']}');
+        '[IslandManager] applied fallback initialBounds for $islandId: ${args['initialBounds']}',
+      );
     }
     try {
       debugPrint(
-          '[IslandManager] _doCreate calling IslandChannel.createWindow for $islandId');
+        '[IslandManager] _doCreate calling IslandChannel.createWindow for $islandId',
+      );
       final windowId = await IslandChannel.createWindow(args);
       debugPrint('[IslandManager] _doCreate result for $islandId -> $windowId');
       if (windowId != null) {
-        try {
-          await _postStructuredPayloadWithRetry(windowId, structuredPayload,
-              attempts: 2);
-        } catch (_) {}
+        // Do not post a stale idle payload over startupPayload. The caller
+        // sends the live payload as soon as this method returns.
+        if (startupPayload == null) {
+          try {
+            await _postStructuredPayloadWithRetry(
+              windowId,
+              structuredPayload,
+              attempts: 2,
+            );
+          } catch (_) {}
+        }
         try {
           final ib = args['initialBounds'] as Map<String, dynamic>?;
           if (ib != null) {
             debugPrint('[IslandManager] 调用 setWindowBounds: $ib');
             final boundsResult =
-                await IslandChannel.setWindowBounds(windowId, ib)
-                    .catchError((e) {
-              debugPrint('[IslandManager] setWindowBounds error: $e');
-              return false;
-            });
+                await IslandChannel.setWindowBounds(windowId, ib).catchError((
+                  e,
+                ) {
+                  debugPrint('[IslandManager] setWindowBounds error: $e');
+                  return false;
+                });
             debugPrint('[IslandManager] setWindowBounds result: $boundsResult');
 
             await IslandChannel.showWindow(windowId).catchError((_) => false);
             try {
-              final got =
-                  await IslandChannel.setWindowTransparent(windowId, true)
-                      .catchError((_) => false);
+              final got = await IslandChannel.setWindowTransparent(
+                windowId,
+                true,
+              ).catchError((_) => false);
               _transparentSupport[islandId] = got == true;
               debugPrint('[IslandManager] setWindowTransparent 结果: $got');
               if (!got) {
@@ -233,52 +269,10 @@ class IslandManager {
               _transparentSupport[islandId] = false;
             }
             debugPrint(
-                '[IslandManager] applied initialBounds, showed window and requested transparency for $windowId');
+              '[IslandManager] applied initialBounds, showed window and requested transparency for $windowId',
+            );
           }
         } catch (_) {}
-        try {
-          await Future.delayed(const Duration(milliseconds: 400));
-        } catch (_) {}
-        try {
-          final ok = await IslandChannel.waitForReady(windowId,
-              timeout: const Duration(milliseconds: 1200));
-          debugPrint('[IslandManager] waitForReady result for $windowId: $ok');
-          if (!ok) {
-            debugPrint(
-                '[IslandManager] waitForReady timed out for $windowId; sending handshake ping');
-            await IslandChannel.postMessage(windowId, {'handshake': 'ping'});
-            final completer = Completer<bool>();
-            final sub = IslandChannel.actionStream.listen((event) {
-              try {
-                if (event['action'] == 'handshake_pong' &&
-                    event['windowId'] == windowId) {
-                  completer.complete(true);
-                }
-              } catch (_) {}
-            });
-            try {
-              final got = await completer.future.timeout(
-                  const Duration(milliseconds: 1000),
-                  onTimeout: () => false);
-              debugPrint(
-                  '[IslandManager] handshake_pong result for $windowId: $got');
-            } catch (_) {}
-            try {
-              await sub.cancel();
-            } catch (_) {}
-          }
-          final resent = await _postStructuredPayloadWithRetry(
-              windowId, structuredPayload);
-          debugPrint(
-              '[IslandManager] post-ready payload resend for $windowId -> $resent');
-        } catch (e) {
-          debugPrint(
-              '[IslandManager] waitForReady exception for $windowId: $e');
-          final resent = await _postStructuredPayloadWithRetry(
-              windowId, structuredPayload);
-          debugPrint(
-              '[IslandManager] fallback payload resend for $windowId -> $resent');
-        }
       }
       return windowId;
     } catch (e) {
@@ -293,24 +287,29 @@ class IslandManager {
     final payloadMap = payload.toMap();
     await _persistLatestPayload(islandId, payloadMap, windowId: windowId);
     try {
-      final ready = await IslandChannel.waitForReady(windowId,
-          timeout: const Duration(milliseconds: 600));
+      final ready = await IslandChannel.waitForReady(
+        windowId,
+        timeout: const Duration(milliseconds: 600),
+      );
       debugPrint(
-          '[IslandManager] pre-send waitForReady for $windowId -> $ready');
+        '[IslandManager] pre-send waitForReady for $windowId -> $ready',
+      );
     } catch (_) {}
     int attempts = 0;
     int delayMs = 50;
     while (attempts < 5) {
       attempts++;
       debugPrint(
-          '[IslandManager] sendPayload attempt $attempts -> windowId=$windowId');
+        '[IslandManager] sendPayload attempt $attempts -> windowId=$windowId',
+      );
       final ok = await IslandChannel.postMessage(windowId, payloadMap);
       if (ok) return true;
       await Future.delayed(Duration(milliseconds: delayMs));
       delayMs = (delayMs * 2).clamp(50, 800);
     }
     debugPrint(
-        '[IslandManager] sendPayload failed for $islandId (windowId=$windowId)');
+      '[IslandManager] sendPayload failed for $islandId (windowId=$windowId)',
+    );
     return false;
   }
 
@@ -342,7 +341,8 @@ class IslandManager {
     final last = _lastRecreateMs![islandId] ?? 0;
     if (now - last < 1200) {
       debugPrint(
-          '[IslandManager] recreateIsland suppressed due to recent recreate (${now - last}ms)');
+        '[IslandManager] recreateIsland suppressed due to recent recreate (${now - last}ms)',
+      );
       return;
     }
     _lastRecreateMs![islandId] = now;
@@ -356,7 +356,8 @@ class IslandManager {
     if (old != null) {
       try {
         debugPrint(
-            '[IslandManager] destroying tracked island $islandId (windowId=$old)');
+          '[IslandManager] destroying tracked island $islandId (windowId=$old)',
+        );
         await IslandChannel.destroyWindow(old);
       } catch (_) {}
       _windowIdCache.remove(islandId);
@@ -367,7 +368,8 @@ class IslandManager {
       final persisted = await _loadPersistedWindowId(islandId);
       if (persisted != null && persisted != old) {
         debugPrint(
-            '[IslandManager] destroying persisted orphan window $persisted');
+          '[IslandManager] destroying persisted orphan window $persisted',
+        );
         await IslandChannel.destroyWindow(persisted);
       }
     } catch (_) {}
@@ -393,18 +395,23 @@ class IslandManager {
 
   /// Send a structured payload (Map) to island windowId. Returns true on success.
   Future<bool> sendStructuredPayload(
-      String islandId, Map<String, dynamic> payload) async {
+    String islandId,
+    Map<String, dynamic> payload,
+  ) async {
     final windowId = _windowIdCache[islandId];
     if (windowId == null) return false;
     await _persistLatestPayload(islandId, payload, windowId: windowId);
     try {
-      await IslandChannel.waitForReady(windowId,
-          timeout: const Duration(milliseconds: 600));
+      await IslandChannel.waitForReady(
+        windowId,
+        timeout: const Duration(milliseconds: 600),
+      );
     } catch (_) {}
     final ok = await _postStructuredPayloadWithRetry(windowId, payload);
     if (!ok) {
       debugPrint(
-          '[IslandManager] sendStructuredPayload failed for $windowId; NOT clearing cache to avoid duplication');
+        '[IslandManager] sendStructuredPayload failed for $windowId; NOT clearing cache to avoid duplication',
+      );
     }
     return ok;
   }

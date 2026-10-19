@@ -1,3 +1,6 @@
+import '../../../models.dart';
+import '../../../services/pomodoro_service.dart';
+import '../models/habit_checkin.dart';
 import '../models/habit_goal.dart';
 import '../models/habit_goal_rule.dart';
 import '../models/habit_progress.dart';
@@ -22,26 +25,27 @@ abstract final class HabitStreakService {
     required List<HabitGoalRuleRevision> rules,
     DateTime? now,
     int? lookbackDays,
+    List<TodoItem>? todos,
+    List<PomodoroRecord>? records,
+    List<HabitCheckIn>? checkIns,
   }) async {
     final nowValue = now ?? DateTime.now();
-    if (rules.isEmpty) {
-      return const HabitStreakSummary();
-    }
-    final rule = HabitRuleResolver.effectiveRule(rules, nowValue) ??
-        rules.firstWhere((r) => !r.isDeleted, orElse: () => rules.first);
-    final today = HabitRuleResolver.logicalDateFor(
-      nowValue,
-      rule.dayBoundaryMinute,
+    final window = summaryWindow(
+      rules: rules,
+      now: nowValue,
+      lookbackDays: lookbackDays,
     );
-    final lookback = lookbackDays ?? _defaultLookbackDays(rule.periodType);
-    final from = HabitRuleResolver.addCalendarDays(today, -lookback);
+    if (window == null) return const HabitStreakSummary();
 
     final days = await HabitProgressCalculator.computeRange(
       habit: habit,
       rules: rules,
-      from: from,
-      to: today,
+      from: window.from,
+      to: window.today,
       now: nowValue,
+      todos: todos,
+      records: records,
+      checkIns: checkIns,
       // 每周/每月习惯只需周期级进度：跳过周期内重复条目，
       // 避免 60 个月回看窗口生成约 1860 个 day-level 条目。
       periodLevel: true,
@@ -50,8 +54,32 @@ abstract final class HabitStreakService {
     return summarizeFromDays(
       habit: habit,
       days: days,
-      rule: rule,
+      rule: window.rule,
       now: nowValue,
+    );
+  }
+
+  /// 解析连续统计使用的规则和回看范围，供批量数据加载方复用。
+  static ({HabitGoalRuleRevision rule, DateTime today, DateTime from})?
+  summaryWindow({
+    required List<HabitGoalRuleRevision> rules,
+    DateTime? now,
+    int? lookbackDays,
+  }) {
+    if (rules.isEmpty) return null;
+    final nowValue = now ?? DateTime.now();
+    final rule =
+        HabitRuleResolver.effectiveRule(rules, nowValue) ??
+        rules.firstWhere((r) => !r.isDeleted, orElse: () => rules.first);
+    final today = HabitRuleResolver.logicalDateFor(
+      nowValue,
+      rule.dayBoundaryMinute,
+    );
+    final lookback = lookbackDays ?? _defaultLookbackDays(rule.periodType);
+    return (
+      rule: rule,
+      today: today,
+      from: HabitRuleResolver.addCalendarDays(today, -lookback),
     );
   }
 
@@ -137,8 +165,9 @@ abstract final class HabitStreakService {
         totalOverdue30++;
       }
     }
-    final rate30 =
-        totalPlanned30 == 0 ? 0.0 : totalCompleted30 / totalPlanned30;
+    final rate30 = totalPlanned30 == 0
+        ? 0.0
+        : totalCompleted30 / totalPlanned30;
 
     int planned7 = 0;
     int completed7 = 0;
@@ -150,7 +179,8 @@ abstract final class HabitStreakService {
     }
     final rate7 = planned7 == 0 ? 0.0 : completed7 / planned7;
 
-    final isDailyLike = rule.periodType == HabitPeriodType.daily ||
+    final isDailyLike =
+        rule.periodType == HabitPeriodType.daily ||
         rule.periodType == HabitPeriodType.weekdays ||
         rule.periodType == HabitPeriodType.custom;
 
@@ -187,35 +217,41 @@ abstract final class HabitStreakService {
           .map((period) => HabitRuleResolver.periodKey(rule, period.start))
           .toSet();
       final recordedDays = days
-          .where((d) =>
-              d.progress.isPlanned &&
-              d.progress.isFinished &&
-              d.progress.hasRecord &&
-              recentPeriodKeys.contains(
-                HabitRuleResolver.periodKey(rule, d.logicalDate),
-              ))
+          .where(
+            (d) =>
+                d.progress.isPlanned &&
+                d.progress.isFinished &&
+                d.progress.hasRecord &&
+                recentPeriodKeys.contains(
+                  HabitRuleResolver.periodKey(rule, d.logicalDate),
+                ),
+          )
           .toList();
       if (recordedDays.isNotEmpty) {
         switch (habit.sourceType) {
           case HabitSourceType.recurringTodo:
             break;
           case HabitSourceType.quantityCheckIn:
-            averageValue = recordedDays
+            averageValue =
+                recordedDays
                     .map((d) => d.progress.currentValue)
                     .reduce((a, b) => a + b) /
                 recordedDays.length;
           case HabitSourceType.pomodoroTag:
-            averageDuration = recordedDays
+            averageDuration =
+                recordedDays
                     .map((d) => d.progress.currentValue)
                     .reduce((a, b) => a + b) /
                 recordedDays.length;
           case HabitSourceType.durationCheckIn:
-            averageDuration = recordedDays
+            averageDuration =
+                recordedDays
                     .map((d) => d.progress.currentValue)
                     .reduce((a, b) => a + b) /
                 recordedDays.length;
           case HabitSourceType.timeCheckIn:
-            final isEarlySleep = HabitAdaptationService.forHabit(habit)?.kind ==
+            final isEarlySleep =
+                HabitAdaptationService.forHabit(habit)?.kind ==
                 HabitAdaptationKind.earlySleep;
             final targetMinute = rule.targetTimeMinute;
             final boundary = rule.dayBoundaryMinute > 0
@@ -224,23 +260,25 @@ abstract final class HabitStreakService {
             final times = recordedDays
                 .where((d) => d.progress.firstRecordAt != null)
                 .map((d) {
-              final actual = d.progress.firstRecordAt!;
-              final minute = actual.hour * 60 + actual.minute;
-              if (!isEarlySleep || targetMinute == null) return minute;
-              // 早睡的 23:50 和次日 00:10 应相邻，而不是被平均成中午。
-              if (targetMinute < boundary && minute >= boundary) {
-                return minute - 24 * 60;
-              }
-              if (targetMinute >= boundary && minute < boundary) {
-                return minute + 24 * 60;
-              }
-              return minute;
-            }).toList();
+                  final actual = d.progress.firstRecordAt!;
+                  final minute = actual.hour * 60 + actual.minute;
+                  if (!isEarlySleep || targetMinute == null) return minute;
+                  // 早睡的 23:50 和次日 00:10 应相邻，而不是被平均成中午。
+                  if (targetMinute < boundary && minute >= boundary) {
+                    return minute - 24 * 60;
+                  }
+                  if (targetMinute >= boundary && minute < boundary) {
+                    return minute + 24 * 60;
+                  }
+                  return minute;
+                })
+                .toList();
             if (times.isNotEmpty) {
               final average = times.reduce((a, b) => a + b) / times.length;
               averageTimeMinute = average % (24 * 60);
-              final onTimeCount =
-                  recordedDays.where((d) => d.progress.goalMet).length;
+              final onTimeCount = recordedDays
+                  .where((d) => d.progress.goalMet)
+                  .length;
               onTimeRate = onTimeCount / recordedDays.length;
             }
         }
@@ -252,13 +290,16 @@ abstract final class HabitStreakService {
         (habit.sourceType == HabitSourceType.pomodoroTag ||
             habit.sourceType == HabitSourceType.durationCheckIn)) {
       final recordedPeriods = days
-          .where((d) =>
-              d.progress.isPlanned &&
-              d.progress.isFinished &&
-              d.progress.hasRecord)
+          .where(
+            (d) =>
+                d.progress.isPlanned &&
+                d.progress.isFinished &&
+                d.progress.hasRecord,
+          )
           .toList();
       if (recordedPeriods.isNotEmpty) {
-        averageDuration = recordedPeriods
+        averageDuration =
+            recordedPeriods
                 .map((d) => d.progress.currentValue)
                 .reduce((a, b) => a + b) /
             recordedPeriods.length;
@@ -302,8 +343,5 @@ class _PeriodEntry {
   bool met = false;
   bool finished = false;
 
-  _PeriodEntry({
-    required this.start,
-    required this.planned,
-  });
+  _PeriodEntry({required this.start, required this.planned});
 }

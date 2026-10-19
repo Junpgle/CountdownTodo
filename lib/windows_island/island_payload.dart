@@ -1,7 +1,9 @@
 // Island Payload Data Transfer Objects
 // Consolidated from payload.dart and island_payload.dart
 import 'dart:convert';
+
 import 'package:uuid/uuid.dart';
+
 import '../services/island_payload_model.dart' as common;
 
 typedef IslandPayload = common.IslandPayload;
@@ -22,17 +24,17 @@ class IslandMessage {
     int? timestamp,
     required this.islandId,
     required this.payload,
-  })  : msgId = msgId ?? const Uuid().v4(),
-        timestamp = timestamp ?? DateTime.now().millisecondsSinceEpoch;
+  }) : msgId = msgId ?? const Uuid().v4(),
+       timestamp = timestamp ?? DateTime.now().millisecondsSinceEpoch;
 
   Map<String, dynamic> toJson() => {
-        'v': v,
-        'msg_id': msgId,
-        'type': type,
-        'timestamp': timestamp,
-        'island_id': islandId,
-        'payload': payload,
-      };
+    'v': v,
+    'msg_id': msgId,
+    'type': type,
+    'timestamp': timestamp,
+    'island_id': islandId,
+    'payload': payload,
+  };
 
   String toJsonString() => jsonEncode(toJson());
 
@@ -54,7 +56,7 @@ class IslandEvent {
   final Map<String, dynamic> payload;
 
   IslandEvent({required this.name, Map<String, dynamic>? payload})
-      : payload = payload ?? {};
+    : payload = payload ?? {};
 
   Map<String, dynamic> toJson() => {'name': name, 'payload': payload};
 }

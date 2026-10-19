@@ -528,10 +528,7 @@ void main() {
     ];
 
     final timeLogs = await service.execute(
-      query('query_app_data', {
-        'domain': 'time_logs',
-        'limit': 1,
-      }),
+      query('query_app_data', {'domain': 'time_logs', 'limit': 1}),
     );
     expect((timeLogs['items'] as List).single['id'], 'z-new');
 
@@ -548,10 +545,7 @@ void main() {
       },
     ];
     final pomodoros = await service.execute(
-      query('query_app_data', {
-        'domain': 'pomodoro_records',
-        'limit': 1,
-      }),
+      query('query_app_data', {'domain': 'pomodoro_records', 'limit': 1}),
     );
     expect((pomodoros['items'] as List).single['id'], 'z-new');
   });
@@ -666,10 +660,7 @@ void main() {
       actualDuration: null,
     );
 
-    expect(
-      AiQueryToolService.durationSecondsForPomodoro(legacyRecord),
-      1200,
-    );
+    expect(AiQueryToolService.durationSecondsForPomodoro(legacyRecord), 1200);
 
     final currentRecord = PomodoroRecord(
       uuid: 'current-pomodoro',
@@ -677,10 +668,7 @@ void main() {
       plannedDuration: 1200,
       actualDuration: 600,
     );
-    expect(
-      AiQueryToolService.durationSecondsForPomodoro(currentRecord),
-      600,
-    );
+    expect(AiQueryToolService.durationSecondsForPomodoro(currentRecord), 600);
   });
 
   test('最大支出只返回一笔，商户排行直接汇总退款后的净支出', () async {

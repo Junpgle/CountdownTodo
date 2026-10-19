@@ -5,18 +5,19 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   List<TodoItem> buildOccurrences() => List.generate(
-        8,
-        (index) => TodoItem(
-          id: 'occurrence-$index',
-          title: '第 ${index + 1} 期',
-          createdDate: DateTime(2026, 7, 10 + index).millisecondsSinceEpoch,
-          recurrenceSeriesId: 'series-picker',
-          isDone: index < 3,
-        ),
-      );
+    8,
+    (index) => TodoItem(
+      id: 'occurrence-$index',
+      title: '第 ${index + 1} 期',
+      createdDate: DateTime(2026, 7, 10 + index).millisecondsSinceEpoch,
+      recurrenceSeriesId: 'series-picker',
+      isDone: index < 3,
+    ),
+  );
 
-  testWidgets('centers the current occurrence when the picker opens',
-      (tester) async {
+  testWidgets('centers the current occurrence when the picker opens', (
+    tester,
+  ) async {
     final occurrences = buildOccurrences();
 
     await tester.pumpWidget(
@@ -46,8 +47,9 @@ void main() {
     expect(currentCenter.dx, closeTo(pickerCenter.dx, 0.1));
   });
 
-  testWidgets('selecting another occurrence updates the same picker in place',
-      (tester) async {
+  testWidgets('selecting another occurrence updates the same picker in place', (
+    tester,
+  ) async {
     final occurrences = buildOccurrences();
     var currentTodoId = occurrences[4].id;
     var selectedCount = 0;

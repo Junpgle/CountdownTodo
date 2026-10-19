@@ -1,4 +1,5 @@
 part of 'home_dashboard.dart';
+
 // ignore_for_file: annotate_overrides
 
 enum _HomeAddAction { todo, countdown, finance }
@@ -11,14 +12,34 @@ enum _HomeAddAction { todo, countdown, finance }
 double homeDashboardPhoneScrollTailExtent({
   required double headerExtent,
   required double bottomInset,
-}) =>
-    headerExtent.clamp(0.0, 2000.0).toDouble() + 100.0 + bottomInset;
+}) => headerExtent.clamp(0.0, 2000.0).toDouble() + 100.0 + bottomInset;
 
-mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
+mixin _HomeDashboardViewMixin
+    on _HomeDashboardStateBase, _HomeDashboardWallpaperMixin {
+  late final Listenable _todoSectionListenable = Listenable.merge([
+    _todosNotifier,
+    _groupsNotifier,
+  ]);
+  late final Listenable _agendaSectionListenable = Listenable.merge([
+    _scheduleRevision,
+    _todosNotifier,
+  ]);
+  late final Listenable _bannerSectionListenable = Listenable.merge([
+    _pomodoroTickNotifier,
+    _todosNotifier,
+    _courseDataNotifier,
+    _scheduleRevision,
+  ]);
+
   Widget build(BuildContext context) {
     bool isDarkMode = Theme.of(context).brightness == Brightness.dark;
     bool showWallpaper = !isDarkMode && _wallpaperShow && _wallpaperUrl != null;
     bool isLight = showWallpaper;
+    final wallpaperUrl = _wallpaperUrl;
+    final localWallpaperProvider =
+        showWallpaper && wallpaperUrl != null && _isLocalFilePath(wallpaperUrl)
+        ? _localWallpaperProviderFor(wallpaperUrl)
+        : null;
     final double screenWidth = MediaQuery.sizeOf(context).width;
     final bool isTablet = screenWidth >= 768;
     final double drawerWidth = homeDrawerSlideWidthFor(
@@ -26,8 +47,9 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
       isWide: isTablet,
     );
     final double bottomSystemInset = MediaQuery.viewPaddingOf(context).bottom;
-    final Brightness cardBackgroundBrightness =
-        isDarkMode ? Brightness.dark : Brightness.light;
+    final Brightness cardBackgroundBrightness = isDarkMode
+        ? Brightness.dark
+        : Brightness.light;
 
     final mainScreen = Scaffold(
       // 让宽屏底栏叠在页面背景上，壁纸不会被 Scaffold 的底栏槽位截断。
@@ -38,61 +60,54 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
           : Theme.of(context).colorScheme.surface,
       body: Stack(
         children: [
-          if (showWallpaper)
+          if (showWallpaper && wallpaperUrl != null)
             Positioned.fill(
               child: RepaintBoundary(
                 // Darken the image in its draw pass. A separate full-screen
                 // scrim adds another alpha-blended pass on every GPU frame.
-                child: _wallpaperUrl!.startsWith('assets/')
+                child: wallpaperUrl.startsWith('assets/')
                     ? Builder(
                         builder: (context) {
-                          WidgetsBinding.instance.addPostFrameCallback((_) {
-                            if (_wallpaperDominantColor == null) {
-                              _extractColorFromProvider(
-                                  AssetImage(_wallpaperUrl!), _wallpaperUrl!);
-                            }
-                          });
+                          _scheduleWallpaperColorExtraction(
+                            AssetImage(wallpaperUrl),
+                            wallpaperUrl,
+                          );
                           return Image.asset(
-                            _wallpaperUrl!,
+                            wallpaperUrl,
                             fit: BoxFit.cover,
                             color: const Color(0x66000000),
                             colorBlendMode: BlendMode.srcOver,
                           );
                         },
                       )
-                    : _isLocalFilePath(_wallpaperUrl!) &&
-                            localImageProvider(_wallpaperUrl!) != null
-                        ? Builder(
-                            builder: (context) {
-                              final provider =
-                                  localImageProvider(_wallpaperUrl!)!;
-                              WidgetsBinding.instance.addPostFrameCallback((_) {
-                                if (_wallpaperDominantColor == null) {
-                                  _extractColorFromProvider(
-                                      provider, _wallpaperUrl!);
-                                }
-                              });
-                              return Image(
-                                image: provider,
-                                fit: BoxFit.cover,
-                                color: const Color(0x66000000),
-                                colorBlendMode: BlendMode.srcOver,
-                              );
-                            },
-                          )
-                        : _WallpaperNetworkImage(
-                            url: _wallpaperUrl!,
-                            onImageProvider: (provider) {
-                              _extractColorFromProvider(
-                                  provider, _wallpaperUrl!);
-                            },
-                            onSuccess: () {
-                              _wallpaperRetryCount = 0;
-                            },
-                            onError: () {
-                              _handleWallpaperError();
-                            },
-                          ),
+                    : localWallpaperProvider != null
+                    ? Builder(
+                        builder: (context) {
+                          final provider = localWallpaperProvider;
+                          _scheduleWallpaperColorExtraction(
+                            provider,
+                            wallpaperUrl,
+                          );
+                          return Image(
+                            image: provider,
+                            fit: BoxFit.cover,
+                            color: const Color(0x66000000),
+                            colorBlendMode: BlendMode.srcOver,
+                          );
+                        },
+                      )
+                    : _WallpaperNetworkImage(
+                        url: _wallpaperUrl!,
+                        onImageProvider: (provider) {
+                          _extractColorFromProvider(provider, _wallpaperUrl!);
+                        },
+                        onSuccess: () {
+                          _wallpaperRetryCount = 0;
+                        },
+                        onError: () {
+                          _handleWallpaperError();
+                        },
+                      ),
               ),
             ),
           SafeArea(
@@ -103,8 +118,8 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
             child: FloatingGlassPinnedHeaderLayout(
               initialHeaderExtent:
                   (_selectedTabIndex != _homeFocusTabIndex || isTablet)
-                      ? 112.0
-                      : 0.0,
+                  ? 112.0
+                  : 0.0,
               header: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -146,16 +161,14 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                           sourceKey: _teamsButtonKey,
                         );
                         final unreadBackgroundNotifications =
-                            await BackgroundNotificationService
-                                .getUnreadBackgroundNotifications();
+                            await BackgroundNotificationService.getUnreadBackgroundNotifications();
                         final notificationIds = unreadBackgroundNotifications
                             .map((e) => e['id'])
                             .whereType<num>()
                             .map((e) => e.toInt())
                             .toList();
                         await ApiService.markNotificationsRead(notificationIds);
-                        await BackgroundNotificationService
-                            .clearUnreadBackgroundNotifications();
+                        await BackgroundNotificationService.clearUnreadBackgroundNotifications();
                         await _fetchTeamPendingCount();
                         _loadAllData(deferred: true);
                       },
@@ -222,62 +235,40 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                               : LayoutBuilder(
                                   builder: (context, constraints) {
                                     // ... (rest of section definitions)
-                                    Widget courseSection = AnimatedBuilder(
-                                      animation: Listenable.merge([
-                                        _todosNotifier,
-                                        _courseDataNotifier,
-                                        _scheduleRevision,
-                                      ]),
-                                      builder: (context, _) {
-                                        return CourseSectionWidget(
-                                          dashboardCourseData:
-                                              _dashboardCourseData,
-                                          todos: _todos,
-                                          isLight: isLight,
-                                          username: widget.username,
-                                          refreshTrigger:
-                                              _scheduleRevision.value,
-                                          actionKey: _todayPlanChartKey,
-                                          onTodoAdded: (todo) =>
-                                              _handleTodosChanged([
-                                            ..._todos,
-                                            todo,
-                                          ]),
-                                        );
-                                      },
-                                    );
-                                    Widget countdownSection =
+                                    Widget buildCountdown() =>
                                         ValueListenableBuilder<
-                                            List<CountdownItem>>(
-                                      valueListenable: _countdownsNotifier,
-                                      builder: (context, countdowns, _) =>
-                                          CountdownSectionWidget(
-                                              historyKey: _countdownHistoryKey,
-                                              countdowns: countdowns,
-                                              username: widget.username,
-                                              isLight: isLight,
-                                              addKey: _addCountdownKey,
-                                              onDataChanged: () {
-                                                _loadAllData(
-                                                  domains: const {
-                                                    DataRefreshDomain
-                                                        .countdowns,
-                                                  },
-                                                );
-                                                _timelineRevision.value++;
-                                              }),
-                                    );
-                                    Widget todoSection = AnimatedBuilder(
-                                      animation: Listenable.merge([
-                                        _todosNotifier,
-                                        _groupsNotifier,
-                                        _todoUpdateSignalNotifier,
-                                      ]),
+                                          List<CountdownItem>
+                                        >(
+                                          valueListenable: _countdownsNotifier,
+                                          builder: (context, countdowns, _) =>
+                                              CountdownSectionWidget(
+                                                historyKey:
+                                                    _countdownHistoryKey,
+                                                countdowns: countdowns,
+                                                dataRevision:
+                                                    _countdownsDataRevision,
+                                                username: widget.username,
+                                                isLight: isLight,
+                                                addKey: _addCountdownKey,
+                                                onDataChanged: () {
+                                                  _loadAllData(
+                                                    domains: const {
+                                                      DataRefreshDomain
+                                                          .countdowns,
+                                                    },
+                                                  );
+                                                  _timelineRevision.value++;
+                                                },
+                                              ),
+                                        );
+                                    Widget buildTodo() => AnimatedBuilder(
+                                      animation: _todoSectionListenable,
                                       builder: (context, _) {
                                         return TodoSectionWidget(
                                           folderKey: _todoFolderKey,
                                           historyKey: _todoHistoryKey,
                                           todos: _todos,
+                                          dataRevision: _todoDataRevision,
                                           highlightedTodoIds:
                                               _updatedByOthersTodoIds,
                                           remoteUpdateHighlightSignal:
@@ -295,50 +286,70 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                             });
                                           },
                                           onGroupsChanged: (newGroups) async {
-                                            setState(() => _todoGroups =
-                                                newGroups
-                                                    .where((g) => !g.isDeleted)
-                                                    .toList());
+                                            setState(() {
+                                              _todoGroups = newGroups
+                                                  .where((g) => !g.isDeleted)
+                                                  .toList();
+                                              _todoDataRevision++;
+                                            });
                                             final allGroups =
-                                                await StorageService
-                                                    .getTodoGroups(
-                                                        widget.username);
-                                            for (var g in newGroups) {
-                                              int idx = allGroups.indexWhere(
-                                                  (x) => x.id == g.id);
-                                              if (idx != -1) {
-                                                if (g.updatedAt >=
-                                                    allGroups[idx].updatedAt) {
-                                                  allGroups[idx] = g;
-                                                }
-                                              } else {
-                                                allGroups.add(g);
+                                                await StorageService.getTodoGroups(
+                                                  widget.username,
+                                                );
+                                            final groupIndexById =
+                                                <String, int>{};
+                                            for (
+                                              var index = 0;
+                                              index < allGroups.length;
+                                              index++
+                                            ) {
+                                              groupIndexById.putIfAbsent(
+                                                allGroups[index].id,
+                                                () => index,
+                                              );
+                                            }
+                                            for (final group in newGroups) {
+                                              final index =
+                                                  groupIndexById[group.id];
+                                              if (index == null) {
+                                                groupIndexById[group.id] =
+                                                    allGroups.length;
+                                                allGroups.add(group);
+                                              } else if (group.updatedAt >=
+                                                  allGroups[index].updatedAt) {
+                                                allGroups[index] = group;
                                               }
                                             }
                                             await StorageService.saveTodoGroups(
-                                                widget.username, allGroups,
-                                                sync: true);
+                                              widget.username,
+                                              allGroups,
+                                              sync: true,
+                                            );
                                           },
                                           onTodosChanged: _handleTodosChanged,
                                           initialSelectedTeamUuid:
                                               _currentSelectedTeamUuid,
                                           onRefreshRequested: _handleManualSync,
-                                          onLLMResultsParsed: (results,
-                                              imagePath,
-                                              originalText,
-                                              tUuid,
-                                              tName) {
-                                            _navigateToTodoConfirm(
+                                          onLLMResultsParsed:
+                                              (
                                                 results,
                                                 imagePath,
                                                 originalText,
                                                 tUuid,
-                                                tName);
-                                          },
+                                                tName,
+                                              ) {
+                                                _navigateToTodoConfirm(
+                                                  results,
+                                                  imagePath,
+                                                  originalText,
+                                                  tUuid,
+                                                  tName,
+                                                );
+                                              },
                                         );
                                       },
                                     );
-                                    Widget screenTimeSection = RepaintBoundary(
+                                    Widget buildScreenTime() => RepaintBoundary(
                                       child: KeyedSubtree(
                                         key: _screenTimeCardKey,
                                         child: Column(
@@ -346,9 +357,10 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                               CrossAxisAlignment.start,
                                           children: [
                                             SectionHeader(
-                                                title: "屏幕时间 (今日汇总)",
-                                                icon: Icons.timer_outlined,
-                                                isLight: isLight),
+                                              title: "屏幕时间 (今日汇总)",
+                                              icon: Icons.timer_outlined,
+                                              isLight: isLight,
+                                            ),
                                             ScreenTimeCard(
                                               stats: _screenTimeStats,
                                               isLight: isLight,
@@ -361,11 +373,11 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                                     AppPlatform.isIOS) {
                                                   await _permissionCoordinator
                                                       .request(
-                                                    AppPermissionKind
-                                                        .usageStats,
-                                                    onResult: (_) =>
-                                                        _initScreenTime(),
-                                                  );
+                                                        AppPermissionKind
+                                                            .usageStats,
+                                                        onResult: (_) =>
+                                                            _initScreenTime(),
+                                                      );
                                                 } else {
                                                   _initScreenTime();
                                                 }
@@ -374,8 +386,9 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                                 PageTransitions.pushFromRect(
                                                   context: context,
                                                   page: ScreenTimeDetailScreen(
-                                                      todayStats:
-                                                          _screenTimeStats),
+                                                    todayStats:
+                                                        _screenTimeStats,
+                                                  ),
                                                   sourceKey: _screenTimeCardKey,
                                                   placeholderIcon:
                                                       Icons.timer_outlined,
@@ -386,49 +399,55 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                         ),
                                       ),
                                     );
-                                    Widget mathSection = ValueListenableBuilder<
-                                        Map<String, dynamic>>(
-                                      valueListenable: _mathStatsNotifier,
-                                      builder: (context, stats, _) =>
-                                          RepaintBoundary(
-                                        child: KeyedSubtree(
-                                          key: _mathCardKey,
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: [
-                                              SectionHeader(
-                                                  title: "数学测验",
-                                                  icon: Icons.functions,
-                                                  isLight: isLight),
-                                              MathStatsCard(
-                                                  stats: stats,
-                                                  isLight: isLight,
-                                                  onTap: () async {
-                                                    await PageTransitions
-                                                        .pushFromRect(
-                                                      context: context,
-                                                      page: MathMenuScreen(
-                                                          username:
-                                                              widget.username),
-                                                      sourceKey: _mathCardKey,
-                                                      placeholderIcon:
-                                                          Icons.functions,
-                                                    );
-                                                    _loadAllData(
-                                                      deferred: true,
-                                                      domains: const {
-                                                        DataRefreshDomain
-                                                            .mathStats,
-                                                      },
-                                                    );
-                                                  }),
-                                            ],
-                                          ),
-                                        ),
-                                      ),
-                                    );
-                                    Widget timelineSection = KeyedSubtree(
+                                    Widget buildMath() =>
+                                        ValueListenableBuilder<
+                                          Map<String, dynamic>
+                                        >(
+                                          valueListenable: _mathStatsNotifier,
+                                          builder: (context, stats, _) =>
+                                              RepaintBoundary(
+                                                child: KeyedSubtree(
+                                                  key: _mathCardKey,
+                                                  child: Column(
+                                                    crossAxisAlignment:
+                                                        CrossAxisAlignment
+                                                            .start,
+                                                    children: [
+                                                      SectionHeader(
+                                                        title: "数学测验",
+                                                        icon: Icons.functions,
+                                                        isLight: isLight,
+                                                      ),
+                                                      MathStatsCard(
+                                                        stats: stats,
+                                                        isLight: isLight,
+                                                        onTap: () async {
+                                                          await PageTransitions.pushFromRect(
+                                                            context: context,
+                                                            page: MathMenuScreen(
+                                                              username: widget
+                                                                  .username,
+                                                            ),
+                                                            sourceKey:
+                                                                _mathCardKey,
+                                                            placeholderIcon:
+                                                                Icons.functions,
+                                                          );
+                                                          _loadAllData(
+                                                            deferred: true,
+                                                            domains: const {
+                                                              DataRefreshDomain
+                                                                  .mathStats,
+                                                            },
+                                                          );
+                                                        },
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ),
+                                        );
+                                    Widget buildTimeline() => KeyedSubtree(
                                       key: _timelineCardKey,
                                       child: ValueListenableBuilder<int>(
                                         valueListenable: _timelineRevision,
@@ -442,7 +461,7 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                       ),
                                     );
 
-                                    Widget pomodoroSection = RepaintBoundary(
+                                    Widget buildPomodoro() => RepaintBoundary(
                                       child: ValueListenableBuilder<int>(
                                         valueListenable: _pomodoroRevision,
                                         builder: (context, trigger, _) {
@@ -453,8 +472,7 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                               isLight: isLight,
                                               refreshTrigger: trigger,
                                               onTap: () async {
-                                                await PageTransitions
-                                                    .pushFromRect(
+                                                await PageTransitions.pushFromRect(
                                                   context: context,
                                                   page: PomodoroScreen(
                                                     username: widget.username,
@@ -472,24 +490,73 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                       ),
                                     );
 
-                                    Widget planBlockSection = RepaintBoundary(
-                                      child: ValueListenableBuilder<int>(
-                                        valueListenable: _scheduleRevision,
-                                        builder: (context, trigger, _) {
+                                    Widget buildAgenda() => RepaintBoundary(
+                                      child: AnimatedBuilder(
+                                        animation: _agendaSectionListenable,
+                                        builder: (context, _) {
                                           return PlanBlockTodaySection(
+                                            unifiedAgenda: true,
+                                            includeSchedules:
+                                                _sectionVisibility['agendaSchedules'] ??
+                                                true,
+                                            includePlans:
+                                                _sectionVisibility['agendaPlans'] ??
+                                                true,
+                                            todos: _todos,
                                             chartKey: _todayPlanChartKey,
                                             username: widget.username,
                                             isLight: isLight,
-                                            refreshTrigger: trigger,
-                                            onTap: () async {
-                                              await Navigator.of(context).push(
-                                                PageTransitions.material(
-                                                  builder: (_) =>
-                                                      TodoPlanScreen(
-                                                          username:
-                                                              widget.username),
-                                                ),
+                                            refreshTrigger:
+                                                _scheduleRevision.value,
+                                            repository:
+                                                widget.planReviewRepository,
+                                            agendaRepository:
+                                                widget.agendaRepository,
+                                            clock:
+                                                widget
+                                                    .planReviewRepository
+                                                    ?.clock ??
+                                                widget
+                                                    .agendaRepository
+                                                    ?.plans
+                                                    .clock,
+                                            enabled:
+                                                (_sectionVisibility['agenda'] ??
+                                                    true) &&
+                                                (isTablet ||
+                                                    (_selectedTabIndex ==
+                                                                _homeFocusTabIndex
+                                                            ? _mobileFocusSections
+                                                            : _mobileHomeSections)
+                                                        .contains('agenda')),
+                                            onTodoAdded: (todo) =>
+                                                _handleTodosChanged([
+                                                  ..._todos,
+                                                  todo,
+                                                ]),
+                                            onTap: ([sourceKey]) async {
+                                              final page = TodoPlanScreen(
+                                                username: widget.username,
+                                                initialDate: widget
+                                                    .planReviewRepository
+                                                    ?.now,
                                               );
+                                              if (sourceKey != null) {
+                                                await PageTransitions.pushFromRect(
+                                                  context: context,
+                                                  page: page,
+                                                  sourceKey: sourceKey,
+                                                  placeholderIcon: Icons
+                                                      .calendar_month_rounded,
+                                                );
+                                              } else {
+                                                await Navigator.of(context)
+                                                    .push(
+                                                      PageTransitions.material(
+                                                        builder: (_) => page,
+                                                      ),
+                                                    );
+                                              }
                                               _scheduleRevision.value++;
                                               _loadAllData(
                                                 domains: const {
@@ -505,7 +572,7 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                         },
                                       ),
                                     );
-                                    Widget financeSection = RepaintBoundary(
+                                    Widget buildFinance() => RepaintBoundary(
                                       child: KeyedSubtree(
                                         key: _financeCardKey,
                                         child: FinanceTodaySection(
@@ -528,27 +595,22 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                       ),
                                     );
 
-                                    Map<String, Widget> sectionsMap = {
-                                      'banners': AnimatedBuilder(
-                                        animation: Listenable.merge([
-                                          _pomodoroTickNotifier,
-                                          _todosNotifier,
-                                          _courseDataNotifier,
-                                          _scheduleRevision,
-                                        ]),
+                                    Map<String, Widget Function()>
+                                    sectionBuilders = {
+                                      'banners': () => AnimatedBuilder(
+                                        animation: _bannerSectionListenable,
                                         builder: (_, _) =>
                                             _buildUniversalBanner(isLight),
                                       ),
-                                      'courses': courseSection,
-                                      'countdowns': countdownSection,
-                                      'todos': todoSection,
-                                      'planBlocks': planBlockSection,
-                                      'screenTime': screenTimeSection,
-                                      'math': mathSection,
-                                      'pomodoro': pomodoroSection,
-                                      'timeline': timelineSection,
-                                      'finance': financeSection,
-                                      'habits': RepaintBoundary(
+                                      'agenda': buildAgenda,
+                                      'countdowns': buildCountdown,
+                                      'todos': buildTodo,
+                                      'screenTime': buildScreenTime,
+                                      'math': buildMath,
+                                      'pomodoro': buildPomodoro,
+                                      'timeline': buildTimeline,
+                                      'finance': buildFinance,
+                                      'habits': () => RepaintBoundary(
                                         child: KeyedSubtree(
                                           key: _habitsCardKey,
                                           child: ValueListenableBuilder<int>(
@@ -562,8 +624,7 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                                     _habitDisplayLimit,
                                                 refreshTrigger: trigger,
                                                 onTap: () async {
-                                                  await PageTransitions
-                                                      .pushFromRect(
+                                                  await PageTransitions.pushFromRect(
                                                     context: context,
                                                     page: HabitCenterScreen(
                                                       username: widget.username,
@@ -573,7 +634,8 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                                         Icons.repeat_rounded,
                                                     sourceBorderRadius:
                                                         BorderRadius.circular(
-                                                            24),
+                                                          24,
+                                                        ),
                                                   );
                                                   _habitsRevision.value++;
                                                 },
@@ -584,69 +646,10 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                       ),
                                     };
 
-                                    bool isCourseEmpty =
-                                        (_dashboardCourseData['courses'] ==
-                                                    null ||
-                                                (_dashboardCourseData['courses']
-                                                        as List)
-                                                    .isEmpty) ||
-                                            (_dashboardCourseData['title']
-                                                    ?.toString()
-                                                    .contains('天后') ??
-                                                false) ||
-                                            _dashboardCourseData['title'] ==
-                                                '最近无课' ||
-                                            _dashboardCourseData['title'] ==
-                                                '暂无课表';
-
-                                    bool hasNoCourse = isCourseEmpty;
-                                    if (isCourseEmpty) {
-                                      final nowMs =
-                                          DateTime.now().millisecondsSinceEpoch;
-                                      final tomorrowEndMs = DateTime(
-                                              DateTime.now().year,
-                                              DateTime.now().month,
-                                              DateTime.now().day + 2)
-                                          .millisecondsSinceEpoch;
-                                      bool hasActivePlans = _planBlocks.any(
-                                          (b) =>
-                                              !b.isDeleted &&
-                                              b.endTime > nowMs &&
-                                              b.startTime < tomorrowEndMs);
-                                      bool hasActiveTodos = _todos.any((t) {
-                                        if (t.isDeleted ||
-                                            t.dueDate == null ||
-                                            t.isAllDayTask) {
-                                          return false;
-                                        }
-                                        final startMs =
-                                            t.createdDate ?? t.createdAt;
-                                        return startMs > 0 &&
-                                            t.dueDate!.millisecondsSinceEpoch >
-                                                nowMs &&
-                                            startMs < tomorrowEndMs;
-                                      });
-                                      if (hasActivePlans || hasActiveTodos) {
-                                        hasNoCourse = false;
-                                      }
-                                    }
-
                                     if (!isTablet) {
-                                      List<String> tab1Order =
-                                          List<String>.from(
-                                              _mobileHomeSections);
-                                      if (hasNoCourse) {
-                                        if (_noCourseBehavior == 'hide') {
-                                          tab1Order.remove('courses');
-                                        } else if (_noCourseBehavior ==
-                                            'bottom') {
-                                          tab1Order.remove('courses');
-                                          tab1Order.add('courses');
-                                        }
-                                      }
-
                                       Widget buildScrollableSection(
-                                          String key) {
+                                        String key,
+                                      ) {
                                         return HomeDashboardScrollSection(
                                           key: ValueKey<String>(key),
                                           child: AppSystemUiRegion(
@@ -654,53 +657,59 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                                 cardBackgroundBrightness,
                                             child: Padding(
                                               padding: const EdgeInsets.only(
-                                                  bottom: 24.0),
-                                              child: sectionsMap[key]!,
+                                                bottom: 24.0,
+                                              ),
+                                              child: sectionBuilders[key]!(),
                                             ),
                                           ),
                                         );
                                       }
 
-                                      List<Widget> tab1Widgets = tab1Order
-                                          .where((key) =>
-                                              (_sectionVisibility[key] ??
-                                                  true) &&
-                                              sectionsMap.containsKey(key))
-                                          .map(buildScrollableSection)
-                                          .toList();
+                                      final tab1SectionKeys =
+                                          _mobileHomeSections
+                                              .where(
+                                                (key) =>
+                                                    (_sectionVisibility[key] ??
+                                                        true) &&
+                                                    sectionBuilders.containsKey(
+                                                      key,
+                                                    ),
+                                              )
+                                              .toList(growable: false);
 
-                                      List<String> tab3WidgetsConfig =
-                                          List<String>.from(
-                                              _mobileFocusSections);
+                                      final tab3SectionKeys =
+                                          _mobileFocusSections
+                                              .where(
+                                                (key) =>
+                                                    (_sectionVisibility[key] ??
+                                                        true) &&
+                                                    sectionBuilders.containsKey(
+                                                      key,
+                                                    ),
+                                              )
+                                              .toList(growable: false);
 
-                                      List<Widget> tab3Widgets =
-                                          tab3WidgetsConfig
-                                              .where((key) =>
-                                                  (_sectionVisibility[key] ??
-                                                      true) &&
-                                                  sectionsMap.containsKey(key))
-                                              .map(buildScrollableSection)
-                                              .toList();
-
-                                      final showFocusTab = _selectedTabIndex ==
+                                      final showFocusTab =
+                                          _selectedTabIndex ==
                                           _homeFocusTabIndex;
                                       final hasCopyright =
                                           _wallpaperCopyright?.isNotEmpty ??
-                                              false;
+                                          false;
 
                                       Widget buildMobileList(
                                         bool focusPage,
                                         double listHeaderExtent,
                                       ) {
-                                        final widgets = focusPage
-                                            ? tab3Widgets
-                                            : tab1Widgets;
+                                        final sectionKeys = focusPage
+                                            ? tab3SectionKeys
+                                            : tab1SectionKeys;
                                         return RepaintBoundary(
-                                          key: ValueKey<String>(focusPage
-                                              ? 'home-focus-tab-content'
-                                              : 'home-main-tab-content'),
-                                          child:
-                                              OptionalLiquidGlassScrollOptimizer(
+                                          key: ValueKey<String>(
+                                            focusPage
+                                                ? 'home-focus-tab-content'
+                                                : 'home-main-tab-content',
+                                          ),
+                                          child: OptionalLiquidGlassScrollOptimizer(
                                             child: ListView.builder(
                                               key: PageStorageKey<String>(
                                                 focusPage
@@ -713,23 +722,31 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                                 16,
                                                 16,
                                               ),
-                                              itemCount: widgets.length +
+                                              itemCount:
+                                                  sectionKeys.length +
                                                   (hasCopyright ? 1 : 0) +
                                                   1,
                                               findChildIndexCallback: (key) {
-                                                final index = widgets.indexWhere(
-                                                  (widget) => widget.key == key,
-                                                );
+                                                if (key is! ValueKey<String>) {
+                                                  return null;
+                                                }
+                                                final index = sectionKeys
+                                                    .indexOf(key.value);
                                                 return index < 0 ? null : index;
                                               },
                                               itemBuilder: (context, index) {
-                                                if (index < widgets.length) {
-                                                  return widgets[index];
+                                                if (index <
+                                                    sectionKeys.length) {
+                                                  return buildScrollableSection(
+                                                    sectionKeys[index],
+                                                  );
                                                 }
                                                 if (hasCopyright &&
-                                                    index == widgets.length) {
+                                                    index ==
+                                                        sectionKeys.length) {
                                                   return _buildWallpaperCopyright(
-                                                      isLight);
+                                                    isLight,
+                                                  );
                                                 }
                                                 return SizedBox(
                                                   // The header overlays the list, so
@@ -737,11 +754,11 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                                   // to keep short pages scrollable.
                                                   height:
                                                       homeDashboardPhoneScrollTailExtent(
-                                                    headerExtent:
-                                                        listHeaderExtent,
-                                                    bottomInset:
-                                                        bottomSystemInset,
-                                                  ),
+                                                        headerExtent:
+                                                            listHeaderExtent,
+                                                        bottomInset:
+                                                            bottomSystemInset,
+                                                      ),
                                                 );
                                               },
                                             ),
@@ -766,8 +783,10 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                               offstage: showFocusTab,
                                               child: TickerMode(
                                                 enabled: !showFocusTab,
-                                                child: buildMobileList(false,
-                                                    _lastHomeHeaderExtent),
+                                                child: buildMobileList(
+                                                  false,
+                                                  _lastHomeHeaderExtent,
+                                                ),
                                               ),
                                             ),
                                             if (_focusTabVisited)
@@ -775,8 +794,10 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                                 offstage: !showFocusTab,
                                                 child: TickerMode(
                                                   enabled: showFocusTab,
-                                                  child: buildMobileList(true,
-                                                      _lastFocusHeaderExtent),
+                                                  child: buildMobileList(
+                                                    true,
+                                                    _lastFocusHeaderExtent,
+                                                  ),
                                                 ),
                                               ),
                                           ],
@@ -784,31 +805,36 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                       }
 
                                       return AnimatedSwitcher(
-                                        duration:
-                                            const Duration(milliseconds: 280),
-                                        reverseDuration:
-                                            const Duration(milliseconds: 240),
+                                        duration: const Duration(
+                                          milliseconds: 280,
+                                        ),
+                                        reverseDuration: const Duration(
+                                          milliseconds: 240,
+                                        ),
                                         switchInCurve: Curves.easeOutCubic,
                                         switchOutCurve: Curves.easeInCubic,
                                         layoutBuilder:
                                             (currentChild, previousChildren) {
-                                          return Stack(
-                                            fit: StackFit.expand,
-                                            children: [
-                                              ...previousChildren,
-                                              ?currentChild,
-                                            ],
-                                          );
-                                        },
+                                              return Stack(
+                                                fit: StackFit.expand,
+                                                children: [
+                                                  ...previousChildren,
+                                                  ?currentChild,
+                                                ],
+                                              );
+                                            },
                                         transitionBuilder: (child, animation) {
-                                          final focusPage = child.key ==
+                                          final focusPage =
+                                              child.key ==
                                               const ValueKey<String>(
-                                                  'home-focus-tab-content');
+                                                'home-focus-tab-content',
+                                              );
                                           final enteringPage = SlideTransition(
                                             position: Tween<Offset>(
                                               begin: Offset(
-                                                  focusPage ? 0.035 : -0.035,
-                                                  0),
+                                                focusPage ? 0.035 : -0.035,
+                                                0,
+                                              ),
                                               end: Offset.zero,
                                             ).animate(animation),
                                             child: child,
@@ -819,64 +845,55 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                           );
                                         },
                                         child: buildMobileList(
-                                            showFocusTab, headerExtent),
+                                          showFocusTab,
+                                          headerExtent,
+                                        ),
                                       );
                                     }
 
                                     // Tablet Layout
-                                    List<String> currentLeft =
-                                        List.from(_leftSections);
-                                    List<String> currentRight =
-                                        List.from(_rightSections);
-
-                                    void applyNoCourseBehavior(
-                                        List<String> targetList) {
-                                      if (hasNoCourse &&
-                                          targetList.contains('courses')) {
-                                        if (_noCourseBehavior == 'hide') {
-                                          targetList.remove('courses');
-                                        } else if (_noCourseBehavior ==
-                                            'bottom') {
-                                          targetList.remove('courses');
-                                          targetList.add('courses');
-                                        }
-                                      }
-                                    }
-
-                                    applyNoCourseBehavior(currentLeft);
-                                    applyNoCourseBehavior(currentRight);
+                                    final currentLeft = _leftSections;
+                                    final currentRight = _rightSections;
 
                                     List<Widget> buildColumnWidgets(
-                                        List<String> keys) {
+                                      List<String> keys,
+                                    ) {
                                       return keys
-                                          .where((key) =>
-                                              (_sectionVisibility[key] ??
-                                                  true) &&
-                                              sectionsMap.containsKey(key))
+                                          .where(
+                                            (key) =>
+                                                (_sectionVisibility[key] ??
+                                                    true) &&
+                                                sectionBuilders.containsKey(
+                                                  key,
+                                                ),
+                                          )
                                           .map((key) {
-                                        final section = sectionsMap[key]!;
-                                        final isolateTabletSection = isTablet &&
-                                            const <String>{
-                                              'courses',
-                                              'countdowns',
-                                              'todos',
-                                              'timeline',
-                                            }.contains(key);
-                                        return AppSystemUiRegion(
-                                          backgroundBrightness:
-                                              cardBackgroundBrightness,
-                                          child: Padding(
-                                            padding: const EdgeInsets.only(
-                                              bottom: 24.0,
-                                            ),
-                                            child: isolateTabletSection
-                                                ? RepaintBoundary(
-                                                    child: section,
-                                                  )
-                                                : section,
-                                          ),
-                                        );
-                                      }).toList();
+                                            final section =
+                                                sectionBuilders[key]!();
+                                            final isolateTabletSection =
+                                                isTablet &&
+                                                const <String>{
+                                                  'agenda',
+                                                  'countdowns',
+                                                  'todos',
+                                                  'timeline',
+                                                }.contains(key);
+                                            return AppSystemUiRegion(
+                                              backgroundBrightness:
+                                                  cardBackgroundBrightness,
+                                              child: Padding(
+                                                padding: const EdgeInsets.only(
+                                                  bottom: 24.0,
+                                                ),
+                                                child: isolateTabletSection
+                                                    ? RepaintBoundary(
+                                                        child: section,
+                                                      )
+                                                    : section,
+                                              ),
+                                            );
+                                          })
+                                          .toList();
                                     }
 
                                     List<Widget> leftWidgets =
@@ -898,7 +915,8 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                           alignment: Alignment.topCenter,
                                           child: ConstrainedBox(
                                             constraints: const BoxConstraints(
-                                                maxWidth: 1400),
+                                              maxWidth: 1400,
+                                            ),
                                             child: Column(
                                               mainAxisSize: MainAxisSize.min,
                                               children: [
@@ -909,27 +927,32 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                                                 .start,
                                                         children: [
                                                           Expanded(
-                                                              flex: 10,
-                                                              child: Column(
-                                                                  crossAxisAlignment:
-                                                                      CrossAxisAlignment
-                                                                          .start,
-                                                                  children:
-                                                                      leftWidgets)),
+                                                            flex: 10,
+                                                            child: Column(
+                                                              crossAxisAlignment:
+                                                                  CrossAxisAlignment
+                                                                      .start,
+                                                              children:
+                                                                  leftWidgets,
+                                                            ),
+                                                          ),
                                                           if (rightWidgets
                                                               .isNotEmpty)
                                                             const SizedBox(
-                                                                width: 40),
+                                                              width: 40,
+                                                            ),
                                                           if (rightWidgets
                                                               .isNotEmpty)
                                                             Expanded(
-                                                                flex: 11,
-                                                                child: Column(
-                                                                    crossAxisAlignment:
-                                                                        CrossAxisAlignment
-                                                                            .start,
-                                                                    children:
-                                                                        rightWidgets)),
+                                                              flex: 11,
+                                                              child: Column(
+                                                                crossAxisAlignment:
+                                                                    CrossAxisAlignment
+                                                                        .start,
+                                                                children:
+                                                                    rightWidgets,
+                                                              ),
+                                                            ),
                                                         ],
                                                       )
                                                     : Column(
@@ -946,7 +969,8 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                                     _wallpaperCopyright!
                                                         .isNotEmpty)
                                                   _buildWallpaperCopyright(
-                                                      isLight),
+                                                    isLight,
+                                                  ),
                                               ],
                                             ),
                                           ),
@@ -994,16 +1018,14 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
           );
           if (!mounted) return;
           final unreadBackgroundNotifications =
-              await BackgroundNotificationService
-                  .getUnreadBackgroundNotifications();
+              await BackgroundNotificationService.getUnreadBackgroundNotifications();
           final notificationIds = unreadBackgroundNotifications
               .map((e) => e['id'])
               .whereType<num>()
               .map((e) => e.toInt())
               .toList();
           await ApiService.markNotificationsRead(notificationIds);
-          await BackgroundNotificationService
-              .clearUnreadBackgroundNotifications();
+          await BackgroundNotificationService.clearUnreadBackgroundNotifications();
           await _fetchTeamPendingCount();
           _loadAllData(deferred: true);
         },
@@ -1099,8 +1121,9 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
         ),
       ),
       mainScreen: AppSystemUiRegion(
-        backgroundBrightness:
-            showWallpaper || isDarkMode ? Brightness.dark : Brightness.light,
+        backgroundBrightness: showWallpaper || isDarkMode
+            ? Brightness.dark
+            : Brightness.light,
         child: mainScreen,
       ),
       borderRadius: 24.0,
@@ -1116,8 +1139,9 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
     GlobalKey sourceKey, {
     String? initialTarget,
     bool checkUpdatesOnOpen = false,
-    BorderRadius sourceBorderRadius =
-        const BorderRadius.all(Radius.circular(16)),
+    BorderRadius sourceBorderRadius = const BorderRadius.all(
+      Radius.circular(16),
+    ),
     IconData placeholderIcon = Icons.settings_rounded,
   }) async {
     await PageTransitions.pushFromRect(
@@ -1187,8 +1211,9 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
 
       if (_wallpaperUrl!.startsWith('http://') ||
           _wallpaperUrl!.startsWith('https://')) {
-        final response =
-            await _githubResourceService.get(Uri.parse(wallpaperUrl));
+        final response = await _githubResourceService.get(
+          Uri.parse(wallpaperUrl),
+        );
         if (response.statusCode != 200) {
           throw Exception('HTTP ${response.statusCode}');
         }
@@ -1223,10 +1248,7 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
     } catch (e) {
       // debugPrint('下载壁纸失败: $e');
       if (mounted) {
-        AppSnackBars.showSnackBar(
-          context,
-          SnackBar(content: Text('下载失败: $e')),
-        );
+        AppSnackBars.showSnackBar(context, SnackBar(content: Text('下载失败: $e')));
       }
     }
   }
@@ -1272,10 +1294,7 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
       initialTeamUuid: _currentSelectedTeamUuid,
       initialTeamName: _currentSelectedTeamName,
       onFixedScheduleAdded: (item) async {
-        await StorageService.saveFixedSchedules(
-          widget.username,
-          [item],
-        );
+        await StorageService.saveFixedSchedules(widget.username, [item]);
         if (mounted) {
           _scheduleRevision.value++;
           _timelineRevision.value++;
@@ -1351,9 +1370,7 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
       username: widget.username,
       countdowns: _countdowns,
       onDataChanged: () {
-        _loadAllData(
-          domains: const {DataRefreshDomain.countdowns},
-        );
+        _loadAllData(domains: const {DataRefreshDomain.countdowns});
         _timelineRevision.value++;
       },
     );
@@ -1403,18 +1420,16 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                 title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
+                style: Theme.of(context).textTheme.titleSmall
+                    ?.copyWith(fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 3),
               Text(
                 subtitle,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: colorScheme.onSurfaceVariant,
-                    ),
+                style: Theme.of(context).textTheme.bodySmall
+                    ?.copyWith(color: colorScheme.onSurfaceVariant),
               ),
             ],
           ),
@@ -1439,9 +1454,8 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
               padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
               child: Text(
                 '新增',
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
+                style: Theme.of(context).textTheme.titleLarge
+                    ?.copyWith(fontWeight: FontWeight.bold),
               ),
             ),
             SizedBox(
@@ -1507,11 +1521,7 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
     }
   }
 
-  Widget _buildCustomBottomBar(
-    bool isDarkMode,
-    bool isLight,
-    bool isWide,
-  ) {
+  Widget _buildCustomBottomBar(bool isDarkMode, bool isLight, bool isWide) {
     final colorScheme = Theme.of(context).colorScheme;
     final Color primaryColor = homeBottomBarPrimaryColor(
       colorScheme: colorScheme,
@@ -1669,12 +1679,10 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
     return _isDeepValueEqual(a, b);
   }
 
-  Widget _buildDashboardSkeleton(
-    bool isLight, {
-    double topPadding = 16,
-  }) {
-    final baseColor =
-        isLight ? Colors.white.withValues(alpha: 0.3) : Colors.grey[800]!;
+  Widget _buildDashboardSkeleton(bool isLight, {double topPadding = 16}) {
+    final baseColor = isLight
+        ? Colors.white.withValues(alpha: 0.3)
+        : Colors.grey[800]!;
     return SingleChildScrollView(
       physics: const NeverScrollableScrollPhysics(),
       padding: EdgeInsets.fromLTRB(16, topPadding, 16, 16),
@@ -1774,17 +1782,21 @@ class _HomeDashboardBottomBar extends StatelessWidget {
         onLongPressEnd: onAddLongPressEnd,
         onLongPressCancel: onAddLongPressCancel,
         builder: (context, selectedLayer, interactive) => Center(
-          child: HomeBottomNavigationActionButton(
-            buttonKey: selectedLayer ? null : addButtonKey,
-            primaryColor: primaryColor,
-            interactive: interactive,
-            onPressed: onAddPressed,
-            onLongPress: onAddLongPress,
-            semanticsLabel: '新增',
-            child: Icon(
-              selectedLayer ? Icons.add_circle_rounded : Icons.add_rounded,
-              color: Theme.of(context).colorScheme.onPrimary,
-              size: 28,
+          child: AiWaterRippleBorder(
+            isLight: Theme.of(context).brightness == Brightness.light,
+            borderRadius: BorderRadius.circular(28),
+            child: HomeBottomNavigationActionButton(
+              buttonKey: selectedLayer ? null : addButtonKey,
+              primaryColor: primaryColor,
+              interactive: interactive,
+              onPressed: onAddPressed,
+              onLongPress: onAddLongPress,
+              semanticsLabel: '新增',
+              child: Icon(
+                selectedLayer ? Icons.add_circle_rounded : Icons.add_rounded,
+                color: Theme.of(context).colorScheme.onPrimary,
+                size: 28,
+              ),
             ),
           ),
         ),

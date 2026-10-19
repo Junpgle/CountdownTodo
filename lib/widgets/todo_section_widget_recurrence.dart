@@ -2,6 +2,170 @@ part of 'todo_section_widget.dart';
 
 // ignore_for_file: annotate_overrides
 
+class _TodoRecurrenceDateSlot {
+  const _TodoRecurrenceDateSlot({required this.date, this.occurrenceIndex});
+
+  final DateTime date;
+  final int? occurrenceIndex;
+}
+
+class _TodoRecurrenceDateStructure {
+  _TodoRecurrenceDateStructure._({
+    required this.seriesId,
+    required this.occurrences,
+    required this.occurrenceStartEpochs,
+    required this.occurrenceSlotIndexById,
+    required this.recurrence,
+    required this.customIntervalDays,
+    required this.recurrenceEndDayEpoch,
+    required this.slots,
+    required this._projectedStart,
+  });
+
+  final String? seriesId;
+  final List<TodoItem> occurrences;
+  final List<int> occurrenceStartEpochs;
+  final Map<String, int> occurrenceSlotIndexById;
+  final RecurrenceType recurrence;
+  final int? customIntervalDays;
+  final int? recurrenceEndDayEpoch;
+  final List<_TodoRecurrenceDateSlot> slots;
+  DateTime _projectedStart;
+  final List<DateTime> _projectedDates = <DateTime>[];
+  bool _projectionExhausted = false;
+
+  static _TodoRecurrenceDateStructure build({
+    required String? seriesId,
+    required List<TodoItem> occurrences,
+    required TodoItem todo,
+  }) {
+    final slots = <_TodoRecurrenceDateSlot>[];
+    final occurrenceStartEpochs = <int>[];
+    final occurrenceSlotIndexById = <String, int>{};
+    final currentStart = _startFor(todo);
+    DateTime? previousStart;
+
+    for (var index = 0; index < occurrences.length; index++) {
+      final item = occurrences[index];
+      final startEpoch = item.createdDate ?? item.createdAt;
+      occurrenceStartEpochs.add(startEpoch);
+      final start = DateTime.fromMillisecondsSinceEpoch(
+        startEpoch,
+        isUtc: true,
+      ).toLocal();
+
+      if (previousStart != null && todo.recurrence != RecurrenceType.none) {
+        var missingStart = TodoRecurrenceDateService.nextDate(
+          previousStart,
+          todo,
+        );
+        var guard = 0;
+        while (missingStart != null &&
+            missingStart.isBefore(start) &&
+            guard < 90) {
+          slots.add(_TodoRecurrenceDateSlot(date: missingStart));
+          missingStart = TodoRecurrenceDateService.nextDate(missingStart, todo);
+          guard++;
+        }
+      }
+
+      occurrenceSlotIndexById.putIfAbsent(item.id, () => slots.length);
+      slots.add(_TodoRecurrenceDateSlot(date: start, occurrenceIndex: index));
+      previousStart = start;
+    }
+
+    final recurrenceEnd = todo.recurrenceEndDate;
+    final recurrenceEndDay = recurrenceEnd == null
+        ? null
+        : DateTime(recurrenceEnd.year, recurrenceEnd.month, recurrenceEnd.day);
+
+    return _TodoRecurrenceDateStructure._(
+      seriesId: seriesId,
+      occurrences: occurrences,
+      occurrenceStartEpochs: occurrenceStartEpochs,
+      occurrenceSlotIndexById: Map<String, int>.unmodifiable(
+        occurrenceSlotIndexById,
+      ),
+      recurrence: todo.recurrence,
+      customIntervalDays: todo.customIntervalDays,
+      recurrenceEndDayEpoch: recurrenceEndDay?.millisecondsSinceEpoch,
+      slots: List<_TodoRecurrenceDateSlot>.unmodifiable(slots),
+      projectedStart: slots.isEmpty ? currentStart : slots.last.date,
+    );
+  }
+
+  bool matches({
+    required String? seriesId,
+    required List<TodoItem> occurrences,
+    required TodoItem todo,
+  }) {
+    if (this.seriesId != seriesId ||
+        recurrence != todo.recurrence ||
+        customIntervalDays != todo.customIntervalDays ||
+        recurrenceEndDayEpoch != _recurrenceEndDayEpoch(todo) ||
+        occurrences.length != this.occurrences.length) {
+      return false;
+    }
+    if (identical(this.occurrences, occurrences)) return true;
+
+    for (var index = 0; index < occurrences.length; index++) {
+      if (!identical(this.occurrences[index], occurrences[index]) ||
+          occurrenceStartEpochs[index] !=
+              (occurrences[index].createdDate ??
+                  occurrences[index].createdAt)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  int ensureProjectedDates(TodoItem todo, int requestedCount) {
+    final targetCount = requestedCount.clamp(0, 90).toInt();
+    while (_projectedDates.length < targetCount && !_projectionExhausted) {
+      final nextStart = TodoRecurrenceDateService.nextDate(
+        _projectedStart,
+        todo,
+      );
+      if (nextStart == null) {
+        _projectionExhausted = true;
+        break;
+      }
+      _projectedStart = nextStart;
+      final recurrenceEnd = recurrenceEndDayEpoch;
+      final projectedDay = DateTime(
+        nextStart.year,
+        nextStart.month,
+        nextStart.day,
+      );
+      if (recurrenceEnd != null &&
+          projectedDay.millisecondsSinceEpoch > recurrenceEnd) {
+        _projectionExhausted = true;
+        break;
+      }
+      _projectedDates.add(nextStart);
+    }
+    return _projectedDates.length < targetCount
+        ? _projectedDates.length
+        : targetCount;
+  }
+
+  static DateTime _startFor(TodoItem todo) =>
+      DateTime.fromMillisecondsSinceEpoch(
+        todo.createdDate ?? todo.createdAt,
+        isUtc: true,
+      ).toLocal();
+
+  static int? _recurrenceEndDayEpoch(TodoItem todo) {
+    final recurrenceEnd = todo.recurrenceEndDate;
+    if (recurrenceEnd == null) return null;
+    return DateTime(
+      recurrenceEnd.year,
+      recurrenceEnd.month,
+      recurrenceEnd.day,
+    ).millisecondsSinceEpoch;
+  }
+}
+
 mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
   void _editTodo(TodoItem todo, BuildContext cardCtx) {
     final renderBox = cardCtx.findRenderObject() as RenderBox?;
@@ -27,10 +191,7 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
     );
   }
 
-  void _openTodoEditor(
-    TodoItem todo, {
-    bool applyToFutureOccurrences = false,
-  }) {
+  void _openTodoEditor(TodoItem todo, {bool applyToFutureOccurrences = false}) {
     Navigator.push(
       context,
       PageTransitions.material(
@@ -61,18 +222,19 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
 
     if (todo.dueDate != null) {
       if (isDateOnly) {
-        return '${DateFormat('MM/dd').format(todo.dueDate!)}内完成';
+        return '${_cachedDateFormat('MM/dd').format(todo.dueDate!)}内完成';
       }
       if (todo.hasLegacyTimeRange) {
-        final startStr = DateFormat('MM/dd HH:mm').format(cDate);
-        final dueStr = DateFormat('MM/dd HH:mm').format(todo.dueDate!);
+        final dateTimeFormat = _cachedDateFormat('MM/dd HH:mm');
+        final startStr = dateTimeFormat.format(cDate);
+        final dueStr = dateTimeFormat.format(todo.dueDate!);
         return '$startStr → $dueStr';
       }
-      final dueStr = DateFormat('MM/dd HH:mm').format(todo.dueDate!);
+      final dueStr = _cachedDateFormat('MM/dd HH:mm').format(todo.dueDate!);
       return '$dueStr前完成';
     } else {
       if (todo.hasLegacyTiming) {
-        return '开始 ${DateFormat('MM/dd HH:mm').format(cDate)}';
+        return '开始 ${_cachedDateFormat('MM/dd HH:mm').format(cDate)}';
       }
       return '未安排';
     }
@@ -96,129 +258,146 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
 
   Widget _buildRecurrenceProgress(TodoItem todo, DateTime now) {
     final seriesId = todo.recurrenceSeriesId;
-    final actualOccurrences = List<TodoItem>.from(
-      seriesId == null
-          ? <TodoItem>[todo]
-          : (_recurrenceSeriesOccurrences[seriesId] ?? <TodoItem>[todo]),
-    )..sort((a, b) =>
-        (a.createdDate ?? a.createdAt).compareTo(b.createdDate ?? b.createdAt));
+    final actualOccurrences = seriesId == null
+        ? <TodoItem>[todo]
+        : (_recurrenceSeriesOccurrences[seriesId] ?? <TodoItem>[todo]);
 
     if (todo.recurrence == RecurrenceType.none &&
         actualOccurrences.length <= 1) {
       return const SizedBox.shrink();
     }
 
-    final allNodes = <TodoRecurrenceProgressNode>[];
+    final structureKey = seriesId == null
+        ? 'todo:${todo.id}'
+        : 'series:$seriesId';
+    var dateStructure = _recurrenceDateStructures[structureKey];
+    if (dateStructure == null ||
+        !dateStructure.matches(
+          seriesId: seriesId,
+          occurrences: actualOccurrences,
+          todo: todo,
+        )) {
+      dateStructure = _TodoRecurrenceDateStructure.build(
+        seriesId: seriesId,
+        occurrences: actualOccurrences,
+        todo: todo,
+      );
+      _recurrenceDateStructures[structureKey] = dateStructure;
+    }
+
+    var currentIndex = dateStructure.occurrenceSlotIndexById[todo.id] ?? -1;
+    if (currentIndex < 0) {
+      for (var index = 0; index < dateStructure.slots.length; index++) {
+        final occurrenceIndex = dateStructure.slots[index].occurrenceIndex;
+        if (occurrenceIndex != null &&
+            actualOccurrences[occurrenceIndex].id == todo.id) {
+          currentIndex = index;
+          break;
+        }
+      }
+    }
+    final fixedEnd = todo.recurrenceEndDate != null;
+    final historyEnd = currentIndex >= 0
+        ? currentIndex + 1
+        : dateStructure.slots.length;
+    final summaryEnd = fixedEnd ? dateStructure.slots.length : historyEnd;
+    final displayStart = currentIndex >= 0
+        ? (currentIndex - 2).clamp(0, dateStructure.slots.length).toInt()
+        : (dateStructure.slots.length - 3)
+              .clamp(0, dateStructure.slots.length)
+              .toInt();
+    final nodes = <TodoRecurrenceProgressNode>[];
+    var completedCount = 0;
+    var overdueCount = 0;
     final currentStart = DateTime.fromMillisecondsSinceEpoch(
       todo.createdDate ?? todo.createdAt,
       isUtc: true,
     ).toLocal();
     final occurrenceDuration =
         todo.dueDate?.difference(currentStart) ?? const Duration(hours: 24);
-    DateTime? previousStart;
-    for (final item in actualOccurrences) {
-      final start = DateTime.fromMillisecondsSinceEpoch(
-        item.createdDate ?? item.createdAt,
-        isUtc: true,
-      ).toLocal();
-      if (previousStart != null && todo.recurrence != RecurrenceType.none) {
-        var missingStart =
-            TodoRecurrenceDateService.nextDate(previousStart, todo);
-        var guard = 0;
-        while (missingStart != null &&
-            missingStart.isBefore(start) &&
-            guard < 90) {
-          allNodes.add(TodoRecurrenceProgressNode(
-            date: missingStart,
-            state: missingStart.isAfter(now)
-                ? TodoRecurrenceNodeState.future
-                : missingStart.add(occurrenceDuration).isBefore(now)
-                    ? TodoRecurrenceNodeState.overdue
-                    : TodoRecurrenceNodeState.pending,
-          ));
-          missingStart = TodoRecurrenceDateService.nextDate(missingStart, todo);
-          guard++;
-        }
-      }
-      final end = item.dueDate ?? start;
-      final isCurrent = item.id == todo.id;
-      final state = item.isDone
-          ? TodoRecurrenceNodeState.completed
-          : isCurrent
-              ? todo.recurrence == RecurrenceType.none
+    for (var index = 0; index < dateStructure.slots.length; index++) {
+      final slot = dateStructure.slots[index];
+      final occurrenceIndex = slot.occurrenceIndex;
+      final DateTime date;
+      final TodoRecurrenceNodeState state;
+      final String? occurrenceId;
+      final bool isCurrent;
+      if (occurrenceIndex == null) {
+        final missingStart = slot.date;
+        date = missingStart;
+        state = missingStart.isAfter(now)
+            ? TodoRecurrenceNodeState.future
+            : missingStart.add(occurrenceDuration).isBefore(now)
+            ? TodoRecurrenceNodeState.overdue
+            : TodoRecurrenceNodeState.pending;
+        occurrenceId = null;
+        isCurrent = false;
+      } else {
+        final item = actualOccurrences[occurrenceIndex];
+        final start = slot.date;
+        final end = item.dueDate ?? start;
+        isCurrent = item.id == todo.id;
+        date = start;
+        occurrenceId = item.id;
+        state = item.isDone
+            ? TodoRecurrenceNodeState.completed
+            : isCurrent
+            ? todo.recurrence == RecurrenceType.none
                   ? TodoRecurrenceNodeState.neutral
                   : TodoRecurrenceNodeState.current
-              : start.isAfter(now)
-                  ? TodoRecurrenceNodeState.future
-                  : end.isBefore(now)
-                      ? TodoRecurrenceNodeState.overdue
-                      : TodoRecurrenceNodeState.pending;
-      allNodes.add(TodoRecurrenceProgressNode(
-        date: start,
-        state: state,
-        occurrenceId: item.id,
-        isCurrent: isCurrent,
-      ));
-      previousStart = start;
-    }
-    final currentIndex = allNodes.indexWhere((node) => node.isCurrent);
-    final historyEnd = currentIndex >= 0 ? currentIndex + 1 : allNodes.length;
-    final historyNodes = allNodes.take(historyEnd).toList();
-    final nodes = historyNodes
-        .skip((historyNodes.length - 3).clamp(0, historyNodes.length))
-        .followedBy(allNodes.skip(historyEnd))
-        .toList();
+            : start.isAfter(now)
+            ? TodoRecurrenceNodeState.future
+            : end.isBefore(now)
+            ? TodoRecurrenceNodeState.overdue
+            : TodoRecurrenceNodeState.pending;
+      }
 
+      if (index < summaryEnd) {
+        if (state == TodoRecurrenceNodeState.completed) completedCount++;
+        if (state == TodoRecurrenceNodeState.overdue) overdueCount++;
+      }
+      if (index < displayStart) continue;
+      nodes.add(
+        TodoRecurrenceProgressNode(
+          date: date,
+          state: state,
+          occurrenceId: occurrenceId,
+          isCurrent: isCurrent,
+        ),
+      );
+    }
+
+    var projectedCount = 0;
     if (todo.recurrence != RecurrenceType.none) {
-      var projectedStart = nodes.isNotEmpty ? nodes.last.date : currentStart;
-      final recurrenceEnd = todo.recurrenceEndDate;
-      final recurrenceEndDay = recurrenceEnd == null
-          ? null
-          : DateTime(
-              recurrenceEnd.year,
-              recurrenceEnd.month,
-              recurrenceEnd.day,
-            );
       const openEndedFuturePreviewCount = 14;
-      var projectedCount = 0;
-      var futureCount = nodes
-          .where((node) => node.state == TodoRecurrenceNodeState.future)
-          .length;
-      while (projectedCount < 90) {
-        if (recurrenceEndDay == null &&
-            futureCount >= openEndedFuturePreviewCount) {
-          break;
-        }
-        final nextStart =
-            TodoRecurrenceDateService.nextDate(projectedStart, todo);
-        if (nextStart == null) break;
-        projectedStart = nextStart;
-        final projectedDay = DateTime(
-          projectedStart.year,
-          projectedStart.month,
-          projectedStart.day,
-        );
-        if (recurrenceEndDay != null &&
-            projectedDay.isAfter(recurrenceEndDay)) {
-          break;
-        }
+      var futureCount = 0;
+      for (final node in nodes) {
+        if (node.state == TodoRecurrenceNodeState.future) futureCount++;
+      }
+      final requestedProjectionCount = todo.recurrenceEndDate == null
+          ? openEndedFuturePreviewCount - futureCount
+          : 90;
+      projectedCount = dateStructure.ensureProjectedDates(
+        todo,
+        requestedProjectionCount,
+      );
+      for (var index = 0; index < projectedCount; index++) {
         final projectedNode = TodoRecurrenceProgressNode(
-          date: projectedStart,
+          date: dateStructure._projectedDates[index],
           state: TodoRecurrenceNodeState.future,
         );
         nodes.add(projectedNode);
-        allNodes.add(projectedNode);
-        projectedCount++;
-        futureCount++;
       }
     }
 
     // 有结束日期的有限循环展示整个系列的完成进度；开放式循环没有固定
     // 总期数，因此仍以已经发生的历史和当前期作为统计范围。
-    final summary = _calculateRecurrenceSummary(
-      allNodes: allNodes,
-      historyNodes: historyNodes,
-      hasFixedEnd: todo.recurrenceEndDate != null,
+    final summary = (
+      completedCount: completedCount,
+      totalCount: fixedEnd
+          ? dateStructure.slots.length + projectedCount
+          : summaryEnd,
+      overdueCount: overdueCount,
     );
     return TodoRecurrenceProgress(
       key: ValueKey('recurrence_progress_${seriesId ?? todo.id}'),
@@ -226,7 +405,7 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
       completedCount: summary.completedCount,
       totalCount: todo.recurrenceEndDate == null ? null : summary.totalCount,
       overdueCount: summary.overdueCount,
-      onNodeTap: (node) => _handleRecurrenceNodeTap(todo, node),
+      onNodeTap: (node) => _handleRecurrenceNodeTap(todo, node, dateStructure!),
       onManage: () => _showRecurrenceManagement(todo),
     );
   }
@@ -234,6 +413,7 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
   Future<void> _handleRecurrenceNodeTap(
     TodoItem current,
     TodoRecurrenceProgressNode node,
+    _TodoRecurrenceDateStructure dateStructure,
   ) async {
     if (node.isCurrent) {
       _setTodoCompletion(current, !current.isDone);
@@ -242,13 +422,17 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
 
     final occurrenceId = node.occurrenceId;
     if (occurrenceId != null) {
-      final occurrence = widget.todos.cast<TodoItem?>().firstWhere(
-            (item) => item?.id == occurrenceId,
-            orElse: () => null,
-          );
-      if (occurrence != null) {
-        await _showRecurrenceOccurrenceActions(occurrence, node.date);
-        return;
+      final slotIndex = dateStructure.occurrenceSlotIndexById[occurrenceId];
+      if (slotIndex != null && slotIndex < dateStructure.slots.length) {
+        final occurrenceIndex = dateStructure.slots[slotIndex].occurrenceIndex;
+        if (occurrenceIndex != null &&
+            occurrenceIndex < dateStructure.occurrences.length) {
+          final occurrence = dateStructure.occurrences[occurrenceIndex];
+          if (occurrence.id == occurrenceId) {
+            await _showRecurrenceOccurrenceActions(occurrence, node.date);
+            return;
+          }
+        }
       }
     }
 
@@ -256,7 +440,7 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
       context,
       SnackBar(
         content: Text(
-          '${DateFormat('M月d日').format(node.date)}的待办实例尚未生成',
+          '${_cachedDateFormat('M月d日').format(node.date)}的待办实例尚未生成',
         ),
         behavior: SnackBarBehavior.floating,
       ),
@@ -280,7 +464,9 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
                 Icons.event_repeat_rounded,
                 color: colorScheme.primary,
               ),
-              title: Text(DateFormat('yyyy年M月d日').format(occurrenceDate)),
+              title: Text(
+                _cachedDateFormat('yyyy年M月d日').format(occurrenceDate),
+              ),
               subtitle: Text(occurrence.title),
             ),
             const Divider(height: 1),
@@ -307,10 +493,8 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
               ),
               title: const Text('编辑本期'),
               subtitle: const Text('修改这一期的标题、时间或备注'),
-              onTap: () => Navigator.pop(
-                sheetContext,
-                _RecurrenceOccurrenceAction.edit,
-              ),
+              onTap: () =>
+                  Navigator.pop(sheetContext, _RecurrenceOccurrenceAction.edit),
             ),
           ],
         ),
@@ -327,6 +511,7 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
 
   void _setTodoCompletion(TodoItem todo, bool isDone) {
     if (todo.isDone == isDone) return;
+    _invalidateTodoViewModel();
     setState(() => todo.isDone = isDone);
     if (isDone) {
       PomodoroSyncService().sendStopSignal(todoUuid: todo.id);
@@ -345,8 +530,10 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading:
-                  Icon(Icons.edit_calendar_rounded, color: colorScheme.primary),
+              leading: Icon(
+                Icons.edit_calendar_rounded,
+                color: colorScheme.primary,
+              ),
               title: const Text('只修改本期'),
               subtitle: const Text('仅编辑当前显示的这一期待办'),
               onTap: () {
@@ -355,8 +542,10 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
               },
             ),
             ListTile(
-              leading: Icon(Icons.event_repeat_rounded,
-                  color: colorScheme.secondary),
+              leading: Icon(
+                Icons.event_repeat_rounded,
+                color: colorScheme.secondary,
+              ),
               title: const Text('修改后续所有周期'),
               subtitle: const Text('本期及之后的实例同步采用修改内容'),
               onTap: () {
@@ -366,8 +555,10 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
             ),
             if (todo.recurrence != RecurrenceType.none)
               ListTile(
-                leading:
-                    Icon(Icons.stop_circle_outlined, color: colorScheme.error),
+                leading: Icon(
+                  Icons.stop_circle_outlined,
+                  color: colorScheme.error,
+                ),
                 title: const Text('在本期结束循环'),
                 subtitle: const Text('保留已有记录，不再产生新的周期'),
                 onTap: () {
@@ -376,6 +567,7 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
                     todo.createdDate ?? todo.createdAt,
                     isUtc: true,
                   ).toLocal();
+                  _invalidateTodoViewModel();
                   setState(() {
                     final currentStart = todo.createdDate ?? todo.createdAt;
                     final seriesId = todo.recurrenceSeriesId;
@@ -394,8 +586,11 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
                       }
                     }
                     todo.recurrence = RecurrenceType.none;
-                    todo.recurrenceEndDate =
-                        DateTime(start.year, start.month, start.day);
+                    todo.recurrenceEndDate = DateTime(
+                      start.year,
+                      start.month,
+                      start.day,
+                    );
                     todo.markAsChanged();
                   });
                   widget.onTodosChanged(List<TodoItem>.from(widget.todos));

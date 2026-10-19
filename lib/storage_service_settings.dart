@@ -1,4 +1,5 @@
 part of 'storage_service.dart';
+
 // ignore_for_file: annotate_overrides, unused_element, unused_element_parameter
 
 mixin _StorageSettings on _StorageServiceBase {
@@ -18,8 +19,9 @@ mixin _StorageSettings on _StorageServiceBase {
 
     try {
       await UserSessionStorage.ensureCurrentSession(session);
-      final localPackage =
-          await getLocalScreenTimeMap(username: session.username);
+      final localPackage = await getLocalScreenTimeMap(
+        username: session.username,
+      );
       final apps = localPackage['apps'] as List<dynamic>?;
       final date = localPackage['date'] as String?;
 
@@ -30,10 +32,12 @@ mixin _StorageSettings on _StorageServiceBase {
 
       final formattedApps = apps
           .whereType<Map>()
-          .map((e) => {
-                'app_name': e['app_name']?.toString() ?? 'Unknown',
-                'duration': (e['duration'] is int) ? e['duration'] : 0,
-              })
+          .map(
+            (e) => {
+              'app_name': e['app_name']?.toString() ?? 'Unknown',
+              'duration': (e['duration'] is int) ? e['duration'] : 0,
+            },
+          )
           .toList();
 
       final success = await ApiService.uploadScreenTime(
@@ -135,9 +139,7 @@ mixin _StorageSettings on _StorageServiceBase {
 
   Future<String> getServerChoice() async {
     final prefs = await StorageService.prefs;
-    return ApiService.normalizeServerChoice(
-      prefs.getString(keyServerChoice),
-    );
+    return ApiService.normalizeServerChoice(prefs.getString(keyServerChoice));
   }
 
   Future<void> saveHomeTextConfig(Map<String, dynamic> config) async {
@@ -169,8 +171,9 @@ mixin _StorageSettings on _StorageServiceBase {
       return prefs.getBool(keySemesterProgressEnabled) ?? false;
     }
 
-    final bool? scoped =
-        prefs.getBool("${keySemesterProgressEnabled}_$username");
+    final bool? scoped = prefs.getBool(
+      "${keySemesterProgressEnabled}_$username",
+    );
     if (scoped == null) {
       final bool global = prefs.getBool(keySemesterProgressEnabled) ?? false;
       await prefs.setBool("${keySemesterProgressEnabled}_$username", global);
@@ -269,20 +272,24 @@ mixin _StorageSettings on _StorageServiceBase {
     final current = semesters.where((s) => s.isCurrent).toList();
     if (current.isNotEmpty) {
       await prefs.setString(
-          username != null && username.isNotEmpty
-              ? "${keySemesterStart}_$username"
-              : keySemesterStart,
-          current.first.startDate.toIso8601String());
+        username != null && username.isNotEmpty
+            ? "${keySemesterStart}_$username"
+            : keySemesterStart,
+        current.first.startDate.toIso8601String(),
+      );
       if (current.first.endDate != null) {
         await prefs.setString(
-            username != null && username.isNotEmpty
-                ? "${keySemesterEnd}_$username"
-                : keySemesterEnd,
-            current.first.endDate!.toIso8601String());
+          username != null && username.isNotEmpty
+              ? "${keySemesterEnd}_$username"
+              : keySemesterEnd,
+          current.first.endDate!.toIso8601String(),
+        );
       } else {
-        await prefs.remove(username != null && username.isNotEmpty
-            ? "${keySemesterEnd}_$username"
-            : keySemesterEnd);
+        await prefs.remove(
+          username != null && username.isNotEmpty
+              ? "${keySemesterEnd}_$username"
+              : keySemesterEnd,
+        );
       }
     }
   }
@@ -329,11 +336,17 @@ mixin _StorageSettings on _StorageServiceBase {
   Future<SemesterInfo?> getSemesterByDate(DateTime date) async {
     final semesters = await getSemesters();
     for (final semester in semesters) {
-      final start = DateTime(semester.startDate.year, semester.startDate.month,
-          semester.startDate.day);
+      final start = DateTime(
+        semester.startDate.year,
+        semester.startDate.month,
+        semester.startDate.day,
+      );
       final end = semester.endDate != null
-          ? DateTime(semester.endDate!.year, semester.endDate!.month,
-              semester.endDate!.day)
+          ? DateTime(
+              semester.endDate!.year,
+              semester.endDate!.month,
+              semester.endDate!.day,
+            )
           : start.add(const Duration(days: 120)); // 默认4个月
 
       if (!date.isBefore(start) && !date.isAfter(end)) {
@@ -346,21 +359,27 @@ mixin _StorageSettings on _StorageServiceBase {
   Future<void> updateLastAutoSyncTime(String username) async {
     final prefs = await StorageService.prefs;
     await prefs.setInt(
-        "${keyLastAutoSync}_$username", DateTime.now().millisecondsSinceEpoch);
+      "${keyLastAutoSync}_$username",
+      DateTime.now().millisecondsSinceEpoch,
+    );
   }
 
   Future<DateTime?> getLastAutoSyncTime(String username) async {
     final prefs = await StorageService.prefs;
     int? timestamp = prefs.getInt("${keyLastAutoSync}_$username");
     if (timestamp != null) {
-      return DateTime.fromMillisecondsSinceEpoch(timestamp, isUtc: true)
-          .toLocal();
+      return DateTime.fromMillisecondsSinceEpoch(
+        timestamp,
+        isUtc: true,
+      ).toLocal();
     }
     return null;
   }
 
   Future<void> saveIslandBounds(
-      String islandId, Map<String, dynamic> bounds) async {
+    String islandId,
+    Map<String, dynamic> bounds,
+  ) async {
     try {
       final prefs = await StorageService.prefs;
       await prefs.setString('island_bounds_$islandId', jsonEncode(bounds));
@@ -576,13 +595,16 @@ mixin _StorageSettings on _StorageServiceBase {
   Future<Map<String, int>> getCategoryReminderMinutes(String username) =>
       AppSettingsStorage.getCategoryReminderMinutes(username);
   Future<void> saveCategoryReminderMinutes(
-          String username, Map<String, int> data) =>
-      AppSettingsStorage.saveCategoryReminderMinutes(username, data);
+    String username,
+    Map<String, int> data,
+  ) => AppSettingsStorage.saveCategoryReminderMinutes(username, data);
   Future<List<Map<String, dynamic>>> getSyncFailures() async {
     final db = await DatabaseHelper.instance.database;
-    return await db.query('op_logs',
-        where: "sync_error IS NOT NULL AND sync_error != '' AND is_synced = 0",
-        orderBy: 'timestamp DESC');
+    return await db.query(
+      'op_logs',
+      where: "sync_error IS NOT NULL AND sync_error != '' AND is_synced = 0",
+      orderBy: 'timestamp DESC',
+    );
   }
 
   Future<void> resolveConflictLocally({
@@ -602,8 +624,8 @@ mixin _StorageSettings on _StorageServiceBase {
     final resolvedUpdatedAt = touchUpdatedAt
         ? now
         : (resolvedData['updated_at'] ??
-            resolvedData['updatedAt'] ??
-            DateTime.now().millisecondsSinceEpoch);
+              resolvedData['updatedAt'] ??
+              DateTime.now().millisecondsSinceEpoch);
     resolvedData['updated_at'] = resolvedUpdatedAt;
 
     switch (table) {
@@ -614,15 +636,18 @@ mixin _StorageSettings on _StorageServiceBase {
             'has_conflict': 0,
             'version': resolvedData['version'],
             'updated_at': resolvedUpdatedAt,
-            'created_at': resolvedData['created_at'] ??
+            'created_at':
+                resolvedData['created_at'] ??
                 resolvedData['createdAt'] ??
                 resolvedUpdatedAt,
             'content': resolvedData['content'] ?? resolvedData['title'] ?? '',
-            'is_deleted': resolvedData['is_deleted'] == 1 ||
+            'is_deleted':
+                resolvedData['is_deleted'] == 1 ||
                     resolvedData['is_deleted'] == true
                 ? 1
                 : 0,
-            'is_completed': resolvedData['is_completed'] == 1 ||
+            'is_completed':
+                resolvedData['is_completed'] == 1 ||
                     resolvedData['is_completed'] == true
                 ? 1
                 : 0,
@@ -632,20 +657,25 @@ mixin _StorageSettings on _StorageServiceBase {
             'group_id': resolvedData['group_id'] ?? resolvedData['groupId'],
             'team_uuid': resolvedData['team_uuid'] ?? resolvedData['teamUuid'],
             'recurrence': resolvedData['recurrence'] ?? 0,
-            'custom_interval_days': resolvedData['custom_interval_days'] ??
+            'custom_interval_days':
+                resolvedData['custom_interval_days'] ??
                 resolvedData['customIntervalDays'] ??
                 0,
-            'recurrence_end_date': resolvedData['recurrence_end_date'] ??
+            'recurrence_end_date':
+                resolvedData['recurrence_end_date'] ??
                 resolvedData['recurrenceEndDate'],
-            'is_all_day': resolvedData['is_all_day'] == 1 ||
+            'is_all_day':
+                resolvedData['is_all_day'] == 1 ||
                     resolvedData['is_all_day'] == true ||
                     resolvedData['isAllDay'] == true
                 ? 1
                 : 0,
-            'reminder_minutes': resolvedData['reminder_minutes'] ??
+            'reminder_minutes':
+                resolvedData['reminder_minutes'] ??
                 resolvedData['reminderMinutes'] ??
                 -1,
-            'created_date': resolvedData['created_date'] ??
+            'created_date':
+                resolvedData['created_date'] ??
                 resolvedData['createdDate'] ??
                 0,
             'collab_type':
@@ -657,7 +687,8 @@ mixin _StorageSettings on _StorageServiceBase {
         break;
 
       case 'countdowns':
-        final targetTime = resolvedData['target_time'] ??
+        final targetTime =
+            resolvedData['target_time'] ??
             resolvedData['targetTime'] ??
             resolvedData['target_date'] ??
             0;
@@ -668,11 +699,13 @@ mixin _StorageSettings on _StorageServiceBase {
             'version': resolvedData['version'],
             'updated_at': resolvedUpdatedAt,
             'title': resolvedData['title'] ?? '',
-            'is_deleted': resolvedData['is_deleted'] == 1 ||
+            'is_deleted':
+                resolvedData['is_deleted'] == 1 ||
                     resolvedData['is_deleted'] == true
                 ? 1
                 : 0,
-            'is_completed': resolvedData['is_completed'] == 1 ||
+            'is_completed':
+                resolvedData['is_completed'] == 1 ||
                     resolvedData['is_completed'] == true
                 ? 1
                 : 0,
@@ -692,11 +725,13 @@ mixin _StorageSettings on _StorageServiceBase {
             'version': resolvedData['version'],
             'updated_at': resolvedUpdatedAt,
             'name': resolvedData['name'] ?? '',
-            'is_deleted': resolvedData['is_deleted'] == 1 ||
+            'is_deleted':
+                resolvedData['is_deleted'] == 1 ||
                     resolvedData['is_deleted'] == true
                 ? 1
                 : 0,
-            'is_expanded': resolvedData['is_expanded'] == 1 ||
+            'is_expanded':
+                resolvedData['is_expanded'] == 1 ||
                     resolvedData['is_expanded'] == true
                 ? 1
                 : 0,
@@ -719,25 +754,31 @@ mixin _StorageSettings on _StorageServiceBase {
                 resolvedData['source_type'] ?? resolvedData['sourceType'] ?? 2,
             'source_ids':
                 resolvedData['source_ids'] ?? resolvedData['sourceIds'],
-            'current_rule_uuid': resolvedData['current_rule_uuid'] ??
+            'current_rule_uuid':
+                resolvedData['current_rule_uuid'] ??
                 resolvedData['currentRuleUuid'],
-            'display_mode': resolvedData['display_mode'] ??
+            'display_mode':
+                resolvedData['display_mode'] ??
                 resolvedData['displayMode'] ??
                 0,
-            'default_focus_minutes': resolvedData['default_focus_minutes'] ??
+            'default_focus_minutes':
+                resolvedData['default_focus_minutes'] ??
                 resolvedData['defaultFocusMinutes'],
             'sort_order':
                 resolvedData['sort_order'] ?? resolvedData['sortOrder'] ?? 0,
-            'is_archived': resolvedData['is_archived'] == 1 ||
+            'is_archived':
+                resolvedData['is_archived'] == 1 ||
                     resolvedData['is_archived'] == true
                 ? 1
                 : 0,
-            'is_deleted': resolvedData['is_deleted'] == 1 ||
+            'is_deleted':
+                resolvedData['is_deleted'] == 1 ||
                     resolvedData['is_deleted'] == true
                 ? 1
                 : 0,
             'device_id': resolvedData['device_id'] ?? resolvedData['deviceId'],
-            'created_at': resolvedData['created_at'] ??
+            'created_at':
+                resolvedData['created_at'] ??
                 resolvedData['createdAt'] ??
                 resolvedUpdatedAt,
           },
@@ -754,42 +795,55 @@ mixin _StorageSettings on _StorageServiceBase {
             'updated_at': resolvedUpdatedAt,
             'habit_uuid':
                 resolvedData['habit_uuid'] ?? resolvedData['habitUuid'],
-            'effective_from_date': resolvedData['effective_from_date'] ??
+            'effective_from_date':
+                resolvedData['effective_from_date'] ??
                 resolvedData['effectiveFromDate'],
-            'effective_to_date': resolvedData['effective_to_date'] ??
+            'effective_to_date':
+                resolvedData['effective_to_date'] ??
                 resolvedData['effectiveToDate'],
             'period_type':
                 resolvedData['period_type'] ?? resolvedData['periodType'] ?? 0,
-            'weekdays_mask': resolvedData['weekdays_mask'] ??
+            'weekdays_mask':
+                resolvedData['weekdays_mask'] ??
                 resolvedData['weekdaysMask'] ??
                 127,
-            'custom_interval_days': resolvedData['custom_interval_days'] ??
+            'custom_interval_days':
+                resolvedData['custom_interval_days'] ??
                 resolvedData['customIntervalDays'],
-            'target_value': resolvedData['target_value'] ??
+            'target_value':
+                resolvedData['target_value'] ??
                 resolvedData['targetValue'] ??
                 0,
             'unit': resolvedData['unit'],
-            'target_time_minute': resolvedData['target_time_minute'] ??
+            'target_time_minute':
+                resolvedData['target_time_minute'] ??
                 resolvedData['targetTimeMinute'],
-            'time_comparison': resolvedData['time_comparison'] ??
+            'time_comparison':
+                resolvedData['time_comparison'] ??
                 resolvedData['timeComparison'] ??
                 0,
-            'time_tolerance_minutes': resolvedData['time_tolerance_minutes'] ??
+            'time_tolerance_minutes':
+                resolvedData['time_tolerance_minutes'] ??
                 resolvedData['timeToleranceMinutes'] ??
                 0,
-            'day_boundary_minute': resolvedData['day_boundary_minute'] ??
+            'day_boundary_minute':
+                resolvedData['day_boundary_minute'] ??
                 resolvedData['dayBoundaryMinute'] ??
                 0,
-            'quick_values_json': resolvedData['quick_values_json'] ??
+            'quick_values_json':
+                resolvedData['quick_values_json'] ??
                 resolvedData['quickValuesJson'],
-            'reminder_policy_json': resolvedData['reminder_policy_json'] ??
+            'reminder_policy_json':
+                resolvedData['reminder_policy_json'] ??
                 resolvedData['reminderPolicyJson'],
-            'is_deleted': resolvedData['is_deleted'] == 1 ||
+            'is_deleted':
+                resolvedData['is_deleted'] == 1 ||
                     resolvedData['is_deleted'] == true
                 ? 1
                 : 0,
             'device_id': resolvedData['device_id'] ?? resolvedData['deviceId'],
-            'created_at': resolvedData['created_at'] ??
+            'created_at':
+                resolvedData['created_at'] ??
                 resolvedData['createdAt'] ??
                 resolvedUpdatedAt,
           },
@@ -827,6 +881,8 @@ mixin _StorageSettings on _StorageServiceBase {
 
     await batch.commit(noResult: true);
     _inflightTodoRequests.clear();
+    _inflightTodoSearchDateRequests.clear();
+    _inflightTimelineTodoRequests.clear();
 
     // Invalidate SharedPreferences cache so next load picks up the resolved item
     final prefs = await SharedPreferences.getInstance();
@@ -834,8 +890,8 @@ mixin _StorageSettings on _StorageServiceBase {
     final key = table == 'todos'
         ? StorageKeyScope.scoped(keyTodos, username)
         : table == 'countdowns'
-            ? StorageKeyScope.scoped(keyCountdowns, username)
-            : StorageKeyScope.scoped(keyTodoGroups, username);
+        ? StorageKeyScope.scoped(keyCountdowns, username)
+        : StorageKeyScope.scoped(keyTodoGroups, username);
     await prefs.remove(key);
 
     triggerRefresh({
@@ -848,6 +904,7 @@ mixin _StorageSettings on _StorageServiceBase {
     recentlyResolvedUuids.add(uuid);
     recentlyResolvedTimes[uuid] = DateTime.now();
     debugPrint(
-        '🔒 [MemoryShield] Locked recently resolved item in memory shield: $uuid (with timestamp)');
+      '🔒 [MemoryShield] Locked recently resolved item in memory shield: $uuid (with timestamp)',
+    );
   }
 }

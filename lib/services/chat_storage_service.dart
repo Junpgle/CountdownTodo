@@ -76,8 +76,7 @@ class ChatStorageService {
     return StorageKeyScope.scoped(baseKey, username);
   }
 
-  static const String _defaultPrompt =
-      '''你是一个智能效率助手。结合用户本轮请求和提供的上下文，用简洁的中文回答，并给出具体、可执行的建议。
+  static const String _defaultPrompt = '''你是一个智能效率助手。结合用户本轮请求和提供的上下文，用简洁的中文回答。下一步建议允许为0条，默认不显示；只有本轮确有自然、相关且具体的后续时，才由你即时生成，不得使用固定问题清单或为了填充建议栏追加通用问题。
 
 【当前时间】
 {now}
@@ -86,7 +85,7 @@ class ChatStorageService {
 {todos}
 
 【回复要求】
-- 使用简洁、清楚的中文和Markdown；建议应具体可执行。
+- 使用简洁、清楚的中文和Markdown；后续建议必须由本轮对话和实际结果生成。
 - 日期、事项类型和操作范围以本轮请求及系统提供的数据为准；缺少关键信息时先追问。
 - 不要声称尚未完成或仍待确认的操作已经保存。''';
 
@@ -503,7 +502,7 @@ class ChatStorageService {
   static Future<bool> isDeepThinkingEnabled() async {
     final prefs = await SharedPreferences.getInstance();
     final scopedKey = await _getScopedKey(_deepThinkingKey);
-    return prefs.getBool(scopedKey) ?? false;
+    return prefs.getBool(scopedKey) ?? true;
   }
 
   static Future<void> setDeepThinkingEnabled(bool enabled) async {

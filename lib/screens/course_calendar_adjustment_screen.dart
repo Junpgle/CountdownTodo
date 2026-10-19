@@ -5,6 +5,21 @@ import '../services/course_calendar_adjustment_service.dart';
 import '../utils/app_dialogs.dart';
 import '../widgets/floating_glass_control.dart';
 
+final Map<String?, DateFormat> _courseAdjustmentDateFormats = {};
+
+DateFormat _courseAdjustmentDateFormat() {
+  final locale = Intl.defaultLocale;
+  final cached = _courseAdjustmentDateFormats[locale];
+  if (cached != null) return cached;
+  if (_courseAdjustmentDateFormats.length >= 4) {
+    _courseAdjustmentDateFormats.clear();
+  }
+  return _courseAdjustmentDateFormats[locale] = DateFormat(
+    'yyyy-MM-dd',
+    locale,
+  );
+}
+
 class CourseCalendarAdjustmentScreen extends StatefulWidget {
   final String? initialOfficialHolidayKey;
   final bool isEmbedded;
@@ -22,7 +37,7 @@ class CourseCalendarAdjustmentScreen extends StatefulWidget {
 
 class _CourseCalendarAdjustmentScreenState
     extends State<CourseCalendarAdjustmentScreen> {
-  final DateFormat _df = DateFormat('yyyy-MM-dd');
+  DateFormat get _df => _courseAdjustmentDateFormat();
   CourseCalendarAdjustment _adjustment = CourseCalendarAdjustment.empty();
   bool _loading = true;
 
@@ -45,13 +60,13 @@ class _CourseCalendarAdjustmentScreenState
     final officialHolidayKey = widget.initialOfficialHolidayKey;
     final nextAdjustment =
         officialHolidayKey == null || officialHolidayKey.isEmpty
-            ? adjustment
-            : adjustment.copyWith(
-                handledOfficialHolidayKeys: {
-                  ...adjustment.handledOfficialHolidayKeys,
-                  officialHolidayKey,
-                },
-              );
+        ? adjustment
+        : adjustment.copyWith(
+            handledOfficialHolidayKeys: {
+              ...adjustment.handledOfficialHolidayKeys,
+              officialHolidayKey,
+            },
+          );
     await CourseCalendarAdjustmentService.save(nextAdjustment);
     if (!mounted) return;
     setState(() => _adjustment = nextAdjustment);
@@ -75,11 +90,13 @@ class _CourseCalendarAdjustmentScreenState
     final picked = await _pickDate();
     if (picked == null) return;
     final date = _df.format(picked);
-    await _save(_adjustment.copyWith(
-      holidayDates: {..._adjustment.holidayDates, date},
-      holidayLabels: Map<String, String>.from(_adjustment.holidayLabels)
-        ..remove(date),
-    ));
+    await _save(
+      _adjustment.copyWith(
+        holidayDates: {..._adjustment.holidayDates, date},
+        holidayLabels: Map<String, String>.from(_adjustment.holidayLabels)
+          ..remove(date),
+      ),
+    );
   }
 
   Future<void> _addTransfer() async {
@@ -91,10 +108,14 @@ class _CourseCalendarAdjustmentScreenState
     if (from == null || !mounted) return;
     final to = await _pickDate(initial: from);
     if (to == null) return;
-    await _save(_adjustment.copyWith(transfers: [
-      ..._adjustment.transfers,
-      CourseDayTransfer(fromDate: _df.format(from), toDate: _df.format(to)),
-    ]));
+    await _save(
+      _adjustment.copyWith(
+        transfers: [
+          ..._adjustment.transfers,
+          CourseDayTransfer(fromDate: _df.format(from), toDate: _df.format(to)),
+        ],
+      ),
+    );
   }
 
   Future<_AddAction> _showAddHolidaySheet() async {
@@ -102,20 +123,25 @@ class _CourseCalendarAdjustmentScreenState
           title: '添加放假日期',
           manualLabel: '手动选择日期',
           children: CourseCalendarAdjustmentService.officialWindows
-              .map((window) => _HolidaySuggestionGroup(
-                    window: window,
-                    adjustment: _adjustment,
-                    formatDateShort: _formatDateShort,
-                    onAdd: (date) {
-                      final labels =
-                          Map<String, String>.from(_adjustment.holidayLabels);
-                      labels[date] = window.name;
-                      _save(_adjustment.copyWith(
+              .map(
+                (window) => _HolidaySuggestionGroup(
+                  window: window,
+                  adjustment: _adjustment,
+                  formatDateShort: _formatDateShort,
+                  onAdd: (date) {
+                    final labels = Map<String, String>.from(
+                      _adjustment.holidayLabels,
+                    );
+                    labels[date] = window.name;
+                    _save(
+                      _adjustment.copyWith(
                         holidayDates: {..._adjustment.holidayDates, date},
                         holidayLabels: labels,
-                      ));
-                    },
-                  ))
+                      ),
+                    );
+                  },
+                ),
+              )
               .toList(),
         ) ??
         _AddAction.cancel;
@@ -127,15 +153,19 @@ class _CourseCalendarAdjustmentScreenState
           manualLabel: '手动选择调休',
           children: CourseCalendarAdjustmentService.officialWindows
               .where((window) => window.transfers.isNotEmpty)
-              .map((window) => _TransferSuggestionGroup(
-                    window: window,
-                    adjustment: _adjustment,
-                    onAdd: (transfer) {
-                      _save(_adjustment.copyWith(
+              .map(
+                (window) => _TransferSuggestionGroup(
+                  window: window,
+                  adjustment: _adjustment,
+                  onAdd: (transfer) {
+                    _save(
+                      _adjustment.copyWith(
                         transfers: [..._adjustment.transfers, transfer],
-                      ));
-                    },
-                  ))
+                      ),
+                    );
+                  },
+                ),
+              )
               .toList(),
         ) ??
         _AddAction.cancel;
@@ -159,10 +189,7 @@ class _CourseCalendarAdjustmentScreenState
         builder: (ctx) => Dialog(
           clipBehavior: Clip.antiAlias,
           child: ConstrainedBox(
-            constraints: const BoxConstraints(
-              maxWidth: 760,
-              maxHeight: 640,
-            ),
+            constraints: const BoxConstraints(maxWidth: 760, maxHeight: 640),
             child: sheet,
           ),
         ),
@@ -225,8 +252,10 @@ class _CourseCalendarAdjustmentScreenState
                   16,
                   widget.isEmbedded
                       ? 12
-                      : floatingGlassSettingsContentTopInset(context,
-                          extra: 12),
+                      : floatingGlassSettingsContentTopInset(
+                          context,
+                          extra: 12,
+                        ),
                   16,
                   24,
                 ),
@@ -269,9 +298,9 @@ class _CourseCalendarAdjustmentScreenState
                 const Icon(Icons.campaign_outlined, size: 18),
                 LiquidGlassSwitch(
                   value: _adjustment.officialHolidayPromptEnabled,
-                  onChanged: (value) => _save(_adjustment.copyWith(
-                    officialHolidayPromptEnabled: value,
-                  )),
+                  onChanged: (value) => _save(
+                    _adjustment.copyWith(officialHolidayPromptEnabled: value),
+                  ),
                 ),
               ],
             ),
@@ -295,10 +324,7 @@ class _CourseCalendarAdjustmentScreenState
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const _PanelHeader(
-                  icon: Icons.tune_rounded,
-                  title: '当前设置',
-                ),
+                const _PanelHeader(icon: Icons.tune_rounded, title: '当前设置'),
                 const SizedBox(height: 12),
                 if (wide)
                   Row(
@@ -326,10 +352,7 @@ class _CourseCalendarAdjustmentScreenState
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _PanelHeader(
-          icon: Icons.free_cancellation_outlined,
-          title: '放假日期',
-        ),
+        _PanelHeader(icon: Icons.free_cancellation_outlined, title: '放假日期'),
         const SizedBox(height: 8),
         if (holidays.isEmpty)
           _EmptyLine(
@@ -347,18 +370,22 @@ class _CourseCalendarAdjustmentScreenState
             children: holidays.map((date) {
               final label = _adjustment.holidayLabels[date];
               return InputChip(
-                label: Text(label == null || label.isEmpty
-                    ? _formatDateShort(date)
-                    : '$label ${_formatDateShort(date)}'),
+                label: Text(
+                  label == null || label.isEmpty
+                      ? _formatDateShort(date)
+                      : '$label ${_formatDateShort(date)}',
+                ),
                 onDeleted: () {
                   final next = {..._adjustment.holidayDates}..remove(date);
-                  final labels =
-                      Map<String, String>.from(_adjustment.holidayLabels)
-                        ..remove(date);
-                  _save(_adjustment.copyWith(
-                    holidayDates: next,
-                    holidayLabels: labels,
-                  ));
+                  final labels = Map<String, String>.from(
+                    _adjustment.holidayLabels,
+                  )..remove(date);
+                  _save(
+                    _adjustment.copyWith(
+                      holidayDates: next,
+                      holidayLabels: labels,
+                    ),
+                  );
                 },
               );
             }).toList(),
@@ -381,10 +408,7 @@ class _CourseCalendarAdjustmentScreenState
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _PanelHeader(
-          title: '调休补课',
-          icon: Icons.swap_horiz_rounded,
-        ),
+        _PanelHeader(title: '调休补课', icon: Icons.swap_horiz_rounded),
         const SizedBox(height: 4),
         if (_adjustment.transfers.isEmpty)
           _EmptyLine(
@@ -476,10 +500,12 @@ class _AddSheet extends StatelessWidget {
                       spacing: 12,
                       runSpacing: 12,
                       children: children
-                          .map((child) => SizedBox(
-                                width: (constraints.maxWidth - 44) / 2,
-                                child: child,
-                              ))
+                          .map(
+                            (child) => SizedBox(
+                              width: (constraints.maxWidth - 44) / 2,
+                              child: child,
+                            ),
+                          )
                           .toList(),
                     )
                   else
@@ -538,7 +564,8 @@ class _HolidaySuggestionGroupState extends State<_HolidaySuggestionGroup> {
         spacing: 8,
         runSpacing: 8,
         children: widget.window.holidayDates.map((date) {
-          final added = widget.adjustment.holidayDates.contains(date) ||
+          final added =
+              widget.adjustment.holidayDates.contains(date) ||
               _locallyAdded.contains(date);
           return ActionChip(
             avatar: Icon(added ? Icons.check : Icons.add, size: 18),
@@ -585,9 +612,12 @@ class _TransferSuggestionGroupState extends State<_TransferSuggestionGroup> {
   void didUpdateWidget(_TransferSuggestionGroup oldWidget) {
     super.didUpdateWidget(oldWidget);
     // Remove locally added items that are now in the parent adjustment
-    _locallyAdded.removeWhere((local) => widget.adjustment.transfers.any(
+    _locallyAdded.removeWhere(
+      (local) => widget.adjustment.transfers.any(
         (item) =>
-            item.fromDate == local.fromDate && item.toDate == local.toDate));
+            item.fromDate == local.fromDate && item.toDate == local.toDate,
+      ),
+    );
   }
 
   @override
@@ -597,12 +627,17 @@ class _TransferSuggestionGroupState extends State<_TransferSuggestionGroup> {
       subtitle: '${widget.window.year} · ${widget.window.transfers.length} 条调休',
       child: Column(
         children: widget.window.transfers.map((transfer) {
-          final added = widget.adjustment.transfers.any((item) =>
-                  item.fromDate == transfer.fromDate &&
-                  item.toDate == transfer.toDate) ||
-              _locallyAdded.any((item) =>
-                  item.fromDate == transfer.fromDate &&
-                  item.toDate == transfer.toDate);
+          final added =
+              widget.adjustment.transfers.any(
+                (item) =>
+                    item.fromDate == transfer.fromDate &&
+                    item.toDate == transfer.toDate,
+              ) ||
+              _locallyAdded.any(
+                (item) =>
+                    item.fromDate == transfer.fromDate &&
+                    item.toDate == transfer.toDate,
+              );
           return _TransferRow(
             transfer: transfer,
             dense: true,
@@ -635,9 +670,7 @@ class _SuggestionGroup extends StatelessWidget {
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        border: Border.all(
-          color: Theme.of(context).colorScheme.outlineVariant,
-        ),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Padding(
@@ -666,10 +699,7 @@ class _PanelHeader extends StatelessWidget {
   final IconData icon;
   final String title;
 
-  const _PanelHeader({
-    required this.icon,
-    required this.title,
-  });
+  const _PanelHeader({required this.icon, required this.title});
 
   @override
   Widget build(BuildContext context) {
@@ -702,9 +732,11 @@ class _TransferRow extends StatelessWidget {
       dense: dense,
       contentPadding: EdgeInsets.zero,
       leading: Icon(added ? Icons.check_circle_outline : Icons.swap_horiz),
-      title: Text(transfer.label.isEmpty
-          ? '${_short(transfer.fromDate)} 的课'
-          : '${transfer.label}：${_short(transfer.fromDate)} 的课'),
+      title: Text(
+        transfer.label.isEmpty
+            ? '${_short(transfer.fromDate)} 的课'
+            : '${transfer.label}：${_short(transfer.fromDate)} 的课',
+      ),
       subtitle: Text('调到 ${_short(transfer.toDate)}'),
       onTap: onTap,
     );
@@ -712,7 +744,7 @@ class _TransferRow extends StatelessWidget {
 
   String _short(String date) {
     try {
-      final parsed = DateFormat('yyyy-MM-dd').parseStrict(date);
+      final parsed = _courseAdjustmentDateFormat().parseStrict(date);
       return '${parsed.month}月${parsed.day}日';
     } catch (_) {
       return date;
@@ -761,9 +793,7 @@ class _TransferRowCompact extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 4),
       decoration: BoxDecoration(
-        border: Border.all(
-          color: Theme.of(context).colorScheme.outlineVariant,
-        ),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
         borderRadius: BorderRadius.circular(6),
       ),
       child: ListTile(
@@ -793,7 +823,7 @@ class _TransferRowCompact extends StatelessWidget {
 
   String _short(String date) {
     try {
-      final parsed = DateFormat('yyyy-MM-dd').parseStrict(date);
+      final parsed = _courseAdjustmentDateFormat().parseStrict(date);
       return '${parsed.month}月${parsed.day}日';
     } catch (_) {
       return date;

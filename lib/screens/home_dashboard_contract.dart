@@ -1,4 +1,5 @@
 part of 'home_dashboard.dart';
+
 // ignore_for_file: unused_element, unused_element_parameter
 
 // 所有页面分片共享的成员契约。
@@ -54,18 +55,23 @@ mixin _HomeDashboardContract {
 
   Future<void> _checkExactAlarmPermission();
 
-  Future<dynamic> _navigateToTodoConfirm(List<Map<String, dynamic>> results,
-      String? imagePath, String? originalText,
-      [String? teamUuid, String? teamName]);
+  Future<dynamic> _navigateToTodoConfirm(
+    List<Map<String, dynamic>> results,
+    String? imagePath,
+    String? originalText, [
+    String? teamUuid,
+    String? teamName,
+  ]);
 
-  Future<void> _batchAddTodos(List<Map<String, dynamic>> todosData,
-      [String? teamUuid, String? teamName]);
+  Future<void> _batchAddTodos(
+    List<Map<String, dynamic>> todosData, [
+    String? teamUuid,
+    String? teamName,
+  ]);
 
   Future<void> _checkPendingTodoConfirm();
 
-  Future<void> _openRecognizedFinanceDrafts(
-    List<FinanceEntryDraft> drafts,
-  );
+  Future<void> _openRecognizedFinanceDrafts(List<FinanceEntryDraft> drafts);
 
   void _showAnalysisImage(String imagePath);
 
@@ -119,7 +125,10 @@ mixin _HomeDashboardContract {
 
   String _planBlockStartText(int startTimeMs, int nowMs);
 
-  Future<void> _startPlanBlockFocus(TodoPlanBlock block);
+  Future<void> _startPlanBlockFocus(
+    TodoPlanBlock block, {
+    GlobalKey? sourceKey,
+  });
 
   Future<void> _stopPlanBlockPomodoro();
 
@@ -135,7 +144,9 @@ mixin _HomeDashboardContract {
 
   Widget _buildBannerCard(HomeBannerEvent event, bool isLight);
 
-  List<HomeBannerEvent> _collectBannerEvents();
+  List<HomeBannerEvent> _collectBannerEvents({
+    required bool hasActivePlanBlock,
+  });
 
   void _openTodoEditor(TodoItem todo);
 
@@ -148,8 +159,6 @@ mixin _HomeDashboardContract {
   String _specialTodoBannerTimeInfo(TodoItem todo, DateTime now);
 
   DateTime? _resolveCourseStartTime(CourseItem course, DateTime now);
-
-  DateTime? _resolveCourseEndTime(CourseItem course, DateTime now);
 
   Future<void> _checkUpcomingEvents();
 
@@ -278,11 +287,7 @@ mixin _HomeDashboardContract {
 
   String _wallpaperExtension(String url);
 
-  Widget _buildCustomBottomBar(
-    bool isDarkMode,
-    bool isLight,
-    bool isWide,
-  );
+  Widget _buildCustomBottomBar(bool isDarkMode, bool isLight, bool isWide);
 
   bool _isListEqual(List a, List b);
 

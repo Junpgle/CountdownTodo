@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../../../utils/app_dialogs.dart';
+import '../../../utils/time_utils.dart';
 import '../models/finance_models.dart';
 import '../services/finance_repository.dart';
 
@@ -39,7 +39,8 @@ class _FinanceLoanPaymentDialogState extends State<FinanceLoanPaymentDialog> {
   @override
   void initState() {
     super.initState();
-    _methodUuid = widget.installment.paymentMethodUuid ??
+    _methodUuid =
+        widget.installment.paymentMethodUuid ??
         (widget.installment.isPaid ? _unlinked : null);
     final paidAt = widget.installment.paidAt;
     _paidAt = paidAt == null || paidAt <= 0
@@ -164,7 +165,9 @@ class _FinanceLoanPaymentDialogState extends State<FinanceLoanPaymentDialog> {
                   key: const ValueKey('finance-loan-payment-time'),
                   contentPadding: EdgeInsets.zero,
                   title: const Text('实际还款时间'),
-                  subtitle: Text(DateFormat('yyyy年M月d日 HH:mm').format(_paidAt)),
+                  subtitle: Text(
+                    AppTimeFormats.format(_paidAt, 'yyyy年M月d日 HH:mm'),
+                  ),
                   trailing: const Icon(Icons.schedule_outlined),
                   onTap: _pickTime,
                 ),

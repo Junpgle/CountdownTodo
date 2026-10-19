@@ -40,8 +40,9 @@ class UserSessionStorage {
   static const String _authToken = "auth_session_token";
   static const String _deviceId = "app_device_uuid";
   static const String _deviceInstallId = "app_device_install_id";
-  static const MethodChannel _deviceIdentityChannel =
-      MethodChannel('countdown_todo/device_identity');
+  static const MethodChannel _deviceIdentityChannel = MethodChannel(
+    'countdown_todo/device_identity',
+  );
   static const String _lastScreenTimeSync = "last_screen_time_sync";
   static const String _screenTimeCache = "screen_time_cache";
   static const String _screenTimeHistory = "screen_time_history";
@@ -104,7 +105,8 @@ class UserSessionStorage {
     ApiService.setToken(token ?? '');
     final username = storage.getString(_currentUser)?.trim();
     final storedUserId = storage.getInt('current_user_id');
-    ApiService.currentUserId = token != null &&
+    ApiService.currentUserId =
+        token != null &&
             token.isNotEmpty &&
             username != null &&
             username.isNotEmpty &&
@@ -163,9 +165,7 @@ class UserSessionStorage {
         prefs.getInt('current_user_id') == snapshot.userId;
   }
 
-  static Future<void> ensureCurrentSession(
-    UserSessionSnapshot snapshot,
-  ) async {
+  static Future<void> ensureCurrentSession(UserSessionSnapshot snapshot) async {
     if (!await isCurrentSession(snapshot)) {
       throw StateError('账户已切换，已取消旧账户异步操作');
     }
@@ -197,12 +197,15 @@ class UserSessionStorage {
   static Future<String> _resolveUniqueDeviceId(String username) async {
     final prefs = await _prefs;
     final accountDeviceKey = StorageKeyScope.scoped(_deviceId, username);
-    final accountInstallKey =
-        StorageKeyScope.scoped(_deviceInstallId, username);
+    final accountInstallKey = StorageKeyScope.scoped(
+      _deviceInstallId,
+      username,
+    );
     final installId = await _getInstallationId();
     final storedInstallId = prefs.getString(accountInstallKey);
     var deviceId = prefs.getString(accountDeviceKey);
-    final wasRestoredToAnotherInstall = installId != null &&
+    final wasRestoredToAnotherInstall =
+        installId != null &&
         storedInstallId != null &&
         storedInstallId != installId;
     if (deviceId == null || wasRestoredToAnotherInstall) {
@@ -254,16 +257,27 @@ class UserSessionStorage {
       } else if (AppPlatform.isAndroid) {
         final androidInfo = await deviceInfo.androidInfo;
         model = "${androidInfo.manufacturer} ${androidInfo.model}";
-        final shortestSide = WidgetsBinding.instance.platformDispatcher.views
-                .first.physicalSize.shortestSide /
+        final shortestSide =
             WidgetsBinding
-                .instance.platformDispatcher.views.first.devicePixelRatio;
+                .instance
+                .platformDispatcher
+                .views
+                .first
+                .physicalSize
+                .shortestSide /
+            WidgetsBinding
+                .instance
+                .platformDispatcher
+                .views
+                .first
+                .devicePixelRatio;
         type = shortestSide > 600 ? "Tablet" : "Phone";
       } else if (AppPlatform.isIOS) {
         final iosInfo = await deviceInfo.iosInfo;
         model = iosInfo.utsname.machine;
-        type =
-            iosInfo.model.toLowerCase().contains("ipad") ? "Tablet" : "Phone";
+        type = iosInfo.model.toLowerCase().contains("ipad")
+            ? "Tablet"
+            : "Phone";
       } else if (AppPlatform.isDesktop) {
         model = AppPlatform.operatingSystem;
         type = "PC";

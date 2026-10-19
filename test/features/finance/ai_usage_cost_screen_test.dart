@@ -112,47 +112,49 @@ void main() {
     );
   }
 
-  testWidgets('non-MiMo providers display token usage for the same model name',
-      (tester) async {
-    final db = await _setUpDatabase(tester);
-    addTearDown(() async {
-      AiUsageCostService.databaseOverride = null;
-      FinanceStorage.databaseOverride = null;
-      await db.close();
-    });
-    await tester.runAsync(() async {
-      await AiUsageCostService.savePricing(
-        const AiUsagePricing(
+  testWidgets(
+    'non-MiMo providers display token usage for the same model name',
+    (tester) async {
+      final db = await _setUpDatabase(tester);
+      addTearDown(() async {
+        AiUsageCostService.databaseOverride = null;
+        FinanceStorage.databaseOverride = null;
+        await db.close();
+      });
+      await tester.runAsync(() async {
+        await AiUsageCostService.savePricing(
+          const AiUsagePricing(
+            provider: 'custom',
+            model: 'mimo-v2.5-asr',
+            inputMicrosPerMillion: 1000000,
+            outputMicrosPerMillion: 2000000,
+          ),
+        );
+        await AiUsageCostService.recordUsage(
           provider: 'custom',
           model: 'mimo-v2.5-asr',
-          inputMicrosPerMillion: 1000000,
-          outputMicrosPerMillion: 2000000,
-        ),
-      );
-      await AiUsageCostService.recordUsage(
-        provider: 'custom',
-        model: 'mimo-v2.5-asr',
-        operation: 'audio_chat',
-        promptTokens: 1000,
-        completionTokens: 500,
-        totalTokens: 1500,
-        audioSeconds: 4,
-      );
-    });
+          operation: 'audio_chat',
+          promptTokens: 1000,
+          completionTokens: 500,
+          totalTokens: 1500,
+          audioSeconds: 4,
+        );
+      });
 
-    await _pumpLoaded(tester, const AiUsageCostScreen());
+      await _pumpLoaded(tester, const AiUsageCostScreen());
 
-    expect(find.text('1 次 · 1,500 Token · 音频 4s'), findsOneWidget);
-    final record = find.text('audio_chat · 1,500 Token · 音频 4s');
-    await tester.scrollUntilVisible(
-      record,
-      240,
-      scrollable: find.byType(Scrollable).first,
-    );
-    expect(record, findsOneWidget);
-    expect(find.text('录音 4 秒'), findsNothing);
-    expect(tester.takeException(), null);
-  });
+      expect(find.text('1 次 · 1,500 Token · 音频 4s'), findsOneWidget);
+      final record = find.text('audio_chat · 1,500 Token · 音频 4s');
+      await tester.scrollUntilVisible(
+        record,
+        240,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(record, findsOneWidget);
+      expect(find.text('录音 4 秒'), findsNothing);
+      expect(tester.takeException(), null);
+    },
+  );
 
   testWidgets('自动记账说明与月度汇总周期一致', (tester) async {
     final db = await _setUpDatabase(tester);
@@ -164,10 +166,7 @@ void main() {
 
     await _pumpLoaded(tester, const AiUsageCostScreen());
 
-    expect(
-      find.text('同一设备内按月份、服务商与模型合并为一笔支出；多设备账单分别记录并累计'),
-      findsOneWidget,
-    );
+    expect(find.text('同一设备内按月份、服务商与模型合并为一笔支出；多设备账单分别记录并累计'), findsOneWidget);
   });
 
   testWidgets('内置价格提供可见的恢复入口并在恢复前确认', (tester) async {

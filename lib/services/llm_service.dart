@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
+
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+
 import '../features/finance/services/finance_ai_context_service.dart';
 import '../utils/image_input_reader.dart';
 import 'ai_chat_service.dart';
@@ -33,11 +35,11 @@ class LLMConfig {
     String? apiUrl,
     String? textPrompt,
     String? visionPrompt,
-  })  : visionModel = visionModel ?? 'glm-4.6v-flash',
-        apiUrl =
-            apiUrl ?? 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
-        textPrompt = textPrompt ?? defaultTextPrompt,
-        visionPrompt = visionPrompt ?? defaultVisionPrompt;
+  }) : visionModel = visionModel ?? 'glm-4.6v-flash',
+       apiUrl =
+           apiUrl ?? 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
+       textPrompt = textPrompt ?? defaultTextPrompt,
+       visionPrompt = visionPrompt ?? defaultVisionPrompt;
 
   static const String defaultTextPrompt =
       '''你是一个专业的事项识别助手，负责把自然语言准确区分为待办、固定日程或规划块，并输出结构化JSON。
@@ -228,15 +230,15 @@ fixedSchedule和planBlock才使用时间区间字段与timeMode=range；fixedSch
 fixedSchedule地点使用location字段；todo和planBlock地点放在remark。默认提醒：todo/planBlock为5分钟，fixedSchedule为15分钟。''';
 
   Map<String, dynamic> toJson() => {
-        'provider': provider,
-        'vision_provider': visionProvider,
-        'api_key': apiKey,
-        'model': model,
-        'vision_model': visionModel,
-        'api_url': apiUrl,
-        'text_prompt': textPrompt,
-        'vision_prompt': visionPrompt,
-      };
+    'provider': provider,
+    'vision_provider': visionProvider,
+    'api_key': apiKey,
+    'model': model,
+    'vision_model': visionModel,
+    'api_url': apiUrl,
+    'text_prompt': textPrompt,
+    'vision_prompt': visionPrompt,
+  };
 
   factory LLMConfig.fromJson(Map<String, dynamic> json) {
     return LLMConfig(
@@ -270,12 +272,12 @@ class CustomTextModel {
   });
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'name': name,
-        'model_id': modelId,
-        'api_url': apiUrl,
-        'api_key': apiKey,
-      };
+    'id': id,
+    'name': name,
+    'model_id': modelId,
+    'api_url': apiUrl,
+    'api_key': apiKey,
+  };
 
   factory CustomTextModel.fromJson(Map<String, dynamic> json) {
     return CustomTextModel(
@@ -306,13 +308,13 @@ class CustomVisionModel {
   });
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'name': name,
-        'model_id': modelId,
-        'api_url': apiUrl,
-        'api_key': apiKey,
-        'modalities': modalities.toList()..sort(),
-      };
+    'id': id,
+    'name': name,
+    'model_id': modelId,
+    'api_url': apiUrl,
+    'api_key': apiKey,
+    'modalities': modalities.toList()..sort(),
+  };
 
   factory CustomVisionModel.fromJson(Map<String, dynamic> json) {
     return CustomVisionModel(
@@ -341,6 +343,7 @@ class CustomVisionModel {
 }
 
 class LLMService {
+  static final RegExp _jsonObjectFallbackPattern = RegExp(r'\{[^{}]*\}');
   static const String _configKey = 'llm_config';
   static const int _recognitionPromptProtocolVersion = 2;
   static const String _zhipuApiKeyKey = 'zhipu_api_key';
@@ -423,8 +426,9 @@ class LLMService {
   }
 
   static Future<({String url, String key})> resolveVisionEndpoint(
-      String visionModel,
-      {String? provider}) async {
+    String visionModel, {
+    String? provider,
+  }) async {
     final requestedProvider = provider?.trim() ?? '';
 
     // The same model ID can be available from both MiMo API products. When
@@ -506,8 +510,9 @@ class LLMService {
         jsonDecode(configStr) as Map<String, dynamic>,
       );
       final legacyApiKey = json['api_key']?.toString() ?? '';
-      final secureApiKey =
-          await SecureStorageService.read(_configApiKeyStorageKey);
+      final secureApiKey = await SecureStorageService.read(
+        _configApiKeyStorageKey,
+      );
       final apiKey = secureApiKey != null && secureApiKey.isNotEmpty
           ? secureApiKey
           : legacyApiKey;
@@ -519,10 +524,7 @@ class LLMService {
                 legacyApiKey,
               );
         if (migrated) {
-          await prefs.setString(
-            _configKey,
-            jsonEncode(_withoutApiKey(json)),
-          );
+          await prefs.setString(_configKey, jsonEncode(_withoutApiKey(json)));
         }
       }
       final rawTextPrompt = json['text_prompt']?.toString();
@@ -536,12 +538,13 @@ class LLMService {
         fallback: LLMConfig.defaultVisionPrompt,
       );
       final storedPromptVersion = int.tryParse(
-          json['recognition_prompt_protocol_version']?.toString() ?? '');
+        json['recognition_prompt_protocol_version']?.toString() ?? '',
+      );
       final promptChanged =
           (rawTextPrompt != null && rawTextPrompt != migratedTextPrompt) ||
-              (rawVisionPrompt != null &&
-                  rawVisionPrompt != migratedVisionPrompt) ||
-              storedPromptVersion != _recognitionPromptProtocolVersion;
+          (rawVisionPrompt != null &&
+              rawVisionPrompt != migratedVisionPrompt) ||
+          storedPromptVersion != _recognitionPromptProtocolVersion;
       if (promptChanged) {
         json['recognition_prompt_protocol_version'] =
             _recognitionPromptProtocolVersion;
@@ -629,7 +632,8 @@ class LLMService {
     final secureKey = _providerApiKeyStorageKey(provider);
     final secureApiKey = await SecureStorageService.read(secureKey);
     final providerPreferenceKey = '$_providerApiKeyPrefix$provider';
-    final legacyApiKey = prefs.getString(providerPreferenceKey) ??
+    final legacyApiKey =
+        prefs.getString(providerPreferenceKey) ??
         (provider == 'zhipu' ? prefs.getString(_zhipuApiKeyKey) : null) ??
         '';
     if (secureApiKey != null && secureApiKey.isNotEmpty) {
@@ -680,14 +684,17 @@ class LLMService {
   }
 
   static Future<void> saveProviderModels(
-      String provider, List<String> models) async {
+    String provider,
+    List<String> models,
+  ) async {
     final prefs = await SharedPreferences.getInstance();
-    final normalized = models
-        .map((model) => model.trim())
-        .where((model) => model.isNotEmpty)
-        .toSet()
-        .toList()
-      ..sort();
+    final normalized =
+        models
+            .map((model) => model.trim())
+            .where((model) => model.isNotEmpty)
+            .toSet()
+            .toList()
+          ..sort();
     await prefs.setStringList('$_providerModelsPrefix$provider', normalized);
     if (provider == 'nvidia_nim') {
       await prefs.setStringList(_nvidiaNimModelsKey, normalized);
@@ -708,20 +715,23 @@ class LLMService {
       );
       final apiKey = secureApiKey ?? model.apiKey;
       if (model.apiKey.isNotEmpty) {
-        final migrated = secureApiKey != null ||
+        final migrated =
+            secureApiKey != null ||
             await SecureStorageService.write(
               _customTextApiKeyStorageKey(model.id),
               model.apiKey,
             );
         needsSanitizing = needsSanitizing || migrated;
       }
-      models.add(CustomTextModel(
-        id: model.id,
-        name: model.name,
-        modelId: model.modelId,
-        apiUrl: model.apiUrl,
-        apiKey: apiKey,
-      ));
+      models.add(
+        CustomTextModel(
+          id: model.id,
+          name: model.name,
+          modelId: model.modelId,
+          apiUrl: model.apiUrl,
+          apiKey: apiKey,
+        ),
+      );
     }
     if (needsSanitizing) {
       await prefs.setStringList(
@@ -782,21 +792,24 @@ class LLMService {
       );
       final apiKey = secureApiKey ?? model.apiKey;
       if (model.apiKey.isNotEmpty) {
-        final migrated = secureApiKey != null ||
+        final migrated =
+            secureApiKey != null ||
             await SecureStorageService.write(
               _customVisionApiKeyStorageKey(model.id),
               model.apiKey,
             );
         needsSanitizing = needsSanitizing || migrated;
       }
-      models.add(CustomVisionModel(
-        id: model.id,
-        name: model.name,
-        modelId: model.modelId,
-        apiUrl: model.apiUrl,
-        apiKey: apiKey,
-        modalities: model.modalities,
-      ));
+      models.add(
+        CustomVisionModel(
+          id: model.id,
+          name: model.name,
+          modelId: model.modelId,
+          apiUrl: model.apiUrl,
+          apiKey: apiKey,
+          modalities: model.modalities,
+        ),
+      );
     }
     if (needsSanitizing) {
       await prefs.setStringList(
@@ -820,7 +833,8 @@ class LLMService {
     }
     if (model.apiKey.isEmpty) {
       await SecureStorageService.delete(
-          _customVisionApiKeyStorageKey(model.id));
+        _customVisionApiKeyStorageKey(model.id),
+      );
     } else {
       await SecureStorageService.write(
         _customVisionApiKeyStorageKey(model.id),
@@ -859,14 +873,17 @@ class LLMService {
     final requestBody = <String, dynamic>{
       'model': config.model,
       'messages': [
-        {'role': 'user', 'content': '请回复"连接成功"'}
+        {'role': 'user', 'content': '请回复"连接成功"'},
       ],
       'temperature': 0.1,
     };
-    requestBody[
-        AiChatService.usesMimoChatProtocol(config.provider, config.apiUrl)
+    requestBody[AiChatService.usesMimoChatProtocol(
+              config.provider,
+              config.apiUrl,
+            )
             ? 'max_completion_tokens'
-            : 'max_tokens'] = 50;
+            : 'max_tokens'] =
+        50;
     final body = jsonEncode(requestBody);
 
     // print('========== 测试连接 ==========');
@@ -877,7 +894,8 @@ class LLMService {
     final response = await http
         .post(
           Uri.parse(
-              AiChatService.resolveChatUrl(config.provider, config.apiUrl)),
+            AiChatService.resolveChatUrl(config.provider, config.apiUrl),
+          ),
           headers: headers,
           body: body,
         )
@@ -890,8 +908,10 @@ class LLMService {
     final data = jsonDecode(response.body) as Map<String, dynamic>;
     final usage = AiTokenUsage.fromJson(data['usage']);
     try {
-      final usageProvider =
-          AiChatService.effectiveProvider(config.provider, config.apiUrl);
+      final usageProvider = AiChatService.effectiveProvider(
+        config.provider,
+        config.apiUrl,
+      );
       await AiUsageCostService.recordUsage(
         provider: usageProvider.isEmpty ? 'custom' : usageProvider,
         model: config.model,
@@ -914,19 +934,22 @@ class LLMService {
     if (choices == null || choices.isEmpty) {
       // print('完整响应: ${response.body}');
       throw Exception(
-          '返回数据格式异常: ${response.body.substring(0, response.body.length > 200 ? 200 : response.body.length)}');
+        '返回数据格式异常: ${response.body.substring(0, response.body.length > 200 ? 200 : response.body.length)}',
+      );
     }
 
     final message = choices[0]['message'] as Map<String, dynamic>?;
     if (message == null) {
       // print('完整响应: ${response.body}');
       throw Exception(
-          '返回数据格式异常: ${response.body.substring(0, response.body.length > 200 ? 200 : response.body.length)}');
+        '返回数据格式异常: ${response.body.substring(0, response.body.length > 200 ? 200 : response.body.length)}',
+      );
     }
     final content = (message['content'] as String?) ?? '';
     final reasoning = (message['reasoning_content'] as String?) ?? '';
-    final fullContent =
-        reasoning.isNotEmpty ? '$reasoning\n\n$content' : content;
+    final fullContent = reasoning.isNotEmpty
+        ? '$reasoning\n\n$content'
+        : content;
     // print('测试响应: $fullContent');
     return fullContent;
   }
@@ -959,7 +982,7 @@ class LLMService {
     final body = jsonEncode({
       'model': config.model,
       'messages': [
-        {'role': 'user', 'content': prompt}
+        {'role': 'user', 'content': prompt},
       ],
       'temperature': 0.1,
     });
@@ -973,7 +996,8 @@ class LLMService {
     final response = await http
         .post(
           Uri.parse(
-              AiChatService.resolveChatUrl(config.provider, config.apiUrl)),
+            AiChatService.resolveChatUrl(config.provider, config.apiUrl),
+          ),
           headers: headers,
           body: body,
         )
@@ -987,8 +1011,10 @@ class LLMService {
     final data = jsonDecode(response.body) as Map<String, dynamic>;
     final usage = AiTokenUsage.fromJson(data['usage']);
     try {
-      final usageProvider =
-          AiChatService.effectiveProvider(config.provider, config.apiUrl);
+      final usageProvider = AiChatService.effectiveProvider(
+        config.provider,
+        config.apiUrl,
+      );
       final record = await AiUsageCostService.recordUsage(
         provider: usageProvider.isEmpty ? 'custom' : usageProvider,
         model: config.model,
@@ -1018,8 +1044,9 @@ class LLMService {
     final message = choices[0]['message'] as Map<String, dynamic>;
     final content = (message['content'] as String?) ?? '';
     final reasoning = (message['reasoning_content'] as String?) ?? '';
-    final fullContent =
-        reasoning.isNotEmpty ? '$reasoning\n\n$content' : content;
+    final fullContent = reasoning.isNotEmpty
+        ? '$reasoning\n\n$content'
+        : content;
 
     // print('========== LLM 文本响应 ==========');
     // print('原始返回:\n$fullContent');
@@ -1070,8 +1097,10 @@ class LLMService {
       normalizeTodoResults: false,
       onUsage: onUsage,
       promptBuilder: (_, nowStr) async {
-        final prompt =
-            LLMConfig.defaultFinanceVisionPrompt.replaceAll('{now}', nowStr);
+        final prompt = LLMConfig.defaultFinanceVisionPrompt.replaceAll(
+          '{now}',
+          nowStr,
+        );
         final catalog = await FinanceAiContextService.buildCatalogContext();
         return catalog.isEmpty ? prompt : '$prompt\n\n$catalog';
       },
@@ -1082,7 +1111,7 @@ class LLMService {
     String imagePath, {
     required String operation,
     required FutureOr<String> Function(LLMConfig config, String nowStr)
-        promptBuilder,
+    promptBuilder,
     bool normalizeTodoResults = true,
     void Function(ChatUsageSummary usage)? onUsage,
   }) async {
@@ -1162,8 +1191,9 @@ class LLMService {
     if (usageSummary != null) {
       onUsage?.call(usageSummary);
     }
-    final fullContent =
-        reasoningContent.isNotEmpty ? '$reasoningContent\n\n$content' : content;
+    final fullContent = reasoningContent.isNotEmpty
+        ? '$reasoningContent\n\n$content'
+        : content;
     final results = _extractJsonList(fullContent);
     return normalizeTodoResults
         ? RecognizedTodoAdapter.normalizeImageResults(results)
@@ -1212,7 +1242,7 @@ class LLMService {
     if (results.isNotEmpty) return results;
 
     // 尝试使用正则提取所有 JSON 对象
-    final matches = RegExp(r'\{[^{}]*\}').allMatches(trimmed);
+    final matches = _jsonObjectFallbackPattern.allMatches(trimmed);
     for (final match in matches) {
       try {
         final obj = jsonDecode(match.group(0)!) as Map<String, dynamic>;

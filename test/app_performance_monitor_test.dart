@@ -1,8 +1,25 @@
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:countdown_todo/utils/app_performance_monitor.dart';
 
+class _MonitorLabelTestWidget extends StatelessWidget {
+  const _MonitorLabelTestWidget();
+
+  @override
+  Widget build(BuildContext context) => const SizedBox.shrink();
+}
+
 void main() {
   setUp(AppPerformanceMonitor.resetForTesting);
+
+  test('unknown private widget names keep the readable screen fallback', () {
+    expect(
+      AppPerformanceMonitor.screenNameForWidget(
+        const _MonitorLabelTestWidget(),
+      ),
+      'MonitorLabelTestWidget',
+    );
+  });
 
   test('records slow frame details with the current screen', () {
     AppPerformanceMonitor.setCurrentScreen('首页');
@@ -21,9 +38,13 @@ void main() {
     expect(snapshot.maxFrameSpan, const Duration(milliseconds: 35));
     expect(snapshot.events.single.screen, '首页');
     expect(
-        snapshot.events.single.buildDuration, const Duration(milliseconds: 20));
+      snapshot.events.single.buildDuration,
+      const Duration(milliseconds: 20),
+    );
     expect(
-        snapshot.events.single.rasterDuration, const Duration(milliseconds: 4));
+      snapshot.events.single.rasterDuration,
+      const Duration(milliseconds: 4),
+    );
   });
 
   test('threshold and screen tracking can be changed for a session', () {

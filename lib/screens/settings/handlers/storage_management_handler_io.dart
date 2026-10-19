@@ -1,8 +1,10 @@
 import 'dart:io';
 import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter_downloader/flutter_downloader.dart';
+
 import '../../../utils/app_dialogs.dart';
 
 class StorageManagementHandler {
@@ -122,7 +124,9 @@ class StorageManagementHandler {
         if (tasks != null) {
           for (var task in tasks) {
             await FlutterDownloader.remove(
-                taskId: task.taskId, shouldDeleteContent: true);
+              taskId: task.taskId,
+              shouldDeleteContent: true,
+            );
           }
         }
       } catch (e) {
@@ -187,8 +191,10 @@ class StorageManagementHandler {
       if (dir == null || !dir.existsSync()) return;
       try {
         double totalSize = 0;
-        await for (var entity
-            in dir.list(recursive: true, followLinks: false)) {
+        await for (var entity in dir.list(
+          recursive: true,
+          followLinks: false,
+        )) {
           if (entity is File) {
             try {
               final size = await entity.length();
@@ -234,7 +240,9 @@ class StorageManagementHandler {
   }
 
   void _showFilesDialog(
-      List<Map<String, dynamic>> topFiles, Map<String, double> dirSizes) {
+    List<Map<String, dynamic>> topFiles,
+    Map<String, double> dirSizes,
+  ) {
     showAppDialog(
       context: context,
       builder: (ctx) {
@@ -249,25 +257,34 @@ class StorageManagementHandler {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text("📁 目录总览:",
-                        style: TextStyle(fontWeight: FontWeight.bold)),
+                    const Text(
+                      "📁 目录总览:",
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
                     const SizedBox(height: 6),
-                    ...dirSizes.entries.map((e) => Padding(
-                          padding: const EdgeInsets.only(bottom: 4.0),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(e.key, style: const TextStyle(fontSize: 13)),
-                              Text(formatSize(e.value),
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 13)),
-                            ],
-                          ),
-                        )),
+                    ...dirSizes.entries.map(
+                      (e) => Padding(
+                        padding: const EdgeInsets.only(bottom: 4.0),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(e.key, style: const TextStyle(fontSize: 13)),
+                            Text(
+                              formatSize(e.value),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                     const Divider(height: 24),
-                    const Text("📄 Top 100 大文件 (点击垃圾桶可直删):",
-                        style: TextStyle(fontWeight: FontWeight.bold)),
+                    const Text(
+                      "📄 Top 100 大文件 (点击垃圾桶可直删):",
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
                     const SizedBox(height: 8),
                     Expanded(
                       child: topFiles.isEmpty
@@ -283,69 +300,80 @@ class StorageManagementHandler {
                                 final fileName = path.split('/').last;
                                 final File file = fileInfo['file'] as File;
 
-                                bool isCore = path.contains('flutter_assets') ||
+                                bool isCore =
+                                    path.contains('flutter_assets') ||
                                     path.endsWith('.db') ||
                                     path.contains('shared_prefs') ||
                                     path.contains('databases');
 
                                 return ListTile(
-                                    contentPadding: EdgeInsets.zero,
-                                    leading: Icon(
-                                        isCore
-                                            ? Icons.warning_amber_rounded
-                                            : Icons.insert_drive_file,
-                                        color: isCore
-                                            ? Colors.orange
-                                            : Colors.grey),
-                                    title: Text(
-                                      fileName,
-                                      style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 13,
-                                          color: isCore ? Colors.orange : null),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
+                                  contentPadding: EdgeInsets.zero,
+                                  leading: Icon(
+                                    isCore
+                                        ? Icons.warning_amber_rounded
+                                        : Icons.insert_drive_file,
+                                    color: isCore ? Colors.orange : Colors.grey,
+                                  ),
+                                  title: Text(
+                                    fileName,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 13,
+                                      color: isCore ? Colors.orange : null,
                                     ),
-                                    subtitle: Text(path,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  subtitle: Text(
+                                    path,
+                                    style: const TextStyle(
+                                      fontSize: 10,
+                                      color: Colors.grey,
+                                    ),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  trailing: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        formatSize(size.toDouble()),
                                         style: const TextStyle(
-                                            fontSize: 10, color: Colors.grey),
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis),
-                                    trailing: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Text(formatSize(size.toDouble()),
-                                              style: const TextStyle(
-                                                  color: Colors.redAccent,
-                                                  fontSize: 12,
-                                                  fontWeight: FontWeight.bold)),
-                                          IconButton(
-                                              padding: const EdgeInsets.only(
-                                                  left: 8),
-                                              constraints:
-                                                  const BoxConstraints(),
-                                              icon: const Icon(
-                                                  Icons.delete_outline,
-                                                  size: 20),
-                                              onPressed: () async {
-                                                if (isCore) {
-                                                  showMessage(
-                                                      '⚠️ 这个是应用运行核心文件或你的用户数据库，禁止删除！');
-                                                  return;
-                                                }
-                                                try {
-                                                  if (await file.exists()) {
-                                                    await file.delete();
-                                                    setDialogState(() {
-                                                      topFiles.removeAt(index);
-                                                    });
-                                                    showMessage('✅ 文件已删除');
-                                                  }
-                                                } catch (e) {
-                                                  showMessage('删除失败: $e');
-                                                }
-                                              })
-                                        ]));
+                                          color: Colors.redAccent,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      IconButton(
+                                        padding: const EdgeInsets.only(left: 8),
+                                        constraints: const BoxConstraints(),
+                                        icon: const Icon(
+                                          Icons.delete_outline,
+                                          size: 20,
+                                        ),
+                                        onPressed: () async {
+                                          if (isCore) {
+                                            showMessage(
+                                              '⚠️ 这个是应用运行核心文件或你的用户数据库，禁止删除！',
+                                            );
+                                            return;
+                                          }
+                                          try {
+                                            if (await file.exists()) {
+                                              await file.delete();
+                                              setDialogState(() {
+                                                topFiles.removeAt(index);
+                                              });
+                                              showMessage('✅ 文件已删除');
+                                            }
+                                          } catch (e) {
+                                            showMessage('删除失败: $e');
+                                          }
+                                        },
+                                      ),
+                                    ],
+                                  ),
+                                );
                               },
                             ),
                     ),
@@ -354,8 +382,9 @@ class StorageManagementHandler {
               ),
               actions: [
                 TextButton(
-                    onPressed: () => Navigator.pop(ctx),
-                    child: const Text("关闭")),
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text("关闭"),
+                ),
               ],
             );
           },

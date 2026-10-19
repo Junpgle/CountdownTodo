@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../models.dart';
 import '../utils/page_transitions.dart';
+import '../utils/time_utils.dart';
 import '../widgets/app_detail_widgets.dart';
 import '../widgets/floating_glass_control.dart';
 import 'fixed_schedule_editor_screen.dart';
@@ -31,37 +31,29 @@ class FixedScheduleDetailScreen extends StatelessWidget {
         : DateTime.fromMillisecondsSinceEpoch(value).toLocal();
   }
 
-  String get _dateLabel {
-    final date = DateTime.tryParse(item.date)?.toLocal();
-    return date == null ? item.date : DateFormat('yyyy年M月d日').format(date);
-  }
-
-  String get _timeLabel {
-    final start = _start;
-    if (start == null) return '时间待定';
-    final startLabel = DateFormat('HH:mm').format(start);
-    final end = _end;
-    if (end == null) return '$startLabel · 结束待定';
-    return '$startLabel - ${DateFormat('HH:mm').format(end)}';
+  String _timeLabel(String? startLabel, String? endLabel) {
+    if (startLabel == null) return '时间待定';
+    if (endLabel == null) return '$startLabel · 结束待定';
+    return '$startLabel - $endLabel';
   }
 
   String _phaseLabel(DateTime now) => switch (item.phaseAt(now)) {
-        FixedSchedulePhase.timeTbd => '时间待定',
-        FixedSchedulePhase.upcoming => '即将开始',
-        FixedSchedulePhase.ongoing => '进行中',
-        FixedSchedulePhase.ended => '已结束',
-        FixedSchedulePhase.cancelled => '已取消',
-      };
+    FixedSchedulePhase.timeTbd => '时间待定',
+    FixedSchedulePhase.upcoming => '即将开始',
+    FixedSchedulePhase.ongoing => '进行中',
+    FixedSchedulePhase.ended => '已结束',
+    FixedSchedulePhase.cancelled => '已取消',
+  };
 
   String _recurrenceLabel() => switch (item.recurrence) {
-        RecurrenceType.none => '不重复',
-        RecurrenceType.daily => '每天重复',
-        RecurrenceType.weekdays => '工作日重复',
-        RecurrenceType.weekly => '每周重复',
-        RecurrenceType.monthly => '每月重复',
-        RecurrenceType.yearly => '每年重复',
-        RecurrenceType.customDays => '每 ${item.customIntervalDays ?? 1} 天重复',
-      };
+    RecurrenceType.none => '不重复',
+    RecurrenceType.daily => '每天重复',
+    RecurrenceType.weekdays => '工作日重复',
+    RecurrenceType.weekly => '每周重复',
+    RecurrenceType.monthly => '每月重复',
+    RecurrenceType.yearly => '每年重复',
+    RecurrenceType.customDays => '每 ${item.customIntervalDays ?? 1} 天重复',
+  };
 
   String _reminderLabel(int minutes) {
     if (minutes == 0) return '开始时';
@@ -82,10 +74,8 @@ class FixedScheduleDetailScreen extends StatelessWidget {
   Future<void> _openEditor(BuildContext context) async {
     final result = await Navigator.of(context).push<FixedScheduleItem>(
       PageTransitions.material(
-        builder: (_) => FixedScheduleEditorScreen(
-          username: username,
-          item: item,
-        ),
+        builder: (_) =>
+            FixedScheduleEditorScreen(username: username, item: item),
       ),
     );
     if (!context.mounted || result == null) return;
@@ -96,6 +86,15 @@ class FixedScheduleDetailScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final phase = _phaseLabel(DateTime.now());
+    final date = DateTime.tryParse(item.date)?.toLocal();
+    final dateLabel = date == null
+        ? item.date
+        : AppTimeFormats.format(date, 'yyyy年M月d日');
+    final start = _start;
+    final end = _end;
+    final startTimeLabel = start == null ? null : AppTimeFormats.clock(start);
+    final endTimeLabel = end == null ? null : AppTimeFormats.clock(end);
+    final timeLabel = _timeLabel(startTimeLabel, endTimeLabel);
 
     return AppDetailScreen(
       appBarTitle: '固定日程详情',
@@ -104,7 +103,7 @@ class FixedScheduleDetailScreen extends StatelessWidget {
       iconSize: 64,
       titleSize: 22,
       title: item.title,
-      headerSubtitle: '$_dateLabel · $_timeLabel',
+      headerSubtitle: '$dateLabel · $timeLabel',
       color: colors.primary,
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
       scrollPhysics: const BouncingScrollPhysics(),
@@ -123,7 +122,7 @@ class FixedScheduleDetailScreen extends StatelessWidget {
             AppDetailWideCard(
               icon: Icons.calendar_today_rounded,
               title: '日期',
-              value: _dateLabel,
+              value: dateLabel,
             ),
             Padding(
               padding: const EdgeInsets.only(bottom: 12),
@@ -133,9 +132,7 @@ class FixedScheduleDetailScreen extends StatelessWidget {
                     child: AppDetailInfoCard(
                       icon: Icons.play_arrow_rounded,
                       title: '开始时间',
-                      value: _start == null
-                          ? '待定'
-                          : DateFormat('HH:mm').format(_start!),
+                      value: startTimeLabel ?? '待定',
                     ),
                   ),
                   Padding(
@@ -150,9 +147,7 @@ class FixedScheduleDetailScreen extends StatelessWidget {
                     child: AppDetailInfoCard(
                       icon: Icons.stop_rounded,
                       title: '结束时间',
-                      value: _end == null
-                          ? '待定'
-                          : DateFormat('HH:mm').format(_end!),
+                      value: endTimeLabel ?? '待定',
                     ),
                   ),
                 ],
@@ -176,8 +171,9 @@ class FixedScheduleDetailScreen extends StatelessWidget {
                     icon: Icons.flag_rounded,
                     title: '状态',
                     value: phase,
-                    valueColor:
-                        phase == '进行中' ? colors.primary : colors.onSurface,
+                    valueColor: phase == '进行中'
+                        ? colors.primary
+                        : colors.onSurface,
                   ),
                 ),
                 const SizedBox(width: 12),

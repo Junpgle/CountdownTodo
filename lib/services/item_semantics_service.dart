@@ -118,13 +118,7 @@ class ItemSemanticsService {
     ])) {
       return 'cafe';
     }
-    if (_containsAny(normalized, const [
-      '取餐',
-      '外卖',
-      '肯德基',
-      '麦当劳',
-      'kfc',
-    ])) {
+    if (_containsAny(normalized, const ['取餐', '外卖', '肯德基', '麦当劳', 'kfc'])) {
       return 'food';
     }
     if (_containsAny(normalized, const [
@@ -180,7 +174,8 @@ class ItemSemanticsService {
     final hasClock = _clockPattern.hasMatch(normalized);
     final hasTimeRange = _timeRangePattern.hasMatch(normalized);
     final isAppointment = normalized.contains('预约') && hasClock;
-    final mustWaitForDelivery = hasTimeRange &&
+    final mustWaitForDelivery =
+        hasTimeRange &&
         (normalized.contains('上门') || normalized.contains('必须在家'));
 
     late final CaptureIntentKind heuristic;

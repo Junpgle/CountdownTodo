@@ -5,20 +5,19 @@ import '../models/journal_entry.dart';
 import '../services/journal_media_service.dart';
 import '../services/journal_picker.dart';
 import '../services/journal_storage.dart';
+import '../../../utils/time_utils.dart';
 import '../../../widgets/floating_glass_control.dart';
 import 'journal_detail_screen.dart';
 import 'journal_editor_screen.dart';
 import '../../../utils/app_dialogs.dart';
 
+DateFormat _photoWallDateFormat() => AppTimeFormats.dateFormatter('MM月dd日');
+
 class JournalHomeScreen extends StatefulWidget {
   final String username;
   final JournalStorage? storage;
 
-  const JournalHomeScreen({
-    super.key,
-    required this.username,
-    this.storage,
-  });
+  const JournalHomeScreen({super.key, required this.username, this.storage});
 
   @override
   State<JournalHomeScreen> createState() => _JournalHomeScreenState();
@@ -120,10 +119,8 @@ class _JournalHomeScreenState extends State<JournalHomeScreen> {
     if (!mounted || fullEntry == null) return;
     final changed = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
-        builder: (_) => JournalDetailScreen(
-          accountId: widget.username,
-          entry: fullEntry,
-        ),
+        builder: (_) =>
+            JournalDetailScreen(accountId: widget.username, entry: fullEntry),
       ),
     );
     if (changed == true) await _loadEntries();
@@ -160,8 +157,8 @@ class _JournalHomeScreenState extends State<JournalHomeScreen> {
               _entries.isEmpty
                   ? '给此刻留一个位置'
                   : _hasMore
-                      ? '已加载 ${_entries.length} 篇记录'
-                      : '${_entries.length} 篇记录',
+                  ? '已加载 ${_entries.length} 篇记录'
+                  : '${_entries.length} 篇记录',
               style: theme.textTheme.labelMedium?.copyWith(
                 color: scheme.onSurfaceVariant,
               ),
@@ -209,37 +206,37 @@ class _JournalHomeScreenState extends State<JournalHomeScreen> {
         child: _isLoading
             ? const Center(child: CircularProgressIndicator())
             : entries.isEmpty
-                ? _JournalEmptyState(
-                    hasSearch: _query.isNotEmpty,
-                    onClearSearch: () async {
-                      setState(() {
-                        _query = '';
-                        _searchController.clear();
-                      });
-                      await _loadEntries();
-                    },
-                  )
-                : RefreshIndicator(
-                    onRefresh: _loadEntries,
-                    child: _isPhotoWall
-                        ? _PhotoWall(
-                            topPadding: topBarHeight,
-                            entries: entries,
-                            isWide: isWide,
-                            controller: _scrollController,
-                            accountId: widget.username,
-                            onTap: _openEntry,
-                          )
-                        : _Timeline(
-                            topPadding: topBarHeight,
-                            entries: entries,
-                            isWide: isWide,
-                            controller: _scrollController,
-                            isLoadingMore: _isLoadingMore,
-                            accountId: widget.username,
-                            onTap: _openEntry,
-                          ),
-                  ),
+            ? _JournalEmptyState(
+                hasSearch: _query.isNotEmpty,
+                onClearSearch: () async {
+                  setState(() {
+                    _query = '';
+                    _searchController.clear();
+                  });
+                  await _loadEntries();
+                },
+              )
+            : RefreshIndicator(
+                onRefresh: _loadEntries,
+                child: _isPhotoWall
+                    ? _PhotoWall(
+                        topPadding: topBarHeight,
+                        entries: entries,
+                        isWide: isWide,
+                        controller: _scrollController,
+                        accountId: widget.username,
+                        onTap: _openEntry,
+                      )
+                    : _Timeline(
+                        topPadding: topBarHeight,
+                        entries: entries,
+                        isWide: isWide,
+                        controller: _scrollController,
+                        isLoadingMore: _isLoadingMore,
+                        accountId: widget.username,
+                        onTap: _openEntry,
+                      ),
+              ),
       ),
       floatingActionButton: FloatingGlassActionButton.extended(
         onPressed: _createEntry,
@@ -263,8 +260,9 @@ class _JournalHomeScreenState extends State<JournalHomeScreen> {
         }
       },
       leadingIcon: Icon(icon),
-      trailingIcon:
-          selected ? Icon(Icons.check_rounded, color: scheme.primary) : null,
+      trailingIcon: selected
+          ? Icon(Icons.check_rounded, color: scheme.primary)
+          : null,
       child: Text(label),
     );
   }
@@ -304,8 +302,7 @@ class _JournalHomeScreenState extends State<JournalHomeScreen> {
   }
 
   void _showMessage(String message) {
-    AppSnackBars.showSnackBar(
-        context, SnackBar(content: Text(message)));
+    AppSnackBars.showSnackBar(context, SnackBar(content: Text(message)));
   }
 
   Future<void> _recoverLostImagePick() async {
@@ -353,6 +350,12 @@ class _JournalHomeScreenState extends State<JournalHomeScreen> {
   }
 }
 
+typedef _TimelineDisplayItem = ({
+  String? month,
+  JournalEntry? entry,
+  List<JournalEntry>? gridEntries,
+});
+
 class _Timeline extends StatelessWidget {
   final double topPadding;
   final List<JournalEntry> entries;
@@ -375,26 +378,52 @@ class _Timeline extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final grouped = <String, List<JournalEntry>>{};
+    final monthFormat = AppTimeFormats.dateFormatter('yyyy年MM月');
     for (final entry in entries) {
-      final key = DateFormat('yyyy年MM月').format(entry.occurredAt);
+      final key = monthFormat.format(entry.occurredAt);
       grouped.putIfAbsent(key, () => []).add(entry);
     }
-    return ListView(
+    final displayItems = <_TimelineDisplayItem>[];
+    for (final group in grouped.entries) {
+      displayItems.add((month: group.key, entry: null, gridEntries: null));
+      if (isWide) {
+        displayItems.add((month: null, entry: null, gridEntries: group.value));
+      } else {
+        for (final entry in group.value) {
+          displayItems.add((month: null, entry: entry, gridEntries: null));
+          displayItems.add((month: null, entry: null, gridEntries: null));
+        }
+      }
+    }
+
+    return ListView.builder(
       controller: controller,
       physics: const AlwaysScrollableScrollPhysics(),
       padding: EdgeInsets.fromLTRB(
-          isWide ? 40 : 20, topPadding + 12, isWide ? 40 : 20, 120),
-      children: [
-        for (final group in grouped.entries) ...[
-          Padding(
+        isWide ? 40 : 20,
+        topPadding + 12,
+        isWide ? 40 : 20,
+        120,
+      ),
+      itemCount: displayItems.length + (isLoadingMore ? 1 : 0),
+      itemBuilder: (context, index) {
+        if (index == displayItems.length) {
+          return const Padding(
+            padding: EdgeInsets.all(20),
+            child: Center(child: CircularProgressIndicator()),
+          );
+        }
+
+        final item = displayItems[index];
+        if (item.month != null) {
+          return Padding(
             padding: const EdgeInsets.fromLTRB(4, 18, 4, 12),
             child: Row(
               children: [
                 Text(
-                  group.key,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
+                  item.month!,
+                  style: Theme.of(context).textTheme.titleMedium
+                      ?.copyWith(fontWeight: FontWeight.w800),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -404,40 +433,37 @@ class _Timeline extends StatelessWidget {
                 ),
               ],
             ),
-          ),
-          if (isWide)
-            GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: group.value.length,
-              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                maxCrossAxisExtent: 560,
-                mainAxisExtent: 220,
-                crossAxisSpacing: 16,
-                mainAxisSpacing: 16,
-              ),
-              itemBuilder: (_, index) => _JournalCard(
-                entry: group.value[index],
-                accountId: accountId,
-                onTap: () => onTap(group.value[index]),
-              ),
-            )
-          else
-            for (final entry in group.value) ...[
-              _JournalCard(
-                entry: entry,
-                accountId: accountId,
-                onTap: () => onTap(entry),
-              ),
-              const SizedBox(height: 14),
-            ],
-        ],
-        if (isLoadingMore)
-          const Padding(
-            padding: EdgeInsets.all(20),
-            child: Center(child: CircularProgressIndicator()),
-          ),
-      ],
+          );
+        }
+
+        final gridEntries = item.gridEntries;
+        if (gridEntries != null) {
+          return GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: gridEntries.length,
+            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+              maxCrossAxisExtent: 560,
+              mainAxisExtent: 220,
+              crossAxisSpacing: 16,
+              mainAxisSpacing: 16,
+            ),
+            itemBuilder: (_, gridIndex) => _JournalCard(
+              entry: gridEntries[gridIndex],
+              accountId: accountId,
+              onTap: () => onTap(gridEntries[gridIndex]),
+            ),
+          );
+        }
+
+        final entry = item.entry;
+        if (entry == null) return const SizedBox(height: 14);
+        return _JournalCard(
+          entry: entry,
+          accountId: accountId,
+          onTap: () => onTap(entry),
+        );
+      },
     );
   }
 }
@@ -466,7 +492,11 @@ class _PhotoWall extends StatelessWidget {
       controller: controller,
       physics: const AlwaysScrollableScrollPhysics(),
       padding: EdgeInsets.fromLTRB(
-          isWide ? 40 : 16, topPadding + 20, isWide ? 40 : 16, 120),
+        isWide ? 40 : 16,
+        topPadding + 20,
+        isWide ? 40 : 16,
+        120,
+      ),
       itemCount: entries.length,
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: columns,
@@ -484,6 +514,9 @@ class _PhotoWall extends StatelessWidget {
 }
 
 class _JournalCard extends StatelessWidget {
+  static final DateFormat _entryDateFormat = DateFormat('MM月dd日 · E', 'zh_CN');
+  static final RegExp _previewWhitespace = RegExp(r'\s+');
+
   final JournalEntry entry;
   final String accountId;
   final VoidCallback onTap;
@@ -497,7 +530,7 @@ class _JournalCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final preview = entry.content.trim().replaceAll(RegExp(r'\s+'), ' ');
+    final preview = entry.content.trim().replaceAll(_previewWhitespace, ' ');
     return Card(
       clipBehavior: Clip.antiAlias,
       elevation: 0,
@@ -523,12 +556,11 @@ class _JournalCard extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
-                      DateFormat('MM月dd日 · E', 'zh_CN')
-                          .format(entry.occurredAt),
+                      _entryDateFormat.format(entry.occurredAt),
                       style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                            color: scheme.primary,
-                            fontWeight: FontWeight.w700,
-                          ),
+                        color: scheme.primary,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                     const SizedBox(height: 8),
                     Text(
@@ -537,9 +569,8 @@ class _JournalCard extends StatelessWidget {
                           : '无题',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.w800,
-                          ),
+                      style: Theme.of(context).textTheme.titleLarge
+                          ?.copyWith(fontWeight: FontWeight.w800),
                     ),
                     if (preview.isNotEmpty) ...[
                       const SizedBox(height: 8),
@@ -548,20 +579,25 @@ class _JournalCard extends StatelessWidget {
                         maxLines: 3,
                         overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: scheme.onSurfaceVariant,
-                              height: 1.45,
-                            ),
+                          color: scheme.onSurfaceVariant,
+                          height: 1.45,
+                        ),
                       ),
                     ],
                     if (entry.attachments.length > 1) ...[
                       const SizedBox(height: 10),
                       Row(
                         children: [
-                          Icon(Icons.collections_rounded,
-                              size: 15, color: scheme.onSurfaceVariant),
+                          Icon(
+                            Icons.collections_rounded,
+                            size: 15,
+                            color: scheme.onSurfaceVariant,
+                          ),
                           const SizedBox(width: 4),
-                          Text('${entry.attachments.length} 张图片',
-                              style: Theme.of(context).textTheme.labelSmall),
+                          Text(
+                            '${entry.attachments.length} 张图片',
+                            style: Theme.of(context).textTheme.labelSmall,
+                          ),
                         ],
                       ),
                     ],
@@ -571,8 +607,10 @@ class _JournalCard extends StatelessWidget {
             ),
             Padding(
               padding: const EdgeInsets.only(right: 12),
-              child: Icon(Icons.chevron_right_rounded,
-                  color: scheme.onSurfaceVariant),
+              child: Icon(
+                Icons.chevron_right_rounded,
+                color: scheme.onSurfaceVariant,
+              ),
             ),
           ],
         ),
@@ -595,6 +633,7 @@ class _PhotoWallCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final entryDateFormat = _photoWallDateFormat();
     return Card(
       clipBehavior: Clip.antiAlias,
       elevation: 0,
@@ -608,8 +647,11 @@ class _PhotoWallCard extends StatelessWidget {
                   ? Container(
                       color: scheme.primaryContainer,
                       alignment: Alignment.center,
-                      child: Icon(Icons.notes_rounded,
-                          size: 42, color: scheme.onPrimaryContainer),
+                      child: Icon(
+                        Icons.notes_rounded,
+                        size: 42,
+                        color: scheme.onPrimaryContainer,
+                      ),
                     )
                   : _JournalImage(
                       attachment: entry.attachments.first,
@@ -623,24 +665,23 @@ class _PhotoWallCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    DateFormat('MM月dd日').format(entry.occurredAt),
+                    entryDateFormat.format(entry.occurredAt),
                     style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: scheme.primary,
-                          fontWeight: FontWeight.w700,
-                        ),
+                      color: scheme.primary,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                   const SizedBox(height: 3),
                   Text(
                     entry.title?.trim().isNotEmpty == true
                         ? entry.title!.trim()
                         : entry.content.trim().isNotEmpty
-                            ? entry.content.trim()
-                            : '图片日记',
+                        ? entry.content.trim()
+                        : '图片日记',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w800,
-                        ),
+                    style: Theme.of(context).textTheme.titleSmall
+                        ?.copyWith(fontWeight: FontWeight.w800),
                   ),
                 ],
               ),
@@ -687,11 +728,11 @@ class _JournalImageState extends State<_JournalImage> {
   void _resolveAttachment() {
     _attachmentFuture =
         JournalMediaService.instance.provider(widget.attachment) == null
-            ? JournalStorage.instance.loadAttachment(
-                widget.attachment.id,
-                accountId: widget.accountId,
-              )
-            : null;
+        ? JournalStorage.instance.loadAttachment(
+            widget.attachment.id,
+            accountId: widget.accountId,
+          )
+        : null;
   }
 
   @override
@@ -728,10 +769,11 @@ class _JournalImageState extends State<_JournalImage> {
       );
     }
     return Image(
-        image: provider,
-        fit: widget.fit,
-        width: double.infinity,
-        height: double.infinity);
+      image: provider,
+      fit: widget.fit,
+      width: double.infinity,
+      height: double.infinity,
+    );
   }
 }
 
@@ -760,23 +802,24 @@ class _JournalEmptyState extends StatelessWidget {
                 shape: BoxShape.circle,
                 color: scheme.primaryContainer,
               ),
-              child: Icon(Icons.auto_stories_rounded,
-                  size: 52, color: scheme.onPrimaryContainer),
+              child: Icon(
+                Icons.auto_stories_rounded,
+                size: 52,
+                color: scheme.onPrimaryContainer,
+              ),
             ),
             const SizedBox(height: 24),
             Text(
               hasSearch ? '没有找到相关日记' : '今天不写也没关系',
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
+              style: Theme.of(context).textTheme.headlineSmall
+                  ?.copyWith(fontWeight: FontWeight.w800),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 10),
             Text(
               hasSearch ? '换个关键词试试吧' : '想记录的时候，随时回来就好。',
-              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    color: scheme.onSurfaceVariant,
-                  ),
+              style: Theme.of(context).textTheme.bodyLarge
+                  ?.copyWith(color: scheme.onSurfaceVariant),
               textAlign: TextAlign.center,
             ),
             if (hasSearch) ...[

@@ -56,9 +56,9 @@ class HabitSleepCoachingPlan {
     this.deviceId,
     int? createdAt,
     int? updatedAt,
-  })  : uuid = uuid ?? const Uuid().v4(),
-        createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch,
-        updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch;
+  }) : uuid = uuid ?? const Uuid().v4(),
+       createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch,
+       updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch;
 
   /// 账号名是当前客户端跨设备可获得的稳定标识；服务端仍以 user_id 隔离数据。
   static String stableUuidFor(String username) {
@@ -76,26 +76,26 @@ class HabitSleepCoachingPlan {
   }
 
   Map<String, dynamic> toJson() => {
-        'uuid': uuid,
-        'kind': kind,
-        'enabled': enabled ? 1 : 0,
-        'paused': paused ? 1 : 0,
-        'step_minutes': stepMinutes,
-        'stage_days': stageDays,
-        'started_logical_date': startedLogicalDate,
-        'baseline_bedtime_minute': baselineBedtimeMinute,
-        'baseline_wake_minute': baselineWakeMinute,
-        'baseline_sleep_minutes': baselineSleepMinutes,
-        'paused_stage_index': pausedStageIndex,
-        'paused_progress_days': pausedProgressDays,
-        'paused_logical_date': pausedLogicalDate,
-        'timezone_offset_minutes': timezoneOffsetMinutes,
-        'is_deleted': isDeleted ? 1 : 0,
-        'version': version,
-        'device_id': deviceId,
-        'created_at': createdAt,
-        'updated_at': updatedAt,
-      };
+    'uuid': uuid,
+    'kind': kind,
+    'enabled': enabled ? 1 : 0,
+    'paused': paused ? 1 : 0,
+    'step_minutes': stepMinutes,
+    'stage_days': stageDays,
+    'started_logical_date': startedLogicalDate,
+    'baseline_bedtime_minute': baselineBedtimeMinute,
+    'baseline_wake_minute': baselineWakeMinute,
+    'baseline_sleep_minutes': baselineSleepMinutes,
+    'paused_stage_index': pausedStageIndex,
+    'paused_progress_days': pausedProgressDays,
+    'paused_logical_date': pausedLogicalDate,
+    'timezone_offset_minutes': timezoneOffsetMinutes,
+    'is_deleted': isDeleted ? 1 : 0,
+    'version': version,
+    'device_id': deviceId,
+    'created_at': createdAt,
+    'updated_at': updatedAt,
+  };
 
   factory HabitSleepCoachingPlan.fromJson(Map<String, dynamic> json) {
     return HabitSleepCoachingPlan(
@@ -103,10 +103,15 @@ class HabitSleepCoachingPlan {
       kind: json['kind']?.toString() ?? planKind,
       enabled: _isTrue(json['enabled']),
       paused: _isTrue(json['paused']),
-      stepMinutes:
-          _clampInt(json['step_minutes'] ?? json['stepMinutes'], 15, 5, 60),
+      stepMinutes: _clampInt(
+        json['step_minutes'] ?? json['stepMinutes'],
+        15,
+        5,
+        60,
+      ),
       stageDays: _clampInt(json['stage_days'] ?? json['stageDays'], 4, 1, 14),
-      startedLogicalDate: json['started_logical_date']?.toString() ??
+      startedLogicalDate:
+          json['started_logical_date']?.toString() ??
           json['startedLogicalDate']?.toString(),
       baselineBedtimeMinute: _intOrNull(
         json['baseline_bedtime_minute'] ?? json['baselineBedtimeMinute'],
@@ -123,7 +128,8 @@ class HabitSleepCoachingPlan {
       pausedProgressDays: _intOrNull(
         json['paused_progress_days'] ?? json['pausedProgressDays'],
       ),
-      pausedLogicalDate: json['paused_logical_date']?.toString() ??
+      pausedLogicalDate:
+          json['paused_logical_date']?.toString() ??
           json['pausedLogicalDate']?.toString(),
       timezoneOffsetMinutes: _clampNullableInt(
         json['timezone_offset_minutes'] ?? json['timezoneOffsetMinutes'],

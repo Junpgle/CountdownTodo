@@ -52,9 +52,7 @@ void main() {
       startDate: '2026-01-01',
     );
     await tester.runAsync(() => FinanceStorage.saveRecurringRule(localRule));
-    await tester.pumpWidget(
-      const MaterialApp(home: FinanceAutomationScreen()),
-    );
+    await tester.pumpWidget(const MaterialApp(home: FinanceAutomationScreen()));
     await _waitFor(tester, () => find.text('本机房租规则').evaluate().isNotEmpty);
 
     final remoteRule = FinanceRecurringRule.fromMap(localRule.toMap())

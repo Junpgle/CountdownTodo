@@ -1,4 +1,5 @@
 import 'package:flutter/widgets.dart';
+
 import '../services/github_resource_service.dart';
 
 bool _isBrowserImagePath(String? path) {

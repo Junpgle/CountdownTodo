@@ -1,5 +1,7 @@
 import '../widgets/floating_glass_control.dart';
+
 import 'package:flutter/material.dart';
+
 import '../storage_service.dart';
 import '../services/api_service.dart';
 
@@ -114,7 +116,8 @@ class _LeaderboardListState extends State<_LeaderboardList> {
           var list = snapshot.data ?? [];
           if (list.isEmpty) {
             return const Center(
-                child: Text("暂无排名数据", style: TextStyle(color: Colors.grey)));
+              child: Text("暂无排名数据", style: TextStyle(color: Colors.grey)),
+            );
           }
 
           return ListView.separated(
@@ -135,26 +138,34 @@ class _LeaderboardListState extends State<_LeaderboardList> {
               // 兼容云端字段 (duration) 和 本地字段 (time)
               // API: {username, score, duration}
               // Local: {username, score, time}
-              String timeStr =
-                  (item['duration'] ?? item['time'] ?? 0).toString();
+              String timeStr = (item['duration'] ?? item['time'] ?? 0)
+                  .toString();
 
               return ListTile(
                 leading: CircleAvatar(
                   backgroundColor:
                       rankColor ?? Theme.of(context).colorScheme.primary,
-                  foregroundColor:
-                      rankColor != null ? Colors.white : Colors.black87,
-                  child: Text("${i + 1}",
-                      style: const TextStyle(fontWeight: FontWeight.bold)),
+                  foregroundColor: rankColor != null
+                      ? Colors.white
+                      : Colors.black87,
+                  child: Text(
+                    "${i + 1}",
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
                 ),
-                title: Text(item['username'] ?? 'Unknown',
-                    style: const TextStyle(fontWeight: FontWeight.bold)),
+                title: Text(
+                  item['username'] ?? 'Unknown',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
                 subtitle: Text("用时: $timeStr秒"),
-                trailing: Text("${item['score']}分",
-                    style: const TextStyle(
-                        fontSize: 20,
-                        color: Colors.indigo,
-                        fontWeight: FontWeight.bold)),
+                trailing: Text(
+                  "${item['score']}分",
+                  style: const TextStyle(
+                    fontSize: 20,
+                    color: Colors.indigo,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               );
             },
           );
@@ -165,9 +176,30 @@ class _LeaderboardListState extends State<_LeaderboardList> {
 }
 
 // --- 历史记录页面 ---
-class HistoryScreen extends StatelessWidget {
+class HistoryScreen extends StatefulWidget {
   final String username;
   const HistoryScreen({super.key, required this.username});
+
+  @override
+  State<HistoryScreen> createState() => _HistoryScreenState();
+}
+
+class _HistoryScreenState extends State<HistoryScreen> {
+  late Future<List<String>> _historyFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _historyFuture = StorageService.getHistory(widget.username);
+  }
+
+  @override
+  void didUpdateWidget(HistoryScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.username != widget.username) {
+      _historyFuture = StorageService.getHistory(widget.username);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -175,12 +207,13 @@ class HistoryScreen extends StatelessWidget {
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: FloatingGlassAppBar(
-          flexibleSpace: const FloatingGlassTopBarBackground(),
-          title: Text("$username 的答题记录")),
+        flexibleSpace: const FloatingGlassTopBarBackground(),
+        title: Text("${widget.username} 的答题记录"),
+      ),
       body: FloatingGlassTopBarContentFade(
         topBarHeight: topBarHeight,
         child: FutureBuilder<List<String>>(
-          future: StorageService.getHistory(username),
+          future: _historyFuture,
           builder: (context, snapshot) {
             if (!snapshot.hasData) {
               return const Center(child: CircularProgressIndicator());
@@ -197,8 +230,10 @@ class HistoryScreen extends StatelessWidget {
                   margin: const EdgeInsets.only(bottom: 10),
                   child: Padding(
                     padding: const EdgeInsets.all(12.0),
-                    child: Text(list[i],
-                        style: const TextStyle(fontSize: 14, height: 1.5)),
+                    child: Text(
+                      list[i],
+                      style: const TextStyle(fontSize: 14, height: 1.5),
+                    ),
                   ),
                 );
               },

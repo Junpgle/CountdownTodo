@@ -29,24 +29,23 @@ void main() {
         DateTime(2031, 7, 25),
       );
     });
-    test('weekly summer classes are expanded through the inclusive end date',
-        () {
-      final dates = FixedScheduleRecurrenceService.occurrenceDates(
-        startDate: DateTime(2026, 7, 7),
-        endDate: DateTime(2026, 7, 28),
-        recurrence: RecurrenceType.weekly,
-      );
+    test(
+      'weekly summer classes are expanded through the inclusive end date',
+      () {
+        final dates = FixedScheduleRecurrenceService.occurrenceDates(
+          startDate: DateTime(2026, 7, 7),
+          endDate: DateTime(2026, 7, 28),
+          recurrence: RecurrenceType.weekly,
+        );
 
-      expect(
-        dates,
-        [
+        expect(dates, [
           DateTime(2026, 7, 7),
           DateTime(2026, 7, 14),
           DateTime(2026, 7, 21),
           DateTime(2026, 7, 28),
-        ],
-      );
-    });
+        ]);
+      },
+    );
 
     test('daily dates stay unique through daylight-saving fall back', () {
       final dates = FixedScheduleRecurrenceService.occurrenceDates(
@@ -71,21 +70,19 @@ void main() {
         customIntervalDays: 3,
       );
 
-      expect(
-        dates,
-        [
-          DateTime(2026, 7, 1),
-          DateTime(2026, 7, 4),
-          DateTime(2026, 7, 7),
-          DateTime(2026, 7, 10),
-        ],
-      );
+      expect(dates, [
+        DateTime(2026, 7, 1),
+        DateTime(2026, 7, 4),
+        DateTime(2026, 7, 7),
+        DateTime(2026, 7, 10),
+      ]);
     });
 
     test('infers custom intervals by calendar day across daylight saving', () {
-      final interval = FixedScheduleRecurrenceService.inferCustomIntervalDays(
-        [DateTime(2026, 3, 9), DateTime(2026, 3, 7)],
-      );
+      final interval = FixedScheduleRecurrenceService.inferCustomIntervalDays([
+        DateTime(2026, 3, 9),
+        DateTime(2026, 3, 7),
+      ]);
 
       expect(interval, 2);
     });
@@ -109,10 +106,9 @@ void main() {
         '2026-07-27',
         '2026-07-28',
       ]);
-      expect(
-        result.active.map((item) => item.recurrence).toSet(),
-        {RecurrenceType.weekdays},
-      );
+      expect(result.active.map((item) => item.recurrence).toSet(), {
+        RecurrenceType.weekdays,
+      });
     });
 
     test('custom interval metadata is copied to every occurrence', () {
@@ -130,10 +126,7 @@ void main() {
         customIntervalDays: 3,
       );
 
-      expect(
-        result.active.map((item) => item.customIntervalDays).toSet(),
-        {3},
-      );
+      expect(result.active.map((item) => item.customIntervalDays).toSet(), {3});
     });
 
     test('oversized recurrence reports an error instead of truncating', () {
@@ -141,9 +134,7 @@ void main() {
         () => FixedScheduleRecurrenceService.occurrenceDates(
           startDate: DateTime(2026, 1, 1),
           endDate: DateTime(2026, 1, 1).add(
-            const Duration(
-              days: FixedScheduleRecurrenceService.maxOccurrences,
-            ),
+            const Duration(days: FixedScheduleRecurrenceService.maxOccurrences),
           ),
           recurrence: RecurrenceType.daily,
         ),
@@ -169,16 +160,21 @@ void main() {
       );
 
       expect(result.active, hasLength(3));
-      expect(
-          result.active.map((item) => item.teamUuid).toSet(), {'family-team'});
-      expect(result.active.map((item) => item.recurrenceSeriesId).toSet(),
-          {'summer-class'});
-      expect(result.active.map((item) => item.recurrence).toSet(),
-          {RecurrenceType.weekly});
+      expect(result.active.map((item) => item.teamUuid).toSet(), {
+        'family-team',
+      });
+      expect(result.active.map((item) => item.recurrenceSeriesId).toSet(), {
+        'summer-class',
+      });
+      expect(result.active.map((item) => item.recurrence).toSet(), {
+        RecurrenceType.weekly,
+      });
       expect(
         result.active
-            .map((item) =>
-                DateTime.fromMillisecondsSinceEpoch(item.startTime!).hour)
+            .map(
+              (item) =>
+                  DateTime.fromMillisecondsSinceEpoch(item.startTime!).hour,
+            )
             .toSet(),
         {9},
       );

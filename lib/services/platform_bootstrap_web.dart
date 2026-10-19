@@ -15,7 +15,5 @@ class PlatformBootstrap {
 
   static Future<void> initMobileDownloader() async {}
 
-  static void waitUntilDesktopReady({
-    required VoidCallback onReady,
-  }) {}
+  static void waitUntilDesktopReady({required VoidCallback onReady}) {}
 }

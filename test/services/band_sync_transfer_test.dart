@@ -19,11 +19,7 @@ void main() {
       MethodCall(method, arguments),
     );
     await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .handlePlatformMessage(
-      channel.name,
-      message,
-      (ByteData? _) {},
-    );
+        .handlePlatformMessage(channel.name, message, (ByteData? _) {});
   }
 
   setUp(() async {
@@ -33,16 +29,16 @@ void main() {
     onPacket = null;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (call) async {
-      if (call.method == 'sendMessage') {
-        final payload = jsonDecode(
-          (call.arguments as Map)['data'] as String,
-        ) as Map<String, dynamic>;
-        packets.add(payload);
-        onPacket?.call(payload);
-        return payload['batchNum'] != failedBatch;
-      }
-      return true;
-    });
+          if (call.method == 'sendMessage') {
+            final payload = jsonDecode(
+              (call.arguments as Map)['data'] as String,
+            ) as Map<String, dynamic>;
+            packets.add(payload);
+            onPacket?.call(payload);
+            return payload['batchNum'] != failedBatch;
+          }
+          return true;
+        });
     await BandSyncService.init();
     await BandSyncService.setServiceEnabled(true);
     await sendNativeEvent('onDeviceConnected', {
@@ -102,11 +98,12 @@ void main() {
     }
 
     expect(
-        await BandSyncService.syncTodos([
-          {'id': 'small'},
-          oversized
-        ]),
-        isFalse);
+      await BandSyncService.syncTodos([
+        {'id': 'small'},
+        oversized,
+      ]),
+      isFalse,
+    );
     expect(packets, isEmpty);
   });
 
@@ -124,7 +121,7 @@ void main() {
     final packetSent = Completer<void>();
     onPacket = (_) => packetSent.complete();
     final syncing = BandSyncService.syncTodos([
-      {'id': 'one'}
+      {'id': 'one'},
     ]);
     await packetSent.future;
     final transferId = packets.single['transferId'];
@@ -156,7 +153,7 @@ void main() {
     final packetSent = Completer<void>();
     onPacket = (_) => packetSent.complete();
     final syncing = BandSyncService.syncTodos([
-      {'id': 'one'}
+      {'id': 'one'},
     ]);
     await packetSent.future;
 

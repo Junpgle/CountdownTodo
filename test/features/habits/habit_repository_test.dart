@@ -20,15 +20,9 @@ void main() {
     });
 
     test('越界分钟数被钳制在 0..1439', () {
-      final under = HabitRepository.reminderStartFor(
-        DateTime(2026, 8, 5),
-        -10,
-      );
+      final under = HabitRepository.reminderStartFor(DateTime(2026, 8, 5), -10);
       expect(under, DateTime(2026, 8, 5, 0, 0));
-      final over = HabitRepository.reminderStartFor(
-        DateTime(2026, 8, 5),
-        1500,
-      );
+      final over = HabitRepository.reminderStartFor(DateTime(2026, 8, 5), 1500);
       expect(over, DateTime(2026, 8, 5, 23, 59));
     });
   });

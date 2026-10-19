@@ -16,7 +16,8 @@ int? financeOccurrenceTimestampForDate(
   String targetDate,
 ) {
   final occurrence = transaction.occurrenceLocalTime;
-  if (occurrence == null || dateKey(occurrence) != transaction.transactionDate) {
+  if (occurrence == null ||
+      dateKey(occurrence) != transaction.transactionDate) {
     return null;
   }
   final date = dateFromKey(targetDate);
@@ -184,7 +185,8 @@ abstract final class FinanceRepository {
       if (event.eventAt > nowAt || !isFinanceDateKey(event.transactionDate)) {
         continue;
       }
-      if (earliestDate == null || event.transactionDate.compareTo(earliestDate) < 0) {
+      if (earliestDate == null ||
+          event.transactionDate.compareTo(earliestDate) < 0) {
         earliestDate = event.transactionDate;
       }
     }
@@ -202,8 +204,10 @@ abstract final class FinanceRepository {
     final asOfDate = DateTime.fromMillisecondsSinceEpoch(asOfAt);
     final asOfMonthKey = financeMonthKey(asOfDate);
     const snapshotTimezoneDriftMs = 28 * 60 * 60 * 1000;
-    final nextMonthStartAt =
-        DateTime(asOfDate.year, asOfDate.month + 1).millisecondsSinceEpoch;
+    final nextMonthStartAt = DateTime(
+      asOfDate.year,
+      asOfDate.month + 1,
+    ).millisecondsSinceEpoch;
     final latestByMethod = <String, FinanceBudget>{};
     for (final budget in budgets) {
       final paymentMethodUuid = budget.paymentMethodUuid;
@@ -265,40 +269,82 @@ abstract final class FinanceRepository {
     if (paymentMethodUuid == null || paymentMethodUuid.isEmpty) {
       throw ArgumentError.value(snapshot, 'snapshot', '必须是付款方式余额快照');
     }
-    final snapshotAt = snapshot.effectiveBalanceSnapshotAt;
-    final transactionsAfterSnapshot = transactions.where((transaction) {
-      if (transaction.paymentMethodUuid != paymentMethodUuid ||
-          loanInterestTransactionUuids.contains(transaction.uuid)) {
-        return false;
+    return paymentMethodBalancesAt(
+      snapshots: [snapshot],
+      transactions: transactions,
+      loanRepayments: loanRepayments,
+      loanInterestTransactionUuids: loanInterestTransactionUuids,
+      asOfAt: asOfAt,
+    )[paymentMethodUuid]!;
+  }
+
+  /// Reconstructs multiple account balances while visiting each transaction
+  /// and repayment only once. Callers should pass the latest snapshot for
+  /// each payment method; if duplicates are present, the last one wins.
+  static Map<String, int> paymentMethodBalancesAt({
+    required Iterable<FinanceBudget> snapshots,
+    required Iterable<FinanceTransaction> transactions,
+    required Iterable<FinanceLoanInstallment> loanRepayments,
+    required Set<String> loanInterestTransactionUuids,
+    required int asOfAt,
+  }) {
+    final snapshotsByMethod = <String, FinanceBudget>{};
+    for (final snapshot in snapshots) {
+      final paymentMethodUuid = snapshot.paymentMethodUuid;
+      if (paymentMethodUuid == null || paymentMethodUuid.isEmpty) {
+        throw ArgumentError.value(snapshot, 'snapshot', '必须是付款方式余额快照');
       }
+      snapshotsByMethod[paymentMethodUuid] = snapshot;
+    }
+    if (snapshotsByMethod.isEmpty) return const <String, int>{};
+
+    final balanceChanges = <String, int>{};
+    for (final transaction in transactions) {
+      final paymentMethodUuid = transaction.paymentMethodUuid;
+      final snapshot = snapshotsByMethod[paymentMethodUuid];
+      if (snapshot == null ||
+          loanInterestTransactionUuids.contains(transaction.uuid)) {
+        continue;
+      }
+      final snapshotAt = snapshot.effectiveBalanceSnapshotAt;
       final eventAt = transaction.balanceEventAt(snapshotAt: snapshotAt);
-      return eventAt > snapshotAt && eventAt <= asOfAt;
-    });
-    final balanceChange =
-        summarizePaymentMethodBalanceChanges(
-          transactionsAfterSnapshot,
-        )[paymentMethodUuid] ??
-        0;
-    final repayments = loanRepayments
-        .where((item) {
-          final paidAt = item.paidAt;
-          if (paidAt == null || item.paymentMethodUuid != paymentMethodUuid) {
-            return false;
-          }
-          // Match transaction.balanceEventAt: when a repayment is recorded
-          // after a balance snapshot in the same minute, its paidAt can equal
-          // the snapshot time because the picker stores minute precision.
-          // Use the repayment edit time so the new cash movement is applied
-          // only from when the record became available.
-          final eventAt = paidAt <= snapshotAt &&
-                  paidAt ~/ 60000 == snapshotAt ~/ 60000 &&
-                  item.updatedAt > snapshotAt
-              ? item.updatedAt
-              : paidAt;
-          return eventAt > snapshotAt && eventAt <= asOfAt;
-        })
-        .fold<int>(0, (sum, item) => sum + item.paymentMinor);
-    return snapshot.amountMinor + balanceChange - repayments;
+      if (eventAt <= snapshotAt || eventAt > asOfAt) continue;
+      final amount = transaction.type == FinanceTransactionType.expense
+          ? -transaction.amountMinor
+          : transaction.amountMinor;
+      balanceChanges[paymentMethodUuid!] =
+          (balanceChanges[paymentMethodUuid] ?? 0) + amount;
+    }
+
+    final repaymentChanges = <String, int>{};
+    for (final repayment in loanRepayments) {
+      final paymentMethodUuid = repayment.paymentMethodUuid;
+      final snapshot = snapshotsByMethod[paymentMethodUuid];
+      final paidAt = repayment.paidAt;
+      if (snapshot == null || paidAt == null) continue;
+      final snapshotAt = snapshot.effectiveBalanceSnapshotAt;
+      // Match transaction.balanceEventAt: when a repayment is recorded after
+      // a balance snapshot in the same minute, its paidAt can equal the
+      // snapshot time because the picker stores minute precision. Use the
+      // repayment edit time so it applies only from when it became available.
+      final eventAt =
+          paidAt <= snapshotAt &&
+              paidAt ~/ 60000 == snapshotAt ~/ 60000 &&
+              repayment.updatedAt > snapshotAt
+          ? repayment.updatedAt
+          : paidAt;
+      if (eventAt <= snapshotAt || eventAt > asOfAt) continue;
+      repaymentChanges[paymentMethodUuid!] =
+          (repaymentChanges[paymentMethodUuid] ?? 0) + repayment.paymentMinor;
+    }
+
+    return {
+      for (final entry in snapshotsByMethod.entries)
+        entry.key:
+            entry.value.amountMinor +
+            (balanceChanges[entry.key] ?? 0) -
+            (repaymentChanges[entry.key] ?? 0),
+    };
   }
 
   /// Returns net monthly spending grouped by payment method; linked refunds
@@ -413,10 +459,22 @@ abstract final class FinanceRepository {
   static Future<List<FinanceLoanInstallment>> getLoanInstallments(
     String loanUuid, {
     bool includeDeleted = false,
+    String? fromDueDate,
+    String? toDueDate,
   }) {
     return FinanceStorage.getLoanInstallments(
       loanUuid,
       includeDeleted: includeDeleted,
+      fromDueDate: fromDueDate,
+      toDueDate: toDueDate,
+    );
+  }
+
+  static Future<Map<String, List<FinanceLoanInstallment>>>
+  getLoanInstallmentsForActiveLoans({String? fromDueDate, String? toDueDate}) {
+    return FinanceStorage.getLoanInstallmentsForActiveLoans(
+      fromDueDate: fromDueDate,
+      toDueDate: toDueDate,
     );
   }
 
@@ -617,10 +675,7 @@ abstract final class FinanceRepository {
         final category = categories[transaction.categoryUuid];
         final payment = paymentMethods[transaction.paymentMethodUuid];
         final paymentLabel = payment != null
-            ? '${payment.icon} ${financePaymentMethodDisplayName(
-                payment,
-                paymentMethods.values,
-              )}'
+            ? '${payment.icon} ${financePaymentMethodDisplayName(payment, paymentMethods.values)}'
             : transaction.paymentMethodUuid?.trim().isNotEmpty == true
             ? switch (transaction.type) {
                 FinanceTransactionType.expense => '已删除或未知付款方式',
@@ -641,10 +696,7 @@ abstract final class FinanceRepository {
                     transaction.categoryUuid,
                     categories.values,
                   )
-                : '${category.icon} ${financeCategoryReferenceDisplayName(
-                    transaction.categoryUuid,
-                    categories.values,
-                  )}',
+                : '${category.icon} ${financeCategoryReferenceDisplayName(transaction.categoryUuid, categories.values)}',
           ),
           sanitizeFinanceCsvText(paymentLabel),
           sanitizeFinanceCsvText(transaction.merchant ?? ''),
@@ -689,12 +741,18 @@ String sanitizeFinanceCsvText(String value) {
 }
 
 /// 将用户输入的人民币金额转换为分，拒绝负数和超过两位小数的值。
+final RegExp _financeAmountPlainPattern = RegExp(r'^\d+(\.\d{0,2})?$');
+final RegExp _financeAmountThousandsPattern = RegExp(
+  r'^\d{1,3}(,\d{3})+(\.\d{0,2})?$',
+);
+final RegExp _financeAmountTrimZeroCentsPattern = RegExp(r'\.00$');
+final NumberFormat _financeWholeAmountFormat = NumberFormat('#,##0', 'zh_CN');
+
 int? parseFinanceAmount(String raw, {bool allowZero = false}) {
   final input = raw.trim();
-  final validNumber = RegExp(r'^\d+(\.\d{0,2})?$');
-  final validThousands = RegExp(r'^\d{1,3}(,\d{3})+(\.\d{0,2})?$');
   if (input.isEmpty ||
-      (!validNumber.hasMatch(input) && !validThousands.hasMatch(input))) {
+      (!_financeAmountPlainPattern.hasMatch(input) &&
+          !_financeAmountThousandsPattern.hasMatch(input))) {
     return null;
   }
   final value = input.replaceAll(',', '');
@@ -713,7 +771,7 @@ String formatFinanceAmount(int amountMinor, {bool withSymbol = true}) {
   final absolute = amountMinor.abs();
   final whole = absolute ~/ 100;
   final cents = (absolute % 100).toString().padLeft(2, '0');
-  final groupedWhole = NumberFormat('#,##0', 'zh_CN').format(whole);
+  final groupedWhole = _financeWholeAmountFormat.format(whole);
   final value = '$groupedWhole.$cents';
   final sign = amountMinor < 0 ? '-' : '';
   return withSymbol ? '$sign¥$value' : '$sign$value';
@@ -722,7 +780,7 @@ String formatFinanceAmount(int amountMinor, {bool withSymbol = true}) {
 String formatFinanceAmountInput(int amountMinor) => formatFinanceAmount(
   amountMinor,
   withSymbol: false,
-).replaceFirst(RegExp(r'\.00$'), '');
+).replaceFirst(_financeAmountTrimZeroCentsPattern, '');
 
 String formatSignedFinanceAmount(int amountMinor, FinanceTransactionType type) {
   return '${type.signedPrefix}${formatFinanceAmount(amountMinor)}';

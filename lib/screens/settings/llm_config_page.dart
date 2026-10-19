@@ -482,8 +482,8 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
     // identifies a provider, use it for backward-compatible migration.
     final savedTextProvider =
         configProvider == 'zhipu' && providerFromConfigUrl.isNotEmpty
-            ? providerFromConfigUrl
-            : configProvider;
+        ? providerFromConfigUrl
+        : configProvider;
     final savedVisionProvider = config?.visionProvider ?? '';
 
     if (config != null) {
@@ -642,11 +642,11 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
   void _setFetchedProviderModels(String provider, List<String> modelIds) {
     final normalized =
         modelIds
-        .map((id) => id.trim())
-        .where((id) => id.isNotEmpty)
-        .toSet()
-        .toList()
-      ..sort();
+            .map((id) => id.trim())
+            .where((id) => id.isNotEmpty)
+            .toSet()
+            .toList()
+          ..sort();
     _fetchedTextModelsByProvider[provider] = normalized
         .map(
           (id) => TextModelInfo(
@@ -1063,7 +1063,7 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
               children: [
                 Text(
                   name,
-                    style: const TextStyle(
+                  style: const TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 15,
                   ),
@@ -1079,14 +1079,14 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
                   children: features
                       .map(
                         (f) => Container(
-                            padding: const EdgeInsets.symmetric(
+                          padding: const EdgeInsets.symmetric(
                             horizontal: 6,
                             vertical: 2,
                           ),
-                            decoration: BoxDecoration(
-                              color: color.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
+                          decoration: BoxDecoration(
+                            color: color.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
                           child: Text(
                             f,
                             style: TextStyle(fontSize: 11, color: color),
@@ -1262,7 +1262,7 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
               const SizedBox(width: 8),
               Text(
                 name,
-                  style: TextStyle(
+                style: TextStyle(
                   fontWeight: FontWeight.w600,
                   fontSize: 14,
                   color: color,
@@ -1354,7 +1354,7 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
               const SizedBox(width: 8),
               Text(
                 'NVIDIA NIM',
-                  style: TextStyle(
+                style: TextStyle(
                   fontWeight: FontWeight.w600,
                   fontSize: 14,
                   color: color,
@@ -1508,23 +1508,23 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
               children: models
                   .map(
                     (id) => ListTile(
-                        dense: true,
-                        title: Text(id, style: const TextStyle(fontSize: 13)),
-                        trailing: TextButton(
-                          onPressed: () {
-                            Navigator.pop(ctx);
-                            setState(() {
-                              if (target == _ModelSelectionTarget.text) {
-                                _selectedTextModel = id;
-                                _selectedTextModelProvider = provider;
-                              } else {
-                                _selectedVisionModel = id;
-                                _selectedVisionModelProvider = provider;
-                              }
-                            });
-                          },
-                          child: const Text('选用'),
-                        ),
+                      dense: true,
+                      title: Text(id, style: const TextStyle(fontSize: 13)),
+                      trailing: TextButton(
+                        onPressed: () {
+                          Navigator.pop(ctx);
+                          setState(() {
+                            if (target == _ModelSelectionTarget.text) {
+                              _selectedTextModel = id;
+                              _selectedTextModelProvider = provider;
+                            } else {
+                              _selectedVisionModel = id;
+                              _selectedVisionModelProvider = provider;
+                            }
+                          });
+                        },
+                        child: const Text('选用'),
+                      ),
                     ),
                   )
                   .toList(),
@@ -1814,9 +1814,9 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
         // 标题
         Text(
           title,
-            style: TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: 14,
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            fontSize: 14,
             color: Colors.grey[800],
           ),
         ),
@@ -1857,11 +1857,11 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
                     const SizedBox(height: 6),
                     Text(
                       name,
-                        style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: isSelected
-                                ? FontWeight.bold
-                                : FontWeight.normal,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: isSelected
+                            ? FontWeight.bold
+                            : FontWeight.normal,
                         color: isSelected ? color : Colors.grey[700],
                       ),
                     ),
@@ -1909,13 +1909,13 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
                 children: customModels
                     .map<Widget>(
                       (m) => _buildCustomModelChip(
-                          value: m.id,
-                          name: m.name,
-                          modelId: m.modelId,
-                          isSelected: selectedModelId == m.id,
-                          onTap: () => onCustomTap(m),
-                          onEdit: () => onCustomEdit(m),
-                          onDelete: () => onCustomDelete(m),
+                        value: m.id,
+                        name: m.name,
+                        modelId: m.modelId,
+                        isSelected: selectedModelId == m.id,
+                        onTap: () => onCustomTap(m),
+                        onEdit: () => onCustomEdit(m),
+                        onDelete: () => onCustomDelete(m),
                       ),
                     )
                     .toList(),
@@ -1943,38 +1943,38 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
               items: models
                   .map(
                     (m) => DropdownMenuItem<String>(
-                        value: m.id,
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                m.name,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(fontSize: 13),
-                              ),
+                      value: m.id,
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              m.name,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 13),
                             ),
-                            if (m.isPaid) ...[
-                              const SizedBox(width: 6),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
+                          ),
+                          if (m.isPaid) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
                                 horizontal: 4,
                                 vertical: 1,
                               ),
-                                decoration: BoxDecoration(
-                                  color: Colors.orange[100],
-                                  borderRadius: BorderRadius.circular(3),
-                                ),
+                              decoration: BoxDecoration(
+                                color: Colors.orange[100],
+                                borderRadius: BorderRadius.circular(3),
+                              ),
                               child: Text(
                                 '付费',
-                                    style: TextStyle(
-                                        fontSize: 9,
+                                style: TextStyle(
+                                  fontSize: 9,
                                   color: Colors.orange[800],
                                 ),
                               ),
-                              ),
-                            ],
+                            ),
                           ],
-                        ),
+                        ],
+                      ),
                     ),
                   )
                   .toList(),
@@ -1988,8 +1988,8 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
                 (m) => m.id == selectedModelId,
               );
               return _buildModelInfo(
-                  selected.description,
-                  selected.context ?? selected.context,
+                selected.description,
+                selected.context ?? selected.context,
                 selected.maxOutput ?? selected.maxOutput,
               );
             }(),
@@ -2068,16 +2068,16 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
                 children: [
                   Text(
                     name,
-                      style: const TextStyle(
+                    style: const TextStyle(
                       fontWeight: FontWeight.w600,
                       fontSize: 13,
                     ),
                   ),
                   Text(
                     modelId,
-                      style: TextStyle(
-                          fontSize: 11,
-                          color: Colors.grey[500],
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.grey[500],
                       fontFamily: 'monospace',
                     ),
                   ),
@@ -2121,113 +2121,113 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
     final content = _isLoading
         ? const Center(child: CircularProgressIndicator())
         : _accessDenied
-            ? _buildAccessDeniedBody(context)
-            : LayoutBuilder(
-                builder: (context, constraints) {
-                  final wide = _useWideLayout(constraints.maxWidth);
-                  return Center(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 1180),
-                      child: MediaQuery.removePadding(
-                        context: context,
-                        removeTop: true,
-                        child: Stepper(
-                          type: wide
-                              ? StepperType.horizontal
-                              : StepperType.vertical,
-                          margin: wide
-                              ? const EdgeInsets.fromLTRB(24, 12, 24, 24)
-                              : null,
-                          currentStep: _currentStep,
-                          onStepContinue: () {
-                            if (_currentStep < 2) {
-                              setState(() => _currentStep++);
-                            } else {
-                              _saveConfig();
-                            }
-                          },
-                          onStepCancel: () {
-                            if (_currentStep > 0) {
-                              setState(() => _currentStep--);
-                            }
-                          },
-                          onStepTapped: (step) {
-                            // 只允许点击已完成的步骤或当前步骤
-                            if (step <= _currentStep) {
-                              setState(() => _currentStep = step);
-                            }
-                          },
-                          controlsBuilder: (context, details) {
-                            return Padding(
-                              padding: const EdgeInsets.only(top: 20),
-                              child: Row(
-                                mainAxisAlignment: wide
-                                    ? MainAxisAlignment.end
-                                    : MainAxisAlignment.start,
-                                children: [
-                                  if (_currentStep < 2)
-                                    FilledButton.icon(
-                                      onPressed: details.onStepContinue,
+        ? _buildAccessDeniedBody(context)
+        : LayoutBuilder(
+            builder: (context, constraints) {
+              final wide = _useWideLayout(constraints.maxWidth);
+              return Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 1180),
+                  child: MediaQuery.removePadding(
+                    context: context,
+                    removeTop: true,
+                    child: Stepper(
+                      type: wide
+                          ? StepperType.horizontal
+                          : StepperType.vertical,
+                      margin: wide
+                          ? const EdgeInsets.fromLTRB(24, 12, 24, 24)
+                          : null,
+                      currentStep: _currentStep,
+                      onStepContinue: () {
+                        if (_currentStep < 2) {
+                          setState(() => _currentStep++);
+                        } else {
+                          _saveConfig();
+                        }
+                      },
+                      onStepCancel: () {
+                        if (_currentStep > 0) {
+                          setState(() => _currentStep--);
+                        }
+                      },
+                      onStepTapped: (step) {
+                        // 只允许点击已完成的步骤或当前步骤
+                        if (step <= _currentStep) {
+                          setState(() => _currentStep = step);
+                        }
+                      },
+                      controlsBuilder: (context, details) {
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 20),
+                          child: Row(
+                            mainAxisAlignment: wide
+                                ? MainAxisAlignment.end
+                                : MainAxisAlignment.start,
+                            children: [
+                              if (_currentStep < 2)
+                                FilledButton.icon(
+                                  onPressed: details.onStepContinue,
                                   icon: const Icon(
                                     Icons.arrow_forward,
                                     size: 18,
                                   ),
-                                      label: const Text('下一步'),
-                                    )
-                                  else
-                                    FilledButton.icon(
-                                      onPressed: _isTesting
-                                          ? null
-                                          : details.onStepContinue,
-                                      icon: const Icon(Icons.save, size: 18),
-                                      label: const Text('保存配置'),
-                                    ),
-                                  if (_currentStep > 0) ...[
-                                    const SizedBox(width: 12),
-                                    OutlinedButton.icon(
-                                      onPressed: details.onStepCancel,
+                                  label: const Text('下一步'),
+                                )
+                              else
+                                FilledButton.icon(
+                                  onPressed: _isTesting
+                                      ? null
+                                      : details.onStepContinue,
+                                  icon: const Icon(Icons.save, size: 18),
+                                  label: const Text('保存配置'),
+                                ),
+                              if (_currentStep > 0) ...[
+                                const SizedBox(width: 12),
+                                OutlinedButton.icon(
+                                  onPressed: details.onStepCancel,
                                   icon: const Icon(Icons.arrow_back, size: 18),
-                                      label: const Text('上一步'),
-                                    ),
-                                  ],
-                                ],
-                              ),
-                            );
-                          },
-                          steps: [
-                            Step(
-                              title: const Text('了解服务商'),
-                              content: _buildStep1Provider(),
-                              isActive: _currentStep >= 0,
-                              state: _currentStep > 0
-                                  ? StepState.complete
-                                  : StepState.indexed,
-                            ),
-                            Step(
-                              title: const Text('配置 API Key'),
-                              content: _buildStep2ApiKey(),
-                              isActive: _currentStep >= 1,
-                              state: _currentStep > 1
-                                  ? StepState.complete
-                                  : _currentStep == 1
-                                      ? StepState.indexed
-                                      : StepState.disabled,
-                            ),
-                            Step(
-                              title: const Text('选择模型'),
-                              content: _buildStep3Models(),
-                              isActive: _currentStep >= 2,
-                              state: _currentStep == 2
-                                  ? StepState.indexed
-                                  : StepState.disabled,
-                            ),
-                          ],
+                                  label: const Text('上一步'),
+                                ),
+                              ],
+                            ],
+                          ),
+                        );
+                      },
+                      steps: [
+                        Step(
+                          title: const Text('了解服务商'),
+                          content: _buildStep1Provider(),
+                          isActive: _currentStep >= 0,
+                          state: _currentStep > 0
+                              ? StepState.complete
+                              : StepState.indexed,
                         ),
-                      ),
+                        Step(
+                          title: const Text('配置 API Key'),
+                          content: _buildStep2ApiKey(),
+                          isActive: _currentStep >= 1,
+                          state: _currentStep > 1
+                              ? StepState.complete
+                              : _currentStep == 1
+                              ? StepState.indexed
+                              : StepState.disabled,
+                        ),
+                        Step(
+                          title: const Text('选择模型'),
+                          content: _buildStep3Models(),
+                          isActive: _currentStep >= 2,
+                          state: _currentStep == 2
+                              ? StepState.indexed
+                              : StepState.disabled,
+                        ),
+                      ],
                     ),
-                  );
-                },
+                  ),
+                ),
               );
+            },
+          );
 
     return Scaffold(
       extendBodyBehindAppBar: standalone,
@@ -2530,27 +2530,27 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
                     runSpacing: 6,
                     children:
                         const {
-                      'image': '图片',
-                      'audio': '音频',
-                      'video': '视频',
-                      'file': 'PDF/文件',
-                    }.entries.map((entry) {
-                      return FilterChip(
-                        label: Text(entry.value),
-                        selected: selectedModalities.contains(entry.key),
-                        onSelected: entry.key == 'image'
-                            ? null
-                            : (selected) {
-                                setDialogState(() {
-                                  if (selected) {
-                                    selectedModalities.add(entry.key);
-                                  } else {
-                                    selectedModalities.remove(entry.key);
-                                  }
-                                });
-                              },
-                      );
-                    }).toList(),
+                          'image': '图片',
+                          'audio': '音频',
+                          'video': '视频',
+                          'file': 'PDF/文件',
+                        }.entries.map((entry) {
+                          return FilterChip(
+                            label: Text(entry.value),
+                            selected: selectedModalities.contains(entry.key),
+                            onSelected: entry.key == 'image'
+                                ? null
+                                : (selected) {
+                                    setDialogState(() {
+                                      if (selected) {
+                                        selectedModalities.add(entry.key);
+                                      } else {
+                                        selectedModalities.remove(entry.key);
+                                      }
+                                    });
+                                  },
+                          );
+                        }).toList(),
                   ),
                   const SizedBox(height: 6),
                   const Text(

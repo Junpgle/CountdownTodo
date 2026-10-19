@@ -1,8 +1,10 @@
 import '../../widgets/floating_glass_control.dart';
 import '../../widgets/management_page.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 import '../../storage_service.dart';
 import '../../widgets/optional_liquid_glass_surface.dart';
 import '../settings/batch_tag_page.dart';
@@ -45,9 +47,9 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
     super.dispose();
   }
 
-  bool _matches(PomodoroTag tag) => tag.name
-      .toLowerCase()
-      .contains(_searchController.text.trim().toLowerCase());
+  bool _matches(PomodoroTag tag) => tag.name.toLowerCase().contains(
+    _searchController.text.trim().toLowerCase(),
+  );
 
   PomodoroTag? _editingTag;
   bool _isAddingNewTag = false;
@@ -136,10 +138,7 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
       builder: (ctx) => _TagFormSheet(
         title: '添加新标签',
         onSubmit: (name, colorHex) {
-          final tag = PomodoroTag(
-            name: name.trim(),
-            color: colorHex,
-          );
+          final tag = PomodoroTag(name: name.trim(), color: colorHex);
           setState(() {
             _tags.add(tag);
             _searchController.clear();
@@ -203,87 +202,95 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
     final username = prefs.getString(StorageService.keyCurrentUser) ?? '';
     if (!mounted) return;
     Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => batch
-              ? BatchTagPage(username: username, isEmbedded: false)
-              : RebindTagPage(username: username),
-          settings: RouteSettings(name: batch ? '批量添加标签' : '重新绑定标签'),
-        ));
+      context,
+      MaterialPageRoute(
+        builder: (_) => batch
+            ? BatchTagPage(username: username, isEmbedded: false)
+            : RebindTagPage(username: username),
+        settings: RouteSettings(name: batch ? '批量添加标签' : '重新绑定标签'),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final isWide = MediaQuery.sizeOf(context).width >= 1000 &&
+    final isWide =
+        MediaQuery.sizeOf(context).width >= 1000 &&
         MediaQuery.textScalerOf(context).scale(14) < 21;
-    final visible =
-        (_showArchived ? _archivedTags : _tags).where(_matches).toList();
+    final visible = (_showArchived ? _archivedTags : _tags)
+        .where(_matches)
+        .toList();
     final topBarHeight = floatingGlassTopBarHeight(context);
     final canReorder = !_showArchived && _searchController.text.trim().isEmpty;
-    final list =
-        Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      ManagementSearchField(
-        controller: _searchController,
-        hintText: '搜索标签名称',
-        onChanged: (_) => setState(() {}),
-      ),
-      const SizedBox(height: 14),
-      ManagementFilterBar<bool>(
+    final list = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ManagementSearchField(
+          controller: _searchController,
+          hintText: '搜索标签名称',
+          onChanged: (_) => setState(() {}),
+        ),
+        const SizedBox(height: 14),
+        ManagementFilterBar<bool>(
           value: _showArchived,
           onChanged: (value) => setState(() => _showArchived = value),
           options: [
             ManagementFilterOption(value: false, label: '使用中 ${_tags.length}'),
             if (widget.showArchive)
               ManagementFilterOption(
-                  value: true, label: '已归档 ${_archivedTags.length}')
-          ]),
-      const SizedBox(height: 12),
-      Text(
+                value: true,
+                label: '已归档 ${_archivedTags.length}',
+              ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Text(
           _showArchived
               ? '归档标签仍保留在历史记录中，可随时恢复。'
               : canReorder
-                  ? '拖动右侧手柄排序，点击标签编辑。'
-                  : '搜索时暂停排序，清空搜索后可拖动调整。',
-          style: Theme.of(context)
-              .textTheme
-              .bodySmall
-              ?.copyWith(color: scheme.onSurfaceVariant)),
-      const SizedBox(height: 16),
-      if (visible.isEmpty)
-        ManagementEmptyState(
-          icon:
-              _showArchived ? Icons.inventory_2_outlined : Icons.label_outline,
-          title: _searchController.text.trim().isNotEmpty
-              ? '没有找到匹配的标签'
-              : _showArchived
-                  ? '暂无归档标签'
-                  : '还没有标签',
-          description: _searchController.text.trim().isNotEmpty
-              ? '试试其他关键词，或清空搜索。'
-              : _showArchived
-                  ? '不常用的标签可以归档，不会删除历史记录。'
-                  : '点击“添加标签”，为专注和时间日志分类。',
-        )
-      else if (canReorder)
-        ReorderableListView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          buildDefaultDragHandles: false,
-          itemCount: visible.length,
-          onReorderItem: (oldIndex, newIndex) {
-            setState(() {
-              final tag = _tags.removeAt(oldIndex);
-              _tags.insert(newIndex, tag);
-            });
-            _notifyChanges();
-          },
-          itemBuilder: (_, index) =>
-              _buildTagCard(visible[index], isWide, index),
-        )
-      else
-        ...visible.map((tag) => _buildTagCard(tag, isWide, null)),
-    ]);
+              ? '拖动右侧手柄排序，点击标签编辑。'
+              : '搜索时暂停排序，清空搜索后可拖动调整。',
+          style: Theme.of(context).textTheme.bodySmall
+              ?.copyWith(color: scheme.onSurfaceVariant),
+        ),
+        const SizedBox(height: 16),
+        if (visible.isEmpty)
+          ManagementEmptyState(
+            icon: _showArchived
+                ? Icons.inventory_2_outlined
+                : Icons.label_outline,
+            title: _searchController.text.trim().isNotEmpty
+                ? '没有找到匹配的标签'
+                : _showArchived
+                ? '暂无归档标签'
+                : '还没有标签',
+            description: _searchController.text.trim().isNotEmpty
+                ? '试试其他关键词，或清空搜索。'
+                : _showArchived
+                ? '不常用的标签可以归档，不会删除历史记录。'
+                : '点击“添加标签”，为专注和时间日志分类。',
+          )
+        else if (canReorder)
+          ReorderableListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            buildDefaultDragHandles: false,
+            itemCount: visible.length,
+            onReorderItem: (oldIndex, newIndex) {
+              setState(() {
+                final tag = _tags.removeAt(oldIndex);
+                _tags.insert(newIndex, tag);
+              });
+              _notifyChanges();
+            },
+            itemBuilder: (_, index) =>
+                _buildTagCard(visible[index], isWide, index),
+          )
+        else
+          ...visible.map((tag) => _buildTagCard(tag, isWide, null)),
+      ],
+    );
 
     return Scaffold(
       backgroundColor: scheme.surface,
@@ -299,30 +306,41 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
           maxWidth: 1160,
           children: [
             const ManagementIntro(
-                icon: Icons.label_outline_rounded,
-                title: '让专注更有条理',
-                description: '整理专注与时间日志的标签，保留每一次投入的线索。'),
-            Wrap(spacing: 8, runSpacing: 8, children: [
-              FilledButton.icon(
+              icon: Icons.label_outline_rounded,
+              title: '让专注更有条理',
+              description: '整理专注与时间日志的标签，保留每一次投入的线索。',
+            ),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                FilledButton.icon(
                   onPressed: () => _addTag(isWide),
                   icon: const Icon(Icons.add_rounded),
-                  label: const Text('添加标签')),
-              TextButton.icon(
+                  label: const Text('添加标签'),
+                ),
+                TextButton.icon(
                   onPressed: () => _openTagTool(true),
                   icon: const Icon(Icons.playlist_add_rounded),
-                  label: const Text('批量添加标签')),
-              TextButton.icon(
+                  label: const Text('批量添加标签'),
+                ),
+                TextButton.icon(
                   onPressed: () => _openTagTool(false),
                   icon: const Icon(Icons.link_rounded),
-                  label: const Text('重新绑定标签')),
-            ]),
+                  label: const Text('重新绑定标签'),
+                ),
+              ],
+            ),
             const SizedBox(height: 24),
             if (isWide)
-              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Expanded(child: list),
-                const SizedBox(width: 24),
-                Expanded(child: _buildRightPanel(scheme)),
-              ])
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: list),
+                  const SizedBox(width: 24),
+                  Expanded(child: _buildRightPanel(scheme)),
+                ],
+              )
             else
               list,
           ],
@@ -342,76 +360,104 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
       padding: const EdgeInsets.all(12),
       backgroundColor: editing ? scheme.primaryContainer : null,
       borderColor: editing ? scheme.primary : null,
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Row(children: [
-          Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
                   color: color.withValues(alpha: 0.14),
-                  borderRadius: BorderRadius.circular(12)),
-              child: Center(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Center(
                   child: Container(
-                      width: 18,
-                      height: 18,
-                      decoration: BoxDecoration(
-                          color: color, shape: BoxShape.circle)))),
-          const SizedBox(width: 12),
-          Expanded(
-              child: tag.isArchived
-                  ? Text(tag.name, style: theme.textTheme.titleMedium)
-                  : InkWell(
-                      borderRadius: BorderRadius.circular(8),
-                      onTap: () => _editTag(tag, isWide),
-                      child: Padding(
+                    width: 18,
+                    height: 18,
+                    decoration: BoxDecoration(
+                      color: color,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: tag.isArchived
+                    ? Text(tag.name, style: theme.textTheme.titleMedium)
+                    : InkWell(
+                        borderRadius: BorderRadius.circular(8),
+                        onTap: () => _editTag(tag, isWide),
+                        child: Padding(
                           padding: const EdgeInsets.symmetric(vertical: 12),
-                          child: Text(tag.name,
-                              style: theme.textTheme.titleMedium)),
-                    )),
-          if (dragIndex != null)
-            ReorderableDragStartListener(
-                index: dragIndex,
-                child: Tooltip(
+                          child: Text(
+                            tag.name,
+                            style: theme.textTheme.titleMedium,
+                          ),
+                        ),
+                      ),
+              ),
+              if (dragIndex != null)
+                ReorderableDragStartListener(
+                  index: dragIndex,
+                  child: Tooltip(
                     message: '拖动排序',
                     child: SizedBox(
-                        width: 40,
-                        height: 48,
-                        child: Icon(Icons.drag_indicator_rounded,
-                            color: scheme.onSurfaceVariant)))),
-        ]),
-        const SizedBox(height: 4),
-        ManagementActionBar(spacing: 4, runSpacing: 4, children: [
-          if (widget.showSelection && !tag.isArchived)
-            FilterChip(
-                label: Text(_selected.contains(tag.uuid) ? '已选中' : '选择'),
-                selected: _selected.contains(tag.uuid),
-                onSelected: (value) {
-                  setState(() {
-                    if (value) {
-                      _selected.add(tag.uuid);
-                    } else {
-                      _selected.remove(tag.uuid);
-                    }
-                  });
-                  _notifyChanges();
-                }),
-          if (!tag.isArchived) ...[
-            TextButton.icon(
-                onPressed: () => _editTag(tag, isWide),
-                icon: const Icon(Icons.edit_outlined, size: 18),
-                label: const Text('编辑')),
-            if (widget.showArchive)
-              TextButton.icon(
-                  onPressed: () => _archiveTag(_tags.indexOf(tag)),
-                  icon: const Icon(Icons.archive_outlined, size: 18),
-                  label: const Text('归档')),
-          ] else
-            FilledButton.tonalIcon(
-                onPressed: () => _restoreTag(tag),
-                icon: const Icon(Icons.unarchive_outlined, size: 18),
-                label: const Text('恢复')),
-        ]),
-      ]),
+                      width: 40,
+                      height: 48,
+                      child: Icon(
+                        Icons.drag_indicator_rounded,
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          ManagementActionBar(
+            spacing: 4,
+            runSpacing: 4,
+            children: [
+              if (widget.showSelection && !tag.isArchived)
+                FilterChip(
+                  label: Text(_selected.contains(tag.uuid) ? '已选中' : '选择'),
+                  selected: _selected.contains(tag.uuid),
+                  onSelected: (value) {
+                    setState(() {
+                      if (value) {
+                        _selected.add(tag.uuid);
+                      } else {
+                        _selected.remove(tag.uuid);
+                      }
+                    });
+                    _notifyChanges();
+                  },
+                ),
+              if (!tag.isArchived) ...[
+                TextButton.icon(
+                  onPressed: () => _editTag(tag, isWide),
+                  icon: const Icon(Icons.edit_outlined, size: 18),
+                  label: const Text('编辑'),
+                ),
+                if (widget.showArchive)
+                  TextButton.icon(
+                    onPressed: () => _archiveTag(_tags.indexOf(tag)),
+                    icon: const Icon(Icons.archive_outlined, size: 18),
+                    label: const Text('归档'),
+                  ),
+              ] else
+                FilledButton.tonalIcon(
+                  onPressed: () => _restoreTag(tag),
+                  icon: const Icon(Icons.unarchive_outlined, size: 18),
+                  label: const Text('恢复'),
+                ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -423,10 +469,7 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
           key: const ValueKey('new-tag'),
           title: '添加新标签',
           onSubmit: (name, colorHex) {
-            final tag = PomodoroTag(
-              name: name.trim(),
-              color: colorHex,
-            );
+            final tag = PomodoroTag(name: name.trim(), color: colorHex);
             setState(() {
               _tags.add(tag);
               _searchController.clear();
@@ -437,7 +480,9 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
             AppSnackBars.showSnackBar(
               context,
               const SnackBar(
-                  content: Text('添加成功'), duration: Duration(seconds: 1)),
+                content: Text('添加成功'),
+                duration: Duration(seconds: 1),
+              ),
             );
           },
         ),
@@ -462,7 +507,9 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
             AppSnackBars.showSnackBar(
               context,
               const SnackBar(
-                  content: Text('保存成功'), duration: Duration(seconds: 1)),
+                content: Text('保存成功'),
+                duration: Duration(seconds: 1),
+              ),
             );
           },
         ),
@@ -476,18 +523,23 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
           color: colorScheme.surfaceContainerLow,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-              color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+            color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+          ),
         ),
         child: Column(
           children: [
-            Icon(Icons.edit_outlined,
-                size: 48,
-                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5)),
+            Icon(
+              Icons.edit_outlined,
+              size: 48,
+              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+            ),
             const SizedBox(height: 12),
             Text(
               '请在左侧选择标签进行编辑',
-              style:
-                  TextStyle(fontSize: 16, color: colorScheme.onSurfaceVariant),
+              style: TextStyle(
+                fontSize: 16,
+                color: colorScheme.onSurfaceVariant,
+              ),
             ),
           ],
         ),
@@ -495,8 +547,10 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
     }
   }
 
-  Widget _buildRightPanelContainer(ColorScheme colorScheme,
-      {required Widget child}) {
+  Widget _buildRightPanelContainer(
+    ColorScheme colorScheme, {
+    required Widget child,
+  }) {
     return OptionalLiquidGlassCard(
       borderRadius: 16,
       highContrast: true,
@@ -504,7 +558,8 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
         color: colorScheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-            color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+          color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+        ),
       ),
       padding: const EdgeInsets.all(24),
       child: child,
@@ -544,8 +599,9 @@ class _TagFormSheet extends StatelessWidget {
             ),
             fallbackDecoration: BoxDecoration(
               color: colorScheme.surface,
-              borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(24)),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(24),
+              ),
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -554,14 +610,15 @@ class _TagFormSheet extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Expanded(
-                        child: Text(
-                      title,
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                        color: colorScheme.onSurface,
+                      child: Text(
+                        title,
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          color: colorScheme.onSurface,
+                        ),
                       ),
-                    )),
+                    ),
                     IconButton(
                       tooltip: '关闭',
                       icon: const Icon(Icons.close),
@@ -619,7 +676,8 @@ class _TagFormState extends State<_TagForm> {
 
   void _initValues() {
     _nameController = TextEditingController(text: widget.initialName ?? '');
-    _selectedColor = widget.initialColorHex ??
+    _selectedColor =
+        widget.initialColorHex ??
         _UnifiedTagManagerScreenState._presetColors[0];
   }
 
@@ -629,7 +687,8 @@ class _TagFormState extends State<_TagForm> {
     if (widget.initialName != oldWidget.initialName ||
         widget.initialColorHex != oldWidget.initialColorHex) {
       _nameController.text = widget.initialName ?? '';
-      _selectedColor = widget.initialColorHex ??
+      _selectedColor =
+          widget.initialColorHex ??
           _UnifiedTagManagerScreenState._presetColors[0];
     }
   }
@@ -688,22 +747,28 @@ class _TagFormState extends State<_TagForm> {
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  color: AppColorUtils.hexToColor(_selectedColor,
-                      fallback: Colors.grey),
+                  color: AppColorUtils.hexToColor(
+                    _selectedColor,
+                    fallback: Colors.grey,
+                  ),
                   shape: BoxShape.circle,
                   border: Border.all(color: colorScheme.surface, width: 3),
                   boxShadow: [
                     BoxShadow(
-                      color: AppColorUtils.hexToColor(_selectedColor,
-                              fallback: Colors.grey)
-                          .withValues(alpha: 0.4),
+                      color: AppColorUtils.hexToColor(
+                        _selectedColor,
+                        fallback: Colors.grey,
+                      ).withValues(alpha: 0.4),
                       blurRadius: 6,
                       offset: const Offset(0, 2),
                     ),
                   ],
                 ),
-                child:
-                    const Icon(Icons.color_lens, color: Colors.white, size: 20),
+                child: const Icon(
+                  Icons.color_lens,
+                  color: Colors.white,
+                  size: 20,
+                ),
               ),
             ),
             const SizedBox(width: 12),
@@ -718,26 +783,31 @@ class _TagFormState extends State<_TagForm> {
                   errorText: _nameMissing ? '请输入标签名称' : null,
                   hintText: '输入标签名称...',
                   hintStyle: TextStyle(
-                      color:
-                          colorScheme.onSurfaceVariant.withValues(alpha: 0.6)),
+                    color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                  ),
                   isDense: true,
                   filled: true,
-                  fillColor: colorScheme.surfaceContainerHighest
-                      .withValues(alpha: 0.5),
+                  fillColor: colorScheme.surfaceContainerHighest.withValues(
+                    alpha: 0.5,
+                  ),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                     borderSide: BorderSide.none,
                   ),
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 14,
+                  ),
                 ),
               ),
             ),
           ],
         ),
         const SizedBox(height: 12),
-        Text('点击左侧色块设置颜色。',
-            style: TextStyle(color: colorScheme.onSurfaceVariant)),
+        Text(
+          '点击左侧色块设置颜色。',
+          style: TextStyle(color: colorScheme.onSurfaceVariant),
+        ),
         const SizedBox(height: 24),
         SizedBox(
           width: double.infinity,
@@ -746,10 +816,13 @@ class _TagFormState extends State<_TagForm> {
             style: FilledButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 16),
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16)),
+                borderRadius: BorderRadius.circular(16),
+              ),
             ),
-            child: const Text('保存',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+            child: const Text(
+              '保存',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+            ),
           ),
         ),
       ],
@@ -780,8 +853,10 @@ class _ColorPickerSheetState extends State<_ColorPickerSheet> {
   }
 
   void _openCustomColorPickerDialog() {
-    Color pickerColor =
-        AppColorUtils.hexToColor(_selectedHex, fallback: Colors.grey);
+    Color pickerColor = AppColorUtils.hexToColor(
+      _selectedHex,
+      fallback: Colors.grey,
+    );
 
     showAppDialog(
       context: context,
@@ -859,7 +934,8 @@ class _ColorPickerSheetState extends State<_ColorPickerSheet> {
                     icon: const Icon(Icons.close),
                     style: IconButton.styleFrom(
                       shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                     ),
                     onPressed: () => Navigator.pop(context),
                   ),
@@ -884,31 +960,35 @@ class _ColorPickerSheetState extends State<_ColorPickerSheet> {
                     Wrap(
                       spacing: 16,
                       runSpacing: 16,
-                      children:
-                          _UnifiedTagManagerScreenState._presetColors.map((c) {
-                        final col =
-                            AppColorUtils.hexToColor(c, fallback: Colors.grey);
-                        return GestureDetector(
-                          onTap: () {
-                            widget.onColorSelected(c);
-                            Navigator.pop(context);
-                          },
-                          child: Container(
-                            width: 44,
-                            height: 44,
-                            decoration: BoxDecoration(
-                              color: col,
-                              shape: BoxShape.circle,
-                              boxShadow: [
-                                BoxShadow(
+                      children: _UnifiedTagManagerScreenState._presetColors.map(
+                        (c) {
+                          final col = AppColorUtils.hexToColor(
+                            c,
+                            fallback: Colors.grey,
+                          );
+                          return GestureDetector(
+                            onTap: () {
+                              widget.onColorSelected(c);
+                              Navigator.pop(context);
+                            },
+                            child: Container(
+                              width: 44,
+                              height: 44,
+                              decoration: BoxDecoration(
+                                color: col,
+                                shape: BoxShape.circle,
+                                boxShadow: [
+                                  BoxShadow(
                                     color: col.withValues(alpha: 0.4),
                                     blurRadius: 6,
-                                    offset: const Offset(0, 2)),
-                              ],
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
-                        );
-                      }).toList(),
+                          );
+                        },
+                      ).toList(),
                     ),
                     const SizedBox(height: 32),
                     Text(
@@ -925,29 +1005,33 @@ class _ColorPickerSheetState extends State<_ColorPickerSheet> {
                       runSpacing: 16,
                       children: _UnifiedTagManagerScreenState._extendedColors
                           .map((c) {
-                        final col =
-                            AppColorUtils.hexToColor(c, fallback: Colors.grey);
-                        return GestureDetector(
-                          onTap: () {
-                            widget.onColorSelected(c);
-                            Navigator.pop(context);
-                          },
-                          child: Container(
-                            width: 36,
-                            height: 36,
-                            decoration: BoxDecoration(
-                              color: col,
-                              shape: BoxShape.circle,
-                              boxShadow: [
-                                BoxShadow(
-                                    color: col.withValues(alpha: 0.3),
-                                    blurRadius: 4,
-                                    offset: const Offset(0, 2)),
-                              ],
-                            ),
-                          ),
-                        );
-                      }).toList(),
+                            final col = AppColorUtils.hexToColor(
+                              c,
+                              fallback: Colors.grey,
+                            );
+                            return GestureDetector(
+                              onTap: () {
+                                widget.onColorSelected(c);
+                                Navigator.pop(context);
+                              },
+                              child: Container(
+                                width: 36,
+                                height: 36,
+                                decoration: BoxDecoration(
+                                  color: col,
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: col.withValues(alpha: 0.3),
+                                      blurRadius: 4,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          })
+                          .toList(),
                     ),
                     const SizedBox(height: 32),
                     SizedBox(
@@ -959,7 +1043,8 @@ class _ColorPickerSheetState extends State<_ColorPickerSheet> {
                         style: FilledButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 16),
                           shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16)),
+                            borderRadius: BorderRadius.circular(16),
+                          ),
                         ),
                       ),
                     ),

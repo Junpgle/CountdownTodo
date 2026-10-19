@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 import '../storage_service.dart';
 import '../models.dart';
 import 'api_service.dart';
@@ -28,12 +29,14 @@ class MigrationService {
       final loginRes = await ApiService.login(email, password);
       if (loginRes['success'] != true) {
         throw Exception(
-            "旧服务器登录失败: ${loginRes['message'] ?? loginRes['error']}");
+          "旧服务器登录失败: ${loginRes['message'] ?? loginRes['error']}",
+        );
       }
       onProgress("✅ 登录旧服务器成功，开始拉取完整数据...");
 
-      final Map<String, dynamic> user =
-          loginRes['user'] is Map<String, dynamic> ? loginRes['user'] : {};
+      final Map<String, dynamic> user = loginRes['user'] is Map<String, dynamic>
+          ? loginRes['user']
+          : {};
       final int oldUserId = user['id'] ?? user['user_id'] ?? 0;
       final String oldToken = loginRes['token'] ?? '';
       final String username = user['username'] ?? '';
@@ -53,15 +56,24 @@ class MigrationService {
       onProgress("📥 拉取旧待办事项...");
       final todosRaw = await ApiService.fetchTodos(oldUserId);
       final todos = todosRaw.map((e) => TodoItem.fromJson(e)).toList();
-      await StorageService.saveTodos(storageUsername, todos,
-          sync: false, isSyncSource: true);
+      await StorageService.saveTodos(
+        storageUsername,
+        todos,
+        sync: false,
+        isSyncSource: true,
+      );
 
       onProgress("📥 拉取旧倒计时...");
       final countdownsRaw = await ApiService.fetchCountdowns(oldUserId);
-      final countdowns =
-          countdownsRaw.map((e) => CountdownItem.fromJson(e)).toList();
-      await StorageService.saveCountdowns(storageUsername, countdowns,
-          sync: false, isSyncSource: true);
+      final countdowns = countdownsRaw
+          .map((e) => CountdownItem.fromJson(e))
+          .toList();
+      await StorageService.saveCountdowns(
+        storageUsername,
+        countdowns,
+        sync: false,
+        isSyncSource: true,
+      );
 
       onProgress("📥 拉取时间记录...");
       final timeLogsRaw = await ApiService.fetchTimeLogs(oldUserId);
@@ -78,7 +90,9 @@ class MigrationService {
       try {
         pomodoroTags = await ApiService.fetchPomodoroTags(oldUserId);
         await StorageService.savePomodoroTags(
-            storageUsername, pomodoroTags.cast<Map<String, dynamic>>());
+          storageUsername,
+          pomodoroTags.cast<Map<String, dynamic>>(),
+        );
       } catch (_) {}
 
       onProgress("📥 拉取课表数据...");
@@ -89,22 +103,25 @@ class MigrationService {
 
       if (courses.isNotEmpty) {
         final courseItems = courses
-            .map((c) => CourseItem(
-                  courseName: c['course_name'] ?? '',
-                  roomName: c['room_name'] ?? '',
-                  teacherName: c['teacher_name'] ?? '',
-                  startTime: (c['start_time'] as num?)?.toInt() ?? 0,
-                  endTime: (c['end_time'] as num?)?.toInt() ?? 0,
-                  weekday: (c['weekday'] as num?)?.toInt() ?? 1,
-                  weekIndex: (c['week_index'] as num?)?.toInt() ?? 1,
-                  lessonType: c['lesson_type'] ?? '',
-                  date: c['date'] ?? '',
-                  semesterId: (c['semester'] ??
-                          c['semester_id'] ??
-                          c['semesterId'] ??
-                          'default')
-                      .toString(),
-                ))
+            .map(
+              (c) => CourseItem(
+                courseName: c['course_name'] ?? '',
+                roomName: c['room_name'] ?? '',
+                teacherName: c['teacher_name'] ?? '',
+                startTime: (c['start_time'] as num?)?.toInt() ?? 0,
+                endTime: (c['end_time'] as num?)?.toInt() ?? 0,
+                weekday: (c['weekday'] as num?)?.toInt() ?? 1,
+                weekIndex: (c['week_index'] as num?)?.toInt() ?? 1,
+                lessonType: c['lesson_type'] ?? '',
+                date: c['date'] ?? '',
+                semesterId:
+                    (c['semester'] ??
+                            c['semester_id'] ??
+                            c['semesterId'] ??
+                            'default')
+                        .toString(),
+              ),
+            )
             .toList();
         await CourseService.saveCourses(storageUsername, courseItems);
       }
@@ -171,7 +188,9 @@ class MigrationService {
         onProgress("⚙️ 正在转换数据归属权 (ID: $oldUserId ➡️ $newUserId)...");
         // 如果旧 ID 是 15，新 ID 是 2，必须把本地存的 key 从 15 改成 2，否则 syncData 找不到数据！
         await _migrateLocalDataUserId(
-            oldUserId.toString(), newUserId.toString());
+          oldUserId.toString(),
+          newUserId.toString(),
+        );
       }
 
       onProgress("🚀 凭证同步成功！准备向阿里云上传数据...");
@@ -180,8 +199,11 @@ class MigrationService {
       // 4. 全量上传数据到新服务器
       // ==========================================
       onProgress("📤 上传待办事项、倒计时与时间记录...");
-      await StorageService.syncData(storageUsername,
-          forceFullSync: true, uploadAllLocal: true);
+      await StorageService.syncData(
+        storageUsername,
+        forceFullSync: true,
+        uploadAllLocal: true,
+      );
 
       if (courses.isNotEmpty) {
         onProgress("📤 上传课表...");
@@ -191,11 +213,12 @@ class MigrationService {
       if (pomodoroRecords.isNotEmpty) {
         onProgress("📤 上传专注记录...");
         // 发送前必须把记录里的 oldUserId 强制替换为 newUserId
-        final updatedRecords =
-            pomodoroRecords.cast<Map<String, dynamic>>().map((r) {
-          r['user_id'] = newUserId;
-          return r;
-        }).toList();
+        final updatedRecords = pomodoroRecords.cast<Map<String, dynamic>>().map(
+          (r) {
+            r['user_id'] = newUserId;
+            return r;
+          },
+        ).toList();
         await ApiService.uploadPomodoroRecords(updatedRecords);
       }
 
@@ -211,7 +234,9 @@ class MigrationService {
 
   /// 内部辅助函数：将本地通过 SharedPreferences 存储的旧用户数据，转移给新用户 ID
   static Future<void> _migrateLocalDataUserId(
-      String oldId, String newId) async {
+    String oldId,
+    String newId,
+  ) async {
     final prefs = await SharedPreferences.getInstance();
     final keysToMigrate = [
       'todos_$oldId',
@@ -219,7 +244,7 @@ class MigrationService {
       'time_logs_$oldId',
       'pomodoro_tags_$oldId',
       'course_schedule_json_$oldId',
-      'last_auto_sync_time_$oldId'
+      'last_auto_sync_time_$oldId',
     ];
 
     for (String oldKey in keysToMigrate) {

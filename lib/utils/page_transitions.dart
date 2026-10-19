@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 import 'app_performance_monitor.dart';
 
 const _pageLayerCurve = Cubic(0.4, 0.65, 0.25, 1.0);
@@ -37,8 +38,8 @@ BorderRadius _screenCornerRadiiForContext(BuildContext context) {
   final fallbackRadius = topPadding > 30
       ? 24.0
       : topPadding > 20
-          ? 16.0
-          : 12.0;
+      ? 16.0
+      : 12.0;
   return BorderRadius.circular(fallbackRadius);
 }
 
@@ -135,11 +136,10 @@ class PageTransitions {
   /// Overlay transitions share the same motion policy as page transitions.
   static Duration containerDuration({bool reverse = false}) =>
       _AnimSettings.animationsEnabled
-          ? Duration(
-              milliseconds:
-                  (_AnimSettings.duration * (reverse ? 0.75 : 1)).round(),
-            )
-          : Duration.zero;
+      ? Duration(
+          milliseconds: (_AnimSettings.duration * (reverse ? 0.75 : 1)).round(),
+        )
+      : Duration.zero;
 
   static Curve get containerCurve => _pageLayerCurve;
   static Curve get containerReverseCurve => _containerTransformReverseCurve;
@@ -264,8 +264,9 @@ class PageTransitions {
     Color? sourceColor,
     IconData? placeholderIcon,
     WidgetBuilder? placeholderBuilder,
-    BorderRadius sourceBorderRadius =
-        const BorderRadius.all(Radius.circular(16)),
+    BorderRadius sourceBorderRadius = const BorderRadius.all(
+      Radius.circular(16),
+    ),
   }) async {
     AppPerformanceMonitor.setCurrentScreen(
       AppPerformanceMonitor.screenNameForWidget(page),
@@ -316,6 +317,54 @@ class PageTransitions {
     );
   }
 
+  /// Pushes a container transform using geometry captured before its source
+  /// route was dismissed (for example, a button inside a modal sheet).
+  static Future<T?> pushFromRectSnapshot<T>({
+    required NavigatorState navigator,
+    required Widget page,
+    required Rect sourceRect,
+    required Color sourceColor,
+    RouteSettings? settings,
+    Rect? targetRect,
+    BorderRadius? targetBorderRadius,
+    IconData? placeholderIcon,
+    WidgetBuilder? placeholderBuilder,
+    BorderRadius sourceBorderRadius = const BorderRadius.all(
+      Radius.circular(16),
+    ),
+  }) async {
+    AppPerformanceMonitor.setCurrentScreen(
+      AppPerformanceMonitor.screenNameForWidget(page),
+    );
+    await _AnimSettings.load();
+    if (!_AnimSettings.animationsEnabled || sourceRect.isEmpty) {
+      return navigator.push<T>(
+        material<T>(builder: (_) => page, settings: settings),
+      );
+    }
+
+    return navigator.push<T>(
+      ContainerTransformRoute<T>(
+        page: page,
+        settings: settings,
+        sourceRect: sourceRect,
+        targetRect: targetRect,
+        targetBorderRadius: targetBorderRadius,
+        sourceColor: sourceColor,
+        placeholderIcon: placeholderIcon,
+        placeholderBuilder: placeholderBuilder,
+        sourceBorderRadius: sourceBorderRadius,
+      ),
+    );
+  }
+
+  static Rect? rectForKey(GlobalKey sourceKey) {
+    final renderBox =
+        sourceKey.currentContext?.findRenderObject() as RenderBox?;
+    if (renderBox == null || renderBox.size.isEmpty) return null;
+    return renderBox.localToGlobal(Offset.zero) & renderBox.size;
+  }
+
   static MaterialPageRoute<T> material<T>({
     required WidgetBuilder builder,
     RouteSettings? settings,
@@ -343,7 +392,10 @@ class PageTransitions {
       AppPerformanceMonitor.screenNameForWidget(page),
     );
     return _SlideRoute<T>(
-        page: page, mode: _PageLayerRouteMode.slideEnd, settings: settings);
+      page: page,
+      mode: _PageLayerRouteMode.slideEnd,
+      settings: settings,
+    );
   }
 
   static Route<T> slideUp<T>(Widget page, {RouteSettings? settings}) {
@@ -351,7 +403,10 @@ class PageTransitions {
       AppPerformanceMonitor.screenNameForWidget(page),
     );
     return _SlideRoute<T>(
-        page: page, mode: _PageLayerRouteMode.slideBottom, settings: settings);
+      page: page,
+      mode: _PageLayerRouteMode.slideBottom,
+      settings: settings,
+    );
   }
 
   static Route<T> fadeThrough<T>(Widget page, {RouteSettings? settings}) {
@@ -382,12 +437,7 @@ class _ConfiguredMaterialPageRoute<T> extends MaterialPageRoute<T> {
       : Duration.zero;
 }
 
-enum _PageLayerRouteMode {
-  scale,
-  slideEnd,
-  slideBottom,
-  fade,
-}
+enum _PageLayerRouteMode { scale, slideEnd, slideBottom, fade }
 
 class _PageLayerMaterialPageTransitionsBuilder extends PageTransitionsBuilder {
   const _PageLayerMaterialPageTransitionsBuilder();
@@ -412,10 +462,7 @@ class _PageLayerMaterialPageTransitionsBuilder extends PageTransitionsBuilder {
     if (!_AnimSettings.usePredictiveBack) {
       return transition;
     }
-    return _PredictiveBackGestureBridge<T>(
-      route: route,
-      child: transition,
-    );
+    return _PredictiveBackGestureBridge<T>(route: route, child: transition);
   }
 }
 
@@ -434,7 +481,8 @@ class _PredictiveBackGestureBridge<T> extends StatefulWidget {
 }
 
 class _PredictiveBackGestureBridgeState<T>
-    extends State<_PredictiveBackGestureBridge<T>> with WidgetsBindingObserver {
+    extends State<_PredictiveBackGestureBridge<T>>
+    with WidgetsBindingObserver {
   bool get _canHandle =>
       _AnimSettings.usePredictiveBack &&
       widget.route.isCurrent &&
@@ -706,8 +754,11 @@ class _PageLayerTransitionState extends State<_PageLayerTransition>
 
         if (isBackground) {
           final isReverse = widget.animation.status == AnimationStatus.reverse;
-          current = _buildBackgroundPage(current, backgroundProgress,
-              isReverse: isReverse);
+          current = _buildBackgroundPage(
+            current,
+            backgroundProgress,
+            isReverse: isReverse,
+          );
         }
 
         if (foregroundProgress < 1.0 ||
@@ -726,8 +777,11 @@ class _PageLayerTransitionState extends State<_PageLayerTransition>
     );
   }
 
-  Widget _buildBackgroundPage(Widget child, double progress,
-      {required bool isReverse}) {
+  Widget _buildBackgroundPage(
+    Widget child,
+    double progress, {
+    required bool isReverse,
+  }) {
     // Direct arithmetic with cached settings — avoids per-frame getter calls.
     final scale = 1.0 + (_bgScale - 1.0) * progress;
     final maskOpacity = _bgMask * progress;
@@ -892,14 +946,14 @@ class ContainerTransformRoute<T> extends PageRouteBuilder<T> {
     this.targetBorderRadius,
     this.sourceBorderRadius = const BorderRadius.all(Radius.circular(16)),
   }) : super(
-          pageBuilder: (context, animation, secondaryAnimation) => page,
-          transitionDuration: _AnimSettings.animationsEnabled
-              ? Duration(milliseconds: _AnimSettings.duration)
-              : Duration.zero,
-          reverseTransitionDuration: _AnimSettings.animationsEnabled
-              ? Duration(milliseconds: (_AnimSettings.duration * 0.75).round())
-              : Duration.zero,
-        );
+         pageBuilder: (context, animation, secondaryAnimation) => page,
+         transitionDuration: _AnimSettings.animationsEnabled
+             ? Duration(milliseconds: _AnimSettings.duration)
+             : Duration.zero,
+         reverseTransitionDuration: _AnimSettings.animationsEnabled
+             ? Duration(milliseconds: (_AnimSettings.duration * 0.75).round())
+             : Duration.zero,
+       );
 
   @override
   Widget buildTransitions(
@@ -927,10 +981,7 @@ class ContainerTransformRoute<T> extends PageRouteBuilder<T> {
     if (!_AnimSettings.usePredictiveBack) {
       return transition;
     }
-    return _PredictiveBackGestureBridge<T>(
-      route: this,
-      child: transition,
-    );
+    return _PredictiveBackGestureBridge<T>(route: this, child: transition);
   }
 }
 
@@ -986,9 +1037,10 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget> {
       curve: _pageLayerCurve,
       reverseCurve: _containerTransformReverseCurve,
     );
-    _mergedAnimation = Listenable.merge(
-      <Listenable>[_forwardCurve, _backgroundCurve],
-    );
+    _mergedAnimation = Listenable.merge(<Listenable>[
+      _forwardCurve,
+      _backgroundCurve,
+    ]);
     _contentSnapshot = SnapshotController();
     widget.animation.addStatusListener(_handleAnimationStatus);
     _predictiveBackGestureProgress.addListener(
@@ -1082,7 +1134,8 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget> {
   Widget build(BuildContext context) {
     final screenSize = MediaQuery.of(context).size;
     final begin = widget.sourceRect;
-    final end = widget.targetRect ??
+    final end =
+        widget.targetRect ??
         Rect.fromLTWH(0, 0, screenSize.width, screenSize.height);
     final dLeft = end.left - begin.left;
     final dTop = end.top - begin.top;
@@ -1090,7 +1143,8 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget> {
     final dHeight = end.height - begin.height;
 
     final beginR = widget.sourceBorderRadius;
-    final endR = widget.targetBorderRadius ??
+    final endR =
+        widget.targetBorderRadius ??
         (widget.targetRect == null ? _screenCornerRadii : BorderRadius.zero);
     final dRTLX = endR.topLeft.x - beginR.topLeft.x;
     final dRTLY = endR.topLeft.y - beginR.topLeft.y;
@@ -1159,8 +1213,8 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget> {
           ),
         );
 
-        final contentProgress =
-            ((t - contentStart) * inverseContentRange).clamp(0.0, 1.0);
+        final contentProgress = ((t - contentStart) * inverseContentRange)
+            .clamp(0.0, 1.0);
         final fadeIn = useLazyLoad ? contentProgress : 1.0;
         final maskOpacity = backgroundMask * backgroundProgress;
 
@@ -1233,16 +1287,16 @@ class _SlideRoute<T> extends PageRouteBuilder<T> {
 
   // ignore: use_super_parameters
   _SlideRoute({required this.page, required this.mode, RouteSettings? settings})
-      : super(
-          settings: settings,
-          pageBuilder: (context, animation, secondaryAnimation) => page,
-          transitionDuration: _AnimSettings.animationsEnabled
-              ? Duration(milliseconds: _AnimSettings.duration)
-              : Duration.zero,
-          reverseTransitionDuration: _AnimSettings.animationsEnabled
-              ? Duration(milliseconds: (_AnimSettings.duration * 0.75).round())
-              : Duration.zero,
-        );
+    : super(
+        settings: settings,
+        pageBuilder: (context, animation, secondaryAnimation) => page,
+        transitionDuration: _AnimSettings.animationsEnabled
+            ? Duration(milliseconds: _AnimSettings.duration)
+            : Duration.zero,
+        reverseTransitionDuration: _AnimSettings.animationsEnabled
+            ? Duration(milliseconds: (_AnimSettings.duration * 0.75).round())
+            : Duration.zero,
+      );
 
   @override
   Widget buildTransitions(
@@ -1263,10 +1317,7 @@ class _SlideRoute<T> extends PageRouteBuilder<T> {
     if (!_AnimSettings.usePredictiveBack) {
       return transition;
     }
-    return _PredictiveBackGestureBridge<T>(
-      route: this,
-      child: transition,
-    );
+    return _PredictiveBackGestureBridge<T>(route: this, child: transition);
   }
 }
 
@@ -1310,16 +1361,16 @@ class _FadeRoute<T> extends PageRouteBuilder<T> {
 
   // ignore: use_super_parameters
   _FadeRoute({required this.page, RouteSettings? settings})
-      : super(
-          settings: settings,
-          pageBuilder: (context, animation, secondaryAnimation) => page,
-          transitionDuration: _AnimSettings.animationsEnabled
-              ? Duration(milliseconds: _AnimSettings.duration)
-              : Duration.zero,
-          reverseTransitionDuration: _AnimSettings.animationsEnabled
-              ? Duration(milliseconds: _AnimSettings.duration)
-              : Duration.zero,
-        );
+    : super(
+        settings: settings,
+        pageBuilder: (context, animation, secondaryAnimation) => page,
+        transitionDuration: _AnimSettings.animationsEnabled
+            ? Duration(milliseconds: _AnimSettings.duration)
+            : Duration.zero,
+        reverseTransitionDuration: _AnimSettings.animationsEnabled
+            ? Duration(milliseconds: _AnimSettings.duration)
+            : Duration.zero,
+      );
 
   @override
   Widget buildTransitions(
@@ -1340,10 +1391,7 @@ class _FadeRoute<T> extends PageRouteBuilder<T> {
     if (!_AnimSettings.usePredictiveBack) {
       return transition;
     }
-    return _PredictiveBackGestureBridge<T>(
-      route: this,
-      child: transition,
-    );
+    return _PredictiveBackGestureBridge<T>(route: this, child: transition);
   }
 }
 

@@ -34,7 +34,8 @@ class ManagementCard extends StatelessWidget {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(borderRadius),
         side: BorderSide(
-            color: borderColor ?? scheme.outlineVariant.withValues(alpha: 0.5)),
+          color: borderColor ?? scheme.outlineVariant.withValues(alpha: 0.5),
+        ),
       ),
       clipBehavior: clipBehavior,
       child: Padding(padding: padding, child: child),
@@ -62,12 +63,12 @@ class ManagementActionBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Wrap(
-        alignment: alignment,
-        crossAxisAlignment: crossAxisAlignment,
-        spacing: spacing,
-        runSpacing: runSpacing,
-        children: children,
-      );
+    alignment: alignment,
+    crossAxisAlignment: crossAxisAlignment,
+    spacing: spacing,
+    runSpacing: runSpacing,
+    children: children,
+  );
 }
 
 class ManagementFilterOption<T> {
@@ -78,11 +79,12 @@ class ManagementFilterOption<T> {
 
 /// Controlled, single-selection filter. The caller owns selection and data.
 class ManagementFilterBar<T> extends StatelessWidget {
-  const ManagementFilterBar(
-      {super.key,
-      required this.value,
-      required this.options,
-      required this.onChanged});
+  const ManagementFilterBar({
+    super.key,
+    required this.value,
+    required this.options,
+    required this.onChanged,
+  });
 
   final T value;
   final List<ManagementFilterOption<T>> options;
@@ -90,29 +92,31 @@ class ManagementFilterBar<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children: [
-          for (final option in options)
-            ChoiceChip(
-              key: ValueKey(option.value),
-              label: Text(option.label),
-              selected: option.value == value,
-              onSelected:
-                  onChanged == null ? null : (_) => onChanged!(option.value),
-            ),
-        ],
-      );
+    spacing: 8,
+    runSpacing: 8,
+    children: [
+      for (final option in options)
+        ChoiceChip(
+          key: ValueKey(option.value),
+          label: Text(option.label),
+          selected: option.value == value,
+          onSelected: onChanged == null
+              ? null
+              : (_) => onChanged!(option.value),
+        ),
+    ],
+  );
 }
 
 /// Full-page or inline retry feedback; never starts requests on its own.
 class ManagementLoadError extends StatelessWidget {
-  const ManagementLoadError(
-      {super.key,
-      required this.title,
-      this.description,
-      required this.onRetry,
-      this.inline = false});
+  const ManagementLoadError({
+    super.key,
+    required this.title,
+    this.description,
+    required this.onRetry,
+    this.inline = false,
+  });
 
   final String title;
   final String? description;
@@ -128,40 +132,50 @@ class ManagementLoadError extends StatelessWidget {
         elevation: 0,
         color: scheme.errorContainer,
         child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(title, style: TextStyle(color: scheme.onErrorContainer)),
-                if (description != null) ...[
-                  const SizedBox(height: 8),
-                  Text(description!,
-                      style: TextStyle(color: scheme.onErrorContainer)),
-                ],
-                Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton.icon(
-                      onPressed: onRetry,
-                      style: TextButton.styleFrom(
-                          foregroundColor: scheme.onErrorContainer),
-                      icon: const Icon(Icons.refresh_rounded),
-                      label: const Text('重新加载'),
-                    )),
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(title, style: TextStyle(color: scheme.onErrorContainer)),
+              if (description != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  description!,
+                  style: TextStyle(color: scheme.onErrorContainer),
+                ),
               ],
-            )),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  onPressed: onRetry,
+                  style: TextButton.styleFrom(
+                    foregroundColor: scheme.onErrorContainer,
+                  ),
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: const Text('重新加载'),
+                ),
+              ),
+            ],
+          ),
+        ),
       );
     }
-    return Column(children: [
-      ManagementEmptyState(
+    return Column(
+      children: [
+        ManagementEmptyState(
           icon: Icons.cloud_off_outlined,
           title: title,
-          description: description ?? ''),
-      Center(
+          description: description ?? '',
+        ),
+        Center(
           child: FilledButton.tonalIcon(
-              onPressed: onRetry,
-              icon: const Icon(Icons.refresh_rounded),
-              label: const Text('重新加载'))),
-    ]);
+            onPressed: onRetry,
+            icon: const Icon(Icons.refresh_rounded),
+            label: const Text('重新加载'),
+          ),
+        ),
+      ],
+    );
   }
 }
 
@@ -170,38 +184,72 @@ class ManagementLoadError extends StatelessWidget {
 /// Keeps app bars, data loading, navigation and persistence in the caller.
 /// See docs/ui/management_components.md for composition examples.
 class ManagementPage extends StatelessWidget {
-  const ManagementPage(
-      {super.key,
-      required this.children,
-      this.maxWidth = 960,
-      this.topPadding = 0});
+  const ManagementPage({
+    super.key,
+    required this.children,
+    this.maxWidth = 960,
+    this.topPadding = 0,
+  }) : itemCount = null,
+       itemBuilder = null,
+       findChildIndexCallback = null;
+
+  const ManagementPage.builder({
+    super.key,
+    required this.itemCount,
+    required this.itemBuilder,
+    this.findChildIndexCallback,
+    this.maxWidth = 960,
+    this.topPadding = 0,
+  }) : children = const [],
+       assert(itemCount != null),
+       assert(itemBuilder != null);
 
   final List<Widget> children;
+  final int? itemCount;
+  final IndexedWidgetBuilder? itemBuilder;
+  final ChildIndexGetter? findChildIndexCallback;
   final double maxWidth;
   final double topPadding;
 
   @override
   Widget build(BuildContext context) => SafeArea(
-        top: false,
-        child: LayoutBuilder(builder: (context, constraints) {
-          final inset = ((constraints.maxWidth - maxWidth) / 2)
-              .clamp(16.0, double.infinity);
-          return ListView(
+    top: false,
+    child: LayoutBuilder(
+      builder: (context, constraints) {
+        final inset = ((constraints.maxWidth - maxWidth) / 2).clamp(
+          16.0,
+          double.infinity,
+        );
+        final padding = EdgeInsets.fromLTRB(inset, topPadding + 16, inset, 32);
+        final builder = itemBuilder;
+        if (builder != null) {
+          return ListView.builder(
             keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
             physics: const AlwaysScrollableScrollPhysics(),
-            padding: EdgeInsets.fromLTRB(inset, topPadding + 16, inset, 32),
-            children: children,
+            padding: padding,
+            itemCount: itemCount!,
+            itemBuilder: builder,
+            findChildIndexCallback: findChildIndexCallback,
           );
-        }),
-      );
+        }
+        return ListView(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: padding,
+          children: children,
+        );
+      },
+    ),
+  );
 }
 
 class ManagementIntro extends StatelessWidget {
-  const ManagementIntro(
-      {super.key,
-      required this.icon,
-      required this.title,
-      required this.description});
+  const ManagementIntro({
+    super.key,
+    required this.icon,
+    required this.title,
+    required this.description,
+  });
 
   final IconData icon;
   final String title;
@@ -212,38 +260,52 @@ class ManagementIntro extends StatelessWidget {
     final theme = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.only(bottom: 24),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Container(
-          width: 48,
-          height: 48,
-          decoration: BoxDecoration(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
               color: theme.colorScheme.primaryContainer,
-              borderRadius: BorderRadius.circular(16)),
-          child: Icon(icon, color: theme.colorScheme.onPrimaryContainer),
-        ),
-        const SizedBox(width: 14),
-        Expanded(
-            child:
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(title,
-              style: theme.textTheme.titleLarge
-                  ?.copyWith(fontWeight: FontWeight.w700)),
-          const SizedBox(height: 6),
-          Text(description,
-              style: theme.textTheme.bodyMedium
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-        ])),
-      ]),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Icon(icon, color: theme.colorScheme.onPrimaryContainer),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  description,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
 
 class ManagementSearchField extends StatelessWidget {
-  const ManagementSearchField(
-      {super.key,
-      required this.controller,
-      required this.hintText,
-      required this.onChanged});
+  const ManagementSearchField({
+    super.key,
+    required this.controller,
+    required this.hintText,
+    required this.onChanged,
+  });
 
   final TextEditingController controller;
   final String hintText;
@@ -255,98 +317,102 @@ class ManagementSearchField extends StatelessWidget {
         valueListenable: controller,
         builder: (context, value, _) =>
             ValueListenableBuilder<LiquidGlassEffectConfiguration>(
-          valueListenable: LiquidGlassEffectService.configurationListenable,
-          builder: (context, configuration, _) {
-            final theme = Theme.of(context);
-            final scheme = theme.colorScheme;
-            if (configuration.enabled) {
-              final isDark = scheme.brightness == Brightness.dark;
-              final enhanced =
-                  configuration.mode == LiquidGlassEffectMode.enhanced;
-              return GlassTextField.search(
-                controller: controller,
-                placeholder: hintText,
-                onChanged: onChanged,
-                prefixIcon: Icon(
-                  Icons.search_rounded,
-                  color: scheme.onSurfaceVariant,
-                ),
-                suffixIcon: value.text.isEmpty
-                    ? null
-                    : Semantics(
-                        label: '清空搜索',
-                        child: const Icon(Icons.close_rounded),
+              valueListenable: LiquidGlassEffectService.configurationListenable,
+              builder: (context, configuration, _) {
+                final theme = Theme.of(context);
+                final scheme = theme.colorScheme;
+                if (configuration.enabled) {
+                  final isDark = scheme.brightness == Brightness.dark;
+                  final enhanced =
+                      configuration.mode == LiquidGlassEffectMode.enhanced;
+                  return GlassTextField.search(
+                    controller: controller,
+                    placeholder: hintText,
+                    onChanged: onChanged,
+                    prefixIcon: Icon(
+                      Icons.search_rounded,
+                      color: scheme.onSurfaceVariant,
+                    ),
+                    suffixIcon: value.text.isEmpty
+                        ? null
+                        : Semantics(
+                            label: '清空搜索',
+                            child: const Icon(Icons.close_rounded),
+                          ),
+                    onSuffixTap: value.text.isEmpty
+                        ? null
+                        : () {
+                            controller.clear();
+                            onChanged('');
+                          },
+                    textStyle: theme.textTheme.bodyMedium?.copyWith(
+                      color: scheme.onSurface,
+                    ),
+                    placeholderStyle: theme.textTheme.bodyMedium?.copyWith(
+                      color: scheme.onSurfaceVariant.withValues(alpha: 0.72),
+                    ),
+                    height: 56,
+                    settings: LiquidGlassSettings(
+                      bodyMode: GlassBodyMode.clear,
+                      glassColor: scheme.primary.withValues(
+                        alpha: isDark ? 0.12 : 0.1,
                       ),
-                onSuffixTap: value.text.isEmpty
-                    ? null
-                    : () {
-                        controller.clear();
-                        onChanged('');
-                      },
-                textStyle: theme.textTheme.bodyMedium?.copyWith(
-                  color: scheme.onSurface,
-                ),
-                placeholderStyle: theme.textTheme.bodyMedium?.copyWith(
-                  color: scheme.onSurfaceVariant.withValues(alpha: 0.72),
-                ),
-                height: 56,
-                settings: LiquidGlassSettings(
-                  bodyMode: GlassBodyMode.clear,
-                  glassColor:
-                      scheme.primary.withValues(alpha: isDark ? 0.12 : 0.1),
-                  thickness: enhanced ? 20 : 16,
-                  blur: enhanced ? 12 : 9,
-                  chromaticAberration: 0.0015,
-                  lightIntensity: isDark ? 0.48 : 0.58,
-                  ambientStrength: isDark ? 0.08 : 0.1,
-                  backerColor: scheme.surface.withValues(
-                    alpha: liquidGlassBackerOpacity(
-                      isDark ? 0.5 : 0.58,
-                      configuration,
+                      thickness: enhanced ? 20 : 16,
+                      blur: enhanced ? 12 : 9,
+                      chromaticAberration: 0.0015,
+                      lightIntensity: isDark ? 0.48 : 0.58,
+                      ambientStrength: isDark ? 0.08 : 0.1,
+                      backerColor: scheme.surface.withValues(
+                        alpha: liquidGlassBackerOpacity(
+                          isDark ? 0.5 : 0.58,
+                          configuration,
+                        ),
+                      ),
+                    ),
+                    useOwnLayer: true,
+                    quality: enhanced
+                        ? GlassQuality.premium
+                        : GlassQuality.standard,
+                  );
+                }
+
+                return TextField(
+                  controller: controller,
+                  onChanged: onChanged,
+                  textInputAction: TextInputAction.search,
+                  decoration: InputDecoration(
+                    hintText: hintText,
+                    prefixIcon: const Icon(Icons.search_rounded),
+                    suffixIcon: value.text.isEmpty
+                        ? null
+                        : IconButton(
+                            tooltip: '清空搜索',
+                            onPressed: () {
+                              controller.clear();
+                              onChanged('');
+                            },
+                            icon: const Icon(Icons.close_rounded),
+                          ),
+                    filled: true,
+                    fillColor: scheme.surfaceContainerLow,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide.none,
                     ),
                   ),
-                ),
-                useOwnLayer: true,
-                quality:
-                    enhanced ? GlassQuality.premium : GlassQuality.standard,
-              );
-            }
-
-            return TextField(
-              controller: controller,
-              onChanged: onChanged,
-              textInputAction: TextInputAction.search,
-              decoration: InputDecoration(
-                hintText: hintText,
-                prefixIcon: const Icon(Icons.search_rounded),
-                suffixIcon: value.text.isEmpty
-                    ? null
-                    : IconButton(
-                        tooltip: '清空搜索',
-                        onPressed: () {
-                          controller.clear();
-                          onChanged('');
-                        },
-                        icon: const Icon(Icons.close_rounded),
-                      ),
-                filled: true,
-                fillColor: scheme.surfaceContainerLow,
-                border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    borderSide: BorderSide.none),
-              ),
-            );
-          },
-        ),
+                );
+              },
+            ),
       );
 }
 
 class ManagementEmptyState extends StatelessWidget {
-  const ManagementEmptyState(
-      {super.key,
-      required this.icon,
-      required this.title,
-      required this.description});
+  const ManagementEmptyState({
+    super.key,
+    required this.icon,
+    required this.title,
+    required this.description,
+  });
 
   final IconData icon;
   final String title;
@@ -354,18 +420,25 @@ class ManagementEmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 36),
-        child: Column(children: [
-          Icon(icon, size: 44, color: Theme.of(context).colorScheme.primary),
-          const SizedBox(height: 16),
-          Text(title,
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 8),
-          Text(description,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant)),
-        ]),
-      );
+    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 36),
+    child: Column(
+      children: [
+        Icon(icon, size: 44, color: Theme.of(context).colorScheme.primary),
+        const SizedBox(height: 16),
+        Text(
+          title,
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+        const SizedBox(height: 8),
+        Text(
+          description,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
+    ),
+  );
 }

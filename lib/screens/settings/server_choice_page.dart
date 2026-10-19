@@ -93,7 +93,8 @@ class _ServerChoicePageState extends State<ServerChoicePage> {
                     _buildServerOption(
                       value: ApiService.serverChoiceAliyunDirect,
                       title: '阿里云直连（HTTP）',
-                      description: '优点：链路更短，通常延迟更低；不依赖 Cloudflare 中转。\n'
+                      description:
+                          '优点：链路更短，通常延迟更低；不依赖 Cloudflare 中转。\n'
                           '注意：客户端到服务器之间不是加密连接，不建议在公共 Wi-Fi 等不可信网络下使用。',
                       icon: Icons.speed_outlined,
                     ),
@@ -101,7 +102,8 @@ class _ServerChoicePageState extends State<ServerChoicePage> {
                     _buildServerOption(
                       value: ApiService.serverChoiceCloudflare,
                       title: 'Cloudflare 中转（HTTPS）',
-                      description: '优点：客户端到中转入口使用 HTTPS，兼容性和公共网络安全性更好。\n'
+                      description:
+                          '优点：客户端到中转入口使用 HTTPS，兼容性和公共网络安全性更好。\n'
                           '不足：多经过一层中转，可能增加少量延迟，并依赖 Cloudflare 线路与代理配置。',
                       icon: Icons.shield_outlined,
                     ),
@@ -132,9 +134,7 @@ class _ServerChoicePageState extends State<ServerChoicePage> {
       decoration: BoxDecoration(
         color: colorScheme.secondaryContainer,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: colorScheme.outline.withValues(alpha: 0.45),
-        ),
+        border: Border.all(color: colorScheme.outline.withValues(alpha: 0.45)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -169,8 +169,9 @@ class _ServerChoicePageState extends State<ServerChoicePage> {
     final colorScheme = Theme.of(context).colorScheme;
     final isSelected = _selectedServer == value;
     final titleColor = isSelected ? colorScheme.primary : colorScheme.onSurface;
-    final iconColor =
-        isSelected ? colorScheme.primary : colorScheme.onSurfaceVariant;
+    final iconColor = isSelected
+        ? colorScheme.primary
+        : colorScheme.onSurfaceVariant;
 
     return InkWell(
       onTap: () => setState(() => _selectedServer = value),
@@ -179,8 +180,9 @@ class _ServerChoicePageState extends State<ServerChoicePage> {
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           border: Border.all(
-            color:
-                isSelected ? colorScheme.primary : colorScheme.outlineVariant,
+            color: isSelected
+                ? colorScheme.primary
+                : colorScheme.outlineVariant,
             width: isSelected ? 2 : 1,
           ),
           borderRadius: BorderRadius.circular(12),
@@ -253,9 +255,7 @@ class _ServerChoicePageState extends State<ServerChoicePage> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('切换接口线路'),
-        content: const Text(
-          '两条线路使用同一套阿里云账户和数据。确定切换吗？保存后当前请求会使用新线路，实时同步会自动重连。',
-        ),
+        content: const Text('两条线路使用同一套阿里云账户和数据。确定切换吗？保存后当前请求会使用新线路，实时同步会自动重连。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -305,8 +305,8 @@ class _ServerChoicePageState extends State<ServerChoicePage> {
 
   String get _selectedRouteTitle =>
       _selectedServer == ApiService.serverChoiceCloudflare
-          ? 'Cloudflare HTTPS 中转'
-          : '阿里云 HTTP 直连';
+      ? 'Cloudflare HTTPS 中转'
+      : '阿里云 HTTP 直连';
 
   Future<void> _refreshBackgroundNotificationPoll() async {
     try {

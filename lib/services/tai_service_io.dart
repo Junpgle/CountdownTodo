@@ -1,4 +1,5 @@
 import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -30,7 +31,8 @@ class TaiService {
       );
       // 检查关键表是否存在
       final tables = await db.rawQuery(
-          "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('DailyLogModels','AppModels')");
+        "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('DailyLogModels','AppModels')",
+      );
       await db.close();
       return tables.length == 2;
     } catch (e) {
@@ -51,7 +53,8 @@ class TaiService {
         options: OpenDatabaseOptions(readOnly: true),
       );
 
-      final rows = await db.rawQuery('''
+      final rows = await db.rawQuery(
+        '''
         SELECT
           COALESCE(NULLIF(a.Alias, ''), a.Name) AS app_name,
           SUM(d.Time) AS duration
@@ -60,15 +63,19 @@ class TaiService {
         WHERE substr(d.Date, 1, 10) = ?
         GROUP BY a.ID
         ORDER BY duration DESC
-      ''', [date]);
+      ''',
+        [date],
+      );
 
       await db.close();
 
       return rows
-          .map((r) => {
-                'app_name': r['app_name'] as String,
-                'duration': r['duration'] as int,
-              })
+          .map(
+            (r) => {
+              'app_name': r['app_name'] as String,
+              'duration': r['duration'] as int,
+            },
+          )
           .toList();
     } catch (e) {
       debugPrint('读取 Tai 数据库失败: $e');

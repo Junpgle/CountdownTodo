@@ -1,4 +1,5 @@
 import 'package:intl/intl.dart';
+
 import '../storage_service.dart';
 import '../models.dart';
 import '../utils/calendar_date_math.dart';
@@ -29,34 +30,44 @@ class IslandSlotData {
   });
 
   const IslandSlotData.empty()
-      : display = '',
-        type = '',
-        detailTitle = '',
-        detailSubtitle = '',
-        detailLocation = '',
-        detailTime = '',
-        detailNote = '',
-        specialType = '';
+    : display = '',
+      type = '',
+      detailTitle = '',
+      detailSubtitle = '',
+      detailLocation = '',
+      detailTime = '',
+      detailNote = '',
+      specialType = '';
 
   bool get isEmpty => display.isEmpty;
   bool get isNotEmpty => display.isNotEmpty;
 
   Map<String, String> toMap() => {
-        'display': display,
-        'type': type,
-        'detail_title': detailTitle,
-        'detail_subtitle': detailSubtitle,
-        'detail_location': detailLocation,
-        'detail_time': detailTime,
-        'detail_note': detailNote,
-        if (specialType.isNotEmpty) 'specialType': specialType,
-      };
+    'display': display,
+    'type': type,
+    'detail_title': detailTitle,
+    'detail_subtitle': detailSubtitle,
+    'detail_location': detailLocation,
+    'detail_time': detailTime,
+    'detail_note': detailNote,
+    if (specialType.isNotEmpty) 'specialType': specialType,
+  };
 }
 
 /// Provider for island slot data (todo, course, countdown, record).
 /// Centralizes data retrieval logic for the island display.
 class IslandSlotProvider {
   IslandSlotProvider._();
+
+  static final Map<(String?, String), DateFormat> _dateFormatters = {};
+
+  static DateFormat _dateFormat(String pattern) {
+    final locale = Intl.defaultLocale;
+    return _dateFormatters.putIfAbsent((
+      locale,
+      pattern,
+    ), () => DateFormat(pattern, locale));
+  }
 
   /// Detect special todo type from title keywords
   static String detectTodoType(String title) =>
@@ -70,17 +81,21 @@ class IslandSlotProvider {
     final startMs = start.millisecondsSinceEpoch;
     final endMs = endExclusive.millisecondsSinceEpoch;
     return records
-        .where((record) =>
-            !record.isDeleted &&
-            record.status == PomodoroRecordStatus.completed &&
-            record.startTime >= startMs &&
-            record.startTime < endMs)
+        .where(
+          (record) =>
+              !record.isDeleted &&
+              record.status == PomodoroRecordStatus.completed &&
+              record.startTime >= startMs &&
+              record.startTime < endMs,
+        )
         .fold(0, (seconds, record) => seconds + (record.actualDuration ?? 0));
   }
 
   /// Get slot data for a specific type
-  static Future<IslandSlotData> getSlotData(String type,
-      {required bool isLeft}) async {
+  static Future<IslandSlotData> getSlotData(
+    String type, {
+    required bool isLeft,
+  }) async {
     try {
       switch (type) {
         case 'todo':
@@ -109,12 +124,8 @@ class IslandSlotProvider {
   /// Get date slot data
   static Future<IslandSlotData> _getDateSlot(bool isLeft) async {
     final now = DateTime.now();
-    final display = DateFormat('M月d日').format(now);
-    return IslandSlotData(
-      display: display,
-      type: 'date',
-      detailTitle: display,
-    );
+    final display = _dateFormat('M月d日').format(now);
+    return IslandSlotData(display: display, type: 'date', detailTitle: display);
   }
 
   /// Get weekday slot data
@@ -133,45 +144,57 @@ class IslandSlotProvider {
   static Future<IslandSlotData> _getTodoSlot(bool isLeft) async {
     final username = await StorageService.getLoginSession() ?? 'default';
     final todos = await StorageService.getTodos(username);
-    final active = todos.where((t) => !t.isDone && !t.isDeleted).toList();
-
-    if (active.isEmpty) {
-      return const IslandSlotData(display: '', type: 'todo');
-    }
-
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
 
-    int urgencyScore(dynamic t) {
-      if (t.dueDate == null) return 3;
-      final dueDay =
-          DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day);
-      if (dueDay.isBefore(today)) return 0; // 逾期
-      if (dueDay.isAtSameMomentAs(today)) return 1; // 今天到期
-      return 2; // 未来到期
+    TodoItem? selectedTodo;
+    DateTime? selectedDueDay;
+    var selectedUrgency = 4;
+    for (final todo in todos) {
+      if (todo.isDone || todo.isDeleted) continue;
+
+      final dueDate = todo.dueDate;
+      final dueDay = dueDate == null
+          ? null
+          : DateTime(dueDate.year, dueDate.month, dueDate.day);
+      final urgency = dueDay == null
+          ? 3
+          : dueDay.isBefore(today)
+          ? 0
+          : dueDay.isAtSameMomentAs(today)
+          ? 1
+          : 2;
+
+      var isPreferred = selectedTodo == null || urgency < selectedUrgency;
+      final current = selectedTodo;
+      if (!isPreferred && current != null && urgency == selectedUrgency) {
+        final currentDueDate = current.dueDate;
+        if (dueDate == null && currentDueDate == null) {
+          isPreferred = todo.createdAt > current.createdAt;
+        } else if (dueDate != null && currentDueDate == null) {
+          isPreferred = true;
+        } else if (dueDate != null && currentDueDate != null) {
+          isPreferred = dueDate.isBefore(currentDueDate);
+        }
+      }
+
+      if (isPreferred) {
+        selectedTodo = todo;
+        selectedDueDay = dueDay;
+        selectedUrgency = urgency;
+      }
     }
 
-    active.sort((a, b) {
-      final sa = urgencyScore(a);
-      final sb = urgencyScore(b);
-      if (sa != sb) return sa.compareTo(sb);
-      // 同一紧迫级别内: 有 dueDate 的按时间排, 无 dueDate 的按创建时间倒序
-      if (a.dueDate == null && b.dueDate == null) {
-        return b.createdAt.compareTo(a.createdAt);
-      }
-      if (a.dueDate == null) return 1;
-      if (b.dueDate == null) return -1;
-      return a.dueDate!.compareTo(b.dueDate!);
-    });
-
-    final t = active.first;
-    final time =
-        t.dueDate != null ? DateFormat('MM-dd').format(t.dueDate!) : '';
+    final t = selectedTodo;
+    if (t == null) {
+      return const IslandSlotData(display: '', type: 'todo');
+    }
+    final time = t.dueDate != null
+        ? _dateFormat('MM-dd').format(t.dueDate!)
+        : '';
 
     // 判断是否逾期
-    final isOverdue = t.dueDate != null &&
-        DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day)
-            .isBefore(today);
+    final isOverdue = selectedDueDay != null && selectedDueDay.isBefore(today);
 
     // 检测特殊待办类型
     final specialType = detectTodoType(t.title);
@@ -181,8 +204,9 @@ class IslandSlotProvider {
         ? (time.isNotEmpty ? '[$overdueTag$time] ${t.title}' : t.title)
         : (time.isNotEmpty ? '${t.title} [$overdueTag$time]' : t.title);
 
-    final timeRange =
-        t.dueDate != null ? DateFormat('HH:mm').format(t.dueDate!) : '';
+    final timeRange = t.dueDate != null
+        ? _dateFormat('HH:mm').format(t.dueDate!)
+        : '';
 
     return IslandSlotData(
       display: display,
@@ -205,22 +229,35 @@ class IslandSlotProvider {
       if (courses != null && courses.isNotEmpty) {
         final now = DateTime.now();
         final isToday = dashboard['title'] == '今日课程';
-        final valid = courses.where((c) {
-          if (c is! CourseItem) return false;
-          if (!isToday) return true; // 明日课程不会过期
-          final endHour = c.endTime ~/ 100;
-          final endMin = c.endTime % 100;
-          final courseEnd =
-              DateTime(now.year, now.month, now.day, endHour, endMin);
-          return now.isBefore(courseEnd);
-        }).toList();
+        CourseItem? c;
+        for (final item in courses) {
+          if (item is! CourseItem) continue;
+          if (isToday) {
+            final endHour = item.endTime ~/ 100;
+            final endMin = item.endTime % 100;
+            final courseEnd = DateTime(
+              now.year,
+              now.month,
+              now.day,
+              endHour,
+              endMin,
+            );
+            if (!now.isBefore(courseEnd)) continue;
+          }
+          c = item;
+          break;
+        }
 
-        if (valid.isNotEmpty) {
-          final c = valid.first as CourseItem;
+        if (c != null) {
           final startHour = c.startTime ~/ 100;
           final startMin = c.startTime % 100;
-          final courseStart =
-              DateTime(now.year, now.month, now.day, startHour, startMin);
+          final courseStart = DateTime(
+            now.year,
+            now.month,
+            now.day,
+            startHour,
+            startMin,
+          );
           final isOngoing = now.isAfter(courseStart);
 
           final time = isOngoing ? c.formattedEndTime : c.formattedStartTime;
@@ -258,7 +295,7 @@ class IslandSlotProvider {
     DateTime? courseDate;
     if (course.date.isNotEmpty) {
       try {
-        courseDate = DateFormat('yyyy-MM-dd').parseStrict(course.date);
+        courseDate = _dateFormat('yyyy-MM-dd').parseStrict(course.date);
       } catch (_) {
         courseDate = null;
       }
@@ -280,12 +317,14 @@ class IslandSlotProvider {
   /// Get pomodoro record slot data
   static Future<IslandSlotData> _getRecordSlot(bool isLeft) async {
     try {
-      final records = await PomodoroService.getRecords();
-      if (records.isNotEmpty) {
-        final r = records.first;
-        final time = DateFormat('HH:mm').format(
-            DateTime.fromMillisecondsSinceEpoch(r.endTime ?? r.startTime));
-        final title = r.todoTitle ?? '专注';
+      final record = await PomodoroService.getLatestRecord();
+      if (record != null) {
+        final time = _dateFormat('HH:mm').format(
+          DateTime.fromMillisecondsSinceEpoch(
+            record.endTime ?? record.startTime,
+          ),
+        );
+        final title = record.todoTitle ?? '专注';
         return IslandSlotData(
           display: isLeft ? '[$time] $title' : '$title [$time]',
           type: 'record',
@@ -305,17 +344,22 @@ class IslandSlotProvider {
       // debugPrint('[IslandSlotProvider] getCountdowns: ${cds.length} items');
       final now = DateTime.now();
       final today = CalendarDateMath.dateOnly(now);
-      final active = cds
-          .where((c) =>
-              !c.isDeleted &&
-              CalendarDateMath.daysBetween(today, c.targetDate) >= 0)
-          .toList();
-      // debugPrint('[IslandSlotProvider] active countdowns: ${active.length}');
-      active.sort((a, b) => a.targetDate.compareTo(b.targetDate));
+      CountdownItem? nearest;
+      var nearestDays = 0;
+      for (final countdown in cds) {
+        if (countdown.isDeleted) continue;
+        final days = CalendarDateMath.daysBetween(today, countdown.targetDate);
+        if (days < 0) continue;
+        if (nearest == null ||
+            countdown.targetDate.isBefore(nearest.targetDate)) {
+          nearest = countdown;
+          nearestDays = days;
+        }
+      }
 
-      if (active.isNotEmpty) {
-        final c = active.first;
-        final days = CalendarDateMath.daysBetween(today, c.targetDate);
+      if (nearest != null) {
+        final c = nearest;
+        final days = nearestDays;
         final info = '$days天';
         final display = isLeft ? '[$info] ${c.title}' : '${c.title} [$info]';
         // debugPrint('[IslandSlotProvider] countdown display: $display');
@@ -323,7 +367,7 @@ class IslandSlotProvider {
           display: display,
           type: 'countdown',
           detailTitle: c.title,
-          detailTime: DateFormat('yyyy-MM-dd').format(c.targetDate),
+          detailTime: _dateFormat('yyyy-MM-dd').format(c.targetDate),
           detailNote: '还有$days天',
         );
       }
@@ -336,29 +380,39 @@ class IslandSlotProvider {
   /// Get focus time slot data (today's total focus, or yesterday if none)
   static Future<IslandSlotData> _getFocusSlot(bool isLeft) async {
     try {
-      final records = await PomodoroService.getRecords();
       final now = DateTime.now();
       final todayRange = CalendarDateMath.dayRange(now);
-      final yesterdayStart =
-          CalendarDateMath.addDays(todayRange.start, -1);
+      final yesterdayStart = CalendarDateMath.addDays(todayRange.start, -1);
       final yesterdayRange = CalendarDateMath.dayRange(yesterdayStart);
-      final todayFocusSeconds = completedFocusSecondsInRange(
-        records,
-        todayRange.start,
+      final records = await PomodoroService.getRecordsInRange(
+        yesterdayRange.start,
         todayRange.endExclusive,
       );
+      final todayStartMs = todayRange.start.millisecondsSinceEpoch;
+      final todayEndMs = todayRange.endExclusive.millisecondsSinceEpoch;
+      final yesterdayStartMs = yesterdayRange.start.millisecondsSinceEpoch;
+      var todayFocusSeconds = 0;
+      var yesterdayFocusSeconds = 0;
+      for (final record in records) {
+        if (record.isDeleted ||
+            record.status != PomodoroRecordStatus.completed) {
+          continue;
+        }
+        final startTime = record.startTime;
+        final actualDuration = record.actualDuration ?? 0;
+        if (startTime >= todayStartMs && startTime < todayEndMs) {
+          todayFocusSeconds += actualDuration;
+        } else if (startTime >= yesterdayStartMs && startTime < todayStartMs) {
+          yesterdayFocusSeconds += actualDuration;
+        }
+      }
 
       // If no focus today, calculate yesterday's
-      int displaySeconds = todayFocusSeconds;
-      String label = '今日';
-      if (todayFocusSeconds == 0) {
-        displaySeconds = completedFocusSecondsInRange(
-          records,
-          yesterdayRange.start,
-          yesterdayRange.endExclusive,
-        );
-        label = '昨日';
-      }
+      final useYesterday = todayFocusSeconds == 0;
+      final displaySeconds = useYesterday
+          ? yesterdayFocusSeconds
+          : todayFocusSeconds;
+      final label = useYesterday ? '昨日' : '今日';
 
       if (displaySeconds > 0) {
         final hours = displaySeconds ~/ 3600;
@@ -396,7 +450,7 @@ class IslandSlotProvider {
           queue.add({
             'text': t.title,
             'type': 'todo',
-            'timeLabel': DateFormat('HH:mm').format(t.dueDate!),
+            'timeLabel': _dateFormat('HH:mm').format(t.dueDate!),
           });
         }
       }

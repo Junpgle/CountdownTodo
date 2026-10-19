@@ -1,4 +1,5 @@
 import 'package:package_info_plus/package_info_plus.dart';
+
 import '../storage_service.dart';
 import 'api_service.dart';
 import 'turnstile_site_key_resolver.dart';
@@ -43,11 +44,11 @@ class EnvironmentService {
 
   /// 获取 Turnstile Site Key（根据环境自动选择）
   static String get turnstileSiteKey => resolveTurnstileSiteKey(
-        isTest: _isTest,
-        testSiteKey: _testSiteKey,
-        productionSiteKey: _turnstileSiteKey,
-        useProductionOnLocalWeb: _useProductionTurnstileOnLocalWeb,
-      );
+    isTest: _isTest,
+    testSiteKey: _testSiteKey,
+    productionSiteKey: _turnstileSiteKey,
+    useProductionOnLocalWeb: _useProductionTurnstileOnLocalWeb,
+  );
 
   /// 获取 Turnstile 验证页面完整 URL
   /// 必须是后端 Express 服务器的 /turnstile 路由，不是 Cloudflare Worker
@@ -77,8 +78,8 @@ class EnvironmentService {
       // 🔌 生产环境：根据用户选择决定
       String serverChoice = await StorageService.getServerChoice();
       ApiService.setServerChoice(serverChoice);
-//       print(
-//           '🔌 [Environment] Mode: PROD (Current Base: ${ApiService.baseUrl})');
+      //       print(
+      //           '🔌 [Environment] Mode: PROD (Current Base: ${ApiService.baseUrl})');
     }
   }
 

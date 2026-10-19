@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../../storage_service.dart';
 import '../../models.dart';
 import '../../features/habits/services/habit_reminder_service.dart';
@@ -107,8 +108,9 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
     final username = await StorageService.getLoginSession();
     if (username != null) {
       final groups = await StorageService.getTodoGroups(username);
-      final catReminders =
-          await AppSettingsStorage.getCategoryReminderMinutes(username);
+      final catReminders = await AppSettingsStorage.getCategoryReminderMinutes(
+        username,
+      );
       if (!mounted) return;
       setState(() {
         _username = username;
@@ -239,8 +241,12 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
     }
   }
 
-  Future<void> _toggleSubNotification(String key, bool value,
-      Function(bool) setStateCallback, Function(bool) storageCallback) async {
+  Future<void> _toggleSubNotification(
+    String key,
+    bool value,
+    Function(bool) setStateCallback,
+    Function(bool) storageCallback,
+  ) async {
     if (key == 'finance_budget') {
       await FinanceAutomationService.setBudgetAlertsEnabled(value);
     } else {
@@ -273,10 +279,11 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
     final username = await StorageService.getLoginSession();
     if (username == null) return;
     final todos = await StorageService.getTodos(username);
-    final courses = await CourseService.getAllCourses(username);
     await ReminderScheduleService.scheduleAll(
       todos: todos,
-      courses: courses,
+      courses: const <CourseItem>[],
+      loadCourses: (from, to) =>
+          CourseService.getCoursesForDateRange(username, from: from, to: to),
       expectedUsername: username,
       force: true,
     );
@@ -492,9 +499,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                         AppSettingsStorage.setFinanceRecurringReminderEnabled,
                       ),
                     ),
-                    if (_reminderEnabled) ...[
-                      _buildCourseReminderTile(),
-                    ],
+                    if (_reminderEnabled) ...[_buildCourseReminderTile()],
                   ],
                 ),
                 const SizedBox(height: 24),
@@ -531,15 +536,18 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                         ? Colors.grey.shade900
                         : Colors.grey.shade100,
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.fromBorderSide(const BorderSide(
-                        color: Colors.transparent, width: 1.5)),
+                    border: Border.fromBorderSide(
+                      const BorderSide(color: Colors.transparent, width: 1.5),
+                    ),
                   ),
                   child: InkWell(
                     borderRadius: BorderRadius.circular(16),
                     onTap: _showScheduledReminders,
                     child: Padding(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 16.0, vertical: 16.0),
+                        horizontal: 16.0,
+                        vertical: 16.0,
+                      ),
                       child: Row(
                         children: [
                           Container(
@@ -548,8 +556,11 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                               color: Colors.teal.withValues(alpha: 0.15),
                               shape: BoxShape.circle,
                             ),
-                            child: const Icon(Icons.manage_search,
-                                color: Colors.teal, size: 28),
+                            child: const Icon(
+                              Icons.manage_search,
+                              color: Colors.teal,
+                              size: 28,
+                            ),
                           ),
                           const SizedBox(width: 16),
                           Expanded(
@@ -559,14 +570,17 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                                 const Text(
                                   '定时闹钟管理',
                                   style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 16),
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                  ),
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
                                   '查看当前已注册到系统的精确闹钟提醒',
                                   style: TextStyle(
-                                      fontSize: 12, color: Colors.grey[600]),
+                                    fontSize: 12,
+                                    color: Colors.grey[600],
+                                  ),
                                 ),
                               ],
                             ),
@@ -767,8 +781,9 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                 ),
                 IconButton(
                   tooltip: '重新检查',
-                  onPressed:
-                      _webPermissionLoading ? null : _refreshWebPermission,
+                  onPressed: _webPermissionLoading
+                      ? null
+                      : _refreshWebPermission,
                   icon: const Icon(Icons.refresh_rounded),
                 ),
               ],
@@ -782,23 +797,26 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                   onPressed: _webPermissionLoading
                       ? null
                       : granted
-                          ? _sendWebTestNotification
-                          : _requestWebPermission,
+                      ? _sendWebTestNotification
+                      : _requestWebPermission,
                   icon: _webPermissionLoading
                       ? const SizedBox(
                           width: 16,
                           height: 16,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : Icon(granted
-                          ? Icons.notifications_active_outlined
-                          : Icons.notification_add_outlined),
+                      : Icon(
+                          granted
+                              ? Icons.notifications_active_outlined
+                              : Icons.notification_add_outlined,
+                        ),
                   label: Text(granted ? '发送测试通知' : '允许通知'),
                 ),
                 if (!granted)
                   OutlinedButton.icon(
-                    onPressed:
-                        _webPermissionLoading ? null : _refreshWebPermission,
+                    onPressed: _webPermissionLoading
+                        ? null
+                        : _refreshWebPermission,
                     icon: const Icon(Icons.fact_check_outlined),
                     label: const Text('检查状态'),
                   ),
@@ -836,8 +854,10 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                   children: [
                     const Text(
                       '浏览器预约提醒',
-                      style:
-                          TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
                     ),
                     const SizedBox(height: 4),
                     Text(
@@ -866,10 +886,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
       color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: ListTile(
-        leading: Icon(
-          Icons.info_outline_rounded,
-          color: colorScheme.primary,
-        ),
+        leading: Icon(Icons.info_outline_rounded, color: colorScheme.primary),
         title: const Text('浏览器通知限制'),
         subtitle: const Text(
           '通知需要 HTTPS 且用户授权。页面或 PWA 关闭后，浏览器不能保证像原生 App 一样精确触发后台提醒；长期课程/日程提醒可在数据与互联中导出 ICS 日历文件。',
@@ -957,8 +974,9 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
           children: children,
         ),
       ),
-      crossFadeState:
-          enabled ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+      crossFadeState: enabled
+          ? CrossFadeState.showSecond
+          : CrossFadeState.showFirst,
       duration: const Duration(milliseconds: 300),
     );
   }
@@ -1011,7 +1029,8 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
             : Colors.grey.shade100,
         borderRadius: BorderRadius.circular(16),
         border: Border.fromBorderSide(
-            const BorderSide(color: Colors.transparent, width: 1.5)),
+          const BorderSide(color: Colors.transparent, width: 1.5),
+        ),
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
@@ -1030,25 +1049,29 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                       color: Colors.blue.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child:
-                        const Icon(Icons.timer, color: Colors.blue, size: 24),
+                    child: const Icon(
+                      Icons.timer,
+                      color: Colors.blue,
+                      size: 24,
+                    ),
                   ),
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
-                      color: Theme.of(context)
-                          .colorScheme
-                          .primary
+                      color: Theme.of(context).colorScheme.primary
                           .withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
                       '$_courseReminderMinutes 分钟',
                       style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                          color: Theme.of(context).colorScheme.primary),
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
                     ),
                   ),
                 ],
@@ -1068,9 +1091,10 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
               Text(
                 '距上课提前 $_courseReminderMinutes 分钟提醒',
                 style: TextStyle(
-                    fontSize: 11,
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    height: 1.2),
+                  fontSize: 11,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  height: 1.2,
+                ),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -1157,8 +1181,10 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
                   trailing: TextButton.icon(
                     onPressed: () async {
-                      await NotificationService.scheduleReminders([],
-                          clearFirst: true);
+                      await NotificationService.scheduleReminders(
+                        [],
+                        clearFirst: true,
+                      );
                       if (!mounted) return;
                       if (sheetContext.mounted) {
                         Navigator.pop(sheetContext);
@@ -1193,15 +1219,17 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                             final r = reminders[index];
                             final triggerAt =
                                 DateTime.fromMillisecondsSinceEpoch(
-                                    r['triggerAtMs']);
+                                  r['triggerAtMs'],
+                                );
                             final isPast = triggerAt.isBefore(DateTime.now());
 
                             return ListTile(
                               leading: CircleAvatar(
                                 backgroundColor: isPast
                                     ? colorScheme.surfaceContainerHighest
-                                    : colorScheme.primaryContainer
-                                        .withValues(alpha: 0.7),
+                                    : colorScheme.primaryContainer.withValues(
+                                        alpha: 0.7,
+                                      ),
                                 child: Icon(
                                   isPast ? Icons.history : Icons.alarm,
                                   color: isPast
@@ -1221,8 +1249,9 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                                       color: isPast
                                           ? colorScheme.error
                                           : colorScheme.onSurfaceVariant,
-                                      fontWeight:
-                                          isPast ? FontWeight.bold : null,
+                                      fontWeight: isPast
+                                          ? FontWeight.bold
+                                          : null,
                                     ),
                                   ),
                                 ],
@@ -1231,7 +1260,8 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                                 icon: const Icon(Icons.close, size: 20),
                                 onPressed: () async {
                                   await NotificationService.cancelReminder(
-                                      r['notifId']);
+                                    r['notifId'],
+                                  );
                                   if (!mounted) return;
                                   if (sheetContext.mounted) {
                                     Navigator.pop(sheetContext);
@@ -1278,9 +1308,9 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                   ? Colors.grey.shade900
                   : Colors.grey.shade100,
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  side:
-                      const BorderSide(color: Colors.transparent, width: 1.5)),
+                borderRadius: BorderRadius.circular(16),
+                side: const BorderSide(color: Colors.transparent, width: 1.5),
+              ),
               child: InkWell(
                 borderRadius: BorderRadius.circular(16),
                 onTap: () => _showCategoryReminderPicker(group),
@@ -1298,25 +1328,29 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                               color: Colors.teal.withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(10),
                             ),
-                            child: const Icon(Icons.folder,
-                                color: Colors.teal, size: 24),
+                            child: const Icon(
+                              Icons.folder,
+                              color: Colors.teal,
+                              size: 24,
+                            ),
                           ),
                           Container(
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 4),
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
                             decoration: BoxDecoration(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .primary
+                              color: Theme.of(context).colorScheme.primary
                                   .withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Text(
                               mins == 0 ? '准时' : '提前 $mins分',
                               style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                  color: Theme.of(context).colorScheme.primary),
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
                             ),
                           ),
                         ],
@@ -1336,10 +1370,10 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                       Text(
                         '点击设置该分类下的待办默认提前提醒时间',
                         style: TextStyle(
-                            fontSize: 11,
-                            color:
-                                Theme.of(context).colorScheme.onSurfaceVariant,
-                            height: 1.2),
+                          fontSize: 11,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          height: 1.2,
+                        ),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -1381,23 +1415,26 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                     final mins = options[index];
                     final currentMins = _categoryReminderMinutes[group.id] ?? 5;
                     return ListTile(
-                      title: Text(mins == 0
-                          ? '准时提醒'
-                          : mins >= 60
-                              ? (mins >= 1440
-                                  ? '提前 1 天'
-                                  : '提前 ${mins ~/ 60} 小时')
-                              : '提前 $mins 分钟'),
+                      title: Text(
+                        mins == 0
+                            ? '准时提醒'
+                            : mins >= 60
+                            ? (mins >= 1440 ? '提前 1 天' : '提前 ${mins ~/ 60} 小时')
+                            : '提前 $mins 分钟',
+                      ),
                       trailing: currentMins == mins
                           ? Icon(Icons.check, color: colorScheme.primary)
                           : null,
                       onTap: () async {
                         if (_username != null) {
-                          final newData =
-                              Map<String, int>.from(_categoryReminderMinutes);
+                          final newData = Map<String, int>.from(
+                            _categoryReminderMinutes,
+                          );
                           newData[group.id] = mins;
                           await AppSettingsStorage.saveCategoryReminderMinutes(
-                              _username!, newData);
+                            _username!,
+                            newData,
+                          );
                           if (!mounted) return;
                           setState(() {
                             _categoryReminderMinutes = newData;
