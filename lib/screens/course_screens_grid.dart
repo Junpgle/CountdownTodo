@@ -55,7 +55,12 @@ class _PlanPomodoroProgressIndex {
   Map<String, dynamic> progressFor(TodoPlanBlock plan) =>
       _progressByPlan.putIfAbsent(plan, () {
         if (plan.isDeleted) {
-          return {'completed': 0, 'total': 0, 'progress': 0.0};
+          return {
+            'completed': 0,
+            'total': 0,
+            'actualSeconds': 0,
+            'progress': 0.0,
+          };
         }
 
         final matchingIndices = <int>{};
@@ -79,15 +84,22 @@ class _PlanPomodoroProgressIndex {
         }
 
         if (matchingIndices.isEmpty) {
-          return {'completed': 0, 'total': 0, 'progress': 0.0};
+          return {
+            'completed': 0,
+            'total': 0,
+            'actualSeconds': 0,
+            'progress': 0.0,
+          };
         }
 
         var totalSeconds = 0;
         var completedSeconds = 0;
+        var actualSeconds = 0;
         for (final index in matchingIndices) {
           final record = records[index];
           final effective =
               record.effectiveDuration > 0 ? record.effectiveDuration : 0;
+          actualSeconds += effective;
           final planned =
               record.plannedDuration > 0 ? record.plannedDuration : effective;
           final base = planned > 0 ? planned : 1;
@@ -99,10 +111,24 @@ class _PlanPomodoroProgressIndex {
         return {
           'completed': completedSeconds,
           'total': totalSeconds,
+          'actualSeconds': actualSeconds,
           'progress': progress.clamp(0.0, 1.0),
           'recordCount': matchingIndices.length,
         };
       });
+}
+
+TodoPlanStatus _planStatusForActualFocus(
+  TodoPlanBlock plan,
+  int actualFocusSeconds,
+) {
+  if ((plan.status == TodoPlanStatus.planned ||
+          plan.status == TodoPlanStatus.focusing) &&
+      plan.plannedMinutes > 0 &&
+      actualFocusSeconds >= plan.plannedMinutes * 60 * 0.8) {
+    return TodoPlanStatus.finished;
+  }
+  return plan.status;
 }
 
 class _PomodoroPlanAssociationLookup {
@@ -711,21 +737,32 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
 
   // --- 辅助方法：计算规划块关联的番茄钟完成情况 ---
   Map<String, dynamic> _calculatePlanPomodoroProgress(TodoPlanBlock plan) {
-    final associatedRecords = _allPomodoroRecords
-        .where((record) => _isRecordAssociatedWithPlan(record, plan))
-        .toList();
+    final associatedRecordsByUuid = <String, PomodoroRecord>{};
+    for (final record in _allPomodoroRecords) {
+      if (_isRecordAssociatedWithPlan(record, plan)) {
+        associatedRecordsByUuid.putIfAbsent(record.uuid, () => record);
+      }
+    }
+    final associatedRecords = associatedRecordsByUuid.values;
 
     if (associatedRecords.isEmpty) {
-      return {'completed': 0, 'total': 0, 'progress': 0.0};
+      return {
+        'completed': 0,
+        'total': 0,
+        'actualSeconds': 0,
+        'progress': 0.0,
+      };
     }
 
     // 计算实际专注进度（秒）
     int totalSeconds = 0;
     int completedSeconds = 0;
+    int actualSeconds = 0;
 
     for (var record in associatedRecords) {
       final int effective =
           record.effectiveDuration > 0 ? record.effectiveDuration : 0;
+      actualSeconds += effective;
       final int planned =
           record.plannedDuration > 0 ? record.plannedDuration : effective;
       final int base = planned > 0 ? planned : 1;
@@ -738,6 +775,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
     return {
       'completed': completedSeconds,
       'total': totalSeconds,
+      'actualSeconds': actualSeconds,
       'progress': progress.clamp(0.0, 1.0),
       'recordCount': associatedRecords.length,
     };
@@ -1402,9 +1440,6 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
           double height = bottom - top;
           if (height < 18.0) height = 18.0;
 
-          final planColor = plan.status == TodoPlanStatus.finished
-              ? colorScheme.cdtSuccess.withValues(alpha: 0.58)
-              : colorScheme.secondary.withValues(alpha: 0.58);
           final title = plan.titleSnapshot ?? '规划任务';
           final planIndex = planIndices[plan]!;
           final planCardKey = _getPlanBlockCardKey(plan.uuid, weekday);
@@ -1414,6 +1449,13 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
               _calculatePlanPomodoroProgress(plan);
           final recordCount = (pomProgress['recordCount'] as int?) ?? 0;
           final hasAssociatedPomodoro = recordCount > 0;
+          final actualFocusSeconds =
+              (pomProgress['actualSeconds'] as int?) ?? 0;
+          final planStatus =
+              _planStatusForActualFocus(plan, actualFocusSeconds);
+          final planColor = planStatus == TodoPlanStatus.finished
+              ? colorScheme.cdtSuccess.withValues(alpha: 0.58)
+              : colorScheme.secondary.withValues(alpha: 0.58);
 
           eventsPerDay[weekday]!.add(_TimelineEvent(
               top: top,
@@ -1468,7 +1510,10 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                       onTap: () {
                         PageTransitions.pushFromRect(
                           context: context,
-                          page: PlanBlockDetailScreen(block: plan),
+                          page: PlanBlockDetailScreen(
+                            block: plan,
+                            username: widget.username,
+                          ),
                           sourceKey: planCardKey,
                           sourceColor: _weekLazyLoadPlaceholderColor,
                           sourceBorderRadius:
@@ -1523,7 +1568,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                                       children: [
                                         if (height >= 38) ...[
                                           Icon(
-                                              plan.status ==
+                                              planStatus ==
                                                       TodoPlanStatus.finished
                                                   ? Icons.event_available
                                                   : Icons.event_note,
@@ -1597,7 +1642,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                                     children: [
                                       if (height >= 38) ...[
                                         Icon(
-                                            plan.status ==
+                                            planStatus ==
                                                     TodoPlanStatus.finished
                                                 ? Icons.event_available
                                                 : Icons.event_note,

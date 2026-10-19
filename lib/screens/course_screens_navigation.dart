@@ -689,7 +689,10 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
         onTap: () => _openSidebarDetailFromRect(
           context,
           sourceKey: sourceKey,
-          page: PlanBlockDetailScreen(block: item),
+          page: PlanBlockDetailScreen(
+            block: item,
+            username: widget.username,
+          ),
           placeholderIcon: Icons.event_note,
         ),
       );

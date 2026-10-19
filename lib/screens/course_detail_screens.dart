@@ -272,35 +272,135 @@ class DeviceCalendarEventDetailScreen extends StatelessWidget {
   }
 }
 
-class PlanBlockDetailScreen extends StatelessWidget {
-  const PlanBlockDetailScreen({super.key, required this.block});
+class PlanBlockDetailScreen extends StatefulWidget {
+  const PlanBlockDetailScreen({
+    super.key,
+    required this.block,
+    required this.username,
+  });
 
   final TodoPlanBlock block;
+  final String username;
+
+  @override
+  State<PlanBlockDetailScreen> createState() => _PlanBlockDetailScreenState();
+}
+
+class _PlanBlockDetailScreenState extends State<PlanBlockDetailScreen> {
+  late TodoPlanBlock _block;
+  bool _loading = true;
+  String? _loadError;
+  int _actualFocusSeconds = 0;
+  int _loadGeneration = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _block = widget.block;
+    StorageService.scopedDataRefreshNotifier.addListener(_onDataRefreshed);
+    unawaited(_loadLatestData());
+  }
+
+  @override
+  void dispose() {
+    _loadGeneration++;
+    StorageService.scopedDataRefreshNotifier.removeListener(_onDataRefreshed);
+    super.dispose();
+  }
+
+  void _onDataRefreshed() {
+    final signal = StorageService.scopedDataRefreshNotifier.value;
+    if (!signal.affects(DataRefreshDomain.planBlocks) &&
+        !signal.affects(DataRefreshDomain.pomodoro)) {
+      return;
+    }
+    unawaited(_loadLatestData());
+  }
+
+  Future<void> _loadLatestData() async {
+    final generation = ++_loadGeneration;
+    if (!mounted) return;
+    setState(() {
+      _loading = true;
+      _loadError = null;
+    });
+
+    try {
+      final results = await Future.wait([
+        StorageService.getPlanBlocks(
+          widget.username,
+          includeDeleted: true,
+        ),
+        PomodoroService.getRecords(),
+      ]);
+      final planBlocks = results[0] as List<TodoPlanBlock>;
+      TodoPlanBlock? latestBlock;
+      for (final candidate in planBlocks) {
+        if (candidate.uuid == widget.block.uuid && !candidate.isDeleted) {
+          latestBlock = candidate;
+          break;
+        }
+      }
+      if (latestBlock == null) {
+        throw StateError('规划已删除或无法读取');
+      }
+
+      final records = results[1] as List<PomodoroRecord>;
+      final progress = _PlanPomodoroProgressIndex(records)
+          .progressFor(latestBlock);
+      if (!mounted || generation != _loadGeneration) return;
+      setState(() {
+        _block = latestBlock!;
+        _actualFocusSeconds = (progress['actualSeconds'] as int?) ?? 0;
+        _loading = false;
+        _loadError = null;
+      });
+    } catch (_) {
+      if (!mounted || generation != _loadGeneration) return;
+      setState(() {
+        _loading = false;
+        _loadError = '最新规划与专注记录读取失败';
+      });
+    }
+  }
+
+  String _statusLabel(TodoPlanStatus status) => switch (status) {
+    TodoPlanStatus.planned => '待执行',
+    TodoPlanStatus.reminded => '已提醒',
+    TodoPlanStatus.delayed => '已延后',
+    TodoPlanStatus.focusing => '专注中',
+    TodoPlanStatus.finished => '已完成',
+    TodoPlanStatus.missed => '已漏做',
+    TodoPlanStatus.skipped => '已跳过',
+    TodoPlanStatus.cancelled => '已取消',
+  };
+
+  String _formatFocusDuration(int seconds) {
+    final minutes = seconds ~/ 60;
+    final remainingSeconds = seconds % 60;
+    return remainingSeconds == 0
+        ? '$minutes 分钟'
+        : '$minutes 分 $remainingSeconds 秒';
+  }
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final start = DateTime.fromMillisecondsSinceEpoch(block.startTime)
+    final start = DateTime.fromMillisecondsSinceEpoch(_block.startTime)
         .toLocal();
-    final end = DateTime.fromMillisecondsSinceEpoch(block.endTime).toLocal();
+    final end = DateTime.fromMillisecondsSinceEpoch(_block.endTime).toLocal();
     final startLabel = AppTimeFormats.format(start, 'yyyy年M月d日 HH:mm');
     final endLabel = AppTimeFormats.format(end, 'HH:mm');
     final timeRange = '$startLabel – $endLabel';
-    final status = switch (block.status) {
-      TodoPlanStatus.planned => '待执行',
-      TodoPlanStatus.reminded => '已提醒',
-      TodoPlanStatus.delayed => '已延后',
-      TodoPlanStatus.focusing => '专注中',
-      TodoPlanStatus.finished => '已完成',
-      TodoPlanStatus.missed => '已漏做',
-      TodoPlanStatus.skipped => '已跳过',
-      TodoPlanStatus.cancelled => '已取消',
-    };
+    final displayedStatus = _planStatusForActualFocus(
+      _block,
+      _actualFocusSeconds,
+    );
 
     return AppDetailScreen(
       appBarTitle: '规划详情',
       icon: Icons.event_note_rounded,
-      title: block.titleSnapshot ?? '规划任务',
+      title: _block.titleSnapshot ?? '规划任务',
       color: colors.secondary,
       sections: [
         AppDetailSection(
@@ -314,23 +414,49 @@ class PlanBlockDetailScreen extends StatelessWidget {
             AppDetailWideCard(
               icon: Icons.event_available_rounded,
               title: '状态',
-              value: status,
+              value: _loading
+                  ? '读取中…'
+                  : _loadError != null
+                  ? '读取失败'
+                  : _statusLabel(displayedStatus),
             ),
             AppDetailWideCard(
               icon: Icons.timer_outlined,
               title: '计划时长',
-              value: '${block.plannedMinutes} 分钟',
+              value: '${_block.plannedMinutes} 分钟',
             ),
             AppDetailWideCard(
               icon: Icons.local_fire_department_rounded,
               title: '实际专注',
-              value: '${block.actualFocusSeconds ~/ 60} 分钟',
+              value: _loading
+                  ? '读取中…'
+                  : _loadError != null
+                  ? '读取失败'
+                  : _formatFocusDuration(_actualFocusSeconds),
             ),
-            if (block.remark?.isNotEmpty == true)
+            if (_loadError != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '暂时无法确认最新状态和实际专注时长。',
+                      style: TextStyle(color: colors.error),
+                    ),
+                    TextButton.icon(
+                      onPressed: _loadLatestData,
+                      icon: const Icon(Icons.refresh_rounded),
+                      label: const Text('重试'),
+                    ),
+                  ],
+                ),
+              ),
+            if (_block.remark?.isNotEmpty == true)
               AppDetailWideCard(
                 icon: Icons.note_rounded,
                 title: '备注',
-                value: block.remark!,
+                value: _block.remark!,
                 maxLines: 10,
               ),
           ],
