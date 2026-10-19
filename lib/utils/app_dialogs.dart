@@ -834,7 +834,9 @@ class AppSnackBars {
         () {
           final active = _activeGlassToasts[messenger];
           if (active?.expiryTimer == expiryTimer) {
-            _activeGlassToasts[messenger] = null;
+            // Backstop the toast package's own timer in case its overlay
+            // entry did not finish dismissing.
+            _dismissGlassToast(messenger);
           }
         },
       );
