@@ -31,7 +31,9 @@ dependencies:
   cached_network_image: ^4.0.2
   flutter_cache_manager: ^3.4.1
   window_manager: ^0.5.0
-  desktop_multi_window: ^0.3.0
+  # Local fork omits macOS plugin registration; multi-window islands run on Windows only.
+  desktop_multi_window:
+    path: third_party/desktop_multi_window
   ffi: ^2.1.2
   win32: ^6.4.0
   flutter_local_notifications: ^22.3.1
