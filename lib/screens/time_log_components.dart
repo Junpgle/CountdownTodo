@@ -248,6 +248,8 @@ class _DayViewState extends State<_DayView> {
         initialEnd: en,
         initialTagId: _selectedTagId,
         tags: widget.tags,
+        timeLogs: widget.logs,
+        pomodoros: widget.pomodoros,
         onSave: (log) {
           Navigator.pop(context);
           widget.onSaveLog(log);
@@ -1721,6 +1723,8 @@ class _LogEntrySheet extends StatefulWidget {
   final DateTime initialStart, initialEnd;
   final String? initialTagId;
   final List<PomodoroTag> tags;
+  final List<TimeLogItem> timeLogs;
+  final List<PomodoroRecord> pomodoros;
   final void Function(TimeLogItem) onSave;
   final TimeLogItem? existingLog;
 
@@ -1729,6 +1733,8 @@ class _LogEntrySheet extends StatefulWidget {
     required this.initialEnd,
     this.initialTagId,
     required this.tags,
+    required this.timeLogs,
+    required this.pomodoros,
     required this.onSave,
     this.existingLog,
   });
@@ -1829,30 +1835,22 @@ class _LogEntrySheetState extends State<_LogEntrySheet> {
       );
       return;
     }
-    if (_end.isAfter(DateTime.now())) {
-      final format = _timeLogComponentDateFormat('MM-dd HH:mm');
-      final isEditing = widget.existingLog != null;
-      final confirmed = await showAppDialog<bool>(
+    final overlaps = TimeLogOverlapService.find(
+      startTime: _start.millisecondsSinceEpoch,
+      endTime: _end.millisecondsSinceEpoch,
+      timeLogs: widget.timeLogs,
+      pomodoros: widget.pomodoros,
+      excludingTimeLogId: widget.existingLog?.id,
+    );
+    final isFuture = _end.isAfter(DateTime.now());
+    if (overlaps.isNotEmpty || isFuture) {
+      final confirmed = await showTimeLogSaveConfirmation(
         context: context,
-        builder: (dialogContext) => AlertDialog(
-          backgroundColor: _TC.card(dialogContext),
-          title: Text(isEditing ? '确认保存未来时间' : '确认补录未来时间'),
-          content: Text(
-            '所选时间段：${format.format(_start)} → ${format.format(_end)}\n'
-            '结束时间晚于当前时间，确定仍要${isEditing ? '保存这条时间日志' : '补录这段时间'}吗？',
-            style: TextStyle(color: _TC.textSub(dialogContext)),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('返回修改'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(dialogContext, true),
-              child: Text(isEditing ? '确认保存' : '确认补录'),
-            ),
-          ],
-        ),
+        start: _start,
+        end: _end,
+        overlaps: overlaps,
+        isFuture: isFuture,
+        isEditing: widget.existingLog != null,
       );
       if (confirmed != true || !mounted) return;
     }

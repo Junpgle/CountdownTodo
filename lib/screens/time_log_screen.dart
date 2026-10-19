@@ -24,10 +24,12 @@ import 'dart:ui' as ui;
 import 'pomodoro_screen.dart';
 import 'pomodoro/pomodoro_entry_intent.dart';
 import '../services/feature_tip_service.dart';
+import '../services/time_log_overlap_service.dart';
 import '../widgets/coach_mark_overlay.dart';
 import '../widgets/floating_glass_control.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
 import 'pomodoro/unified_tag_manager_screen.dart';
+import 'time_log_save_confirmation.dart';
 
 part 'time_log_components.dart';
 
@@ -215,6 +217,8 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
         initialStart: DateTime.fromMillisecondsSinceEpoch(log.startTime),
         initialEnd: DateTime.fromMillisecondsSinceEpoch(log.endTime),
         tags: _tags,
+        timeLogs: _allLogs,
+        pomodoros: _allPomodoros,
         existingLog: log,
         onSave: (updatedLog) {
           Navigator.pop(context);
@@ -398,14 +402,22 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
             ),
           ),
           const SizedBox(width: 4),
-          GestureDetector(
-            onTap: () => setState(
-              () =>
-                  _weekStart = CalendarDateMath.weekRange(DateTime.now()).start,
-            ),
-            child: Text(
-              '${AppTimeFormats.monthDaySlash(_weekStart)} - ${AppTimeFormats.monthDaySlash(we)}',
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+          Flexible(
+            child: GestureDetector(
+              onTap: () => setState(
+                () =>
+                    _weekStart = CalendarDateMath.weekRange(DateTime.now())
+                        .start,
+              ),
+              child: Text(
+                '${AppTimeFormats.monthDaySlash(_weekStart)} - ${AppTimeFormats.monthDaySlash(we)}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
             ),
           ),
           const SizedBox(width: 4),
@@ -430,22 +442,26 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
             ),
           ),
         ),
-        GestureDetector(
-          onTap: () async {
-            final p = await showAppDatePicker(
-              context: context,
-              initialDate: _focusedDate,
-              firstDate: DateTime(2020),
-              lastDate: CalendarDateMath.addDays(
-                CalendarDateMath.dateOnly(DateTime.now()),
-                1,
-              ),
-            );
-            if (p != null) setState(() => _focusedDate = p);
-          },
-          child: Text(
-            AppTimeFormats.monthDayCn(_focusedDate),
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+        Flexible(
+          child: GestureDetector(
+            onTap: () async {
+              final p = await showAppDatePicker(
+                context: context,
+                initialDate: _focusedDate,
+                firstDate: DateTime(2020),
+                lastDate: CalendarDateMath.addDays(
+                  CalendarDateMath.dateOnly(DateTime.now()),
+                  1,
+                ),
+              );
+              if (p != null) setState(() => _focusedDate = p);
+            },
+            child: Text(
+              AppTimeFormats.monthDayCn(_focusedDate),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+            ),
           ),
         ),
         _buildTitleChevron(
