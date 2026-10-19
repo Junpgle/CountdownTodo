@@ -7,6 +7,7 @@ import '../screens/team_management_screen.dart';
 import '../screens/team_announcement_screen.dart';
 import '../screens/team_message_center_screen.dart';
 import '../storage_service.dart';
+import 'todo_editor_save_service.dart';
 import 'database_helper.dart';
 import 'api_service.dart';
 import 'pomodoro_service.dart';
@@ -1770,6 +1771,29 @@ class SearchNavigationHandler {
                 );
               }
             },
+            onEditorSave: (changedTodos, baselines) async {
+              final result = await TodoEditorSaveService.save(
+                username: username,
+                changedTodos: changedTodos,
+                baselines: baselines,
+              );
+              if (context.mounted && result.warnings.isEmpty) {
+                AppSnackBars.showSnackBar(
+                  context,
+                  const SnackBar(
+                    content: Text('待办已更新'),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              }
+              return result;
+            },
+            onEditorGroupsSave: (changedGroups, baselines) =>
+                TodoEditorSaveService.saveGroups(
+                  username: username,
+                  changedGroups: changedGroups,
+                  baselines: baselines,
+                ),
             todoGroups: allGroups,
             onGroupsChanged: (newGroups) async {
               await StorageService.saveTodoGroups(username, newGroups);

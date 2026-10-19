@@ -4,19 +4,30 @@ class TodoEditScreen extends StatefulWidget {
   final TodoItem todo;
   final List<TodoItem> todos;
   final FutureOr<void> Function(List<TodoItem>) onTodosChanged;
+  final Future<TodoEditorSaveResult> Function(
+    List<TodoItem>,
+    Map<String, TodoItem>,
+  )?
+  onEditorSave;
+  final FutureOr<void> Function(List<TodoGroup>, Map<String, TodoGroup>)?
+  onEditorGroupsSave;
   final List<TodoGroup> todoGroups;
   final FutureOr<void> Function(List<TodoGroup>) onGroupsChanged;
   final String username;
   final bool applyToFutureOccurrences;
+  final void Function(String todoUuid)? onTodoCompletionCommitted;
 
   const TodoEditScreen({
     required this.todo,
     required this.todos,
     required this.onTodosChanged,
+    this.onEditorSave,
+    this.onEditorGroupsSave,
     required this.todoGroups,
     required this.onGroupsChanged,
     required this.username,
     this.applyToFutureOccurrences = false,
+    this.onTodoCompletionCommitted,
     super.key,
   });
   @override
@@ -30,7 +41,17 @@ class TodoEditScreenState extends State<TodoEditScreen> {
   final Map<(String?, String), DateFormat> _dateFormatCache = {};
   String? _verifiedEditingTodoImagePath;
   bool _showCoachMarks = false;
+  bool _saving = false;
+  bool _allowExit = false;
+  bool _exitPromptOpen = false;
+  bool _loadingEditorFields = false;
   late TodoItem _editingTodo;
+  late List<TodoItem> _editorTodos;
+  late List<TodoGroup> _editorGroups;
+
+  TodoItem _copyTodo(TodoItem todo) => TodoItem.fromJson(todo.toJson());
+
+  TodoGroup _copyGroup(TodoGroup group) => TodoGroup.fromJson(group.toJson());
 
   DateFormat _dateFormat(String pattern) {
     final locale = Intl.defaultLocale;
@@ -124,8 +145,13 @@ class TodoEditScreenState extends State<TodoEditScreen> {
   @override
   void initState() {
     super.initState();
+    _editorTodos = widget.todos.map(_copyTodo).toList();
+    _editorGroups = widget.todoGroups.map(_copyGroup).toList();
     _rebuildAvailableGroupIndex();
-    _editingTodo = widget.todo;
+    _editingTodo = _editorTodos.firstWhere(
+      (todo) => todo.id == widget.todo.id,
+      orElse: () => _copyTodo(widget.todo),
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final route = ModalRoute.of(context);
       if (route != null && route.animation != null) {
@@ -160,6 +186,9 @@ class TodoEditScreenState extends State<TodoEditScreen> {
     _customDaysCtrl = TextEditingController(
       text: _customDays?.toString() ?? '',
     );
+    _titleCtrl.addListener(_onEditorInputChanged);
+    _remarkCtrl.addListener(_onEditorInputChanged);
+    _customDaysCtrl.addListener(_onEditorInputChanged);
     _recurrenceEndDate = t.recurrenceEndDate;
     _isAllDay = t.isDateOnly;
     _preserveLegacyTiming = t.hasLegacyTiming;
@@ -183,7 +212,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
 
   void _rebuildAvailableGroupIndex() {
     final groupsById = <String, TodoGroup>{};
-    for (final group in widget.todoGroups) {
+    for (final group in _editorGroups) {
       if (group.id.isNotEmpty) groupsById[group.id] = group;
     }
     _availableGroupsById = groupsById;
@@ -193,12 +222,12 @@ class TodoEditScreenState extends State<TodoEditScreen> {
   Future<void> _loadFocusRecords() async {
     if (!mounted) return;
     final editingTodoId = _editingTodo.id;
-    final todoIds = _focusRecordTodoIds(_editingTodo, widget.todos);
+    final todoIds = _focusRecordTodoIds(_editingTodo, _editorTodos);
     final records = await PomodoroService.getRecordsByTodoUuids(todoIds);
     if (!mounted || _editingTodo.id != editingTodoId) return;
     final focusedPeriodCount = _focusedRecurrencePeriodCount(
       _editingTodo,
-      widget.todos,
+      _editorTodos,
       records,
     );
     final totalFocusSeconds = PomodoroService.totalFocusSeconds(records);
@@ -256,15 +285,40 @@ class TodoEditScreenState extends State<TodoEditScreen> {
 
   @override
   void dispose() {
+    _titleCtrl.removeListener(_onEditorInputChanged);
+    _remarkCtrl.removeListener(_onEditorInputChanged);
+    _customDaysCtrl.removeListener(_onEditorInputChanged);
     _titleCtrl.dispose();
     _remarkCtrl.dispose();
     _customDaysCtrl.dispose();
     super.dispose();
   }
 
+  void _onEditorInputChanged() {
+    if (mounted && !_loadingEditorFields) setState(() {});
+  }
+
   Future<bool> _persistCurrentTodo({required bool closeAfterSave}) async {
-    if (_titleCtrl.text.isEmpty) return false;
-    final todo = _editingTodo;
+    if (_saving) return false;
+    if (_titleCtrl.text.trim().isEmpty) {
+      AppSnackBars.showSnackBar(
+        context,
+        const SnackBar(content: Text('请输入待办内容')),
+      );
+      return false;
+    }
+    if (_recurrence == RecurrenceType.customDays &&
+        (_customDays == null || _customDays! < 1)) {
+      AppSnackBars.showSnackBar(
+        context,
+        const SnackBar(content: Text('自定义重复间隔至少为 1 天')),
+      );
+      return false;
+    }
+    if (!_hasUnsavedChanges) {
+      if (mounted && closeAfterSave) Navigator.pop(context, false);
+      return true;
+    }
     if (_preserveLegacyTiming &&
         _dueDate != null &&
         !_dueDate!.isAfter(_createdDate)) {
@@ -289,6 +343,15 @@ class TodoEditScreenState extends State<TodoEditScreen> {
     }
     final normalizedStart = normalizedTime.start;
     final normalizedDue = normalizedTime.due;
+    final baselinesById = {
+      for (final item in _editorTodos) item.id: _copyTodo(item),
+    };
+    final stagedTodos = _editorTodos.map(_copyTodo).toList();
+    final todoIndex = stagedTodos.indexWhere(
+      (item) => item.id == _editingTodo.id,
+    );
+    if (todoIndex < 0) return false;
+    final todo = stagedTodos[todoIndex];
     final seriesId = todo.recurrenceSeriesId;
     final startShift = normalizedStart == null
         ? Duration.zero
@@ -302,7 +365,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
 
     if (seriesId != null && seriesId.isNotEmpty) {
       final originalStartMs = _originalCreatedDate.millisecondsSinceEpoch;
-      for (final occurrence in widget.todos) {
+      for (final occurrence in stagedTodos) {
         if (occurrence.id == todo.id ||
             occurrence.isDeleted ||
             occurrence.recurrenceSeriesId != seriesId ||
@@ -371,9 +434,6 @@ class TodoEditScreenState extends State<TodoEditScreen> {
     todo.title = _titleCtrl.text;
     final wasDone = todo.isDone;
     todo.isDone = _isDone;
-    if (!wasDone && _isDone) {
-      PomodoroSyncService().sendStopSignal(todoUuid: todo.id);
-    }
     todo.createdDate = normalizedStart?.millisecondsSinceEpoch;
     todo.dueDate = normalizedDue;
     todo.recurrence = _recurrence;
@@ -393,26 +453,93 @@ class TodoEditScreenState extends State<TodoEditScreen> {
     todo.isAllDay = _isAllDay;
     todo.markAsChanged();
 
+    var folderSyncCommitted = false;
+    setState(() => _saving = true);
+    try {
     if (_syncFolderToTeam &&
         _selectedGroupId != null &&
         _selectedTeamUuid != null) {
-      final groups = List<TodoGroup>.from(widget.todoGroups);
+        final groups = _editorGroups.map(_copyGroup).toList();
       final idx = groups.indexWhere((g) => g.id == _selectedGroupId);
       if (idx != -1) {
+          final groupBaseline = _copyGroup(groups[idx]);
         groups[idx].teamUuid = _selectedTeamUuid;
         final team = _teams
             .where((t) => t.uuid == _selectedTeamUuid)
             .firstOrNull;
         if (team != null) groups[idx].teamName = team.name;
         groups[idx].markAsChanged();
-        await StorageService.saveTodoGroups(widget.username, groups);
+          if (widget.onEditorGroupsSave == null) {
         await widget.onGroupsChanged(groups);
+          } else {
+            await widget.onEditorGroupsSave!(
+              [groups[idx]],
+              {groupBaseline.id: groupBaseline},
+            );
+          }
+          _editorGroups = groups;
+          _rebuildAvailableGroupIndex();
+          folderSyncCommitted = true;
+          _syncFolderToTeam = false;
       }
     }
 
-    await widget.onTodosChanged(List<TodoItem>.from(widget.todos));
-    if (mounted && closeAfterSave) Navigator.pop(context, true);
+      final changedTodos = stagedTodos
+          .where(
+            (item) =>
+                item.version !=
+                _editorTodos
+                    .firstWhere((previous) => previous.id == item.id)
+                    .version,
+          )
+          .toList(growable: false);
+      final TodoEditorSaveResult result;
+      if (widget.onEditorSave == null) {
+        await widget.onTodosChanged(stagedTodos);
+        result = const TodoEditorSaveResult();
+      } else {
+        result = await widget.onEditorSave!(changedTodos, {
+          for (final item in changedTodos) item.id: baselinesById[item.id]!,
+        });
+      }
+      if (!mounted) return false;
+      _editorTodos = stagedTodos;
+      _editingTodo = todo;
+      _loadEditorFields(todo);
+      if (!wasDone && _isDone) {
+        final completionCallback = widget.onTodoCompletionCommitted;
+        if (completionCallback == null) {
+          PomodoroSyncService().sendStopSignal(todoUuid: todo.id);
+        } else {
+          completionCallback(todo.id);
+        }
+      }
+      if (result.warnings.isNotEmpty) {
+        AppSnackBars.showSnackBar(
+          context,
+          SnackBar(content: Text('待办已保存；${result.warnings.join('；')}')),
+        );
+      }
+      if (closeAfterSave && result.warnings.isEmpty) {
+        Navigator.pop(context, true);
+      }
     return true;
+    } catch (error) {
+      if (mounted) {
+        final details = error is StateError ? error.message : error;
+        final message = folderSyncCommitted
+            ? '文件夹已更新；待办保存失败，修改仍保留：$details'
+            : _syncFolderToTeam &&
+                  _selectedGroupId != null &&
+                  _selectedTeamUuid != null
+            ? '文件夹同步失败；待办尚未保存，修改仍保留：$details'
+            : '待办保存失败，修改仍保留：$details';
+        AppSnackBars.showSnackBar(context, SnackBar(content: Text(message)));
+      }
+      return false;
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   /// 设计文档 4.3：将当前循环待办加入习惯追踪。
@@ -472,6 +599,122 @@ class TodoEditScreenState extends State<TodoEditScreen> {
     await _persistCurrentTodo(closeAfterSave: true);
   }
 
+  Future<void> _deleteCurrentTodo() async {
+    final confirmed = await showAppDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('删除待办'),
+        content: const Text('确定要删除这条待办吗？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('删除', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    final stagedTodos = _editorTodos.map(_copyTodo).toList();
+    final index = stagedTodos.indexWhere((todo) => todo.id == _editingTodo.id);
+    if (index < 0) return;
+    final baseline = _copyTodo(_editingTodo);
+    stagedTodos[index].isDeleted = true;
+    stagedTodos[index].hasConflict = false;
+    stagedTodos[index].serverVersionData = null;
+    stagedTodos[index].markAsChanged();
+    setState(() => _saving = true);
+    try {
+      final TodoEditorSaveResult result;
+      if (widget.onEditorSave == null) {
+        await widget.onTodosChanged(stagedTodos);
+        result = const TodoEditorSaveResult();
+      } else {
+        result = await widget.onEditorSave!(
+          [stagedTodos[index]],
+          {baseline.id: baseline},
+        );
+      }
+      if (result.warnings.isNotEmpty && mounted) {
+        AppSnackBars.showSnackBar(
+          context,
+          SnackBar(content: Text('待办已删除；${result.warnings.join('；')}')),
+        );
+      }
+      if (mounted) Navigator.pop(context, true);
+    } catch (error) {
+      if (mounted) {
+        final details = error is StateError ? error.message : error;
+        AppSnackBars.showSnackBar(
+          context,
+          SnackBar(content: Text('删除失败，待办仍保留：$details')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _requestExit() async {
+    if (_saving || _allowExit || _exitPromptOpen || !_hasUnsavedChanges) {
+      return;
+    }
+    _exitPromptOpen = true;
+    FocusScope.of(context).unfocus();
+    try {
+      final action = await showAppDialog<_OccurrenceSwitchAction>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('保留这次修改？'),
+          content: Text('“${_editingTodo.title}”有尚未保存的内容。'),
+          actions: [
+            TextButton(
+              onPressed: () =>
+                  Navigator.pop(dialogContext, _OccurrenceSwitchAction.cancel),
+              child: const Text('继续编辑'),
+            ),
+            TextButton(
+              onPressed: () =>
+                  Navigator.pop(dialogContext, _OccurrenceSwitchAction.discard),
+              child: const Text('放弃修改'),
+            ),
+            FilledButton(
+              onPressed: () =>
+                  Navigator.pop(dialogContext, _OccurrenceSwitchAction.save),
+              child: const Text('保存并退出'),
+            ),
+          ],
+        ),
+      );
+      if (!mounted ||
+          action == null ||
+          action == _OccurrenceSwitchAction.cancel) {
+        return;
+      }
+      if (action == _OccurrenceSwitchAction.save) {
+        await _persistCurrentTodo(closeAfterSave: true);
+        return;
+      }
+      setState(() => _allowExit = true);
+      await WidgetsBinding.instance.endOfFrame;
+      if (mounted) await Navigator.of(context).maybePop();
+    } finally {
+      _exitPromptOpen = false;
+    }
+  }
+
+  Widget _exitProtected(Widget child) => PopScope<Object?>(
+    canPop: _allowExit || (!_saving && !_hasUnsavedChanges),
+    onPopInvokedWithResult: (didPop, result) {
+      if (!didPop) unawaited(_requestExit());
+    },
+    child: child,
+  );
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -489,7 +732,8 @@ class TodoEditScreenState extends State<TodoEditScreen> {
         ? selectedGroupId
         : null;
 
-    return Scaffold(
+    return _exitProtected(
+      Scaffold(
       extendBodyBehindAppBar: true,
       backgroundColor: bgColor,
       appBar: FloatingGlassAppBar(
@@ -500,37 +744,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
         scrolledUnderElevation: 0,
         actions: [
           IconButton(
-            onPressed: () async {
-              final confirm = await showAppDialog<bool>(
-                context: context,
-                builder: (ctx) => AlertDialog(
-                  title: const Text('删除待办'),
-                  content: const Text('确定要删除这条待办吗？'),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(ctx, false),
-                      child: const Text('取消'),
-                    ),
-                    TextButton(
-                      onPressed: () => Navigator.pop(ctx, true),
-                      child: const Text(
-                        '删除',
-                        style: TextStyle(color: Colors.red),
-                      ),
-                    ),
-                  ],
-                ),
-              );
-              if (confirm == true) {
-                _editingTodo.isDeleted = true;
-                _editingTodo.hasConflict = false;
-                _editingTodo.serverVersionData = null;
-                _editingTodo.markAsChanged();
-                await widget.onTodosChanged(List<TodoItem>.from(widget.todos));
-                if (!context.mounted) return;
-                Navigator.pop(context, true);
-              }
-            },
+              onPressed: _saving ? null : _deleteCurrentTodo,
             icon: const Icon(
               Icons.delete_outline_rounded,
               color: Colors.redAccent,
@@ -546,10 +760,13 @@ class TodoEditScreenState extends State<TodoEditScreen> {
           ],
           const SizedBox(width: 8),
           TextButton(
-            onPressed: _save,
-            child: const Text(
-              '保存',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              onPressed: _saving ? null : _save,
+              child: Text(
+                _saving ? '保存中…' : '保存',
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
             ),
           ),
           const SizedBox(width: 8),
@@ -637,7 +854,9 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                     Divider(
                       height: 1,
                       thickness: 0.8,
-                      color: colorScheme.outlineVariant.withValues(alpha: 0.35),
+                        color: colorScheme.outlineVariant.withValues(
+                          alpha: 0.35,
+                        ),
                     ),
                     TextField(
                       controller: _remarkCtrl,
@@ -655,13 +874,17 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                         focusedBorder: InputBorder.none,
                         disabledBorder: InputBorder.none,
                         isCollapsed: true,
-                        contentPadding: const EdgeInsets.symmetric(vertical: 4),
+                          contentPadding: const EdgeInsets.symmetric(
+                            vertical: 4,
+                          ),
                       ),
                     ),
                     Divider(
                       height: 1,
                       thickness: 0.8,
-                      color: colorScheme.outlineVariant.withValues(alpha: 0.35),
+                        color: colorScheme.outlineVariant.withValues(
+                          alpha: 0.35,
+                        ),
                     ),
                     LiquidGlassSwitchListTile(
                       key: const ValueKey('todo_edit_completion_switch'),
@@ -683,12 +906,18 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                 ),
               ),
               const SizedBox(height: 24),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                Wrap(
+                  alignment: WrapAlignment.spaceBetween,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 12,
+                  runSpacing: 8,
                 children: [
                   const Text(
                     "时间与提醒",
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
                   ),
                   Row(
                     children: [
@@ -810,7 +1039,9 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                           } else {
                             final pickedTime = await showAppTimePicker(
                               context: context,
-                              initialTime: TimeOfDay.fromDateTime(_createdDate),
+                                initialTime: TimeOfDay.fromDateTime(
+                                  _createdDate,
+                                ),
                             );
                             if (!mounted || pickedTime == null) return;
                             setState(
@@ -1088,7 +1319,8 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                           title: "归属文件夹",
                           subtitle: effectiveGroupId == null
                               ? "未分类"
-                              : (_availableGroupsById[effectiveGroupId]?.name ??
+                                : (_availableGroupsById[effectiveGroupId]
+                                          ?.name ??
                                     '未知'),
                           icon: Icons.folder_rounded,
                           color: Colors.amber.shade600,
@@ -1127,7 +1359,8 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                           title: "团队归属",
                           subtitle: _selectedTeamUuid == null
                               ? "个人私有"
-                              : (_teamsByUuid[_selectedTeamUuid]?.name ?? '未知'),
+                                : (_teamsByUuid[_selectedTeamUuid]?.name ??
+                                      '未知'),
                           icon: Icons.groups_rounded,
                           color: Colors.indigoAccent,
                           value: _selectedTeamUuid ?? "__none__",
@@ -1144,8 +1377,9 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                             ),
                           ],
                           onSelected: (v) => setState(
-                            () =>
-                                _selectedTeamUuid = v == "__none__" ? null : v,
+                              () => _selectedTeamUuid = v == "__none__"
+                                  ? null
+                                  : v,
                           ),
                         ),
                       ),
@@ -1237,7 +1471,10 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                     ),
                     child: Text(
                       _editingTodo.originalText!,
-                      style: const TextStyle(fontSize: 13, color: Colors.grey),
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: Colors.grey,
+                        ),
                     ),
                   ),
                 ],
@@ -1320,13 +1557,14 @@ class TodoEditScreenState extends State<TodoEditScreen> {
           ),
         ),
       ),
+      ),
     );
   }
 
   Widget _buildRelatedRecurrenceSection(ColorScheme colorScheme) {
     final occurrences = _relatedRecurrenceOccurrences(
       _editingTodo,
-      widget.todos,
+      _editorTodos,
     );
     final isRecurrenceSeries =
         _editingTodo.recurrence != RecurrenceType.none ||
@@ -1398,6 +1636,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
   }
 
   Future<void> _switchToRelatedOccurrence(TodoItem occurrence) async {
+    if (_saving) return;
     if (occurrence.id == _editingTodo.id) return;
     FocusScope.of(context).unfocus();
     if (_hasUnsavedChanges) {
@@ -1437,8 +1676,12 @@ class TodoEditScreenState extends State<TodoEditScreen> {
     }
 
     setState(() {
-      _editingTodo = occurrence;
-      _loadEditorFields(occurrence);
+      final next = _editorTodos.firstWhere(
+        (todo) => todo.id == occurrence.id,
+        orElse: () => occurrence,
+      );
+      _editingTodo = next;
+      _loadEditorFields(next);
       _syncFolderToTeam = false;
       _relatedPlanBlocks = [];
       _focusRecords = [];
@@ -1452,6 +1695,8 @@ class TodoEditScreenState extends State<TodoEditScreen> {
   }
 
   void _loadEditorFields(TodoItem todo) {
+    _loadingEditorFields = true;
+    try {
     _titleCtrl.text = todo.title;
     _remarkCtrl.text = todo.remark ?? '';
     _isDone = todo.isDone;
@@ -1471,6 +1716,9 @@ class TodoEditScreenState extends State<TodoEditScreen> {
     _reminderMinutes = todo.reminderMinutes ?? 5;
     _selectedTeamUuid = todo.teamUuid;
     _collabType = todo.collabType;
+    } finally {
+      _loadingEditorFields = false;
+    }
   }
 
   bool get _hasUnsavedChanges {
@@ -1494,6 +1742,9 @@ class TodoEditScreenState extends State<TodoEditScreen> {
             todo.dueDate?.millisecondsSinceEpoch ||
         _recurrence != todo.recurrence ||
         _customDays != todo.customIntervalDays ||
+        (_recurrence == RecurrenceType.customDays &&
+            _customDaysCtrl.text.trim() !=
+                (todo.customIntervalDays?.toString() ?? '')) ||
         _recurrenceEndDate?.millisecondsSinceEpoch !=
             todo.recurrenceEndDate?.millisecondsSinceEpoch ||
         editedRemark != savedRemark ||
@@ -1800,7 +2051,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
         fullPage: true,
         username: widget.username,
         todos: [todo],
-        todoGroups: widget.todoGroups,
+        todoGroups: _editorGroups,
         initialTodoId: todo.id,
         startTime: start,
         endTime: start.add(const Duration(minutes: 30)),
@@ -2065,7 +2316,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
         onTap: onTap,
         borderRadius: BorderRadius.circular(16),
         child: Container(
-          height: 105,
+          constraints: const BoxConstraints(minHeight: 105),
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
@@ -2080,9 +2331,9 @@ class TodoEditScreenState extends State<TodoEditScreen> {
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Icon(icon, color: color, size: 26),
+              const SizedBox(height: 8),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [

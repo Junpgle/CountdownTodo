@@ -229,7 +229,20 @@ mixin _HomeDashboardContract {
 
   Future<void> _handleTodosChanged(List<TodoItem> newTodos);
 
-  Future<void> _persistTodosSnapshot(List<TodoItem> todosSnapshot);
+  Future<TodoEditorSaveResult> _handleTodoEditorSave(
+    List<TodoItem> changedTodos,
+    Map<String, TodoItem> baselines,
+  );
+
+  Future<void> _handleTodoEditorGroupsSave(
+    List<TodoGroup> changedGroups,
+    Map<String, TodoGroup> baselines,
+  );
+
+  Future<List<String>> _persistTodosSnapshot(
+    List<TodoItem> todosSnapshot, {
+    Map<String, TodoItem>? expectedTodoBaselines,
+  });
 
   Future<void> _handleManualSync({
     bool silent = false,

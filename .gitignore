@@ -357,3 +357,5 @@ todo.md
 !/test/widgets/home_layout_settings_page_test.dart
 !/test/widgets/conflict_alert_dialog_test.dart
 !/test/widgets/sticky_announcement_banner_test.dart
+!/test/services/todo_editor_save_service_test.dart
+!/test/widgets/todo_edit_exit_protection_test.dart

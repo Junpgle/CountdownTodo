@@ -286,12 +286,6 @@ mixin _HomeDashboardViewMixin
                                             });
                                           },
                                           onGroupsChanged: (newGroups) async {
-                                            setState(() {
-                                              _todoGroups = newGroups
-                                                  .where((g) => !g.isDeleted)
-                                                  .toList();
-                                              _todoDataRevision++;
-                                            });
                                             final allGroups =
                                                 await StorageService.getTodoGroups(
                                                   widget.username,
@@ -325,8 +319,18 @@ mixin _HomeDashboardViewMixin
                                               allGroups,
                                               sync: true,
                                             );
+                                            if (!mounted) return;
+                                            setState(() {
+                                              _todoGroups = newGroups
+                                                  .where((group) => !group.isDeleted)
+                                                  .toList();
+                                              _todoDataRevision++;
+                                            });
                                           },
                                           onTodosChanged: _handleTodosChanged,
+                                          onEditorSave: _handleTodoEditorSave,
+                                          onEditorGroupsSave:
+                                              _handleTodoEditorGroupsSave,
                                           initialSelectedTeamUuid:
                                               _currentSelectedTeamUuid,
                                           onRefreshRequested: _handleManualSync,

@@ -1112,12 +1112,10 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
           todo: todo,
           todos: _todos,
           onTodosChanged: _handleTodosChanged,
+          onEditorSave: _handleTodoEditorSave,
+          onEditorGroupsSave: _handleTodoEditorGroupsSave,
           todoGroups: _todoGroups,
           onGroupsChanged: (newGroups) async {
-            setState(() {
-              _todoGroups = newGroups;
-              _todoDataRevision++;
-            });
             final allGroups = await StorageService.getTodoGroups(
               widget.username,
             );
@@ -1130,6 +1128,11 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
               }
             }
             await StorageService.saveTodoGroups(widget.username, allGroups);
+            if (!mounted) return;
+            setState(() {
+              _todoGroups = newGroups;
+              _todoDataRevision++;
+            });
             _loadAllData(domains: const {DataRefreshDomain.todoGroups});
           },
           username: widget.username,

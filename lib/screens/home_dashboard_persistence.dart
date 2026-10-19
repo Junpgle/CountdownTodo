@@ -3,12 +3,14 @@ part of 'home_dashboard.dart';
 // ignore_for_file: annotate_overrides
 
 mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
-  Future<void> _saveTodosToSharedFile(List<TodoItem> todos) async {
+  Future<bool> _saveTodosToSharedFile(List<TodoItem> todos) async {
     try {
       await saveIslandTodoSnapshot(todos);
       // debugPrint('[HomeDashboard] Saved ${todos.length} todos to shared file');
+      return true;
     } catch (e) {
       // debugPrint('[HomeDashboard] Failed to save todos to shared file: $e');
+      return false;
     }
   }
 
@@ -34,7 +36,14 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
       for (final pending in snapshot) {
         final existing = byId[pending.id];
         // 🚀 用户主动修改优先：updatedAt >= 时信任挂起快照
-        if (existing == null || pending.updatedAt >= existing.updatedAt) {
+        if (existing == null ||
+            TodoLwwService.compare(
+                  incomingUpdatedAt: pending.updatedAt,
+                  incomingVersion: pending.version,
+                  currentUpdatedAt: existing.updatedAt,
+                  currentVersion: existing.version,
+                ) >=
+                0) {
           byId[pending.id] = pending;
         }
       }
@@ -108,17 +117,102 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
     return completer.future;
   }
 
-  Future<void> _persistTodosSnapshot(List<TodoItem> todosSnapshot) async {
-    _persistingTodosSnapshot = todosSnapshot;
-    final allTodos = await StorageService.getTodos(widget.username);
+  Future<TodoEditorSaveResult> _handleTodoEditorSave(
+    List<TodoItem> changedTodos,
+    Map<String, TodoItem> baselines,
+  ) async {
+    if (changedTodos.isEmpty) return const TodoEditorSaveResult();
+    _todoPersistDebounce?.cancel();
+    final waiter = _todoPersistDebounceCompleter;
+    final task = _todoPersistChain.catchError((Object _) {}).then((_) async {
+      final warnings = <String>[];
+      final pending = _pendingTodosToPersist;
+      _pendingTodosToPersist = null;
+      if (pending != null) {
+        warnings.addAll(await _persistTodosSnapshot(pending));
+      }
+      try {
+        warnings.addAll(
+          await _persistTodosSnapshot(
+            changedTodos,
+            expectedTodoBaselines: baselines,
+          ),
+        );
+      } catch (error) {
+        try {
+          final committed = await TodoEditorSaveService.isCommitted(
+            widget.username,
+            changedTodos,
+          );
+          if (committed) {
+            warnings.add('待办已保存；有后续设备状态更新失败');
+          } else {
+            rethrow;
+          }
+        } catch (_) {
+          rethrow;
+        }
+      }
+      if (mounted) {
+        try {
+          await _loadAllData(domains: const {DataRefreshDomain.todos});
+        } catch (_) {
+          warnings.add('首页待办刷新失败');
+        }
+      }
+      if (waiter?.isCompleted == false) waiter!.complete();
+      return TodoEditorSaveResult(warnings: warnings);
+    });
+    _todoPersistChain = task.then<void>((_) {}).catchError((Object _) {});
     try {
+      return await task;
+    } catch (_) {
+      if (waiter?.isCompleted == false) waiter!.complete();
+      rethrow;
+    }
+  }
+
+  Future<void> _handleTodoEditorGroupsSave(
+    List<TodoGroup> changedGroups,
+    Map<String, TodoGroup> baselines,
+  ) async {
+    await TodoEditorSaveService.saveGroups(
+      username: widget.username,
+      changedGroups: changedGroups,
+      baselines: baselines,
+    );
+    if (!mounted) return;
+    final groupsById = {for (final group in _todoGroups) group.id: group};
+    for (final group in changedGroups) {
+      if (group.isDeleted) {
+        groupsById.remove(group.id);
+      } else {
+        groupsById[group.id] = group;
+      }
+    }
+    setState(() {
+      _todoGroups = groupsById.values.toList(growable: false);
+      _todoDataRevision++;
+    });
+  }
+
+  Future<List<String>> _persistTodosSnapshot(
+    List<TodoItem> todosSnapshot,
+    {Map<String, TodoItem>? expectedTodoBaselines}
+  ) async {
+    _persistingTodosSnapshot = todosSnapshot;
+    final warnings = <String>[];
+    try {
+      final allTodos = await StorageService.getTodos(widget.username);
       final todosToPersistById = <String, TodoItem>{};
-      for (final todo in allTodos) {
-        if (todo.recurrence != RecurrenceType.none &&
-            (todo.recurrenceSeriesId == null ||
-                todo.recurrenceSeriesId!.isEmpty)) {
-          todo.recurrenceSeriesId = todo.id;
-          todosToPersistById[todo.id] = todo;
+      if (expectedTodoBaselines == null) {
+        for (final todo in allTodos) {
+          if (todo.recurrence != RecurrenceType.none &&
+              (todo.recurrenceSeriesId == null ||
+                  todo.recurrenceSeriesId!.isEmpty)) {
+            todo.recurrenceSeriesId = todo.id;
+            todosToPersistById[todo.id] = todo;
+          }
         }
       }
 
@@ -132,7 +226,14 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
       for (final newTodo in todosSnapshot) {
         final index = todoIndicesById[newTodo.id];
         if (index != null) {
-          if (newTodo.updatedAt >= allTodos[index].updatedAt) {
+          final existing = allTodos[index];
+          if (TodoLwwService.compare(
+                incomingUpdatedAt: newTodo.updatedAt,
+                incomingVersion: newTodo.version,
+                currentUpdatedAt: existing.updatedAt,
+                currentVersion: existing.version,
+              ) >=
+              0) {
             allTodos[index] = newTodo;
             todosToPersistById[newTodo.id] = newTodo;
           }
@@ -146,15 +247,26 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
         widget.username,
         todosToPersistById.values.toList(growable: false),
         bandSyncSnapshot: allTodos,
+        expectedTodoBaselines: expectedTodoBaselines,
       );
-      await _saveTodosToSharedFile(allTodos);
-
-      FloatWindowService.triggerReminderCheck();
-      FloatWindowService.invalidateSlotCache();
-      FloatWindowService.update();
-      _syncTodoNotification();
-      _rescheduleAlarms();
-      await WidgetService.updateTodoWidget(todosSnapshot);
+      if (!await _saveTodosToSharedFile(allTodos)) {
+        warnings.add('共享文件更新失败');
+      }
+      try {
+        FloatWindowService.triggerReminderCheck();
+        FloatWindowService.invalidateSlotCache();
+        FloatWindowService.update();
+        _syncTodoNotification();
+        await _rescheduleAlarms();
+      } catch (_) {
+        warnings.add('提醒或浮窗更新失败');
+      }
+      try {
+        await WidgetService.updateTodoWidget(allTodos);
+      } catch (_) {
+        warnings.add('桌面小组件更新失败');
+      }
+      return warnings;
     } finally {
       if (identical(_persistingTodosSnapshot, todosSnapshot)) {
         _persistingTodosSnapshot = null;
@@ -185,18 +297,26 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
     try {
       // 🚀 核心修复：同步前先强制保存用户未持久化的修改（如取消勾选），
       // 防止 syncData 的 saveTodos(isSyncSource=true) 覆盖用户意图。
-      final pendingSnapshotBeforeSync = _pendingTodosToPersist;
-      if (pendingSnapshotBeforeSync != null) {
-        _pendingTodosToPersist = null;
-        _todoPersistDebounce?.cancel();
-        await StorageService.saveTodos(
-          widget.username,
-          pendingSnapshotBeforeSync,
-        );
-        // 🚀 设置保护：merge 时跳过这些待办，防止同步覆盖用户刚做的修改
-        StorageService.setForceFlushProtectedUuids(
-          pendingSnapshotBeforeSync.map((t) => t.id).toSet(),
-        );
+      final flushedTodoIds = <String>{};
+      _todoPersistDebounce?.cancel();
+      final flushPendingTask = _todoPersistChain
+          .catchError((Object _) {})
+          .then((_) async {
+            while (_pendingTodosToPersist != null) {
+              final pending = _pendingTodosToPersist!;
+              _pendingTodosToPersist = null;
+              flushedTodoIds.addAll(pending.map((todo) => todo.id));
+              await _persistTodosSnapshot(pending);
+            }
+          });
+      _todoPersistChain = flushPendingTask
+          .then<void>((_) {})
+          .catchError((Object _) {});
+      await flushPendingTask;
+      if (flushedTodoIds.isNotEmpty) {
+        // Protect rows persisted immediately before sync from being replaced
+        // by an older remote snapshot during this sync pass.
+        StorageService.setForceFlushProtectedUuids(flushedTodoIds);
       }
 
       // 仅记录长耗时诊断，不释放逻辑锁。释放锁必须由真实的同步 Future

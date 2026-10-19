@@ -8,6 +8,7 @@ import '../services/database_helper.dart';
 import '../services/plan_backlog_repository.dart';
 import '../services/plan_todo_guard.dart';
 import '../services/pomodoro_service.dart';
+import '../services/todo_editor_save_service.dart';
 import '../storage_service.dart';
 import '../widgets/plan_block_editor_sheet.dart';
 import '../widgets/todo_section_widget.dart';
@@ -232,6 +233,17 @@ class _PlanBacklogScreenState extends State<PlanBacklogScreen>
             username: widget.username,
             onTodosChanged: (items) =>
                 StorageService.saveTodos(widget.username, items),
+            onEditorSave: (items, baselines) => TodoEditorSaveService.save(
+              username: widget.username,
+              changedTodos: items,
+              baselines: baselines,
+            ),
+            onEditorGroupsSave: (items, baselines) =>
+                TodoEditorSaveService.saveGroups(
+                  username: widget.username,
+                  changedGroups: items,
+                  baselines: baselines,
+                ),
             onGroupsChanged: (items) =>
                 StorageService.saveTodoGroups(widget.username, items),
           ),

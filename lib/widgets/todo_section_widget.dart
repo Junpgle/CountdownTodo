@@ -16,6 +16,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models.dart';
+import '../models/todo_editor_save_result.dart';
 import '../models/chat_message.dart';
 import '../services/api_service.dart';
 import '../storage_service.dart';
@@ -86,6 +87,16 @@ class TodoSectionWidget extends StatefulWidget {
   final String username;
   final bool isLight;
   final Function(List<TodoItem>) onTodosChanged;
+  final Future<TodoEditorSaveResult> Function(
+    List<TodoItem>,
+    Map<String, TodoItem>,
+  )?
+  onEditorSave;
+  final FutureOr<void> Function(
+    List<TodoGroup>,
+    Map<String, TodoGroup>,
+  )?
+  onEditorGroupsSave;
   final VoidCallback onRefreshRequested;
   final Set<String> highlightedTodoIds;
   final int remoteUpdateHighlightSignal;
@@ -115,6 +126,8 @@ class TodoSectionWidget extends StatefulWidget {
     required this.username,
     required this.isLight,
     required this.onTodosChanged,
+    this.onEditorSave,
+    this.onEditorGroupsSave,
     required this.onRefreshRequested,
     this.highlightedTodoIds = const <String>{},
     this.remoteUpdateHighlightSignal = 0,

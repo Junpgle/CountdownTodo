@@ -148,12 +148,15 @@ mixin _StorageTodos on _StorageServiceBase {
     Map<String, TodoItem>? recurrenceBaselines,
     Map<String, TodoItem?>? recurrenceUploadBaselines,
     List<TodoItem>? bandSyncSnapshot,
+    Map<String, TodoItem>? expectedTodoBaselines,
   }) async {
     final dedupeMap = <String, TodoItem>{};
     if (sync && !isSyncSource) _recurrenceCheckCache.clear();
     for (final source in items) {
       // Async reads must not share mutable UI objects with this write.
-      final item = source.detachedCopy();
+      final item = expectedTodoBaselines == null
+          ? source.detachedCopy()
+          : TodoItem.fromJson(source.toJson());
       if (item.recurrence != RecurrenceType.none &&
           item.recurrenceSeriesId?.isNotEmpty != true) {
         item.recurrenceSeriesId = item.id;
@@ -191,6 +194,7 @@ mixin _StorageTodos on _StorageServiceBase {
     final validationIds = {
       ...dedupeMap.keys,
       ...ruleBaselines.map((item) => item.id),
+      ...?expectedTodoBaselines?.keys,
     }.toList();
     final db = await DatabaseHelper.instance.databaseForUser(username);
     final localPrefs = await prefs;
@@ -232,6 +236,19 @@ mixin _StorageTodos on _StorageServiceBase {
         }
       }
       final staleRuleSeries = <String>{};
+      if (expectedTodoBaselines != null) {
+        for (final entry in expectedTodoBaselines.entries) {
+          final currentRow = existingById[entry.key];
+          if (currentRow == null ||
+              _hasSubstantialChange(
+                TodoItem.fromSql(currentRow).toJson(),
+                entry.value.toJson(),
+                _todoSnapshotFields,
+              )) {
+            throw StateError('待办「${entry.value.title}」已在其他位置更新，请重新打开后再编辑。');
+          }
+        }
+      }
       for (final rule in ruleBaselines) {
         final current = existingById[rule.id];
         if (current == null ||
@@ -3158,6 +3175,7 @@ mixin _StorageTodos on _StorageServiceBase {
     List<TodoGroup> items, {
     bool sync = true,
     bool isSyncSource = false,
+    Map<String, TodoGroup>? expectedGroupBaselines,
   }) async {
     final Map<String, TodoGroup> dedupeMap = {};
 
@@ -3169,60 +3187,93 @@ mixin _StorageTodos on _StorageServiceBase {
     }
 
     final db = await DatabaseHelper.instance.databaseForUser(username);
-    final existingRows = await db.query('todo_groups');
-    final existingItemsMap = <String, Map<String, dynamic>>{
-      for (final row in existingRows) row['uuid'].toString(): row,
-    };
-    final batch = db.batch();
-    for (var item in dedupeMap.values) {
-      bool hasChanged = true;
-      final oldData = existingItemsMap[item.id];
-      if (oldData != null) {
-        hasChanged = _hasSubstantialChange(oldData, item.toJson(), [
-          'name',
-          'is_expanded',
-          'is_deleted',
-          'team_uuid',
-          'version',
-          'updated_at',
-          'has_conflict',
-          'conflict_data',
-        ]);
-      }
-
-      if (!isSyncSource && hasChanged) {
-        batch.insert('op_logs', {
-          'op_type': 'UPSERT',
-          'target_table': 'todo_groups',
-          'target_uuid': item.id,
-          'data_json': jsonEncode(item.toJson()),
-          'timestamp': DateTime.now().millisecondsSinceEpoch,
-          'is_synced': 0,
-          'sync_error': '',
-        });
-      }
-
-      if (hasChanged || oldData == null) {
-        batch.insert('todo_groups', {
-          'uuid': item.id,
-          'team_uuid': item.teamUuid,
-          'team_name': item.teamName,
-          'creator_id': item.creatorId,
-          'creator_name': item.creatorName,
-          'name': item.name,
-          'is_expanded': item.isExpanded ? 1 : 0,
-          'is_deleted': item.isDeleted ? 1 : 0,
-          'version': item.version,
-          'updated_at': item.updatedAt,
-          'created_at': item.createdAt,
-          'has_conflict': item.hasConflict ? 1 : 0,
-          'conflict_data': item.conflictData != null
-              ? jsonEncode(item.conflictData)
-              : null,
-        }, conflictAlgorithm: ConflictAlgorithm.replace);
-      }
+    if (expectedGroupBaselines != null && username.trim() != 'default') {
+      await UserSessionStorage.ensureCurrentUsername(username);
     }
-    await batch.commit(noResult: true);
+    await db.transaction((txn) async {
+      final existingRows = await txn.query('todo_groups');
+      final existingItemsMap = <String, Map<String, dynamic>>{
+        for (final row in existingRows) row['uuid'].toString(): row,
+      };
+      if (expectedGroupBaselines != null) {
+        for (final entry in expectedGroupBaselines.entries) {
+          final current = existingItemsMap[entry.key];
+          if (current == null ||
+              _hasSubstantialChange(current, entry.value.toJson(), [
+                'name',
+                'is_expanded',
+                'is_deleted',
+                'team_uuid',
+                'team_name',
+                'version',
+                'updated_at',
+                'created_at',
+                'creator_id',
+                'creator_name',
+                'has_conflict',
+                'conflict_data',
+              ])) {
+            throw StateError('文件夹「${entry.value.name}」已在其他位置更新，请重新打开后再修改。');
+          }
+        }
+      }
+      final batch = txn.batch();
+      for (final item in dedupeMap.values) {
+        final oldData = existingItemsMap[item.id];
+        final hasChanged =
+            oldData == null ||
+            _hasSubstantialChange(oldData, item.toJson(), [
+              'name',
+              'is_expanded',
+              'is_deleted',
+              'team_uuid',
+              'team_name',
+              'version',
+              'updated_at',
+              'created_at',
+              'creator_id',
+              'creator_name',
+              'has_conflict',
+              'conflict_data',
+            ]);
+
+        if (!isSyncSource && hasChanged) {
+          batch.insert('op_logs', {
+            'op_type': 'UPSERT',
+            'target_table': 'todo_groups',
+            'target_uuid': item.id,
+            'data_json': jsonEncode(item.toJson()),
+            'timestamp': DateTime.now().millisecondsSinceEpoch,
+            'is_synced': 0,
+            'sync_error': '',
+          });
+        }
+
+        if (hasChanged) {
+          batch.insert('todo_groups', {
+            'uuid': item.id,
+            'team_uuid': item.teamUuid,
+            'team_name': item.teamName,
+            'creator_id': item.creatorId,
+            'creator_name': item.creatorName,
+            'name': item.name,
+            'is_expanded': item.isExpanded ? 1 : 0,
+            'is_deleted': item.isDeleted ? 1 : 0,
+            'version': item.version,
+            'updated_at': item.updatedAt,
+            'created_at': item.createdAt,
+            'has_conflict': item.hasConflict ? 1 : 0,
+            'conflict_data': item.conflictData != null
+                ? jsonEncode(item.conflictData)
+                : null,
+          }, conflictAlgorithm: ConflictAlgorithm.replace);
+        }
+      }
+      if (expectedGroupBaselines != null && username.trim() != 'default') {
+        await UserSessionStorage.ensureCurrentUsername(username);
+      }
+      await batch.commit(noResult: true);
+    });
     _inflightTodoRequests.clear();
     _inflightTodoSearchDateRequests.clear();
     _inflightTimelineTodoRequests.clear();

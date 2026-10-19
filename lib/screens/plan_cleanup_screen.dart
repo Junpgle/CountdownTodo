@@ -11,6 +11,7 @@ import '../services/plan_cleanup_repository.dart';
 import '../services/plan_todo_guard.dart';
 import '../services/pomodoro_service.dart';
 import '../services/notification_service.dart';
+import '../services/todo_editor_save_service.dart';
 import '../storage_service.dart';
 import '../widgets/todo_section_widget.dart';
 import 'pomodoro_screen.dart';
@@ -649,6 +650,25 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
             onTodosChanged: (items) async {
               await _identity!.check();
               await StorageService.saveTodos(widget.username, items);
+            },
+            onEditorSave: (items, baselines) async {
+              await _identity!.check();
+              final result = await TodoEditorSaveService.save(
+                username: widget.username,
+                changedTodos: items,
+                baselines: baselines,
+              );
+              await _identity!.check();
+              return result;
+            },
+            onEditorGroupsSave: (items, baselines) async {
+              await _identity!.check();
+              await TodoEditorSaveService.saveGroups(
+                username: widget.username,
+                changedGroups: items,
+                baselines: baselines,
+              );
+              await _identity!.check();
             },
             onGroupsChanged: (items) async {
               await _identity!.check();
