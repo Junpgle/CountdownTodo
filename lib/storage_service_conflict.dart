@@ -274,7 +274,7 @@ mixin _StorageConflict on _StorageServiceBase {
 
       todo.hasConflict = false;
       todo.serverVersionData = null;
-      todo.markAsChanged();
+      todo.markRecurrenceMaintenanceChanged();
       resolved.add(todo);
     }
     return resolved;

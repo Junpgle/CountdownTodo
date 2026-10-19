@@ -116,6 +116,7 @@ todo.md
 !/test/llm_config_page_test.dart
 !/test/services/
 /test/services/*
+!/test/services/todo_recurrence_sync_regression_test.dart
 !/test/services/todo_completion_celebration_service_test.dart
 !/test/services/todo_overdue_triage_service_test.dart
 !/test/services/search_navigation_test.dart

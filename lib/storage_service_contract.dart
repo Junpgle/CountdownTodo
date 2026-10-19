@@ -352,7 +352,16 @@ abstract class _StorageServiceBase {
       {bool sync = true,
       bool isSyncSource = false,
       bool recomputeScheduleConflicts = true,
+      Set<String> authoritativeTodoIds = const {},
+      Map<String, TodoItem>? recurrenceBaselines,
+      Map<String, TodoItem?>? recurrenceUploadBaselines,
       List<TodoItem>? bandSyncSnapshot});
+  Future<bool> _saveRecurrenceMaintenance(
+    String username,
+    List<TodoItem> todos,
+    Map<String, TodoItem> baselines, {
+    Map<String, TodoItem?>? uploadBaselines,
+  });
   bool _hasSubstantialChange(Map<String, dynamic> before,
       Map<String, dynamic> after, List<String> fields);
   Future<void> _refreshTodoScheduleConflicts(

@@ -249,6 +249,12 @@ class TodoItem {
     updatedAt = now > updatedAt ? now : updatedAt + 1;
   }
 
+  /// Automatic recurrence maintenance must not turn an old completion or date
+  /// into a new user edit. Keep the source write time for legacy LWW servers.
+  void markRecurrenceMaintenanceChanged() {
+    version++;
+  }
+
   DateTime get effectiveStartTime => DateTime.fromMillisecondsSinceEpoch(
         createdDate ?? createdAt,
         isUtc: true,

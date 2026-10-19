@@ -1707,7 +1707,7 @@ class DatabaseHelper {
 
   /// 记录本地审计日志
   Future<void> insertLocalAuditLog({
-    Database? databaseOverride,
+    DatabaseExecutor? databaseOverride,
     String? teamUuid,
     required int userId,
     required String targetTable,
@@ -2954,7 +2954,7 @@ class DatabaseHelper {
     int offset = 0,
     bool inlineTextColumns = false,
     bool includeConflictData = false,
-    Database? databaseOverride,
+    DatabaseExecutor? databaseOverride,
   }) async {
     // Callers that already captured a user-scoped database must keep using
     // that handle.  Re-opening the current database here creates a window in
@@ -3138,7 +3138,7 @@ class DatabaseHelper {
   }
 
   Future<Map<String, dynamic>> _hydrateTodoRow(
-    Database db,
+    DatabaseExecutor db,
     Map<String, dynamic> row, {
     bool includeConflictData = false,
   }) async {
@@ -3188,7 +3188,7 @@ class DatabaseHelper {
   }
 
   Future<String?> _readTodoTextColumn(
-    Database db,
+    DatabaseExecutor db,
     String uuid,
     String column,
     int? textLength,

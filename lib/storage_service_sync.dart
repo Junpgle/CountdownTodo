@@ -768,28 +768,30 @@ mixin _StorageSync on _StorageServiceBase {
         staleHabitConflictSnapshots['habit_goal_rule_revisions:${rule.uuid}'] =
             Map<String, dynamic>.from(rule.conflictData!);
       }
+      final conflictRepairBaselines = {
+        for (final todo in allLocalTodos) todo.id: todo.detachedCopy(),
+      };
       final autoResolvedMigrationConflicts =
           _clearResolvedRecurrenceMigrationConflicts(allLocalTodos);
       if (autoResolvedMigrationConflicts.isNotEmpty) {
-        await saveTodos(
+        await _saveRecurrenceMaintenance(
           username,
-          autoResolvedMigrationConflicts,
-          sync: true,
-          recomputeScheduleConflicts: false,
+          allLocalTodos,
+          conflictRepairBaselines,
         );
         hasChanges = true;
         debugPrint(
             '🧹 [同步修复] 已自动消解 ${autoResolvedMigrationConflicts.length} 条仅由循环系列迁移产生的版本冲突');
       }
+      final localSeriesBaselines = {
+        for (final todo in allLocalTodos) todo.id: todo.detachedCopy(),
+      };
       final repairedLocalSeriesIds =
           await _repairLocalRecurrenceSeriesAliasesFromHistory(
         db,
         allLocalTodos,
       );
       if (repairedLocalSeriesIds.isNotEmpty) {
-        final versionsBeforeDedupe = {
-          for (final todo in allLocalTodos) todo.id: todo.version,
-        };
         final deletedBeforeDedupe = {
           for (final todo in allLocalTodos)
             if (todo.isDeleted) todo.id,
@@ -800,24 +802,14 @@ mixin _StorageSync on _StorageServiceBase {
                 todo.isDeleted && !deletedBeforeDedupe.contains(todo.id))
             .map((todo) => todo.id));
 
-        final repairedItems = allLocalTodos
-            .where((todo) => repairedLocalSeriesIds.contains(todo.id))
-            .toList();
-        for (final todo in repairedItems) {
-          // 去重分支已经提升过版本，只为单纯归并系列的实例补一次变更。
-          if (todo.version == versionsBeforeDedupe[todo.id]) {
-            todo.markAsChanged();
-          }
-        }
-        await saveTodos(
+        await _saveRecurrenceMaintenance(
           username,
-          repairedItems,
-          sync: true,
-          recomputeScheduleConflicts: false,
+          allLocalTodos,
+          localSeriesBaselines,
         );
         hasChanges = true;
         debugPrint(
-            '🧷 [同步修复] 根据本机同步历史将 ${repairedItems.length} 个被拆分的循环实例归回原系列');
+            '🧷 [同步修复] 根据本机同步历史将 ${repairedLocalSeriesIds.length} 个被拆分的循环实例归回原系列');
       }
       final localTodosById = {for (final item in allLocalTodos) item.id: item};
       final localGroupsById = {
@@ -835,7 +827,7 @@ mixin _StorageSync on _StorageServiceBase {
 
       // 按时间戳升序排列，这样 Map 的 putIfAbsent/赋值逻辑会自然保留最后一次更新
       final List<Map<String, dynamic>> pendingOps = await db.query('op_logs',
-          where: 'is_synced = 0', orderBy: 'timestamp ASC');
+          where: 'is_synced = 0', orderBy: 'timestamp ASC, id ASC');
       final requestOplogSnapshot = pendingOps
           .map(SyncOplogEntry.fromRow)
           .whereType<SyncOplogEntry>()
@@ -892,7 +884,11 @@ mixin _StorageSync on _StorageServiceBase {
             if (opId != null) consumedConflictOpIds.add(opId);
             continue;
           }
-          dedupTodos[uuid] = _stripClientOnlyConflictForSync(data);
+          SyncOplogPolicy.collectTodoPayload(
+            dedupTodos,
+            uuid,
+            _stripClientOnlyConflictForSync(data),
+          );
         } else if (table == 'todo_groups' && syncTodos) {
           if (op['sync_error'] == 'server_conflict') {
             if (opId != null) consumedConflictOpIds.add(opId);
@@ -997,7 +993,12 @@ mixin _StorageSync on _StorageServiceBase {
                 _recurrenceDedupeTombstoneIds.contains(item.id)) {
               data['_recurrence_delete_reason'] = 'dedupe';
             }
-            dedupTodos[item.id] = _stripClientOnlyConflictForSync(data);
+            // The pending payload can be newer than this earlier read snapshot,
+            // and can carry insert-only/maintenance semantics absent on models.
+            dedupTodos.putIfAbsent(
+              item.id,
+              () => _stripClientOnlyConflictForSync(data),
+            );
           }
         }
         dirtyTodos = dedupTodos.values.toList();
@@ -1521,7 +1522,7 @@ mixin _StorageSync on _StorageServiceBase {
         final currentPendingRows = await db.query(
           'op_logs',
           where: 'is_synced = 0',
-          orderBy: 'timestamp ASC',
+          orderBy: 'timestamp ASC, id ASC',
         );
         final currentPendingEntries = currentPendingRows
             .map(SyncOplogEntry.fromRow)
@@ -1837,6 +1838,17 @@ mixin _StorageSync on _StorageServiceBase {
           item: TodoItem.fromJson(sanitizedServerRaw),
         ));
       }
+      final beforeRemoteRepair = {
+        for (final todo in allLocalTodos) todo.id: todo.detachedCopy(),
+      };
+      final remoteRecurrenceBaselines = {
+        for (final entry in remoteTodoEntries)
+          entry.item.id: entry.item.detachedCopy(),
+      };
+      final rejectedMaintenanceIds =
+          (response['todo_maintenance_rejected_uuids'] as List? ?? const [])
+              .map((id) => id.toString())
+              .toSet();
       final repairedRemoteTodoIds = _repairMissingRemoteRecurrenceSeriesIds(
         remoteTodoEntries.map((entry) => entry.item).toList(),
         allLocalTodos,
@@ -1872,6 +1884,7 @@ mixin _StorageSync on _StorageServiceBase {
           final usesStrictRecurringLww =
               _isRecurringTodoForLww(local) || _isRecurringTodoForLww(sItem);
           final serverWinsStrictRecurringLww =
+              rejectedMaintenanceIds.contains(sItem.id) ||
               TodoLwwService.shouldReplaceRecurringSnapshot(
             incomingUpdatedAt: sItem.updatedAt,
             incomingVersion: sItem.version,
@@ -1896,7 +1909,8 @@ mixin _StorageSync on _StorageServiceBase {
               '🔄 [合并对比] UUID: ${sItem.id}, Server(V:${sItem.version}, D:${sItem.isDeleted}), Local(V:${local.version}, D:${local.isDeleted})');
 
           // 防回滚：本地已删除且更”新”时，拒绝服务端旧的未删除数据复活
-          if (local.isDeleted &&
+          if (!rejectedMaintenanceIds.contains(sItem.id) &&
+              local.isDeleted &&
               !sItem.isDeleted &&
               local.updatedAt > sItem.updatedAt &&
               local.version >= sItem.version) {
@@ -2601,7 +2615,9 @@ mixin _StorageSync on _StorageServiceBase {
         await UserSessionStorage.ensureCurrentSession(session);
         if (syncTodos) {
           await saveTodos(username, allLocalTodos,
-              sync: false, isSyncSource: true);
+              sync: false,
+              isSyncSource: true,
+              authoritativeTodoIds: rejectedMaintenanceIds);
           await saveTodoGroups(username, allLocalGroups,
               sync: false, isSyncSource: true);
         }
@@ -2650,8 +2666,9 @@ mixin _StorageSync on _StorageServiceBase {
         await PomodoroService.reconcilePlanBlockProgress(username);
       }
 
-      // 将从旧云端响应中恢复出的系列关系作为一次真实本地修复重新上传。
-      // 先完成同步源落库，再提升版本，确保 saveTodos 能生成待上传 oplog。
+      // Queue structural repairs without changing their user-write timestamps.
+      // Local CAS checks the just-persisted row; server CAS checks the original
+      // server snapshot, before series repair/dedupe changed its contents.
       if (repairedRemoteTodoIds.isNotEmpty) {
         final repairIdsToUpload = repairedRemoteTodoIds
             .where(
@@ -2663,22 +2680,54 @@ mixin _StorageSync on _StorageServiceBase {
                   ),
             )
             .toSet();
-        final repairedItems = allLocalTodos
+        final repairCandidates = allLocalTodos
             .where((todo) => repairIdsToUpload.contains(todo.id))
             .toList();
-        for (final todo in repairedItems) {
-          todo.markAsChanged();
+        final repairBaselines = <String, TodoItem>{};
+        final uploadBaselines = <String, TodoItem?>{};
+        final repairedItems = <TodoItem>[];
+        final persistedRepairItems = <String, TodoItem>{};
+        const repairChunkSize = 400;
+        for (var start = 0; start < repairCandidates.length; start += repairChunkSize) {
+          final rows = await DatabaseHelper.instance.getTodoMaps(
+            includeDeleted: true,
+            includeConflictData: true,
+            uuids: repairCandidates.skip(start).take(repairChunkSize)
+                .map((todo) => todo.id).toList(),
+            databaseOverride: db,
+          );
+          for (final row in rows) {
+            persistedRepairItems[row['uuid'].toString()] = TodoItem.fromSql(row);
+          }
+        }
+        for (final todo in repairCandidates) {
+          final current = persistedRepairItems[todo.id];
+          if (current == null ||
+              _hasSubstantialChange(
+                current.toJson(),
+                todo.toJson(),
+                _StorageTodos._todoSnapshotFields,
+              )) {
+            continue;
+          }
+          repairBaselines[todo.id] = current;
+          uploadBaselines[todo.id] =
+              remoteRecurrenceBaselines[todo.id] ?? beforeRemoteRepair[todo.id];
+          todo.markRecurrenceMaintenanceChanged();
+          repairedItems.add(todo);
         }
         if (repairedItems.isNotEmpty) {
-          await saveTodos(
+          final saved = await _saveRecurrenceMaintenance(
             username,
             repairedItems,
-            sync: true,
-            recomputeScheduleConflicts: false,
+            repairBaselines,
+            uploadBaselines: uploadBaselines,
           );
-          _attemptedRecurrenceSeriesRepairUploads.addAll(
-            repairedItems.map((todo) => '$username|${todo.id}'),
-          );
+          if (saved) {
+            _attemptedRecurrenceSeriesRepairUploads.addAll(
+              repairedItems.map((todo) => '$username|${todo.id}'),
+            );
+          }
           hasChanges = true;
           debugPrint('🧩 [同步修复] 已恢复并排队回传 ${repairedItems.length} 个循环实例的系列关系');
         }

@@ -515,6 +515,8 @@ class ApiService {
           'success': true,
           'conflicts': rawConflicts,
           'server_todos': data['server_todos'] ?? [],
+          'todo_maintenance_rejected_uuids':
+              data['todo_maintenance_rejected_uuids'] ?? [],
           'server_todo_groups': data['server_todo_groups'] ?? [],
           'server_countdowns': data['server_countdowns'] ?? [],
           'new_sync_time': data['new_sync_time'],
