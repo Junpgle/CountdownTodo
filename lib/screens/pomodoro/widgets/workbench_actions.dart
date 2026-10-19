@@ -245,47 +245,51 @@ class _WorkbenchActionsState extends State<WorkbenchActions>
                 height: actionButtonHeight,
                 child: AnimatedBuilder(
                   animation: _pressAnimation,
-                  builder: (context, child) {
-                    return Transform.scale(
-                      scale: _pressAnimation.value,
-                      child: TweenAnimationBuilder<Color?>(
-                        tween: ColorTween(
-                          begin: const Color(0xFFFF6B6B),
-                          end: widget.phase == PomodoroPhase.finished
-                              ? const Color(0xFF4ECDC4)
-                              : const Color(0xFFFF6B6B),
+                  child: TweenAnimationBuilder<Color?>(
+                    tween: ColorTween(
+                      begin: const Color(0xFFFF6B6B),
+                      end: widget.phase == PomodoroPhase.finished
+                          ? const Color(0xFF4ECDC4)
+                          : const Color(0xFFFF6B6B),
+                    ),
+                    duration: const Duration(milliseconds: 400),
+                    builder: (context, color, child) {
+                      return FilledButton.icon(
+                        key: const ValueKey('start_btn'),
+                        onPressed: _onStartFocusPressed,
+                        icon: Icon(
+                          Icons.play_arrow_rounded,
+                          size: widget.isCompact ? 18 : 20,
                         ),
-                        duration: const Duration(milliseconds: 400),
-                        builder: (context, color, child) {
-                          return FilledButton.icon(
-                            key: const ValueKey('start_btn'),
-                            onPressed: _onStartFocusPressed,
-                            icon: Icon(Icons.play_arrow_rounded,
-                                size: widget.isCompact ? 18 : 20),
-                            label: Text(
-                              widget.phase == PomodoroPhase.finished
-                                  ? '再来一轮'
-                                  : '开始专注',
-                              style: TextStyle(
-                                  fontSize: widget.isCompact ? 13 : 14,
-                                  fontWeight: FontWeight.bold),
-                            ),
-                            style: FilledButton.styleFrom(
-                              alignment: Alignment.center,
-                              iconAlignment: IconAlignment.start,
-                              padding: EdgeInsets.symmetric(
-                                  vertical: widget.isCompact ? 8 : 10),
-                              backgroundColor: color ?? const Color(0xFFFF6B6B),
-                              shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(16)),
-                              backgroundBuilder: _keepButtonBackground,
-                              elevation: 2,
-                            ),
-                          );
-                        },
-                      ),
-                    );
-                  },
+                        label: Text(
+                          widget.phase == PomodoroPhase.finished
+                              ? '再来一轮'
+                              : '开始专注',
+                          style: TextStyle(
+                            fontSize: widget.isCompact ? 13 : 14,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        style: FilledButton.styleFrom(
+                          alignment: Alignment.center,
+                          iconAlignment: IconAlignment.start,
+                          padding: EdgeInsets.symmetric(
+                            vertical: widget.isCompact ? 8 : 10,
+                          ),
+                          backgroundColor: color ?? const Color(0xFFFF6B6B),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          backgroundBuilder: _keepButtonBackground,
+                          elevation: 2,
+                        ),
+                      );
+                    },
+                  ),
+                  builder: (context, child) => Transform.scale(
+                    scale: _pressAnimation.value,
+                    child: child,
+                  ),
                 ),
               ),
             ),

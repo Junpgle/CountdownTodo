@@ -17,7 +17,7 @@ class _HomeLayoutSettingsPageState extends State<HomeLayoutSettingsPage> {
   static const _labels = <String, String>{
     'banners': '顶部横幅',
     'countdowns': '重要日 / 倒数日',
-    'courses': '课程',
+    'agenda': '今日安排',
     'todos': '待办',
     'timeline': '时间轴',
     'pomodoro': '今日专注',
@@ -30,7 +30,7 @@ class _HomeLayoutSettingsPageState extends State<HomeLayoutSettingsPage> {
   static const _icons = <String, IconData>{
     'banners': Icons.campaign_outlined,
     'countdowns': Icons.event_outlined,
-    'courses': Icons.school_outlined,
+    'agenda': Icons.event_note_rounded,
     'todos': Icons.checklist_rounded,
     'timeline': Icons.timeline_rounded,
     'pomodoro': Icons.adjust_rounded,
@@ -411,6 +411,36 @@ class _HomeLayoutSettingsPageState extends State<HomeLayoutSettingsPage> {
                   ),
                   const SizedBox(height: 16),
                   _buildHabitDisplayLimitSetting(context),
+                  const SizedBox(height: 16),
+                  OptionalLiquidGlassCard(
+                    highContrast: true,
+                    borderRadius: 12,
+                    fallbackDecoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surfaceContainerLow,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Material(
+                      type: MaterialType.transparency,
+                      child: Column(
+                        children: [
+                          SwitchListTile(
+                            title: const Text('今日安排：课程与日程'),
+                            subtitle: const Text('课程、固定日程、手机日历和带时间的待办'),
+                            value: _visibility['agendaSchedules'] ?? true,
+                            onChanged: (value) =>
+                                _setVisibility('agendaSchedules', value),
+                          ),
+                          SwitchListTile(
+                            title: const Text('今日安排：待办规划'),
+                            subtitle: const Text('规划时段、统计和快捷操作'),
+                            value: _visibility['agendaPlans'] ?? true,
+                            onChanged: (value) =>
+                                _setVisibility('agendaPlans', value),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                   const SizedBox(height: 16),
                   if (isWide)
                     Row(

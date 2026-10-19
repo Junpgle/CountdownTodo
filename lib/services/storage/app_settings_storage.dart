@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
+
 import '../github_resource_service.dart';
 import '../privacy_policy_version.dart';
 
@@ -244,7 +245,8 @@ class AppSettingsStorage {
 
     // Read the earlier two-key draft format so a local build can be upgraded
     // without discarding a balance entered before this atomic representation.
-    final amountMinor = prefs.getInt(_financeOpeningBalanceAmountKey(username)) ?? 0;
+    final amountMinor =
+        prefs.getInt(_financeOpeningBalanceAmountKey(username)) ?? 0;
     final legacyDate = prefs.getString(_financeOpeningBalanceDateKey(username));
     final hasValidDate =
         _isFinanceDateKey(legacyDate) && legacyDate!.compareTo(today) <= 0;
@@ -337,8 +339,10 @@ class AppSettingsStorage {
     return prefs.getBool(_privacyAgreed) ?? false;
   }
 
-  static Future<void> setPrivacyPolicyAgreed(bool agreed,
-      {String? date}) async {
+  static Future<void> setPrivacyPolicyAgreed(
+    bool agreed, {
+    String? date,
+  }) async {
     final prefs = await _prefs;
     await prefs.setBool(_privacyAgreed, agreed);
     if (agreed) {
@@ -372,7 +376,7 @@ class AppSettingsStorage {
 
     if (cacheTime > 0 &&
         now - cacheTime < _privacyCacheDuration.inMilliseconds) {
-//       debugPrint('[Privacy] Using cached version: $cachedVersion');
+      //       debugPrint('[Privacy] Using cached version: $cachedVersion');
       return cachedVersion;
     }
 
@@ -512,7 +516,8 @@ class AppSettingsStorage {
   }
 
   static Future<Map<String, int>> getCategoryReminderMinutes(
-      String username) async {
+    String username,
+  ) async {
     final prefs = await _prefs;
     final jsonStr = prefs.getString("${_categoryReminderMinutes}_$username");
     if (jsonStr == null) return {};
@@ -525,10 +530,14 @@ class AppSettingsStorage {
   }
 
   static Future<void> saveCategoryReminderMinutes(
-      String username, Map<String, int> data) async {
+    String username,
+    Map<String, int> data,
+  ) async {
     final prefs = await _prefs;
     await prefs.setString(
-        "${_categoryReminderMinutes}_$username", jsonEncode(data));
+      "${_categoryReminderMinutes}_$username",
+      jsonEncode(data),
+    );
   }
 
   /// 手环后台连接服务默认关闭，避免应用启动后无条件绑定小米穿戴服务。

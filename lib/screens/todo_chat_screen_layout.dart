@@ -149,7 +149,7 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
         IconButton(
           key: _settingsKey,
           icon: const Icon(Icons.tune_rounded, size: 22),
-          onPressed: _showPromptSettings,
+          onPressed: () => _showPromptSettingsFromSource(_settingsKey),
           tooltip: 'AI 助手设置',
         ),
         const SizedBox(width: 4),
@@ -248,22 +248,27 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
   }
 
   List<ChatMessage> get _pendingActionMessages {
-    return _messages
-        .where(
-          (msg) =>
-              msg.todoActions != null &&
-              msg.todoActions!.any(
-                (action) => !action.isAdded && !action.isIgnored,
-              ),
-        )
-        .toList()
-        .reversed
-        .toList();
+    final messages = <ChatMessage>[];
+    for (var i = _messages.length - 1; i >= 0; i--) {
+      final msg = _messages[i];
+      final actions = msg.todoActions;
+      if (actions == null) continue;
+      for (final action in actions) {
+        if (!action.isAdded && !action.isIgnored) {
+          messages.add(msg);
+          break;
+        }
+      }
+    }
+    return messages;
   }
 
   Widget _buildActionRail(bool isDark, ColorScheme colorScheme) {
     final actionMessages = _pendingActionMessages;
     final actionCount = _pendingActionCount;
+    final showSuggestions = _suggestions.isNotEmpty && !_isLoading;
+    final itemCount =
+        actionMessages.length + (showSuggestions ? _suggestions.length + 1 : 0);
     return DecoratedBox(
       decoration: BoxDecoration(
         color: colorScheme.surface,
@@ -331,21 +336,24 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
               switchOutCurve: Curves.easeInCubic,
               child: actionMessages.isEmpty && _suggestions.isEmpty
                   ? _buildActionRailEmptyState(colorScheme)
-                  : ListView(
+                  : ListView.builder(
                       key: ValueKey(
                         '${actionMessages.length}-${_suggestions.length}',
                       ),
                       padding: const EdgeInsets.fromLTRB(14, 14, 14, 18),
-                      children: [
-                        if (actionMessages.isNotEmpty)
-                          ...actionMessages.map(
-                            (msg) => Padding(
-                              padding: const EdgeInsets.only(bottom: 12),
-                              child: _buildMessageTodoActions(msg, isDark),
+                      itemCount: itemCount,
+                      itemBuilder: (context, index) {
+                        if (index < actionMessages.length) {
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: _buildMessageTodoActions(
+                              actionMessages[index],
+                              isDark,
                             ),
-                          ),
-                        if (_suggestions.isNotEmpty && !_isLoading) ...[
-                          Padding(
+                          );
+                        }
+                        if (showSuggestions && index == actionMessages.length) {
+                          return Padding(
                             padding: EdgeInsets.fromLTRB(
                               4,
                               actionMessages.isNotEmpty ? 8 : 0,
@@ -361,7 +369,7 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
                                 ),
                                 const SizedBox(width: 6),
                                 Text(
-                                  '下一步问题',
+                                  'AI生成的下一步建议',
                                   style: TextStyle(
                                     fontSize: 13,
                                     fontWeight: FontWeight.w700,
@@ -370,19 +378,19 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
                                 ),
                               ],
                             ),
+                          );
+                        }
+                        final suggestionIndex =
+                            index - actionMessages.length - 1;
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: _buildQuickQuestion(
+                            _suggestions[suggestionIndex],
+                            compact: true,
+                            expand: true,
                           ),
-                          ..._suggestions.map(
-                            (text) => Padding(
-                              padding: const EdgeInsets.only(bottom: 8),
-                              child: _buildQuickQuestion(
-                                text,
-                                compact: true,
-                                expand: true,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ],
+                        );
+                      },
                     ),
             ),
           ),
@@ -526,7 +534,10 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
         if (_isLoading && index == _messages.length) {
           return _StaggeredFadeSlide(
             delay: Duration.zero,
-            child: _buildStreamingBubble(isDark),
+            child: ValueListenableBuilder<int>(
+              valueListenable: _streamingBubbleRevision,
+              builder: (context, _, _) => _buildStreamingBubble(isDark),
+            ),
           );
         }
         final msg = _messages[index];
@@ -636,19 +647,20 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
                 ),
               ),
               const SizedBox(height: 32),
-              _StaggeredFadeSlide(
-                child: SizedBox(
-                  height: _isWide ? 180 : 140,
-                  width: double.infinity,
-                  child: _DanmakuSuggestions(
-                    suggestions: _getSmartSuggestions(),
-                    onTap: (text) {
-                      _inputCtrl.text = text;
-                      _sendMessage();
-                    },
+              if (_suggestions.isNotEmpty)
+                _StaggeredFadeSlide(
+                  child: SizedBox(
+                    height: _isWide ? 180 : 140,
+                    width: double.infinity,
+                    child: _DanmakuSuggestions(
+                      suggestions: _suggestions,
+                      onTap: (text) {
+                        _inputCtrl.text = text;
+                        _sendMessage();
+                      },
+                    ),
                   ),
                 ),
-              ),
             ],
           ),
         ),
@@ -856,7 +868,9 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
                             ),
                           ),
                           subtitle: Text(
-                            DateFormat('MM/dd HH:mm').format(session.updatedAt),
+                            _todoChatDateFormat(
+                              'MM/dd HH:mm',
+                            ).format(session.updatedAt),
                             style: TextStyle(
                               fontSize: 11,
                               color: colorScheme.onSurfaceVariant,
@@ -923,7 +937,7 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
         _sessions = [];
         _messages = [];
         _activeSessionId = '';
-        _suggestions = _getSmartSuggestions();
+        _suggestions = [];
       });
       // 关闭侧边栏
       Navigator.pop(sidebarCtx);
@@ -1327,71 +1341,4 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
     );
   }
 
-  List<String> _getSmartSuggestions() {
-    final List<String> suggestions = [];
-
-    // 1. 基础引导 (恒定)
-    suggestions.addAll([
-      '帮我规划今天的待办',
-      '怎么使用深度规划？',
-      '分析一下我最近的效率',
-      '有哪些紧急任务需要处理？',
-    ]);
-
-    // 2. 基于课程数据
-    if (widget.courses.isNotEmpty) {
-      suggestions.add('明天的课程表是什么？');
-      suggestions.add('这周我还有多少节课？');
-      suggestions.add('按课程空档规划待办');
-    }
-
-    // 3. 基于待办状态
-    if (widget.todos.isNotEmpty) {
-      final highPriority = widget.todos
-          .where((t) => (t['priority'] ?? 0) >= 2)
-          .length;
-      if (highPriority > 0) suggestions.add('列出所有高优先级任务');
-
-      final overdue = widget.todos.where((t) {
-        final dueDate = t['dueDate'] as String?;
-        if (dueDate == null || dueDate.isEmpty) return false;
-        final date = DateTime.tryParse(dueDate);
-        return date != null && date.isBefore(DateTime.now());
-      }).length;
-      if (overdue > 0) suggestions.add('有哪些任务已经逾期了？');
-
-      suggestions.add('帮我给这些待办分个类');
-      suggestions.add('预测一下我完成所有任务需要多久');
-    }
-
-    // 4. 基于专注记录
-    if (widget.pomodoroRecords.isNotEmpty) {
-      suggestions.add('我这周专注时长达标了吗？');
-      suggestions.add('分析我的专注分布情况');
-    }
-
-    // 5. 基于倒计时/目标
-    if (widget.countdowns.isNotEmpty) {
-      suggestions.add('最近的考试/目标还有多久？');
-    }
-
-    // 6. 基于规划冲突
-    if (widget.conflicts.isNotEmpty) {
-      suggestions.add('帮我解决目前的规划冲突');
-    }
-
-    // 7. 通用高级技巧
-    suggestions.addAll([
-      '帮我整理番茄标签',
-      '如何提高我的专注力？',
-      '整理一下我的时间日志',
-      '帮我制定一个复习计划',
-      '有哪些建议能让我更自律？',
-      '创建每天喝水的习惯',
-      '创建每天喝水的待办',
-      '创建每天喝水',
-    ]);
-
-    return suggestions.toSet().toList();
-  }
 }

@@ -353,8 +353,9 @@ void main() {
       expect(p.options.first.startMinutes, 750);
     },
   );
-  testWidgets('resetting malformed settings repairs them for the next window',
-      (t) async {
+  testWidgets('resetting malformed settings repairs them for the next window', (
+    t,
+  ) async {
     SharedPreferences.setMockInitialValues({
       'plan_availability_avoidance_buffers': 'not-json',
     });

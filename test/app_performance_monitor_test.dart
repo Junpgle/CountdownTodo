@@ -1,8 +1,25 @@
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:countdown_todo/utils/app_performance_monitor.dart';
 
+class _MonitorLabelTestWidget extends StatelessWidget {
+  const _MonitorLabelTestWidget();
+
+  @override
+  Widget build(BuildContext context) => const SizedBox.shrink();
+}
+
 void main() {
   setUp(AppPerformanceMonitor.resetForTesting);
+
+  test('unknown private widget names keep the readable screen fallback', () {
+    expect(
+      AppPerformanceMonitor.screenNameForWidget(
+        const _MonitorLabelTestWidget(),
+      ),
+      'MonitorLabelTestWidget',
+    );
+  });
 
   test('records slow frame details with the current screen', () {
     AppPerformanceMonitor.setCurrentScreen('首页');

@@ -554,6 +554,7 @@ class DataImportService {
     final localGroups =
         await StorageService.getTodoGroups(username, includeDeleted: true);
     final localMap = {for (var g in localGroups) g.id: g};
+    final localIndex = _ImportListIndex(localGroups, (group) => group.id);
     final shouldRegenerate = uuidStrategy == UuidStrategy.regenerate;
 
     int imported = 0, skipped = 0, updated = 0;
@@ -588,13 +589,13 @@ class DataImportService {
           : localMap[oldId] ?? localMap[group.id];
 
       if (existing == null) {
-        localGroups.add(group);
+        localIndex.add(group);
         localMap[group.id] = group;
         imported++;
       } else if (group.updatedAt > existing.updatedAt) {
-        final index = localGroups.indexWhere((g) => g.id == existing.id);
-        if (index != -1) {
-          localGroups[index] = group;
+        final index = localIndex.indexOf(existing.id);
+        if (index != null) {
+          localIndex.replaceAt(index, group);
           localMap[group.id] = group;
           updated++;
         }
@@ -620,6 +621,7 @@ class DataImportService {
     final localTodos =
         await StorageService.getTodos(username, includeDeleted: true);
     final localMap = {for (var t in localTodos) t.id: t};
+    final localIndex = _ImportListIndex(localTodos, (todo) => todo.id);
     final shouldRegenerate = uuidStrategy == UuidStrategy.regenerate;
 
     int imported = 0, skipped = 0, updated = 0;
@@ -670,13 +672,13 @@ class DataImportService {
           : localMap[oldId] ?? localMap[todo.id];
 
       if (existing == null) {
-        localTodos.add(todo);
+        localIndex.add(todo);
         localMap[todo.id] = todo;
         imported++;
       } else if (todo.updatedAt > existing.updatedAt) {
-        final index = localTodos.indexWhere((t) => t.id == existing.id);
-        if (index != -1) {
-          localTodos[index] = todo;
+        final index = localIndex.indexOf(existing.id);
+        if (index != null) {
+          localIndex.replaceAt(index, todo);
           localMap[todo.id] = todo;
           updated++;
         }
@@ -702,6 +704,7 @@ class DataImportService {
     final localCds =
         await StorageService.getCountdowns(username, includeDeleted: true);
     final localMap = {for (var c in localCds) c.id: c};
+    final localIndex = _ImportListIndex(localCds, (countdown) => countdown.id);
     final shouldRegenerate = uuidStrategy == UuidStrategy.regenerate;
 
     int imported = 0, skipped = 0, updated = 0;
@@ -740,13 +743,13 @@ class DataImportService {
           : localMap[oldId] ?? localMap[countdown.id];
 
       if (existing == null) {
-        localCds.add(countdown);
+        localIndex.add(countdown);
         localMap[countdown.id] = countdown;
         imported++;
       } else if (countdown.updatedAt > existing.updatedAt) {
-        final index = localCds.indexWhere((c) => c.id == existing.id);
-        if (index != -1) {
-          localCds[index] = countdown;
+        final index = localIndex.indexOf(existing.id);
+        if (index != null) {
+          localIndex.replaceAt(index, countdown);
           localMap[countdown.id] = countdown;
           updated++;
         }
@@ -771,6 +774,7 @@ class DataImportService {
   ) async {
     final localLogs = await StorageService.getTimeLogs(username);
     final localMap = {for (var l in localLogs) l.id: l};
+    final localIndex = _ImportListIndex(localLogs, (log) => log.id);
     final shouldRegenerate = uuidStrategy == UuidStrategy.regenerate;
 
     int imported = 0, skipped = 0, updated = 0;
@@ -815,13 +819,13 @@ class DataImportService {
           : localMap[oldId] ?? localMap[log.id];
 
       if (existing == null) {
-        localLogs.add(log);
+        localIndex.add(log);
         localMap[log.id] = log;
         imported++;
       } else if (log.updatedAt > existing.updatedAt) {
-        final index = localLogs.indexWhere((l) => l.id == existing.id);
-        if (index != -1) {
-          localLogs[index] = log;
+        final index = localIndex.indexOf(existing.id);
+        if (index != null) {
+          localIndex.replaceAt(index, log);
           localMap[log.id] = log;
           updated++;
         }
@@ -845,6 +849,7 @@ class DataImportService {
     final localBlocks =
         await StorageService.getPlanBlocks(username, includeDeleted: true);
     final localMap = {for (var b in localBlocks) b.id: b};
+    final localIndex = _ImportListIndex(localBlocks, (block) => block.id);
     final shouldRegenerate = uuidStrategy == UuidStrategy.regenerate;
 
     int imported = 0, skipped = 0, updated = 0;
@@ -874,13 +879,13 @@ class DataImportService {
           : localMap[oldId] ?? localMap[block.id];
 
       if (existing == null) {
-        localBlocks.add(block);
+        localIndex.add(block);
         localMap[block.id] = block;
         imported++;
       } else if (block.updatedAt > existing.updatedAt) {
-        final index = localBlocks.indexWhere((b) => b.id == existing.id);
-        if (index != -1) {
-          localBlocks[index] = block;
+        final index = localIndex.indexOf(existing.id);
+        if (index != null) {
+          localIndex.replaceAt(index, block);
           localMap[block.id] = block;
           updated++;
         }
@@ -912,6 +917,10 @@ class DataImportService {
 
     int imported = 0, skipped = 0, updated = 0;
     final mergedCourses = List<CourseItem>.from(localCourses);
+    final mergedCourseIndex = _ImportListIndex(
+      mergedCourses,
+      (course) => course.uuid,
+    );
 
     for (final item in items) {
       final map = item as Map<String, dynamic>;
@@ -945,13 +954,13 @@ class DataImportService {
           : localMap[oldUuid] ?? localMap[course.uuid];
 
       if (existing == null) {
-        mergedCourses.add(course);
+        mergedCourseIndex.add(course);
         localMap[course.uuid] = course;
         imported++;
       } else if (course.updatedAt > existing.updatedAt) {
-        final index = mergedCourses.indexWhere((c) => c.uuid == existing.uuid);
-        if (index != -1) {
-          mergedCourses[index] = course;
+        final index = mergedCourseIndex.indexOf(existing.uuid);
+        if (index != null) {
+          mergedCourseIndex.replaceAt(index, course);
           localMap[course.uuid] = course;
           updated++;
         }
@@ -979,6 +988,7 @@ class DataImportService {
       includeDeleted: true,
     );
     final localMap = {for (final item in localItems) item.id: item};
+    final localIndex = _ImportListIndex(localItems, (item) => item.id);
     final shouldRegenerate = uuidStrategy == UuidStrategy.regenerate;
     var imported = 0;
     var skipped = 0;
@@ -1018,13 +1028,13 @@ class DataImportService {
           ? localMap[item.id]
           : localMap[oldId] ?? localMap[item.id];
       if (existing == null) {
-        localItems.add(item);
+        localIndex.add(item);
         localMap[item.id] = item;
         imported++;
       } else if (item.updatedAt > existing.updatedAt) {
-        final index = localItems.indexWhere((value) => value.id == existing.id);
-        if (index >= 0) {
-          localItems[index] = item;
+        final index = localIndex.indexOf(existing.id);
+        if (index != null) {
+          localIndex.replaceAt(index, item);
           localMap[item.id] = item;
           updated++;
         }
@@ -1063,6 +1073,7 @@ class DataImportService {
 
     final localGoals = await HabitStorage.getHabitGoals(includeDeleted: true);
     final localGoalsById = {for (final goal in localGoals) goal.uuid: goal};
+    final localGoalsIndex = _ImportListIndex(localGoals, (goal) => goal.uuid);
     for (final raw in rawGoals) {
       final goal = HabitGoal.fromJson(Map<String, dynamic>.from(raw as Map));
       final oldUuid = goal.uuid;
@@ -1084,13 +1095,13 @@ class DataImportService {
           ? localGoalsById[goal.uuid]
           : localGoalsById[oldUuid] ?? localGoalsById[goal.uuid];
       if (existing == null) {
-        localGoals.add(goal);
+        localGoalsIndex.add(goal);
         localGoalsById[goal.uuid] = goal;
         imported++;
       } else if (goal.updatedAt > existing.updatedAt) {
-        final index = localGoals.indexOf(existing);
-        if (index >= 0) {
-          localGoals[index] = goal;
+        final index = localGoalsIndex.indexOf(existing.uuid);
+        if (index != null) {
+          localGoalsIndex.replaceAt(index, goal);
           localGoalsById[goal.uuid] = goal;
           updated++;
         }
@@ -1105,6 +1116,7 @@ class DataImportService {
     final localRules =
         await HabitStorage.getRuleRevisions(includeDeleted: true);
     final localRulesById = {for (final rule in localRules) rule.uuid: rule};
+    final localRulesIndex = _ImportListIndex(localRules, (rule) => rule.uuid);
     for (final raw in rawRules) {
       final rule = HabitGoalRuleRevision.fromJson(
         Map<String, dynamic>.from(raw as Map),
@@ -1123,13 +1135,13 @@ class DataImportService {
           ? localRulesById[rule.uuid]
           : localRulesById[oldUuid] ?? localRulesById[rule.uuid];
       if (existing == null) {
-        localRules.add(rule);
+        localRulesIndex.add(rule);
         localRulesById[rule.uuid] = rule;
         imported++;
       } else if (rule.updatedAt > existing.updatedAt) {
-        final index = localRules.indexOf(existing);
-        if (index >= 0) {
-          localRules[index] = rule;
+        final index = localRulesIndex.indexOf(existing.uuid);
+        if (index != null) {
+          localRulesIndex.replaceAt(index, rule);
           localRulesById[rule.uuid] = rule;
           updated++;
         }
@@ -1145,6 +1157,10 @@ class DataImportService {
     final localCheckInsById = {
       for (final checkIn in localCheckIns) checkIn.uuid: checkIn,
     };
+    final localCheckInsIndex = _ImportListIndex(
+      localCheckIns,
+      (checkIn) => checkIn.uuid,
+    );
     for (final raw in rawCheckIns) {
       final checkIn = HabitCheckIn.fromJson(
         Map<String, dynamic>.from(raw as Map),
@@ -1168,13 +1184,13 @@ class DataImportService {
           ? localCheckInsById[checkIn.uuid]
           : localCheckInsById[oldUuid] ?? localCheckInsById[checkIn.uuid];
       if (existing == null) {
-        localCheckIns.add(checkIn);
+        localCheckInsIndex.add(checkIn);
         localCheckInsById[checkIn.uuid] = checkIn;
         imported++;
       } else if (checkIn.updatedAt > existing.updatedAt) {
-        final index = localCheckIns.indexOf(existing);
-        if (index >= 0) {
-          localCheckIns[index] = checkIn;
+        final index = localCheckInsIndex.indexOf(existing.uuid);
+        if (index != null) {
+          localCheckInsIndex.replaceAt(index, checkIn);
           localCheckInsById[checkIn.uuid] = checkIn;
           updated++;
         }
@@ -1191,6 +1207,10 @@ class DataImportService {
     final localSleepPlansById = {
       for (final plan in localSleepPlans) plan.uuid: plan,
     };
+    final localSleepPlansIndex = _ImportListIndex(
+      localSleepPlans,
+      (plan) => plan.uuid,
+    );
     for (final raw in rawSleepPlans) {
       final plan = HabitSleepCoachingPlan.fromJson(
         Map<String, dynamic>.from(raw as Map),
@@ -1203,13 +1223,13 @@ class DataImportService {
           ? localSleepPlansById[plan.uuid]
           : localSleepPlansById[oldUuid] ?? localSleepPlansById[plan.uuid];
       if (existing == null) {
-        localSleepPlans.add(plan);
+        localSleepPlansIndex.add(plan);
         localSleepPlansById[plan.uuid] = plan;
         imported++;
       } else if (plan.updatedAt > existing.updatedAt) {
-        final index = localSleepPlans.indexOf(existing);
-        if (index >= 0) {
-          localSleepPlans[index] = plan;
+        final index = localSleepPlansIndex.indexOf(existing.uuid);
+        if (index != null) {
+          localSleepPlansIndex.replaceAt(index, plan);
           localSleepPlansById[plan.uuid] = plan;
           updated++;
         }
@@ -1230,6 +1250,7 @@ class DataImportService {
   ) async {
     final localTags = await PomodoroService.getTags();
     final localMap = {for (var t in localTags) t.uuid: t};
+    final localIndex = _ImportListIndex(localTags, (tag) => tag.uuid);
     final shouldRegenerate = uuidStrategy == UuidStrategy.regenerate;
 
     int imported = 0, skipped = 0, updated = 0;
@@ -1252,13 +1273,13 @@ class DataImportService {
           : localMap[oldUuid] ?? localMap[tag.uuid];
 
       if (existing == null) {
-        localTags.add(tag);
+        localIndex.add(tag);
         localMap[tag.uuid] = tag;
         imported++;
       } else if (tag.updatedAt > existing.updatedAt) {
-        final index = localTags.indexWhere((t) => t.uuid == existing.uuid);
-        if (index != -1) {
-          localTags[index] = tag;
+        final index = localIndex.indexOf(existing.uuid);
+        if (index != null) {
+          localIndex.replaceAt(index, tag);
           localMap[tag.uuid] = tag;
           updated++;
         }
@@ -1284,6 +1305,10 @@ class DataImportService {
 
     int imported = 0, skipped = 0, updated = 0;
     final mergedRecords = List<PomodoroRecord>.from(localRecords);
+    final mergedRecordIndex = _ImportListIndex(
+      mergedRecords,
+      (record) => record.uuid,
+    );
 
     for (final item in items) {
       final map = item as Map<String, dynamic>;
@@ -1319,13 +1344,13 @@ class DataImportService {
           : localMap[oldUuid] ?? localMap[record.uuid];
 
       if (existing == null) {
-        mergedRecords.add(record);
+        mergedRecordIndex.add(record);
         localMap[record.uuid] = record;
         imported++;
       } else if (record.updatedAt > existing.updatedAt) {
-        final index = mergedRecords.indexWhere((r) => r.uuid == existing.uuid);
-        if (index != -1) {
-          mergedRecords[index] = record;
+        final index = mergedRecordIndex.indexOf(existing.uuid);
+        if (index != null) {
+          mergedRecordIndex.replaceAt(index, record);
           localMap[record.uuid] = record;
           updated++;
         }
@@ -1470,6 +1495,55 @@ class DataImportService {
     return keysNeedingSuffix.contains(key) ||
         StorageKeyScope.isChallengeDataKey(key) ||
         SidebarMenuService.isUserSpecificKey(key);
+  }
+}
+
+/// Keeps list order while replacing repeated linear ID searches with a lazily
+/// built first-match index during large imports.
+final class _ImportListIndex<T> {
+  static const int _linearSearchLimit = 64;
+
+  _ImportListIndex(this._items, this._idOf);
+
+  final List<T> _items;
+  final String Function(T) _idOf;
+  Map<String, int>? _firstIndexById;
+  var _largeListLinearSearches = 0;
+
+  int? indexOf(String id) {
+    if (_items.length <= _linearSearchLimit) return _linearIndexOf(id);
+    if (_firstIndexById == null && _largeListLinearSearches == 0) {
+      _largeListLinearSearches++;
+      return _linearIndexOf(id);
+    }
+    final indexes = _firstIndexById ??= _buildFirstIndex();
+    return indexes[id];
+  }
+
+  int? _linearIndexOf(String id) {
+    final index = _items.indexWhere((item) => _idOf(item) == id);
+    return index < 0 ? null : index;
+  }
+
+  void add(T item) {
+    final index = _items.length;
+    _items.add(item);
+    _firstIndexById?.putIfAbsent(_idOf(item), () => index);
+  }
+
+  void replaceAt(int index, T item) {
+    final previousId = _idOf(_items[index]);
+    _items[index] = item;
+    if (previousId == _idOf(item) || _firstIndexById == null) return;
+    _firstIndexById = _buildFirstIndex();
+  }
+
+  Map<String, int> _buildFirstIndex() {
+    final indexes = <String, int>{};
+    for (var index = 0; index < _items.length; index++) {
+      indexes.putIfAbsent(_idOf(_items[index]), () => index);
+    }
+    return indexes;
   }
 }
 

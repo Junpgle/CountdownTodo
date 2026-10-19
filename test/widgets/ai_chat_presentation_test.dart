@@ -250,20 +250,20 @@ void main() {
         isEmpty,
       );
       for (var i = 0; i < 2; i++) {
-          await tester.enterText(
-            find.byKey(const ValueKey('ai-chat-input')),
-            '确认',
-          );
-          await tester.pump();
-          final send = tester.widget<IconButton>(
-            find.byKey(const ValueKey('ai-chat-send')),
-          );
-          expect(send.onPressed, isNotNull);
+        await tester.enterText(
+          find.byKey(const ValueKey('ai-chat-input')),
+          '确认',
+        );
+        await tester.pump();
+        final send = tester.widget<IconButton>(
+          find.byKey(const ValueKey('ai-chat-send')),
+        );
+        expect(send.onPressed, isNotNull);
         await tester.runAsync(() async {
           send.onPressed!();
         });
-          await settle();
-          expect(tester.takeException(), isNull);
+        await settle();
+        expect(tester.takeException(), isNull);
       }
       expect(requests, 2);
       expect(
@@ -271,19 +271,33 @@ void main() {
         isEmpty,
       );
       for (final complaint in ['你没给我操作块', '我没看到卡片']) {
-        await tester.enterText(find.byKey(const ValueKey('ai-chat-input')), complaint);
+        await tester.enterText(
+          find.byKey(const ValueKey('ai-chat-input')),
+          complaint,
+        );
         await tester.pump();
-        final send = tester.widget<IconButton>(find.byKey(const ValueKey('ai-chat-send')));
-        await tester.runAsync(() async { send.onPressed!(); });
+        final send = tester.widget<IconButton>(
+          find.byKey(const ValueKey('ai-chat-send')),
+        );
+        await tester.runAsync(() async {
+          send.onPressed!();
+        });
         await settle();
         expect(requests, 2);
         final recovered = await ChatStorageService.loadHistory(active);
         expect(recovered.last.todoActions, hasLength(4));
-        expect(recovered.expand((message) => message.todoActions ?? [])
-            .where((action) => !action.isAdded && !action.isIgnored), hasLength(4));
+        expect(
+          recovered
+              .expand((message) => message.todoActions ?? [])
+              .where((action) => !action.isAdded && !action.isIgnored),
+          hasLength(4),
+        );
         expect(recovered.last.settingsTargets, isEmpty);
         expect(find.text('执行所选操作 (4)'), findsOneWidget);
-        expect(await tester.runAsync(() => fixture.db.query('todo_plan_blocks')), isEmpty);
+        expect(
+          await tester.runAsync(() => fixture.db.query('todo_plan_blocks')),
+          isEmpty,
+        );
       }
       final button = find.text('执行所选操作 (4)');
       await tester.ensureVisible(button);

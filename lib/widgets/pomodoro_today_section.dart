@@ -1,10 +1,10 @@
-import 'dart:ui';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../screens/course_screens.dart';
 import '../services/pomodoro_service.dart';
+import '../utils/app_image_filters.dart';
 import '../utils/page_transitions.dart';
 import '../utils/theme_color_tokens.dart';
 import 'optional_liquid_glass_surface.dart';
@@ -38,10 +38,23 @@ class PomodoroTodaySection extends StatefulWidget {
 class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
     with SingleTickerProviderStateMixin {
   List<PomodoroRecord> _records = [];
+  final Map<String, GlobalKey> _recordCardKeys = {};
   bool _loading = true;
   bool _collapsed = false;
   bool _isToday = true;
   late AnimationController _chartAnimationController;
+  int _totalSeconds = 0;
+  List<int> _hourlySeconds = List<int>.filled(24, 0);
+  int _maxHourlySeconds = 0;
+  final Map<(String?, String), DateFormat> _dateFormatters = {};
+
+  DateFormat _cachedDateFormat(String pattern) {
+    final locale = Intl.defaultLocale;
+    return _dateFormatters.putIfAbsent(
+      (locale, pattern),
+      () => DateFormat(pattern, locale),
+    );
+  }
 
   @override
   void initState() {
@@ -72,15 +85,42 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
     if (!mounted) return;
     setState(() => _loading = true);
     final result = await PomodoroService.getRecentRecords();
-    if (mounted) {
-      setState(() {
-        _records = result.records;
-        _isToday = result.isToday;
-        _loading = false;
-      });
-      _chartAnimationController.forward(from: 0.0);
+    if (!mounted) return;
+
+    final hourlySeconds = List<int>.filled(24, 0);
+    var totalSeconds = 0;
+    for (final record in result.records) {
+      final duration = record.effectiveDuration;
+      totalSeconds += duration;
+      final startLocal = DateTime.fromMillisecondsSinceEpoch(
+        record.startTime,
+        isUtc: true,
+      ).toLocal();
+      hourlySeconds[startLocal.hour] += duration;
     }
+    final maxHourlySeconds = hourlySeconds.reduce(max);
+    final activeRecordUuids = result.records
+        .map((record) => record.uuid)
+        .toSet();
+    _recordCardKeys.removeWhere(
+      (uuid, _) => !activeRecordUuids.contains(uuid),
+    );
+
+    setState(() {
+      _records = result.records;
+      _isToday = result.isToday;
+      _totalSeconds = totalSeconds;
+      _hourlySeconds = hourlySeconds;
+      _maxHourlySeconds = maxHourlySeconds;
+      _loading = false;
+    });
+    _chartAnimationController.forward(from: 0.0);
   }
+
+  GlobalKey _recordCardKeyFor(String recordUuid) => _recordCardKeys.putIfAbsent(
+    recordUuid,
+    GlobalKey.new,
+  );
 
   Widget _buildGlassCard({
     required double borderRadius,
@@ -103,14 +143,12 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
     return ClipRRect(
       borderRadius: BorderRadius.circular(borderRadius),
       child: PlatformBackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        filter: AppImageFilters.blur10,
         bypassWhenLiquidGlassEnabled: true,
         child: card,
       ),
     );
   }
-
-  int get _totalSeconds => _records.fold(0, (s, r) => s + r.effectiveDuration);
 
   @override
   Widget build(BuildContext context) {
@@ -279,15 +317,8 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
   // 24小时分布条形图
   // ==========================================
   Widget _buildHourlyChart(Color? subColor) {
-    List<int> hourlySeconds = List.filled(24, 0);
-    for (var r in _records) {
-      final startLocal =
-          DateTime.fromMillisecondsSinceEpoch(r.startTime, isUtc: true)
-              .toLocal();
-      hourlySeconds[startLocal.hour] += r.effectiveDuration;
-    }
-
-    final maxSeconds = hourlySeconds.reduce(max);
+    final hourlySeconds = _hourlySeconds;
+    final maxSeconds = _maxHourlySeconds;
     final primaryColor =
         widget.isLight ? Colors.white : Theme.of(context).colorScheme.primary;
 
@@ -338,6 +369,21 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
                         Expanded(
                           child: AnimatedBuilder(
                             animation: _chartAnimationController,
+                            child: factor > 0
+                                ? Container(
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(
+                                        begin: Alignment.bottomCenter,
+                                        end: Alignment.topCenter,
+                                        colors: [
+                                          primaryColor.withValues(alpha: 0.5),
+                                          primaryColor,
+                                        ],
+                                      ),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                  )
+                                : const SizedBox.shrink(),
                             builder: (context, child) {
                               final animatedFactor =
                                   factor * _chartAnimationController.value;
@@ -347,24 +393,7 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
                                   heightFactor: animatedFactor > 0
                                       ? max(animatedFactor, 0.05)
                                       : 0,
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      gradient: animatedFactor > 0
-                                          ? LinearGradient(
-                                              begin: Alignment.bottomCenter,
-                                              end: Alignment.topCenter,
-                                              colors: [
-                                                  primaryColor.withValues(
-                                                      alpha: 0.5),
-                                                  primaryColor,
-                                                ])
-                                          : null,
-                                      color: animatedFactor > 0
-                                          ? null
-                                          : Colors.transparent,
-                                      borderRadius: BorderRadius.circular(4),
-                                    ),
-                                  ),
+                                  child: child,
                                 ),
                               );
                             },
@@ -398,6 +427,7 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
   // ==========================================
   Widget _buildRecordsList() {
     final colorScheme = Theme.of(context).colorScheme;
+    final timeFormat = _cachedDateFormat('HH:mm');
 
     return _buildGlassCard(
       borderRadius: 20,
@@ -430,13 +460,13 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
             ),
           ),
           const SizedBox(height: 8),
-          ..._records.map((record) => _buildRecordItem(record)),
+          ..._records.map((record) => _buildRecordItem(record, timeFormat)),
         ],
       ),
     );
   }
 
-  Widget _buildRecordItem(PomodoroRecord record) {
+  Widget _buildRecordItem(PomodoroRecord record, DateFormat timeFormat) {
     final colorScheme = Theme.of(context).colorScheme;
     final startLocal =
         DateTime.fromMillisecondsSinceEpoch(record.startTime, isUtc: true)
@@ -449,7 +479,7 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
         ? (widget.isLight ? Colors.greenAccent : colorScheme.cdtSuccess)
         : (widget.isLight ? Colors.amber : colorScheme.cdtWarning);
     final hasPause = (record.totalPauseSeconds ?? 0) > 0;
-    final cardKey = GlobalKey();
+    final cardKey = _recordCardKeyFor(record.uuid);
 
     return Padding(
       key: ValueKey(record.uuid),
@@ -482,7 +512,7 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '${DateFormat('HH:mm').format(startLocal)} · $durationMin 分钟',
+                        '${timeFormat.format(startLocal)} · $durationMin 分钟',
                         style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w500,

@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'dart:ui';
 import 'dart:math' as math;
 import 'package:intl/intl.dart' hide TextDirection;
 import '../services/liquid_glass_effect_service.dart';
+import '../utils/app_image_filters.dart';
 import '../utils/time_utils.dart';
 import '../utils/app_platform.dart';
 import 'floating_glass_control.dart';
@@ -100,41 +100,64 @@ class SectionHeader extends StatelessWidget {
 }
 
 /// 骨架屏 Shimmer 占位符
-class _ShimmerPlaceholder extends StatefulWidget {
+class _ShimmerGradientPainter extends CustomPainter {
+  _ShimmerGradientPainter({
+    required this.animation,
+    required this.baseColor,
+    required this.highlightColor,
+    required this.borderRadius,
+  }) : super(repaint: animation);
+
+  final Animation<double> animation;
+  final Color baseColor;
+  final Color highlightColor;
+  final BorderRadius borderRadius;
+  late final List<Color> _colors = [baseColor, highlightColor, baseColor];
+  final Paint _paint = Paint()..isAntiAlias = true;
+  Size? _cachedSize;
+  Rect? _cachedRect;
+  RRect? _cachedRRect;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (size.isEmpty) return;
+
+    if (_cachedSize != size) {
+      final rect = Offset.zero & size;
+      _cachedSize = size;
+      _cachedRect = rect;
+      _cachedRRect = borderRadius.toRRect(rect);
+    }
+
+    _paint.shader = LinearGradient(
+      begin: Alignment(animation.value, 0),
+      end: Alignment(animation.value + 0.5, 0),
+      colors: _colors,
+      stops: const [0.0, 0.5, 1.0],
+    ).createShader(_cachedRect!);
+    canvas.drawRRect(_cachedRRect!, _paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _ShimmerGradientPainter oldDelegate) =>
+      oldDelegate.animation != animation ||
+      oldDelegate.baseColor != baseColor ||
+      oldDelegate.highlightColor != highlightColor ||
+      oldDelegate.borderRadius != borderRadius;
+}
+
+class _ShimmerPlaceholder extends StatelessWidget {
+  final Animation<double> animation;
   final double width;
   final double height;
   final double borderRadius;
 
   const _ShimmerPlaceholder({
+    required this.animation,
     required this.width,
     required this.height,
     this.borderRadius = 8,
   });
-
-  @override
-  State<_ShimmerPlaceholder> createState() => _ShimmerPlaceholderState();
-}
-
-class _ShimmerPlaceholderState extends State<_ShimmerPlaceholder>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
-  late final Animation<double> _animation;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1500),
-    )..repeat();
-    _animation = Tween<double>(begin: -2.0, end: 2.0).animate(_controller);
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -143,29 +166,20 @@ class _ShimmerPlaceholderState extends State<_ShimmerPlaceholder>
         brightness == Brightness.dark ? Colors.grey[800]! : Colors.grey[200]!;
     final highlightColor =
         brightness == Brightness.dark ? Colors.grey[700]! : Colors.grey[100]!;
+    final resolvedBorderRadius = BorderRadius.circular(borderRadius);
+    final resolvedWidth = width == double.infinity ? null : width;
 
     return RepaintBoundary(
-      child: AnimatedBuilder(
-        animation: _animation,
-        builder: (context, child) {
-          return Container(
-            width: widget.width == double.infinity ? null : widget.width,
-            height: widget.height,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(widget.borderRadius),
-              gradient: LinearGradient(
-                begin: Alignment(_animation.value, 0),
-                end: Alignment(_animation.value + 0.5, 0),
-                colors: [
-                  baseColor,
-                  highlightColor,
-                  baseColor,
-                ],
-                stops: const [0.0, 0.5, 1.0],
-              ),
-            ),
-          );
-        },
+      child: CustomPaint(
+        painter: _ShimmerGradientPainter(
+          animation: animation,
+          baseColor: baseColor,
+          highlightColor: highlightColor,
+          borderRadius: resolvedBorderRadius,
+        ),
+        // Preserve Container's null-width expansion under bounded parents.
+        // ignore: sized_box_for_whitespace
+        child: Container(width: resolvedWidth, height: height),
       ),
     );
   }
@@ -196,29 +210,76 @@ class ScreenTimeCard extends StatefulWidget {
   State<ScreenTimeCard> createState() => _ScreenTimeCardState();
 }
 
+class _ScreenTimeChartData {
+  final List<dynamic> stats;
+  final int totalTime;
+  final PieChartPainter devicePainter;
+  final PieChartPainter appPainter;
+
+  const _ScreenTimeChartData({
+    required this.stats,
+    required this.totalTime,
+    required this.devicePainter,
+    required this.appPainter,
+  });
+}
+
 class _ScreenTimeCardState extends State<ScreenTimeCard>
     with SingleTickerProviderStateMixin {
+  static const _chartAnimationDuration = Duration(milliseconds: 1200);
+  static const _shimmerAnimationDuration = Duration(milliseconds: 1500);
+
   late AnimationController _pieCtrl;
   late Animation<double> _pieAnim;
+  late Animation<double> _shimmerAnim;
+  _ScreenTimeChartData? _chartData;
+  final Map<(String?, String), DateFormat> _dateFormatters = {};
+
+  bool get _showsShimmer => widget.hasPermission && widget.isLoading;
+
+  DateFormat _cachedDateFormat(String pattern) {
+    final locale = Intl.defaultLocale;
+    return _dateFormatters.putIfAbsent(
+      (locale, pattern),
+      () => DateFormat(pattern, locale),
+    );
+  }
 
   @override
   void initState() {
     super.initState();
     _pieCtrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1200),
+      duration: _showsShimmer
+          ? _shimmerAnimationDuration
+          : _chartAnimationDuration,
     );
-    _pieAnim = CurvedAnimation(parent: _pieCtrl, curve: Curves.easeInOutCubic);
-    _pieCtrl.forward();
+    _pieAnim = _pieCtrl.drive(CurveTween(curve: Curves.easeInOutCubic));
+    _shimmerAnim = Tween<double>(begin: -2.0, end: 2.0).animate(_pieCtrl);
+    if (_showsShimmer) {
+      _pieCtrl.repeat();
+    } else {
+      _pieCtrl.forward();
+    }
   }
 
   @override
   void didUpdateWidget(ScreenTimeCard old) {
     super.didUpdateWidget(old);
-    if (old.stats != widget.stats || old.isLoading != widget.isLoading) {
+    final wasShowingShimmer = old.hasPermission && old.isLoading;
+    if (wasShowingShimmer != _showsShimmer ||
+        (old.stats != widget.stats && !_showsShimmer)) {
       _pieCtrl
-        ..reset()
-        ..forward();
+        ..stop()
+        ..duration = _showsShimmer
+            ? _shimmerAnimationDuration
+            : _chartAnimationDuration
+        ..reset();
+      if (_showsShimmer) {
+        _pieCtrl.repeat();
+      } else {
+        _pieCtrl.forward();
+      }
     }
   }
 
@@ -230,6 +291,72 @@ class _ScreenTimeCardState extends State<ScreenTimeCard>
 
   String _formatSeconds(int totalSeconds) =>
       formatDurationEnglish(totalSeconds);
+
+  _ScreenTimeChartData _chartDataForCurrentStats() {
+    final cached = _chartData;
+    if (cached != null && identical(cached.stats, widget.stats)) return cached;
+
+    var totalTime = 0;
+    final deviceMap = <String, int>{};
+    final aggregatedApps = <String, int>{};
+    for (final item in widget.stats) {
+      final int duration = item['duration'] as int;
+      totalTime += duration;
+
+      String deviceName = item['device_name'] ?? '未知设备';
+      if (deviceName.contains('Phone')) {
+        deviceName = '手机';
+      } else if (deviceName.contains('Tablet')) {
+        deviceName = '平板';
+      } else if (deviceName.contains('Windows') ||
+          deviceName.contains('PC') ||
+          deviceName.contains('LAPT')) {
+        deviceName = '电脑';
+      }
+      deviceMap[deviceName] = (deviceMap[deviceName] ?? 0) + duration;
+
+      final String appName = item['app_name'] ?? '未知应用';
+      aggregatedApps[appName] = (aggregatedApps[appName] ?? 0) + duration;
+    }
+
+    final topApps = <MapEntry<String, int>>[];
+    for (final entry in aggregatedApps.entries) {
+      var insertAt = 0;
+      while (insertAt < topApps.length &&
+          topApps[insertAt].value >= entry.value) {
+        insertAt++;
+      }
+      if (insertAt >= 3) continue;
+
+      topApps.insert(insertAt, entry);
+      if (topApps.length > 3) topApps.removeLast();
+    }
+    final appMap = <String, int>{};
+    var topSum = 0;
+    for (final entry in topApps) {
+      appMap[entry.key] = entry.value;
+      topSum += entry.value;
+    }
+    if (totalTime > topSum) {
+      appMap['其他'] = totalTime - topSum;
+    }
+
+    return _chartData = _ScreenTimeChartData(
+      stats: widget.stats,
+      totalTime: totalTime,
+      devicePainter: PieChartPainter(
+        data: deviceMap,
+        total: totalTime,
+        sweepAnimation: _pieAnim,
+      ),
+      appPainter: PieChartPainter(
+        data: appMap,
+        total: totalTime,
+        isAppChart: true,
+        sweepAnimation: _pieAnim,
+      ),
+    );
+  }
 
   Widget _buildShimmerLoading(bool isTablet) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -256,6 +383,7 @@ class _ScreenTimeCardState extends State<ScreenTimeCard>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _ShimmerPlaceholder(
+              animation: _shimmerAnim,
               width: 120,
               height: 18,
               borderRadius: 6,
@@ -265,6 +393,7 @@ class _ScreenTimeCardState extends State<ScreenTimeCard>
               children: [
                 Expanded(
                   child: _ShimmerPlaceholder(
+                    animation: _shimmerAnim,
                     width: double.infinity,
                     height: 60,
                     borderRadius: 12,
@@ -273,6 +402,7 @@ class _ScreenTimeCardState extends State<ScreenTimeCard>
                 const SizedBox(width: 12),
                 Expanded(
                   child: _ShimmerPlaceholder(
+                    animation: _shimmerAnim,
                     width: double.infinity,
                     height: 60,
                     borderRadius: 12,
@@ -282,12 +412,14 @@ class _ScreenTimeCardState extends State<ScreenTimeCard>
             ),
             const SizedBox(height: 16),
             _ShimmerPlaceholder(
+              animation: _shimmerAnim,
               width: double.infinity,
               height: 14,
               borderRadius: 6,
             ),
             const SizedBox(height: 10),
             _ShimmerPlaceholder(
+              animation: _shimmerAnim,
               width: double.infinity,
               height: 14,
               borderRadius: 6,
@@ -385,43 +517,8 @@ class _ScreenTimeCardState extends State<ScreenTimeCard>
         );
       }
 
-      int totalTime =
-          widget.stats.fold(0, (sum, item) => sum + (item['duration'] as int));
-
-      Map<String, int> deviceMap = {};
-      for (var item in widget.stats) {
-        String d = item['device_name'] ?? "未知设备";
-        if (d.contains("Phone")) {
-          d = "手机";
-        } else if (d.contains("Tablet")) {
-          d = "平板";
-        } else if (d.contains("Windows") ||
-            d.contains("PC") ||
-            d.contains("LAPT")) {
-          d = "电脑";
-        }
-        deviceMap[d] = (deviceMap[d] ?? 0) + (item['duration'] as int);
-      }
-
-      Map<String, int> aggregatedApps = {};
-      for (var item in widget.stats) {
-        String appName = item['app_name'] ?? "未知应用";
-        aggregatedApps[appName] =
-            (aggregatedApps[appName] ?? 0) + (item['duration'] as int);
-      }
-
-      List<MapEntry<String, int>> sortedApps = aggregatedApps.entries.toList();
-      sortedApps.sort((a, b) => b.value.compareTo(a.value));
-
-      Map<String, int> appMap = {};
-      int topSum = 0;
-      for (var i = 0; i < math.min(3, sortedApps.length); i++) {
-        appMap[sortedApps[i].key] = sortedApps[i].value;
-        topSum += sortedApps[i].value;
-      }
-      if (totalTime > topSum) {
-        appMap["其他"] = totalTime - topSum;
-      }
+      final chartData = _chartDataForCurrentStats();
+      final totalTime = chartData.totalTime;
 
       return OptionalLiquidGlassCard(
         borderRadius: 24,
@@ -465,7 +562,7 @@ class _ScreenTimeCardState extends State<ScreenTimeCard>
                                       fontWeight: FontWeight.w600)),
                               if (widget.lastSyncTime != null)
                                 Text(
-                                    "更新: ${DateFormat('HH:mm').format(widget.lastSyncTime!)}",
+                                    "更新: ${_cachedDateFormat('HH:mm').format(widget.lastSyncTime!)}",
                                     style: TextStyle(
                                         fontSize: isTablet ? 11 : 10,
                                         color: secondaryColor.withValues(
@@ -496,17 +593,8 @@ class _ScreenTimeCardState extends State<ScreenTimeCard>
                                   width: double.infinity,
                                   height: isTablet ? 160 : 100,
                                   child: RepaintBoundary(
-                                    child: AnimatedBuilder(
-                                      animation: _pieAnim,
-                                      builder: (context, child) {
-                                        return CustomPaint(
-                                          painter: PieChartPainter(
-                                            data: deviceMap,
-                                            total: totalTime,
-                                            sweepProgress: _pieAnim.value,
-                                          ),
-                                        );
-                                      },
+                                    child: CustomPaint(
+                                      painter: chartData.devicePainter,
                                     ),
                                   ),
                                 ),
@@ -526,18 +614,8 @@ class _ScreenTimeCardState extends State<ScreenTimeCard>
                                   width: double.infinity,
                                   height: isTablet ? 160 : 100,
                                   child: RepaintBoundary(
-                                    child: AnimatedBuilder(
-                                      animation: _pieAnim,
-                                      builder: (context, child) {
-                                        return CustomPaint(
-                                          painter: PieChartPainter(
-                                            data: appMap,
-                                            total: totalTime,
-                                            isAppChart: true,
-                                            sweepProgress: _pieAnim.value,
-                                          ),
-                                        );
-                                      },
+                                    child: CustomPaint(
+                                      painter: chartData.appPainter,
                                     ),
                                   ),
                                 ),
@@ -570,17 +648,30 @@ class PieChartPainter extends CustomPainter {
   final int total;
   final bool isAppChart;
   final double sweepProgress;
+  final Animation<double>? sweepAnimation;
+
+  double get currentSweepProgress => sweepAnimation?.value ?? sweepProgress;
+
+  late final List<Color> _colors;
+  late final List<MapEntry<String, int>> _chartEntries;
+  late final List<double> _fullSweepAngles = _chartEntries
+      .map((entry) => (entry.value / total) * 2 * math.pi)
+      .toList(growable: false);
 
   // 缓存 TextPainter，避免每帧重复创建
   late final List<TextPainter> _labelPainters;
+  final Paint _paint = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeCap = StrokeCap.round;
 
   PieChartPainter({
     required this.data,
     required this.total,
     this.isAppChart = false,
     this.sweepProgress = 1.0,
-  }) {
-    final colors = isAppChart
+    this.sweepAnimation,
+  }) : super(repaint: sweepAnimation) {
+    _colors = isAppChart
         ? [
             Colors.blue.shade400,
             Colors.green.shade400,
@@ -594,9 +685,9 @@ class PieChartPainter extends CustomPainter {
             Colors.amber.shade600,
             Colors.redAccent.shade200,
           ];
-    final labelsList = data.keys.toList();
-    _labelPainters = List.generate(labelsList.length, (i) {
-      String displayLabel = labelsList[i];
+    _chartEntries = data.entries.toList(growable: false);
+    _labelPainters = List.generate(_chartEntries.length, (i) {
+      String displayLabel = _chartEntries[i].key;
       if (displayLabel.length > 6) {
         displayLabel = "${displayLabel.substring(0, 5)}..";
       }
@@ -604,7 +695,7 @@ class PieChartPainter extends CustomPainter {
         text: TextSpan(
           text: displayLabel,
           style: TextStyle(
-            color: colors[i % colors.length].withValues(alpha: 1.0),
+            color: _colors[i % _colors.length].withValues(alpha: 1.0),
             fontSize: 12, // 默认字号，paint() 中按需缩放
             fontWeight: FontWeight.bold,
             shadows: const [
@@ -625,6 +716,7 @@ class PieChartPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (total <= 0 || size.width <= 0 || size.height <= 0) return;
 
+    final currentSweepProgress = this.currentSweepProgress;
     final center = Offset(size.width / 2, size.height / 2);
 
     final double minDimension = math.min(size.width, size.height);
@@ -636,35 +728,16 @@ class PieChartPainter extends CustomPainter {
     final rect = Rect.fromCircle(center: center, radius: radius);
 
     double startAngle = -math.pi / 2;
+    _paint.strokeWidth = dynamicStrokeWidth;
 
-    final List<Color> colors = isAppChart
-        ? [
-            Colors.blue.shade400,
-            Colors.green.shade400,
-            Colors.orange.shade400,
-            Colors.purple.shade300,
-            Colors.cyan.shade300
-          ]
-        : [
-            Colors.indigo.shade400,
-            Colors.teal.shade400,
-            Colors.amber.shade600,
-            Colors.redAccent.shade200
-          ];
+    for (var i = 0; i < _chartEntries.length; i++) {
+      final fullSweepAngle = _fullSweepAngles[i];
+      final sweepAngle = fullSweepAngle * currentSweepProgress;
+      _paint.color = _colors[i % _colors.length];
 
-    int i = 0;
-    data.forEach((label, value) {
-      final fullSweepAngle = (value / total) * 2 * math.pi;
-      final sweepAngle = fullSweepAngle * sweepProgress;
-      final paint = Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = dynamicStrokeWidth
-        ..strokeCap = StrokeCap.round
-        ..color = colors[i % colors.length];
+      canvas.drawArc(rect, startAngle, sweepAngle, false, _paint);
 
-      canvas.drawArc(rect, startAngle, sweepAngle, false, paint);
-
-      if (sweepProgress > 0.5 && sweepAngle > (math.pi * 3 * 0.02)) {
+      if (currentSweepProgress > 0.5 && sweepAngle > (math.pi * 3 * 0.02)) {
         final middleAngle = startAngle + sweepAngle / 2;
         final textRadius = radius + (dynamicStrokeWidth / 2) + 12;
         final x = center.dx + textRadius * math.cos(middleAngle);
@@ -677,15 +750,16 @@ class PieChartPainter extends CustomPainter {
       }
 
       startAngle += fullSweepAngle;
-      i++;
-    });
+    }
   }
 
   @override
   bool shouldRepaint(covariant PieChartPainter old) =>
       old.data != data ||
       old.total != total ||
-      old.sweepProgress != sweepProgress;
+      old.isAppChart != isAppChart ||
+      old.sweepProgress != sweepProgress ||
+      old.sweepAnimation != sweepAnimation;
 }
 
 /// 通用的空状态显示（美化版）
@@ -747,7 +821,7 @@ class EmptyState extends StatelessWidget {
       child: AppPlatform.isAndroid
           ? content
           : BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+              filter: AppImageFilters.blur10,
               child: content,
             ),
     );
@@ -788,6 +862,21 @@ class MathStatsCard extends StatelessWidget {
       final secondaryColor = useWallpaperGlass
           ? colorScheme.onPrimary.withValues(alpha: 0.7)
           : colorScheme.onSurfaceVariant;
+      final todayCountStyle = TextStyle(
+        fontSize: isTablet ? 16 : 14,
+        fontWeight: FontWeight.bold,
+        color: foregroundColor,
+      );
+      final bestTimeStyle = TextStyle(
+        fontSize: isTablet ? 26 : 20,
+        fontWeight: FontWeight.w900,
+        color: useWallpaperGlass ? foregroundColor : colorScheme.primary,
+      );
+      final accuracyStyle = TextStyle(
+        fontSize: isTablet ? 26 : 20,
+        fontWeight: FontWeight.w900,
+        color: foregroundColor,
+      );
 
       return OptionalLiquidGlassCard(
         borderRadius: 24,
@@ -851,10 +940,7 @@ class MathStatsCard extends StatelessWidget {
                                 todayCount > 0
                                     ? "今日已完成 $value 次测验"
                                     : "今日还未完成测验",
-                                style: TextStyle(
-                                    fontSize: isTablet ? 16 : 14,
-                                    fontWeight: FontWeight.bold,
-                                    color: foregroundColor));
+                                style: todayCountStyle);
                           },
                         )),
                         Icon(Icons.arrow_forward_ios,
@@ -880,12 +966,7 @@ class MathStatsCard extends StatelessWidget {
                                 builder: (context, value, child) {
                                   return Text(
                                       bestTimeVal > 0 ? "$value秒" : "--",
-                                      style: TextStyle(
-                                          fontSize: isTablet ? 26 : 20,
-                                          fontWeight: FontWeight.w900,
-                                          color: useWallpaperGlass
-                                              ? foregroundColor
-                                              : colorScheme.primary));
+                                      style: bestTimeStyle);
                                 },
                               )
                             ])),
@@ -903,11 +984,10 @@ class MathStatsCard extends StatelessWidget {
                                 curve: Curves.easeOutCubic,
                                 tween: IntTween(begin: 0, end: accuracyInt),
                                 builder: (context, value, child) {
-                                  return Text("$value.0%",
-                                      style: TextStyle(
-                                          fontSize: isTablet ? 26 : 20,
-                                          fontWeight: FontWeight.w900,
-                                          color: foregroundColor));
+                                  return Text(
+                                    "$value.0%",
+                                    style: accuracyStyle,
+                                  );
                                 },
                               ),
                               const SizedBox(height: 6),

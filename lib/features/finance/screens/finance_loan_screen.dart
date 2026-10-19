@@ -504,10 +504,19 @@ class _FinanceLoanDetailScreenState extends State<FinanceLoanDetailScreen>
   List<FinancePaymentMethod> _paymentMethods = const [];
   bool? _paidFilter;
   final _updating = <String>{};
+  final Map<(String?, String), DateFormat> _dateFormatters = {};
   bool _isLoading = true;
   String? _loadError;
   int _loadGeneration = 0;
   Timer? _overdueRefreshTimer;
+
+  DateFormat _cachedDateFormat(String pattern) {
+    final locale = Intl.defaultLocale;
+    return _dateFormatters.putIfAbsent(
+      (locale, pattern),
+      () => DateFormat(pattern, locale),
+    );
+  }
 
   FinanceLoan get _currentLoan => _loan ?? widget.loan;
 
@@ -747,6 +756,10 @@ class _FinanceLoanDetailScreenState extends State<FinanceLoanDetailScreen>
     final colors = theme.colorScheme;
     final updating = _updating.contains(installment.uuid);
     final isOverdue = installment.isOverdueAt(widget.clock());
+    final paidAt = installment.paidAt;
+    final paidDateFormat = paidAt == null
+        ? null
+        : _cachedDateFormat('yyyy年M月d日 HH:mm');
     return FinanceSectionCard(
       key: ValueKey('finance-loan-installment-${installment.uuid}'),
       child: Column(
@@ -812,9 +825,9 @@ class _FinanceLoanDetailScreenState extends State<FinanceLoanDetailScreen>
           const SizedBox(height: 14),
           if (installment.isPaid) ...[
             Text(_repaymentAccountLabel(installment.paymentMethodUuid)),
-            if (installment.paidAt != null)
+            if (paidAt != null)
               Text(
-                '实际还款：${DateFormat('yyyy年M月d日 HH:mm').format(DateTime.fromMillisecondsSinceEpoch(installment.paidAt!))}',
+                '实际还款：${paidDateFormat!.format(DateTime.fromMillisecondsSinceEpoch(paidAt))}',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: colors.onSurfaceVariant,
                 ),

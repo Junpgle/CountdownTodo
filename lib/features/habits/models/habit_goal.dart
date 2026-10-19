@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:uuid/uuid.dart';
+
 import '../../../utils/json_value_parser.dart';
 
 /// 习惯的数据来源类型。
@@ -21,11 +22,7 @@ enum HabitSourceType {
 /// 首页展示位置。
 ///
 /// 只影响首页展示，不影响待办自身和提醒。
-enum HabitDisplayMode {
-  habitOnly,
-  todoOnly,
-  both,
-}
+enum HabitDisplayMode { habitOnly, todoOnly, both }
 
 /// 习惯目标：表示习惯的身份、来源和展示设置。
 ///
@@ -79,10 +76,10 @@ class HabitGoal {
     int? updatedAt,
     this.hasConflict = false,
     this.conflictData,
-  })  : uuid = uuid ?? const Uuid().v4(),
-        sourceIds = sourceIds ?? [],
-        createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch,
-        updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch;
+  }) : uuid = uuid ?? const Uuid().v4(),
+       sourceIds = sourceIds ?? [],
+       createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch,
+       updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch;
 
   /// 每次本地修改都必须调用，用于并发版本控制。
   void markAsChanged() {
@@ -92,24 +89,24 @@ class HabitGoal {
   }
 
   Map<String, dynamic> toJson() => {
-        'uuid': uuid,
-        'name': name,
-        'icon': icon,
-        'source_type': sourceType.index,
-        'source_ids': jsonEncode(sourceIds),
-        'current_rule_uuid': currentRuleUuid,
-        'display_mode': displayMode.index,
-        'default_focus_minutes': defaultFocusMinutes,
-        'sort_order': sortOrder,
-        'is_archived': isArchived ? 1 : 0,
-        'is_deleted': isDeleted ? 1 : 0,
-        'version': version,
-        'device_id': deviceId,
-        'created_at': createdAt,
-        'updated_at': updatedAt,
-        'has_conflict': hasConflict ? 1 : 0,
-        'conflict_data': conflictData != null ? jsonEncode(conflictData) : null,
-      };
+    'uuid': uuid,
+    'name': name,
+    'icon': icon,
+    'source_type': sourceType.index,
+    'source_ids': jsonEncode(sourceIds),
+    'current_rule_uuid': currentRuleUuid,
+    'display_mode': displayMode.index,
+    'default_focus_minutes': defaultFocusMinutes,
+    'sort_order': sortOrder,
+    'is_archived': isArchived ? 1 : 0,
+    'is_deleted': isDeleted ? 1 : 0,
+    'version': version,
+    'device_id': deviceId,
+    'created_at': createdAt,
+    'updated_at': updatedAt,
+    'has_conflict': hasConflict ? 1 : 0,
+    'conflict_data': conflictData != null ? jsonEncode(conflictData) : null,
+  };
 
   factory HabitGoal.fromJson(Map<String, dynamic> json) {
     return HabitGoal(
@@ -128,8 +125,9 @@ class HabitGoal {
         json['display_mode'],
         fallback: HabitDisplayMode.habitOnly,
       ),
-      defaultFocusMinutes:
-          int.tryParse(json['default_focus_minutes']?.toString() ?? ''),
+      defaultFocusMinutes: int.tryParse(
+        json['default_focus_minutes']?.toString() ?? '',
+      ),
       sortOrder: int.tryParse(json['sort_order']?.toString() ?? '') ?? 0,
       isArchived: json['is_archived'] == 1 || json['is_archived'] == true,
       isDeleted: json['is_deleted'] == 1 || json['is_deleted'] == true,

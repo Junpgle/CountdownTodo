@@ -1,9 +1,13 @@
 import 'dart:async';
 import 'dart:convert';
+
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
+
 import 'environment_service.dart';
+
 import 'package:flutter/foundation.dart';
+
 import '../models.dart';
 import '../utils/app_platform.dart';
 import '../utils/json_value_parser.dart';
@@ -55,7 +59,7 @@ class DatabaseHelper {
       // 🚀 核心校验：如果当前打开的数据库与当前登录用户不符，则强制关闭并重新打开
       if (_activeUsername != username ||
           !_database!.path.contains('uni_sync_$username')) {
-//         debugPrint("🔄 Database: 检测到用户切换 ($username)，正在强制重定向数据库文件...");
+        //         debugPrint("🔄 Database: 检测到用户切换 ($username)，正在强制重定向数据库文件...");
         await closeDatabase();
       } else {
         return _database!;
@@ -106,8 +110,8 @@ class DatabaseHelper {
     }
 
     final db = await database;
-    final latestActiveUsername =
-        (await SharedPreferences.getInstance()).getString('current_login_user');
+    final latestActiveUsername = (await SharedPreferences.getInstance())
+        .getString('current_login_user');
     final latestHasActiveUsername =
         latestActiveUsername != null && latestActiveUsername.isNotEmpty;
     if (latestHasActiveUsername && latestActiveUsername != username) {
@@ -159,12 +163,17 @@ class DatabaseHelper {
       for (final column in columnsToAdd) {
         if (!info.any((row) => row['name'] == column['name'])) {
           await db.execute(
-              "ALTER TABLE courses ADD COLUMN ${column['name']} ${column['type']};");
-//           debugPrint("✅ Database: 修复字段 courses.${column['name']}");
+            "ALTER TABLE courses ADD COLUMN ${column['name']} ${column['type']};",
+          );
+          //           debugPrint("✅ Database: 修复字段 courses.${column['name']}");
         }
       }
+      await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_courses_date_start '
+        'ON courses(date, start_time)',
+      );
     } catch (e) {
-//       debugPrint("⚠️ Database: 检查/修复 courses 表结构失败: $e");
+      //       debugPrint("⚠️ Database: 检查/修复 courses 表结构失败: $e");
     }
   }
 
@@ -182,12 +191,13 @@ class DatabaseHelper {
       for (final column in columnsToAdd) {
         if (!info.any((row) => row['name'] == column['name'])) {
           await db.execute(
-              "ALTER TABLE todos ADD COLUMN ${column['name']} ${column['type']};");
-//           debugPrint("✅ Database: 修复字段 todos.${column['name']}");
+            "ALTER TABLE todos ADD COLUMN ${column['name']} ${column['type']};",
+          );
+          //           debugPrint("✅ Database: 修复字段 todos.${column['name']}");
         }
       }
     } catch (e) {
-//       debugPrint("⚠️ Database: 检查/修复 todos 本地来源字段失败: $e");
+      //       debugPrint("⚠️ Database: 检查/修复 todos 本地来源字段失败: $e");
     }
   }
 
@@ -195,7 +205,8 @@ class DatabaseHelper {
     try {
       // 检查表是否存在
       final tables = await db.rawQuery(
-          "SELECT name FROM sqlite_master WHERE type='table' AND name='todo_plan_blocks'");
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='todo_plan_blocks'",
+      );
       if (tables.isEmpty) return;
 
       final info = await db.rawQuery("PRAGMA table_info(todo_plan_blocks)");
@@ -212,16 +223,17 @@ class DatabaseHelper {
         if (!existingColumns.contains(column['name'])) {
           try {
             await db.execute(
-                "ALTER TABLE todo_plan_blocks ADD COLUMN ${column['name']} ${column['type']};");
-//             debugPrint("✅ Database: 修复字段 todo_plan_blocks.${column['name']}");
+              "ALTER TABLE todo_plan_blocks ADD COLUMN ${column['name']} ${column['type']};",
+            );
+            //             debugPrint("✅ Database: 修复字段 todo_plan_blocks.${column['name']}");
           } catch (e) {
-//             debugPrint(
-//                 "⚠️ Database: 添加 todo_plan_blocks.${column['name']} 失败: $e");
+            //             debugPrint(
+            //                 "⚠️ Database: 添加 todo_plan_blocks.${column['name']} 失败: $e");
           }
         }
       }
     } catch (e) {
-//       debugPrint("⚠️ Database: 检查/修复 todo_plan_blocks 表结构失败: $e");
+      //       debugPrint("⚠️ Database: 检查/修复 todo_plan_blocks 表结构失败: $e");
     }
   }
 
@@ -483,8 +495,9 @@ class DatabaseHelper {
       }
       // V38：为规则表补充同步字段 device_id / has_conflict / conflict_data（幂等）。
       try {
-        final ruleInfo =
-            await db.rawQuery('PRAGMA table_info(habit_goal_rule_revisions)');
+        final ruleInfo = await db.rawQuery(
+          'PRAGMA table_info(habit_goal_rule_revisions)',
+        );
         final ruleCols = ruleInfo.map((row) => row['name']).toSet();
         if (!ruleCols.contains('device_id')) {
           await db.execute(
@@ -505,7 +518,7 @@ class DatabaseHelper {
         // 忽略：新建库时这些列已存在。
       }
     } catch (e) {
-//       debugPrint('⚠️ Database: 检查/修复 habit 表结构失败: $e');
+      //       debugPrint('⚠️ Database: 检查/修复 habit 表结构失败: $e');
     }
   }
 
@@ -522,10 +535,11 @@ class DatabaseHelper {
         )
       ''');
       await db.execute(
-          'CREATE INDEX IF NOT EXISTS idx_suggestion_feedback_lookup '
-          'ON suggestion_feedback(keyword, suggestion_type, suggested_value)');
+        'CREATE INDEX IF NOT EXISTS idx_suggestion_feedback_lookup '
+        'ON suggestion_feedback(keyword, suggestion_type, suggested_value)',
+      );
     } catch (e) {
-//       debugPrint('⚠️ Database: 检查/修复 suggestion_feedback 表失败: $e');
+      //       debugPrint('⚠️ Database: 检查/修复 suggestion_feedback 表失败: $e');
     }
   }
 
@@ -544,8 +558,10 @@ class DatabaseHelper {
       updated_at INTEGER NOT NULL,
       form_json TEXT NOT NULL
     )''');
-    await db.execute('CREATE INDEX IF NOT EXISTS idx_local_plan_drafts_member '
-        'ON local_plan_editor_drafts(member_id, updated_at DESC, uuid)');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_local_plan_drafts_member '
+      'ON local_plan_editor_drafts(member_id, updated_at DESC, uuid)',
+    );
   }
 
   static Future<void> ensureJournalSchema(Database db) async {
@@ -786,8 +802,9 @@ class DatabaseHelper {
       'finance_loans',
       'finance_loan_installments',
     ];
-    final categoryColumns =
-        await db.rawQuery('PRAGMA table_info(finance_categories)');
+    final categoryColumns = await db.rawQuery(
+      'PRAGMA table_info(finance_categories)',
+    );
     if (!categoryColumns.any((row) => row['name'] == 'icon_customized')) {
       await db.execute(
         'ALTER TABLE finance_categories '
@@ -800,8 +817,9 @@ class DatabaseHelper {
         'ADD COLUMN name_customized INTEGER NOT NULL DEFAULT 0',
       );
     }
-    final budgetColumns =
-        await db.rawQuery('PRAGMA table_info(finance_budgets)');
+    final budgetColumns = await db.rawQuery(
+      'PRAGMA table_info(finance_budgets)',
+    );
     if (!budgetColumns.any((row) => row['name'] == 'payment_method_uuid')) {
       await db.execute(
         'ALTER TABLE finance_budgets ADD COLUMN payment_method_uuid TEXT',
@@ -839,14 +857,12 @@ class DatabaseHelper {
       if (addedPendingColumn) {
         final systemFilter =
             table == 'finance_categories' || table == 'finance_payment_methods'
-                ? ' WHERE is_system = 0'
-                : '';
+            ? ' WHERE is_system = 0'
+            : '';
         // Existing rows were written before the marker existed. Queue them
         // once so an offline edit made by an older app cannot be lost merely
         // because its timestamp is behind the current sync cursor.
-        await db.execute(
-          'UPDATE $table SET pending_sync = 1$systemFilter',
-        );
+        await db.execute('UPDATE $table SET pending_sync = 1$systemFilter');
       }
       if (table == 'finance_transactions') {
         final installmentColumns = <Map<String, String>>[
@@ -901,6 +917,10 @@ class DatabaseHelper {
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_finance_loan_installments_loan '
       'ON finance_loan_installments(loan_uuid, is_deleted, installment_index)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_finance_loan_installments_due_date '
+      'ON finance_loan_installments(is_deleted, due_date, loan_uuid, installment_index)',
     );
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_finance_categories_active '
@@ -1002,9 +1022,10 @@ class DatabaseHelper {
         )
       ''');
       await db.execute(
-          'CREATE INDEX IF NOT EXISTS idx_teams_updated_at ON teams(updated_at)');
+        'CREATE INDEX IF NOT EXISTS idx_teams_updated_at ON teams(updated_at)',
+      );
     } catch (e) {
-//       debugPrint('⚠️ Database: 检查/修复 teams 表失败: $e');
+      //       debugPrint('⚠️ Database: 检查/修复 teams 表失败: $e');
     }
   }
 
@@ -1028,7 +1049,7 @@ class DatabaseHelper {
               try {
                 await db.execute('PRAGMA journal_mode = WAL');
               } catch (e) {
-//                 debugPrint("⚠️ Database: PRAGMA journal_mode failed: $e");
+                //                 debugPrint("⚠️ Database: PRAGMA journal_mode failed: $e");
               }
             }
           },
@@ -1067,33 +1088,38 @@ class DatabaseHelper {
             }
             if (oldVersion < 32) {
               try {
-                final info =
-                    await db.rawQuery("PRAGMA table_info(pomodoro_records)");
+                final info = await db.rawQuery(
+                  "PRAGMA table_info(pomodoro_records)",
+                );
                 if (!info.any((row) => row['name'] == 'total_pause_seconds')) {
                   await db.execute(
-                      "ALTER TABLE pomodoro_records ADD COLUMN total_pause_seconds INTEGER;");
+                    "ALTER TABLE pomodoro_records ADD COLUMN total_pause_seconds INTEGER;",
+                  );
                 }
                 if (!info.any((row) => row['name'] == 'pause_intervals')) {
                   await db.execute(
-                      "ALTER TABLE pomodoro_records ADD COLUMN pause_intervals TEXT;");
+                    "ALTER TABLE pomodoro_records ADD COLUMN pause_intervals TEXT;",
+                  );
                 }
-//                 debugPrint('✅ Database: pomodoro_records 新增暂停区间字段 (V32)');
+                //                 debugPrint('✅ Database: pomodoro_records 新增暂停区间字段 (V32)');
               } catch (e) {
-//                 debugPrint('⚠️ Database: 新增暂停区间字段失败: $e');
+                //                 debugPrint('⚠️ Database: 新增暂停区间字段失败: $e');
               }
             }
             if (oldVersion < 31) {
               try {
-                final info =
-                    await db.rawQuery("PRAGMA table_info(pomodoro_tags)");
+                final info = await db.rawQuery(
+                  "PRAGMA table_info(pomodoro_tags)",
+                );
                 if (!info.any((row) => row['name'] == 'is_archived')) {
                   await db.execute(
-                      "ALTER TABLE pomodoro_tags ADD COLUMN is_archived INTEGER DEFAULT 0;");
-//                   debugPrint(
-//                       '✅ Database: pomodoro_tags 新增 is_archived 字段 (V31)');
+                    "ALTER TABLE pomodoro_tags ADD COLUMN is_archived INTEGER DEFAULT 0;",
+                  );
+                  //                   debugPrint(
+                  //                       '✅ Database: pomodoro_tags 新增 is_archived 字段 (V31)');
                 }
               } catch (e) {
-//                 debugPrint('⚠️ Database: 新增 is_archived 字段失败: $e');
+                //                 debugPrint('⚠️ Database: 新增 is_archived 字段失败: $e');
               }
             }
             if (oldVersion < 30) {
@@ -1101,20 +1127,22 @@ class DatabaseHelper {
             }
             if (oldVersion < 29) {
               try {
-                final info =
-                    await db.rawQuery("PRAGMA table_info(pomodoro_records)");
+                final info = await db.rawQuery(
+                  "PRAGMA table_info(pomodoro_records)",
+                );
                 if (!info.any((row) => row['name'] == 'note')) {
                   await db.execute(
-                      "ALTER TABLE pomodoro_records ADD COLUMN note TEXT;");
-//                   debugPrint('✅ Database: pomodoro_records 新增 note 字段 (V29)');
+                    "ALTER TABLE pomodoro_records ADD COLUMN note TEXT;",
+                  );
+                  //                   debugPrint('✅ Database: pomodoro_records 新增 note 字段 (V29)');
                 }
               } catch (e) {
-//                 debugPrint('⚠️ Database: 新增 note 字段失败: $e');
+                //                 debugPrint('⚠️ Database: 新增 note 字段失败: $e');
               }
             }
             if (oldVersion < 28) {
               await ensureSuggestionFeedbackSchema(db);
-//               debugPrint('✅ Database: 创建 suggestion_feedback 表 (V28)');
+              //               debugPrint('✅ Database: 创建 suggestion_feedback 表 (V28)');
             }
             if (oldVersion < 27) {
               try {
@@ -1131,9 +1159,9 @@ class DatabaseHelper {
                     updated_at INTEGER DEFAULT 0
                   )
                 ''');
-//                 debugPrint('✅ Database: 创建 medal_recommendations 表 (V27)');
+                //                 debugPrint('✅ Database: 创建 medal_recommendations 表 (V27)');
               } catch (e) {
-//                 debugPrint('⚠️ Database: 创建 medal_recommendations 表失败: $e');
+                //                 debugPrint('⚠️ Database: 创建 medal_recommendations 表失败: $e');
               }
             }
             if (oldVersion < 26) {
@@ -1142,14 +1170,16 @@ class DatabaseHelper {
                   final info = await db.rawQuery("PRAGMA table_info($table)");
                   if (!info.any((row) => row['name'] == 'has_conflict')) {
                     await db.execute(
-                        "ALTER TABLE $table ADD COLUMN has_conflict INTEGER DEFAULT 0;");
+                      "ALTER TABLE $table ADD COLUMN has_conflict INTEGER DEFAULT 0;",
+                    );
                     await db.execute(
-                        "ALTER TABLE $table ADD COLUMN conflict_data TEXT;");
-//                     debugPrint("✅ Database: 修复字段 $table.has_conflict");
+                      "ALTER TABLE $table ADD COLUMN conflict_data TEXT;",
+                    );
+                    //                     debugPrint("✅ Database: 修复字段 $table.has_conflict");
                   }
                 }
               } catch (e) {
-//                 debugPrint("⚠️ Database: 修复 pomodoro 冲突字段失败: $e");
+                //                 debugPrint("⚠️ Database: 修复 pomodoro 冲突字段失败: $e");
               }
             }
 
@@ -1163,7 +1193,7 @@ class DatabaseHelper {
                 await ensureCourseTableSchema(db);
                 await ensureTodoClientLocalSchema(db);
               } catch (e) {
-//                 debugPrint("⚠️ Database: 修复 courses 表字段失败 (V23): $e");
+                //                 debugPrint("⚠️ Database: 修复 courses 表字段失败 (V23): $e");
               }
             }
 
@@ -1177,9 +1207,9 @@ class DatabaseHelper {
                   ignored_at INTEGER
                 )
               ''');
-//                 debugPrint('✅ Database: 创建 ignored_remote_items 表 (V22)');
+                //                 debugPrint('✅ Database: 创建 ignored_remote_items 表 (V22)');
               } catch (e) {
-//                 debugPrint('⚠️ Database: 创建 ignored_remote_items 表失败: $e');
+                //                 debugPrint('⚠️ Database: 创建 ignored_remote_items 表失败: $e');
               }
             }
             if (oldVersion < 3) {
@@ -1192,8 +1222,9 @@ class DatabaseHelper {
                   try {
                     final info = await db.rawQuery('PRAGMA table_info($table)');
                     if (!info.any((row) => row['name'] == col)) {
-                      await db
-                          .execute("ALTER TABLE $table ADD COLUMN $col TEXT;");
+                      await db.execute(
+                        "ALTER TABLE $table ADD COLUMN $col TEXT;",
+                      );
                     }
                   } catch (_) {}
                 }
@@ -1202,7 +1233,7 @@ class DatabaseHelper {
 
             // 🚀 Version 5: 核心加固 - 补全基础字段与 FTS 模块动态嗅探
             if (oldVersion < 5) {
-//               debugPrint("🔄 Database: 执行 Version 5 核心修复程序...");
+              //               debugPrint("🔄 Database: 执行 Version 5 核心修复程序...");
 
               // 1. 深度补全缺失的核心业务列
               final repairTasks = [
@@ -1218,17 +1249,19 @@ class DatabaseHelper {
 
               for (var task in repairTasks) {
                 try {
-                  final info =
-                      await db.rawQuery("PRAGMA table_info(${task['table']})");
+                  final info = await db.rawQuery(
+                    "PRAGMA table_info(${task['table']})",
+                  );
                   if (!info.any((row) => row['name'] == task['col'])) {
                     await db.execute(
-                        "ALTER TABLE ${task['table']} ADD COLUMN ${task['col']} ${task['type']};");
-//                     debugPrint(
-//                         "✅ Database: 修复字段 ${task['table']}.${task['col']}");
+                      "ALTER TABLE ${task['table']} ADD COLUMN ${task['col']} ${task['type']};",
+                    );
+                    //                     debugPrint(
+                    //                         "✅ Database: 修复字段 ${task['table']}.${task['col']}");
                   }
                 } catch (e) {
-//                   debugPrint(
-//                       "⚠️ Database: 修复字段 ${task['table']}.${task['col']} 失败: $e");
+                  //                   debugPrint(
+                  //                       "⚠️ Database: 修复字段 ${task['table']}.${task['col']} 失败: $e");
                 }
               }
 
@@ -1243,11 +1276,12 @@ class DatabaseHelper {
                 final info = await db.rawQuery("PRAGMA table_info(todos)");
                 if (!info.any((row) => row['name'] == 'collab_type')) {
                   await db.execute(
-                      "ALTER TABLE todos ADD COLUMN collab_type INTEGER DEFAULT 0;");
-//                   debugPrint("✅ Database: 修复字段 todos.collab_type");
+                    "ALTER TABLE todos ADD COLUMN collab_type INTEGER DEFAULT 0;",
+                  );
+                  //                   debugPrint("✅ Database: 修复字段 todos.collab_type");
                 }
               } catch (e) {
-//                 debugPrint("⚠️ Database: 修复字段 todos.collab_type 失败: $e");
+                //                 debugPrint("⚠️ Database: 修复字段 todos.collab_type 失败: $e");
               }
             }
 
@@ -1262,9 +1296,9 @@ class DatabaseHelper {
                   PRIMARY KEY(todo_uuid, user_id)
                 )
               ''');
-//                 debugPrint("✅ Database: 创建 todo_completions 表");
+                //                 debugPrint("✅ Database: 创建 todo_completions 表");
               } catch (e) {
-//                 debugPrint("⚠️ Database: 创建 todo_completions 表失败: $e");
+                //                 debugPrint("⚠️ Database: 创建 todo_completions 表失败: $e");
               }
             }
 
@@ -1280,12 +1314,13 @@ class DatabaseHelper {
                   final info = await db.rawQuery("PRAGMA table_info(todos)");
                   if (!info.any((row) => row['name'] == col['name'])) {
                     await db.execute(
-                        "ALTER TABLE todos ADD COLUMN ${col['name']} ${col['type']};");
-//                     debugPrint("✅ Database: 修复字段 todos.${col['name']}");
+                      "ALTER TABLE todos ADD COLUMN ${col['name']} ${col['type']};",
+                    );
+                    //                     debugPrint("✅ Database: 修复字段 todos.${col['name']}");
                   }
                 }
               } catch (e) {
-//                 debugPrint("⚠️ Database: 修复字段 todos 循环任务字段失败: $e");
+                //                 debugPrint("⚠️ Database: 修复字段 todos 循环任务字段失败: $e");
               }
             }
             if (oldVersion < 9) {
@@ -1295,20 +1330,23 @@ class DatabaseHelper {
                   final info = await db.rawQuery("PRAGMA table_info($table)");
                   if (!info.any((row) => row['name'] == 'has_conflict')) {
                     await db.execute(
-                        "ALTER TABLE $table ADD COLUMN has_conflict INTEGER DEFAULT 0;");
+                      "ALTER TABLE $table ADD COLUMN has_conflict INTEGER DEFAULT 0;",
+                    );
                     await db.execute(
-                        "ALTER TABLE $table ADD COLUMN conflict_data TEXT;");
-//                     debugPrint("✅ Database: 修复字段 $table.has_conflict");
+                      "ALTER TABLE $table ADD COLUMN conflict_data TEXT;",
+                    );
+                    //                     debugPrint("✅ Database: 修复字段 $table.has_conflict");
                   }
                 }
                 // 特别补全 todos 的 is_all_day
                 final todoInfo = await db.rawQuery("PRAGMA table_info(todos)");
                 if (!todoInfo.any((row) => row['name'] == 'is_all_day')) {
                   await db.execute(
-                      "ALTER TABLE todos ADD COLUMN is_all_day INTEGER DEFAULT 0;");
+                    "ALTER TABLE todos ADD COLUMN is_all_day INTEGER DEFAULT 0;",
+                  );
                 }
               } catch (e) {
-//                 debugPrint("⚠️ Database: 修复冲突检测字段失败: $e");
+                //                 debugPrint("⚠️ Database: 修复冲突检测字段失败: $e");
               }
             }
             if (oldVersion < 10) {
@@ -1327,9 +1365,9 @@ class DatabaseHelper {
                   operator_name TEXT
                 )
               ''');
-//                 debugPrint("✅ Database: 创建 local_audit_logs 表");
+                //                 debugPrint("✅ Database: 创建 local_audit_logs 表");
               } catch (e) {
-//                 debugPrint("⚠️ Database: 创建 local_audit_logs 失败: $e");
+                //                 debugPrint("⚠️ Database: 创建 local_audit_logs 失败: $e");
               }
             }
             if (oldVersion < 11) {
@@ -1371,9 +1409,9 @@ class DatabaseHelper {
                   team_uuid TEXT
                 )
               ''');
-//                 debugPrint("✅ Database: 创建 pomodoro_records 与 courses 表");
+                //                 debugPrint("✅ Database: 创建 pomodoro_records 与 courses 表");
               } catch (e) {
-//                 debugPrint("⚠️ Database: 创建新业务表失败: $e");
+                //                 debugPrint("⚠️ Database: 创建新业务表失败: $e");
               }
             }
 
@@ -1394,9 +1432,9 @@ class DatabaseHelper {
                   updated_at INTEGER
                 )
               ''');
-//                 debugPrint("✅ Database: 创建 time_logs 表");
+                //                 debugPrint("✅ Database: 创建 time_logs 表");
               } catch (e) {
-//                 debugPrint("⚠️ Database: 创建 time_logs 失败: $e");
+                //                 debugPrint("⚠️ Database: 创建 time_logs 失败: $e");
               }
             }
 
@@ -1414,9 +1452,9 @@ class DatabaseHelper {
                   updated_at INTEGER
                 )
               ''');
-//                 debugPrint("✅ Database: 创建 pomodoro_tags 表");
+                //                 debugPrint("✅ Database: 创建 pomodoro_tags 表");
               } catch (e) {
-//                 debugPrint("⚠️ Database: 创建 pomodoro_tags 失败: $e");
+                //                 debugPrint("⚠️ Database: 创建 pomodoro_tags 失败: $e");
               }
             }
 
@@ -1441,9 +1479,9 @@ class DatabaseHelper {
                   team_uuid TEXT
                 )
               ''');
-//                 debugPrint("✅ Database: 重新创建 time_logs 表 (V14)");
+                //                 debugPrint("✅ Database: 重新创建 time_logs 表 (V14)");
               } catch (e) {
-//                 debugPrint("⚠️ Database: 升级 V14 失败: $e");
+                //                 debugPrint("⚠️ Database: 升级 V14 失败: $e");
               }
             }
             if (oldVersion < 15) {
@@ -1451,11 +1489,12 @@ class DatabaseHelper {
                 final info = await db.rawQuery("PRAGMA table_info(op_logs)");
                 if (!info.any((row) => row['name'] == 'sync_error')) {
                   await db.execute(
-                      "ALTER TABLE op_logs ADD COLUMN sync_error TEXT;");
-//                   debugPrint("✅ Database: 为 op_logs 添加 sync_error 字段 (V15)");
+                    "ALTER TABLE op_logs ADD COLUMN sync_error TEXT;",
+                  );
+                  //                   debugPrint("✅ Database: 为 op_logs 添加 sync_error 字段 (V15)");
                 }
               } catch (e) {
-//                 debugPrint("⚠️ Database: 升级 V15 失败: $e");
+                //                 debugPrint("⚠️ Database: 升级 V15 失败: $e");
               }
             }
             if (oldVersion < 17) {
@@ -1469,25 +1508,29 @@ class DatabaseHelper {
                   UNIQUE(query)
                 )
               ''');
-//                 debugPrint("✅ Database: 创建 search_history 表 (V17)");
+                //                 debugPrint("✅ Database: 创建 search_history 表 (V17)");
               } catch (e) {
-//                 debugPrint("⚠️ Database: 升级 V17 失败: $e");
+                //                 debugPrint("⚠️ Database: 升级 V17 失败: $e");
               }
             }
             if (oldVersion < 18) {
               try {
                 // 为历史记录增加分时统计列
                 await db.execute(
-                    "ALTER TABLE search_history ADD COLUMN morning_count INTEGER DEFAULT 0;");
+                  "ALTER TABLE search_history ADD COLUMN morning_count INTEGER DEFAULT 0;",
+                );
                 await db.execute(
-                    "ALTER TABLE search_history ADD COLUMN afternoon_count INTEGER DEFAULT 0;");
+                  "ALTER TABLE search_history ADD COLUMN afternoon_count INTEGER DEFAULT 0;",
+                );
                 await db.execute(
-                    "ALTER TABLE search_history ADD COLUMN evening_count INTEGER DEFAULT 0;");
+                  "ALTER TABLE search_history ADD COLUMN evening_count INTEGER DEFAULT 0;",
+                );
                 await db.execute(
-                    "ALTER TABLE search_history ADD COLUMN night_count INTEGER DEFAULT 0;");
-//                 debugPrint("✅ Database: 升级 search_history 分时统计字段 (V18)");
+                  "ALTER TABLE search_history ADD COLUMN night_count INTEGER DEFAULT 0;",
+                );
+                //                 debugPrint("✅ Database: 升级 search_history 分时统计字段 (V18)");
               } catch (e) {
-//                 debugPrint("⚠️ Database: 升级 V18 失败: $e");
+                //                 debugPrint("⚠️ Database: 升级 V18 失败: $e");
               }
             }
             if (oldVersion < 19) {
@@ -1495,12 +1538,13 @@ class DatabaseHelper {
                 final info = await db.rawQuery("PRAGMA table_info(countdowns)");
                 if (!info.any((row) => row['name'] == 'is_completed')) {
                   await db.execute(
-                      "ALTER TABLE countdowns ADD COLUMN is_completed INTEGER DEFAULT 0;");
-//                   debugPrint(
-//                       "✅ Database: 为 countdowns 添加 is_completed 字段 (V19)");
+                    "ALTER TABLE countdowns ADD COLUMN is_completed INTEGER DEFAULT 0;",
+                  );
+                  //                   debugPrint(
+                  //                       "✅ Database: 为 countdowns 添加 is_completed 字段 (V19)");
                 }
               } catch (e) {
-//                 debugPrint("⚠️ Database: 升级 V19 失败: $e");
+                //                 debugPrint("⚠️ Database: 升级 V19 失败: $e");
               }
             }
             if (oldVersion < 20) {
@@ -1508,11 +1552,12 @@ class DatabaseHelper {
                 final info = await db.rawQuery("PRAGMA table_info(op_logs)");
                 if (!info.any((row) => row['name'] == 'sync_error')) {
                   await db.execute(
-                      "ALTER TABLE op_logs ADD COLUMN sync_error TEXT;");
-//                   debugPrint("✅ Database: 为 op_logs 添加 sync_error 字段 (V20)");
+                    "ALTER TABLE op_logs ADD COLUMN sync_error TEXT;",
+                  );
+                  //                   debugPrint("✅ Database: 为 op_logs 添加 sync_error 字段 (V20)");
                 }
               } catch (e) {
-//                 debugPrint("⚠️ Database: 升级 V20 失败: $e");
+                //                 debugPrint("⚠️ Database: 升级 V20 失败: $e");
               }
             }
             if (oldVersion < 21) {
@@ -1530,7 +1575,8 @@ class DatabaseHelper {
                 )
               ''');
                 await db.execute(
-                    'CREATE INDEX IF NOT EXISTS idx_screen_time_date ON screen_time (record_date)');
+                  'CREATE INDEX IF NOT EXISTS idx_screen_time_date ON screen_time (record_date)',
+                );
                 // 🚀 Version 22: 新增 ignored_remote_items 表
                 await db.execute('''
       CREATE TABLE IF NOT EXISTS ignored_remote_items (
@@ -1540,10 +1586,10 @@ class DatabaseHelper {
         ignored_at INTEGER
       )
     ''');
-//                 debugPrint('✅ Database: onCreate 创建 ignored_remote_items 表');
-//                 debugPrint('✅ Database: 创建 screen_time 表 (V21)');
+                //                 debugPrint('✅ Database: onCreate 创建 ignored_remote_items 表');
+                //                 debugPrint('✅ Database: 创建 screen_time 表 (V21)');
               } catch (e) {
-//                 debugPrint('⚠️ Database: 创建 screen_time 表失败: $e');
+                //                 debugPrint('⚠️ Database: 创建 screen_time 表失败: $e');
               }
             }
             if (oldVersion < 25) {
@@ -1575,15 +1621,17 @@ class DatabaseHelper {
                 )
               ''');
                 // 2. 为 pomodoro_records 补全 plan_block_id
-                final info =
-                    await db.rawQuery("PRAGMA table_info(pomodoro_records)");
+                final info = await db.rawQuery(
+                  "PRAGMA table_info(pomodoro_records)",
+                );
                 if (!info.any((row) => row['name'] == 'plan_block_id')) {
                   await db.execute(
-                      "ALTER TABLE pomodoro_records ADD COLUMN plan_block_id TEXT;");
+                    "ALTER TABLE pomodoro_records ADD COLUMN plan_block_id TEXT;",
+                  );
                 }
-//                 debugPrint("✅ Database: 升级 V25 (新增规划块与关联字段)");
+                //                 debugPrint("✅ Database: 升级 V25 (新增规划块与关联字段)");
               } catch (e) {
-//                 debugPrint("⚠️ Database: 升级 V25 失败: $e");
+                //                 debugPrint("⚠️ Database: 升级 V25 失败: $e");
               }
             }
           },
@@ -1605,7 +1653,7 @@ class DatabaseHelper {
         );
       } catch (e) {
         if (!_isDatabaseLockedError(e) || attempt == 4) rethrow;
-//         debugPrint('⏳ Database: 打开数据库遇到锁，${200 * (attempt + 1)}ms 后重试: $e');
+        //         debugPrint('⏳ Database: 打开数据库遇到锁，${200 * (attempt + 1)}ms 后重试: $e');
         await Future.delayed(Duration(milliseconds: 200 * (attempt + 1)));
       }
     }
@@ -1631,17 +1679,19 @@ class DatabaseHelper {
       final info = await db.rawQuery("PRAGMA table_info(screen_time)");
       final existingColumns = info.map((row) => row['name']).toSet();
       if (!existingColumns.contains('device_name')) {
-        await db
-            .execute("ALTER TABLE screen_time ADD COLUMN device_name TEXT;");
+        await db.execute(
+          "ALTER TABLE screen_time ADD COLUMN device_name TEXT;",
+        );
       }
       if (!existingColumns.contains('category')) {
         await db.execute("ALTER TABLE screen_time ADD COLUMN category TEXT;");
       }
       await db.execute(
-          'CREATE INDEX IF NOT EXISTS idx_screen_time_date ON screen_time (record_date)');
-//       debugPrint('✅ Database: screen_time schema ready');
+        'CREATE INDEX IF NOT EXISTS idx_screen_time_date ON screen_time (record_date)',
+      );
+      //       debugPrint('✅ Database: screen_time schema ready');
     } catch (e) {
-//       debugPrint('⚠️ Database: screen_time schema repair failed: $e');
+      //       debugPrint('⚠️ Database: screen_time schema repair failed: $e');
     }
   }
 
@@ -1657,7 +1707,7 @@ class DatabaseHelper {
 
   /// 记录本地审计日志
   Future<void> insertLocalAuditLog({
-    Database? databaseOverride,
+    DatabaseExecutor? databaseOverride,
     String? teamUuid,
     required int userId,
     required String targetTable,
@@ -1683,7 +1733,9 @@ class DatabaseHelper {
 
   /// 获取本地审计日志
   Future<List<Map<String, dynamic>>> getLocalAuditLogs(
-      String uuid, String table) async {
+    String uuid,
+    String table,
+  ) async {
     final db = await database;
     final List<Map<String, dynamic>> logs = await db.query(
       'local_audit_logs',
@@ -1702,8 +1754,11 @@ class DatabaseHelper {
   /// 执行本地回滚 (离线模式)
   Future<bool> rollbackFromLocalLog(int logId) async {
     final db = await database;
-    final log =
-        await db.query('local_audit_logs', where: 'id = ?', whereArgs: [logId]);
+    final log = await db.query(
+      'local_audit_logs',
+      where: 'id = ?',
+      whereArgs: [logId],
+    );
     if (log.isEmpty) return false;
 
     final targetTable = log.first['target_table'] as String;
@@ -1716,109 +1771,113 @@ class DatabaseHelper {
     // 根据表名还原数据
     if (targetTable == 'todos') {
       await db.update(
-          'todos',
-          {
-            'content': beforeData['content'],
-            'remark': beforeData['remark'],
-            'is_completed': (beforeData['is_completed'] == 1 ||
-                    beforeData['is_completed'] == true)
-                ? 1
-                : 0,
-            'due_date': beforeData['due_date'] ?? 0,
-            'created_date': beforeData['created_date'] ?? 0,
-            'group_id': beforeData['group_id'],
-            'team_uuid': beforeData['team_uuid'],
-            'collab_type': beforeData['collab_type'] ?? 0,
-            'is_all_day': (beforeData['is_all_day'] == 1 ||
-                    beforeData['is_all_day'] == true)
-                ? 1
-                : 0,
-            'recurrence': beforeData['recurrence'] ?? 0,
-            'reminder_minutes': beforeData['reminder_minutes'] ?? -1,
-            'updated_at': DateTime.now().millisecondsSinceEpoch,
-            'version': (beforeData['version'] ?? 0) + 1,
-          },
-          where: 'uuid = ?',
-          whereArgs: [targetUuid]);
+        'todos',
+        {
+          'content': beforeData['content'],
+          'remark': beforeData['remark'],
+          'is_completed':
+              (beforeData['is_completed'] == 1 ||
+                  beforeData['is_completed'] == true)
+              ? 1
+              : 0,
+          'due_date': beforeData['due_date'] ?? 0,
+          'created_date': beforeData['created_date'] ?? 0,
+          'group_id': beforeData['group_id'],
+          'team_uuid': beforeData['team_uuid'],
+          'collab_type': beforeData['collab_type'] ?? 0,
+          'is_all_day':
+              (beforeData['is_all_day'] == 1 ||
+                  beforeData['is_all_day'] == true)
+              ? 1
+              : 0,
+          'recurrence': beforeData['recurrence'] ?? 0,
+          'reminder_minutes': beforeData['reminder_minutes'] ?? -1,
+          'updated_at': DateTime.now().millisecondsSinceEpoch,
+          'version': (beforeData['version'] ?? 0) + 1,
+        },
+        where: 'uuid = ?',
+        whereArgs: [targetUuid],
+      );
     } else if (targetTable == 'countdowns') {
       await db.update(
-          'countdowns',
-          {
-            'title': beforeData['title'],
-            'target_time': beforeData['target_time'],
-            'is_deleted': (beforeData['is_deleted'] == 1 ||
-                    beforeData['is_deleted'] == true)
-                ? 1
-                : 0,
-            'is_completed': (beforeData['is_completed'] == 1 ||
-                    beforeData['is_completed'] == true)
-                ? 1
-                : 0,
-            'updated_at': DateTime.now().millisecondsSinceEpoch,
-            'version': (beforeData['version'] ?? 0) + 1,
-          },
-          where: 'uuid = ?',
-          whereArgs: [targetUuid]);
+        'countdowns',
+        {
+          'title': beforeData['title'],
+          'target_time': beforeData['target_time'],
+          'is_deleted':
+              (beforeData['is_deleted'] == 1 ||
+                  beforeData['is_deleted'] == true)
+              ? 1
+              : 0,
+          'is_completed':
+              (beforeData['is_completed'] == 1 ||
+                  beforeData['is_completed'] == true)
+              ? 1
+              : 0,
+          'updated_at': DateTime.now().millisecondsSinceEpoch,
+          'version': (beforeData['version'] ?? 0) + 1,
+        },
+        where: 'uuid = ?',
+        whereArgs: [targetUuid],
+      );
     }
     return true;
   }
 
   /// 🚀 Uni-Sync 4.0: 从传统的 SharedPreferences 迁移数据到 SQL
   Future<void> migrateFromPrefs(
-      String username, List<Map<String, dynamic>> legacyData) async {
+    String username,
+    List<Map<String, dynamic>> legacyData,
+  ) async {
     final db = await database;
     await db.transaction((txn) async {
       for (var json in legacyData) {
-        await txn.insert(
-            'todos',
-            {
-              'uuid': json['uuid'] ?? json['id'],
-              'content': json['content'] ?? json['title'],
-              'remark': json['remark'],
-              'is_completed':
-                  (json['is_completed'] == 1 || json['is_done'] == true)
-                      ? 1
-                      : 0,
-              'is_deleted':
-                  (json['is_deleted'] == 1 || json['is_deleted'] == true)
-                      ? 1
-                      : 0,
-              'version': json['version'] ?? 1,
-              'updated_at':
-                  json['updated_at'] ?? DateTime.now().millisecondsSinceEpoch,
-              'created_at': json['created_at'] ??
-                  json['createdDate'] ??
-                  DateTime.now().millisecondsSinceEpoch,
-              'created_date': json['created_date'] ??
-                  json['created_at'] ??
-                  json['createdDate'] ??
-                  DateTime.now().millisecondsSinceEpoch,
-              // 🚀 核心防御：提供 0 兜底，防止 SQLite NOT NULL 报错
-              'due_date': json['due_date'] ?? json['dueDate'] ?? 0,
-              // 🚀 补全协作元数据
-              'team_uuid': json['team_uuid'] ?? json['teamUuid'],
-              'creator_id': json['creator_id'] ?? json['creatorId'],
-              'creator_name': json['creator_name'] ?? json['creatorName'],
-              'team_name': json['team_name'] ?? json['teamName'],
-              'group_id': json['group_id'] ?? json['groupId'],
-              'recurrence': json['recurrence'] ?? 0,
-              'recurrence_series_id':
-                  json['recurrence_series_id'] ?? json['recurrenceSeriesId'],
-              'custom_interval_days': json['custom_interval_days'] ??
-                  json['customIntervalDays'] ??
-                  0,
-              // 🚀 核心防御：提供 0 / -1 兜底，防止 SQLite NOT NULL 报错
-              'recurrence_end_date':
-                  json['recurrence_end_date'] ?? json['recurrenceEndDate'] ?? 0,
-              'reminder_minutes':
-                  json['reminder_minutes'] ?? json['reminderMinutes'] ?? -1,
-              'image_path': json['image_path'] ?? json['imagePath'],
-              'original_text': json['original_text'] ?? json['originalText'],
-            },
-            conflictAlgorithm: ConflictAlgorithm.ignore);
+        await txn.insert('todos', {
+          'uuid': json['uuid'] ?? json['id'],
+          'content': json['content'] ?? json['title'],
+          'remark': json['remark'],
+          'is_completed': (json['is_completed'] == 1 || json['is_done'] == true)
+              ? 1
+              : 0,
+          'is_deleted': (json['is_deleted'] == 1 || json['is_deleted'] == true)
+              ? 1
+              : 0,
+          'version': json['version'] ?? 1,
+          'updated_at':
+              json['updated_at'] ?? DateTime.now().millisecondsSinceEpoch,
+          'created_at':
+              json['created_at'] ??
+              json['createdDate'] ??
+              DateTime.now().millisecondsSinceEpoch,
+          'created_date':
+              json['created_date'] ??
+              json['created_at'] ??
+              json['createdDate'] ??
+              DateTime.now().millisecondsSinceEpoch,
+          // 🚀 核心防御：提供 0 兜底，防止 SQLite NOT NULL 报错
+          'due_date': json['due_date'] ?? json['dueDate'] ?? 0,
+          // 🚀 补全协作元数据
+          'team_uuid': json['team_uuid'] ?? json['teamUuid'],
+          'creator_id': json['creator_id'] ?? json['creatorId'],
+          'creator_name': json['creator_name'] ?? json['creatorName'],
+          'team_name': json['team_name'] ?? json['teamName'],
+          'group_id': json['group_id'] ?? json['groupId'],
+          'recurrence': json['recurrence'] ?? 0,
+          'recurrence_series_id':
+              json['recurrence_series_id'] ?? json['recurrenceSeriesId'],
+          'custom_interval_days':
+              json['custom_interval_days'] ?? json['customIntervalDays'] ?? 0,
+          // 🚀 核心防御：提供 0 / -1 兜底，防止 SQLite NOT NULL 报错
+          'recurrence_end_date':
+              json['recurrence_end_date'] ?? json['recurrenceEndDate'] ?? 0,
+          'reminder_minutes':
+              json['reminder_minutes'] ?? json['reminderMinutes'] ?? -1,
+          'image_path': json['image_path'] ?? json['imagePath'],
+          'original_text': json['original_text'] ?? json['originalText'],
+        }, conflictAlgorithm: ConflictAlgorithm.ignore);
       }
     });
-//     debugPrint("✅ Database Migration: $username's data moved to SQLite.");
+    //     debugPrint("✅ Database Migration: $username's data moved to SQLite.");
   }
 
   Future _createDB(Database db, int version) async {
@@ -1929,17 +1988,23 @@ class DatabaseHelper {
 
     // 6. 🚀 Uni-Sync 核心：持久化索引
     await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_todos_team ON todos(team_uuid)');
-    await db
-        .execute('CREATE INDEX IF NOT EXISTS idx_todos_uuid ON todos(uuid)');
+      'CREATE INDEX IF NOT EXISTS idx_todos_team ON todos(team_uuid)',
+    );
     await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_countdowns_team ON countdowns(team_uuid)');
+      'CREATE INDEX IF NOT EXISTS idx_todos_uuid ON todos(uuid)',
+    );
     await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_countdowns_uuid ON countdowns(uuid)');
+      'CREATE INDEX IF NOT EXISTS idx_countdowns_team ON countdowns(team_uuid)',
+    );
     await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_todo_groups_team ON todo_groups(team_uuid)');
+      'CREATE INDEX IF NOT EXISTS idx_countdowns_uuid ON countdowns(uuid)',
+    );
     await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_todo_groups_uuid ON todo_groups(uuid)');
+      'CREATE INDEX IF NOT EXISTS idx_todo_groups_team ON todo_groups(team_uuid)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_todo_groups_uuid ON todo_groups(uuid)',
+    );
 
     // 7. 🚀 Uni-Sync 核心：离线审计日志 (支持离线查看版本记录)
     await db.execute('''
@@ -2072,7 +2137,8 @@ class DatabaseHelper {
       )
     ''');
     await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_screen_time_date ON screen_time (record_date)');
+      'CREATE INDEX IF NOT EXISTS idx_screen_time_date ON screen_time (record_date)',
+    );
     // 🚀 Version 22: 新增 ignored_remote_items 表
     await db.execute('''
       CREATE TABLE IF NOT EXISTS ignored_remote_items (
@@ -2082,7 +2148,7 @@ class DatabaseHelper {
         ignored_at INTEGER
       )
     ''');
-//     debugPrint('✅ Database: onCreate 创建 ignored_remote_items 表');
+    //     debugPrint('✅ Database: onCreate 创建 ignored_remote_items 表');
 
     // 13. 创建规划块表
     await db.execute('''
@@ -2146,33 +2212,59 @@ class DatabaseHelper {
     await ensureAiUsageSchema(db);
 
     // 21. 创建性能索引
+    await ensureCourseTableSchema(db);
     await ensurePlanEditorDraftSchema(db);
     await ensureMissingIndexes(db);
   }
 
   static Future<void> ensureMissingIndexes(Database db) async {
     await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_plan_blocks_day ON todo_plan_blocks(is_deleted, start_time)');
+      'CREATE INDEX IF NOT EXISTS idx_op_logs_pending_timestamp '
+      'ON op_logs(timestamp) WHERE is_synced = 0',
+    );
     await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_plan_blocks_todo_active ON todo_plan_blocks(todo_uuid, is_deleted, start_time)');
+      'CREATE INDEX IF NOT EXISTS idx_plan_blocks_day ON todo_plan_blocks(is_deleted, start_time)',
+    );
     await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_todos_created ON todos(is_deleted, created_at)');
+      'CREATE INDEX IF NOT EXISTS idx_plan_blocks_active_end ON todo_plan_blocks(is_deleted, end_time)',
+    );
     await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_todos_completed_updated ON todos(is_deleted, is_completed, updated_at)');
+      'CREATE INDEX IF NOT EXISTS idx_plan_blocks_active_status ON todo_plan_blocks(is_deleted, status)',
+    );
     await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_todos_due_date ON todos(is_deleted, due_date)');
+      'CREATE INDEX IF NOT EXISTS idx_plan_blocks_todo_active ON todo_plan_blocks(todo_uuid, is_deleted, start_time)',
+    );
     await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_todos_overdue ON todos(is_deleted, is_completed, due_date)');
+      'CREATE INDEX IF NOT EXISTS idx_todos_created ON todos(is_deleted, created_at)',
+    );
     await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_todos_created_date ON todos(is_deleted, created_date)');
+      'CREATE INDEX IF NOT EXISTS idx_todos_completed_updated ON todos(is_deleted, is_completed, updated_at)',
+    );
     await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_pomodoro_start ON pomodoro_records(is_deleted, start_time)');
+      'CREATE INDEX IF NOT EXISTS idx_todos_due_date ON todos(is_deleted, due_date)',
+    );
     await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_pomodoro_todo_active ON pomodoro_records(todo_uuid, is_deleted, start_time)');
+      'CREATE INDEX IF NOT EXISTS idx_todos_overdue ON todos(is_deleted, is_completed, due_date)',
+    );
     await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_time_logs_start ON time_logs(is_deleted, start_time)');
+      'CREATE INDEX IF NOT EXISTS idx_todos_created_date ON todos(is_deleted, created_date)',
+    );
     await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_search_history_time ON search_history(timestamp)');
+      'CREATE INDEX IF NOT EXISTS idx_todos_recurrence_series_date '
+      'ON todos(recurrence_series_id, created_date, created_at)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_pomodoro_start ON pomodoro_records(is_deleted, start_time)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_pomodoro_todo_active ON pomodoro_records(todo_uuid, is_deleted, start_time)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_time_logs_start ON time_logs(is_deleted, start_time)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_search_history_time ON search_history(timestamp)',
+    );
   }
 
   /// 🚀 初始化 FTS 搜索引擎，支持 FTS5 -> FTS4 -> LIKE 逐级降级 (带主动探测)
@@ -2214,10 +2306,10 @@ class DatabaseHelper {
           SELECT uuid, content, remark, team_name FROM todos WHERE is_deleted = 0
         ''');
         await _createFtsTriggers(db);
-//         debugPrint("✅ Database: FTS5 搜索引擎就绪并已同步存量数据");
+        //         debugPrint("✅ Database: FTS5 搜索引擎就绪并已同步存量数据");
         return;
       } catch (e) {
-//         debugPrint("⚠️ Database: FTS5 初始化失败: $e");
+        //         debugPrint("⚠️ Database: FTS5 初始化失败: $e");
       }
     }
 
@@ -2242,14 +2334,14 @@ class DatabaseHelper {
           SELECT uuid, content, remark, team_name FROM todos WHERE is_deleted = 0
         ''');
         await _createFtsTriggers(db);
-//         debugPrint("✅ Database: FTS4 搜索引擎就绪并已同步存量数据");
+        //         debugPrint("✅ Database: FTS4 搜索引擎就绪并已同步存量数据");
         return;
       } catch (e) {
-//         debugPrint("⚠️ Database: FTS4 初始化失败: $e");
+        //         debugPrint("⚠️ Database: FTS4 初始化失败: $e");
       }
     }
 
-//     debugPrint("❌ Database: 硬件/系统不支持 FTS 索引，已切换至 LIKE 模式");
+    //     debugPrint("❌ Database: 硬件/系统不支持 FTS 索引，已切换至 LIKE 模式");
   }
 
   /// 🚀 创建 FTS 实时同步触发器
@@ -2294,8 +2386,12 @@ class DatabaseHelper {
 
   // --- 通用操作接口 ---
 
-  Future<int> insertOpLog(String opType, String table, String uuid,
-      Map<String, dynamic> data) async {
+  Future<int> insertOpLog(
+    String opType,
+    String table,
+    String uuid,
+    Map<String, dynamic> data,
+  ) async {
     final db = await instance.database;
     return await db.insert('op_logs', {
       'op_type': opType,
@@ -2329,29 +2425,35 @@ class DatabaseHelper {
             .where((s) => s.isNotEmpty)
             .map((s) => '$s*')
             .join(' ');
-        final ftsResults = await db.rawQuery('''
+        final ftsResults = await db.rawQuery(
+          '''
           SELECT t.uuid, t.updated_at FROM todos t
           JOIN todos_fts f ON t.uuid = f.uuid
           WHERE todos_fts MATCH ?
           AND t.is_deleted = 0
-        ''', [ftsQuery]);
+        ''',
+          [ftsQuery],
+        );
 
         for (var r in ftsResults) {
           resultScores[r['uuid'].toString()] = (r['updated_at'] as int?) ?? 0;
         }
       } catch (e) {
-//         debugPrint("FTS error: $e");
+        //         debugPrint("FTS error: $e");
       }
     }
 
     // 2. LIKE 补全中间词和团队名，不能因为 FTS 已命中部分记录
     // 就跳过其余匹配项。
-    final likeResults = await db.rawQuery('''
+    final likeResults = await db.rawQuery(
+      '''
         SELECT uuid, updated_at FROM todos 
         WHERE is_deleted = 0 
         AND (content LIKE ? OR remark LIKE ? OR team_name LIKE ?)
         ORDER BY updated_at DESC
-      ''', ['%$query%', '%$query%', '%$query%']);
+      ''',
+      ['%$query%', '%$query%', '%$query%'],
+    );
 
     for (var r in likeResults) {
       resultScores[r['uuid'].toString()] = (r['updated_at'] as int?) ?? 0;
@@ -2359,12 +2461,110 @@ class DatabaseHelper {
 
     if (resultScores.isEmpty) return [];
 
-    final finalResults =
-        await _getSearchTodoMaps(db, resultScores.keys.toList());
+    final finalResults = await _getSearchTodoMaps(
+      db,
+      resultScores.keys.toList(),
+    );
     // 按更新时间降序排序
-    finalResults.sort((a, b) => (resultScores[b['uuid'].toString()] ?? 0)
-        .compareTo(resultScores[a['uuid'].toString()] ?? 0));
+    finalResults.sort(
+      (a, b) => (resultScores[b['uuid'].toString()] ?? 0).compareTo(
+        resultScores[a['uuid'].toString()] ?? 0,
+      ),
+    );
     return finalResults;
+  }
+
+  Future<List<Map<String, dynamic>>> searchTodosByTerms(
+    List<String> terms,
+  ) async {
+    final uniqueTerms = <String>[];
+    final seenTerms = <String>{};
+    for (final term in terms) {
+      if (seenTerms.add(term)) uniqueTerms.add(term);
+    }
+    if (uniqueTerms.isEmpty) return [];
+
+    final db = await instance.database;
+    final useFts = await _canUseTodoFts(db);
+    const termsPerBatch = 300;
+    final rowsByUuid = <String, Map<String, dynamic>>{};
+
+    try {
+      for (var offset = 0; offset < uniqueTerms.length; offset += termsPerBatch) {
+        final nextOffset = offset + termsPerBatch;
+        final end = nextOffset < uniqueTerms.length
+            ? nextOffset
+            : uniqueTerms.length;
+        final chunk = uniqueTerms.sublist(offset, end);
+        final termRows = List.filled(chunk.length, '(?)').join(', ');
+        final ctes = <String>['search_terms(term) AS (VALUES $termRows)'];
+        final queryArgs = <Object?>[...chunk];
+        var ftsCondition = '';
+        if (useFts) {
+          final ftsQueries = chunk
+              .map(
+                (term) => term
+                    .split(' ')
+                    .where((part) => part.isNotEmpty)
+                    .map((part) => '$part*')
+                    .join(' '),
+              )
+              .where((query) => query.isNotEmpty)
+              .toList(growable: false);
+          if (ftsQueries.isNotEmpty) {
+            final ftsBranches = List.filled(
+              ftsQueries.length,
+              'SELECT uuid FROM todos_fts WHERE todos_fts MATCH ?',
+            ).join(' UNION ALL ');
+            ctes.add('fts_matches(uuid) AS ($ftsBranches)');
+            queryArgs.addAll(ftsQueries);
+            ftsCondition = ' OR t.uuid IN (SELECT uuid FROM fts_matches)';
+          }
+        }
+
+        final rows = await db.rawQuery(
+          '''
+          WITH ${ctes.join(', ')}
+          SELECT t.*
+          FROM todos AS t
+          WHERE t.is_deleted = 0
+            AND (
+              EXISTS (
+                SELECT 1
+                FROM search_terms AS s
+                WHERE t.content LIKE '%' || s.term || '%'
+                  OR t.remark LIKE '%' || s.term || '%'
+                  OR t.team_name LIKE '%' || s.term || '%'
+              )$ftsCondition
+            )
+          ORDER BY t.updated_at DESC
+          ''',
+          queryArgs,
+        );
+        for (final row in rows) {
+          rowsByUuid[row['uuid'].toString()] = row;
+        }
+      }
+      final results = rowsByUuid.values.toList(growable: false);
+      if (uniqueTerms.length > termsPerBatch) {
+        results.sort(
+          (a, b) => ((b['updated_at'] as int?) ?? 0).compareTo(
+            (a['updated_at'] as int?) ?? 0,
+          ),
+        );
+      }
+      return results;
+    } catch (_) {
+      // A batched FTS statement can reject an individual user term. Retain the
+      // per-term parser fallback used by searchTodos for those queries.
+      final fallbackRowsByUuid = <String, Map<String, dynamic>>{};
+      for (final term in uniqueTerms) {
+        for (final row in await searchTodos(term)) {
+          fallbackRowsByUuid[row['uuid'].toString()] = row;
+        }
+      }
+      return fallbackRowsByUuid.values.toList(growable: false);
+    }
   }
 
   Future<void> warmSearchIndex() async {
@@ -2388,19 +2588,27 @@ class DatabaseHelper {
     var available = false;
     try {
       final tables = await db.rawQuery(
-          "SELECT name FROM sqlite_master WHERE type='table' AND name='todos_fts'");
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='todos_fts'",
+      );
       if (tables.isEmpty) {
         return _cacheTodoFtsAvailability(db, available);
       }
-      final ftsCount = Sqflite.firstIntValue(
-              await db.rawQuery("SELECT COUNT(*) FROM todos_fts")) ??
+      final ftsCount =
+          Sqflite.firstIntValue(
+            await db.rawQuery("SELECT COUNT(*) FROM todos_fts"),
+          ) ??
           0;
-      final actualCount = Sqflite.firstIntValue(await db
-              .rawQuery("SELECT COUNT(*) FROM todos WHERE is_deleted = 0")) ??
+      final actualCount =
+          Sqflite.firstIntValue(
+            await db.rawQuery(
+              "SELECT COUNT(*) FROM todos WHERE is_deleted = 0",
+            ),
+          ) ??
           0;
       if (ftsCount == 0 && actualCount > 0) {
         await db.execute(
-            "INSERT INTO todos_fts(uuid, content, remark, team_name) SELECT uuid, content, remark, team_name FROM todos WHERE is_deleted = 0");
+          "INSERT INTO todos_fts(uuid, content, remark, team_name) SELECT uuid, content, remark, team_name FROM todos WHERE is_deleted = 0",
+        );
       }
       available = true;
     } catch (_) {}
@@ -2419,7 +2627,8 @@ class DatabaseHelper {
     int endExclusive,
   ) async {
     final db = await instance.database;
-    final ids = await db.rawQuery('''
+    final ids = await db.rawQuery(
+      '''
       SELECT uuid, updated_at
       FROM todos
       WHERE is_deleted = 0
@@ -2429,7 +2638,9 @@ class DatabaseHelper {
           (created_date >= ? AND created_date < ?)
         )
       ORDER BY updated_at DESC
-    ''', [startInclusive, endExclusive, startInclusive, endExclusive]);
+    ''',
+      [startInclusive, endExclusive, startInclusive, endExclusive],
+    );
     if (ids.isEmpty) return const [];
 
     final scoreById = <String, int>{
@@ -2437,25 +2648,31 @@ class DatabaseHelper {
         row['uuid'].toString(): (row['updated_at'] as num?)?.toInt() ?? 0,
     };
     final rows = await _getSearchTodoMaps(db, scoreById.keys.toList());
-    rows.sort((a, b) => (scoreById[b['uuid'].toString()] ?? 0)
-        .compareTo(scoreById[a['uuid'].toString()] ?? 0));
+    rows.sort(
+      (a, b) => (scoreById[b['uuid'].toString()] ?? 0).compareTo(
+        scoreById[a['uuid'].toString()] ?? 0,
+      ),
+    );
     return rows;
   }
 
   Future<List<Map<String, dynamic>>> _getSearchTodoMaps(
-      Database db, List<String> uuids) async {
+    Database db,
+    List<String> uuids,
+  ) async {
     const batchSize = 400;
     final rows = <Map<String, dynamic>>[];
     for (var start = 0; start < uuids.length; start += batchSize) {
-      rows.addAll(await getTodoMaps(
-        includeDeleted: true,
-        uuids: uuids.sublist(
+      rows.addAll(
+        await getTodoMaps(
+          includeDeleted: true,
+          uuids: uuids.sublist(
             start,
-            start + batchSize > uuids.length
-                ? uuids.length
-                : start + batchSize),
-        databaseOverride: db,
-      ));
+            start + batchSize > uuids.length ? uuids.length : start + batchSize,
+          ),
+          databaseOverride: db,
+        ),
+      );
     }
     return rows;
   }
@@ -2471,8 +2688,10 @@ class DatabaseHelper {
     final excludedSeriesClause = excludedSeriesIds.isEmpty
         ? ''
         : 'AND (recurrence_series_id IS NULL OR recurrence_series_id NOT IN '
-            '(${List.filled(excludedSeriesIds.length, '?').join(', ')}))';
-    return Sqflite.firstIntValue(await db.rawQuery('''
+              '(${List.filled(excludedSeriesIds.length, '?').join(', ')}))';
+    return Sqflite.firstIntValue(
+          await db.rawQuery(
+            '''
       SELECT COUNT(*)
       FROM todos
       WHERE is_deleted = 0
@@ -2481,47 +2700,152 @@ class DatabaseHelper {
         AND due_date != 0
         AND due_date < ?
         $excludedSeriesClause
-    ''', [beforeExclusive, ...excludedSeriesIds])) ?? 0;
+    ''',
+            [beforeExclusive, ...excludedSeriesIds],
+          ),
+        ) ??
+        0;
+  }
+
+  Future<List<Map<String, dynamic>>> searchTodoGroupsByTerms(
+    List<String> terms,
+  ) =>
+      _searchRowsByTerms(
+        table: 'todo_groups',
+        matchColumns: const ['name'],
+        orderColumn: 'updated_at',
+        terms: terms,
+      );
+
+  Future<List<Map<String, dynamic>>> searchCoursesByTerms(
+    List<String> terms,
+  ) =>
+      _searchRowsByTerms(
+        table: 'courses',
+        matchColumns: const ['course_name', 'teacher_name', 'room_name'],
+        orderColumn: 'updated_at',
+        terms: terms,
+      );
+
+  Future<List<Map<String, dynamic>>> searchCountdownsByTerms(
+    List<String> terms,
+  ) =>
+      _searchRowsByTerms(
+        table: 'countdowns',
+        matchColumns: const ['title', 'team_name'],
+        orderColumn: 'updated_at',
+        terms: terms,
+      );
+
+  Future<List<Map<String, dynamic>>> searchTimeLogsByTerms(
+    List<String> terms,
+  ) =>
+      _searchRowsByTerms(
+        table: 'time_logs',
+        matchColumns: const ['title', 'remark'],
+        orderColumn: 'start_time',
+        terms: terms,
+      );
+
+  Future<List<Map<String, dynamic>>> _searchRowsByTerms({
+    required String table,
+    required List<String> matchColumns,
+    required String orderColumn,
+    required List<String> terms,
+  }) async {
+    final uniqueTerms = <String>[];
+    final seenTerms = <String>{};
+    for (final term in terms) {
+      if (seenTerms.add(term)) uniqueTerms.add(term);
+    }
+    if (uniqueTerms.isEmpty) return [];
+
+    final db = await instance.database;
+    const chunkSize = 900;
+    final rowsByUuid = <String, Map<String, dynamic>>{};
+    final matchExpression = matchColumns
+        .map((column) => "t.$column LIKE '%' || s.term || '%'")
+        .join(' OR ');
+
+    for (var offset = 0; offset < uniqueTerms.length; offset += chunkSize) {
+      final end = offset + chunkSize < uniqueTerms.length
+          ? offset + chunkSize
+          : uniqueTerms.length;
+      final chunk = uniqueTerms.sublist(offset, end);
+      final termRows = List.generate(
+        chunk.length,
+        (index) => '(?, $index)',
+      ).join(', ');
+      final rows = await db.rawQuery(
+        '''
+        WITH search_terms(term, term_order) AS (VALUES $termRows)
+        SELECT t.*
+        FROM $table AS t
+        JOIN search_terms AS s ON ($matchExpression)
+        WHERE t.is_deleted = 0
+        GROUP BY t.uuid
+        ORDER BY MIN(s.term_order), t.$orderColumn DESC
+        ''',
+        chunk,
+      );
+      for (final row in rows) {
+        rowsByUuid[row['uuid'].toString()] = row;
+      }
+    }
+
+    return rowsByUuid.values.toList(growable: false);
   }
 
   Future<List<Map<String, dynamic>>> searchTodoGroups(String query) async {
     final db = await instance.database;
-    return await db.rawQuery('''
+    return await db.rawQuery(
+      '''
       SELECT * FROM todo_groups 
       WHERE is_deleted = 0 
       AND name LIKE ?
       ORDER BY updated_at DESC
-    ''', ['%$query%']);
+    ''',
+      ['%$query%'],
+    );
   }
 
   Future<List<Map<String, dynamic>>> searchCourses(String query) async {
     final db = await instance.database;
-    return await db.rawQuery('''
+    return await db.rawQuery(
+      '''
       SELECT * FROM courses 
       WHERE is_deleted = 0 
       AND (course_name LIKE ? OR teacher_name LIKE ? OR room_name LIKE ?)
       ORDER BY updated_at DESC
-    ''', ['%$query%', '%$query%', '%$query%']);
+    ''',
+      ['%$query%', '%$query%', '%$query%'],
+    );
   }
 
   Future<List<Map<String, dynamic>>> searchCountdowns(String query) async {
     final db = await instance.database;
-    return await db.rawQuery('''
+    return await db.rawQuery(
+      '''
       SELECT * FROM countdowns 
       WHERE is_deleted = 0 
       AND (title LIKE ? OR team_name LIKE ?)
       ORDER BY updated_at DESC
-    ''', ['%$query%', '%$query%']);
+    ''',
+      ['%$query%', '%$query%'],
+    );
   }
 
   Future<List<Map<String, dynamic>>> searchTimeLogs(String query) async {
     final db = await instance.database;
-    return await db.rawQuery('''
+    return await db.rawQuery(
+      '''
       SELECT * FROM time_logs 
       WHERE is_deleted = 0 
       AND (title LIKE ? OR remark LIKE ?)
       ORDER BY start_time DESC
-    ''', ['%$query%', '%$query%']);
+    ''',
+      ['%$query%', '%$query%'],
+    );
   }
 
   Future<List<Map<String, dynamic>>> searchTimeLogsByDate(
@@ -2529,13 +2853,16 @@ class DatabaseHelper {
     int endExclusive,
   ) async {
     final db = await instance.database;
-    return db.rawQuery('''
+    return db.rawQuery(
+      '''
       SELECT * FROM time_logs
       WHERE is_deleted = 0
         AND start_time >= ?
         AND start_time < ?
       ORDER BY start_time DESC
-    ''', [startInclusive, endExclusive]);
+    ''',
+      [startInclusive, endExclusive],
+    );
   }
 
   // ==========================================
@@ -2566,11 +2893,12 @@ class DatabaseHelper {
         final String room = group['room_name'] ?? '';
 
         // 2. 获取该组内所有有效记录，按更新时间排序
-        final List<Map<String, dynamic>> records = await db.query('courses',
-            where:
-                'course_name = ? AND weekday = ? AND start_time = ? AND week_index = ? AND room_name = ? AND is_deleted = 0',
-            whereArgs: [name, weekday, start, week, room],
-            orderBy: 'updated_at DESC');
+        final List<Map<String, dynamic>> records = await db.query(
+          'courses',
+          where: 'course_name = ? AND weekday = ? AND start_time = ? AND week_index = ? AND room_name = ? AND is_deleted = 0',
+          whereArgs: [name, weekday, start, week, room],
+          orderBy: 'updated_at DESC',
+        );
 
         if (records.length > 1) {
           // 3. 保留第1条（最新的），其余标记删除
@@ -2579,14 +2907,11 @@ class DatabaseHelper {
             final newVersion = (records[i]['version'] as int? ?? 1) + 1;
 
             await db.update(
-                'courses',
-                {
-                  'is_deleted': 1,
-                  'updated_at': now,
-                  'version': newVersion,
-                },
-                where: 'uuid = ?',
-                whereArgs: [uuid]);
+              'courses',
+              {'is_deleted': 1, 'updated_at': now, 'version': newVersion},
+              where: 'uuid = ?',
+              whereArgs: [uuid],
+            );
 
             // 4. 写入操作日志以同步到其他设备
             await db.insert('op_logs', {
@@ -2609,7 +2934,7 @@ class DatabaseHelper {
       }
       return totalRemoved;
     } catch (e) {
-//       debugPrint("❌ deduplicateCourses error: $e");
+      //       debugPrint("❌ deduplicateCourses error: $e");
       return 0;
     }
   }
@@ -2622,13 +2947,14 @@ class DatabaseHelper {
   Future<List<Map<String, dynamic>>> getTodoMaps({
     bool includeDeleted = false,
     String? where,
+    List<Object?>? whereArgs,
     List<String>? uuids,
     Set<String>? recurrenceSeriesIds,
     int? limit,
     int offset = 0,
     bool inlineTextColumns = false,
     bool includeConflictData = false,
-    Database? databaseOverride,
+    DatabaseExecutor? databaseOverride,
   }) async {
     // Callers that already captured a user-scoped database must keep using
     // that handle.  Re-opening the current database here creates a window in
@@ -2638,8 +2964,18 @@ class DatabaseHelper {
     final int userId = prefs.getInt('current_user_id') ?? 0;
 
     final whereParts = <String>[];
-    final whereArgs = <Object?>[];
+    final queryArgs = <Object?>[];
 
+    if (whereArgs?.isNotEmpty ?? false) {
+      if (where == null || where.isEmpty) {
+        throw ArgumentError.value(
+          whereArgs,
+          'whereArgs',
+          'requires a non-empty where clause',
+        );
+      }
+      queryArgs.addAll(whereArgs!);
+    }
     if (where != null && where.isNotEmpty) {
       whereParts.add(where);
     } else if (!includeDeleted) {
@@ -2649,14 +2985,14 @@ class DatabaseHelper {
       whereParts.add(
         't.uuid IN (${List.filled(uuids.length, '?').join(', ')})',
       );
-      whereArgs.addAll(uuids);
+      queryArgs.addAll(uuids);
     }
     if (recurrenceSeriesIds != null && recurrenceSeriesIds.isNotEmpty) {
       whereParts.add(
         't.recurrence_series_id IN '
         '(${List.filled(recurrenceSeriesIds.length, '?').join(', ')})',
       );
-      whereArgs.addAll(recurrenceSeriesIds);
+      queryArgs.addAll(recurrenceSeriesIds);
     }
 
     final List<String> projectedColumns = _todoBaseColumns.map((col) {
@@ -2682,20 +3018,24 @@ class DatabaseHelper {
         // values keep using the chunked fallback below so a legacy/invalid
         // record cannot create a large platform-channel allocation.
         ..write(
-            ', CASE WHEN LENGTH(t.content) <= $_todoTextChunkSize THEN t.content END AS content')
+          ', CASE WHEN LENGTH(t.content) <= $_todoTextChunkSize THEN t.content END AS content',
+        )
         ..write(
-            ', CASE WHEN LENGTH(t.remark) <= $_todoTextChunkSize THEN t.remark END AS remark')
+          ', CASE WHEN LENGTH(t.remark) <= $_todoTextChunkSize THEN t.remark END AS remark',
+        )
         ..write(', LENGTH(t.content) AS _content_length')
         ..write(', LENGTH(t.remark) AS _remark_length');
       if (includeConflictData) {
         sql
           ..write(
-              ', CASE WHEN LENGTH(t.conflict_data) <= $_todoTextChunkSize THEN t.conflict_data END AS conflict_data')
+            ', CASE WHEN LENGTH(t.conflict_data) <= $_todoTextChunkSize THEN t.conflict_data END AS conflict_data',
+          )
           ..write(', LENGTH(t.conflict_data) AS _conflict_length');
       }
     }
     sql.write(
-        ' FROM todos t LEFT JOIN todo_completions c ON t.uuid = c.todo_uuid AND c.user_id = $userId');
+      ' FROM todos t LEFT JOIN todo_completions c ON t.uuid = c.todo_uuid AND c.user_id = $userId',
+    );
     if (whereParts.isNotEmpty) {
       sql.write(' WHERE ${whereParts.join(' AND ')}');
     }
@@ -2705,40 +3045,103 @@ class DatabaseHelper {
       if (offset > 0) sql.write(' OFFSET $offset');
     }
 
-    final rows = await db.rawQuery(sql.toString(), whereArgs);
+    final rows = await db.rawQuery(sql.toString(), queryArgs);
     if (inlineTextColumns) {
       return rows;
     }
-    final hasOversizedText = rows.any((row) {
+    final hydratedRows = <Map<String, dynamic>>[];
+    for (final resultRow in rows) {
+      // sqflite returns unmodifiable row maps; hydration removes helper
+      // columns from rows that do not need the chunked text fallback.
+      final row = Map<String, dynamic>.from(resultRow);
       final contentLength = _toNullableInt(row['_content_length']) ?? 0;
       final remarkLength = _toNullableInt(row['_remark_length']) ?? 0;
       final conflictLength = includeConflictData
           ? (_toNullableInt(row['_conflict_length']) ?? 0)
           : 0;
-      return contentLength > _todoTextChunkSize ||
+      final hasOversizedText = contentLength > _todoTextChunkSize ||
           remarkLength > _todoTextChunkSize ||
           conflictLength > _todoTextChunkSize;
-    });
-    if (!hasOversizedText) {
-      return rows.map((row) {
-        final hydrated = Map<String, dynamic>.from(row)
-          ..remove('_content_length')
-          ..remove('_remark_length');
-        if (includeConflictData) hydrated.remove('_conflict_length');
-        return hydrated;
-      }).toList();
+      if (hasOversizedText) {
+        hydratedRows.add(
+          await _hydrateTodoRow(
+            db,
+            row,
+            includeConflictData: includeConflictData,
+          ),
+        );
+        continue;
+      }
+
+      row
+        ..remove('_content_length')
+        ..remove('_remark_length');
+      if (includeConflictData) row.remove('_conflict_length');
+      hydratedRows.add(row);
     }
-    final hydrated = <Map<String, dynamic>>[];
-    for (final row in rows) {
-      hydrated.add(await _hydrateTodoRow(db, row,
-          includeConflictData: includeConflictData));
+    return hydratedRows;
+  }
+
+  /// Returns the todo fields consumed by home-screen widgets without loading
+  /// remarks, images, original analysis text, or conflict payloads.
+  Future<List<Map<String, dynamic>>> getTodoWidgetMaps(String username) async {
+    final prefs = await SharedPreferences.getInstance();
+    final userId = prefs.getInt('current_user_id') ?? 0;
+    final db = await databaseForUser(username);
+    final rows = await db.rawQuery('''
+      SELECT
+        t.uuid AS uuid,
+        t.team_name AS team_name,
+        CASE
+          WHEN t.collab_type = 1 AND c.is_completed IS NOT NULL
+          THEN c.is_completed
+          ELSE t.is_completed
+        END AS is_completed,
+        t.is_deleted AS is_deleted,
+        t.version AS version,
+        t.due_date AS due_date,
+        t.created_date AS created_date,
+        t.created_at AS created_at,
+        t.updated_at AS updated_at,
+        t.recurrence AS recurrence,
+        t.recurrence_series_id AS recurrence_series_id,
+        t.custom_interval_days AS custom_interval_days,
+        t.recurrence_end_date AS recurrence_end_date,
+        t.is_all_day AS is_all_day,
+        CASE
+          WHEN LENGTH(t.content) <= $_todoTextChunkSize THEN t.content
+        END AS content,
+        LENGTH(t.content) AS _content_length
+      FROM todos t
+      LEFT JOIN todo_completions c
+        ON t.uuid = c.todo_uuid AND c.user_id = $userId
+      WHERE t.is_deleted IS NOT 1
+      ORDER BY t.updated_at DESC
+    ''');
+
+    final hydratedRows = <Map<String, dynamic>>[];
+    for (final resultRow in rows) {
+      final row = Map<String, dynamic>.from(resultRow);
+      final contentLength = _toNullableInt(row['_content_length']) ?? 0;
+      if (contentLength > _todoTextChunkSize) {
+        row['content'] = await _readTodoTextColumn(
+          db,
+          row['uuid']?.toString() ?? '',
+          'content',
+          contentLength,
+        );
+      }
+      row.remove('_content_length');
+      hydratedRows.add(row);
     }
-    return hydrated;
+    return hydratedRows;
   }
 
   Future<Map<String, dynamic>> _hydrateTodoRow(
-      Database db, Map<String, dynamic> row,
-      {bool includeConflictData = false}) async {
+    DatabaseExecutor db,
+    Map<String, dynamic> row, {
+    bool includeConflictData = false,
+  }) async {
     final hydrated = Map<String, dynamic>.from(row);
     final uuid = hydrated['uuid']?.toString();
     if (uuid == null || uuid.isEmpty) {
@@ -2785,7 +3188,11 @@ class DatabaseHelper {
   }
 
   Future<String?> _readTodoTextColumn(
-      Database db, String uuid, String column, int? textLength) async {
+    DatabaseExecutor db,
+    String uuid,
+    String column,
+    int? textLength,
+  ) async {
     if (textLength == null || textLength <= 0) return null;
 
     final buffer = StringBuffer();
@@ -2810,8 +3217,9 @@ class DatabaseHelper {
 
   // 🚀 Uni-Sync 4.0: 获取所有待办事项（用于缓存重载）
   Future<List<TodoItem>> getTodos() async {
-    final List<Map<String, dynamic>> maps =
-        await getTodoMaps(includeDeleted: true);
+    final List<Map<String, dynamic>> maps = await getTodoMaps(
+      includeDeleted: true,
+    );
     return List.generate(maps.length, (i) => TodoItem.fromSql(maps[i]));
   }
 
@@ -2843,22 +3251,27 @@ class DatabaseHelper {
       column = 'night_count';
     }
 
-    await db.rawInsert('''
+    await db.rawInsert(
+      '''
       INSERT INTO search_history (query, timestamp, frequency, $column)
       VALUES (?, ?, 1, 1)
       ON CONFLICT(query) DO UPDATE SET
         frequency = frequency + 1,
         timestamp = ?,
         $column = $column + 1
-    ''', [
-      query,
-      DateTime.now().millisecondsSinceEpoch,
-      DateTime.now().millisecondsSinceEpoch
-    ]);
+    ''',
+      [
+        query,
+        DateTime.now().millisecondsSinceEpoch,
+        DateTime.now().millisecondsSinceEpoch,
+      ],
+    );
   }
 
-  Future<List<Map<String, dynamic>>> getRecentSearches(
-      {int limit = 10, int? currentHour}) async {
+  Future<List<Map<String, dynamic>>> getRecentSearches({
+    int limit = 10,
+    int? currentHour,
+  }) async {
     final db = await database;
     final hour = currentHour ?? DateTime.now().hour;
 

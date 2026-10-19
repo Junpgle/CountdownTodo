@@ -161,15 +161,15 @@ class _AiAssistantTutorialScreenState extends State<AiAssistantTutorialScreen>
                 sliver: SliverList(
                   delegate: SliverChildBuilderDelegate(
                     (context, index) {
+                      const animationDuration = 0.6;
+                      final animationDelay = index * 0.03;
+                      const animationProgressScale = 1.0 / animationDuration;
                       return AnimatedBuilder(
                         animation: _controller,
                         builder: (context, child) {
-                          const stagger = 0.03;
-                          final startTime = index * stagger;
-                          const animationDuration = 0.6;
                           final value = Curves.easeOutQuart.transform(
-                            ((_controller.value - startTime) /
-                                    animationDuration)
+                            ((_controller.value - animationDelay) *
+                                    animationProgressScale)
                                 .clamp(0.0, 1.0),
                           );
                           return IgnorePointer(

@@ -17,6 +17,16 @@ class FinanceLoanEntryScreen extends StatefulWidget {
 }
 
 class _FinanceLoanEntryScreenState extends State<FinanceLoanEntryScreen> {
+  static final RegExp _trimRateZeroPattern = RegExp(r'\.?0+$');
+  static final List<TextInputFormatter> _rateInputFormatters =
+      List<TextInputFormatter>.unmodifiable([
+        FilteringTextInputFormatter.allow(RegExp(r'[0-9.,%]')),
+      ]);
+  static final List<TextInputFormatter> _termInputFormatters =
+      List<TextInputFormatter>.unmodifiable([
+        FilteringTextInputFormatter.digitsOnly,
+      ]);
+
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _nameController;
   late final TextEditingController _lenderController;
@@ -68,10 +78,9 @@ class _FinanceLoanEntryScreenState extends State<FinanceLoanEntryScreen> {
   }
 
   String _formatRateInput(int basisPoints) {
-    return (basisPoints / 100).toStringAsFixed(2).replaceFirst(
-          RegExp(r'\.?0+$'),
-          '',
-        );
+    return (basisPoints / 100)
+        .toStringAsFixed(2)
+        .replaceFirst(_trimRateZeroPattern, '');
   }
 
   Future<void> _pickDate() async {
@@ -298,10 +307,7 @@ class _FinanceLoanEntryScreenState extends State<FinanceLoanEntryScreen> {
                               keyboardType:
                                   const TextInputType.numberWithOptions(
                                       decimal: true),
-                              inputFormatters: [
-                                FilteringTextInputFormatter.allow(
-                                    RegExp(r'[0-9.,%]'))
-                              ],
+                              inputFormatters: _rateInputFormatters,
                               decoration: financeFieldDecoration(context,
                                   label: '年利率', suffix: '%', hint: '0.00'),
                               validator: (value) =>
@@ -314,9 +320,7 @@ class _FinanceLoanEntryScreenState extends State<FinanceLoanEntryScreen> {
                               key: const ValueKey('finance-loan-term'),
                               controller: _termController,
                               keyboardType: TextInputType.number,
-                              inputFormatters: [
-                                FilteringTextInputFormatter.digitsOnly
-                              ],
+                              inputFormatters: _termInputFormatters,
                               decoration: financeFieldDecoration(context,
                                   label: '贷款期限', suffix: '个月'),
                               validator: (value) {

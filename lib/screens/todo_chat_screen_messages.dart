@@ -5,7 +5,7 @@ part of 'todo_chat_screen.dart';
 mixin _TodoChatMessages on _TodoChatScreenStateBase {
   Widget _buildMessageBubble(ChatMessage msg, bool isDark) {
     final isUser = msg.role == ChatRole.user;
-    final timeStr = DateFormat('HH:mm').format(msg.timestamp);
+    final timeStr = _todoChatDateFormat('HH:mm').format(msg.timestamp);
     final colorScheme = Theme.of(context).colorScheme;
     final maxBubbleWidth = MediaQuery.of(context).size.width >= 900
         ? (isUser ? 560.0 : 720.0)
@@ -102,7 +102,8 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
                               if (msg.usageSummary != null)
                                 _buildUsageSummaryFooter(
                                   msg.usageSummary!,
-                                  isVoice: msg.usageSummary!.model ==
+                                  isVoice:
+                                      msg.usageSummary!.model ==
                                       MimoAsrService.model,
                                   foregroundColor: colorScheme.onPrimary,
                                 ),
@@ -514,8 +515,9 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
       decoration: BoxDecoration(
         border: Border(
           top: BorderSide(
-            color: (foregroundColor ?? scheme.outlineVariant)
-                .withValues(alpha: 0.55),
+            color: (foregroundColor ?? scheme.outlineVariant).withValues(
+              alpha: 0.55,
+            ),
           ),
         ),
       ),
@@ -557,9 +559,11 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
         : isFailed
         ? '识别失败'
         : '识别完成';
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
+    return AiWaterRippleBorder(
+      isLight: !isDark,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
         Row(
           children: [
             Icon(
@@ -677,11 +681,19 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
             }).toList(),
           ),
         ],
-      ],
+        ],
+      ),
     );
   }
 
   Widget _buildInputArea(ColorScheme colorScheme) {
+    return ValueListenableBuilder<int>(
+      valueListenable: _inputAreaRevision,
+      builder: (context, _, _) => _buildInputAreaContent(colorScheme),
+    );
+  }
+
+  Widget _buildInputAreaContent(ColorScheme colorScheme) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final useFloating = floatingBottomBarShouldFloat(context);
     final keyboardVisible = MediaQuery.viewInsetsOf(context).bottom > 0;
@@ -821,7 +833,10 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
                         _customInjectStart != null &&
                         _customInjectEnd != null)
                       Text(
-                        '自定义范围: ${DateFormat('yyyy-MM-dd').format(_customInjectStart!)} 至 ${DateFormat('yyyy-MM-dd').format(_customInjectEnd!)}',
+                        _formatTodoChatDateRange(
+                          _customInjectStart!,
+                          _customInjectEnd!,
+                        ),
                         style: TextStyle(
                           fontSize: 11,
                           color: colorScheme.onSurface.withValues(alpha: 0.6),
@@ -953,9 +968,11 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
                 await ChatStorageService.setSmartContextEnabled(_smartContext);
               },
               onSettings: _showPromptSettings,
+              onSettingsFromSource: _showPromptSettingsFromSource,
               onModelConfig: _showModelConfig,
               onCopyPrompt: _inputHasText ? _copyManualPromptFromInput : null,
               onPasteReply: _pasteManualReplyFromClipboard,
+              onPasteImage: _pasteChatImageFromClipboard,
               onRetry:
                   !_isLoading &&
                       _messages.isNotEmpty &&

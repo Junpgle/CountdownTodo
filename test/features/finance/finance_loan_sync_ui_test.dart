@@ -125,6 +125,7 @@ void main() {
       } else {
         expect(find.text('已还 1'), findsOneWidget);
         expect(find.text('撤销已还'), findsOneWidget);
+        expect(find.text('实际还款：2026年9月1日 00:00'), findsOneWidget);
       }
       expect(refreshed, true, reason: '同步完成后无需手动刷新');
     });

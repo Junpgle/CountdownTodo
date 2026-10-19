@@ -37,10 +37,7 @@ void main() {
     final targetOccurrence = DateTime(2027, 2, 20, 9, 42, 18, 250);
 
     expect(
-      financeOccurrenceTimestampForDate(
-        transaction,
-        dateKey(targetOccurrence),
-      ),
+      financeOccurrenceTimestampForDate(transaction, dateKey(targetOccurrence)),
       targetOccurrence.millisecondsSinceEpoch,
     );
 
@@ -122,7 +119,8 @@ void main() {
         futureOccurrence.timeZoneOffset.inMinutes,
       );
     },
-    skip: DateTime(2026, 11, 1, 1, 30).timeZoneOffset ==
+    skip:
+        DateTime(2026, 11, 1, 1, 30).timeZoneOffset ==
         DateTime(2026, 11, 1, 2, 30).timeZoneOffset,
   );
 
@@ -203,29 +201,26 @@ void main() {
 
   test('预算截止汇总排除尚未发生的同日和未来日期账单', () {
     final asOf = DateTime(2026, 10, 2, 12);
-    final summary = FinanceSummary.fromTransactions(
-      [
-        FinanceTransaction(
-          uuid: 'budget-before-cutoff',
-          amountMinor: 40000,
-          transactionDate: '2026-10-02',
-          occurredAt: DateTime(2026, 10, 2, 11).millisecondsSinceEpoch,
-        ),
-        FinanceTransaction(
-          uuid: 'budget-after-cutoff',
-          amountMinor: 20000,
-          transactionDate: '2026-10-02',
-          occurredAt: DateTime(2026, 10, 2, 13).millisecondsSinceEpoch,
-        ),
-        FinanceTransaction(
-          uuid: 'budget-next-day',
-          amountMinor: 150000,
-          transactionDate: '2026-10-03',
-          occurredAt: DateTime(2026, 10, 3, 12).millisecondsSinceEpoch,
-        ),
-      ],
-      asOfAt: asOf.millisecondsSinceEpoch,
-    );
+    final summary = FinanceSummary.fromTransactions([
+      FinanceTransaction(
+        uuid: 'budget-before-cutoff',
+        amountMinor: 40000,
+        transactionDate: '2026-10-02',
+        occurredAt: DateTime(2026, 10, 2, 11).millisecondsSinceEpoch,
+      ),
+      FinanceTransaction(
+        uuid: 'budget-after-cutoff',
+        amountMinor: 20000,
+        transactionDate: '2026-10-02',
+        occurredAt: DateTime(2026, 10, 2, 13).millisecondsSinceEpoch,
+      ),
+      FinanceTransaction(
+        uuid: 'budget-next-day',
+        amountMinor: 150000,
+        transactionDate: '2026-10-03',
+        occurredAt: DateTime(2026, 10, 3, 12).millisecondsSinceEpoch,
+      ),
+    ], asOfAt: asOf.millisecondsSinceEpoch);
 
     expect(summary.expenseMinor, 40000);
     expect(summary.transactionCount, 1);
@@ -269,8 +264,7 @@ void main() {
       monthKey: '2026-10',
       paymentMethodUuid: 'timezone-ahead-method',
       amountMinor: 12000,
-      balanceSnapshotAt:
-          DateTime(2026, 9, 30, 23, 30).millisecondsSinceEpoch,
+      balanceSnapshotAt: DateTime(2026, 9, 30, 23, 30).millisecondsSinceEpoch,
       updatedAt: DateTime(2026, 9, 30, 23, 30).millisecondsSinceEpoch,
     );
 
@@ -288,8 +282,7 @@ void main() {
       monthKey: '2026-09',
       paymentMethodUuid: 'timezone-ahead-method',
       amountMinor: 10000,
-      balanceSnapshotAt:
-          DateTime(2026, 9, 30, 23, 40).millisecondsSinceEpoch,
+      balanceSnapshotAt: DateTime(2026, 9, 30, 23, 40).millisecondsSinceEpoch,
       updatedAt: DateTime(2026, 9, 30, 23, 40).millisecondsSinceEpoch,
     );
     expect(
@@ -411,31 +404,27 @@ void main() {
     final now = DateTime(2026, 10, 2);
 
     expect(
-      FinanceEntryDraft.fromJson(
-        {'transaction_date': '2026-02-30'},
-        now: now,
-      ).transactionDate,
+      FinanceEntryDraft.fromJson({
+        'transaction_date': '2026-02-30',
+      }, now: now).transactionDate,
       '2026-10-02',
     );
     expect(
-      FinanceEntryDraft.fromJson(
-        {'transaction_date': '2026/10/01'},
-        now: now,
-      ).transactionDate,
+      FinanceEntryDraft.fromJson({
+        'transaction_date': '2026/10/01',
+      }, now: now).transactionDate,
       '2026-10-01',
     );
     expect(
-      FinanceEntryDraft.fromJson(
-        {'transaction_date': '2026年10月1日'},
-        now: now,
-      ).transactionDate,
+      FinanceEntryDraft.fromJson({
+        'transaction_date': '2026年10月1日',
+      }, now: now).transactionDate,
       '2026-10-01',
     );
     expect(
-      FinanceEntryDraft.fromJson(
-        {'transaction_date': '2026-10-01T23:30:00-05:00'},
-        now: now,
-      ).transactionDate,
+      FinanceEntryDraft.fromJson({
+        'transaction_date': '2026-10-01T23:30:00-05:00',
+      }, now: now).transactionDate,
       '2026-10-01',
     );
   });
@@ -484,15 +473,17 @@ void main() {
     final now = DateTime(2026, 10, 2);
 
     expect(
-      FinanceTextParser.parseQuickEntries('去年9月2日 午餐20元', now: now)
-          .single
-          .transactionDate,
+      FinanceTextParser.parseQuickEntries(
+        '去年9月2日 午餐20元',
+        now: now,
+      ).single.transactionDate,
       '2025-09-02',
     );
     expect(
-      FinanceTextParser.parseQuickEntries('前年9月2日 午餐20元', now: now)
-          .single
-          .transactionDate,
+      FinanceTextParser.parseQuickEntries(
+        '前年9月2日 午餐20元',
+        now: now,
+      ).single.transactionDate,
       '2024-09-02',
     );
     final slashDate = FinanceTextParser.parseQuickEntries(
@@ -538,10 +529,7 @@ void main() {
       isEmpty,
     );
     expect(
-      FinanceTextParser.parseQuickEntries(
-        '2026年9月230日 午餐20元',
-        now: now,
-      ),
+      FinanceTextParser.parseQuickEntries('2026年9月230日 午餐20元', now: now),
       isEmpty,
     );
     expect(
@@ -549,28 +537,32 @@ void main() {
       isEmpty,
     );
     expect(
-      FinanceTextParser.parseQuickEntries('2026-02-28 午餐20元', now: now)
-          .single
-          .transactionDate,
+      FinanceTextParser.parseQuickEntries(
+        '2026-02-28 午餐20元',
+        now: now,
+      ).single.transactionDate,
       '2026-02-28',
     );
     expect(
-      FinanceTextParser.parseQuickEntries('午餐20元', now: now)
-          .single
-          .transactionDate,
+      FinanceTextParser.parseQuickEntries(
+        '午餐20元',
+        now: now,
+      ).single.transactionDate,
       '2026-10-02',
     );
 
     expect(
-      FinanceTextParser.parseQuickEntries('九月二十一日 午餐20元', now: now)
-          .single
-          .transactionDate,
+      FinanceTextParser.parseQuickEntries(
+        '九月二十一日 午餐20元',
+        now: now,
+      ).single.transactionDate,
       '2026-09-21',
     );
     expect(
-      FinanceTextParser.parseQuickEntries('去年九月二日 午餐20元', now: now)
-          .single
-          .transactionDate,
+      FinanceTextParser.parseQuickEntries(
+        '去年九月二日 午餐20元',
+        now: now,
+      ).single.transactionDate,
       '2025-09-02',
     );
   });
@@ -585,9 +577,10 @@ void main() {
 
     for (final (dateText, expectedDate) in cases) {
       expect(
-        FinanceTextParser.parseQuickEntries('$dateText 午餐20元', now: now)
-            .single
-            .transactionDate,
+        FinanceTextParser.parseQuickEntries(
+          '$dateText 午餐20元',
+          now: now,
+        ).single.transactionDate,
         expectedDate,
         reason: dateText,
       );
@@ -628,29 +621,23 @@ void main() {
 
   test('视觉与聊天识别草案无效日期回落到基准日', () {
     final now = DateTime(2026, 10, 2);
-    final recognized = FinanceTextParser.fromRecognitionResults(
-      [
-        {
-          'isFinance': true,
-          'type': 'expense',
-          'amount': 12.34,
-          'date': '2026-02-30',
-        },
-      ],
-      now: now,
-    );
+    final recognized = FinanceTextParser.fromRecognitionResults([
+      {
+        'isFinance': true,
+        'type': 'expense',
+        'amount': 12.34,
+        'date': '2026-02-30',
+      },
+    ], now: now);
     final assistant = FinanceTextParser.extractAssistantDrafts(
       '[FINANCE_START]\n'
       '[{"type":"expense","amount":12.34,"date":"2026-02-30"}]\n'
       '[FINANCE_END]',
       now: now,
     );
-    final undatedRecognition = FinanceTextParser.fromRecognitionResults(
-      [
-        {'isFinance': true, 'type': 'expense', 'amount': 12.34},
-      ],
-      now: now,
-    );
+    final undatedRecognition = FinanceTextParser.fromRecognitionResults([
+      {'isFinance': true, 'type': 'expense', 'amount': 12.34},
+    ], now: now);
     final undatedAssistant = FinanceTextParser.extractAssistantDrafts(
       '[FINANCE_START]\n'
       '[{"type":"expense","amount":12.34}]\n'
@@ -666,17 +653,14 @@ void main() {
 
   test('识别草案仍接受中文和斜杠日期', () {
     final now = DateTime(2026, 10, 2);
-    final recognized = FinanceTextParser.fromRecognitionResults(
-      [
-        {
-          'isFinance': true,
-          'type': 'expense',
-          'amount': 12.34,
-          'date': '2026/09/02',
-        },
-      ],
-      now: now,
-    );
+    final recognized = FinanceTextParser.fromRecognitionResults([
+      {
+        'isFinance': true,
+        'type': 'expense',
+        'amount': 12.34,
+        'date': '2026/09/02',
+      },
+    ], now: now);
     final assistant = FinanceTextParser.extractAssistantDrafts(
       '[FINANCE_START]\n'
       '[{"type":"expense","amount":12.34,"date":"2026年9月2日"}]\n'
@@ -742,10 +726,7 @@ void main() {
 
     expect(groupedAmount, hasLength(1));
     expect(groupedAmount.single.amountMinor, 123456);
-    expect(
-      FinanceTextParser.parseOneSentence('午餐12,34元', now: now),
-      isNull,
-    );
+    expect(FinanceTextParser.parseOneSentence('午餐12,34元', now: now), isNull);
   });
 
   test('分期和贷款本金拒绝超出跨平台安全范围的金额', () {
@@ -805,8 +786,7 @@ void main() {
       amountMinor: 100,
       transactionDate: '2026-08-27',
       createdAt: 1787832000000,
-    ).toMap()
-      ..remove('occurred_at');
+    ).toMap()..remove('occurred_at');
 
     final restored = FinanceTransaction.fromMap(legacy);
 
@@ -820,14 +800,16 @@ void main() {
       startDate: DateTime(2026, 1, 31),
     );
 
-    expect(
-      allocations.map((item) => item.amountMinor).toList(),
-      [3334, 3333, 3333],
-    );
-    expect(
-      allocations.map((item) => dateKey(item.date)).toList(),
-      ['2026-01-31', '2026-02-28', '2026-03-31'],
-    );
+    expect(allocations.map((item) => item.amountMinor).toList(), [
+      3334,
+      3333,
+      3333,
+    ]);
+    expect(allocations.map((item) => dateKey(item.date)).toList(), [
+      '2026-01-31',
+      '2026-02-28',
+      '2026-03-31',
+    ]);
     expect(
       allocations.fold<int>(0, (sum, item) => sum + item.amountMinor),
       10000,
@@ -901,10 +883,11 @@ void main() {
       repaymentDay: 1,
       repaymentMethod: FinanceLoanRepaymentMethod.equalPrincipal,
     );
-    expect(
-      equalPrincipal.map((item) => item.principalMinor).toList(),
-      [333334, 333333, 333333],
-    );
+    expect(equalPrincipal.map((item) => item.principalMinor).toList(), [
+      333334,
+      333333,
+      333333,
+    ]);
     expect(equalPrincipal.first.paymentMinor, greaterThanOrEqualTo(333334));
     expect(equalPrincipal.last.remainingPrincipalMinor, 0);
   });
@@ -1111,26 +1094,11 @@ void main() {
     expect(csv, contains('日期,类型,金额,分类,关联账户'));
     expect(csv, contains("\n'=1+1,支出,-1.00"));
     expect(csv, contains("\n'=1+1,支出,-1.00,未分类,已删除或未知付款方式"));
-    expect(
-      csv,
-      contains('2026-09-03,收入,2.50,未分类,已删除或未知到账账户'),
-    );
-    expect(
-      csv,
-      contains('2026-09-04,退款,0.70,未分类,已删除或未知退款到账账户'),
-    );
-    expect(
-      csv,
-      contains('2026-09-05,支出,-1.00,未分类,💳 导出同名账户（同名账户 1/2）'),
-    );
-    expect(
-      csv,
-      contains('2026-09-06,收入,2.00,未分类,💳 导出同名账户（同名账户 2/2）'),
-    );
-    expect(
-      csv,
-      contains('2026-09-07,支出,-1.00,🗂️ 历史分类（已删除）,未指定'),
-    );
+    expect(csv, contains('2026-09-03,收入,2.50,未分类,已删除或未知到账账户'));
+    expect(csv, contains('2026-09-04,退款,0.70,未分类,已删除或未知退款到账账户'));
+    expect(csv, contains('2026-09-05,支出,-1.00,未分类,💳 导出同名账户（同名账户 1/2）'));
+    expect(csv, contains('2026-09-06,收入,2.00,未分类,💳 导出同名账户（同名账户 2/2）'));
+    expect(csv, contains('2026-09-07,支出,-1.00,🗂️ 历史分类（已删除）,未指定'));
   });
 
   test('汇总会将退款从实际支出中扣除', () {
@@ -1315,16 +1283,15 @@ void main() {
     );
 
     expect(child.parentUuid, parent.uuid);
-    expect(
-      financeCategoryDisplayName(child, [parent, child]),
-      '餐饮 - 奶茶',
-    );
+    expect(financeCategoryDisplayName(child, [parent, child]), '餐饮 - 奶茶');
     expect(
       FinanceDefaults.categories
           .where((item) => item['parent_uuid'] != null)
-          .every((item) => FinanceDefaults.categories.any(
-                (parent) => parent['uuid'] == item['parent_uuid'],
-              )),
+          .every(
+            (item) => FinanceDefaults.categories.any(
+              (parent) => parent['uuid'] == item['parent_uuid'],
+            ),
+          ),
       isTrue,
     );
   });
@@ -1378,10 +1345,7 @@ void main() {
     );
 
     expect(onlineShopping['name'], '网购');
-    expect(
-      onlineShopping['parent_uuid'],
-      'finance-system-category-food',
-    );
+    expect(onlineShopping['parent_uuid'], 'finance-system-category-food');
     expect(onlineShopping['type'], 'expense');
   });
 
@@ -1411,13 +1375,7 @@ void main() {
       isFalse,
     );
     await AppSettingsStorage.setFinanceCloudSyncEnabled('alice', true);
-    expect(
-      await AppSettingsStorage.isFinanceCloudSyncEnabled('alice'),
-      isTrue,
-    );
-    expect(
-      await AppSettingsStorage.isFinanceCloudSyncEnabled('bob'),
-      isFalse,
-    );
+    expect(await AppSettingsStorage.isFinanceCloudSyncEnabled('alice'), isTrue);
+    expect(await AppSettingsStorage.isFinanceCloudSyncEnabled('bob'), isFalse);
   });
 }

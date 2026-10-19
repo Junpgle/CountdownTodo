@@ -84,14 +84,21 @@ class _FinanceTrashManagerState extends State<FinanceTrashManager> {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
     final query = _search.text.trim().toLowerCase();
-    final visible = widget.entries
-        .where((entry) =>
-            (_kind == null || entry.kind == _kind) &&
-            (query.isEmpty ||
-                '${entry.title} ${entry.details} ${entry.amountLabel} ${formatFinanceAmount(entry.amountMinor)}'
-                    .toLowerCase()
-                    .contains(query)))
-        .toList();
+    final entryCountByKind = <FinanceTrashKind, int>{};
+    final visibleByKind = <FinanceTrashKind, List<FinanceTrashEntry>>{};
+    var visibleCount = 0;
+    for (final entry in widget.entries) {
+      entryCountByKind[entry.kind] = (entryCountByKind[entry.kind] ?? 0) + 1;
+      if (_kind != null && entry.kind != _kind) continue;
+      if (query.isNotEmpty &&
+          !'${entry.title} ${entry.details} ${entry.amountLabel} ${formatFinanceAmount(entry.amountMinor)}'
+              .toLowerCase()
+              .contains(query)) {
+        continue;
+      }
+      (visibleByKind[entry.kind] ??= <FinanceTrashEntry>[]).add(entry);
+      visibleCount++;
+    }
     return FinancePageList(topPadding: widget.topPadding, children: [
       const FinancePageIntro(
         icon: Icons.restore_from_trash_outlined,
@@ -133,18 +140,18 @@ class _FinanceTrashManagerState extends State<FinanceTrashManager> {
           ),
           for (final kind in FinanceTrashKind.values)
             if (_kind == kind ||
-                widget.entries.any((entry) => entry.kind == kind))
+                (entryCountByKind[kind] ?? 0) > 0)
               ChoiceChip(
                 key: ValueKey('finance-trash-filter-${kind.name}'),
                 label: Text(
-                    '${kind.label} ${widget.entries.where((entry) => entry.kind == kind).length}'),
+                    '${kind.label} ${entryCountByKind[kind] ?? 0}'),
                 selected: _kind == kind,
                 showCheckmark: false,
                 onSelected: (_) => setState(() => _kind = kind),
               ),
         ]),
         const SizedBox(height: 20),
-        if (visible.isEmpty)
+        if (visibleCount == 0)
           FinanceEmptyState(
             icon: Icons.search_off_outlined,
             title: '没有找到匹配记录',
@@ -156,7 +163,7 @@ class _FinanceTrashManagerState extends State<FinanceTrashManager> {
             }),
           ),
         for (final kind in FinanceTrashKind.values)
-          if (visible.any((entry) => entry.kind == kind)) ...[
+          if (visibleByKind[kind]?.isNotEmpty == true) ...[
             Padding(
               padding: const EdgeInsets.only(bottom: 12),
               child: Row(children: [
@@ -166,7 +173,7 @@ class _FinanceTrashManagerState extends State<FinanceTrashManager> {
                     child: Text(kind.label,
                         style: theme.textTheme.titleSmall
                             ?.copyWith(fontWeight: FontWeight.w700))),
-                Text('${visible.where((entry) => entry.kind == kind).length} 项',
+                Text('${visibleByKind[kind]!.length} 项',
                     style: theme.textTheme.labelMedium
                         ?.copyWith(color: colors.onSurfaceVariant)),
               ]),
@@ -174,9 +181,7 @@ class _FinanceTrashManagerState extends State<FinanceTrashManager> {
             FinanceAdaptiveFields(
               minChildWidth: 330,
               children: [
-                for (final entry
-                    in visible.where((entry) => entry.kind == kind))
-                  _entryCard(entry)
+                for (final entry in visibleByKind[kind]!) _entryCard(entry)
               ],
             ),
             const SizedBox(height: 24),

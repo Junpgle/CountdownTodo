@@ -131,61 +131,91 @@ class _IridescentActionPanelState extends State<_IridescentActionPanel>
   @override
   Widget build(BuildContext context) {
     return RepaintBoundary(
-      child: AnimatedBuilder(
-        animation: _controller,
-        builder: (context, child) {
-          return CustomPaint(
-            foregroundPainter: _IridescentBorderPainter(
-              progress: _controller.value,
-              isDark: widget.isDark,
-            ),
-            child: Padding(padding: const EdgeInsets.all(2.5), child: child),
-          );
-        },
-        child: widget.child,
+      child: CustomPaint(
+        foregroundPainter: _IridescentBorderPainter(
+          animation: _controller,
+          isDark: widget.isDark,
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(2.5),
+          child: widget.child,
+        ),
       ),
     );
   }
 }
 
-class _IridescentBorderPainter extends CustomPainter {
-  final double progress;
-  final bool isDark;
+class _IridescentGradientTransform extends GradientTransform {
+  const _IridescentGradientTransform(this.animation);
 
-  const _IridescentBorderPainter({
-    required this.progress,
-    required this.isDark,
-  });
+  final Animation<double> animation;
+
+  @override
+  Matrix4? transform(Rect bounds, {TextDirection? textDirection}) {
+    final radians = animation.value * math.pi * 2;
+    final sinRadians = math.sin(radians);
+    final oneMinusCosRadians = 1 - math.cos(radians);
+    final center = bounds.center;
+    final originX = sinRadians * center.dy + oneMinusCosRadians * center.dx;
+    final originY = -sinRadians * center.dx + oneMinusCosRadians * center.dy;
+
+    return Matrix4.identity()
+      ..translateByDouble(originX, originY, 0, 1)
+      ..rotateZ(radians);
+  }
+}
+
+class _IridescentBorderPainter extends CustomPainter {
+  _IridescentBorderPainter({required this.animation, required this.isDark})
+    : super(repaint: animation);
+
+  final Animation<double> animation;
+  final bool isDark;
+  late final List<Color> _gradientColors = [
+    const Color(0xFF5EFCE8).withValues(alpha: isDark ? 0.88 : 0.82),
+    const Color(0xFF736EFE).withValues(alpha: isDark ? 0.82 : 0.74),
+    const Color(0xFFFF7CE5).withValues(alpha: isDark ? 0.90 : 0.78),
+    const Color(0xFFFFF275).withValues(alpha: isDark ? 0.86 : 0.72),
+    const Color(0xFF7CFF8A).withValues(alpha: isDark ? 0.84 : 0.70),
+    const Color(0xFF5EFCE8).withValues(alpha: isDark ? 0.88 : 0.82),
+  ];
+  late final SweepGradient _gradient = SweepGradient(
+    colors: _gradientColors,
+    stops: const [0, 0.18, 0.38, 0.58, 0.78, 1],
+    transform: _IridescentGradientTransform(animation),
+  );
+  late final Paint _glowPaint = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeCap = StrokeCap.round
+    ..strokeWidth = 5.0
+    ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5);
+  late final List<Paint> _ripplePaints = List<Paint>.generate(
+    3,
+    (index) => Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeWidth = index == 0 ? 2.1 : 1.1
+      ..blendMode = BlendMode.srcOver,
+    growable: false,
+  );
+  late final Paint _sheenPaint = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = 1
+    ..color = Colors.white.withValues(alpha: isDark ? 0.28 : 0.38);
 
   @override
   void paint(Canvas canvas, Size size) {
     if (size.isEmpty) return;
 
+    final progress = animation.value;
     final rect = Offset.zero & size;
     final center = rect.center;
     final borderRect = rect.deflate(2.0);
     final radius = BorderRadius.circular(18).toRRect(borderRect);
-    final colors = <Color>[
-      const Color(0xFF5EFCE8).withValues(alpha: isDark ? 0.88 : 0.82),
-      const Color(0xFF736EFE).withValues(alpha: isDark ? 0.82 : 0.74),
-      const Color(0xFFFF7CE5).withValues(alpha: isDark ? 0.90 : 0.78),
-      const Color(0xFFFFF275).withValues(alpha: isDark ? 0.86 : 0.72),
-      const Color(0xFF7CFF8A).withValues(alpha: isDark ? 0.84 : 0.70),
-      const Color(0xFF5EFCE8).withValues(alpha: isDark ? 0.88 : 0.82),
-    ];
-    final shader = SweepGradient(
-      colors: colors,
-      stops: const [0, 0.18, 0.38, 0.58, 0.78, 1],
-      transform: GradientRotation(progress * math.pi * 2),
-    ).createShader(rect);
+    final shader = _gradient.createShader(rect);
 
-    final glowPaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round
-      ..strokeWidth = 5.0
-      ..shader = shader
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5);
-    canvas.drawRRect(radius, glowPaint);
+    _glowPaint.shader = shader;
+    canvas.drawRRect(radius, _glowPaint);
 
     for (var i = 0; i < 3; i++) {
       final wave = math.sin((progress * math.pi * 2) + i * 1.7);
@@ -199,19 +229,10 @@ class _IridescentBorderPainter extends CustomPainter {
         height: borderRect.height - (i * 1.2) - wave,
       );
       final ripple = BorderRadius.circular(18.0 - i).toRRect(rippleRect);
-      final paint = Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeCap = StrokeCap.round
-        ..strokeWidth = i == 0 ? 2.1 : 1.1
-        ..shader = shader
-        ..blendMode = BlendMode.srcOver;
+      final paint = _ripplePaints[i]..shader = shader;
       canvas.drawRRect(ripple, paint);
     }
 
-    final sheenPaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1
-      ..color = Colors.white.withValues(alpha: isDark ? 0.28 : 0.38);
     final highlightRect = borderRect
         .deflate(1.2)
         .shift(
@@ -222,13 +243,13 @@ class _IridescentBorderPainter extends CustomPainter {
         );
     canvas.drawRRect(
       BorderRadius.circular(16).toRRect(highlightRect),
-      sheenPaint,
+      _sheenPaint,
     );
   }
 
   @override
   bool shouldRepaint(covariant _IridescentBorderPainter oldDelegate) {
-    return oldDelegate.progress != progress || oldDelegate.isDark != isDark;
+    return oldDelegate.animation != animation || oldDelegate.isDark != isDark;
   }
 }
 
@@ -350,26 +371,20 @@ class _ThinkingLoaderState extends State<_ThinkingLoader>
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          ...List.generate(3, (i) {
-            return AnimatedBuilder(
-              animation: _controller,
-              builder: (context, child) {
-                final offset = (i * 0.2);
-                double value = (_controller.value + offset) % 1.0;
-                return Container(
-                  width: 6,
-                  height: 6,
-                  margin: const EdgeInsets.symmetric(horizontal: 2),
-                  decoration: BoxDecoration(
-                    color: colorScheme.primary.withValues(
-                      alpha: 0.2 + (0.8 * (1.0 - (value - 0.5).abs() * 2)),
-                    ),
-                    shape: BoxShape.circle,
-                  ),
-                );
-              },
-            );
-          }),
+          ...List.generate(
+            3,
+            (index) => Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 2),
+              child: CustomPaint(
+                size: const Size.square(6),
+                painter: _ThinkingDotPainter(
+                  animation: _controller,
+                  color: colorScheme.primary,
+                  index: index,
+                ),
+              ),
+            ),
+          ),
           const SizedBox(width: 10),
           Text(
             '正在思考',
@@ -383,6 +398,37 @@ class _ThinkingLoaderState extends State<_ThinkingLoader>
       ),
     );
   }
+}
+
+class _ThinkingDotPainter extends CustomPainter {
+  _ThinkingDotPainter({
+    required this.animation,
+    required this.color,
+    required this.index,
+  }) : super(repaint: animation);
+
+  final Animation<double> animation;
+  final Color color;
+  final int index;
+  final Paint _dotPaint = Paint()..isAntiAlias = true;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final value = (animation.value + index * 0.2) % 1.0;
+    final alpha = 0.2 + (0.8 * (1.0 - (value - 0.5).abs() * 2));
+    _dotPaint.color = color.withValues(alpha: alpha);
+    canvas.drawCircle(
+      Offset(size.width / 2, size.height / 2),
+      size.shortestSide / 2,
+      _dotPaint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _ThinkingDotPainter oldDelegate) =>
+      oldDelegate.animation != animation ||
+      oldDelegate.color != color ||
+      oldDelegate.index != index;
 }
 
 class _DanmakuSuggestions extends StatefulWidget {

@@ -65,14 +65,30 @@ String formatCountdown(int totalSeconds) {
 // ── 日期时间格式化 ──────────────────────────────────────────
 
 class AppTimeFormats {
+  static const int _maximumCachedDateFormats = 32;
+  static final Map<(String?, String), DateFormat> _dateFormatters = {};
+
   const AppTimeFormats._();
 
-  static String format(
-    DateTime time,
-    String pattern, {
-    String? locale,
-  }) {
-    return DateFormat(pattern, locale).format(time);
+  static DateFormat _dateFormatter(String pattern, String? locale) {
+    final effectiveLocale = locale ?? Intl.defaultLocale;
+    final key = (effectiveLocale, pattern);
+    final cached = _dateFormatters[key];
+    if (cached != null) return cached;
+
+    if (_dateFormatters.length >= _maximumCachedDateFormats) {
+      _dateFormatters.clear();
+    }
+    return _dateFormatters[key] = DateFormat(pattern, locale);
+  }
+
+  /// Returns a cached formatter for callers that format many dates at once.
+  static DateFormat dateFormatter(String pattern, {String? locale}) {
+    return _dateFormatter(pattern, locale);
+  }
+
+  static String format(DateTime time, String pattern, {String? locale}) {
+    return _dateFormatter(pattern, locale).format(time);
   }
 
   static String safeFormat(
@@ -129,8 +145,10 @@ class AppTimeFormats {
   }
 
   static DateTime localFromTimestamp(int timestamp, {bool isUtc = false}) {
-    return DateTime.fromMillisecondsSinceEpoch(timestamp, isUtc: isUtc)
-        .toLocal();
+    return DateTime.fromMillisecondsSinceEpoch(
+      timestamp,
+      isUtc: isUtc,
+    ).toLocal();
   }
 
   static DateTime localFromServerTimestamp(int timestamp) {
@@ -149,10 +167,7 @@ class AppTimeFormats {
     return format(localFromServerTimestamp(timestamp), pattern);
   }
 
-  static String relativeFromServerTimestamp(
-    int timestamp, {
-    DateTime? now,
-  }) {
+  static String relativeFromServerTimestamp(int timestamp, {DateTime? now}) {
     final instant = now ?? DateTime.now();
     final date = localFromServerTimestamp(timestamp);
     final days = CalendarDateMath.daysBetween(instant, date);
@@ -177,8 +192,10 @@ class TimezoneUtils {
   }
 
   /// 将服务器 UTC 时间戳转换为设备本地显示时间
-  static String formatToLocal(int? timestamp,
-      {String pattern = 'MM-dd HH:mm'}) {
+  static String formatToLocal(
+    int? timestamp, {
+    String pattern = 'MM-dd HH:mm',
+  }) {
     return AppTimeFormats.formatServerTimestamp(timestamp, pattern: pattern);
   }
 

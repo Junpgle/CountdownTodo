@@ -37,11 +37,7 @@ class HabitTimePointChartData {
     return _displayMinute(target, target, dayBoundaryMinute);
   }
 
-  static int _displayMinute(
-    int minute,
-    int? target,
-    int dayBoundaryMinute,
-  ) {
+  static int _displayMinute(int minute, int? target, int dayBoundaryMinute) {
     final boundary = dayBoundaryMinute.clamp(0, 24 * 60);
     if (target != null && target >= boundary && minute < boundary) {
       return minute + 24 * 60;
@@ -70,8 +66,7 @@ class HabitTimePointChart extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final scale = _HabitTimePointChartScale.fromData(data);
-    final recordedCount =
-        data.where((point) => point.actualTime != null).length;
+    final recordedCount = scale.recordedCount;
     final firstDate = data.isEmpty ? null : data.first.date;
     final middleDate = data.length < 3 ? null : data[data.length ~/ 2].date;
     final lastDate = data.length < 2 ? null : data.last.date;
@@ -127,10 +122,7 @@ class HabitTimePointChart extends StatelessWidget {
     );
   }
 
-  Widget _buildYAxis(
-    ColorScheme colorScheme,
-    _HabitTimePointChartScale scale,
-  ) {
+  Widget _buildYAxis(ColorScheme colorScheme, _HabitTimePointChartScale scale) {
     return Stack(
       children: [
         for (final minute in scale.tickMinutes)
@@ -159,10 +151,7 @@ class HabitTimePointChart extends StatelessWidget {
   Widget _dateLabel(DateTime date, ColorScheme colorScheme) {
     return Text(
       '${date.month}/${date.day}',
-      style: TextStyle(
-        fontSize: 10.5,
-        color: colorScheme.onSurfaceVariant,
-      ),
+      style: TextStyle(fontSize: 10.5, color: colorScheme.onSurfaceVariant),
     );
   }
 
@@ -179,28 +168,44 @@ class HabitTimePointChart extends StatelessWidget {
 class _HabitTimePointChartScale {
   final int minMinute;
   final int maxMinute;
+  final int recordedCount;
 
   const _HabitTimePointChartScale({
     required this.minMinute,
     required this.maxMinute,
+    this.recordedCount = 0,
   });
 
   factory _HabitTimePointChartScale.fromData(
     List<HabitTimePointChartData> data,
   ) {
-    final values = <int>[];
+    var hasValue = false;
+    var minValue = 0;
+    var maxValue = 0;
+    var recordedCount = 0;
+
+    void include(int minute) {
+      if (!hasValue) {
+        hasValue = true;
+        minValue = minute;
+        maxValue = minute;
+        return;
+      }
+      if (minute < minValue) minValue = minute;
+      if (minute > maxValue) maxValue = minute;
+    }
+
     for (final point in data) {
+      if (point.actualTime != null) recordedCount++;
       final actual = point.displayActualTimeMinute;
       final target = point.displayTargetTimeMinute;
-      if (actual != null) values.add(actual);
-      if (target != null) values.add(target);
+      if (actual != null) include(actual);
+      if (target != null) include(target);
     }
-    if (values.isEmpty) {
+    if (!hasValue) {
       return const _HabitTimePointChartScale(minMinute: 0, maxMinute: 1440);
     }
 
-    final minValue = values.reduce(math.min);
-    final maxValue = values.reduce(math.max);
     final valueRange = maxValue - minValue;
     final padding = math.max(60, (valueRange * 0.25).ceil());
     var minMinute = ((minValue - padding).clamp(0, 2880) ~/ 60) * 60;
@@ -213,13 +218,14 @@ class _HabitTimePointChartScale {
     return _HabitTimePointChartScale(
       minMinute: minMinute,
       maxMinute: maxMinute,
+      recordedCount: recordedCount,
     );
   }
 
   List<int> get tickMinutes => List<int>.generate(
-        5,
-        (index) => (minMinute + (maxMinute - minMinute) * index / 4).round(),
-      );
+    5,
+    (index) => (minMinute + (maxMinute - minMinute) * index / 4).round(),
+  );
 
   bool contains(int minute) => minute >= minMinute && minute <= maxMinute;
 
@@ -250,12 +256,7 @@ class _HabitTimePointChartPainter extends CustomPainter {
     for (final minute in scale.tickMinutes) {
       if (!scale.contains(minute)) continue;
       final y = _yFor(minute, size.height);
-      _drawDashedLine(
-        canvas,
-        Offset(0, y),
-        Offset(size.width, y),
-        gridPaint,
-      );
+      _drawDashedLine(canvas, Offset(0, y), Offset(size.width, y), gridPaint);
     }
 
     _drawTargetLines(canvas, size);
@@ -274,8 +275,10 @@ class _HabitTimePointChartPainter extends CustomPainter {
         previousPoint = null;
         continue;
       }
-      final point =
-          Offset(_xFor(index, size.width), _yFor(target, size.height));
+      final point = Offset(
+        _xFor(index, size.width),
+        _yFor(target, size.height),
+      );
       if (previousPoint != null) {
         _drawDashedLine(canvas, previousPoint, point, targetPaint);
       }
@@ -293,6 +296,12 @@ class _HabitTimePointChartPainter extends CustomPainter {
     final dotOutlinePaint = Paint()
       ..color = colorScheme.surface
       ..style = PaintingStyle.fill;
+    final onTimeDotPaint = Paint()
+      ..color = colorScheme.tertiary
+      ..style = PaintingStyle.fill;
+    final lateDotPaint = Paint()
+      ..color = colorScheme.error
+      ..style = PaintingStyle.fill;
 
     Offset? previousPoint;
     var previousIndex = -2;
@@ -304,8 +313,10 @@ class _HabitTimePointChartPainter extends CustomPainter {
         continue;
       }
 
-      final point =
-          Offset(_xFor(index, size.width), _yFor(minute, size.height));
+      final point = Offset(
+        _xFor(index, size.width),
+        _yFor(minute, size.height),
+      );
       if (previousPoint != null && previousIndex == index - 1) {
         canvas.drawLine(previousPoint, point, linePaint);
       }
@@ -314,10 +325,7 @@ class _HabitTimePointChartPainter extends CustomPainter {
       canvas.drawCircle(
         point,
         3.5,
-        Paint()
-          ..color =
-              data[index].onTime ? colorScheme.tertiary : colorScheme.error
-          ..style = PaintingStyle.fill,
+        data[index].onTime ? onTimeDotPaint : lateDotPaint,
       );
       previousPoint = point;
       previousIndex = index;
@@ -333,12 +341,7 @@ class _HabitTimePointChartPainter extends CustomPainter {
     return height - scale.ratioFor(minute) * height;
   }
 
-  void _drawDashedLine(
-    Canvas canvas,
-    Offset start,
-    Offset end,
-    Paint paint,
-  ) {
+  void _drawDashedLine(Canvas canvas, Offset start, Offset end, Paint paint) {
     final distance = (end - start).distance;
     if (distance <= 0) return;
     final direction = (end - start) / distance;

@@ -50,7 +50,9 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
   @override
   void initState() {
     super.initState();
-    if (widget.initialPreferences) _section = _FinanceSettingsSection.preferences;
+    if (widget.initialPreferences) {
+      _section = _FinanceSettingsSection.preferences;
+    }
     FinanceStorage.revision.addListener(_onFinanceChanged);
     _load();
   }
@@ -114,7 +116,8 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
       context: context,
       builder: (_) => FinanceCatalogEditor(
         initialName: category?.name ?? '',
-        initialIcon: category?.icon ??
+        initialIcon:
+            category?.icon ??
             (type == FinanceCategoryType.expense ? '📦' : '💰'),
         categoryType: category?.type ?? type,
         isEditing: category != null,
@@ -128,28 +131,28 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
                   name: draft.name,
                   type: draft.type!,
                   parentUuid: draft.parentUuid,
-                  sortOrder: _categories.length * 10)
+                  sortOrder: _categories.length * 10,
+                )
               : FinanceCategory.fromMap(category.toMap());
           updated
             ..name = draft.name
             ..icon = draft.icon
             ..parentUuid = draft.parentUuid;
           if (category != null) updated.markAsChanged();
-          await FinanceRepository.saveCategory(
-            updated,
-            original: category,
-          );
+          await FinanceRepository.saveCategory(updated, original: category);
           savedCategory = updated;
         },
       ),
     );
     if (saved != true || !mounted) return null;
     await _load();
-    _showMessage(category?.isSystem == true
-        ? '系统分类名称和图标已保存'
-        : category == null
-            ? '分类已添加'
-            : '分类已保存');
+    _showMessage(
+      category?.isSystem == true
+          ? '系统分类名称和图标已保存'
+          : category == null
+          ? '分类已添加'
+          : '分类已保存',
+    );
     return savedCategory;
   }
 
@@ -175,21 +178,21 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
         lockParent: true,
         isSubcategory: true,
         onSave: (draft) async {
-          await FinanceRepository.saveCategory(FinanceCategory(
-            name: draft.name,
-            type: draft.type!,
-            icon: draft.icon,
-            parentUuid: draft.parentUuid,
-            sortOrder: _nextSubcategorySortOrder(parent),
-          ));
+          await FinanceRepository.saveCategory(
+            FinanceCategory(
+              name: draft.name,
+              type: draft.type!,
+              icon: draft.icon,
+              parentUuid: draft.parentUuid,
+              sortOrder: _nextSubcategorySortOrder(parent),
+            ),
+          );
         },
       ),
     );
     if (saved != true || !mounted) return;
     await _load();
-    _showMessage(
-      '细分类已添加到“${financeCategoryDisplayName(parent, _categories)}”',
-    );
+    _showMessage('细分类已添加到“${financeCategoryDisplayName(parent, _categories)}”');
   }
 
   Future<void> _archiveCategory(FinanceCategory category) async {
@@ -231,16 +234,15 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
         onSave: (draft) async {
           final updated = method == null
               ? FinancePaymentMethod(
-                  name: draft.name, sortOrder: _paymentMethods.length * 10)
+                  name: draft.name,
+                  sortOrder: _paymentMethods.length * 10,
+                )
               : FinancePaymentMethod.fromMap(method.toMap());
           updated
             ..name = draft.name
             ..icon = draft.icon;
           if (method != null) updated.markAsChanged();
-          await FinanceRepository.savePaymentMethod(
-            updated,
-            original: method,
-          );
+          await FinanceRepository.savePaymentMethod(updated, original: method);
         },
       ),
     );
@@ -252,8 +254,10 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
 
   Future<void> _archivePaymentMethod(FinancePaymentMethod method) async {
     if (method.isSystem) return;
-    final displayName =
-        financePaymentMethodDisplayName(method, _paymentMethods);
+    final displayName = financePaymentMethodDisplayName(
+      method,
+      _paymentMethods,
+    );
     final confirmed = await _confirmArchive(
       title: '归档“$displayName”？',
       message: '归档后，新建账单中不再显示该付款方式；历史账单不受影响。',
@@ -271,14 +275,16 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
   }
 
   Future<void> _openAutomation() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const FinanceAutomationScreen()),
-    );
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const FinanceAutomationScreen()));
     if (mounted) await _load();
   }
 
-  Future<bool?> _confirmArchive(
-      {required String title, required String message}) {
+  Future<bool?> _confirmArchive({
+    required String title,
+    required String message,
+  }) {
     return showAppDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -287,11 +293,13 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
         content: Text(message),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('取消')),
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
           FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('归档')),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('归档'),
+          ),
         ],
       ),
     );
@@ -299,8 +307,7 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
 
   void _showMessage(String message) {
     if (!mounted) return;
-    AppSnackBars.showSnackBar(
-        context, SnackBar(content: Text(message)));
+    AppSnackBars.showSnackBar(context, SnackBar(content: Text(message)));
   }
 
   @override
@@ -317,67 +324,70 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
         child: _isLoading
             ? const Center(child: CircularProgressIndicator())
             : _loadError != null
-                ? Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
+            ? Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.cloud_off_outlined, size: 36),
+                    const SizedBox(height: 12),
+                    Text(_loadError!),
+                    const SizedBox(height: 12),
+                    OutlinedButton.icon(
+                      onPressed: _load,
+                      icon: const Icon(Icons.refresh_rounded),
+                      label: const Text('重新加载'),
+                    ),
+                  ],
+                ),
+              )
+            : SafeArea(
+                top: false,
+                child: LayoutBuilder(
+                  builder: (context, constraints) => RefreshIndicator(
+                    onRefresh: _load,
+                    child: ListView(
+                      padding: EdgeInsets.fromLTRB(
+                        math.max(16, (constraints.maxWidth - 1000) / 2),
+                        topBarHeight + 20,
+                        math.max(16, (constraints.maxWidth - 1000) / 2),
+                        32,
+                      ),
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      keyboardDismissBehavior:
+                          ScrollViewKeyboardDismissBehavior.onDrag,
                       children: [
-                        const Icon(Icons.cloud_off_outlined, size: 36),
-                        const SizedBox(height: 12),
-                        Text(_loadError!),
-                        const SizedBox(height: 12),
-                        OutlinedButton.icon(
-                            onPressed: _load,
-                            icon: const Icon(Icons.refresh_rounded),
-                            label: const Text('重新加载')),
+                        _buildSectionPicker(context),
+                        const SizedBox(height: 20),
+                        if (_section == _FinanceSettingsSection.catalog)
+                          FinanceCatalogManager(
+                            initialSection: widget.initialCatalogSection,
+                            categories: _categories,
+                            paymentMethods: _paymentMethods,
+                            onAddCategory: (type) =>
+                                _showCategoryEditor(type: type),
+                            onAddSubcategory: _addSubcategory,
+                            onEditCategory: (category) async {
+                              await _showCategoryEditor(
+                                type: category.type,
+                                category: category,
+                              );
+                            },
+                            onArchiveCategory: _archiveCategory,
+                            onRestoreCategory: _unarchiveCategory,
+                            onAddPaymentMethod: () => _showPaymentEditor(),
+                            onEditPaymentMethod: (method) async {
+                              await _showPaymentEditor(method: method);
+                            },
+                            onArchivePaymentMethod: _archivePaymentMethod,
+                            onRestorePaymentMethod: _unarchivePaymentMethod,
+                          )
+                        else
+                          _buildPreferences(context),
                       ],
                     ),
-                  )
-                : SafeArea(
-                    top: false,
-                    child: LayoutBuilder(
-                      builder: (context, constraints) => RefreshIndicator(
-                        onRefresh: _load,
-                        child: ListView(
-                          padding: EdgeInsets.fromLTRB(
-                            math.max(16, (constraints.maxWidth - 1000) / 2),
-                            topBarHeight + 20,
-                            math.max(16, (constraints.maxWidth - 1000) / 2),
-                            32,
-                          ),
-                          physics: const AlwaysScrollableScrollPhysics(),
-                          keyboardDismissBehavior:
-                              ScrollViewKeyboardDismissBehavior.onDrag,
-                          children: [
-                            _buildSectionPicker(context),
-                            const SizedBox(height: 20),
-                            if (_section == _FinanceSettingsSection.catalog)
-                              FinanceCatalogManager(
-                                initialSection: widget.initialCatalogSection,
-                                categories: _categories,
-                                paymentMethods: _paymentMethods,
-                                onAddCategory: (type) =>
-                                    _showCategoryEditor(type: type),
-                                onAddSubcategory: _addSubcategory,
-                                onEditCategory: (category) async {
-                                  await _showCategoryEditor(
-                                      type: category.type, category: category);
-                                },
-                                onArchiveCategory: _archiveCategory,
-                                onRestoreCategory: _unarchiveCategory,
-                                onAddPaymentMethod: () => _showPaymentEditor(),
-                                onEditPaymentMethod: (method) async {
-                                  await _showPaymentEditor(method: method);
-                                },
-                                onArchivePaymentMethod: _archivePaymentMethod,
-                                onRestorePaymentMethod: _unarchivePaymentMethod,
-                              )
-                            else
-                              _buildPreferences(context),
-                          ],
-                        ),
-                      ),
-                    ),
                   ),
+                ),
+              ),
       ),
     );
   }
@@ -417,9 +427,13 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
               style: ButtonStyle(
                 minimumSize: const WidgetStatePropertyAll(Size(0, 48)),
                 padding: const WidgetStatePropertyAll(
-                    EdgeInsets.symmetric(horizontal: 18)),
-                side: WidgetStatePropertyAll(BorderSide(
-                    color: colors.outlineVariant.withValues(alpha: 0.6))),
+                  EdgeInsets.symmetric(horizontal: 18),
+                ),
+                side: WidgetStatePropertyAll(
+                  BorderSide(
+                    color: colors.outlineVariant.withValues(alpha: 0.6),
+                  ),
+                ),
               ),
             ),
           ),
@@ -443,21 +457,29 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
                 color: colors.secondaryContainer,
                 borderRadius: BorderRadius.circular(18),
               ),
-              child:
-                  Icon(Icons.tune_rounded, color: colors.onSecondaryContainer),
+              child: Icon(
+                Icons.tune_rounded,
+                color: colors.onSecondaryContainer,
+              ),
             ),
             const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('其他设置',
-                      style: theme.textTheme.titleLarge
-                          ?.copyWith(fontWeight: FontWeight.w700)),
+                  Text(
+                    '其他设置',
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                   const SizedBox(height: 4),
-                  Text('管理同步、提醒和自动化，不会和分类目录混在一起',
-                      style: theme.textTheme.bodySmall
-                          ?.copyWith(color: colors.onSurfaceVariant)),
+                  Text(
+                    '管理同步、提醒和自动化，不会和分类目录混在一起',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: colors.onSurfaceVariant,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -471,7 +493,8 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(24),
             side: BorderSide(
-                color: colors.outlineVariant.withValues(alpha: 0.45)),
+              color: colors.outlineVariant.withValues(alpha: 0.45),
+            ),
           ),
           clipBehavior: Clip.antiAlias,
           child: Column(
@@ -483,12 +506,16 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
                     : (value) async {
                         setState(() => _cloudSyncEnabled = value);
                         await AppSettingsStorage.setFinanceCloudSyncEnabled(
-                            widget.username, value);
+                          widget.username,
+                          value,
+                        );
                         if (value) StorageService.requestSync(widget.username);
                         if (!mounted) return;
-                        _showMessage(value
-                            ? '已开启记账云同步，现有本地数据将排队同步'
-                            : '已停止后续记账同步；不会中断待办、习惯等其他正在进行的同步');
+                        _showMessage(
+                          value
+                              ? '已开启记账云同步，现有本地数据将排队同步'
+                              : '已停止后续记账同步；不会中断待办、习惯等其他正在进行的同步',
+                        );
                       },
                 title: const Text('记账云同步'),
                 subtitle: const Text('默认仅保存在本机；开启后同步到当前账号'),
@@ -502,14 +529,16 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
                   children: [
                     Text(
                       '小类点击方式',
-                      style: theme.textTheme.titleSmall
-                          ?.copyWith(fontWeight: FontWeight.w600),
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       '选择在当前页展开账单，或进入账单筛选',
-                      style: theme.textTheme.bodySmall
-                          ?.copyWith(color: colors.onSurfaceVariant),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colors.onSurfaceVariant,
+                      ),
                     ),
                     const SizedBox(height: 12),
                     SizedBox(
@@ -517,23 +546,16 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
                       child: SegmentedButton<bool>(
                         key: const ValueKey('finance-category-tap-mode'),
                         segments: const [
-                          ButtonSegment(
-                            value: false,
-                            label: Text('当前页展开'),
-                          ),
-                          ButtonSegment(
-                            value: true,
-                            label: Text('账单筛选'),
-                          ),
+                          ButtonSegment(value: false, label: Text('当前页展开')),
+                          ButtonSegment(value: true, label: Text('账单筛选')),
                         ],
                         selected: {_categoryTapOpensLedger},
                         onSelectionChanged: (selection) async {
                           final opensLedger = selection.single;
-                          setState(
-                            () => _categoryTapOpensLedger = opensLedger,
+                          setState(() => _categoryTapOpensLedger = opensLedger);
+                          await AppSettingsStorage.setFinanceCategoryTapOpensLedger(
+                            opensLedger,
                           );
-                          await AppSettingsStorage
-                              .setFinanceCategoryTapOpensLedger(opensLedger);
                         },
                       ),
                     ),

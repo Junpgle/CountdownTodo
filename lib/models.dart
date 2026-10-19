@@ -249,6 +249,12 @@ class TodoItem {
     updatedAt = now > updatedAt ? now : updatedAt + 1;
   }
 
+  /// Automatic recurrence maintenance must not turn an old completion or date
+  /// into a new user edit. Keep the source write time for legacy LWW servers.
+  void markRecurrenceMaintenanceChanged() {
+    version++;
+  }
+
   DateTime get effectiveStartTime => DateTime.fromMillisecondsSinceEpoch(
         createdDate ?? createdAt,
         isUtc: true,
@@ -257,7 +263,18 @@ class TodoItem {
   TodoTimeMode get timeMode {
     final end = dueDate?.toLocal();
     if (end == null) return TodoTimeMode.unscheduled;
-    if (isAllDay || looksLikeLegacyDateOnlyRange(effectiveStartTime, end)) {
+    return _timeModeForStartAndEnd(effectiveStartTime, end);
+  }
+
+  /// Computes [timeMode] using a start time that the caller already resolved.
+  TodoTimeMode timeModeForStartTime(DateTime startTime) {
+    final end = dueDate?.toLocal();
+    if (end == null) return TodoTimeMode.unscheduled;
+    return _timeModeForStartAndEnd(startTime, end);
+  }
+
+  TodoTimeMode _timeModeForStartAndEnd(DateTime startTime, DateTime end) {
+    if (isAllDay || looksLikeLegacyDateOnlyRange(startTime, end)) {
       return TodoTimeMode.dateOnly;
     }
     return TodoTimeMode.deadline;
@@ -269,7 +286,13 @@ class TodoItem {
   /// Date-only tasks remain valid through the end of their local calendar day.
   DateTime? get effectiveDueAt {
     final due = dueDate;
-    if (due == null || !isDateOnly) return due;
+    if (due == null) return null;
+    return effectiveDueAtForTimeMode(timeMode);
+  }
+
+  DateTime? effectiveDueAtForTimeMode(TodoTimeMode timeMode) {
+    final due = dueDate;
+    if (due == null || timeMode != TodoTimeMode.dateOnly) return due;
     final localDue = due.toLocal();
     final nextDay = DateTime(localDue.year, localDue.month, localDue.day + 1);
     return nextDay.subtract(const Duration(milliseconds: 1));
@@ -403,6 +426,41 @@ class TodoItem {
         'conflict_data':
             serverVersionData != null ? jsonEncode(serverVersionData) : null,
       };
+
+  /// Returns an independent snapshot without serializing every scalar field.
+  /// The conflict payload is copied through JSON because it may contain nested
+  /// maps and lists that callers can mutate after the snapshot is taken.
+  TodoItem detachedCopy() => TodoItem(
+        id: id.contains('-') ? id : const Uuid().v4(),
+        title: title,
+        isDone: isDone,
+        isDeleted: isDeleted,
+        version: version,
+        updatedAt: updatedAt,
+        createdAt: createdAt,
+        createdDate: createdDate,
+        recurrence: recurrence,
+        recurrenceSeriesId: _emptyStringToNull(recurrenceSeriesId),
+        customIntervalDays: customIntervalDays,
+        recurrenceEndDate: _localDateCopy(recurrenceEndDate),
+        dueDate: _localDateCopy(dueDate),
+        remark: remark,
+        imagePath: imagePath,
+        originalText: originalText,
+        groupId: groupId,
+        reminderMinutes: reminderMinutes,
+        teamUuid: teamUuid,
+        creatorId: creatorId,
+        creatorName: creatorName,
+        teamName: teamName,
+        collabType: collabType,
+        hasConflict: hasConflict,
+        serverVersionData: serverVersionData == null
+            ? null
+            : JsonValueParser.toMap(jsonEncode(serverVersionData)),
+        isAllDay: isAllDay,
+        categoryId: categoryId,
+      );
 
   factory TodoItem.fromSql(Map<String, dynamic> map) => TodoItem.fromJson(map);
 
@@ -675,6 +733,11 @@ int _parseTimestamp(dynamic val) {
 
 DateTime? _parseDateField(dynamic val) {
   return JsonValueParser.localDateTime(val);
+}
+
+DateTime? _localDateCopy(DateTime? value) {
+  if (value == null) return null;
+  return _parseDateField(value.toUtc().millisecondsSinceEpoch);
 }
 
 String? _emptyStringToNull(String? value) {

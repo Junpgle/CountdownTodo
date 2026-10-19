@@ -18,9 +18,7 @@ Future<void> _pumpQuiz(WidgetTester tester, String username) async {
     }),
   });
 
-  await tester.pumpWidget(
-    MaterialApp(home: QuizScreen(username: username)),
-  );
+  await tester.pumpWidget(MaterialApp(home: QuizScreen(username: username)));
   await tester.pumpAndSettle();
 }
 

@@ -420,41 +420,47 @@ void main() {
         expect(await f.db.query('op_logs'), hasLength(1));
       },
     );
-    test('changed avoidance defaults reject an old otherwise-free candidate', () async {
-      final username = PlanAvailabilityFixture.username;
-      final windows = PlanAvailabilityPreferences.defaultWindows;
-      await PlanAvailabilityPreferences.save(
-        username,
-        windows,
-        {},
-        bufferBefore: 0,
-        bufferAfter: 0,
-      );
-      final initialPreferences =
-          await PlanAvailabilityPreferences.load(username);
-      final choice = await choose(query(
-        before: 0,
-        after: 0,
-        start: 720,
-        end: 840,
-        defaults: '0:0',
-        avoidanceDefaults: initialPreferences.avoidanceKey,
-      ));
-      await PlanAvailabilityPreferences.save(
-        username,
-        windows,
-        {windows.first},
-        bufferBefore: 0,
-        bufferAfter: 0,
-      );
+    test(
+      'changed avoidance defaults reject an old otherwise-free candidate',
+      () async {
+        final username = PlanAvailabilityFixture.username;
+        final windows = PlanAvailabilityPreferences.defaultWindows;
+        await PlanAvailabilityPreferences.save(
+          username,
+          windows,
+          {},
+          bufferBefore: 0,
+          bufferAfter: 0,
+        );
+        final initialPreferences = await PlanAvailabilityPreferences.load(
+          username,
+        );
+        final choice = await choose(
+          query(
+            before: 0,
+            after: 0,
+            start: 720,
+            end: 840,
+            defaults: '0:0',
+            avoidanceDefaults: initialPreferences.avoidanceKey,
+          ),
+        );
+        await PlanAvailabilityPreferences.save(
+          username,
+          windows,
+          {windows.first},
+          bufferBefore: 0,
+          bufferAfter: 0,
+        );
 
-      await expectLater(
-        repository.save(choice, draft(choice), sync: false),
-        throwsA(isA<PlanAvailabilityException>()),
-      );
-      expect(await f.db.query('todo_plan_blocks'), isEmpty);
-      expect(await f.db.query('op_logs'), isEmpty);
-    });
+        await expectLater(
+          repository.save(choice, draft(choice), sync: false),
+          throwsA(isA<PlanAvailabilityException>()),
+        );
+        expect(await f.db.query('todo_plan_blocks'), isEmpty);
+        expect(await f.db.query('op_logs'), isEmpty);
+      },
+    );
     test('fresh nonoverlapping occupancy intruding buffer rejects with zero writes', () async {
       final choice = await choose(query());
       await f.fixed('new-neighbor', at(9), at(9, 55));

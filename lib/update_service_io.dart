@@ -295,10 +295,18 @@ class _AnnouncementCarouselDialogState
 
 class UpdateService {
   static final GitHubResourceService _resourceService = GitHubResourceService();
+  static final RegExp _announcementUnixMillisecondsPattern =
+      RegExp(r'(1\d{12})');
+  static final RegExp _announcementUnixSecondsPattern = RegExp(r'(1\d{9})');
+  static final RegExp _announcementDateDigitsPattern =
+      RegExp(r'(\d{14}|\d{12}|\d{10}|\d{8})');
   static const String manifestUrl =
       "https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master/update_manifest.json";
   static String get fallbackManifestUrl {
-    final base = ApiService.effectiveBaseUrl.replaceFirst(RegExp(r'/$'), '');
+    final baseUrl = ApiService.effectiveBaseUrl;
+    final base = baseUrl.endsWith('/')
+        ? baseUrl.substring(0, baseUrl.length - 1)
+        : baseUrl;
     return '$base/api/manifest';
   }
 
@@ -524,7 +532,9 @@ class UpdateService {
   static int parseAnnouncementSortKey(String id) {
     if (id.isEmpty) return 0;
 
-    final unixMs = RegExp(r'(1\d{12})').firstMatch(id)?.group(1);
+    final unixMs = _announcementUnixMillisecondsPattern
+        .firstMatch(id)
+        ?.group(1);
     if (unixMs != null) {
       final ms = int.tryParse(unixMs);
       if (ms != null) {
@@ -533,7 +543,7 @@ class UpdateService {
       }
     }
 
-    final unixSec = RegExp(r'(1\d{9})').firstMatch(id)?.group(1);
+    final unixSec = _announcementUnixSecondsPattern.firstMatch(id)?.group(1);
     if (unixSec != null) {
       final sec = int.tryParse(unixSec);
       if (sec != null) {
@@ -543,7 +553,7 @@ class UpdateService {
       }
     }
 
-    final matches = RegExp(r'(\d{14}|\d{12}|\d{10}|\d{8})')
+    final matches = _announcementDateDigitsPattern
         .allMatches(id)
         .map((m) => m.group(0)!)
         .toList();

@@ -273,10 +273,14 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
     final username = await StorageService.getLoginSession();
     if (username == null) return;
     final todos = await StorageService.getTodos(username);
-    final courses = await CourseService.getAllCourses(username);
     await ReminderScheduleService.scheduleAll(
       todos: todos,
-      courses: courses,
+      courses: const <CourseItem>[],
+      loadCourses: (from, to) => CourseService.getCoursesForDateRange(
+        username,
+        from: from,
+        to: to,
+      ),
       expectedUsername: username,
       force: true,
     );

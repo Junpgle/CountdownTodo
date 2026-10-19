@@ -30,6 +30,18 @@ class _HabitCreationDraft {
   final int? defaultFocusMinutes;
 }
 
+enum AiTodoActionWriteGroup {
+  newTodos,
+  updatedTodos,
+  timeLogs,
+  countdowns,
+  todoGroups,
+  pomodoroTags,
+  newPlanBlocks,
+  updatedPlanBlocks,
+  fixedSchedules,
+}
+
 class AiTodoActionExecutionResult {
   const AiTodoActionExecutionResult({
     required this.newTodos,
@@ -48,6 +60,7 @@ class AiTodoActionExecutionResult {
     this.newFixedSchedules = const [],
     this.updatedFixedSchedules = const [],
     this.newHabitActions = const [],
+    this.actionsByWriteGroup = const {},
   });
 
   final List<TodoItem> newTodos;
@@ -66,13 +79,22 @@ class AiTodoActionExecutionResult {
   final List<FixedScheduleItem> newFixedSchedules;
   final List<FixedScheduleItem> updatedFixedSchedules;
   final List<AiTodoAction> newHabitActions;
+  final Map<AiTodoActionWriteGroup, List<AiTodoAction>> actionsByWriteGroup;
 
-  bool get hasChanges =>
+  List<AiTodoAction> actionsForWriteGroup(AiTodoActionWriteGroup group) =>
+      actionsByWriteGroup[group] ?? const [];
+
+  void markWriteGroupAdded(AiTodoActionWriteGroup group) {
+    for (final action in actionsForWriteGroup(group)) {
+      action.isAdded = true;
+    }
+  }
+
+  bool get hasNonPomodoroChanges =>
       newTodos.isNotEmpty ||
       updatedTodos.isNotEmpty ||
       newTimeLogs.isNotEmpty ||
       updatedTimeLogs.isNotEmpty ||
-      pomodoroActions.isNotEmpty ||
       newCountdowns.isNotEmpty ||
       updatedCountdowns.isNotEmpty ||
       newTodoGroups.isNotEmpty ||
@@ -84,9 +106,17 @@ class AiTodoActionExecutionResult {
       newFixedSchedules.isNotEmpty ||
       updatedFixedSchedules.isNotEmpty ||
       newHabitActions.isNotEmpty;
+
+  bool get hasChanges => hasNonPomodoroChanges || pomodoroActions.isNotEmpty;
 }
 
 class AiTodoActionExecutor {
+  static final RegExp _habitMinuteListSeparatorPattern = RegExp(r'[,，\s]+');
+  static final RegExp _habitMinuteOfDayPattern = RegExp(
+    r'^(\d{1,2}):(\d{1,2})$',
+  );
+  static final RegExp _habitTokenNormalizationPattern = RegExp(r'[\s_-]+');
+
   static AiTodoActionExecutionResult execute({
     required List<AiTodoAction> actions,
     required List<Map<String, dynamic>> existingTodos,
@@ -115,6 +145,15 @@ class AiTodoActionExecutor {
     final newFixedSchedules = <FixedScheduleItem>[];
     final updatedFixedSchedules = <FixedScheduleItem>[];
     final newHabitActions = <AiTodoAction>[];
+    final actionsByWriteGroup = <AiTodoActionWriteGroup, List<AiTodoAction>>{};
+    Map<String, int>? newFixedScheduleIndexById;
+    Map<String, int>? updatedFixedScheduleIndexById;
+    Map<String, int>? updatedTodoIndexById;
+    Set<String>? existingTodoGroupIds;
+    void registerWrite(AiTodoActionWriteGroup group, AiTodoAction action) {
+      (actionsByWriteGroup[group] ??= <AiTodoAction>[]).add(action);
+    }
+
     final selectedActions = actions.where(
       (action) => action.isSelected && !action.isAdded && !action.isIgnored,
     );
@@ -122,35 +161,42 @@ class AiTodoActionExecutor {
 
     for (final action in selectedActions) {
       if (action.isFixedScheduleAction) {
+        final isCreate = action.type == AiTodoActionType.createFixedSchedule;
         final schedules = _buildFixedSchedules(
           action,
-          existingFixedSchedules: [
-            ...existingFixedSchedules,
-            ...newFixedSchedules,
-            ...updatedFixedSchedules,
-          ],
+          existingFixedSchedules: isCreate
+              ? const <FixedScheduleItem>[]
+              : [
+                  ...existingFixedSchedules,
+                  ...newFixedSchedules,
+                  ...updatedFixedSchedules,
+                ],
           now: createdAtFallback,
         );
         if (schedules.isNotEmpty) {
-          final target = action.type == AiTodoActionType.createFixedSchedule
+          final target = isCreate
               ? newFixedSchedules
               : updatedFixedSchedules;
+          final targetIndexById =
+              isCreate
+              ? (newFixedScheduleIndexById ??= <String, int>{})
+              : (updatedFixedScheduleIndexById ??= <String, int>{});
           for (final schedule in schedules) {
-            final existingIndex =
-                target.indexWhere((item) => item.id == schedule.id);
-            if (existingIndex == -1) {
+            final existingIndex = targetIndexById[schedule.id];
+            if (existingIndex == null) {
+              targetIndexById[schedule.id] = target.length;
               target.add(schedule);
             } else {
               target[existingIndex] = schedule;
             }
           }
-          action.isAdded = true;
+          registerWrite(AiTodoActionWriteGroup.fixedSchedules, action);
         }
         continue;
       }
 
       if (action.isHabitAction) {
-        if (_buildHabitCreationDraft(action) != null) {
+        if (_isValidHabitAction(action)) {
           // 习惯需要异步写入 HabitRepository，先交给聊天确认卡保存，
           // 不在这个同步执行阶段提前标记 isAdded。
           newHabitActions.add(action);
@@ -166,14 +212,13 @@ class AiTodoActionExecutor {
           } else {
             updatedTimeLogs.add(timeLog);
           }
-          action.isAdded = true;
+          registerWrite(AiTodoActionWriteGroup.timeLogs, action);
         }
         continue;
       }
 
       if (action.isPomodoroAction) {
         pomodoroActions.add(action);
-        action.isAdded = true;
         continue;
       }
 
@@ -189,20 +234,30 @@ class AiTodoActionExecutor {
         var planAction = action;
         final newTitle = action.newTodoTitle;
         if (action.type == AiTodoActionType.createPlanBlock &&
-            newTitle != null && action.todoId?.isNotEmpty != true) {
-          final matches = planningTodos.where((todo) =>
-              todo['title']?.toString().trim() == newTitle &&
-              todo['is_deleted'] != true && todo['isDeleted'] != true).toList();
+            newTitle != null &&
+            action.todoId?.isNotEmpty != true) {
+          final matches = planningTodos
+              .where(
+                (todo) =>
+                    todo['title']?.toString().trim() == newTitle &&
+                    todo['is_deleted'] != true &&
+                    todo['isDeleted'] != true,
+              )
+              .toList();
           if (matches.length > 1) continue;
           if (matches.isEmpty) {
             pendingTodo = TodoItem(
               title: newTitle,
               createdAt: createdAtFallback.millisecondsSinceEpoch,
             );
-            planningTodos.add({'id': pendingTodo.id, 'title': pendingTodo.title});
+            planningTodos.add({
+              'id': pendingTodo.id,
+              'title': pendingTodo.title,
+            });
           }
           planAction = AiTodoAction.fromJson(action.toJson());
-          planAction.todoId = pendingTodo?.id ?? matches.single['id']?.toString();
+          planAction.todoId =
+              pendingTodo?.id ?? matches.single['id']?.toString();
         }
         final block = _buildPlanBlock(
           planAction,
@@ -214,10 +269,11 @@ class AiTodoActionExecutor {
           action.todoId = planAction.todoId;
           if (action.type == AiTodoActionType.createPlanBlock) {
             newPlanBlocks.add(block);
+            registerWrite(AiTodoActionWriteGroup.newPlanBlocks, action);
           } else {
             updatedPlanBlocks.add(block);
+            registerWrite(AiTodoActionWriteGroup.updatedPlanBlocks, action);
           }
-          action.isAdded = true;
         }
         continue;
       }
@@ -238,7 +294,7 @@ class AiTodoActionExecutor {
           } else {
             updatedCountdowns.add(countdown);
           }
-          action.isAdded = true;
+          registerWrite(AiTodoActionWriteGroup.countdowns, action);
         }
         continue;
       }
@@ -251,7 +307,7 @@ class AiTodoActionExecutor {
           } else {
             updatedTodoGroups.add(group);
           }
-          action.isAdded = true;
+          registerWrite(AiTodoActionWriteGroup.todoGroups, action);
         }
         continue;
       }
@@ -264,24 +320,42 @@ class AiTodoActionExecutor {
           } else {
             updatedPomodoroTags.add(tag);
           }
-          action.isAdded = true;
+          registerWrite(AiTodoActionWriteGroup.pomodoroTags, action);
         }
         continue;
       }
 
       if (action.mutatesExistingItem) {
+        if (action.type == AiTodoActionType.deleteTodo &&
+            !_hasSuccessfulReplacementForDelete(action, actions)) {
+          continue;
+        }
+        if (action.type == AiTodoActionType.categorizeTodo &&
+            !action.hasGroupId) {
+          continue;
+        }
+        final requestedGroupId = action.groupId?.trim();
+        if (action.hasGroupId && requestedGroupId?.isNotEmpty == true) {
+          final groupIds = existingTodoGroupIds ??= {
+            for (final group in existingTodoGroups)
+              if (!group.isDeleted) group.id,
+          };
+          if (!groupIds.contains(requestedGroupId)) continue;
+        }
         final updates = _buildUpdatedTodos(action, existingTodos);
         if (updates.isNotEmpty) {
+          final updateIndexById =
+              updatedTodoIndexById ??= <String, int>{};
           for (final updated in updates) {
-            final existingIndex =
-                updatedTodos.indexWhere((todo) => todo.id == updated.id);
-            if (existingIndex == -1) {
+            final existingIndex = updateIndexById[updated.id];
+            if (existingIndex == null) {
+              updateIndexById[updated.id] = updatedTodos.length;
               updatedTodos.add(updated);
             } else {
               updatedTodos[existingIndex] = updated;
             }
           }
-          action.isAdded = true;
+          registerWrite(AiTodoActionWriteGroup.updatedTodos, action);
         }
         continue;
       }
@@ -293,7 +367,7 @@ class AiTodoActionExecutor {
       );
       if (created != null) {
         newTodos.add(created);
-        action.isAdded = true;
+        registerWrite(AiTodoActionWriteGroup.newTodos, action);
       }
     }
 
@@ -314,18 +388,21 @@ class AiTodoActionExecutor {
       newFixedSchedules: newFixedSchedules,
       updatedFixedSchedules: updatedFixedSchedules,
       newHabitActions: newHabitActions,
+      actionsByWriteGroup: actionsByWriteGroup,
     );
   }
 
-  /// 保存已经通过执行器校验的习惯创建动作。
+  /// 执行已经通过校验并由用户确认的习惯操作。
   ///
-  /// 习惯不是 TodoItem：这里写入真实的 HabitGoal 和首个规则版本；
-  /// 完成一次型习惯在 HabitRepository 内按需创建并绑定循环待办系列。
+  /// 习惯不是 TodoItem：这里通过 HabitRepository 创建、更新或软删除目标，
+  /// 规则更新保留历史版本；完成一次型习惯在仓库内按需绑定循环待办系列。
   static Future<List<HabitGoal>> saveHabitActions({
     required String username,
     required List<AiTodoAction> actions,
+    Future<void> Function()? onActionSaved,
   }) async {
-    final created = <HabitGoal>[];
+    final changed = <HabitGoal>[];
+    final goals = await HabitRepository.getGoals();
     for (final action in actions) {
       if (!action.isHabitAction ||
           !action.isSelected ||
@@ -333,27 +410,491 @@ class AiTodoActionExecutor {
           action.isIgnored) {
         continue;
       }
-      final draft = _buildHabitCreationDraft(action);
-      if (draft == null) continue;
-      final goal = await HabitRepository.createGoal(
-        name: draft.name,
-        icon: draft.icon,
-        sourceType: draft.sourceType,
-        sourceIds: draft.sourceIds,
-        rule: draft.rule,
-        displayMode: draft.displayMode,
-        defaultFocusMinutes: draft.defaultFocusMinutes,
-        username: username,
-      );
+      late final HabitGoal goal;
+      switch (action.type) {
+        case AiTodoActionType.createHabit:
+          final draft = _buildHabitCreationDraft(action);
+          if (draft == null) continue;
+          goal = await HabitRepository.createGoal(
+            name: draft.name,
+            icon: draft.icon,
+            sourceType: draft.sourceType,
+            sourceIds: draft.sourceIds,
+            rule: draft.rule,
+            displayMode: draft.displayMode,
+            defaultFocusMinutes: draft.defaultFocusMinutes,
+            username: username,
+          );
+        case AiTodoActionType.updateHabit:
+        case AiTodoActionType.deleteHabit:
+          final habitUuid = action.habitUuid?.trim() ?? '';
+          final matches = goals
+              .where((candidate) =>
+                  candidate.uuid == habitUuid && !candidate.isDeleted)
+              .toList(growable: false);
+          if (matches.length != 1) {
+            throw StateError('待修改或删除的习惯已不存在，请重新查询后再试');
+          }
+          goal = matches.single;
+          if (action.type == AiTodoActionType.updateHabit) {
+            await _updateHabitFromAction(
+              goal: goal,
+              action: action,
+              username: username,
+            );
+          } else {
+            await HabitRepository.deleteGoal(goal);
+          }
+        default:
+          continue;
+      }
       action.isAdded = true;
-      created.add(goal);
+      changed.add(goal);
+      await onActionSaved?.call();
     }
-    return created;
+    return changed;
   }
 
-  static _HabitCreationDraft? _buildHabitCreationDraft(
-    AiTodoAction action,
-  ) {
+  static bool _isValidHabitAction(AiTodoAction action) {
+    switch (action.type) {
+      case AiTodoActionType.createHabit:
+        return _buildHabitCreationDraft(action) != null;
+      case AiTodoActionType.updateHabit:
+        final fields = action.metadata['habitUpdateFields'];
+        return action.habitUuid?.trim().isNotEmpty == true &&
+            fields is Map &&
+            _isValidHabitUpdateFields(fields);
+      case AiTodoActionType.deleteHabit:
+        return action.habitUuid?.trim().isNotEmpty == true;
+      default:
+        return false;
+    }
+  }
+
+  static Future<void> _updateHabitFromAction({
+    required HabitGoal goal,
+    required AiTodoAction action,
+    required String username,
+  }) async {
+    final rawFields = action.metadata['habitUpdateFields'];
+    if (rawFields is! Map || rawFields.isEmpty) {
+      throw StateError('习惯修改草案没有可执行的字段');
+    }
+    final fields = Map<String, dynamic>.from(rawFields);
+    if (!_isValidHabitUpdateFields(fields)) {
+      throw StateError('习惯修改草案包含无效字段或取值');
+    }
+    var goalChanged = false;
+    if (fields.containsKey('name')) {
+      final value = fields['name']?.toString().trim() ?? '';
+      if (value.isEmpty) throw StateError('习惯名称不能为空');
+      goal.name = value;
+      goalChanged = true;
+    }
+    if (fields.containsKey('icon')) {
+      final value = fields['icon']?.toString().trim() ?? '';
+      if (value.isEmpty) throw StateError('习惯图标不能为空');
+      goal.icon = value;
+      goalChanged = true;
+    }
+    if (fields.containsKey('displayMode')) {
+      final value = _parseHabitDisplayMode(fields['displayMode']?.toString());
+      if (value == null) throw StateError('习惯展示位置无效');
+      goal.displayMode = value;
+      goalChanged = true;
+    }
+    if (fields.containsKey('defaultFocusMinutes')) {
+      final value = int.tryParse(fields['defaultFocusMinutes'].toString());
+      if (value == null || value < 1 || value > 240) {
+        throw StateError('默认专注时长必须为1至240分钟');
+      }
+      if (goal.sourceType != HabitSourceType.durationCheckIn &&
+          goal.sourceType != HabitSourceType.pomodoroTag) {
+        throw StateError('只有时长习惯可以修改默认专注时长');
+      }
+      goal.defaultFocusMinutes = value;
+      goalChanged = true;
+    }
+
+    const ruleFields = {
+      'targetValue',
+      'unit',
+      'durationMinutes',
+      'targetTimeMinute',
+      'timeComparison',
+      'timeToleranceMinutes',
+      'periodType',
+      'weekdaysMask',
+      'customIntervalDays',
+      'dayBoundaryMinute',
+      'quickValues',
+      'reminderPolicy',
+    };
+    final updatesRule = ruleFields.any(fields.containsKey);
+    final effectiveFromOption =
+        fields['effectiveFromOption']?.toString() ?? 'today';
+    if (!updatesRule) {
+      if (!goalChanged) throw StateError('习惯修改草案没有可执行的字段');
+      await HabitRepository.updateGoal(goal, username: username);
+      return;
+    }
+
+    final rules = await HabitRepository.getRules(habitUuid: goal.uuid);
+    final now = DateTime.now();
+    final currentRule = HabitRuleResolver.effectiveRule(rules, now) ??
+        (rules.where((rule) => !rule.isDeleted).toList()
+          ..sort((a, b) => (a.effectiveFromDate ?? '')
+              .compareTo(b.effectiveFromDate ?? '')))
+            .lastOrNull;
+    if (currentRule == null) throw StateError('没有找到该习惯当前生效的规则');
+    final pendingDayBoundary = fields.containsKey('dayBoundaryMinute')
+        ? _parseHabitMinute(fields['dayBoundaryMinute'])!
+        : currentRule.dayBoundaryMinute;
+    final todayKey = HabitRuleResolver.dayKey(
+      HabitRuleResolver.logicalDateFor(now, pendingDayBoundary),
+    );
+    final hasFutureRule = rules.any(
+      (rule) {
+        final effectiveFromDate = rule.effectiveFromDate;
+        return !rule.isDeleted &&
+            effectiveFromDate != null &&
+            effectiveFromDate.compareTo(todayKey) > 0;
+      },
+    );
+    if (hasFutureRule && effectiveFromOption != 'all') {
+      throw StateError(
+        '该习惯已有未来生效的规则版本；为避免改写预定规则，请先在习惯编辑页核对生效范围',
+      );
+    }
+
+    if (fields.containsKey('targetValue') &&
+        goal.sourceType != HabitSourceType.quantityCheckIn) {
+      throw StateError('只有数量型习惯可以修改targetValue');
+    }
+    if (fields.containsKey('durationMinutes') &&
+        goal.sourceType != HabitSourceType.durationCheckIn &&
+        goal.sourceType != HabitSourceType.pomodoroTag) {
+      throw StateError('只有时长型习惯可以修改durationMinutes');
+    }
+    if (fields.containsKey('targetTimeMinute') &&
+        goal.sourceType != HabitSourceType.timeCheckIn) {
+      throw StateError('只有时间点习惯可以修改targetTimeMinute');
+    }
+    if (fields.containsKey('unit') &&
+        goal.sourceType != HabitSourceType.quantityCheckIn &&
+        goal.sourceType != HabitSourceType.durationCheckIn &&
+        goal.sourceType != HabitSourceType.pomodoroTag) {
+      throw StateError('该习惯类型不支持修改unit');
+    }
+    if (fields.containsKey('quickValues') &&
+        goal.sourceType != HabitSourceType.quantityCheckIn) {
+      throw StateError('只有数量型习惯可以修改quickValues');
+    }
+    if ((fields.containsKey('timeComparison') ||
+            fields.containsKey('timeToleranceMinutes')) &&
+        goal.sourceType != HabitSourceType.timeCheckIn) {
+      throw StateError('只有时间点习惯可以修改时间比较规则');
+    }
+
+    final periodType = fields.containsKey('periodType')
+        ? _parseHabitPeriodType(fields['periodType']?.toString())
+        : currentRule.periodType;
+    if (periodType == null) throw StateError('习惯周期无效');
+    final targetValue = fields.containsKey('targetValue')
+        ? _habitNumber(fields['targetValue'])
+        : currentRule.targetValue;
+    final durationMinutes = fields.containsKey('durationMinutes')
+        ? _habitInteger(fields['durationMinutes'])
+        : null;
+    final updatedRule = HabitGoalRuleRevision(
+      habitUuid: goal.uuid,
+      periodType: periodType,
+      weekdaysMask: fields.containsKey('weekdaysMask')
+          ? _habitInteger(fields['weekdaysMask']) ??
+                currentRule.weekdaysMask
+          : currentRule.weekdaysMask,
+      customIntervalDays: fields.containsKey('customIntervalDays')
+          ? _habitInteger(fields['customIntervalDays'])
+          : currentRule.customIntervalDays,
+      targetValue: durationMinutes != null
+          ? (durationMinutes * 60).toDouble()
+          : targetValue ?? currentRule.targetValue,
+      unit: fields.containsKey('unit')
+          ? fields['unit']?.toString() ?? ''
+          : currentRule.unit,
+      targetTimeMinute: fields.containsKey('targetTimeMinute')
+          ? _parseHabitMinute(fields['targetTimeMinute'])
+          : currentRule.targetTimeMinute,
+      timeComparison: fields.containsKey('timeComparison')
+          ? _parseHabitTimeComparison(fields['timeComparison']?.toString()) ??
+                currentRule.timeComparison
+          : currentRule.timeComparison,
+      timeToleranceMinutes: fields.containsKey('timeToleranceMinutes')
+          ? _habitInteger(fields['timeToleranceMinutes']) ??
+                currentRule.timeToleranceMinutes
+          : currentRule.timeToleranceMinutes,
+      dayBoundaryMinute: fields.containsKey('dayBoundaryMinute')
+          ? _parseHabitMinute(fields['dayBoundaryMinute']) ??
+                currentRule.dayBoundaryMinute
+          : currentRule.dayBoundaryMinute,
+      quickValues: fields.containsKey('quickValues')
+          ? action.quickValues
+          : List<int>.from(currentRule.quickValues),
+      reminderPolicy: fields.containsKey('reminderPolicy')
+          ? _mergeHabitReminderPolicy(
+              currentRule.reminderPolicy,
+              action.habitReminderPolicy ?? const {},
+            )
+          : currentRule.reminderPolicy,
+    );
+    final currentLogicalDay = HabitRuleResolver.dayKey(
+      HabitRuleResolver.logicalDateFor(DateTime.now(), updatedRule.dayBoundaryMinute),
+    );
+    final latestRule = rules.where((rule) => !rule.isDeleted).toList()
+      ..sort((a, b) => (a.effectiveFromDate ?? '')
+          .compareTo(b.effectiveFromDate ?? ''));
+    final ruleUpdatePersistsGoalWithoutVersionBump =
+        effectiveFromOption == 'all' ||
+        (effectiveFromOption != 'nextPeriod' &&
+            latestRule.isNotEmpty &&
+            latestRule.last.effectiveFromDate == currentLogicalDay);
+    if (goalChanged && ruleUpdatePersistsGoalWithoutVersionBump) {
+      goal.markAsChanged();
+    }
+    await HabitRepository.updateRule(
+      goal: goal,
+      updatedRule: updatedRule,
+      effectiveFromOption: effectiveFromOption,
+      allRules: rules,
+      fieldsToUpdate: {
+        if (fields.containsKey('targetValue') ||
+            fields.containsKey('durationMinutes'))
+          'targetValue',
+        for (final field in ruleFields)
+          if (field != 'durationMinutes' && fields.containsKey(field)) field,
+      },
+      username: username,
+    );
+  }
+
+  static bool _isValidHabitUpdateFields(Map fields) {
+    const allowedFields = {
+      'name',
+      'icon',
+      'displayMode',
+      'defaultFocusMinutes',
+      'targetValue',
+      'unit',
+      'durationMinutes',
+      'targetTimeMinute',
+      'timeComparison',
+      'timeToleranceMinutes',
+      'periodType',
+      'weekdaysMask',
+      'customIntervalDays',
+      'dayBoundaryMinute',
+      'quickValues',
+      'reminderPolicy',
+      'effectiveFromOption',
+    };
+    if (fields.isEmpty || fields.keys.any((key) => !allowedFields.contains(key))) {
+      return false;
+    }
+    if (!fields.keys.any((key) => key != 'effectiveFromOption')) return false;
+    if (fields.containsKey('name') &&
+        fields['name']?.toString().trim().isNotEmpty != true) {
+      return false;
+    }
+    if (fields.containsKey('icon') &&
+        fields['icon']?.toString().trim().isNotEmpty != true) {
+      return false;
+    }
+    if (fields.containsKey('displayMode') &&
+        _parseHabitDisplayMode(fields['displayMode']?.toString()) == null) {
+      return false;
+    }
+    final focusMinutes = _habitInteger(fields['defaultFocusMinutes']);
+    if (fields.containsKey('defaultFocusMinutes') &&
+        (focusMinutes == null || focusMinutes < 1 || focusMinutes > 240)) {
+      return false;
+    }
+    final targetValue = _habitNumber(fields['targetValue']);
+    if (fields.containsKey('targetValue') &&
+        (targetValue == null || targetValue <= 0)) {
+      return false;
+    }
+    if (fields.containsKey('unit') &&
+        fields['unit']?.toString().trim().isNotEmpty != true) {
+      return false;
+    }
+    final duration = _habitInteger(fields['durationMinutes']);
+    if (fields.containsKey('durationMinutes') &&
+        (duration == null || duration < 1)) {
+      return false;
+    }
+    final targetMinute = _parseHabitMinute(fields['targetTimeMinute']);
+    if (fields.containsKey('targetTimeMinute') &&
+        (targetMinute == null || targetMinute < 0 || targetMinute >= 1440)) {
+      return false;
+    }
+    if (fields.containsKey('timeComparison') &&
+        _parseHabitTimeComparison(fields['timeComparison']?.toString()) == null) {
+      return false;
+    }
+    final tolerance = _habitInteger(fields['timeToleranceMinutes']);
+    if (fields.containsKey('timeToleranceMinutes') &&
+        (tolerance == null || tolerance < 0)) {
+      return false;
+    }
+    final periodType = fields.containsKey('periodType')
+        ? _parseHabitPeriodType(fields['periodType']?.toString())
+        : null;
+    if (fields.containsKey('periodType') &&
+        (fields['periodType']?.toString().trim().isNotEmpty != true ||
+            periodType == null)) {
+      return false;
+    }
+    final weekdaysMask = _habitInteger(fields['weekdaysMask']);
+    if (fields.containsKey('weekdaysMask') &&
+        (weekdaysMask == null || weekdaysMask < 1 || weekdaysMask > 127)) {
+      return false;
+    }
+    final interval = _habitInteger(fields['customIntervalDays']);
+    if (fields.containsKey('customIntervalDays') &&
+        (interval == null || interval < 1)) {
+      return false;
+    }
+    if (periodType == HabitPeriodType.custom &&
+        (interval == null || interval < 1)) {
+      return false;
+    }
+    if (periodType == HabitPeriodType.weekdays && weekdaysMask == null) {
+      return false;
+    }
+    final dayBoundary = _parseHabitMinute(fields['dayBoundaryMinute']);
+    if (fields.containsKey('dayBoundaryMinute') &&
+        (dayBoundary == null || dayBoundary < 0 || dayBoundary >= 1440)) {
+      return false;
+    }
+    if (fields.containsKey('quickValues')) {
+      final values = fields['quickValues'];
+      if (values is! List ||
+          values.length > 4 ||
+          values.any((value) => (_habitInteger(value) ?? 0) < 1)) {
+        return false;
+      }
+    }
+    if (fields.containsKey('reminderPolicy')) {
+      final policy = fields['reminderPolicy'];
+      if (policy is! Map) return false;
+      final fixedTimes = policy['fixedTimes'] ?? policy['fixed_times'];
+      if (fixedTimes != null &&
+          (fixedTimes is! List ||
+              fixedTimes.any((value) {
+                final minute = _parseHabitMinute(value);
+                return minute == null || minute < 0 || minute >= 1440;
+              }))) {
+        return false;
+      }
+      for (final key in const [
+        'progressReminder',
+        'progress_reminder',
+        'nearEndReminder',
+        'near_end_reminder',
+        'dailySummaryReminder',
+        'daily_summary_reminder',
+      ]) {
+        final value = policy[key];
+        if (value != null && value is! bool &&
+            !const {'true', 'false', 'yes', 'no', '1', '0'}
+                .contains(value.toString().toLowerCase())) {
+          return false;
+        }
+      }
+    }
+    const ruleFields = {
+      'targetValue',
+      'unit',
+      'durationMinutes',
+      'targetTimeMinute',
+      'timeComparison',
+      'timeToleranceMinutes',
+      'periodType',
+      'weekdaysMask',
+      'customIntervalDays',
+      'dayBoundaryMinute',
+      'quickValues',
+      'reminderPolicy',
+    };
+    if (fields.containsKey('effectiveFromOption') &&
+        !ruleFields.any(fields.containsKey)) {
+      return false;
+    }
+    final effectiveFromOption = fields['effectiveFromOption']?.toString();
+    if (fields.containsKey('effectiveFromOption') &&
+        !const {'today', 'nextPeriod', 'all'}.contains(effectiveFromOption)) {
+      return false;
+    }
+    return true;
+  }
+
+  static int? _habitInteger(Object? value) {
+    if (value is int) return value;
+    if (value is num && value.isFinite && value == value.roundToDouble()) {
+      return value.toInt();
+    }
+    return int.tryParse(value?.toString() ?? '');
+  }
+
+  static double? _habitNumber(Object? value) {
+    final parsed = value is num ? value.toDouble() : double.tryParse(value?.toString() ?? '');
+    return parsed != null && parsed.isFinite ? parsed : null;
+  }
+
+  static HabitReminderPolicy _mergeHabitReminderPolicy(
+    HabitReminderPolicy current,
+    Map<String, dynamic> update,
+  ) => HabitReminderPolicy(
+    fixedTimes: _habitPolicyHas(update, 'fixedTimes', 'fixed_times')
+        ? _parseHabitMinuteList(update['fixedTimes'] ?? update['fixed_times'])
+        : List<int>.from(current.fixedTimes),
+    progressReminder: _habitPolicyHas(
+      update,
+      'progressReminder',
+      'progress_reminder',
+    )
+        ? _parseHabitBool(
+            update['progressReminder'] ?? update['progress_reminder'],
+          )
+        : current.progressReminder,
+    nearEndReminder: _habitPolicyHas(
+      update,
+      'nearEndReminder',
+      'near_end_reminder',
+    )
+        ? _parseHabitBool(
+            update['nearEndReminder'] ?? update['near_end_reminder'],
+          )
+        : current.nearEndReminder,
+    dailySummaryReminder: _habitPolicyHas(
+      update,
+      'dailySummaryReminder',
+      'daily_summary_reminder',
+    )
+        ? _parseHabitBool(
+            update['dailySummaryReminder'] ??
+                update['daily_summary_reminder'],
+          )
+        : current.dailySummaryReminder,
+  );
+
+  static bool _habitPolicyHas(
+    Map<String, dynamic> policy,
+    String camelCase,
+    String snakeCase,
+  ) => policy.containsKey(camelCase) || policy.containsKey(snakeCase);
+
+  static _HabitCreationDraft? _buildHabitCreationDraft(AiTodoAction action) {
     final name = action.title?.trim();
     if (name == null || name.isEmpty) return null;
 
@@ -362,7 +903,8 @@ class AiTodoActionExecutor {
     final periodType = _parseHabitPeriodType(action.habitPeriodType);
     if (periodType == null) return null;
 
-    final weekdaysMask = action.weekdaysMask ??
+    final weekdaysMask =
+        action.weekdaysMask ??
         (periodType == HabitPeriodType.weekdays ? 31 : 127);
     if (weekdaysMask < 1 || weekdaysMask > 127) return null;
     final customIntervalDays = action.customIntervalDays;
@@ -409,9 +951,8 @@ class AiTodoActionExecutor {
             targetTimeMinute >= 1440) {
           return null;
         }
-        timeComparison = _parseHabitTimeComparison(
-              action.habitTimeComparison,
-            ) ??
+        timeComparison =
+            _parseHabitTimeComparison(action.habitTimeComparison) ??
             HabitTimeComparison.before;
       case HabitSourceType.durationCheckIn:
         final durationSeconds = _habitDurationSeconds(action);
@@ -429,8 +970,10 @@ class AiTodoActionExecutor {
 
     final tolerance = action.timeToleranceMinutes ?? 0;
     if (tolerance < 0) return null;
-    final quickValues =
-        action.quickValues.where((value) => value > 0).take(4).toList();
+    final quickValues = action.quickValues
+        .where((value) => value > 0)
+        .take(4)
+        .toList();
     final effectiveFromDate = _habitEffectiveFromDate(dayBoundaryMinute);
     final rule = HabitGoalRuleRevision(
       habitUuid: '',
@@ -456,7 +999,8 @@ class AiTodoActionExecutor {
       sourceType: sourceType,
       sourceIds: sourceIds,
       rule: rule,
-      displayMode: _parseHabitDisplayMode(action.habitDisplayMode) ??
+      displayMode:
+          _parseHabitDisplayMode(action.habitDisplayMode) ??
           HabitDisplayMode.habitOnly,
       defaultFocusMinutes: defaultFocusMinutes,
     );
@@ -609,9 +1153,7 @@ class AiTodoActionExecutor {
     }
   }
 
-  static HabitReminderPolicy _parseHabitReminderPolicy(
-    AiTodoAction action,
-  ) {
+  static HabitReminderPolicy _parseHabitReminderPolicy(AiTodoAction action) {
     final raw = action.habitReminderPolicy;
     final fixedTimes = _parseHabitMinuteList(
       raw?['fixedTimes'] ?? raw?['fixed_times'],
@@ -634,8 +1176,8 @@ class AiTodoActionExecutor {
     final values = raw is List
         ? raw
         : raw is String && raw.trim().isNotEmpty
-            ? raw.split(RegExp(r'[,，\s]+'))
-            : const <dynamic>[];
+        ? raw.split(_habitMinuteListSeparatorPattern)
+        : const <dynamic>[];
     return values
         .map(_parseHabitMinute)
         .whereType<int>()
@@ -650,7 +1192,7 @@ class AiTodoActionExecutor {
     if (value != null) return value;
     final text = raw?.toString().trim();
     if (text == null) return null;
-    final match = RegExp(r'^(\d{1,2}):(\d{1,2})$').firstMatch(text);
+    final match = _habitMinuteOfDayPattern.firstMatch(text);
     if (match == null) return null;
     final hour = int.tryParse(match.group(1)!);
     final minute = int.tryParse(match.group(2)!);
@@ -675,7 +1217,7 @@ class AiTodoActionExecutor {
   }
 
   static String _normalizeHabitToken(String value) {
-    return value.toLowerCase().replaceAll(RegExp(r'[\s_-]+'), '');
+    return value.toLowerCase().replaceAll(_habitTokenNormalizationPattern, '');
   }
 
   static String _habitEffectiveFromDate(int dayBoundaryMinute) {
@@ -698,7 +1240,8 @@ class AiTodoActionExecutor {
 
       final startDate = DateTime.tryParse(template.date);
       if (startDate == null) return const [];
-      final recurrenceEnd = _parseExistingDate(action.recurrenceEndDate) ??
+      final recurrenceEnd =
+          _parseExistingDate(action.recurrenceEndDate) ??
           FixedScheduleRecurrenceService.defaultEndDate(
             startDate: startDate,
             recurrence: template.recurrence,
@@ -781,7 +1324,8 @@ class AiTodoActionExecutor {
 
     final patchedTarget = _patchFixedSchedule(action, target);
     if (patchedTarget == null) return const [];
-    final rebuildsSeries = action.hasDate ||
+    final rebuildsSeries =
+        action.hasDate ||
         action.hasRecurrence ||
         action.hasCustomIntervalDays ||
         action.hasRecurrenceEndDate;
@@ -797,7 +1341,8 @@ class AiTodoActionExecutor {
             (latest, date) =>
                 latest == null || date.isAfter(latest) ? date : latest,
           );
-      final recurrenceEnd = _parseExistingDate(action.recurrenceEndDate) ??
+      final recurrenceEnd =
+          _parseExistingDate(action.recurrenceEndDate) ??
           existingEnd ??
           FixedScheduleRecurrenceService.defaultEndDate(
             startDate: patchedDate,
@@ -824,8 +1369,10 @@ class AiTodoActionExecutor {
             ..recurrenceScope = 'occurrence';
           final itemDate = DateTime.parse(item.date);
           if (action.hasStartTime && action.startTime != null) {
-            propagated.startTime =
-                _moveScheduleTimeToDate(action.startTime!, itemDate);
+            propagated.startTime = _moveScheduleTimeToDate(
+              action.startTime!,
+              itemDate,
+            );
           }
           if (action.hasDueDate && action.dueDate != null) {
             propagated.dueDate = _moveScheduleTimeToDate(
@@ -847,7 +1394,8 @@ class AiTodoActionExecutor {
     final title = action.title?.trim();
     if (title == null || title.isEmpty) return null;
     final start = _parseExistingDate(action.startTime);
-    final end = _parseExistingDate(action.dueDate) ??
+    final end =
+        _parseExistingDate(action.dueDate) ??
         (start != null && action.durationMinutes != null
             ? start.add(Duration(minutes: action.durationMinutes!))
             : null);
@@ -862,18 +1410,19 @@ class AiTodoActionExecutor {
     }
     final reminders = action.hasReminderMinutesList
         ? action.reminderMinutesList
-            .where((value) => value >= 0)
-            .toSet()
-            .toList()
+              .where((value) => value >= 0)
+              .toSet()
+              .toList()
         : action.hasReminderMinutes
-            ? [if (action.reminderMinutes != null) action.reminderMinutes!]
-            : const <int>[15];
+        ? [if (action.reminderMinutes != null) action.reminderMinutes!]
+        : const <int>[15];
     final item = FixedScheduleItem(
       title: title,
       date: _dateKey(date),
       startTime: start?.millisecondsSinceEpoch,
       endTime: end?.millisecondsSinceEpoch,
-      status: _parseFixedScheduleStatus(action.status) ??
+      status:
+          _parseFixedScheduleStatus(action.status) ??
           FixedScheduleStatus.scheduled,
       source: FixedScheduleSource.ai,
       location: _nullableString(action.location),
@@ -928,10 +1477,12 @@ class AiTodoActionExecutor {
 
     final oldDate = DateTime.tryParse(existing.date);
     var nextDate = action.hasDate ? _parseScheduleDate(action.date) : oldDate;
-    final suppliedStart =
-        action.hasStartTime ? _parseExistingDate(action.startTime) : null;
-    final suppliedEnd =
-        action.hasDueDate ? _parseExistingDate(action.dueDate) : null;
+    final suppliedStart = action.hasStartTime
+        ? _parseExistingDate(action.startTime)
+        : null;
+    final suppliedEnd = action.hasDueDate
+        ? _parseExistingDate(action.dueDate)
+        : null;
     if (suppliedStart != null) nextDate = _day(suppliedStart);
     if (nextDate == null) return null;
 
@@ -957,9 +1508,7 @@ class AiTodoActionExecutor {
           existing.endTime != null) {
         nextEnd = suppliedStart
             .add(
-              Duration(
-                milliseconds: existing.endTime! - existing.startTime!,
-              ),
+              Duration(milliseconds: existing.endTime! - existing.startTime!),
             )
             .millisecondsSinceEpoch;
       }
@@ -1084,7 +1633,9 @@ class AiTodoActionExecutor {
         final originalStart = DateTime.fromMillisecondsSinceEpoch(
           updated.startTime,
         );
-        final originalEnd = DateTime.fromMillisecondsSinceEpoch(updated.endTime);
+        final originalEnd = DateTime.fromMillisecondsSinceEpoch(
+          updated.endTime,
+        );
         final start = action.startTime != null
             ? DateTime.tryParse(action.startTime!)
             : null;
@@ -1094,12 +1645,13 @@ class AiTodoActionExecutor {
             ? DateTime.tryParse(action.dueDate!)
             : null;
         if (action.dueDate != null && suppliedEnd == null) return null;
-        final end = suppliedEnd ??
+        final end =
+            suppliedEnd ??
             (action.durationMinutes != null
                 ? nextStart.add(Duration(minutes: action.durationMinutes!))
                 : start != null
-                    ? nextStart.add(originalEnd.difference(originalStart))
-                    : null);
+                ? nextStart.add(originalEnd.difference(originalStart))
+                : null);
         if (end != null && !end.isAfter(nextStart)) return null;
         if (start != null) updated.startTime = start.millisecondsSinceEpoch;
         if (end != null) updated.endTime = end.millisecondsSinceEpoch;
@@ -1129,17 +1681,17 @@ class AiTodoActionExecutor {
     final end = action.dueDate != null
         ? DateTime.tryParse(action.dueDate!)
         : (start != null && action.durationMinutes != null
-            ? start.add(Duration(minutes: action.durationMinutes!))
-            : null);
+              ? start.add(Duration(minutes: action.durationMinutes!))
+              : null);
     if (start == null || end == null || !end.isAfter(start)) return null;
 
     final match = existingTodos
         .where((todo) => todo['id']?.toString() == todoId)
-        .toList();
-    if (match.isEmpty) return null;
+        .firstOrNull;
+    if (match == null) return null;
     final title = action.title?.trim().isNotEmpty == true
         ? action.title!.trim()
-        : match.first['title']?.toString();
+        : match['title']?.toString();
     final plannedMinutes = max(1, end.difference(start).inMinutes);
 
     return TodoPlanBlock(
@@ -1244,8 +1796,8 @@ class AiTodoActionExecutor {
     final target = action.dueDate != null
         ? DateTime.tryParse(action.dueDate!)
         : action.startTime != null
-            ? DateTime.tryParse(action.startTime!)
-            : existing?.targetDate;
+        ? DateTime.tryParse(action.startTime!)
+        : existing?.targetDate;
     if (target == null) return null;
 
     final countdown = CountdownItem(
@@ -1258,8 +1810,8 @@ class AiTodoActionExecutor {
           : existing?.isCompleted ?? false,
       version: existing?.version ?? 1,
       createdAt: existing?.createdAt,
-      teamUuid: existing?.teamUuid,
-      teamName: existing?.teamName,
+      teamUuid: action.hasTeamUuid ? action.teamUuid : existing?.teamUuid,
+      teamName: action.hasTeamUuid ? action.teamName : existing?.teamName,
       creatorId: existing?.creatorId,
       creatorName: existing?.creatorName,
     );
@@ -1348,29 +1900,30 @@ class AiTodoActionExecutor {
     final start = action.startTime != null
         ? DateTime.tryParse(action.startTime!)
         : (existing != null
-            ? DateTime.fromMillisecondsSinceEpoch(existing.startTime)
-            : null);
+              ? DateTime.fromMillisecondsSinceEpoch(existing.startTime)
+              : null);
     final end = action.dueDate != null
         ? DateTime.tryParse(action.dueDate!)
         : (start != null && action.durationMinutes != null
-            ? start.add(Duration(minutes: action.durationMinutes!))
-            : (existing != null
-                ? action.startTime != null && start != null
-                    ? start.add(
-                        Duration(
-                          milliseconds: existing.endTime - existing.startTime,
-                        ),
-                      )
-                    : DateTime.fromMillisecondsSinceEpoch(existing.endTime)
-                : null));
+              ? start.add(Duration(minutes: action.durationMinutes!))
+              : (existing != null
+                    ? action.startTime != null && start != null
+                          ? start.add(
+                              Duration(
+                                milliseconds:
+                                    existing.endTime - existing.startTime,
+                              ),
+                            )
+                          : DateTime.fromMillisecondsSinceEpoch(
+                              existing.endTime,
+                            )
+                    : null));
     if (start == null || end == null || !end.isAfter(start)) return null;
 
     final log = TimeLogItem(
       id: existing?.id,
       title: action.title ?? existing?.title ?? '专注记录',
-      tagUuids: action.hasTagUuids
-          ? action.tagUuids
-          : existing?.tagUuids ?? [],
+      tagUuids: action.hasTagUuids ? action.tagUuids : existing?.tagUuids ?? [],
       startTime: start.millisecondsSinceEpoch,
       endTime: end.millisecondsSinceEpoch,
       remark: action.hasRemark ? action.remark : existing?.remark,
@@ -1394,7 +1947,8 @@ class AiTodoActionExecutor {
     if (target == null) return const [];
 
     final seriesId = _nullableString(
-        target['recurrenceSeriesId'] ?? target['recurrence_series_id']);
+      target['recurrenceSeriesId'] ?? target['recurrence_series_id'],
+    );
     if (action.recurrenceSeriesId?.trim().isNotEmpty == true &&
         action.recurrenceSeriesId!.trim() != seriesId) {
       return const [];
@@ -1425,7 +1979,8 @@ class AiTodoActionExecutor {
     final updatedDuration = updatedStart == null || targetUpdate.dueDate == null
         ? null
         : targetUpdate.dueDate!.difference(updatedStart);
-    final hasTimePatch = action.hasStartTime ||
+    final hasTimePatch =
+        action.hasStartTime ||
         action.hasDueDate ||
         action.hasTimeMode ||
         action.hasIsAllDay;
@@ -1436,14 +1991,14 @@ class AiTodoActionExecutor {
     final future = existingTodos.where((todo) {
       if (todo['id'] == id || _mapBool(todo, 'isDeleted')) return false;
       final candidateSeries = _nullableString(
-          todo['recurrenceSeriesId'] ?? todo['recurrence_series_id']);
+        todo['recurrenceSeriesId'] ?? todo['recurrence_series_id'],
+      );
       final candidateStart = _todoStart(todo);
       return candidateSeries == seriesId &&
           candidateStart != null &&
           targetStart != null &&
           !candidateStart.isBefore(targetStart);
-    }).toList()
-      ..sort((a, b) => _todoStart(a)!.compareTo(_todoStart(b)!));
+    }).toList()..sort((a, b) => _todoStart(a)!.compareTo(_todoStart(b)!));
 
     for (final candidate in future) {
       final candidateAction = AiTodoAction.fromJson(action.toJson())
@@ -1488,17 +2043,21 @@ class AiTodoActionExecutor {
       }
 
       final shiftedCandidateDay = candidateStart.add(shift);
-      final isPastRecurrenceEnd = recurrenceEnd != null &&
+      final isPastRecurrenceEnd =
+          recurrenceEnd != null &&
           DateTime(
             shiftedCandidateDay.year,
             shiftedCandidateDay.month,
             shiftedCandidateDay.day,
-          ).isAfter(DateTime(
-            recurrenceEnd.year,
-            recurrenceEnd.month,
-            recurrenceEnd.day,
-          ));
-      final shouldDelete = action.type == AiTodoActionType.deleteTodo ||
+          ).isAfter(
+            DateTime(
+              recurrenceEnd.year,
+              recurrenceEnd.month,
+              recurrenceEnd.day,
+            ),
+          );
+      final shouldDelete =
+          action.type == AiTodoActionType.deleteTodo ||
           (action.hasRecurrence && action.recurrence == 'none') ||
           isPastRecurrenceEnd;
       final updated = _buildUpdatedTodo(candidateAction, candidate);
@@ -1513,6 +2072,29 @@ class AiTodoActionExecutor {
     return updates;
   }
 
+  static bool _hasSuccessfulReplacementForDelete(
+    AiTodoAction deletion,
+    List<AiTodoAction> actions,
+  ) {
+    final generatedBy = deletion.metadata['generatedBy'];
+    if (generatedBy != 'split_todo' && generatedBy != 'merge_todos') {
+      return true;
+    }
+
+    final sourceId = deletion.todoId?.trim();
+    if (sourceId == null || sourceId.isEmpty) return false;
+    final replacements = actions.where((action) {
+      if (!action.sourceTodoIds.contains(sourceId)) return false;
+      return generatedBy == 'split_todo'
+          ? action.type == AiTodoActionType.splitTodo
+          : action.type == AiTodoActionType.mergeTodos;
+    }).toList();
+    return replacements.isNotEmpty &&
+        replacements.every(
+          (action) => action.isSelected && !action.isIgnored && action.isAdded,
+        );
+  }
+
   static TodoItem? _buildUpdatedTodo(
     AiTodoAction action,
     Map<String, dynamic> existing,
@@ -1522,7 +2104,8 @@ class AiTodoActionExecutor {
 
     final existingStart = _todoStart(existing);
     final existingDue = _todoDue(existing);
-    final hasTimePatch = action.hasStartTime ||
+    final hasTimePatch =
+        action.hasStartTime ||
         action.hasDueDate ||
         action.hasTimeMode ||
         action.hasIsAllDay;
@@ -1542,8 +2125,8 @@ class AiTodoActionExecutor {
     final existingGroupId = _nullableString(existing['groupId']);
     final nextGroupId =
         action.type == AiTodoActionType.categorizeTodo || action.hasGroupId
-            ? _nullableString(action.groupId)
-            : existingGroupId;
+        ? _nullableString(action.groupId)
+        : existingGroupId;
     final existingRecurrence = _existingRecurrence(existing);
     final nextRecurrence = action.hasRecurrence
         ? _parseRecurrenceName(action.recurrence)
@@ -1577,7 +2160,8 @@ class AiTodoActionExecutor {
       return null;
     }
     var recurrenceSeriesId = _nullableString(
-        existing['recurrenceSeriesId'] ?? existing['recurrence_series_id']);
+      existing['recurrenceSeriesId'] ?? existing['recurrence_series_id'],
+    );
     if (nextRecurrence != RecurrenceType.none && recurrenceSeriesId == null) {
       recurrenceSeriesId = id;
     }
@@ -1603,7 +2187,8 @@ class AiTodoActionExecutor {
       customIntervalDays: nextRecurrence == RecurrenceType.customDays
           ? nextCustomInterval
           : null,
-      recurrenceEndDate: nextRecurrence == RecurrenceType.none &&
+      recurrenceEndDate:
+          nextRecurrence == RecurrenceType.none &&
               action.hasRecurrence &&
               action.recurrence == 'none' &&
               !action.hasRecurrenceEndDate
@@ -1635,6 +2220,9 @@ class AiTodoActionExecutor {
     Map<String, int> categoryReminderDefaults,
     DateTime now,
   ) {
+    final title = action.title?.trim();
+    if (title == null || title.isEmpty) return null;
+
     final normalizedTime = _normalizeActionTime(action);
     final recurrence = _parseRecurrenceName(action.recurrence);
     final recurrenceEndDate = _parseExistingDate(action.recurrenceEndDate);
@@ -1652,16 +2240,18 @@ class AiTodoActionExecutor {
           recurrenceEndDate.year,
           recurrenceEndDate.month,
           recurrenceEndDate.day,
-        ).isBefore(DateTime(
-          normalizedTime.start!.year,
-          normalizedTime.start!.month,
-          normalizedTime.start!.day,
-        ))) {
+        ).isBefore(
+          DateTime(
+            normalizedTime.start!.year,
+            normalizedTime.start!.month,
+            normalizedTime.start!.day,
+          ),
+        )) {
       return null;
     }
     final gId = action.groupId;
     final todo = TodoItem(
-      title: action.title ?? '未命名待办',
+      title: title,
       remark: _buildRemark(action),
       dueDate: normalizedTime.due,
       createdDate: normalizedTime.start?.toUtc().millisecondsSinceEpoch,
@@ -1674,7 +2264,8 @@ class AiTodoActionExecutor {
       originalText: action.originalText,
       groupId: (gId == null || gId.isEmpty) ? null : gId,
       isAllDay: normalizedTime.isDateOnly,
-      reminderMinutes: action.reminderMinutes ??
+      reminderMinutes:
+          action.reminderMinutes ??
           (gId != null ? categoryReminderDefaults[gId] : null),
     );
     if (recurrence != RecurrenceType.none) {
@@ -1693,7 +2284,7 @@ class AiTodoActionExecutor {
   }
 
   static ({DateTime? start, DateTime? due, bool isDateOnly})
-      _normalizeActionTime(
+  _normalizeActionTime(
     AiTodoAction action, {
     DateTime? existingStart,
     DateTime? existingDue,
@@ -1710,8 +2301,8 @@ class AiTodoActionExecutor {
           return action.isAllDay
               ? TodoTimeMode.dateOnly
               : (action.hasDueDate || action.hasStartTime
-                  ? TodoTimeMode.deadline
-                  : TodoTimeMode.unscheduled);
+                    ? TodoTimeMode.deadline
+                    : TodoTimeMode.unscheduled);
         }
         if (action.isAllDay) return TodoTimeMode.dateOnly;
         if (action.dueDate != null || action.startTime != null) {
@@ -1727,19 +2318,16 @@ class AiTodoActionExecutor {
     final suppliedStart = action.hasStartTime
         ? _parseExistingDate(action.startTime)
         : existingStart;
-    final suppliedDue =
-        action.hasDueDate ? _parseExistingDate(action.dueDate) : existingDue;
+    final suppliedDue = action.hasDueDate
+        ? _parseExistingDate(action.dueDate)
+        : existingDue;
     if (requestedMode == TodoTimeMode.dateOnly) {
       final normalized = TodoItem.normalizeTimeForWrite(
         selectedDate: suppliedStart ?? suppliedDue,
         dueDate: suppliedDue,
         isDateOnly: true,
       );
-      return (
-        start: normalized.start,
-        due: normalized.due,
-        isDateOnly: true,
-      );
+      return (start: normalized.start, due: normalized.due, isDateOnly: true);
     }
 
     // 新版 TodoItem 不再写入执行时间段。即使兼容输入同时给了
@@ -1749,11 +2337,7 @@ class AiTodoActionExecutor {
       dueDate: deadline,
       isDateOnly: false,
     );
-    return (
-      start: normalized.start,
-      due: normalized.due,
-      isDateOnly: false,
-    );
+    return (start: normalized.start, due: normalized.due, isDateOnly: false);
   }
 
   static RecurrenceType _parseRecurrenceName(String recurrence) {
@@ -1785,18 +2369,16 @@ class AiTodoActionExecutor {
         : TodoTimeMode.deadline;
   }
 
-  static DateTime? _todoStart(Map<String, dynamic> todo) =>
-      _parseExistingDate(todo['startTime'] ??
-          todo['start_time'] ??
-          todo['createdDate'] ??
-          todo['created_date']);
+  static DateTime? _todoStart(Map<String, dynamic> todo) => _parseExistingDate(
+    todo['startTime'] ??
+        todo['start_time'] ??
+        todo['createdDate'] ??
+        todo['created_date'],
+  );
 
   static DateTime? _todoDue(Map<String, dynamic> todo) => _parseExistingDate(
-        todo['endTime'] ??
-            todo['end_time'] ??
-            todo['dueDate'] ??
-            todo['due_date'],
-      );
+    todo['endTime'] ?? todo['end_time'] ?? todo['dueDate'] ?? todo['due_date'],
+  );
 
   static bool _mapBool(Map<String, dynamic> map, String key) {
     final value = map[key];
@@ -1820,21 +2402,52 @@ class AiTodoActionExecutor {
     return DateTime.tryParse(value.toString());
   }
 
+  static List<T> _mergeById<T>(
+    List<T> base, {
+    List<T> appended = const [],
+    List<T> updates = const [],
+    required String Function(T) idOf,
+    T Function(T existing, T update)? mergeExisting,
+  }) {
+    final result = List<T>.of(base);
+    final indexById = <String, int>{};
+    for (var index = 0; index < result.length; index++) {
+      final id = idOf(result[index]);
+      indexById[id] ??= index;
+    }
+
+    for (final item in appended) {
+      final index = result.length;
+      result.add(item);
+      final id = idOf(item);
+      indexById[id] ??= index;
+    }
+
+    for (final update in updates) {
+      final id = idOf(update);
+      final index = indexById[id];
+      if (index == null) {
+        indexById[id] = result.length;
+        result.add(update);
+      } else {
+        result[index] = mergeExisting?.call(result[index], update) ?? update;
+      }
+    }
+    return result;
+  }
+
   static List<TodoItem> mergeTodoUpdates(
     List<TodoItem> base,
     List<TodoItem> inserted,
     List<TodoItem> updated,
   ) {
-    final result = List<TodoItem>.from(base)..addAll(inserted);
-    for (final update in updated) {
-      final idx = result.indexWhere((todo) => todo.id == update.id);
-      if (idx == -1) {
-        result.add(update);
-      } else {
-        result[idx] = _mergeTodo(result[idx], update);
-      }
-    }
-    return result;
+    return _mergeById(
+      base,
+      appended: inserted,
+      updates: updated,
+      idOf: (todo) => todo.id,
+      mergeExisting: _mergeTodo,
+    );
   }
 
   static List<TimeLogItem> mergeTimeLogUpdates(
@@ -1842,16 +2455,12 @@ class AiTodoActionExecutor {
     List<TimeLogItem> inserted,
     List<TimeLogItem> updated,
   ) {
-    final result = List<TimeLogItem>.from(base)..addAll(inserted);
-    for (final update in updated) {
-      final idx = result.indexWhere((log) => log.id == update.id);
-      if (idx == -1) {
-        result.add(update);
-      } else {
-        result[idx] = update;
-      }
-    }
-    return result;
+    return _mergeById(
+      base,
+      appended: inserted,
+      updates: updated,
+      idOf: (log) => log.id,
+    );
   }
 
   static List<FixedScheduleItem> mergeFixedScheduleUpdates(
@@ -1859,16 +2468,11 @@ class AiTodoActionExecutor {
     List<FixedScheduleItem> inserted,
     List<FixedScheduleItem> updated,
   ) {
-    final result = List<FixedScheduleItem>.from(base);
-    for (final item in [...inserted, ...updated]) {
-      final idx = result.indexWhere((existing) => existing.id == item.id);
-      if (idx == -1) {
-        result.add(item);
-      } else {
-        result[idx] = item;
-      }
-    }
-    return result;
+    return _mergeById(
+      base,
+      updates: [...inserted, ...updated],
+      idOf: (item) => item.id,
+    );
   }
 
   static List<CountdownItem> mergeCountdownUpdates(
@@ -1876,16 +2480,12 @@ class AiTodoActionExecutor {
     List<CountdownItem> inserted,
     List<CountdownItem> updated,
   ) {
-    final result = List<CountdownItem>.from(base)..addAll(inserted);
-    for (final update in updated) {
-      final idx = result.indexWhere((countdown) => countdown.id == update.id);
-      if (idx == -1) {
-        result.add(update);
-      } else {
-        result[idx] = update;
-      }
-    }
-    return result;
+    return _mergeById(
+      base,
+      appended: inserted,
+      updates: updated,
+      idOf: (countdown) => countdown.id,
+    );
   }
 
   static List<PomodoroTag> mergePomodoroTagUpdates(
@@ -1893,16 +2493,12 @@ class AiTodoActionExecutor {
     List<PomodoroTag> inserted,
     List<PomodoroTag> updated,
   ) {
-    final result = List<PomodoroTag>.from(base)..addAll(inserted);
-    for (final update in updated) {
-      final idx = result.indexWhere((tag) => tag.uuid == update.uuid);
-      if (idx == -1) {
-        result.add(update);
-      } else {
-        result[idx] = update;
-      }
-    }
-    return result;
+    return _mergeById(
+      base,
+      appended: inserted,
+      updates: updated,
+      idOf: (tag) => tag.uuid,
+    );
   }
 
   static List<TodoGroup> mergeTodoGroupUpdates(
@@ -1910,16 +2506,12 @@ class AiTodoActionExecutor {
     List<TodoGroup> inserted,
     List<TodoGroup> updated,
   ) {
-    final result = List<TodoGroup>.from(base)..addAll(inserted);
-    for (final update in updated) {
-      final idx = result.indexWhere((group) => group.id == update.id);
-      if (idx == -1) {
-        result.add(update);
-      } else {
-        result[idx] = update;
-      }
-    }
-    return result;
+    return _mergeById(
+      base,
+      appended: inserted,
+      updates: updated,
+      idOf: (group) => group.id,
+    );
   }
 
   static TodoItem _mergeTodo(TodoItem existing, TodoItem update) {

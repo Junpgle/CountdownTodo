@@ -1,6 +1,8 @@
 enum AiTodoActionType {
   createTodo,
   createHabit,
+  updateHabit,
+  deleteHabit,
   updateTodo,
   completeTodo,
   deleteTodo,
@@ -39,6 +41,9 @@ enum AiTodoActionType {
 }
 
 class AiTodoAction {
+  static final RegExp _minuteOfDayPattern = RegExp(r'^(\d{1,2}):(\d{1,2})$');
+  static final RegExp _integerListSeparatorPattern = RegExp(r'[,，\s]+');
+
   AiTodoAction({
     required this.type,
     this.todoId,
@@ -58,12 +63,15 @@ class AiTodoAction {
     this.customIntervalDays,
     this.recurrenceEndDate,
     this.groupId,
+    this.teamUuid,
+    this.teamName,
     this.reminderMinutes,
     this.reminderMinutesList = const [],
     this.durationMinutes,
     this.tagUuids = const [],
     this.icon,
     this.habitSourceType,
+    this.habitUuid,
     this.habitPeriodType,
     this.targetValue,
     this.unit,
@@ -96,28 +104,29 @@ class AiTodoAction {
     bool? hasCustomIntervalDays,
     bool? hasRecurrenceEndDate,
     bool? hasGroupId,
+    bool? hasTeamUuid,
     bool? hasReminderMinutes,
     bool? hasReminderMinutesList,
     bool? hasTagUuids,
     Map<String, dynamic>? metadata,
-  })  : hasRemark = hasRemark ?? remark != null,
-        hasStartTime = hasStartTime ?? startTime != null,
-        hasDueDate = hasDueDate ?? dueDate != null,
-        hasDate = hasDate ?? date != null,
-        hasLocation = hasLocation ?? location != null,
-        hasTimeMode = hasTimeMode ?? timeMode != null,
-        hasIsAllDay = hasIsAllDay ?? isAllDay,
-        hasRecurrence = hasRecurrence ?? recurrence != 'none',
-        hasCustomIntervalDays =
-            hasCustomIntervalDays ?? customIntervalDays != null,
-        hasRecurrenceEndDate =
-            hasRecurrenceEndDate ?? recurrenceEndDate != null,
-        hasGroupId = hasGroupId ?? groupId != null,
-        hasReminderMinutes = hasReminderMinutes ?? reminderMinutes != null,
-        hasReminderMinutesList =
-            hasReminderMinutesList ?? reminderMinutesList.isNotEmpty,
-        hasTagUuids = hasTagUuids ?? tagUuids.isNotEmpty,
-        metadata = metadata ?? {};
+  }) : hasRemark = hasRemark ?? remark != null,
+       hasStartTime = hasStartTime ?? startTime != null,
+       hasDueDate = hasDueDate ?? dueDate != null,
+       hasDate = hasDate ?? date != null,
+       hasLocation = hasLocation ?? location != null,
+       hasTimeMode = hasTimeMode ?? timeMode != null,
+       hasIsAllDay = hasIsAllDay ?? isAllDay,
+       hasRecurrence = hasRecurrence ?? recurrence != 'none',
+       hasCustomIntervalDays =
+           hasCustomIntervalDays ?? customIntervalDays != null,
+       hasRecurrenceEndDate = hasRecurrenceEndDate ?? recurrenceEndDate != null,
+       hasGroupId = hasGroupId ?? groupId != null,
+       hasTeamUuid = hasTeamUuid ?? (teamUuid != null || teamName != null),
+       hasReminderMinutes = hasReminderMinutes ?? reminderMinutes != null,
+       hasReminderMinutesList =
+           hasReminderMinutesList ?? reminderMinutesList.isNotEmpty,
+       hasTagUuids = hasTagUuids ?? tagUuids.isNotEmpty,
+       metadata = metadata ?? {};
 
   AiTodoActionType type;
   String? todoId;
@@ -139,14 +148,18 @@ class AiTodoAction {
   int? customIntervalDays;
   String? recurrenceEndDate;
   String? groupId;
+  String? teamUuid;
+  String? teamName;
   int? reminderMinutes;
   List<int> reminderMinutesList;
   int? durationMinutes;
   List<String> tagUuids;
   String? icon;
 
-  /// 习惯创建动作字段。它们只在 [AiTodoActionType.createHabit] 中生效。
+  /// 习惯动作字段；更新专用字段通过 [metadata] 中的
+  /// `habitUpdateFields` 保存。
   String? habitSourceType;
+  String? habitUuid;
   String? habitPeriodType;
   double? targetValue;
   String? unit;
@@ -180,6 +193,7 @@ class AiTodoAction {
   bool hasCustomIntervalDays;
   bool hasRecurrenceEndDate;
   bool hasGroupId;
+  bool hasTeamUuid;
   bool hasReminderMinutes;
   bool hasReminderMinutesList;
   bool hasTagUuids;
@@ -207,7 +221,10 @@ class AiTodoAction {
       type == AiTodoActionType.bulkRescheduleTodo ||
       type == AiTodoActionType.categorizeTodo;
 
-  bool get isHabitAction => type == AiTodoActionType.createHabit;
+  bool get isHabitAction =>
+      type == AiTodoActionType.createHabit ||
+      type == AiTodoActionType.updateHabit ||
+      type == AiTodoActionType.deleteHabit;
 
   bool get isTimeLogAction =>
       type == AiTodoActionType.createTimeLog ||
@@ -265,6 +282,8 @@ class AiTodoAction {
       type == AiTodoActionType.deleteCountdown ||
       type == AiTodoActionType.updateTodoGroup ||
       type == AiTodoActionType.deleteTodoGroup ||
+      type == AiTodoActionType.updateHabit ||
+      type == AiTodoActionType.deleteHabit ||
       type == AiTodoActionType.updatePomodoroTag ||
       type == AiTodoActionType.deletePomodoroTag ||
       type == AiTodoActionType.updatePlanBlock ||
@@ -272,71 +291,76 @@ class AiTodoAction {
       type == AiTodoActionType.reschedulePlanBlocks ||
       type == AiTodoActionType.skipPlanBlock;
 
-  String get legacyType => createsTodo || isHabitAction ? 'create' : 'update';
+  String get legacyType =>
+      createsTodo || type == AiTodoActionType.createHabit ? 'create' : 'update';
 
   Map<String, dynamic> toJson() => {
-        'actionType': type.name,
-        'type': legacyType,
-        'todoId': todoId,
-        'planBlockId': planBlockId,
-        'scheduleId': scheduleId,
-        'title': title,
-        'remark': remark,
-        'date': date,
-        'location': location,
-        'startTime': startTime,
-        'dueDate': dueDate,
-        'timeMode': timeMode,
-        'isAllDay': isAllDay,
-        'recurrence': recurrence,
-        'recurrenceSeriesId': recurrenceSeriesId,
-        'recurrenceScope': recurrenceScope,
-        'customIntervalDays': customIntervalDays,
-        'recurrenceEndDate': recurrenceEndDate,
-        'groupId': groupId,
-        'reminderMinutes': reminderMinutes,
-        'reminderMinutesList': reminderMinutesList,
-        'durationMinutes': durationMinutes,
-        'tagUuids': tagUuids,
-        'icon': icon,
-        'habitSourceType': habitSourceType,
-        'habitPeriodType': habitPeriodType,
-        'targetValue': targetValue,
-        'unit': unit,
-        'targetTimeMinute': targetTimeMinute,
-        'habitTimeComparison': habitTimeComparison,
-        'timeToleranceMinutes': timeToleranceMinutes,
-        'weekdaysMask': weekdaysMask,
-        'dayBoundaryMinute': dayBoundaryMinute,
-        'quickValues': quickValues,
-        'habitReminderPolicy': habitReminderPolicy,
-        'habitDisplayMode': habitDisplayMode,
-        'defaultFocusMinutes': defaultFocusMinutes,
-        'sourceIds': sourceIds,
-        'status': status,
-        'color': color,
-        'isSelected': isSelected,
-        'isAdded': isAdded,
-        'isIgnored': isIgnored,
-        'originalText': originalText,
-        'sourceTodoIds': sourceTodoIds,
-        'deleteSourceTodos': deleteSourceTodos,
-        'hasRemark': hasRemark,
-        'hasDate': hasDate,
-        'hasLocation': hasLocation,
-        'hasStartTime': hasStartTime,
-        'hasDueDate': hasDueDate,
-        'hasTimeMode': hasTimeMode,
-        'hasIsAllDay': hasIsAllDay,
-        'hasRecurrence': hasRecurrence,
-        'hasCustomIntervalDays': hasCustomIntervalDays,
-        'hasRecurrenceEndDate': hasRecurrenceEndDate,
-        'hasGroupId': hasGroupId,
-        'hasReminderMinutes': hasReminderMinutes,
-        'hasReminderMinutesList': hasReminderMinutesList,
-        'hasTagUuids': hasTagUuids,
-        'metadata': metadata,
-      };
+    'actionType': type.name,
+    'type': legacyType,
+    'todoId': todoId,
+    'planBlockId': planBlockId,
+    'scheduleId': scheduleId,
+    'title': title,
+    'remark': remark,
+    'date': date,
+    'location': location,
+    'startTime': startTime,
+    'dueDate': dueDate,
+    'timeMode': timeMode,
+    'isAllDay': isAllDay,
+    'recurrence': recurrence,
+    'recurrenceSeriesId': recurrenceSeriesId,
+    'recurrenceScope': recurrenceScope,
+    'customIntervalDays': customIntervalDays,
+    'recurrenceEndDate': recurrenceEndDate,
+    'groupId': groupId,
+    'teamUuid': teamUuid,
+    'teamName': teamName,
+    'reminderMinutes': reminderMinutes,
+    'reminderMinutesList': reminderMinutesList,
+    'durationMinutes': durationMinutes,
+    'tagUuids': tagUuids,
+    'icon': icon,
+    'habitSourceType': habitSourceType,
+    'habitUuid': habitUuid,
+    'habitPeriodType': habitPeriodType,
+    'targetValue': targetValue,
+    'unit': unit,
+    'targetTimeMinute': targetTimeMinute,
+    'habitTimeComparison': habitTimeComparison,
+    'timeToleranceMinutes': timeToleranceMinutes,
+    'weekdaysMask': weekdaysMask,
+    'dayBoundaryMinute': dayBoundaryMinute,
+    'quickValues': quickValues,
+    'habitReminderPolicy': habitReminderPolicy,
+    'habitDisplayMode': habitDisplayMode,
+    'defaultFocusMinutes': defaultFocusMinutes,
+    'sourceIds': sourceIds,
+    'status': status,
+    'color': color,
+    'isSelected': isSelected,
+    'isAdded': isAdded,
+    'isIgnored': isIgnored,
+    'originalText': originalText,
+    'sourceTodoIds': sourceTodoIds,
+    'deleteSourceTodos': deleteSourceTodos,
+    'hasRemark': hasRemark,
+    'hasDate': hasDate,
+    'hasLocation': hasLocation,
+    'hasStartTime': hasStartTime,
+    'hasDueDate': hasDueDate,
+    'hasTimeMode': hasTimeMode,
+    'hasIsAllDay': hasIsAllDay,
+    'hasRecurrence': hasRecurrence,
+    'hasCustomIntervalDays': hasCustomIntervalDays,
+    'hasRecurrenceEndDate': hasRecurrenceEndDate,
+    'hasGroupId': hasGroupId,
+    'hasTeamUuid': hasTeamUuid,
+    'hasReminderMinutes': hasReminderMinutes,
+    'hasReminderMinutesList': hasReminderMinutesList,
+    'hasTagUuids': hasTagUuids,
+    'metadata': metadata,
+  };
 
   factory AiTodoAction.fromJson(Map<String, dynamic> json) {
     final typeName = json['actionType']?.toString();
@@ -356,30 +380,32 @@ class AiTodoAction {
 
     return AiTodoAction(
       type: parsedType,
-      todoId:
-          (json['todoId'] ?? json['todo_id'] ?? json['todoUuid'])?.toString(),
-      planBlockId: (json['planBlockId'] ??
-              json['plan_block_id'] ??
-              json['blockId'] ??
-              json['block_id'] ??
-              (parsedType == AiTodoActionType.updatePlanBlock ||
-                      parsedType == AiTodoActionType.deletePlanBlock ||
-                      parsedType == AiTodoActionType.reschedulePlanBlocks ||
-                      parsedType == AiTodoActionType.skipPlanBlock ||
-                      parsedType == AiTodoActionType.startPlanBlockPomodoro
-                  ? json['id']
-                  : null))
+      todoId: (json['todoId'] ?? json['todo_id'] ?? json['todoUuid'])
           ?.toString(),
-      scheduleId: (json['scheduleId'] ??
-              json['schedule_id'] ??
-              json['fixedScheduleId'] ??
-              json['fixed_schedule_id'] ??
-              (parsedType == AiTodoActionType.updateFixedSchedule ||
-                      parsedType == AiTodoActionType.cancelFixedSchedule ||
-                      parsedType == AiTodoActionType.deleteFixedSchedule
-                  ? json['id']
-                  : null))
-          ?.toString(),
+      planBlockId:
+          (json['planBlockId'] ??
+                  json['plan_block_id'] ??
+                  json['blockId'] ??
+                  json['block_id'] ??
+                  (parsedType == AiTodoActionType.updatePlanBlock ||
+                          parsedType == AiTodoActionType.deletePlanBlock ||
+                          parsedType == AiTodoActionType.reschedulePlanBlocks ||
+                          parsedType == AiTodoActionType.skipPlanBlock ||
+                          parsedType == AiTodoActionType.startPlanBlockPomodoro
+                      ? json['id']
+                      : null))
+              ?.toString(),
+      scheduleId:
+          (json['scheduleId'] ??
+                  json['schedule_id'] ??
+                  json['fixedScheduleId'] ??
+                  json['fixed_schedule_id'] ??
+                  (parsedType == AiTodoActionType.updateFixedSchedule ||
+                          parsedType == AiTodoActionType.cancelFixedSchedule ||
+                          parsedType == AiTodoActionType.deleteFixedSchedule
+                      ? json['id']
+                      : null))
+              ?.toString(),
       title: (json['title'] ?? json['name'])?.toString(),
       remark: json['remark']?.toString(),
       date: json['date']?.toString(),
@@ -389,14 +415,17 @@ class AiTodoAction {
       timeMode: json['timeMode']?.toString(),
       isAllDay: json['isAllDay'] == true,
       recurrence: json['recurrence']?.toString() ?? 'none',
-      recurrenceSeriesId: (json['recurrenceSeriesId'] ??
-              json['recurrence_series_id'] ??
-              json['seriesId'])
-          ?.toString(),
+      recurrenceSeriesId:
+          (json['recurrenceSeriesId'] ??
+                  json['recurrence_series_id'] ??
+                  json['seriesId'])
+              ?.toString(),
       recurrenceScope: _parseRecurrenceScope(json['recurrenceScope']),
       customIntervalDays: _parseInt(json['customIntervalDays']),
       recurrenceEndDate: json['recurrenceEndDate']?.toString(),
       groupId: json['groupId']?.toString(),
+      teamUuid: (json['teamUuid'] ?? json['team_uuid'])?.toString(),
+      teamName: (json['teamName'] ?? json['team_name'])?.toString(),
       reminderMinutes: _parseInt(json['reminderMinutes']),
       reminderMinutesList: _parseIntList(
         json['reminderMinutesList'] ??
@@ -407,6 +436,16 @@ class AiTodoAction {
       durationMinutes: _parseInt(json['durationMinutes'] ?? json['minutes']),
       tagUuids: _parseStringList(json['tagUuids'] ?? json['tagIds']),
       icon: json['icon']?.toString(),
+      habitUuid:
+          (json['habitUuid'] ??
+                  json['habit_uuid'] ??
+                  json['habitId'] ??
+                  json['habit_id'] ??
+                  ((parsedType == AiTodoActionType.updateHabit ||
+                          parsedType == AiTodoActionType.deleteHabit)
+                      ? json['id']
+                      : null))
+              ?.toString(),
       habitSourceType:
           (json['sourceType'] ?? json['habitSourceType'] ?? json['source_type'])
               ?.toString(),
@@ -415,14 +454,17 @@ class AiTodoAction {
               ?.toString(),
       targetValue: _parseDouble(json['targetValue'] ?? json['target_value']),
       unit: (json['unit'] ?? json['habitUnit'])?.toString(),
-      targetTimeMinute: _parseMinuteOfDay(json['targetTimeMinute'] ??
-          json['target_time_minute'] ??
-          json['targetTime'] ??
-          json['target_time']),
-      habitTimeComparison: (json['timeComparison'] ??
-              json['habitTimeComparison'] ??
-              json['time_comparison'])
-          ?.toString(),
+      targetTimeMinute: _parseMinuteOfDay(
+        json['targetTimeMinute'] ??
+            json['target_time_minute'] ??
+            json['targetTime'] ??
+            json['target_time'],
+      ),
+      habitTimeComparison:
+          (json['timeComparison'] ??
+                  json['habitTimeComparison'] ??
+                  json['time_comparison'])
+              ?.toString(),
       timeToleranceMinutes: _parseInt(
         json['timeToleranceMinutes'] ?? json['time_tolerance_minutes'],
       ),
@@ -436,10 +478,11 @@ class AiTodoAction {
             json['habitReminderPolicy'] ??
             json['reminder_policy'],
       ),
-      habitDisplayMode: (json['displayMode'] ??
-              json['habitDisplayMode'] ??
-              json['display_mode'])
-          ?.toString(),
+      habitDisplayMode:
+          (json['displayMode'] ??
+                  json['habitDisplayMode'] ??
+                  json['display_mode'])
+              ?.toString(),
       defaultFocusMinutes: _parseInt(
         json['defaultFocusMinutes'] ?? json['default_focus_minutes'],
       ),
@@ -459,18 +502,18 @@ class AiTodoAction {
       sourceTodoIds: _parseStringList(
         json['sourceTodoIds'] ?? json['sourceTodoId'] ?? json['todoIds'],
       ),
-      deleteSourceTodos: json['deleteSourceTodos'] == true ||
+      deleteSourceTodos:
+          json['deleteSourceTodos'] == true ||
           json['deleteSources'] == true ||
           json['deleteSource'] == true,
       hasRemark: _fieldWasProvided(json, 'remark', 'hasRemark'),
       hasDate: _fieldWasProvided(json, 'date', 'hasDate'),
       hasLocation: _fieldWasProvided(json, 'location', 'hasLocation'),
       hasStartTime: _fieldWasProvided(json, 'startTime', 'hasStartTime'),
-      hasDueDate: _fieldWasProvidedAny(
-        json,
-        const ['dueDate', 'endTime'],
-        'hasDueDate',
-      ),
+      hasDueDate: _fieldWasProvidedAny(json, const [
+        'dueDate',
+        'endTime',
+      ], 'hasDueDate'),
       hasTimeMode: _fieldWasProvided(json, 'timeMode', 'hasTimeMode'),
       hasIsAllDay: _fieldWasProvided(json, 'isAllDay', 'hasIsAllDay'),
       hasRecurrence: _fieldWasProvided(json, 'recurrence', 'hasRecurrence'),
@@ -485,22 +528,27 @@ class AiTodoAction {
         'hasRecurrenceEndDate',
       ),
       hasGroupId: _fieldWasProvided(json, 'groupId', 'hasGroupId'),
+      hasTeamUuid: _fieldWasProvidedAny(json, const [
+        'teamUuid',
+        'team_uuid',
+        'teamName',
+        'team_name',
+      ], 'hasTeamUuid'),
       hasReminderMinutes: _fieldWasProvided(
         json,
         'reminderMinutes',
         'hasReminderMinutes',
       ),
-      hasReminderMinutesList: _fieldWasProvidedAny(
-            json,
-            const ['reminderMinutesList', 'reminders'],
-            'hasReminderMinutesList',
-          ) ||
+      hasReminderMinutesList:
+          _fieldWasProvidedAny(json, const [
+            'reminderMinutesList',
+            'reminders',
+          ], 'hasReminderMinutesList') ||
           json['reminderMinutes'] is List,
-      hasTagUuids: _fieldWasProvidedAny(
-        json,
-        const ['tagUuids', 'tagIds'],
-        'hasTagUuids',
-      ),
+      hasTagUuids: _fieldWasProvidedAny(json, const [
+        'tagUuids',
+        'tagIds',
+      ], 'hasTagUuids'),
       metadata: json['metadata'] is Map
           ? Map<String, dynamic>.from(json['metadata'] as Map)
           : {},
@@ -515,6 +563,14 @@ class AiTodoAction {
       case 'create_habit_goal':
       case 'habit_create':
         return AiTodoActionType.createHabit;
+      case 'update_habit':
+      case 'update_habit_goal':
+      case 'habit_update':
+        return AiTodoActionType.updateHabit;
+      case 'delete_habit':
+      case 'delete_habit_goal':
+      case 'habit_delete':
+        return AiTodoActionType.deleteHabit;
       case 'update_todo':
         return AiTodoActionType.updateTodo;
       case 'complete_todo':
@@ -627,7 +683,7 @@ class AiTodoAction {
     if (parsed != null) return parsed;
     final text = value?.toString().trim();
     if (text == null || text.isEmpty) return null;
-    final match = RegExp(r'^(\d{1,2}):(\d{1,2})$').firstMatch(text);
+    final match = _minuteOfDayPattern.firstMatch(text);
     if (match == null) return null;
     final hour = int.tryParse(match.group(1)!);
     final minute = int.tryParse(match.group(2)!);
@@ -677,7 +733,7 @@ class AiTodoAction {
     }
     if (value is String && value.trim().isNotEmpty) {
       return value
-          .split(RegExp(r'[,，\s]+'))
+          .split(_integerListSeparatorPattern)
           .map(_parseInt)
           .whereType<int>()
           .toList();

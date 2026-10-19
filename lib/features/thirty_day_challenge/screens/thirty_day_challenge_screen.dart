@@ -13,6 +13,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../../services/browser_file_service.dart';
 import '../../../utils/app_platform.dart';
+import '../../../utils/app_image_filters.dart';
 import '../../../../widgets/optional_liquid_glass_surface.dart';
 import '../../../widgets/floating_glass_control.dart';
 import '../models/thirty_day_challenge.dart';
@@ -33,6 +34,16 @@ String _safeFileName(String value) {
 String _safeHashTag(String value) {
   final sanitized = value.replaceAll(RegExp(r'\s+'), '');
   return sanitized.isEmpty ? '我的挑战' : sanitized;
+}
+
+final Map<(String?, String), DateFormat> _challengeDateFormats = {};
+
+DateFormat _challengeDateFormat(String pattern) {
+  final locale = Intl.defaultLocale;
+  return _challengeDateFormats.putIfAbsent(
+    (locale, pattern),
+    () => DateFormat(pattern, locale),
+  );
 }
 
 class ThirtyDayChallengeScreen extends StatefulWidget {
@@ -902,7 +913,7 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                   child: AppPlatform.isAndroid
                       ? const SizedBox.shrink()
                       : BackdropFilter(
-                          filter: ui.ImageFilter.blur(sigmaX: 60, sigmaY: 60),
+                          filter: AppImageFilters.blur60,
                           child: const SizedBox(),
                         ),
                 ),
@@ -1380,7 +1391,7 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
             child: AppPlatform.isAndroid
                 ? const SizedBox.shrink()
                 : BackdropFilter(
-                    filter: ui.ImageFilter.blur(sigmaX: 48, sigmaY: 48),
+                    filter: AppImageFilters.blur48,
                     child: const SizedBox(),
                   ),
           ),
@@ -2253,8 +2264,9 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
     final imageCount = state.tasks
         .where((task) => task.imageBase64?.isNotEmpty == true)
         .length;
-    final generatedAt = DateFormat('yyyy年M月d日').format(DateTime.now());
-    final startedAt = DateFormat('yyyy年M月d日').format(state.startedAt);
+    final reportDateFormat = _challengeDateFormat('yyyy年M月d日');
+    final generatedAt = reportDateFormat.format(DateTime.now());
+    final startedAt = reportDateFormat.format(state.startedAt);
 
     return Container(
       width: 1080,
@@ -2645,7 +2657,7 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
 
   String _formatReportDate(DateTime? date) {
     if (date == null) return '日期未知';
-    return DateFormat('yyyy年M月d日').format(date);
+    return _challengeDateFormat('yyyy年M月d日').format(date);
   }
 }
 
@@ -2725,6 +2737,7 @@ class _ShuffleCardStackState extends State<_ShuffleCardStack>
   late final List<ThirtyDayChallengeTask> _sequence;
   late final AnimationController _controller;
   late final Animation<int> _stepAnimation;
+  late final ValueNotifier<int> _stepNotifier;
   bool _hasNotified = false;
 
   @override
@@ -2741,6 +2754,8 @@ class _ShuffleCardStackState extends State<_ShuffleCardStack>
     ).animate(
       CurvedAnimation(parent: _controller, curve: Curves.easeInOutCubic),
     );
+    _stepNotifier = ValueNotifier<int>(_stepAnimation.value);
+    _controller.addListener(_updateStepNotifier);
     _controller.addStatusListener((status) {
       if (status == AnimationStatus.completed && !_hasNotified) {
         _hasNotified = true;
@@ -2752,8 +2767,15 @@ class _ShuffleCardStackState extends State<_ShuffleCardStack>
 
   @override
   void dispose() {
+    _controller.removeListener(_updateStepNotifier);
+    _stepNotifier.dispose();
     _controller.dispose();
     super.dispose();
+  }
+
+  void _updateStepNotifier() {
+    final step = _stepAnimation.value;
+    if (_stepNotifier.value != step) _stepNotifier.value = step;
   }
 
   List<ThirtyDayChallengeTask> _buildSequence(
@@ -2787,10 +2809,9 @@ class _ShuffleCardStackState extends State<_ShuffleCardStack>
           child: SizedBox(
             height: height,
             width: double.infinity,
-            child: AnimatedBuilder(
-              animation: _stepAnimation,
-              builder: (context, _) {
-                final step = _stepAnimation.value;
+            child: ValueListenableBuilder<int>(
+              valueListenable: _stepNotifier,
+              builder: (context, step, _) {
                 final current = _sequence[step];
                 return Stack(
                   fit: StackFit.expand,
@@ -3263,7 +3284,7 @@ class _ChallengeTaskCardState extends State<_ChallengeTaskCard> {
                         ),
                       )
                     : BackdropFilter(
-                        filter: ui.ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+                        filter: AppImageFilters.blur5,
                         child: DecoratedBox(
                           decoration: BoxDecoration(
                             gradient: LinearGradient(
@@ -3669,7 +3690,7 @@ class _ChallengeTaskCardState extends State<_ChallengeTaskCard> {
 
   String _formatDate(DateTime? date) {
     if (date == null) return '日期未知';
-    return DateFormat('M月d日').format(date);
+    return _challengeDateFormat('M月d日').format(date);
   }
 
   Widget _buildFeelingPreview(

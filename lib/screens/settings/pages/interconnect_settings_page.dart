@@ -22,11 +22,12 @@ class InterconnectSettingsPage extends StatefulWidget {
   final String? initialTarget;
   final bool isEmbedded;
   final String username;
-  const InterconnectSettingsPage(
-      {super.key,
-      this.initialTarget,
-      this.isEmbedded = false,
-      required this.username});
+  const InterconnectSettingsPage({
+    super.key,
+    this.initialTarget,
+    this.isEmbedded = false,
+    required this.username,
+  });
 
   @override
   State<InterconnectSettingsPage> createState() =>
@@ -50,25 +51,22 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
   Timer? _highlightTimer;
   bool _bandServiceBusy = false;
 
-  GlobalKey _navigationKey(String id) => _itemKeys.putIfAbsent(
-        id,
-        () => GlobalKey(debugLabel: 'settings-$id'),
-      );
+  GlobalKey _navigationKey(String id) =>
+      _itemKeys.putIfAbsent(id, () => GlobalKey(debugLabel: 'settings-$id'));
 
   Future<T?> _openSettingsPage<T>(
     String id,
     Widget page, {
     RouteSettings? settings,
     bool rootNavigator = false,
-  }) =>
-      SettingsNavigation.push<T>(
-        context: context,
-        page: page,
-        sourceKey: _navigationKey(id),
-        isEmbedded: widget.isEmbedded,
-        rootNavigator: rootNavigator,
-        settings: settings,
-      );
+  }) => SettingsNavigation.push<T>(
+    context: context,
+    page: page,
+    sourceKey: _navigationKey(id),
+    isEmbedded: widget.isEmbedded,
+    rootNavigator: rootNavigator,
+    settings: settings,
+  );
 
   @override
   void initState() {
@@ -117,12 +115,15 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
         return Card(
           margin: const EdgeInsets.only(bottom: 16),
           child: LiquidGlassSwitchListTile(
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 4,
+            ),
             secondary: Icon(
               enabled ? Icons.watch : Icons.watch_off_outlined,
-              color:
-                  enabled ? colorScheme.primary : colorScheme.onSurfaceVariant,
+              color: enabled
+                  ? colorScheme.primary
+                  : colorScheme.onSurfaceVariant,
             ),
             title: const Text('手环后台服务'),
             subtitle: Text(
@@ -192,7 +193,8 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
             color: colorScheme.surfaceContainerHighest,
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-                color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+              color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+            ),
             boxShadow: [
               BoxShadow(
                 color: colorScheme.primary.withValues(alpha: 0.05),
@@ -210,16 +212,20 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
                   color: colorScheme.primaryContainer,
                   shape: BoxShape.circle,
                 ),
-                child:
-                    Icon(icon, color: colorScheme.onPrimaryContainer, size: 28),
+                child: Icon(
+                  icon,
+                  color: colorScheme.onPrimaryContainer,
+                  size: 28,
+                ),
               ),
               const Spacer(),
               Text(
                 title,
                 style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                    color: colorScheme.onSurface),
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                  color: colorScheme.onSurface,
+                ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -227,7 +233,9 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
               Text(
                 subtitle,
                 style: TextStyle(
-                    fontSize: 12, color: colorScheme.onSurfaceVariant),
+                  fontSize: 12,
+                  color: colorScheme.onSurfaceVariant,
+                ),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -410,11 +418,14 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
             children: [
               Padding(
                 padding: const EdgeInsets.only(bottom: 16.0, left: 4.0),
-                child: Text(isWeb ? '浏览器数据工具' : '设备互联向导',
-                    style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                child: Text(
+                  isWeb ? '浏览器数据工具' : '设备互联向导',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
               ),
               if (isWeb) ...[
                 Card(
@@ -422,9 +433,10 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
                   margin: const EdgeInsets.only(bottom: 16),
                   color: Theme.of(context).colorScheme.secondaryContainer,
                   child: ListTile(
-                    leading: Icon(Icons.info_outline_rounded,
-                        color:
-                            Theme.of(context).colorScheme.onSecondaryContainer),
+                    leading: Icon(
+                      Icons.info_outline_rounded,
+                      color: Theme.of(context).colorScheme.onSecondaryContainer,
+                    ),
                     title: const Text('浏览器沙盒限制'),
                     subtitle: const Text(
                       '局域网直连、系统日历写入和手环快应用同步需要原生系统权限；网页版可通过导出 ICS 文件导入系统日历。',

@@ -261,7 +261,9 @@ void main() {
     expect(find.textContaining('共75分钟规划时段'), findsOneWidget);
     expect(t.takeException(), isNull);
   });
-  testWidgets('malformed plan id is shown as blocked without crashing', (t) async {
+  testWidgets('malformed plan id is shown as blocked without crashing', (
+    t,
+  ) async {
     await block('malformed-id');
     repo.malformedId = true;
     await open(t);
@@ -269,26 +271,25 @@ void main() {
     expect(find.text('规划时间或版本需核对'), findsOneWidget);
     expect(t.takeException(), isNull);
   });
-  testWidgets(
-    'malformed reminder metadata is shown as needing review',
-    (t) async {
-      await block('malformed-reminder-metadata');
-      await f.db.update(
-        'todo_plan_blocks',
-        {'reminder_minutes': 'bad', 'actual_focus_seconds': 'bad'},
-        where: 'uuid=?',
-        whereArgs: ['malformed-reminder-metadata'],
-      );
-      await open(t);
+  testWidgets('malformed reminder metadata is shown as needing review', (
+    t,
+  ) async {
+    await block('malformed-reminder-metadata');
+    await f.db.update(
+      'todo_plan_blocks',
+      {'reminder_minutes': 'bad', 'actual_focus_seconds': 'bad'},
+      where: 'uuid=?',
+      whereArgs: ['malformed-reminder-metadata'],
+    );
+    await open(t);
 
-      expect(find.textContaining('设置需核对'), findsWidgets);
-      await tap(t, find.widgetWithText(TextButton, '查看详情'));
-      expect(find.textContaining('提醒：设置需核对'), findsOneWidget);
-      expect(find.textContaining('累计专注参考：需核对'), findsOneWidget);
-      expect(find.textContaining('null'), findsNothing);
-      expect(t.takeException(), isNull);
-    },
-  );
+    expect(find.textContaining('设置需核对'), findsWidgets);
+    await tap(t, find.widgetWithText(TextButton, '查看详情'));
+    expect(find.textContaining('提醒：设置需核对'), findsOneWidget);
+    expect(find.textContaining('累计专注参考：需核对'), findsOneWidget);
+    expect(find.textContaining('null'), findsNothing);
+    expect(t.takeException(), isNull);
+  });
   testWidgets('invalid plan duration is not rendered as a real duration', (
     t,
   ) async {
@@ -326,9 +327,9 @@ void main() {
     await block('return-repeat');
     await open(t);
     await tap(t, key('cleanup-cancel'));
-    final back = t.widget<TextButton>(
-      find.widgetWithText(TextButton, '返回核对'),
-    ).onPressed!;
+    final back = t
+        .widget<TextButton>(find.widgetWithText(TextButton, '返回核对'))
+        .onPressed!;
     back();
     back();
     await t.pumpAndSettle();
@@ -401,9 +402,7 @@ void main() {
     await tap(t, key('cleanup-select-p-51'));
     expect(find.text('一次最多选择50段'), findsOneWidget);
   });
-  testWidgets('search hides stale overview results while filtering', (
-    t,
-  ) async {
+  testWidgets('search hides stale overview results while filtering', (t) async {
     await f.todo('filter-old', '筛选前待办', done: true);
     await block('filter-old-plan', todo: 'filter-old');
     await open(t, todo: null);
@@ -487,10 +486,7 @@ void main() {
     final readsBefore = repo.detailReads;
 
     await PomodoroService.saveRunState(
-      PomodoroRunState(
-        phase: PomodoroPhase.focusing,
-        todoUuid: 'other-todo',
-      ),
+      PomodoroRunState(phase: PomodoroPhase.focusing, todoUuid: 'other-todo'),
     );
     await t.pumpAndSettle();
 
@@ -504,10 +500,7 @@ void main() {
     expect(find.text('已选1段 · 45分钟'), findsOneWidget);
 
     await PomodoroService.saveRunState(
-      PomodoroRunState(
-        phase: PomodoroPhase.focusing,
-        todoUuid: 'todo-target',
-      ),
+      PomodoroRunState(phase: PomodoroPhase.focusing, todoUuid: 'todo-target'),
     );
     await t.pumpAndSettle();
 
@@ -529,10 +522,7 @@ void main() {
   ) async {
     await block('focus-load-race');
     await PomodoroService.saveRunState(
-      PomodoroRunState(
-        phase: PomodoroPhase.focusing,
-        todoUuid: 'todo-target',
-      ),
+      PomodoroRunState(phase: PomodoroPhase.focusing, todoUuid: 'todo-target'),
     );
     final gate = Completer<void>();
     final started = Completer<void>();
@@ -570,7 +560,9 @@ void main() {
     expect(find.text('已选1段 · 45分钟'), findsOneWidget);
     expect(t.takeException(), isNull);
   });
-  testWidgets('unrelated task boundary preserves reviewed selection', (t) async {
+  testWidgets('unrelated task boundary preserves reviewed selection', (
+    t,
+  ) async {
     await block('target-boundary');
     await f.todo('other-boundary', '其他待办');
     await f.block(
@@ -593,7 +585,9 @@ void main() {
     expect(find.text('已选1段 · 45分钟'), findsOneWidget);
     expect(t.takeException(), isNull);
   });
-  testWidgets('cancelled plan boundary preserves reviewed selection', (t) async {
+  testWidgets('cancelled plan boundary preserves reviewed selection', (
+    t,
+  ) async {
     await block('target-active');
     await f.block(
       TodoPlanBlock(
@@ -665,7 +659,9 @@ void main() {
     expect(find.text('已选50段 · 94分钟'), findsOneWidget);
     expect(t.takeException(), isNull);
   });
-  testWidgets('overview paging failure keeps loaded rows and retries', (t) async {
+  testWidgets('overview paging failure keeps loaded rows and retries', (
+    t,
+  ) async {
     for (var i = 0; i < 51; i++) {
       final id = 'retry-overview-$i';
       await f.todo(id, '待办$i', done: true);
@@ -713,7 +709,9 @@ void main() {
     expect(find.text('待办50'), findsOneWidget);
     expect(t.takeException(), isNull);
   });
-  testWidgets('overview boundary refresh keeps already loaded pages', (t) async {
+  testWidgets('overview boundary refresh keeps already loaded pages', (
+    t,
+  ) async {
     var testNow = now;
     repo = _CleanupRepo(f.db, clock: () => testNow);
     for (var i = 0; i < 51; i++) {
@@ -726,7 +724,9 @@ void main() {
             id: 'loaded-boundary-plan-$i',
             todoId: id,
             startTime: start.millisecondsSinceEpoch,
-            endTime: start.add(const Duration(minutes: 45)).millisecondsSinceEpoch,
+            endTime: start
+                .add(const Duration(minutes: 45))
+                .millisecondsSinceEpoch,
             plannedMinutes: 45,
           ),
         );
@@ -956,26 +956,25 @@ void main() {
     expect(find.textContaining('身份已切换'), findsOneWidget);
     expect(t.takeException(), isNull);
   });
-  testWidgets(
-    'overview explains when changed data restarts pagination',
-    (t) async {
-      for (var i = 0; i < 51; i++) {
-        final id = 'overview-$i';
-        await f.todo(id, '待办$i', done: true);
-        await block('overview-plan-$i', todo: id, minute: i);
-      }
-      await open(t, todo: null);
-      expect(find.textContaining('已加载50／总计51'), findsOneWidget);
+  testWidgets('overview explains when changed data restarts pagination', (
+    t,
+  ) async {
+    for (var i = 0; i < 51; i++) {
+      final id = 'overview-$i';
+      await f.todo(id, '待办$i', done: true);
+      await block('overview-plan-$i', todo: id, minute: i);
+    }
+    await open(t, todo: null);
+    expect(find.textContaining('已加载50／总计51'), findsOneWidget);
 
-      await f.todo('overview-new', '新增待办', done: true);
-      await block('overview-new-plan', todo: 'overview-new', minute: -30);
-      await tap(t, find.text('加载更多待办'));
+    await f.todo('overview-new', '新增待办', done: true);
+    await block('overview-new-plan', todo: 'overview-new', minute: -30);
+    await tap(t, find.text('加载更多待办'));
 
-      expect(find.textContaining('已加载50／总计52'), findsOneWidget);
-      expect(find.textContaining('列表已变化'), findsOneWidget);
-      expect(t.takeException(), isNull);
-    },
-  );
+    expect(find.textContaining('已加载50／总计52'), findsOneWidget);
+    expect(find.textContaining('列表已变化'), findsOneWidget);
+    expect(t.takeException(), isNull);
+  });
   testWidgets('team plans are read-only with explicit reasons', (t) async {
     final semantics = t.ensureSemantics();
     await block('a');
@@ -984,10 +983,7 @@ void main() {
     expect(find.text('团队规划请逐条核对'), findsWidgets);
     expect(t.widget<FilledButton>(key('cleanup-cancel')).onPressed, isNull);
     expect(t.widget<Checkbox>(key('cleanup-select-a')).onChanged, isNull);
-    expect(
-      t.getSemantics(key('cleanup-select-a')).label,
-      contains('45分钟'),
-    );
+    expect(t.getSemantics(key('cleanup-select-a')).label, contains('45分钟'));
     final details = find.widgetWithText(TextButton, '查看详情');
     expect(
       t.getSemantics(details),

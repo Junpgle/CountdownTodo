@@ -6,6 +6,10 @@ import '../../models.dart';
 import '../course_schedule_semantics.dart';
 
 class XmuScheduleParser {
+  static final RegExp _mhtmlContinuationPattern = RegExp(r'=\r?\n');
+  static final RegExp _weekPattern =
+      RegExp(r'(\d+)(?:-(\d+))?\s*(单|双)?周');
+
   /// 传入 MHTML/HTML 字符串和 本学期第一周的周一日期
   static List<CourseItem> parseHtml(
       String htmlString, DateTime semesterStartDate) {
@@ -93,7 +97,7 @@ class XmuScheduleParser {
 
     try {
       // 1. 剥离行尾软回车延续符
-      String cleaned = rawString.replaceAll(RegExp(r'=\r?\n'), '');
+      String cleaned = rawString.replaceAll(_mhtmlContinuationPattern, '');
 
       // 2. 安全解码：只转换 =XX 为字节，保留原本正常的字符（防止破坏已存在的中文）
       List<int> bytes = [];
@@ -130,9 +134,7 @@ class XmuScheduleParser {
   /// 辅助方法：解析 "1周", "1-15周", "2-14双周", "9-15单周" 为数组
   static List<int> _parseWeeks(String weekStr) {
     List<int> weeks = [];
-    RegExp regExp = RegExp(r'(\d+)(?:-(\d+))?\s*(单|双)?周');
-
-    for (final match in regExp.allMatches(weekStr)) {
+    for (final match in _weekPattern.allMatches(weekStr)) {
       int start = int.parse(match.group(1)!);
       int end = int.tryParse(match.group(2) ?? '') ?? start;
       String? type = match.group(3);

@@ -5,6 +5,21 @@ import '../services/course_calendar_adjustment_service.dart';
 import '../utils/app_dialogs.dart';
 import '../widgets/floating_glass_control.dart';
 
+final Map<String?, DateFormat> _courseAdjustmentDateFormats = {};
+
+DateFormat _courseAdjustmentDateFormat() {
+  final locale = Intl.defaultLocale;
+  final cached = _courseAdjustmentDateFormats[locale];
+  if (cached != null) return cached;
+  if (_courseAdjustmentDateFormats.length >= 4) {
+    _courseAdjustmentDateFormats.clear();
+  }
+  return _courseAdjustmentDateFormats[locale] = DateFormat(
+    'yyyy-MM-dd',
+    locale,
+  );
+}
+
 class CourseCalendarAdjustmentScreen extends StatefulWidget {
   final String? initialOfficialHolidayKey;
   final bool isEmbedded;
@@ -22,7 +37,7 @@ class CourseCalendarAdjustmentScreen extends StatefulWidget {
 
 class _CourseCalendarAdjustmentScreenState
     extends State<CourseCalendarAdjustmentScreen> {
-  final DateFormat _df = DateFormat('yyyy-MM-dd');
+  DateFormat get _df => _courseAdjustmentDateFormat();
   CourseCalendarAdjustment _adjustment = CourseCalendarAdjustment.empty();
   bool _loading = true;
 
@@ -712,7 +727,7 @@ class _TransferRow extends StatelessWidget {
 
   String _short(String date) {
     try {
-      final parsed = DateFormat('yyyy-MM-dd').parseStrict(date);
+      final parsed = _courseAdjustmentDateFormat().parseStrict(date);
       return '${parsed.month}月${parsed.day}日';
     } catch (_) {
       return date;
@@ -793,7 +808,7 @@ class _TransferRowCompact extends StatelessWidget {
 
   String _short(String date) {
     try {
-      final parsed = DateFormat('yyyy-MM-dd').parseStrict(date);
+      final parsed = _courseAdjustmentDateFormat().parseStrict(date);
       return '${parsed.month}月${parsed.day}日';
     } catch (_) {
       return date;

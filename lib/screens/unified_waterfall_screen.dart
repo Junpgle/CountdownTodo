@@ -9,6 +9,10 @@ import '../widgets/floating_glass_control.dart';
 import '../widgets/team_heatmap_widget.dart';
 import '../widgets/team_gantt_widget.dart';
 
+final _invalidUtf16SurrogatePattern = RegExp(
+  r'[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(^|[^\uD800-\uDBFF])[\uDC00-\uDFFF]',
+);
+
 class UnifiedWaterfallScreen extends StatefulWidget {
   final String username;
   const UnifiedWaterfallScreen({super.key, required this.username});
@@ -19,6 +23,7 @@ class UnifiedWaterfallScreen extends StatefulWidget {
 
 class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
   List<TodoItem> _allCombinedTodos = [];
+  int _teamLinkedTodoCount = 0;
   bool _isLoading = true;
   int _viewDays = 30; // 默认月视图
   DateTime _lastScaleTime = DateTime.now();
@@ -50,7 +55,13 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
     final loadGeneration = ++_loadGeneration;
     final todos = await StorageService.getTodos(widget.username);
     // 过滤并排序：仅显示未完成且未删除的，按截止时间（优先）或更新时间升序排列（时间轴顺序）
-    final filtered = todos.where((t) => !t.isDeleted && !t.isDone).toList();
+    final filtered = <TodoItem>[];
+    var teamLinkedTodoCount = 0;
+    for (final todo in todos) {
+      if (todo.isDeleted || todo.isDone) continue;
+      filtered.add(todo);
+      if (todo.teamUuid != null) teamLinkedTodoCount++;
+    }
     filtered.sort((a, b) {
       final timeA = a.dueDate?.millisecondsSinceEpoch ?? a.updatedAt;
       final timeB = b.dueDate?.millisecondsSinceEpoch ?? b.updatedAt;
@@ -60,6 +71,7 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
     if (mounted && loadGeneration == _loadGeneration) {
       setState(() {
         _allCombinedTodos = filtered;
+        _teamLinkedTodoCount = teamLinkedTodoCount;
         _isLoading = false;
       });
     }
@@ -251,10 +263,7 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
   /// 🚀 防止非法 UTF-16 代理对导致 Flutter ParagraphBuilder 崩溃
   String _safeStr(String? s) {
     if (s == null) return '';
-    return s.replaceAll(
-        RegExp(
-            r'[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(^|[^\uD800-\uDBFF])[\uDC00-\uDFFF]'),
-        '');
+    return s.replaceAll(_invalidUtf16SurrogatePattern, '');
   }
 
   @override
@@ -367,7 +376,7 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
                                   child: _buildStatChip(
                                       context,
                                       "团队关联",
-                                      "${_allCombinedTodos.where((t) => t.teamUuid != null).length}",
+                                      "$_teamLinkedTodoCount",
                                       Colors.purple,
                                       Icons.hub_rounded)),
                             ],

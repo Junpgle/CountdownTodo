@@ -96,15 +96,15 @@ class HabitProgress {
   }
 
   factory HabitProgress.empty(DateTime period) => HabitProgress(
-        period: period,
-        currentValue: 0,
-        targetValue: 0,
-        completionRatio: 0,
-        hasRecord: false,
-        goalMet: false,
-        isPlanned: false,
-        isFinished: true,
-      );
+    period: period,
+    currentValue: 0,
+    targetValue: 0,
+    completionRatio: 0,
+    hasRecord: false,
+    goalMet: false,
+    isPlanned: false,
+    isFinished: true,
+  );
 }
 
 /// 一个习惯在某个日期范围内的逐日进度。

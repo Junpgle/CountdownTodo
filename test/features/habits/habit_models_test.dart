@@ -34,11 +34,13 @@ void main() {
     test('source_ids 兼容 List 与 JSON 字符串', () {
       final fromList = HabitGoal.fromJson({
         'uuid': 'x',
-        'source_ids': ['a']
+        'source_ids': ['a'],
       });
       expect(fromList.sourceIds, ['a']);
-      final fromString =
-          HabitGoal.fromJson({'uuid': 'x', 'source_ids': '["a","b"]'});
+      final fromString = HabitGoal.fromJson({
+        'uuid': 'x',
+        'source_ids': '["a","b"]',
+      });
       expect(fromString.sourceIds, ['a', 'b']);
       final missing = HabitGoal.fromJson({'uuid': 'x'});
       expect(missing.sourceIds, isEmpty);
@@ -74,10 +76,7 @@ void main() {
 
       final empty = HabitGoal(uuid: 'x', name: 'y');
       expect(empty.defaultFocusMinutes, null);
-      expect(
-        HabitGoal.fromJson(empty.toJson()).defaultFocusMinutes,
-        null,
-      );
+      expect(HabitGoal.fromJson(empty.toJson()).defaultFocusMinutes, null);
     });
   });
 
@@ -215,8 +214,11 @@ void main() {
     });
 
     test('未知 source 回退为 manual', () {
-      final checkIn = HabitCheckIn.fromJson(
-          {'uuid': 'x', 'habit_uuid': 'h', 'source': 'unknown_xyz'});
+      final checkIn = HabitCheckIn.fromJson({
+        'uuid': 'x',
+        'habit_uuid': 'h',
+        'source': 'unknown_xyz',
+      });
       expect(checkIn.source, HabitCheckInSource.manual);
     });
   });

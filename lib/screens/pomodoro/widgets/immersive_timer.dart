@@ -45,6 +45,49 @@ class ImmersiveTimer extends StatefulWidget {
   State<ImmersiveTimer> createState() => _ImmersiveTimerState();
 }
 
+class _CelebrationRipplePainter extends CustomPainter {
+  _CelebrationRipplePainter({
+    required this.animation,
+    required this.color,
+    required this.strokeWidth,
+  }) : super(repaint: animation);
+
+  final Animation<double> animation;
+  final Color color;
+  final double strokeWidth;
+  final Paint _paint = Paint()..style = PaintingStyle.stroke;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (size.isEmpty) return;
+
+    final progress = animation.value;
+    final center = size.center(Offset.zero);
+    final radius = size.shortestSide / 2 - strokeWidth / 2;
+    for (var index = 0; index < 3; index++) {
+      final t = (progress - index * 0.33) % 1.0;
+      final scale = 1.0 + t * 0.5;
+      final opacity = (1.0 - t).clamp(0.0, 1.0);
+      _paint
+        ..color = color.withValues(alpha: opacity * 0.4)
+        ..strokeWidth = strokeWidth;
+
+      canvas.save();
+      canvas
+        ..translate(center.dx, center.dy)
+        ..scale(scale);
+      canvas.drawCircle(Offset.zero, radius, _paint);
+      canvas.restore();
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _CelebrationRipplePainter oldDelegate) =>
+      oldDelegate.animation != animation ||
+      oldDelegate.color != color ||
+      oldDelegate.strokeWidth != strokeWidth;
+}
+
 class _ImmersiveTimerState extends State<ImmersiveTimer>
     with TickerProviderStateMixin {
   late AnimationController _celebrationController;
@@ -147,6 +190,7 @@ class _ImmersiveTimerState extends State<ImmersiveTimer>
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     final isFocusing = widget.phase == PomodoroPhase.focusing;
     final isBreaking = widget.phase == PomodoroPhase.breaking;
     final isFinished = widget.phase == PomodoroPhase.finished;
@@ -176,24 +220,22 @@ class _ImmersiveTimerState extends State<ImmersiveTimer>
             ? formatTimerMMSS(widget.remainingSeconds)
             : formatCountdown(widget.remainingSeconds);
 
-    Color ringColor = Theme.of(context).colorScheme.primary;
+    Color ringColor = colorScheme.primary;
     if (isFocusing) ringColor = const Color(0xFFFF6B6B);
     if (isBreaking) ringColor = const Color(0xFF4ECDC4);
     if (isFinished) ringColor = const Color(0xFFFFD166);
     if (isRemote) ringColor = const Color(0xFFFF6B6B).withValues(alpha: 0.6);
     if (isStrictWaiting) {
-      ringColor = Theme.of(context).colorScheme.primary;
+      ringColor = colorScheme.primary;
     }
 
-    final labelColor =
-        Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6);
-    final timeColor = Theme.of(context).colorScheme.onSurface;
-    final cycleTextColor = Theme.of(context).colorScheme.onSurfaceVariant;
-    final cycleBgColor = Theme.of(context).colorScheme.surfaceContainerHighest;
-    final trackColor = Theme.of(context)
-        .colorScheme
-        .surfaceContainerHighest
-        .withValues(alpha: 0.5);
+    final labelColor = colorScheme.onSurface.withValues(alpha: 0.6);
+    final timeColor = colorScheme.onSurface;
+    final cycleTextColor = colorScheme.onSurfaceVariant;
+    final cycleBgColor = colorScheme.surfaceContainerHighest;
+    final trackColor = colorScheme.surfaceContainerHighest.withValues(
+      alpha: 0.5,
+    );
 
     final remoteTotal = widget.remoteState?.duration;
     final remoteProgress = (isRemote && remoteTotal != null && remoteTotal > 0)
@@ -253,9 +295,109 @@ class _ImmersiveTimerState extends State<ImmersiveTimer>
 
     return AnimatedBuilder(
       animation: _breathingController,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          SizedBox(
+            width: ringSize,
+            height: ringSize,
+            child: TweenAnimationBuilder<Color?>(
+              tween: ColorTween(begin: trackColor, end: trackColor),
+              duration: const Duration(milliseconds: 400),
+              builder: (context, color, child) => CircularProgressIndicator(
+                value: 1.0,
+                strokeWidth: strokeW,
+                valueColor: AlwaysStoppedAnimation<Color>(color ?? trackColor),
+              ),
+            ),
+          ),
+          SizedBox(
+            width: ringSize,
+            height: ringSize,
+            child: TweenAnimationBuilder<Color?>(
+              tween: ColorTween(begin: ringColor, end: ringColor),
+              duration: const Duration(milliseconds: 600),
+              curve: Curves.easeInOut,
+              builder: (context, color, child) => CircularProgressIndicator(
+                value: remoteProgress,
+                strokeWidth: strokeW,
+                strokeCap: StrokeCap.round,
+                valueColor: AlwaysStoppedAnimation<Color>(color ?? ringColor),
+              ),
+            ),
+          ),
+          if (isFinished)
+            CustomPaint(
+              size: Size.square(ringSize),
+              painter: _CelebrationRipplePainter(
+                animation: _celebrationController,
+                color: ringColor,
+                strokeWidth: 2.0 * compactFactor,
+              ),
+            ),
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 300),
+                child: Text(
+                  labelText,
+                  key: ValueKey(widget.phase),
+                  style: TextStyle(
+                    fontSize: labelFontSize,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 1.2,
+                    color: labelColor,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(height: 2),
+              AnimatedDefaultTextStyle(
+                duration: const Duration(milliseconds: 400),
+                curve: Curves.easeInOut,
+                style: TextStyle(
+                  fontSize: timeFontSize,
+                  fontWeight: FontWeight.w200,
+                  color: timeColor,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                  letterSpacing: -1,
+                ),
+                child: Text(timeStr),
+              ),
+              const SizedBox(height: 2),
+              Container(
+                padding: EdgeInsets.symmetric(
+                  horizontal: 12 * compactFactor,
+                  vertical: 4 * compactFactor,
+                ),
+                decoration: BoxDecoration(
+                  color: cycleBgColor.withValues(alpha: 0.6),
+                  borderRadius: BorderRadius.circular(12 * compactFactor),
+                  border: Border.all(
+                    color: cycleTextColor.withValues(alpha: 0.1),
+                    width: 1,
+                  ),
+                ),
+                child: Text(
+                  cycleText,
+                  style: TextStyle(
+                    fontSize: 12 * compactFactor,
+                    fontWeight: FontWeight.w500,
+                    letterSpacing: 0.5,
+                    color: cycleTextColor,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
       builder: (context, child) {
-        final breathValue =
-            (isFocusing && !widget.isPaused) ? _breathingController.value : 0.0;
+        final breathValue = (isFocusing && !widget.isPaused)
+            ? _breathingController.value
+            : 0.0;
         return AnimatedContainer(
           duration: const Duration(milliseconds: 500),
           curve: Curves.easeInOut,
@@ -263,148 +405,25 @@ class _ImmersiveTimerState extends State<ImmersiveTimer>
           height: ringSize,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: Theme.of(context).colorScheme.surface,
+            color: colorScheme.surface,
             boxShadow: [
               if (isActive)
                 BoxShadow(
-                  color:
-                      ringColor.withValues(alpha: 0.15 + (breathValue * 0.15)),
+                  color: ringColor.withValues(
+                    alpha: 0.15 + (breathValue * 0.15),
+                  ),
                   blurRadius: (24 + (breathValue * 16)) * compactFactor,
                   spreadRadius: (4 + (breathValue * 6)) * compactFactor,
                 ),
               if (isActive)
                 BoxShadow(
-                  color: Theme.of(context)
-                      .colorScheme
-                      .shadow
-                      .withValues(alpha: 0.08),
+                  color: colorScheme.shadow.withValues(alpha: 0.08),
                   blurRadius: 16 * compactFactor,
                   offset: const Offset(0, 8),
                 ),
             ],
           ),
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              SizedBox(
-                width: ringSize,
-                height: ringSize,
-                child: TweenAnimationBuilder<Color?>(
-                  tween: ColorTween(begin: trackColor, end: trackColor),
-                  duration: const Duration(milliseconds: 400),
-                  builder: (context, color, child) => CircularProgressIndicator(
-                    value: 1.0,
-                    strokeWidth: strokeW,
-                    valueColor:
-                        AlwaysStoppedAnimation<Color>(color ?? trackColor),
-                  ),
-                ),
-              ),
-              SizedBox(
-                width: ringSize,
-                height: ringSize,
-                child: TweenAnimationBuilder<Color?>(
-                  tween: ColorTween(begin: ringColor, end: ringColor),
-                  duration: const Duration(milliseconds: 600),
-                  curve: Curves.easeInOut,
-                  builder: (context, color, child) => CircularProgressIndicator(
-                    value: remoteProgress,
-                    strokeWidth: strokeW,
-                    strokeCap: StrokeCap.round,
-                    valueColor:
-                        AlwaysStoppedAnimation<Color>(color ?? ringColor),
-                  ),
-                ),
-              ),
-              if (isFinished)
-                AnimatedBuilder(
-                  animation: _celebrationController,
-                  builder: (context, child) {
-                    return Stack(
-                      alignment: Alignment.center,
-                      children: List.generate(3, (i) {
-                        final delay = i * 0.33;
-                        final t =
-                            ((_celebrationController.value - delay) % 1.0);
-                        final scale = 1.0 + t * 0.5;
-                        final opacity = (1.0 - t).clamp(0.0, 1.0);
-                        return Transform.scale(
-                          scale: scale,
-                          child: Container(
-                            width: ringSize,
-                            height: ringSize,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color:
-                                    ringColor.withValues(alpha: opacity * 0.4),
-                                width: 2.0 * compactFactor,
-                              ),
-                            ),
-                          ),
-                        );
-                      }),
-                    );
-                  },
-                ),
-              Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 300),
-                    child: Text(
-                      labelText,
-                      key: ValueKey(widget.phase),
-                      style: TextStyle(
-                        fontSize: labelFontSize,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 1.2,
-                        color: labelColor,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  AnimatedDefaultTextStyle(
-                    duration: const Duration(milliseconds: 400),
-                    curve: Curves.easeInOut,
-                    style: TextStyle(
-                      fontSize: timeFontSize,
-                      fontWeight: FontWeight.w200,
-                      color: timeColor,
-                      fontFeatures: const [FontFeature.tabularFigures()],
-                      letterSpacing: -1,
-                    ),
-                    child: Text(timeStr),
-                  ),
-                  const SizedBox(height: 2),
-                  Container(
-                    padding: EdgeInsets.symmetric(
-                        horizontal: 12 * compactFactor,
-                        vertical: 4 * compactFactor),
-                    decoration: BoxDecoration(
-                      color: cycleBgColor.withValues(alpha: 0.6),
-                      borderRadius: BorderRadius.circular(12 * compactFactor),
-                      border: Border.all(
-                        color: cycleTextColor.withValues(alpha: 0.1),
-                        width: 1,
-                      ),
-                    ),
-                    child: Text(
-                      cycleText,
-                      style: TextStyle(
-                        fontSize: 12 * compactFactor,
-                        fontWeight: FontWeight.w500,
-                        letterSpacing: 0.5,
-                        color: cycleTextColor,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
+          child: child,
         );
       },
     );

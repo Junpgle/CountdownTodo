@@ -163,16 +163,12 @@ void main() {
       expect(find.text('重试开始第1段'), findsOneWidget);
       expect(t.widget<TextField>(key('plan-remark')).readOnly, isTrue);
       expect(
-        t
-            .widget<TextButton>(find.widgetWithText(TextButton, '返回单段'))
-            .onPressed,
+        t.widget<TextButton>(find.widgetWithText(TextButton, '返回单段')).onPressed,
         isNull,
       );
       expect(
         t
-            .widget<DropdownButtonFormField<int>>(
-              key('plan-option-每段番茄轮数'),
-            )
+            .widget<DropdownButtonFormField<int>>(key('plan-option-每段番茄轮数'))
             .onChanged,
         isNull,
       );
@@ -370,13 +366,14 @@ void main() {
         ),
         days: 2,
       );
-      final savedOffsets = PlanSplitDraft(
-        query,
-        slots,
-        ['first', 'second'],
-      ).currentZoneOffsets.toList();
+      final savedOffsets = PlanSplitDraft(query, slots, [
+        'first',
+        'second',
+      ]).currentZoneOffsets.toList();
       final lastOffset = savedOffsets.length - 1;
-      savedOffsets[lastOffset] += savedOffsets[lastOffset] == 14 * 60 ? -60 : 60;
+      savedOffsets[lastOffset] += savedOffsets[lastOffset] == 14 * 60
+          ? -60
+          : 60;
       final r = PlanEditorDraftRepository(database: f.db);
       final d = await r.keep(
         identity,
@@ -391,12 +388,10 @@ void main() {
           rounds: 0,
           origin: 'timeline',
           offsetMinutes: slots.first.start.timeZoneOffset.inMinutes,
-          split: PlanSplitDraft(
-            query,
-            slots,
-            ['first', 'second'],
-            savedZoneOffsets: savedOffsets,
-          ),
+          split: PlanSplitDraft(query, slots, [
+            'first',
+            'second',
+          ], savedZoneOffsets: savedOffsets),
         ),
         targetId: 'first',
       );

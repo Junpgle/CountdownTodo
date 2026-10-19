@@ -316,6 +316,53 @@ class PageTransitions {
     );
   }
 
+  /// Pushes a container transform using geometry captured before its source
+  /// route was dismissed (for example, a button inside a modal sheet).
+  static Future<T?> pushFromRectSnapshot<T>({
+    required NavigatorState navigator,
+    required Widget page,
+    required Rect sourceRect,
+    required Color sourceColor,
+    RouteSettings? settings,
+    Rect? targetRect,
+    BorderRadius? targetBorderRadius,
+    IconData? placeholderIcon,
+    WidgetBuilder? placeholderBuilder,
+    BorderRadius sourceBorderRadius =
+        const BorderRadius.all(Radius.circular(16)),
+  }) async {
+    AppPerformanceMonitor.setCurrentScreen(
+      AppPerformanceMonitor.screenNameForWidget(page),
+    );
+    await _AnimSettings.load();
+    if (!_AnimSettings.animationsEnabled || sourceRect.isEmpty) {
+      return navigator.push<T>(
+        material<T>(builder: (_) => page, settings: settings),
+      );
+    }
+
+    return navigator.push<T>(
+      ContainerTransformRoute<T>(
+        page: page,
+        settings: settings,
+        sourceRect: sourceRect,
+        targetRect: targetRect,
+        targetBorderRadius: targetBorderRadius,
+        sourceColor: sourceColor,
+        placeholderIcon: placeholderIcon,
+        placeholderBuilder: placeholderBuilder,
+        sourceBorderRadius: sourceBorderRadius,
+      ),
+    );
+  }
+
+  static Rect? rectForKey(GlobalKey sourceKey) {
+    final renderBox =
+        sourceKey.currentContext?.findRenderObject() as RenderBox?;
+    if (renderBox == null || renderBox.size.isEmpty) return null;
+    return renderBox.localToGlobal(Offset.zero) & renderBox.size;
+  }
+
   static MaterialPageRoute<T> material<T>({
     required WidgetBuilder builder,
     RouteSettings? settings,

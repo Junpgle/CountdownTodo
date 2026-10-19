@@ -9,8 +9,11 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
     if (userIdInt == null || _deviceId.isEmpty) return;
 
     _remotePomodoroSub?.cancel();
-    _remotePomodoroSub =
-        _syncService.onStateChanged.listen(_handleRemotePomodoroSignal);
+    _remotePomodoroSub = _syncService.onStateChanged
+        .asyncMap(_handleRemotePomodoroSignal)
+        .listen((_) {}, onError: (Object error) {
+      debugPrint('[HomePomodoro] 处理跨端消息失败: $error');
+    });
 
     // 🍅 发起端重连后，服务端回推了历史专注状态
     // 若本地已无对应状态（说明已被用户关闭/完成），则通知云端清除残留
@@ -21,7 +24,7 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
           (saved.phase != PomodoroPhase.focusing &&
               saved.phase != PomodoroPhase.breaking)) {
         // debugPrint('[首页] 本地无运行中的专注状态，发送 CLEAR_FOCUS 清除云端残留');
-        _syncService.sendClearFocusSignal();
+        _syncService.sendClearFocusSignal(sessionUuid: state.sessionUuid);
       } else {
         // debugPrint('[首页] 本地仍有运行中的专注，保留云端状态');
       }
@@ -220,7 +223,18 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
 
       case 'STOP':
       case 'INTERRUPT':
+      case 'FINISH':
+      case 'CLEAR_FOCUS':
       case 'FOCUS_DISCONNECTED':
+        if (signal.sessionUuid != null &&
+            signal.sessionUuid != _remotePomodoro?.sessionUuid) {
+          return;
+        }
+        if (signal.sessionUuid == null &&
+            signal.todoUuid != null &&
+            signal.todoUuid != _remotePomodoro?.todoUuid) {
+          return;
+        }
         final remoteSessionUuid =
             signal.sessionUuid ?? _remotePomodoro?.sessionUuid;
         await _setFocusDoNotDisturb(
@@ -324,60 +338,77 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
   }
 
   void _startRemotePomodoroTicker(int targetEndMs, bool isCountUp) {
-    if (!_isDashboardInForeground) {
+    if (!_canRunDashboardPomodoroTickers) {
       _stopRemotePomodoroTicker();
       return;
     }
     _remotePomodoroTicker?.cancel();
-    _remotePomodoroTicker = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!mounted) {
-        _remotePomodoroTicker?.cancel();
+    var lastTickMs = DateTime.now().millisecondsSinceEpoch;
+    var uncountedElapsedMs = 0;
+
+    void tick() {
+      if (!mounted ||
+          !_canRunDashboardPomodoroTickers ||
+          _remotePomodoro == null) {
+        _stopRemotePomodoroTicker();
         return;
       }
+
+      final nowMs = DateTime.now().millisecondsSinceEpoch;
+      final previousSeconds = _remotePomodoroRemaining;
+      var shouldContinue = true;
       if (isCountUp) {
-        final previousTimeInfo = _formatDashboardPomodoroTimeInfo(
+        final startedAt = _remotePomodoro?.timestamp;
+        if (startedAt == null) {
+          final elapsedMs = uncountedElapsedMs + nowMs - lastTickMs;
+          _remotePomodoroRemaining += elapsedMs ~/ 1000;
+          uncountedElapsedMs = elapsedMs % 1000;
+        } else {
+          _remotePomodoroRemaining = ((nowMs - startedAt) / 1000).floor();
+        }
+        lastTickMs = nowMs;
+        if (_didDashboardPomodoroDisplayChange(
+          previousSeconds,
           _remotePomodoroRemaining,
           countUp: true,
-        );
-        final startedAt = _remotePomodoro?.timestamp;
-        _remotePomodoroRemaining = startedAt == null
-            ? _remotePomodoroRemaining + 1
-            : ((DateTime.now().millisecondsSinceEpoch - startedAt) / 1000)
-                .floor();
-        if (_formatDashboardPomodoroTimeInfo(
-              _remotePomodoroRemaining,
-              countUp: true,
-            ) !=
-            previousTimeInfo) {
-          _pomodoroTickNotifier.value++;
+        )) {
+          _pomodoroDisplayTickNotifier.value++;
         }
       } else {
-        final rem =
-            ((targetEndMs - DateTime.now().millisecondsSinceEpoch) / 1000)
-                .ceil();
+        final rem = ((targetEndMs - nowMs) / 1000).ceil();
         if (rem <= 0) {
           unawaited(_setFocusDoNotDisturb(
             false,
             sessionUuid: _remotePomodoro?.sessionUuid,
           ));
-          _remotePomodoroTicker?.cancel();
+          _stopRemotePomodoroTicker();
+          shouldContinue = false;
           if (mounted) setState(() => _remotePomodoro = null);
         } else {
-          final previousTimeInfo = _formatDashboardPomodoroTimeInfo(
-            _remotePomodoroRemaining,
-            countUp: false,
-          );
           _remotePomodoroRemaining = rem;
-          if (_formatDashboardPomodoroTimeInfo(
-                rem,
-                countUp: false,
-              ) !=
-              previousTimeInfo) {
-            _pomodoroTickNotifier.value++;
+          if (_didDashboardPomodoroDisplayChange(
+            previousSeconds,
+            rem,
+            countUp: false,
+          )) {
+            _pomodoroDisplayTickNotifier.value++;
           }
         }
       }
-    });
+      if (shouldContinue) {
+        final delaySeconds = dashboardPomodoroDisplayTickDelaySeconds(
+          _remotePomodoroRemaining,
+          countUp: isCountUp,
+        );
+        _remotePomodoroTicker = Timer(
+          Duration(seconds: delaySeconds),
+          tick,
+        );
+      }
+    }
+
+    // Correct any elapsed time immediately after starting or resuming the ticker.
+    tick();
   }
 
   void _stopRemotePomodoroTicker() {
@@ -469,14 +500,18 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
   }
 
   void _startLocalTicker(bool isCountUp) {
-    if (!_isDashboardInForeground) {
+    if (!_canRunDashboardPomodoroTickers) {
       _stopLocalTicker();
       return;
     }
     _localPomodoroTicker?.cancel();
-    _localPomodoroTicker = Timer.periodic(const Duration(seconds: 1), (timer) {
+    void tick() {
       if (!mounted || _localPomodoro == null) {
-        timer.cancel();
+        _stopLocalTicker();
+        return;
+      }
+      if (!_canRunDashboardPomodoroTickers) {
+        _stopLocalTicker();
         return;
       }
       final now = DateTime.now().millisecondsSinceEpoch;
@@ -487,23 +522,44 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
           ? ((now - _localPomodoro!.sessionStartMs) / 1000).floor()
           : ((_localPomodoro!.targetEndMs - now) / 1000).ceil();
 
-      final previousTimeInfo = _formatDashboardPomodoroTimeInfo(
-        _localPomodoroRemaining,
-        countUp: isActuallyCountUp,
-      );
+      final previousSeconds = _localPomodoroRemaining;
       _localPomodoroRemaining = rem;
       if (!isActuallyCountUp && _localPomodoroRemaining <= 0) {
         _localPomodoroRemaining = 0;
         _stopLocalTicker();
       }
-      if (_formatDashboardPomodoroTimeInfo(
-            _localPomodoroRemaining,
-            countUp: isActuallyCountUp,
-          ) !=
-          previousTimeInfo) {
-        _pomodoroTickNotifier.value++;
+      final displayChanged = _didDashboardPomodoroDisplayChange(
+        previousSeconds,
+        _localPomodoroRemaining,
+        countUp: isActuallyCountUp,
+      );
+      final stopControlChanged =
+          !isActuallyCountUp &&
+          ((previousSeconds > 1800 && _localPomodoroRemaining <= 1800) ||
+              (previousSeconds <= 1800 && _localPomodoroRemaining > 1800));
+      if (displayChanged || stopControlChanged) {
+        _pomodoroDisplayTickNotifier.value++;
       }
-    });
+      if (_localPomodoro != null &&
+          (_localPomodoroRemaining > 0 || isActuallyCountUp)) {
+        final delaySeconds = dashboardPomodoroDisplayTickDelaySeconds(
+          _localPomodoroRemaining,
+          countUp: isActuallyCountUp,
+          includeStopControlBoundary: !isActuallyCountUp,
+        );
+        _localPomodoroTicker = Timer(
+          Duration(seconds: delaySeconds),
+          tick,
+        );
+      }
+    }
+
+    // Refresh the time anchor before scheduling the next visible change.
+    assert(
+      _localPomodoro == null ||
+          (_localPomodoro!.mode == TimerMode.countUp) == isCountUp,
+    );
+    tick();
   }
 
   void _stopLocalTicker() {
@@ -548,7 +604,10 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
     return minutes <= 1 ? '马上开始' : '$minutes 分钟后开始';
   }
 
-  Future<void> _startPlanBlockFocus(TodoPlanBlock block) async {
+  Future<void> _startPlanBlockFocus(
+    TodoPlanBlock block, {
+    GlobalKey? sourceKey,
+  }) async {
     try {
       final todos = await StorageService.getTodos(widget.username);
       TodoItem? boundTodo;
@@ -565,30 +624,17 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
             : '规划任务',
       );
 
-      final configuredPomodoroMinutes = block.pomodoroRounds > 0
-          ? block.pomodoroMinutes * block.pomodoroRounds
-          : 0;
-      final plannedMinutes = configuredPomodoroMinutes > 0
-          ? configuredPomodoroMinutes
-          : (block.plannedMinutes > 0
-              ? block.plannedMinutes
-              : ((block.endTime - block.startTime) / 60000).round());
-      block.status = TodoPlanStatus.focusing;
-      block.markAsChanged();
-      await StorageService.savePlanBlocks(widget.username, [block]);
-      final settings = await PomodoroService.getSettings();
-      await PomodoroControlService.startFocus(
-        settings: settings,
-        boundTodo: boundTodo,
-        durationMinutes: plannedMinutes < 1 ? 1 : plannedMinutes,
-        planBlockId: block.uuid,
-      );
-
       if (!mounted) return;
-      await Navigator.push(
-        context,
-        PageTransitions.material(
-          builder: (_) => PomodoroScreen(username: widget.username),
+      await PageTransitions.pushFromRect<void>(
+        context: context,
+        sourceKey: sourceKey ?? _focusBannerKey,
+        placeholderIcon: Icons.timer_outlined,
+        page: PomodoroScreen(
+          username: widget.username,
+          initialEntry: PomodoroEntryIntent.forPlanBlock(
+            boundTodo: boundTodo,
+            planBlock: block,
+          ),
         ),
       );
       if (mounted) {
@@ -600,7 +646,7 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
       if (!mounted) return;
       AppSnackBars.showSnackBar(
         context,
-        SnackBar(content: Text('启动专注失败: $e')),
+        SnackBar(content: Text('打开番茄钟失败: $e')),
       );
     }
   }

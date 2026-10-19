@@ -194,9 +194,7 @@ mixin _HomeDashboardAiMixin on _HomeDashboardStateBase {
         onTodoGroupsChanged: (groups) {
           unawaited(_handleAiTodoGroupsChanged(groups));
         },
-        onTodosBatchAction: (inserted, updated) {
-          unawaited(_handleAiTodosBatchAction(inserted, updated));
-        },
+        onTodosBatchAction: _handleAiTodosBatchAction,
         onFixedSchedulesChanged: (schedules) {
           if (!mounted) return;
           setState(() {
@@ -216,7 +214,10 @@ mixin _HomeDashboardAiMixin on _HomeDashboardStateBase {
 
   Future<void> _handleAiTodoGroupsChanged(List<TodoGroup> groups) async {
     if (!mounted) return;
-    setState(() => _todoGroups = groups.where((g) => !g.isDeleted).toList());
+    setState(() {
+      _todoGroups = groups.where((g) => !g.isDeleted).toList();
+      _todoDataRevision++;
+    });
     await StorageService.saveTodoGroups(widget.username, groups, sync: true);
   }
 
@@ -229,18 +230,36 @@ mixin _HomeDashboardAiMixin on _HomeDashboardStateBase {
       inserted,
       updated,
     );
-    if (!mounted) return;
-    setState(() => _todos = nextTodos);
     await StorageService.saveTodos(widget.username, nextTodos);
-    await _saveTodosToSharedFile(nextTodos);
-    _timelineRevision.value++;
-    _todoUpdateSignalNotifier.value++;
-    FloatWindowService.triggerReminderCheck();
-    FloatWindowService.invalidateSlotCache();
-    FloatWindowService.update();
-    _syncTodoNotification();
-    _rescheduleAlarms();
-    await WidgetService.updateTodoWidget(nextTodos);
+    if (!mounted) return;
+    setState(() {
+      _todos = nextTodos;
+      _todoDataRevision++;
+    });
+    try {
+      await _saveTodosToSharedFile(nextTodos);
+    } catch (error) {
+      debugPrint('AI todo shared-file refresh failed after save: $error');
+    }
+    try {
+      _timelineRevision.value++;
+      FloatWindowService.triggerReminderCheck();
+      FloatWindowService.invalidateSlotCache();
+      FloatWindowService.update();
+      _syncTodoNotification();
+    } catch (error) {
+      debugPrint('AI todo UI refresh failed after save: $error');
+    }
+    try {
+      await _rescheduleAlarms();
+    } catch (error) {
+      debugPrint('AI todo alarm refresh failed after save: $error');
+    }
+    try {
+      await WidgetService.updateTodoWidget(nextTodos);
+    } catch (error) {
+      debugPrint('AI todo widget refresh failed after save: $error');
+    }
   }
 
   // === 初始化与生命周期 ===

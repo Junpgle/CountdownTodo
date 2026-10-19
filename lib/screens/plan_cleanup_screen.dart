@@ -86,9 +86,7 @@ class _PlanCleanupEntryState extends State<PlanCleanupEntry>
   }
 
   void _onScopedDataRefresh() {
-    if (!_affectsPlanCleanup(
-      StorageService.scopedDataRefreshNotifier.value,
-    )) {
+    if (!_affectsPlanCleanup(StorageService.scopedDataRefreshNotifier.value)) {
       return;
     }
     _refresh();
@@ -210,6 +208,7 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
     with WidgetsBindingObserver {
   final _search = TextEditingController();
   final _selected = <String>{};
+  final Map<(String?, String), DateFormat> _dateFormatters = {};
   late final PlanCleanupRepository _repository;
   PlanTodoIdentity? _identity;
   PlanCleanupPage? _page;
@@ -233,6 +232,14 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
   StreamSubscription<PomodoroRunState?>? _focus;
   DateTime get _now => widget.clock?.call() ?? DateTime.now();
   bool get _detail => widget.todoId != null;
+
+  DateFormat _cachedDateFormat(String pattern) {
+    final locale = Intl.defaultLocale;
+    return _dateFormatters.putIfAbsent(
+      (locale, pattern),
+      () => DateFormat(pattern, locale),
+    );
+  }
 
   @override
   void initState() {
@@ -270,9 +277,7 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
     }
   }
 
-  void _refresh({
-    bool preserveSelectionWhenUnchanged = false,
-  }) {
+  void _refresh({bool preserveSelectionWhenUnchanged = false}) {
     if (!mounted || !_foreground || _working || _opening || _saved != null) {
       return;
     }
@@ -384,9 +389,7 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
         var cursor = more ? _snapshot?.next : null;
         PlanCleanupSnapshot? lastSnapshot;
         var restarted = false;
-        final maxReads = detailLimit == null
-            ? 1
-            : (detailLimit + 49) ~/ 50 + 2;
+        final maxReads = detailLimit == null ? 1 : (detailLimit + 49) ~/ 50 + 2;
         for (var pageIndex = 0; pageIndex < maxReads; pageIndex++) {
           final currentSnapshot = await _repository.detail(
             widget.username,
@@ -430,8 +433,7 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
             previousSnapshot != null &&
             !snapshot.restarted &&
             snapshot.fingerprint == previousSnapshot.fingerprint;
-        final applyInitialSelection =
-            initial || _initialDetailSelectionPending;
+        final applyInitialSelection = initial || _initialDetailSelectionPending;
         setState(() {
           final append =
               more &&
@@ -679,7 +681,10 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
       return;
     }
     // Confirmation is itself busy: refreshes cannot replace its reviewed set.
-    setState(() { _working = true; _confirming = true; });
+    setState(() {
+      _working = true;
+      _confirming = true;
+    });
     _boundary?.cancel();
     try {
       await snapshot.identity.check();
@@ -733,7 +738,8 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
       );
       if (confirmed != true) return;
       if (mounted) setState(() => _confirming = false);
-      final request = _pending ??
+      final request =
+          _pending ??
           PlanCleanupRequest(
             identity: preview.identity,
             todoId: preview.todoId,
@@ -769,7 +775,10 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
       }
     } finally {
       if (mounted) {
-        setState(() { _working = false; _confirming = false; });
+        setState(() {
+          _working = false;
+          _confirming = false;
+        });
         if (_saved == null && _snapshot != null) _arm(_snapshot!.nextBoundary);
       }
     }
@@ -799,15 +808,16 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
     if (mounted) setState(() => _working = false);
   }
 
-  String _date(int ms) =>
-      DateFormat('yyyy/M/d').format(DateTime.fromMillisecondsSinceEpoch(ms));
+  String _date(int ms) => _cachedDateFormat('yyyy/M/d').format(
+    DateTime.fromMillisecondsSinceEpoch(ms),
+  );
   String _range(PlanCleanupItem item) {
     final start = DateTime.fromMillisecondsSinceEpoch(item.start),
         end = DateTime.fromMillisecondsSinceEpoch(item.end);
     final offset = start.timeZoneOffset == end.timeZoneOffset
         ? ''
         : ' · ${start.timeZoneName}→${end.timeZoneName}';
-    return '${DateFormat('HH:mm').format(start)}–${DateFormat(DateUtils.isSameDay(start, end) ? 'HH:mm' : 'M/d HH:mm').format(end)}$offset';
+    return '${_cachedDateFormat('HH:mm').format(start)}–${_cachedDateFormat(DateUtils.isSameDay(start, end) ? 'HH:mm' : 'M/d HH:mm').format(end)}$offset';
   }
 
   String _reminder(PlanCleanupItem item) {
@@ -1042,15 +1052,17 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
           color: Theme.of(context).colorScheme.surfaceContainerLow,
           child: InkWell(
             key: ValueKey('cleanup-todo-${todo.id}'),
-            onTap: _loading ? null : () => _route(
-              () => PlanCleanupScreen(
-                username: widget.username,
-                todoId: todo.id,
-                repository: _repository,
-                clock: widget.clock,
-                updateReminders: widget.updateReminders,
-              ),
-            ),
+            onTap: _loading
+                ? null
+                : () => _route(
+                    () => PlanCleanupScreen(
+                      username: widget.username,
+                      todoId: todo.id,
+                      repository: _repository,
+                      clock: widget.clock,
+                      updateReminders: widget.updateReminders,
+                    ),
+                  ),
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
@@ -1133,7 +1145,7 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
     ];
     String? lastDate;
     for (final item in _items) {
-      final date = DateFormat('yyyy年M月d日')
+      final date = _cachedDateFormat('yyyy年M月d日')
           .format(DateTime.fromMillisecondsSinceEpoch(item.start));
       if (date != lastDate) {
         children.add(
@@ -1227,9 +1239,7 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
             if (_saved == null)
               IconButton(
                 tooltip: '重新核对',
-                onPressed: _loading || _working
-                    ? null
-                    : _manualRefresh,
+                onPressed: _loading || _working ? null : _manualRefresh,
                 icon: const Icon(Icons.refresh),
               ),
           ],
@@ -1241,13 +1251,12 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
             child: ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                if (_loading || (_working && !_confirming)) const LinearProgressIndicator(),
+                if (_loading || (_working && !_confirming))
+                  const LinearProgressIndicator(),
                 if (_error != null) ...[
                   _notice(_error!, error: true),
                   TextButton(
-                    onPressed: _working
-                        ? null
-                        : _manualRefresh,
+                    onPressed: _working ? null : _manualRefresh,
                     child: const Text('重新核对'),
                   ),
                 ],
@@ -1275,7 +1284,8 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
                         Text(
                           _selectionNotice!,
                           textAlign: TextAlign.center,
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
                                 color: Theme.of(context)
                                     .colorScheme
                                     .onSurfaceVariant,

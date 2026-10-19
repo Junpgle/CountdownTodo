@@ -201,6 +201,30 @@ void main() {
     expect(changed.last.groupId, 'work');
   });
 
+  testWidgets('移入文件夹弹层显示待办创建与截止时间', (tester) async {
+    await pumpManagementPage(
+      tester,
+      FolderManageScreen(
+        username: 'ui-review',
+        todoGroups: [TodoGroup(id: 'work', name: '工作项目')],
+        allTodos: [
+          TodoItem(
+            title: '整理会议记录',
+            createdDate: DateTime(2026, 10, 10, 9).millisecondsSinceEpoch,
+            dueDate: DateTime(2026, 10, 11, 17),
+          ),
+        ],
+        onGroupsChanged: (_) {},
+        onTodosChanged: (_) {},
+      ),
+    );
+
+    await tapVisible(tester, find.text('工作项目'));
+    await tapVisible(tester, find.text('移入独立待办'));
+
+    expect(find.text('10-10 09:00 → 10-11 17:00'), findsOneWidget);
+  });
+
   testWidgets('文件夹展示设置保存原有模式', (tester) async {
     await pumpManagementPage(tester, sampleFolders());
     await tapVisible(tester, find.text('首页展示方式'));

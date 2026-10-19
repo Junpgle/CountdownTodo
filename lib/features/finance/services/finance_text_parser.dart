@@ -239,23 +239,220 @@ abstract final class FinanceTextParser {
     multiLine: true,
   );
 
+  static final RegExp _looksLikeFinanceAmountPattern = RegExp(
+    r'(?:金额|amount|¥|￥|\bCNY\b)\s*[:=]?\s*[-+]?\d+(?:[,.]\d+)*',
+    caseSensitive: false,
+  );
+  static final RegExp _looksLikeFinanceTypePattern = RegExp(
+    r'(?:类型|方向|收支|type|transaction[_ ]?type)\s*[:=]?\s*(?:支出|收入|退款|expense|income|refund)',
+    caseSensitive: false,
+  );
+  static final RegExp _looksLikeFinanceDirectionPattern = RegExp(
+    r'支出|收入|退款|消费|进账|expense|income|refund',
+    caseSensitive: false,
+  );
+  static final RegExp _quickEntryStructuredFieldsPattern = RegExp(
+    r'(?:^|\n)\s*(?:#?记账|类型|方向|收支|金额|分类|日期|'
+    r'付款方式|到账账户|退款到账账户|关联账户)\s*[:=]',
+    multiLine: true,
+  );
+  static final RegExp _quickEntrySentenceSeparatorPattern = RegExp(
+    r'[\n；;。！？!?]+',
+  );
+  static final RegExp _quickEntryNumberCommaPattern = RegExp(r'(?<=\d),(?=\d)');
+  static final RegExp _quickEntryCommaSeparatorPattern = RegExp(r'\s*[,，]\s*');
+  static final RegExp _quickEntryAmountClarificationPattern = RegExp(
+    r'^(?:其中|包括|包含|(?:每)?满\s*\d+(?:[,.]\d+)?\s*(?:元|块钱?)?\s*减|'
+    r'原价|(?:(?:会员|平台|商家|店铺|支付宝|微信|银联|信用卡|银行卡|云闪付|花呗|白条)'
+    r'(?:支付|付款)?)?'
+    r'(?:优惠|折扣|减免|立减|满减|补贴)|'
+    r'(?:(?:(?:会员|平台|商家|店铺|支付宝|微信|银联|信用卡|银行卡|云闪付|花呗|白条)'
+    r'(?:支付|付款)?)?'
+    r'(?:使用|用了|用)?(?:红包|优惠券|代金券)抵扣)|'
+    r'(?:最后|最终)\s*(?:支付|付款|付了?|实付|实际支付|实际付款)|'
+    r'实付|实际支付|实际付款|现付|'
+    r'实收|实际收款|实际到账|到账|到手价|到手|省下|抵扣)',
+  );
+  static final RegExp _compactFieldSeparatorPattern = RegExp(r'\s*[|｜]\s*');
+  static final RegExp _normalizeKeyPattern = RegExp(r'[\s_\-]');
+  static final RegExp _parseAmountLeadingCurrencyPattern = RegExp(
+    r'^[¥￥$€£]\s*',
+  );
+  static final RegExp _parseAmountTrailingUnitPattern = RegExp(
+    r'\s*(?:元|块|人民币|CNY)\s*$',
+    caseSensitive: false,
+  );
+  static final RegExp _parseAmountLeadingPlusPattern = RegExp(r'^\+');
+  static final RegExp _parseAmountLeadingMinusPattern = RegExp(r'^-');
+  static final RegExp _findAmountPattern = RegExp(
+    r'(?:¥|￥|金额\s*[:=]?\s*|消费\s*[:=]?\s*|实付\s*[:=]?\s*|合计\s*[:=]?\s*|总额\s*[:=]?\s*)(-?\s*\d+(?:[,.]\d{1,2})?)',
+    caseSensitive: false,
+  );
+  static final RegExp _sentenceCategoryFieldPattern = RegExp(
+    r'(?:分类|类别|归类为?|记到)\s*[:=]?\s*([^,，。；;]+)',
+  );
+  static final RegExp _sentencePaymentFieldPattern = RegExp(
+    r'(?:退款到账账户|到账账户|关联账户|账户|付款方式|支付方式|'
+    r'付款(?!给)|支付(?!宝|给)|用(?!于)|通过)'
+    r'\s*[:=]?\s*([^,，。；;]+)',
+  );
+  static final RegExp _sentenceNoteFieldPattern = RegExp(
+    r'(?:备注|说明)\s*[:=]?\s*([^,，。；;]+)',
+  );
+  static final RegExp _sentenceMerchantFieldPattern = RegExp(
+    r'(?:商家|商户|店铺|项目|名称)\s*[:=]?\s*([^,，。；;]+)',
+  );
+  static final List<RegExp> _sentenceAmountPatterns = [
+    RegExp(
+      r'(?:(?:最后|最终)\s*(?:支付|付款|付了?|实付|实际支付|实际付款)|'
+      r'折后|优惠后|抵扣后|补贴后|'
+      r'实际支付|实际付款|实付|现付|净付|实际收款|实收金额|实收|实际到账|到账|到手价|到手)'
+      r'\s*[:=]?\s*(?:¥|￥)?\s*'
+      r'(\d+(?:[,.]\d+)*)(?=\s*(?:元|块钱?|人民币|CNY|RMB|[,，。；;]|$))',
+      caseSensitive: false,
+    ),
+    RegExp(r'(?:¥|￥)\s*(\d+(?:[,.]\d+)*)', caseSensitive: false),
+    RegExp(
+      r'(\d+(?:[,.]\d+)*)\s*(?:元|块钱?|人民币|CNY|RMB)(?![A-Za-z])',
+      caseSensitive: false,
+    ),
+    RegExp(
+      r'(?:金额|花(?:了|费)?|支出|收入|收到|退款|消费|支付|付款|付了|共|合计|实付)'
+      r'\s*[:=]?\s*(?:¥|￥)?\s*(\d+(?:[,.]\d+)*)',
+      caseSensitive: false,
+    ),
+  ];
+  static final RegExp _sentenceFallbackAmountPattern = RegExp(
+    r'(?<![\d.])((?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)(?![\d.])',
+  );
+  static final RegExp _sentenceAmountContextPattern = RegExp(
+    r'(?:花(?:了|费)?|消费|支付|付款|金额|支出|收入|收到|退款|共|合计|实付)\s*[:=]?\s*$',
+  );
+  static final RegExp _sentenceAmountTimeUnitPattern = RegExp(
+    r'^\s*(?:年|月|日|号|点|时|分)',
+  );
+  static final RegExp _sentenceAmountQuantityUnitPattern = RegExp(
+    r'^\s*(?:个|件|只|张|份|杯|瓶|盒|袋|斤|公斤|千克|克|毫升|升|米|公里|'
+    r'站|层|次|名|人|位|套|本|包|台|部|辆|双|片|颗|粒|枚|条|秒|分钟|小时|天|岁|'
+    r'kg|g|ml|l)(?![A-Za-z])',
+    caseSensitive: false,
+  );
+  static final RegExp _sentenceAmountDateSuffixPattern = RegExp(
+    r'(?:年|月|日|号)\s*$',
+  );
+  static final RegExp _sentenceAmountDateSeparatorBeforePattern = RegExp(
+    r'[-/.]\s*$',
+  );
+  static final RegExp _sentenceAmountDateSeparatorAfterPattern = RegExp(
+    r'^\s*[-/.]',
+  );
+  static final RegExp _sentenceAmountColonBeforePattern = RegExp(r':\s*$');
+  static final RegExp _sentenceAmountColonAfterPattern = RegExp(r'^\s*:');
+  static final RegExp _sentenceWhitespacePattern = RegExp(r'\s+');
+  static final _normalizedExpenseCategoryAliases = _normalizeCategoryAliases(
+    _expenseCategoryAliases,
+  );
+  static final _normalizedIncomeCategoryAliases = _normalizeCategoryAliases(
+    _incomeCategoryAliases,
+  );
+  static final RegExp _sentenceValueLeadingDelimiterPattern = RegExp(
+    r'^[,，。；;、\s]+',
+  );
+  static final RegExp _sentenceValueTrailingDelimiterPattern = RegExp(
+    r'[,，。；;、\s]+$',
+  );
+  static final RegExp _sentenceNextFieldPattern = RegExp(
+    r'(?:^|\s)(?:分类|类别|归类为?|记到|退款到账账户|到账账户|'
+    r'关联账户|账户|付款方式|支付方式|付款|支付|备注|说明|'
+    r'商家|商户|店铺|项目|名称)\s*[:=]?',
+  );
+  static final RegExp _sentencePaymentMislabelPattern = RegExp(
+    r'^(?:分类|类别|归类为?|记到|备注|说明|商家|商户|店铺|项目|名称)\s*[:=]?',
+  );
+  static final RegExp _sentenceMerchantClauseSeparatorPattern = RegExp(
+    r'[,，。；;]',
+  );
+  static final RegExp _sentenceMerchantDiscountPattern = RegExp(
+    r'(?:每)?满\s*\d+(?:[,.]\d+)?\s*(?:元|块钱?)?\s*减\s*'
+    r'\d+(?:[,.]\d+)?\s*(?:元|块钱?)?',
+    caseSensitive: false,
+  );
+  static final RegExp _sentenceMerchantPromotionAmountPattern = RegExp(
+    r'(?:原价|优惠|折扣|减免|立减|满减|实付|实际支付|实际付款|现付|'
+    r'实收|实际收款|实际到账|到账|到手价|到手|省下|抵扣)\s*[:=]?\s*'
+    r'(?:¥|￥)?\s*\d+(?:[,.]\d+)*\s*'
+    r'(?:元|块钱?|人民币|CNY|RMB)?',
+    caseSensitive: false,
+  );
+  static final RegExp _sentenceMerchantVerbPattern = RegExp(
+    r'记一笔|记账|记录|一共|合计|实付|金额|支出|收入|退款|消费|花(?:了|费)?|'
+    r'用了?|支付了?|付款了?|付了|买了?|购买了?|收到|入账|进账|收款|赚到?|'
+    r'用于|在|于|给|退了?|退回|退还|返还|退钱|为',
+  );
+  static final RegExp _sentenceMerchantLeadingDelimiterPattern = RegExp(
+    r'^[:：,，。；;、\s]+',
+  );
+  static final RegExp _sentenceMerchantTrailingDelimiterPattern = RegExp(
+    r'[:：,，。；;、\s]+$',
+  );
+  static final RegExp _sentenceMerchantLeadingArticlePattern = RegExp(
+    r'^(?:的|一笔)',
+  );
+  static final RegExp _sentenceMerchantFieldPrefixPattern = RegExp(
+    r'^(?:分类|类别|退款到账账户|到账账户|关联账户|账户|付款方式|支付方式|备注|说明)',
+  );
+  static final RegExp _sentenceMerchantFullDatePattern = RegExp(
+    r'\d{4}\s*(?:年|[-/.])\s*\d{1,2}\s*'
+    r'(?:月|[-/.])\s*\d{1,2}\s*日?',
+  );
+  static final RegExp _sentenceMerchantChineseMonthDayPattern = RegExp(
+    r'\d{1,2}\s*月\s*\d{1,2}\s*日?',
+  );
+  static final RegExp _sentenceMerchantSlashMonthDayPattern = RegExp(
+    r'\d{1,2}\s*/\s*\d{1,2}',
+  );
+  static final RegExp _sentenceFullDatePattern = RegExp(
+    r'(?<!\d)(\d{4})\s*(?:年|[-/.])\s*(\d+)\s*'
+    r'(?:月|[-/.])\s*(\d+)(?!\d)\s*日?',
+  );
+  static final RegExp _sentenceMonthDayPattern = RegExp(
+    r'(?<!\d)(\d+)\s*月\s*(\d+)(?!\d)\s*日?',
+  );
+  static final RegExp _sentenceSlashMonthDayPattern = RegExp(
+    r'(?<!\d)(\d+)\s*/\s*(\d+)(?!\d)',
+  );
+  static final RegExp _parsedDatePattern = RegExp(
+    r'^(\d{4})(?!\d)-(\d{1,2})(?!\d)-(\d{1,2})(?!\d)(?=$|[\sT])',
+  );
+  static final RegExp _assistantFinanceBlockPattern = RegExp(
+    r'\[(?:FINANCE|FN)_START\](.*?)\[(?:FINANCE|FN)_END\]',
+    dotAll: true,
+  );
+  static final RegExp _assistantFinanceActionBlockPattern = RegExp(
+    r'\[FINANCE_ACTION_START\](.*?)\[FINANCE_ACTION_END\]',
+    dotAll: true,
+  );
+  static final RegExp _assistantActionBlockPattern = RegExp(
+    r'\[ACTION_START\](.*?)\[ACTION_END\]',
+    dotAll: true,
+  );
+  static final List<RegExp> _assistantActionBlockPatterns = [
+    _assistantFinanceActionBlockPattern,
+    _assistantActionBlockPattern,
+  ];
+  static final RegExp _jsonCodeFenceOpeningPattern = RegExp(
+    r'^```(?:json)?\s*',
+  );
+  static final RegExp _jsonCodeFenceClosingPattern = RegExp(r'\s*```$');
+
   /// Returns true only for an explicitly marked block or text that contains
   /// both a bill amount and a clear cash-flow direction.
   static bool looksLikeFinanceFormat(String input) {
     final text = input.replaceAll('：', ':');
     final hasMarker = _blockMarker.hasMatch(text);
-    final hasAmount = RegExp(
-      r'(?:金额|amount|¥|￥|\bCNY\b)\s*[:=]?\s*[-+]?\d+(?:[,.]\d+)*',
-      caseSensitive: false,
-    ).hasMatch(text);
-    final hasType = RegExp(
-      r'(?:类型|方向|收支|type|transaction[_ ]?type)\s*[:=]?\s*(?:支出|收入|退款|expense|income|refund)',
-      caseSensitive: false,
-    ).hasMatch(text);
-    final hasDirectionWord = RegExp(
-      r'支出|收入|退款|消费|进账|expense|income|refund',
-      caseSensitive: false,
-    ).hasMatch(text);
+    final hasAmount = _looksLikeFinanceAmountPattern.hasMatch(text);
+    final hasType = _looksLikeFinanceTypePattern.hasMatch(text);
+    final hasDirectionWord = _looksLikeFinanceDirectionPattern.hasMatch(text);
     return hasMarker || (hasAmount && (hasType || hasDirectionWord));
   }
 
@@ -288,33 +485,22 @@ abstract final class FinanceTextParser {
     final type = _parseType(text);
     final explicitCategory = _extractSentenceValue(
       text,
-      RegExp(
-        r'(?:分类|类别|归类为?|记到)\s*[:=]?\s*([^,，。；;]+)',
-      ),
+      _sentenceCategoryFieldPattern,
     );
     final category = explicitCategory == null
         ? _inferSentenceCategory(text, type)
         : _inferSentenceCategory(explicitCategory, type) ?? explicitCategory;
     final payment = _normalizeSentencePayment(
-      _extractSentenceValue(
-        text,
-        RegExp(
-          r'(?:退款到账账户|到账账户|关联账户|账户|付款方式|支付方式|'
-          r'付款(?!给)|支付(?!宝|给)|用(?!于)|通过)'
-          r'\s*[:=]?\s*([^,，。；;]+)',
-        ),
-      ),
+      _extractSentenceValue(text, _sentencePaymentFieldPattern),
       text,
     );
-    final note = _extractSentenceValue(
-      text,
-      RegExp(r'(?:备注|说明)\s*[:=]?\s*([^,，。；;]+)'),
-    );
+    final note = _extractSentenceValue(text, _sentenceNoteFieldPattern);
     final explicitMerchant = _extractSentenceValue(
       text,
-      RegExp(r'(?:商家|商户|店铺|项目|名称)\s*[:=]?\s*([^,，。；;]+)'),
+      _sentenceMerchantFieldPattern,
     );
-    final merchant = explicitMerchant ??
+    final merchant =
+        explicitMerchant ??
         _deriveSentenceMerchant(
           text,
           amountMatch,
@@ -350,11 +536,9 @@ abstract final class FinanceTextParser {
     if (normalized.isEmpty) return const [];
 
     final structuredText = normalized.replaceAll('：', ':');
-    final hasStructuredFields = RegExp(
-      r'(?:^|\n)\s*(?:#?记账|类型|方向|收支|金额|分类|日期|'
-      r'付款方式|到账账户|退款到账账户|关联账户)\s*[:=]',
-      multiLine: true,
-    ).hasMatch(structuredText);
+    final hasStructuredFields = _quickEntryStructuredFieldsPattern.hasMatch(
+      structuredText,
+    );
     if (_blockMarker.hasMatch(structuredText) || hasStructuredFields) {
       final structured = parse(
         normalized,
@@ -455,11 +639,7 @@ abstract final class FinanceTextParser {
     DateTime? now,
   }) {
     final drafts = <FinanceEntryDraft>[];
-    final marker = RegExp(
-      r'\[(?:FINANCE|FN)_START\](.*?)\[(?:FINANCE|FN)_END\]',
-      dotAll: true,
-    );
-    for (final match in marker.allMatches(content)) {
+    for (final match in _assistantFinanceBlockPattern.allMatches(content)) {
       final payload = _decodeMaps(match.group(1) ?? '');
       for (final map in payload) {
         final draft = FinanceEntryDraft.fromJson(
@@ -491,13 +671,7 @@ abstract final class FinanceTextParser {
   static List<FinanceAiAction> extractAssistantActions(String content) {
     final actions = <FinanceAiAction>[];
     final blocks = <String>[];
-    for (final marker in [
-      RegExp(
-        r'\[FINANCE_ACTION_START\](.*?)\[FINANCE_ACTION_END\]',
-        dotAll: true,
-      ),
-      RegExp(r'\[ACTION_START\](.*?)\[ACTION_END\]', dotAll: true),
-    ]) {
+    for (final marker in _assistantActionBlockPatterns) {
       blocks.addAll(
         marker.allMatches(content).map((match) => match.group(1) ?? ''),
       );
@@ -530,20 +704,8 @@ abstract final class FinanceTextParser {
 
   static String cleanAssistantContent(String content) {
     return content
-        .replaceAll(
-          RegExp(
-            r'\[(?:FINANCE|FN)_START\].*?\[(?:FINANCE|FN)_END\]',
-            dotAll: true,
-          ),
-          '',
-        )
-        .replaceAll(
-          RegExp(
-            r'\[FINANCE_ACTION_START\].*?\[FINANCE_ACTION_END\]',
-            dotAll: true,
-          ),
-          '',
-        )
+        .replaceAll(_assistantFinanceBlockPattern, '')
+        .replaceAll(_assistantFinanceActionBlockPattern, '')
         .trim();
   }
 
@@ -658,7 +820,7 @@ abstract final class FinanceTextParser {
 
   static List<String> _splitQuickEntrySegments(String text) {
     final sentenceSegments = text
-        .split(RegExp(r'[\n；;。！？!?]+'))
+        .split(_quickEntrySentenceSeparatorPattern)
         .map((part) => part.trim())
         .where((part) => part.isNotEmpty)
         .toList();
@@ -671,11 +833,11 @@ abstract final class FinanceTextParser {
 
   static List<String> _splitCommaSeparatedQuickEntries(String text) {
     final protectedText = text.replaceAllMapped(
-      RegExp(r'(?<=\d),(?=\d)'),
+      _quickEntryNumberCommaPattern,
       (_) => _numericCommaMarker,
     );
     final clauses = protectedText
-        .split(RegExp(r'\s*[,，]\s*'))
+        .split(_quickEntryCommaSeparatorPattern)
         .map((part) => part.replaceAll(_numericCommaMarker, ',').trim())
         .where((part) => part.isNotEmpty)
         .toList();
@@ -704,18 +866,8 @@ abstract final class FinanceTextParser {
     return groups.length > 1 ? groups : [text];
   }
 
-  static bool _isAmountClarificationClause(String value) => RegExp(
-    r'^(?:其中|包括|包含|(?:每)?满\s*\d+(?:[,.]\d+)?\s*(?:元|块钱?)?\s*减|'
-    r'原价|(?:(?:会员|平台|商家|店铺|支付宝|微信|银联|信用卡|银行卡|云闪付|花呗|白条)'
-    r'(?:支付|付款)?)?'
-    r'(?:优惠|折扣|减免|立减|满减|补贴)|'
-    r'(?:(?:(?:会员|平台|商家|店铺|支付宝|微信|银联|信用卡|银行卡|云闪付|花呗|白条)'
-    r'(?:支付|付款)?)?'
-    r'(?:使用|用了|用)?(?:红包|优惠券|代金券)抵扣)|'
-    r'(?:最后|最终)\s*(?:支付|付款|付了?|实付|实际支付|实际付款)|'
-    r'实付|实际支付|实际付款|现付|'
-        r'实收|实际收款|实际到账|到账|到手价|到手|省下|抵扣)',
-  ).hasMatch(value.trim());
+  static bool _isAmountClarificationClause(String value) =>
+      _quickEntryAmountClarificationPattern.hasMatch(value.trim());
 
   static Map<String, String> _parseFields(String block) {
     final fields = <String, String>{};
@@ -735,7 +887,7 @@ abstract final class FinanceTextParser {
     // Also accept a compact form:
     // #记账 | 支出 | 28.50 | 餐饮 | 午餐 | 2026-08-29 | 微信 | 备注
     final compactParts = block
-        .split(RegExp(r'\s*[|｜]\s*'))
+        .split(_compactFieldSeparatorPattern)
         .map((part) => part.trim())
         .where((part) => part.isNotEmpty)
         .toList();
@@ -823,7 +975,7 @@ abstract final class FinanceTextParser {
   }
 
   static String _normalizeKey(String value) {
-    return value.trim().toLowerCase().replaceAll(RegExp(r'[\s_\-]'), '');
+    return value.trim().toLowerCase().replaceAll(_normalizeKeyPattern, '');
   }
 
   static String? _first(Map<String, String> fields, List<String> keys) {
@@ -839,43 +991,20 @@ abstract final class FinanceTextParser {
     if (_unsupportedCurrencyAmountPattern.hasMatch(raw)) return null;
     final normalized = raw
         .trim()
-        .replaceAll(RegExp(r'^[¥￥$€£]\s*'), '')
-        .replaceAll(RegExp(r'\s*(?:元|块|人民币|CNY)\s*$', caseSensitive: false), '')
-        .replaceFirst(RegExp(r'^\+'), '')
-        .replaceFirst(RegExp(r'^-'), '');
+        .replaceAll(_parseAmountLeadingCurrencyPattern, '')
+        .replaceAll(_parseAmountTrailingUnitPattern, '')
+        .replaceFirst(_parseAmountLeadingPlusPattern, '')
+        .replaceFirst(_parseAmountLeadingMinusPattern, '');
     return parseFinanceAmount(normalized);
   }
 
   static int? _findAmount(String text) {
-    final match = RegExp(
-      r'(?:¥|￥|金额\s*[:=]?\s*|消费\s*[:=]?\s*|实付\s*[:=]?\s*|合计\s*[:=]?\s*|总额\s*[:=]?\s*)(-?\s*\d+(?:[,.]\d{1,2})?)',
-      caseSensitive: false,
-    ).firstMatch(text);
+    final match = _findAmountPattern.firstMatch(text);
     return _parseAmount(match?.group(1));
   }
 
   static RegExpMatch? _findSentenceAmountMatch(String text) {
-    final patterns = [
-      RegExp(
-        r'(?:(?:最后|最终)\s*(?:支付|付款|付了?|实付|实际支付|实际付款)|'
-        r'折后|优惠后|抵扣后|补贴后|'
-        r'实际支付|实际付款|实付|现付|净付|实际收款|实收金额|实收|实际到账|到账|到手价|到手)'
-        r'\s*[:=]?\s*(?:¥|￥)?\s*'
-        r'(\d+(?:[,.]\d+)*)(?=\s*(?:元|块钱?|人民币|CNY|RMB|[,，。；;]|$))',
-        caseSensitive: false,
-      ),
-      RegExp(r'(?:¥|￥)\s*(\d+(?:[,.]\d+)*)', caseSensitive: false),
-      RegExp(
-        r'(\d+(?:[,.]\d+)*)\s*(?:元|块钱?|人民币|CNY|RMB)(?![A-Za-z])',
-        caseSensitive: false,
-      ),
-      RegExp(
-        r'(?:金额|花(?:了|费)?|支出|收入|收到|退款|消费|支付|付款|付了|共|合计|实付)'
-        r'\s*[:=]?\s*(?:¥|￥)?\s*(\d+(?:[,.]\d+)*)',
-        caseSensitive: false,
-      ),
-    ];
-    for (final pattern in patterns) {
+    for (final pattern in _sentenceAmountPatterns) {
       final match = pattern.firstMatch(text);
       if (match != null) return match;
     }
@@ -883,20 +1012,15 @@ abstract final class FinanceTextParser {
     // A natural sentence often omits both the comma and the currency unit,
     // for example "午餐28.5微信支付". Pick a likely amount from the remaining
     // numeric tokens, while excluding dates and clock-like values.
-    final fallback = RegExp(
-      r'(?<![\d.])((?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)(?![\d.])',
-    );
     RegExpMatch? best;
     var bestScore = -1;
-    for (final match in fallback.allMatches(text)) {
+    for (final match in _sentenceFallbackAmountPattern.allMatches(text)) {
       if (!_isLikelySentenceAmount(text, match)) continue;
       final before = text.substring(0, match.start);
       final recentBefore =
           before.length > 10 ? before.substring(before.length - 10) : before;
       var score = match.group(1)!.contains('.') ? 2 : 0;
-      if (RegExp(
-        r'(?:花(?:了|费)?|消费|支付|付款|金额|支出|收入|收到|退款|共|合计|实付)\s*[:=]?\s*$',
-      ).hasMatch(recentBefore)) {
+      if (_sentenceAmountContextPattern.hasMatch(recentBefore)) {
         score += 10;
       }
       // In an unlabelled sentence the last valid number is the most likely
@@ -912,25 +1036,21 @@ abstract final class FinanceTextParser {
   static bool _isLikelySentenceAmount(String text, RegExpMatch match) {
     final before = text.substring(0, match.start);
     final after = text.substring(match.end);
-    if (RegExp(r'^\s*(?:年|月|日|号|点|时|分)').hasMatch(after)) {
+    if (_sentenceAmountTimeUnitPattern.hasMatch(after)) {
       return false;
     }
     // Unlabelled number guessing must not promote product counts or
     // measurements (for example "买了2个苹果") into standalone bills.
-    if (RegExp(
-      r'^\s*(?:个|件|只|张|份|杯|瓶|盒|袋|斤|公斤|千克|克|毫升|升|米|公里|'
-      r'站|层|次|名|人|位|套|本|包|台|部|辆|双|片|颗|粒|枚|条|秒|分钟|小时|天|岁|'
-      r'kg|g|ml|l)(?![A-Za-z])',
-      caseSensitive: false,
-    ).hasMatch(after)) {
+    if (_sentenceAmountQuantityUnitPattern.hasMatch(after)) {
       return false;
     }
-    if (RegExp(r'(?:年|月|日|号)\s*$').hasMatch(before)) return false;
-    if (RegExp(r'[-/.]\s*$').hasMatch(before) ||
-        RegExp(r'^\s*[-/.]').hasMatch(after)) {
+    if (_sentenceAmountDateSuffixPattern.hasMatch(before)) return false;
+    if (_sentenceAmountDateSeparatorBeforePattern.hasMatch(before) ||
+        _sentenceAmountDateSeparatorAfterPattern.hasMatch(after)) {
       return false;
     }
-    if (RegExp(r':\s*$').hasMatch(before) || RegExp(r'^\s*:').hasMatch(after)) {
+    if (_sentenceAmountColonBeforePattern.hasMatch(before) ||
+        _sentenceAmountColonAfterPattern.hasMatch(after)) {
       return false;
     }
     return true;
@@ -942,7 +1062,7 @@ abstract final class FinanceTextParser {
         .replaceAll('\n', ' ')
         .replaceAll('\r', ' ')
         .replaceAll('：', ':')
-        .replaceAll(RegExp(r'\s+'), ' ')
+        .replaceAll(_sentenceWhitespacePattern, ' ')
         .trim();
   }
 
@@ -951,14 +1071,10 @@ abstract final class FinanceTextParser {
     if (value == null) return null;
     var normalized = value.trim();
     normalized = normalized
-        .replaceFirst(RegExp(r'^[,，。；;、\s]+'), '')
-        .replaceFirst(RegExp(r'[,，。；;、\s]+$'), '')
+        .replaceFirst(_sentenceValueLeadingDelimiterPattern, '')
+        .replaceFirst(_sentenceValueTrailingDelimiterPattern, '')
         .trim();
-    final nextField = RegExp(
-      r'(?:^|\s)(?:分类|类别|归类为?|记到|退款到账账户|到账账户|'
-      r'关联账户|账户|付款方式|支付方式|付款|支付|备注|说明|'
-      r'商家|商户|店铺|项目|名称)\s*[:=]?',
-    ).firstMatch(normalized);
+    final nextField = _sentenceNextFieldPattern.firstMatch(normalized);
     if (nextField != null) {
       if (nextField.start == 0) return null;
       normalized = normalized.substring(0, nextField.start).trim();
@@ -973,9 +1089,7 @@ abstract final class FinanceTextParser {
     if (explicit != null && explicit.trim().isNotEmpty) {
       if (_parseAmount(explicit) != null) return paymentInText;
       if (paymentInText != null &&
-          RegExp(
-            r'^(?:分类|类别|归类为?|记到|备注|说明|商家|商户|店铺|项目|名称)\s*[:=]?',
-          ).hasMatch(explicit.trim())) {
+          _sentencePaymentMislabelPattern.hasMatch(explicit.trim())) {
         return paymentInText;
       }
       return explicit.trim();
@@ -998,19 +1112,35 @@ abstract final class FinanceTextParser {
   ) {
     if (type == FinanceTransactionType.refund) return '退款';
     final aliases = type == FinanceTransactionType.income
-        ? _incomeCategoryAliases
-        : _expenseCategoryAliases;
-    final normalized = text.toLowerCase().replaceAll(RegExp(r'\s+'), '');
+        ? _normalizedIncomeCategoryAliases
+        : _normalizedExpenseCategoryAliases;
+    final normalized = text.toLowerCase().replaceAll(
+      _sentenceWhitespacePattern,
+      '',
+    );
     String? matchedCategory;
     var matchedLength = 0;
-    for (final entry in aliases.entries) {
-      final alias = entry.key.toLowerCase().replaceAll(RegExp(r'\s+'), '');
+    for (final entry in aliases) {
+      final alias = entry.key;
       if (normalized.contains(alias) && alias.length > matchedLength) {
         matchedCategory = entry.value;
         matchedLength = alias.length;
       }
     }
     return matchedCategory;
+  }
+
+  static List<MapEntry<String, String>> _normalizeCategoryAliases(
+    Map<String, String> aliases,
+  ) {
+    return aliases.entries
+        .map(
+          (entry) => MapEntry(
+            entry.key.toLowerCase().replaceAll(_sentenceWhitespacePattern, ''),
+            entry.value,
+          ),
+        )
+        .toList(growable: false);
   }
 
   /// Maps natural-language finance terms to the canonical local category name.
@@ -1032,58 +1162,38 @@ abstract final class FinanceTextParser {
   }) {
     final candidates = <String>[
       text.substring(0, amountMatch.start),
-      text.substring(amountMatch.end).split(RegExp(r'[,，。；;]')).first,
+      text
+          .substring(amountMatch.end)
+          .split(_sentenceMerchantClauseSeparatorPattern)
+          .first,
     ];
     for (final candidate in candidates) {
       var value = candidate.trim();
       if (value.isEmpty) continue;
       value = _removeSentenceDate(value);
-      value = value.replaceAll(
-        RegExp(
-          r'(?:每)?满\s*\d+(?:[,.]\d+)?\s*(?:元|块钱?)?\s*减\s*'
-          r'\d+(?:[,.]\d+)?\s*(?:元|块钱?)?',
-          caseSensitive: false,
-        ),
-        '',
-      );
-      value = value.replaceAll(
-        RegExp(
-          r'(?:原价|优惠|折扣|减免|立减|满减|实付|实际支付|实际付款|现付|'
-          r'实收|实际收款|实际到账|到账|到手价|到手|省下|抵扣)\s*[:=]?\s*'
-          r'(?:¥|￥)?\s*\d+(?:[,.]\d+)*\s*'
-          r'(?:元|块钱?|人民币|CNY|RMB)?',
-          caseSensitive: false,
-        ),
-        '',
-      );
+      value = value.replaceAll(_sentenceMerchantDiscountPattern, '');
+      value = value.replaceAll(_sentenceMerchantPromotionAmountPattern, '');
       if (payment != null && payment.trim().isNotEmpty) {
         value = value.replaceAll(
           RegExp(RegExp.escape(payment.trim()), caseSensitive: false),
           '',
         );
       }
-      value = value.replaceAll(
-        RegExp(
-          r'记一笔|记账|记录|一共|合计|实付|金额|支出|收入|退款|消费|花(?:了|费)?|'
-          r'用了?|支付了?|付款了?|付了|买了?|购买了?|收到|入账|进账|收款|赚到?|'
-          r'用于|在|于|给|退了?|退回|退还|返还|退钱|为',
-        ),
-        '',
-      );
+      value = value.replaceAll(_sentenceMerchantVerbPattern, '');
       value = value
-          .replaceAll(RegExp(r'^[:：,，。；;、\s]+'), '')
-          .replaceAll(RegExp(r'[:：,，。；;、\s]+$'), '')
+          .replaceAll(_sentenceMerchantLeadingDelimiterPattern, '')
+          .replaceAll(_sentenceMerchantTrailingDelimiterPattern, '')
           .trim();
-      value = value.replaceFirst(RegExp(r'^(?:的|一笔)'), '').trim();
+      value = value
+          .replaceFirst(_sentenceMerchantLeadingArticlePattern, '')
+          .trim();
       if (value.isEmpty || value.length > 80) continue;
       if ((_sameSentenceValue(value, category) &&
               !_isDefaultSubcategoryName(category)) ||
           _sameSentenceValue(value, payment) ||
           _sameSentenceValue(value, note) ||
           _knownSentencePayment(value) != null ||
-          RegExp(
-            r'^(?:分类|类别|退款到账账户|到账账户|关联账户|账户|付款方式|支付方式|备注|说明)',
-          ).hasMatch(value)) {
+          _sentenceMerchantFieldPrefixPattern.hasMatch(value)) {
         continue;
       }
       return value;
@@ -1110,16 +1220,10 @@ abstract final class FinanceTextParser {
     return value
         .replaceAll(_relativeDayPattern, '')
         .replaceAll(_relativeWeekdayPattern, '')
-        .replaceAll(
-          RegExp(
-            r'\d{4}\s*(?:年|[-/.])\s*\d{1,2}\s*'
-            r'(?:月|[-/.])\s*\d{1,2}\s*日?',
-          ),
-          '',
-        )
+        .replaceAll(_sentenceMerchantFullDatePattern, '')
         .replaceAll(_chineseMonthDayPattern, '')
-        .replaceAll(RegExp(r'\d{1,2}\s*月\s*\d{1,2}\s*日?'), '')
-        .replaceAll(RegExp(r'\d{1,2}\s*/\s*\d{1,2}'), '');
+        .replaceAll(_sentenceMerchantChineseMonthDayPattern, '')
+        .replaceAll(_sentenceMerchantSlashMonthDayPattern, '');
   }
 
   static DateTime? _parseSentenceDate(String text, DateTime now) {
@@ -1130,10 +1234,7 @@ abstract final class FinanceTextParser {
     final relativeWeekday = _parseRelativeWeekdayDate(text, now);
     if (relativeWeekday != null) return relativeWeekday;
 
-    final full = RegExp(
-      r'(?<!\d)(\d{4})\s*(?:年|[-/.])\s*(\d+)\s*'
-      r'(?:月|[-/.])\s*(\d+)(?!\d)\s*日?',
-    ).firstMatch(text);
+    final full = _sentenceFullDatePattern.firstMatch(text);
     if (full != null) {
       return _safeSentenceDate(
         int.tryParse(full.group(1) ?? ''),
@@ -1159,9 +1260,7 @@ abstract final class FinanceTextParser {
       );
     }
 
-    final monthDay = RegExp(
-      r'(?<!\d)(\d+)\s*月\s*(\d+)(?!\d)\s*日?',
-    ).firstMatch(text);
+    final monthDay = _sentenceMonthDayPattern.firstMatch(text);
     if (monthDay != null) {
       return _safeSentenceDate(
         now.year,
@@ -1170,9 +1269,7 @@ abstract final class FinanceTextParser {
       );
     }
 
-    final slashMonthDay = RegExp(
-      r'(?<!\d)(\d+)\s*/\s*(\d+)(?!\d)',
-    ).firstMatch(text);
+    final slashMonthDay = _sentenceSlashMonthDayPattern.firstMatch(text);
     if (slashMonthDay != null) {
       return _safeSentenceDate(
         now.year,
@@ -1368,9 +1465,7 @@ abstract final class FinanceTextParser {
         .replaceAll('日', '')
         .replaceAll('/', '-')
         .replaceAll('.', '-');
-    final match = RegExp(
-      r'^(\d{4})(?!\d)-(\d{1,2})(?!\d)-(\d{1,2})(?!\d)(?=$|[\sT])',
-    ).firstMatch(normalized);
+    final match = _parsedDatePattern.firstMatch(normalized);
     if (match == null) return null;
     final year = int.parse(match.group(1)!);
     final month = int.parse(match.group(2)!);
@@ -1389,8 +1484,8 @@ abstract final class FinanceTextParser {
     var text = raw.trim();
     if (text.startsWith('```')) {
       text = text
-          .replaceFirst(RegExp(r'^```(?:json)?\s*'), '')
-          .replaceFirst(RegExp(r'\s*```$'), '')
+          .replaceFirst(_jsonCodeFenceOpeningPattern, '')
+          .replaceFirst(_jsonCodeFenceClosingPattern, '')
           .trim();
     }
     try {

@@ -1,4 +1,5 @@
 part of 'course_screens.dart';
+
 // ignore_for_file: unused_element, unused_element_parameter, annotate_overrides
 
 abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
@@ -27,6 +28,8 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
 
   int _relativeWeekForDate(DateTime date, SemesterInfo semester);
 
+  void _invalidatePlanPomodoroProgressIndex();
+
   List<TimeLogItem> _allTimeLogs = [];
   List<PomodoroRecord> _allPomodoroRecords = [];
   List<PomodoroTag> _pomodoroTags = [];
@@ -36,6 +39,7 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
   Map<int, List<PomodoroRecord>> _pomodorosPerDay = {};
   Map<int, List<TodoPlanBlock>> _planBlocksPerDay = {};
   Map<int, List<FixedScheduleItem>> _fixedSchedulesPerDay = {};
+  final Map<(String?, String), DateFormat> _dateFormatters = {};
   final Set<String> _activeDataViews = {
     'courses',
     'fixedSchedules',
@@ -46,6 +50,14 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
     'deviceCalendar',
   };
   bool _collapseFreeTime = true;
+
+  DateFormat _cachedDateFormat(String pattern) {
+    final locale = Intl.defaultLocale;
+    return _dateFormatters.putIfAbsent(
+      (locale, pattern),
+      () => DateFormat(pattern, locale),
+    );
+  }
 
   // --- 🚀 视图模式分级 (1周, 2周, 1个月) ---
   int _viewMode = 0; // 0: 1周, 1: 2周, 2: 1个月
@@ -64,6 +76,7 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
   late PageController _pageController;
   final Map<String, GlobalKey> _courseCardKeys = {};
   final Map<String, GlobalKey> _todoCardKeys = {};
+  final Map<String, GlobalKey> _planBlockCardKeys = {};
   final Map<String, GlobalKey> _timeLogCardKeys = {};
   final Map<String, GlobalKey> _pomodoroCardKeys = {};
   final Map<String, GlobalKey> _deviceCalendarCardKeys = {};
@@ -91,6 +104,11 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
         ? 'w${_currentWeek}_${id}_d$weekday'
         : 'w${_currentWeek}_$id';
     return _todoCardKeys.putIfAbsent(keyStr, () => GlobalKey());
+  }
+
+  GlobalKey _getPlanBlockCardKey(String id, int weekday) {
+    final keyStr = 'w${_currentWeek}_${id}_d$weekday';
+    return _planBlockCardKeys.putIfAbsent(keyStr, () => GlobalKey());
   }
 
   GlobalKey _getTimeLogCardKey(String id) {
@@ -177,12 +195,13 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
 
   String _fixedScheduleTimeLabel(FixedScheduleItem item) {
     if (item.startTime == null) return '时间待定';
+    final timeFormat = _cachedDateFormat('HH:mm');
     final start = DateTime.fromMillisecondsSinceEpoch(item.startTime!);
     if (item.endTime == null) {
-      return '${DateFormat('HH:mm').format(start)} · 结束待定';
+      return '${timeFormat.format(start)} · 结束待定';
     }
     final end = DateTime.fromMillisecondsSinceEpoch(item.endTime!);
-    return '${DateFormat('HH:mm').format(start)} - ${DateFormat('HH:mm').format(end)}';
+    return '${timeFormat.format(start)} - ${timeFormat.format(end)}';
   }
 
   Future<void> _openFixedScheduleDetail(
@@ -204,7 +223,8 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
             page: page,
             sourceKey: sourceKey,
             sourceColor: sourceColor,
-            sourceBorderRadius: sourceBorderRadius ??
+            sourceBorderRadius:
+                sourceBorderRadius ??
                 const BorderRadius.all(Radius.circular(4)),
             placeholderIcon: Icons.event_available_rounded,
           );
@@ -244,8 +264,12 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
     VoidCallback? onClose,
     String keyScope = 'sidebar',
   });
-  Widget _buildDetailSidebarItem(BuildContext context, dynamic item,
-      [String? sourceDate, String surface = 'sidebar']);
+  Widget _buildDetailSidebarItem(
+    BuildContext context,
+    dynamic item, [
+    String? sourceDate,
+    String surface = 'sidebar',
+  ]);
   void _handleFilterSelection(String value);
   double _filterMenuWidth(BuildContext context);
   int get _selectedFilterCount;
@@ -254,7 +278,11 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
   Widget _buildFilterSectionLabel(String label);
   Widget _buildCheckableMenuItem(String key, String label);
   Widget _buildFilterActionItem(
-      String value, String label, IconData icon, Color color);
+    String value,
+    String label,
+    IconData icon,
+    Color color,
+  );
   DateTime? _getMondayOfCurrentWeek();
   void _checkCollapsedSlots();
   double get _totalHiddenMinutes;
@@ -262,7 +290,10 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
   double _timeToY(int hour, int minute, double minuteHeight);
   Color _getCourseColor(String courseName);
   void _showAllDayTodos(
-      BuildContext context, List<TodoItem> todos, String dateStr);
+    BuildContext context,
+    List<TodoItem> todos,
+    String dateStr,
+  );
   void _showDeviceCalendarEventDetail(
     BuildContext context,
     DeviceCalendarEvent event, {
@@ -271,7 +302,11 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
   });
   Widget _buildAllDayHeaderRow(DateTime? monday);
   bool _timeRangesOverlap(
-      int startA, int endAExclusive, int startB, int endBExclusive);
+    int startA,
+    int endAExclusive,
+    int startB,
+    int endBExclusive,
+  );
   bool _isRecordAssociatedWithPlan(PomodoroRecord record, TodoPlanBlock plan);
   Map<String, dynamic> _calculatePlanPomodoroProgress(TodoPlanBlock plan);
   bool _isPomodoroAssociatedWithPlan(PomodoroRecord record);
@@ -279,12 +314,21 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
   bool _isHourCollapsed(int hour);
   String _formatMinute(double minute);
   String _buildLunchCollapseText(
-      double rangeStart, double rangeEnd, double pre, double post);
+    double rangeStart,
+    double rangeEnd,
+    double pre,
+    double post,
+  );
   Widget _buildGrid(double cellWidth, double minuteHeight);
   Widget _buildTodaySidebar();
   Widget build(BuildContext context);
   Widget _buildSkeleton();
   Widget _buildSkeletonBox(
-      double cellWidth, double top, double height, int dayIndex, Color color);
+    double cellWidth,
+    double top,
+    double height,
+    int dayIndex,
+    Color color,
+  );
   void _showDayDetailSheet(DateTime day);
 }

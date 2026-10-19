@@ -10,6 +10,7 @@ import 'package:liquid_glass_widgets/theme/glass_theme_helpers.dart';
 
 import '../services/android_window_rendering_policy.dart';
 import '../services/liquid_glass_effect_service.dart';
+import '../utils/app_image_filters.dart';
 import '../utils/app_platform.dart';
 import 'optional_liquid_glass_surface.dart';
 
@@ -3002,7 +3003,7 @@ class _FloatingGlassControlFallback extends StatelessWidget {
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(borderRadius),
                     child: BackdropFilter(
-                      filter: ui.ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+                      filter: AppImageFilters.blur16,
                       child: const SizedBox.expand(),
                     ),
                   ),

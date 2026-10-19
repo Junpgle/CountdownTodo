@@ -230,7 +230,7 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
                     ListTile(
                       contentPadding: EdgeInsets.zero,
                       title: Text(
-                        "完成日期: ${DateFormat('yyyy-MM-dd').format(createdAt)}",
+                        "完成日期: ${_cachedDateFormat('yyyy-MM-dd').format(createdAt)}",
                       ),
                       trailing: Icon(
                         Icons.edit_calendar,
@@ -291,7 +291,7 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
                       title: Text(
                         dueDate == null
                             ? "设置截止时间（当前未安排）"
-                            : "${DateFormat('yyyy-MM-dd HH:mm').format(dueDate!)} 前完成",
+                            : "${_cachedDateFormat('yyyy-MM-dd HH:mm').format(dueDate!)} 前完成",
                       ),
                       trailing: Icon(
                         Icons.event,
@@ -401,7 +401,7 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
                       title: Text(
                         recurrenceEndDate == null
                             ? "重复结束日期 (可选)"
-                            : "重复结束: ${DateFormat('yyyy-MM-dd').format(recurrenceEndDate!)}",
+                            : "重复结束: ${_cachedDateFormat('yyyy-MM-dd').format(recurrenceEndDate!)}",
                       ),
                       trailing: Icon(
                         Icons.event_busy,
@@ -567,8 +567,11 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
                     minLines: 2,
                   ),
                   const SizedBox(height: 12),
-                  Row(
-                    children: [
+                  AiWaterRippleBorder(
+                    isLight:
+                        Theme.of(context).brightness == Brightness.light,
+                    child: Row(
+                      children: [
                       Expanded(
                         child: FilledButton(
                           onPressed: isParsing
@@ -997,9 +1000,15 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
                               : const Text("大模型识别"),
                         ),
                       ),
-                    ],
+                      ],
+                    ),
                   ),
-                  if (parsedResults.isNotEmpty) ...[
+                  if (parsedResults.isNotEmpty)
+                    AiWaterRippleBorder(
+                      isLight:
+                          Theme.of(context).brightness == Brightness.light,
+                      child: Column(
+                        children: [
                     const SizedBox(height: 16),
                     const Divider(),
                     const SizedBox(height: 8),
@@ -1112,8 +1121,10 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
                           ),
                         ],
                       ),
-                    ],
-                  ],
+                        ],
+                      ],
+                    ),
+                  ),
                 ],
               ),
             );
@@ -1129,21 +1140,27 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  SegmentedButton<int>(
-                    segments: const [
-                      ButtonSegment(value: 0, label: Text("手动输入")),
-                      ButtonSegment(
-                        value: 1,
-                        icon: Icon(Icons.auto_awesome),
-                        label: Text("AI识别"),
-                      ),
-                    ],
-                    selected: {selectedTabIndex},
-                    onSelectionChanged: (Set<int> selection) {
-                      setDialogState(() {
-                        selectedTabIndex = selection.first;
-                      });
-                    },
+                  AiWaterRippleBorder(
+                    enabled: selectedTabIndex == 1,
+                    isLight:
+                        Theme.of(context).brightness == Brightness.light,
+                    borderRadius: BorderRadius.circular(16),
+                    child: SegmentedButton<int>(
+                      segments: const [
+                        ButtonSegment(value: 0, label: Text("手动输入")),
+                        ButtonSegment(
+                          value: 1,
+                          icon: Icon(Icons.auto_awesome),
+                          label: Text("AI识别"),
+                        ),
+                      ],
+                      selected: {selectedTabIndex},
+                      onSelectionChanged: (Set<int> selection) {
+                        setDialogState(() {
+                          selectedTabIndex = selection.first;
+                        });
+                      },
+                    ),
                   ),
                   const SizedBox(height: 16),
                   SizedBox(
@@ -1344,7 +1361,7 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
     }
     final item = FixedScheduleItem(
       title: parsed.title,
-      date: DateFormat('yyyy-MM-dd').format(dateSource),
+      date: _cachedDateFormat('yyyy-MM-dd').format(dateSource),
       startTime: start?.millisecondsSinceEpoch,
       endTime: end?.millisecondsSinceEpoch,
       source: FixedScheduleSource.ai,
@@ -1582,26 +1599,26 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
       if (result.isAllDay) {
         return result.startTime == null
             ? '日期待确认 · 时间待定'
-            : '${DateFormat('yyyy-MM-dd').format(result.startTime!)} · 时间待定';
+            : '${_cachedDateFormat('yyyy-MM-dd').format(result.startTime!)} · 时间待定';
       }
       if (result.startTime != null && result.endTime != null) {
-        return '${DateFormat('yyyy-MM-dd HH:mm').format(result.startTime!)}–${DateFormat('HH:mm').format(result.endTime!)}';
+        return '${_cachedDateFormat('yyyy-MM-dd HH:mm').format(result.startTime!)}–${_cachedDateFormat('HH:mm').format(result.endTime!)}';
       }
       if (result.startTime != null) {
-        return '${DateFormat('yyyy-MM-dd HH:mm').format(result.startTime!)}开始 · 结束待定';
+        return '${_cachedDateFormat('yyyy-MM-dd HH:mm').format(result.startTime!)}开始 · 结束待定';
       }
       return '日期和时间待确认';
     }
     if (intent == CaptureIntentKind.planBlock) {
       return result.startTime != null && result.endTime != null
-          ? '${DateFormat('yyyy-MM-dd HH:mm').format(result.startTime!)}–${DateFormat('HH:mm').format(result.endTime!)}'
+          ? '${_cachedDateFormat('yyyy-MM-dd HH:mm').format(result.startTime!)}–${_cachedDateFormat('HH:mm').format(result.endTime!)}'
           : '规划时段待确认';
     }
     if (result.isAllDay && result.startTime != null) {
-      return '${DateFormat('yyyy-MM-dd').format(result.startTime!)} 内完成';
+      return '${_cachedDateFormat('yyyy-MM-dd').format(result.startTime!)} 内完成';
     }
     if (result.endTime != null) {
-      return '${DateFormat('yyyy-MM-dd HH:mm').format(result.endTime!)} 前完成';
+      return '${_cachedDateFormat('yyyy-MM-dd HH:mm').format(result.endTime!)} 前完成';
     }
     return '未安排';
   }

@@ -1,12 +1,17 @@
 import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
+
 import 'database_helper.dart';
 import 'http_client_factory.dart';
 import '../storage_service.dart';
+
 import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 
 class ApiService {
+  static final RegExp _trailingSlashPattern = RegExp(r'/$');
+
   /// Persisted values for the production API route selector.
   ///
   /// Keep these values stable because older releases store them in
@@ -109,7 +114,10 @@ class ApiService {
   /// routes share the Aliyun production namespace; test, legacy, and custom
   /// endpoints remain isolated.
   static String get syncServerKey {
-    final normalized = _effectiveBaseUrl.replaceFirst(RegExp(r'/$'), '');
+    final normalized = _effectiveBaseUrl.replaceFirst(
+      _trailingSlashPattern,
+      '',
+    );
     // Direct HTTP and Cloudflare HTTPS both reach the same Aliyun production
     // database, so switching routes must not create a second sync cursor.
     if (normalized == aliyunProdUrl || normalized == aliyunCloudflareUrl) {
@@ -151,8 +159,8 @@ class ApiService {
     final encodedBody = body == null
         ? null
         : body is String
-            ? body
-            : jsonEncode(body);
+        ? body
+        : jsonEncode(body);
 
     final requestClient = client ?? _client;
     late Future<http.Response> responseFuture;
@@ -214,8 +222,12 @@ class ApiService {
   // ==========================================
 
   static Future<Map<String, dynamic>> register(
-      String username, String email, String password,
-      {String? code, String? turnstileToken}) async {
+    String username,
+    String email,
+    String password, {
+    String? code,
+    String? turnstileToken,
+  }) async {
     try {
       final Map<String, dynamic> bodyMap = {
         'username': username,
@@ -251,8 +263,11 @@ class ApiService {
     }
   }
 
-  static Future<Map<String, dynamic>> login(String email, String password,
-      {String? turnstileToken}) async {
+  static Future<Map<String, dynamic>> login(
+    String email,
+    String password, {
+    String? turnstileToken,
+  }) async {
     try {
       final Map<String, dynamic> bodyMap = {
         'email': email,
@@ -304,16 +319,15 @@ class ApiService {
   }
 
   static Future<Map<String, dynamic>> resetPassword(
-      String email, String code, String newPassword) async {
+    String email,
+    String code,
+    String newPassword,
+  ) async {
     try {
       final response = await _request(
         'POST',
         '/api/auth/reset_password',
-        body: {
-          'email': email,
-          'code': code,
-          'new_password': newPassword,
-        },
+        body: {'email': email, 'code': code, 'new_password': newPassword},
         includeAuth: false,
       );
       final data = jsonDecode(response.body);
@@ -327,7 +341,10 @@ class ApiService {
   }
 
   static Future<Map<String, dynamic>> changePassword(
-      int userId, String oldPassword, String newPassword) async {
+    int userId,
+    String oldPassword,
+    String newPassword,
+  ) async {
     try {
       final response = await _request(
         'POST',
@@ -341,7 +358,7 @@ class ApiService {
       final data = jsonDecode(response.body);
       return {
         'success': response.statusCode == 200 && data['success'] == true,
-        'message': data['message'] ?? data['error'] ?? '修改失败'
+        'message': data['message'] ?? data['error'] ?? '修改失败',
       };
     } catch (e) {
       return {'success': false, 'message': "网络错误: $e"};
@@ -365,11 +382,12 @@ class ApiService {
     }
   }
 
-  static Future<bool> uploadScore(
-      {required int userId,
-      required String username,
-      required int score,
-      required int duration}) async {
+  static Future<bool> uploadScore({
+    required int userId,
+    required String username,
+    required int score,
+    required int duration,
+  }) async {
     try {
       final response = await _request(
         'POST',
@@ -378,7 +396,7 @@ class ApiService {
           'user_id': userId,
           'username': username,
           'score': score,
-          'duration': duration
+          'duration': duration,
         },
       );
       return response.statusCode == 200;
@@ -497,6 +515,8 @@ class ApiService {
           'success': true,
           'conflicts': rawConflicts,
           'server_todos': data['server_todos'] ?? [],
+          'todo_maintenance_rejected_uuids':
+              data['todo_maintenance_rejected_uuids'] ?? [],
           'server_todo_groups': data['server_todo_groups'] ?? [],
           'server_countdowns': data['server_countdowns'] ?? [],
           'new_sync_time': data['new_sync_time'],
@@ -564,15 +584,11 @@ class ApiService {
       final response = await _request(
         'POST',
         '/api/sync/ignore_remote_item',
-        body: {
-          'uuid': uuid,
-          'table_name': table,
-          'team_uuid': teamUuid,
-        },
+        body: {'uuid': uuid, 'table_name': table, 'team_uuid': teamUuid},
       );
       return response.statusCode == 200;
     } catch (e) {
-//       debugPrint("🚫 [ApiService] 忽略上报失败: $e");
+      //       debugPrint("🚫 [ApiService] 忽略上报失败: $e");
       return false;
     }
   }
@@ -663,14 +679,13 @@ class ApiService {
   // 7. 课表同步 (Courses)
   // ==========================================
 
-  static Future<List<dynamic>> fetchCourses(int userId,
-      {String? semester}) async {
+  static Future<List<dynamic>> fetchCourses(
+    int userId, {
+    String? semester,
+  }) async {
     try {
       final uri = Uri.parse('$_effectiveBaseUrl/api/courses').replace(
-        queryParameters: {
-          'user_id': userId.toString(),
-          'semester': ?semester,
-        },
+        queryParameters: {'user_id': userId.toString(), 'semester': ?semester},
       );
       final response = await _request('GET', uri.toString());
       if (response.statusCode == 200) {
@@ -703,17 +718,19 @@ class ApiService {
     if (includeAll) {
       requests.add(fetchCourses(userId, semester: 'all'));
     }
-    requests.addAll(normalizedSemesters.map((semester) async {
-      final courses = await fetchCourses(userId, semester: semester);
-      return courses.map((course) {
-        if (course is! Map) return course;
-        final map = Map<String, dynamic>.from(course);
-        if (map['semester'] == null && map['semester_id'] == null) {
-          map['semester'] = semester;
-        }
-        return map;
-      }).toList();
-    }));
+    requests.addAll(
+      normalizedSemesters.map((semester) async {
+        final courses = await fetchCourses(userId, semester: semester);
+        return courses.map((course) {
+          if (course is! Map) return course;
+          final map = Map<String, dynamic>.from(course);
+          if (map['semester'] == null && map['semester_id'] == null) {
+            map['semester'] = semester;
+          }
+          return map;
+        }).toList();
+      }),
+    );
 
     final responses = await Future.wait(requests);
     final result = <dynamic>[];
@@ -722,11 +739,12 @@ class ApiService {
       for (final course in response) {
         if (course is! Map) continue;
         final map = Map<String, dynamic>.from(course);
-        final semester = (map['semester'] ??
-                map['semester_id'] ??
-                map['semesterId'] ??
-                'default')
-            .toString();
+        final semester =
+            (map['semester'] ??
+                    map['semester_id'] ??
+                    map['semesterId'] ??
+                    'default')
+                .toString();
         final stableId = (map['uuid'] ?? map['id'])?.toString();
         final identity = stableId == null || stableId.isEmpty
             ? <Object?>[
@@ -759,10 +777,7 @@ class ApiService {
 
   static Future<List<dynamic>> fetchAllCourses(int userId) async {
     final settings = await fetchUserSettings();
-    return fetchCoursesForSemesters(
-      userId,
-      semesterIdsFromSettings(settings),
-    );
+    return fetchCoursesForSemesters(userId, semesterIdsFromSettings(settings));
   }
 
   /// The multi-semester course replacement must be performed by one server
@@ -978,7 +993,7 @@ class ApiService {
         'password': password,
         'tier': tier,
         'semester_start': semesterStart,
-        'semester_end': semesterEnd
+        'semester_end': semesterEnd,
       },
       includeAuth: false,
     );
@@ -1007,13 +1022,14 @@ class ApiService {
   }
 
   /// 拉取专注记录（按时间范围）
-  static Future<List<dynamic>> fetchPomodoroRecords(
-      [int? userId,
-      int? fromMs,
-      int? toMs,
-      bool includeDeleted = false,
-      bool useUpdatedAt = false,
-      http.Client? client]) async {
+  static Future<List<dynamic>> fetchPomodoroRecords([
+    int? userId,
+    int? fromMs,
+    int? toMs,
+    bool includeDeleted = false,
+    bool useUpdatedAt = false,
+    http.Client? client,
+  ]) async {
     try {
       final params = <String, String>{};
       if (userId != null) params['user_id'] = userId.toString();
@@ -1035,7 +1051,8 @@ class ApiService {
 
   /// 同步番茄钟设置到云端
   static Future<bool> syncPomodoroSettings(
-      Map<String, dynamic> settings) async {
+    Map<String, dynamic> settings,
+  ) async {
     try {
       final response = await _request(
         'POST',
@@ -1063,7 +1080,8 @@ class ApiService {
 
   /// 查询其他设备是否有正在进行的专注（跨端感知）
   static Future<Map<String, dynamic>?> fetchActivePomodoroFromOtherDevice(
-      String currentDeviceId) async {
+    String currentDeviceId,
+  ) async {
     try {
       final uri = Uri.parse('$_effectiveBaseUrl/api/pomodoro/active')
           .replace(queryParameters: {'device_id': currentDeviceId});
@@ -1120,22 +1138,22 @@ class ApiService {
 
   // 向后兼容旧方法名
   static Future<bool> uploadPomodoroSessions(
-          List<Map<String, dynamic>> sessions) =>
-      uploadPomodoroRecords(sessions);
-  static Future<List<dynamic>> fetchPomodoroSessions(
-          {int? fromMs,
-          int? toMs,
-          bool includeDeleted = false,
-          bool useUpdatedAt = false,
-          http.Client? client}) =>
-      fetchPomodoroRecords(
-        null,
-        fromMs,
-        toMs,
-        includeDeleted,
-        useUpdatedAt,
-        client,
-      );
+    List<Map<String, dynamic>> sessions,
+  ) => uploadPomodoroRecords(sessions);
+  static Future<List<dynamic>> fetchPomodoroSessions({
+    int? fromMs,
+    int? toMs,
+    bool includeDeleted = false,
+    bool useUpdatedAt = false,
+    http.Client? client,
+  }) => fetchPomodoroRecords(
+    null,
+    fromMs,
+    toMs,
+    includeDeleted,
+    useUpdatedAt,
+    client,
+  );
 
   // ==========================================
   // 👥 10. 团队与协作 (Teams)
@@ -1175,8 +1193,11 @@ class ApiService {
 
   static Future<Map<String, dynamic>> createTeam(String name) async {
     try {
-      final response =
-          await _request('POST', '/api/teams/create', body: {'name': name});
+      final response = await _request(
+        'POST',
+        '/api/teams/create',
+        body: {'name': name},
+      );
       return jsonDecode(response.body);
     } catch (e) {
       return {'success': false, 'error': e.toString()};
@@ -1184,7 +1205,8 @@ class ApiService {
   }
 
   static Future<Map<String, dynamic>> generateInviteCode(
-      String teamUuid) async {
+    String teamUuid,
+  ) async {
     try {
       final response = await _request(
         'POST',
@@ -1198,7 +1220,9 @@ class ApiService {
   }
 
   static Future<Map<String, dynamic>> addTeamMemberByEmail(
-      String teamUuid, String email) async {
+    String teamUuid,
+    String email,
+  ) async {
     try {
       final response = await _request(
         'POST',
@@ -1213,8 +1237,11 @@ class ApiService {
 
   static Future<Map<String, dynamic>> joinTeamByCode(String code) async {
     try {
-      final response =
-          await _request('POST', '/api/teams/join', body: {'code': code});
+      final response = await _request(
+        'POST',
+        '/api/teams/join',
+        body: {'code': code},
+      );
       return jsonDecode(response.body);
     } catch (e) {
       return {'success': false, 'error': e.toString()};
@@ -1299,7 +1326,9 @@ class ApiService {
   }
 
   static Future<Map<String, dynamic>> removeTeamMember(
-      String teamUuid, int targetUserId) async {
+    String teamUuid,
+    int targetUserId,
+  ) async {
     try {
       final response = await _request(
         'POST',
@@ -1335,8 +1364,10 @@ class ApiService {
     }
   }
 
-  static Future<Map<String, dynamic>> requestJoinTeam(String code,
-      {String message = ''}) async {
+  static Future<Map<String, dynamic>> requestJoinTeam(
+    String code, {
+    String message = '',
+  }) async {
     try {
       final normalizedCode = code.trim().toUpperCase();
       if (normalizedCode.isEmpty) {
@@ -1385,7 +1416,10 @@ class ApiService {
   }
 
   static Future<Map<String, dynamic>> processJoinRequest(
-      String teamUuid, int targetUserId, String action) async {
+    String teamUuid,
+    int targetUserId,
+    String action,
+  ) async {
     try {
       const allowedActions = {'approve', 'reject'};
       if (!allowedActions.contains(action)) {
@@ -1398,7 +1432,7 @@ class ApiService {
         body: {
           'team_uuid': teamUuid,
           'target_user_id': targetUserId,
-          'action': action
+          'action': action,
         },
       );
       return jsonDecode(response.body);
@@ -1418,7 +1452,9 @@ class ApiService {
   }
 
   static Future<Map<String, dynamic>> respondToInvitation(
-      String teamUuid, String action) async {
+    String teamUuid,
+    String action,
+  ) async {
     try {
       const allowedActions = {'accept', 'decline'};
       if (!allowedActions.contains(action)) {
@@ -1428,10 +1464,7 @@ class ApiService {
       final response = await _request(
         'POST',
         '/api/teams/respond_invitation',
-        body: {
-          'team_uuid': teamUuid,
-          'action': action,
-        },
+        body: {'team_uuid': teamUuid, 'action': action},
       );
       return jsonDecode(response.body);
     } catch (e) {
@@ -1440,8 +1473,11 @@ class ApiService {
   }
 
   /// 🚀 Uni-Sync 4.0: 获取团队系统消息流
-  static Future<Map<String, dynamic>> fetchTeamSystemMessages(String teamUuid,
-      {int? limit, int? offset}) async {
+  static Future<Map<String, dynamic>> fetchTeamSystemMessages(
+    String teamUuid, {
+    int? limit,
+    int? offset,
+  }) async {
     try {
       final paging = [
         if (limit != null) 'limit=$limit',
@@ -1462,8 +1498,12 @@ class ApiService {
   // ==========================================
 
   static Future<Map<String, dynamic>> createTeamAnnouncement(
-      String teamUuid, String title, String content,
-      {bool isPriority = false, int? expiresAt}) async {
+    String teamUuid,
+    String title,
+    String content, {
+    bool isPriority = false,
+    int? expiresAt,
+  }) async {
     try {
       final response = await _request(
         'POST',
@@ -1483,7 +1523,8 @@ class ApiService {
   }
 
   static Future<Map<String, dynamic>> deleteTeamAnnouncement(
-      String announcementUuid) async {
+    String announcementUuid,
+  ) async {
     try {
       final response = await _request(
         'POST',
@@ -1513,7 +1554,8 @@ class ApiService {
   }
 
   static Future<Map<String, dynamic>> markAnnouncementAsRead(
-      String announcementUuid) async {
+    String announcementUuid,
+  ) async {
     try {
       final response = await _request(
         'POST',
@@ -1527,7 +1569,8 @@ class ApiService {
   }
 
   static Future<Map<String, dynamic>> fetchAnnouncementStats(
-      String announcementUuid) async {
+    String announcementUuid,
+  ) async {
     try {
       final response = await _request(
         'GET',
@@ -1625,10 +1668,7 @@ class ApiService {
       final response = await _request(
         'POST',
         '/api/teams/shares/update',
-        body: {
-          'share_code': shareCode,
-          'is_active': isActive,
-        },
+        body: {'share_code': shareCode, 'is_active': isActive},
       );
       return jsonDecode(response.body);
     } catch (e) {
@@ -1637,7 +1677,9 @@ class ApiService {
   }
 
   static Future<Map<String, dynamic>> verifyShareCode(
-      String code, String? password) async {
+    String code,
+    String? password,
+  ) async {
     try {
       final body = <String, dynamic>{};
       if (password != null && password.isNotEmpty) body['password'] = password;
@@ -1654,18 +1696,16 @@ class ApiService {
     }
   }
 
-  static Future<Map<String, dynamic>> fetchShareData(String code,
-      {String? token}) async {
+  static Future<Map<String, dynamic>> fetchShareData(
+    String code, {
+    String? token,
+  }) async {
     try {
       var url = '$_effectiveBaseUrl/api/shares/$code/data';
       if (token != null && token.isNotEmpty) {
         url += '?token=${Uri.encodeComponent(token)}';
       }
-      final response = await _request(
-        'GET',
-        url,
-        includeAuth: false,
-      );
+      final response = await _request('GET', url, includeAuth: false);
       return jsonDecode(response.body);
     } catch (e) {
       return {'success': false, 'error': e.toString()};
@@ -1698,7 +1738,9 @@ class ApiService {
   // ==========================================
 
   static Future<List<dynamic>> fetchItemHistory(
-      String uuid, String table) async {
+    String uuid,
+    String table,
+  ) async {
     List<dynamic> combinedHistory = [];
 
     // 1. 尝试获取云端历史
@@ -1714,18 +1756,20 @@ class ApiService {
         combinedHistory.addAll(data['history'] ?? []);
       } else if (response.statusCode == 403 || response.statusCode == 404) {
         // 后端权限收紧后，这两种状态是业务态，不当作网络异常
-//         debugPrint("🔒 云端历史访问受限(status=${response.statusCode})，继续展示本地历史");
+        //         debugPrint("🔒 云端历史访问受限(status=${response.statusCode})，继续展示本地历史");
       } else {
-//         debugPrint("⚠️ 云端历史接口异常(status=${response.statusCode})");
+        //         debugPrint("⚠️ 云端历史接口异常(status=${response.statusCode})");
       }
     } catch (e) {
-//       debugPrint("🌐 云端历史不可用，切换至纯本地模式: $e");
+      //       debugPrint("🌐 云端历史不可用，切换至纯本地模式: $e");
     }
 
     // 2. 获取本地历史并合并
     try {
-      final localLogs =
-          await DatabaseHelper.instance.getLocalAuditLogs(uuid, table);
+      final localLogs = await DatabaseHelper.instance.getLocalAuditLogs(
+        uuid,
+        table,
+      );
       for (var log in localLogs) {
         // 转换本地格式为 UI 统一格式
         combinedHistory.add({
@@ -1735,31 +1779,40 @@ class ApiService {
           'before_data': log['before_data'] != null
               ? jsonDecode(log['before_data'])
               : null,
-          'after_data':
-              log['after_data'] != null ? jsonDecode(log['after_data']) : null,
+          'after_data': log['after_data'] != null
+              ? jsonDecode(log['after_data'])
+              : null,
           'timestamp': log['timestamp'],
           'operator_name': log['operator_name'] ?? '本地修改',
         });
       }
     } catch (e) {
-//       debugPrint("⚠️ 获取本地历史失败: $e");
+      //       debugPrint("⚠️ 获取本地历史失败: $e");
     }
 
     // 3. 排序：按时间倒序
     combinedHistory.sort(
-        (a, b) => (b['timestamp'] as int).compareTo(a['timestamp'] as int));
+      (a, b) => (b['timestamp'] as int).compareTo(a['timestamp'] as int),
+    );
     return combinedHistory;
   }
 
-  static Future<Map<String, dynamic>> rollbackItem(dynamic logId,
-      {bool isLocal = false, String? table, String? username}) async {
+  static Future<Map<String, dynamic>> rollbackItem(
+    dynamic logId, {
+    bool isLocal = false,
+    String? table,
+    String? username,
+  }) async {
     // 🚀 如果是本地记录或处于离线状态，执行本地强力回滚（含缓存刷新）
     if (isLocal) {
       if (table == null || username == null) {
         return {'success': false, 'error': '缺少回滚上下文'};
       }
-      final success =
-          await StorageService.rollbackLocalItem(table, logId as int, username);
+      final success = await StorageService.rollbackLocalItem(
+        table,
+        logId as int,
+        username,
+      );
       return {'success': success, 'message': success ? '本地回滚成功' : '本地回滚失败'};
     }
 
@@ -1772,10 +1825,7 @@ class ApiService {
 
       final Map<String, dynamic> data = jsonDecode(response.body);
       if (response.statusCode == 403 || response.statusCode == 404) {
-        return {
-          'success': false,
-          'error': data['error'] ?? '无权限或记录不存在，无法回滚',
-        };
+        return {'success': false, 'error': data['error'] ?? '无权限或记录不存在，无法回滚'};
       }
       return data;
     } catch (e) {

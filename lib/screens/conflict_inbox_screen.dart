@@ -20,6 +20,16 @@ import '../features/habits/models/habit_goal_rule.dart';
 import '../services/storage/habit_storage.dart';
 import '../utils/json_value_parser.dart';
 
+final Map<(String?, String), DateFormat> _conflictInboxDateFormats = {};
+
+DateFormat _conflictInboxDateFormat(String pattern) {
+  final locale = Intl.defaultLocale;
+  return _conflictInboxDateFormats.putIfAbsent(
+    (locale, pattern),
+    () => DateFormat(pattern, locale),
+  );
+}
+
 enum _ConflictFilter { all, time, other }
 
 enum _ScheduleResolutionMode { recommend, group, manual }
@@ -40,6 +50,10 @@ class ConflictInboxScreen extends StatefulWidget {
 
 class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
   List<dynamic> _conflictItems = [];
+  List<dynamic> _timeConflictItems = [];
+  List<dynamic> _otherConflictItems = [];
+  List<dynamic> _ghostConflictItems = [];
+  Map<String, Map<String, dynamic>> _syncConflictVersionsByItemId = {};
   bool _isLoading = true;
   bool _isScanning = false;
   bool _isApplyingScheduleFix = false;
@@ -66,8 +80,35 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
   @override
   void initState() {
     super.initState();
+    _cacheSyncConflictVersions();
     StorageService.scopedDataRefreshNotifier.addListener(_onDataRefreshed);
     _loadConflicts();
+  }
+
+  @override
+  void didUpdateWidget(covariant ConflictInboxScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.syncConflicts, widget.syncConflicts)) {
+      _cacheSyncConflictVersions();
+      _ghostConflictItems = _collectGhostConflictItems(_conflictItems);
+    }
+  }
+
+  void _cacheSyncConflictVersions() {
+    final conflicts = widget.syncConflicts;
+    if (conflicts == null || conflicts.isEmpty) {
+      _syncConflictVersionsByItemId = {};
+      return;
+    }
+
+    final versionsByItemId = <String, Map<String, dynamic>>{};
+    for (final conflict in conflicts) {
+      final itemId = conflict.item['uuid'] ?? conflict.item['id'];
+      if (itemId is String && itemId.isNotEmpty) {
+        versionsByItemId.putIfAbsent(itemId, () => conflict.conflictWith);
+      }
+    }
+    _syncConflictVersionsByItemId = versionsByItemId;
   }
 
   @override
@@ -151,9 +192,23 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
         return timeB.compareTo(timeA);
       });
 
+      final timeConflictItems = <dynamic>[];
+      final otherConflictItems = <dynamic>[];
+      for (final item in items) {
+        if (_isLocalScheduleConflict(item)) {
+          timeConflictItems.add(item);
+        } else {
+          otherConflictItems.add(item);
+        }
+      }
+      final ghostConflictItems = _collectGhostConflictItems(items);
+
       if (mounted) {
         setState(() {
           _conflictItems = items;
+          _timeConflictItems = timeConflictItems;
+          _otherConflictItems = otherConflictItems;
+          _ghostConflictItems = ghostConflictItems;
           _isLoading = false;
         });
       }
@@ -202,14 +257,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
 
     final persisted = _conflictData(item);
     if (persisted != null && persisted.isNotEmpty) {
-      final conflictType = persisted['conflict_type']?.toString();
-      final conflictKind = persisted['conflict_kind']?.toString();
-      final source = persisted['source']?.toString();
-      final isPersistedVersionConflict = conflictType == 'version_conflict' ||
-          conflictKind == 'version' ||
-          (conflictType != 'local_schedule_conflict' &&
-              source != 'local_detector');
-      if (isPersistedVersionConflict) {
+      if (ConflictVisibilityService.isVersionConflictData(persisted)) {
         return persisted;
       }
     }
@@ -246,15 +294,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
       return item.conflictData;
     }
 
-    if (widget.syncConflicts == null) return null;
-
-    for (final c in widget.syncConflicts!) {
-      final conflictItemId = c.item['uuid'] ?? c.item['id'] ?? '';
-      if (conflictItemId == itemId) {
-        return c.conflictWith;
-      }
-    }
-    return null;
+    return _syncConflictVersionsByItemId[itemId];
   }
 
   Map<String, dynamic>? _conflictData(dynamic item) {
@@ -267,10 +307,9 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
   }
 
   bool _isLocalScheduleConflict(dynamic item) {
-    final data = _conflictData(item);
-    if (data == null) return false;
-    return data['conflict_type'] == 'local_schedule_conflict' ||
-        data['source'] == 'local_detector';
+    return ConflictVisibilityService.isLocalScheduleConflictData(
+      _conflictData(item),
+    );
   }
 
   String _conflictLabel(dynamic item) {
@@ -372,12 +411,6 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     return deduped.values.toList();
   }
 
-  List<dynamic> get _timeConflictItems =>
-      _conflictItems.where(_isLocalScheduleConflict).toList();
-
-  List<dynamic> get _otherConflictItems =>
-      _conflictItems.where((item) => !_isLocalScheduleConflict(item)).toList();
-
   List<dynamic> get _visibleConflictItems {
     switch (_selectedFilter) {
       case _ConflictFilter.time:
@@ -387,6 +420,29 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
       case _ConflictFilter.all:
         return _conflictItems;
     }
+  }
+
+  Map<String, dynamic> _visibleConflictItemsById() {
+    final itemsById = <String, dynamic>{};
+    for (final item in _visibleConflictItems) {
+      itemsById.putIfAbsent(_getConflictId(item), () => item);
+    }
+    return itemsById;
+  }
+
+  List<dynamic> _collectGhostConflictItems(Iterable<dynamic> items) {
+    final ghostItems = <dynamic>[];
+    for (final item in items) {
+      if (item is! TodoItem) continue;
+      final data = _findServerVersion(item);
+      if ((data == null || data.isEmpty) &&
+          !ConflictVisibilityService.isLocalScheduleConflictData(
+            _conflictData(item),
+          )) {
+        ghostItems.add(item);
+      }
+    }
+    return ghostItems;
   }
 
   String? _itemId(dynamic item) {
@@ -719,7 +775,11 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
           final merged = AiTodoActionExecutor.mergeTodoUpdates(
               allTodos, inserted, updated);
           await StorageService.saveTodos(widget.username, merged);
-          await _loadConflicts();
+          try {
+            await _loadConflicts();
+          } catch (error) {
+            debugPrint('AI todo conflict refresh failed after save: $error');
+          }
         },
       );
     } catch (e) {
@@ -1401,12 +1461,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
   }
 
   Widget _buildGhostConflictBanner() {
-    final ghostItems = _conflictItems.where((item) {
-      if (item is! TodoItem) return false;
-      final data = _findServerVersion(item);
-      return (data == null || data.isEmpty) &&
-          !(_conflictData(item)?['type'] == 'schedule');
-    }).toList();
+    final ghostItems = _ghostConflictItems;
 
     if (ghostItems.isEmpty) return const SizedBox.shrink();
 
@@ -1486,36 +1541,40 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
       bool groupsChanged = false;
       bool countdownsChanged = false;
 
-      // 2. 在内存中批量处理
+      final todoIds = <String>{};
+      final groupIds = <String>{};
+      final countdownIds = <String>{};
       for (final ghost in items) {
         final id = _itemId(ghost);
         if (id == null) continue;
 
         if (ghost is TodoItem) {
-          final idx = allTodos.indexWhere((t) => t.id == id);
-          if (idx != -1) {
-            final item = allTodos[idx];
-            item.hasConflict = false;
-            item.serverVersionData = null;
-            todosChanged = true;
-          }
+          todoIds.add(id);
         } else if (ghost is TodoGroup) {
-          final idx = allGroups.indexWhere((g) => g.id == id);
-          if (idx != -1) {
-            final item = allGroups[idx];
-            item.hasConflict = false;
-            item.conflictData = null;
-            groupsChanged = true;
-          }
+          groupIds.add(id);
         } else if (ghost is CountdownItem) {
-          final idx = allCountdowns.indexWhere((c) => c.id == id);
-          if (idx != -1) {
-            final item = allCountdowns[idx];
-            item.hasConflict = false;
-            item.conflictData = null;
-            countdownsChanged = true;
-          }
+          countdownIds.add(id);
         }
+      }
+
+      // 2. 在内存中批量处理，每种数据表只扫描一次。
+      for (final todo in allTodos) {
+        if (!todoIds.remove(todo.id)) continue;
+        todo.hasConflict = false;
+        todo.serverVersionData = null;
+        todosChanged = true;
+      }
+      for (final group in allGroups) {
+        if (!groupIds.remove(group.id)) continue;
+        group.hasConflict = false;
+        group.conflictData = null;
+        groupsChanged = true;
+      }
+      for (final countdown in allCountdowns) {
+        if (!countdownIds.remove(countdown.id)) continue;
+        countdown.hasConflict = false;
+        countdown.conflictData = null;
+        countdownsChanged = true;
       }
 
       // 3. 批量持久化（每种类型仅写入一次）
@@ -1714,6 +1773,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
         map['startTime']);
     final end = _parseMs(
         map['due_date'] ?? map['dueDate'] ?? map['end_time'] ?? map['endTime']);
+    final timeFormat = _conflictInboxDateFormat('HH:mm');
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -1744,7 +1804,8 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                         fontSize: 14, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 4),
                 Text(
-                  '${DateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(start))} ~ ${DateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(end))}',
+                  '${timeFormat.format(DateTime.fromMillisecondsSinceEpoch(start))} ~ '
+                  '${timeFormat.format(DateTime.fromMillisecondsSinceEpoch(end))}',
                   style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                 ),
               ],
@@ -1949,14 +2010,11 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
       int successCount = 0;
       int scheduleSkippedCount = 0;
       final ids = _selectedConflictIds.toList();
+      final conflictItemsById = _visibleConflictItemsById();
 
       for (final itemId in ids) {
         try {
-          // 根据 ID 格式查找对应的冲突项
-          final conflictItem = _visibleConflictItems.firstWhere(
-            (item) => _getConflictId(item) == itemId,
-            orElse: () => null,
-          );
+          final conflictItem = conflictItemsById[itemId];
           if (conflictItem == null) continue;
 
           if (_isLocalScheduleConflict(conflictItem) &&
@@ -2022,13 +2080,11 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
       int successCount = 0;
       int scheduleSkippedCount = 0;
       final ids = _selectedConflictIds.toList();
+      final conflictItemsById = _visibleConflictItemsById();
 
       for (final itemId in ids) {
         try {
-          final conflictItem = _visibleConflictItems.firstWhere(
-            (item) => _getConflictId(item) == itemId,
-            orElse: () => null,
-          );
+          final conflictItem = conflictItemsById[itemId];
           if (conflictItem == null) continue;
 
           if (_isLocalScheduleConflict(conflictItem) &&
@@ -2215,13 +2271,11 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
       int successCount = 0;
       int scheduleSkippedCount = 0;
       final ids = _selectedConflictIds.toList();
+      final conflictItemsById = _visibleConflictItemsById();
 
       for (final itemId in ids) {
         try {
-          final conflictItem = _visibleConflictItems.firstWhere(
-            (item) => _getConflictId(item) == itemId,
-            orElse: () => null,
-          );
+          final conflictItem = conflictItemsById[itemId];
           if (conflictItem == null) continue;
 
           if (_isLocalScheduleConflict(conflictItem) &&
@@ -2660,7 +2714,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
         data['due_date'] ??
         data['dueDate']);
 
-    final sf = DateFormat('HH:mm');
+    final sf = _conflictInboxDateFormat('HH:mm');
     final originalTime = start > 0 && end > 0
         ? '${sf.format(DateTime.fromMillisecondsSinceEpoch(start))} ~ ${sf.format(DateTime.fromMillisecondsSinceEpoch(end))}'
         : '时间未知';
@@ -2957,9 +3011,11 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
         ((recommendedWindow.start.millisecondsSinceEpoch - startMs) /
                 const Duration(minutes: 1).inMilliseconds)
             .round();
+    final startDateFormat = _conflictInboxDateFormat('MM-dd HH:mm');
+    final endTimeFormat = _conflictInboxDateFormat('HH:mm');
     return '推荐：仅移动开始时间，保留 $durationMinutes 分钟时长。新时间为 '
-        '${DateFormat('MM-dd HH:mm').format(recommendedWindow.start)} ~ '
-        '${DateFormat('HH:mm').format(recommendedWindow.end)}'
+        '${startDateFormat.format(recommendedWindow.start)} ~ '
+        '${endTimeFormat.format(recommendedWindow.end)}'
         '${shiftedMinutes > 0 ? '，整体后移 $shiftedMinutes 分钟' : ''}。';
   }
 
@@ -3507,7 +3563,7 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
           start is int ? start : int.tryParse(start.toString()) ?? 0;
       final endMs = end is int ? end : int.tryParse(end.toString()) ?? 0;
       if (startMs > 0 && endMs > 0) {
-        final sf = DateFormat('MM-dd HH:mm');
+        final sf = _conflictInboxDateFormat('MM-dd HH:mm');
         timeStr =
             '${sf.format(DateTime.fromMillisecondsSinceEpoch(startMs))} ~ ${sf.format(DateTime.fromMillisecondsSinceEpoch(endMs))}';
       }
@@ -3516,7 +3572,7 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
           ? targetTime
           : int.tryParse(targetTime.toString()) ?? 0;
       if (tMs > 0) {
-        timeStr = DateFormat('MM-dd HH:mm')
+        timeStr = _conflictInboxDateFormat('MM-dd HH:mm')
             .format(DateTime.fromMillisecondsSinceEpoch(tMs));
       }
     }
@@ -3804,7 +3860,7 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
   String _formatTimestamp(dynamic value) {
     final ms = _toMillis(value);
     if (ms == null || ms <= 0) return '空';
-    return DateFormat('yyyy-MM-dd HH:mm:ss').format(
+    return _conflictInboxDateFormat('yyyy-MM-dd HH:mm:ss').format(
       DateTime.fromMillisecondsSinceEpoch(ms),
     );
   }
@@ -3812,7 +3868,7 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
   String _formatDateTimeMs(dynamic value) {
     final ms = _toMillis(value);
     if (ms == null || ms <= 0) return '空';
-    return DateFormat('MM-dd HH:mm').format(
+    return _conflictInboxDateFormat('MM-dd HH:mm').format(
       DateTime.fromMillisecondsSinceEpoch(ms),
     );
   }

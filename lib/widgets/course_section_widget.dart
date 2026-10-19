@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+
 import '../models.dart';
 import '../utils/app_dialogs.dart';
 import 'home_sections.dart';
@@ -31,6 +32,16 @@ String _lessonTypeLabel(String? type) {
   return type?.trim() ?? '';
 }
 
+final Map<(String?, String), DateFormat> _courseSectionDateFormats = {};
+
+DateFormat _courseSectionDateFormat(String pattern) {
+  final locale = Intl.defaultLocale;
+  return _courseSectionDateFormats.putIfAbsent(
+    (locale, pattern),
+    () => DateFormat(pattern, locale),
+  );
+}
+
 // ─────────────────────────────────────────────
 // 主组件
 // ─────────────────────────────────────────────
@@ -55,7 +66,10 @@ class CourseSectionWidget extends StatelessWidget {
   });
 
   void _showCourseDetail(
-      BuildContext context, CourseItem course, GlobalKey cardKey) {
+    BuildContext context,
+    CourseItem course,
+    GlobalKey cardKey,
+  ) {
     PageTransitions.pushFromRect(
       context: context,
       page: CourseDetailScreen(course: course),
@@ -107,10 +121,11 @@ class CourseSectionWidget extends StatelessWidget {
         ),
         if (courses.isEmpty)
           EmptyState(
-              text: dashboardCourseData['title'] == '暂无课表'
-                  ? "尚未导入课表，点击上方图标开始"
-                  : "近期暂无课程（今天与明天）",
-              isLight: isLight)
+            text: dashboardCourseData['title'] == '暂无课表'
+                ? "尚未导入课表，点击上方图标开始"
+                : "近期暂无课程（今天与明天）",
+            isLight: isLight,
+          )
         else
           ListView.builder(
             padding: EdgeInsets.zero,
@@ -136,44 +151,44 @@ enum _TodayScheduleItemType {
   fixedSchedule,
   plan,
   todo,
-  deviceCalendar
+  deviceCalendar,
 }
 
 class _TodayScheduleItem {
   const _TodayScheduleItem.course(this.course)
-      : block = null,
-        todo = null,
-        fixedSchedule = null,
-        deviceCalendar = null,
-        type = _TodayScheduleItemType.course;
+    : block = null,
+      todo = null,
+      fixedSchedule = null,
+      deviceCalendar = null,
+      type = _TodayScheduleItemType.course;
 
   const _TodayScheduleItem.fixedSchedule(this.fixedSchedule)
-      : course = null,
-        block = null,
-        todo = null,
-        deviceCalendar = null,
-        type = _TodayScheduleItemType.fixedSchedule;
+    : course = null,
+      block = null,
+      todo = null,
+      deviceCalendar = null,
+      type = _TodayScheduleItemType.fixedSchedule;
 
   const _TodayScheduleItem.plan(this.block)
-      : course = null,
-        todo = null,
-        fixedSchedule = null,
-        deviceCalendar = null,
-        type = _TodayScheduleItemType.plan;
+    : course = null,
+      todo = null,
+      fixedSchedule = null,
+      deviceCalendar = null,
+      type = _TodayScheduleItemType.plan;
 
   const _TodayScheduleItem.todo(this.todo)
-      : course = null,
-        block = null,
-        fixedSchedule = null,
-        deviceCalendar = null,
-        type = _TodayScheduleItemType.todo;
+    : course = null,
+      block = null,
+      fixedSchedule = null,
+      deviceCalendar = null,
+      type = _TodayScheduleItemType.todo;
 
   const _TodayScheduleItem.deviceCalendar(this.deviceCalendar)
-      : course = null,
-        block = null,
-        fixedSchedule = null,
-        todo = null,
-        type = _TodayScheduleItemType.deviceCalendar;
+    : course = null,
+      block = null,
+      fixedSchedule = null,
+      todo = null,
+      type = _TodayScheduleItemType.deviceCalendar;
 
   final _TodayScheduleItemType type;
   final CourseItem? course;
@@ -220,8 +235,13 @@ class _TodayScheduleItem {
     if (date == null) return 0;
     final hour = hhmm ~/ 100;
     final minute = hhmm % 100;
-    return DateTime(date.year, date.month, date.day, hour, minute)
-        .millisecondsSinceEpoch;
+    return DateTime(
+      date.year,
+      date.month,
+      date.day,
+      hour,
+      minute,
+    ).millisecondsSinceEpoch;
   }
 }
 
@@ -253,6 +273,7 @@ class _TodayScheduleList extends StatefulWidget {
 class _TodayScheduleListState extends State<_TodayScheduleList> {
   List<TodoPlanBlock> _blocks = [];
   List<TodoPlanBlock> _tomorrowBlocks = [];
+  Set<String> _plannedTodoIds = <String>{};
   List<FixedScheduleItem> _todayFixedSchedules = [];
   List<FixedScheduleItem> _tomorrowFixedSchedules = [];
   List<CourseItem> _todayCourses = [];
@@ -295,25 +316,22 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
     final now = DateTime.now();
     final todayStart = AppTimeFormats.dayStart(now);
     final tomorrowStart = AppTimeFormats.localDayStartOffset(todayStart, 1);
-    final afterTomorrowStart =
-        AppTimeFormats.localDayStartOffset(todayStart, 2);
+    final afterTomorrowStart = AppTimeFormats.localDayStartOffset(
+      todayStart,
+      2,
+    );
     // Read one shared current-month grid window when the app first needs
     // calendar data. The week, half-month and month views reuse this in-memory
     // range instead of starting another provider query after the homepage.
-    final calendarGridStart =
-        DeviceCalendarReadService.monthGridStart(todayStart);
+    final calendarGridStart = DeviceCalendarReadService.monthGridStart(
+      todayStart,
+    );
     final calendarGridEnd = DeviceCalendarReadService.monthGridEnd(todayStart);
     final results = await Future.wait([
       StorageService.getPlanBlocksByDay(widget.username, now),
-      StorageService.getPlanBlocksByDay(
-        widget.username,
-        tomorrowStart,
-      ),
+      StorageService.getPlanBlocksByDay(widget.username, tomorrowStart),
       StorageService.getFixedSchedulesByDay(widget.username, now),
-      StorageService.getFixedSchedulesByDay(
-        widget.username,
-        tomorrowStart,
-      ),
+      StorageService.getFixedSchedulesByDay(widget.username, tomorrowStart),
       CourseService.getAllCourses(widget.username),
       DeviceCalendarReadService.readEvents(
         start: calendarGridStart,
@@ -326,8 +344,9 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
     final tomorrowFixedSchedules = results[3] as List<FixedScheduleItem>;
     final allCourses = results[4] as List<CourseItem>;
     final deviceCalendarEvents = results[5] as List<DeviceCalendarEvent>;
-    final today = DateFormat('yyyy-MM-dd').format(now);
-    final tomorrow = DateFormat('yyyy-MM-dd').format(tomorrowStart);
+    final dateFormat = _courseSectionDateFormat('yyyy-MM-dd');
+    final today = dateFormat.format(now);
+    final tomorrow = dateFormat.format(tomorrowStart);
 
     final missed = <TodoPlanBlock>[];
     for (final block in blocks) {
@@ -344,26 +363,43 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
       await StorageService.savePlanBlocks(widget.username, missed);
     }
 
+    final visibleBlocks = blocks.where((block) => !block.isDeleted).toList();
+    final visibleTomorrowBlocks =
+        tomorrowBlocks.where((block) => !block.isDeleted).toList();
+    final plannedTodoIds = <String>{
+      for (final block in visibleBlocks)
+        if (block.todoId.isNotEmpty) block.todoId,
+      for (final block in visibleTomorrowBlocks)
+        if (block.todoId.isNotEmpty) block.todoId,
+    };
+
     if (!mounted) return;
     setState(() {
-      _blocks = blocks.where((b) => !b.isDeleted).toList();
-      _tomorrowBlocks = tomorrowBlocks.where((b) => !b.isDeleted).toList();
+      _blocks = visibleBlocks;
+      _tomorrowBlocks = visibleTomorrowBlocks;
+      _plannedTodoIds = plannedTodoIds;
       _todayFixedSchedules = todayFixedSchedules
-          .where((item) =>
-              !item.isDeleted && item.status != FixedScheduleStatus.cancelled)
+          .where(
+            (item) =>
+                !item.isDeleted && item.status != FixedScheduleStatus.cancelled,
+          )
           .toList();
       _tomorrowFixedSchedules = tomorrowFixedSchedules
-          .where((item) =>
-              !item.isDeleted && item.status != FixedScheduleStatus.cancelled)
+          .where(
+            (item) =>
+                !item.isDeleted && item.status != FixedScheduleStatus.cancelled,
+          )
           .toList();
-      _todayCourses = allCourses
-          .where((course) => !course.isDeleted && course.date == today)
-          .toList()
-        ..sort((a, b) => a.startTime.compareTo(b.startTime));
-      _tomorrowCourses = allCourses
-          .where((course) => !course.isDeleted && course.date == tomorrow)
-          .toList()
-        ..sort((a, b) => a.startTime.compareTo(b.startTime));
+      _todayCourses =
+          allCourses
+              .where((course) => !course.isDeleted && course.date == today)
+              .toList()
+            ..sort((a, b) => a.startTime.compareTo(b.startTime));
+      _tomorrowCourses =
+          allCourses
+              .where((course) => !course.isDeleted && course.date == tomorrow)
+              .toList()
+            ..sort((a, b) => a.startTime.compareTo(b.startTime));
       _todayDeviceCalendarEvents = deviceCalendarEvents
           .where((event) => event.overlaps(todayStart, tomorrowStart))
           .toList();
@@ -417,10 +453,7 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
             initialMode: AddTodoInitialMode.fixedSchedule,
             onTodoAdded: widget.onTodoAdded ?? (_) async {},
             onFixedScheduleAdded: (item) async {
-              await StorageService.saveFixedSchedules(
-                widget.username,
-                [item],
-              );
+              await StorageService.saveFixedSchedules(widget.username, [item]);
             },
           ),
         ),
@@ -433,34 +466,21 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
   Widget build(BuildContext context) {
     final now = DateTime.now();
     final nowMs = now.millisecondsSinceEpoch;
-    final fallbackToday = DateFormat('yyyy-MM-dd').format(now);
-    final fallbackCourses =
-        widget.courses.where((course) => course.date == fallbackToday).toList();
+    final fallbackToday = _courseSectionDateFormat('yyyy-MM-dd').format(now);
+    final fallbackCourses = widget.courses
+        .where((course) => course.date == fallbackToday)
+        .toList();
     final todayCourses = _todayCourses.isNotEmpty
         ? _todayCourses
         : (_loading ? fallbackCourses : <CourseItem>[]);
-    final todayPlannedTodoIds = _blocks
-        .where((block) => !block.isDeleted && block.todoId.isNotEmpty)
-        .map((block) => block.todoId)
-        .toSet();
-    final tomorrowPlannedTodoIds = _tomorrowBlocks
-        .where((block) => !block.isDeleted && block.todoId.isNotEmpty)
-        .map((block) => block.todoId)
-        .toSet();
-    final allPlannedTodoIds = <String>{
-      ...todayPlannedTodoIds,
-      ...tomorrowPlannedTodoIds
-    };
-    final todayTimedTodos = _todayTimedTodos(
+    final timedTodosByDay = _timedTodosForTodayAndTomorrow(
       widget.todos,
       DateTime.now(),
-      excludeTodoIds: allPlannedTodoIds,
-    );
-    final tomorrowTimedTodos = _todayTimedTodos(
-      widget.todos,
       AppTimeFormats.localDayStartOffset(now, 1),
-      excludeTodoIds: allPlannedTodoIds,
+      excludeTodoIds: _plannedTodoIds,
     );
+    final todayTimedTodos = timedTodosByDay.today;
+    final tomorrowTimedTodos = timedTodosByDay.tomorrow;
     final todayItems = <_TodayScheduleItem>[
       ...todayCourses.map(_TodayScheduleItem.course),
       ..._todayFixedSchedules.map(_TodayScheduleItem.fixedSchedule),
@@ -490,10 +510,7 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
     if (_loading && todayItems.isEmpty && tomorrowItems.isEmpty) {
       content = const _TodayScheduleSkeleton();
     } else if (items.isEmpty && endedItems.isEmpty) {
-      content = EmptyState(
-        text: '今日和明日暂无课程、日程与规划',
-        isLight: widget.isLight,
-      );
+      content = EmptyState(text: '今日和明日暂无课程、日程与规划', isLight: widget.isLight);
     } else {
       content = Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -506,10 +523,9 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
               onTap: () => setState(() => _showEnded = !_showEnded),
             ),
             if (_showEnded)
-              ...endedItems.map((item) => Opacity(
-                    opacity: 0.58,
-                    child: _buildItemCard(item),
-                  )),
+              ...endedItems.map(
+                (item) => Opacity(opacity: 0.58, child: _buildItemCard(item)),
+              ),
           ],
           if (showingTomorrow)
             Padding(
@@ -569,8 +585,8 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
               item: fixedSchedule,
             ),
             sourceKey: cardKey,
-            sourceColor: Theme.of(context).colorScheme.brightness ==
-                    Brightness.dark
+            sourceColor:
+                Theme.of(context).colorScheme.brightness == Brightness.dark
                 ? Colors.black
                 : Colors.white,
             sourceBorderRadius: const BorderRadius.all(Radius.circular(14)),
@@ -617,35 +633,41 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
     );
   }
 
-  List<TodoItem> _todayTimedTodos(
+  ({List<TodoItem> today, List<TodoItem> tomorrow})
+  _timedTodosForTodayAndTomorrow(
     List<TodoItem> todos,
-    DateTime day, {
+    DateTime today,
+    DateTime tomorrow, {
     required Set<String> excludeTodoIds,
   }) {
-    return todos.where((todo) {
-      if (todo.isDeleted || todo.dueDate == null) return false;
-      if (excludeTodoIds.contains(todo.id)) return false;
-      if (todo.isAllDayTask) return false;
+    final todayTodos = <TodoItem>[];
+    final tomorrowTodos = <TodoItem>[];
+    for (final todo in todos) {
+      if (todo.isDeleted || todo.dueDate == null) continue;
+      if (excludeTodoIds.contains(todo.id)) continue;
+      if (todo.isAllDayTask) continue;
 
       final startMs = todo.createdDate ?? todo.createdAt;
-      if (startMs <= 0) return false;
+      if (startMs <= 0) continue;
 
-      final start = DateTime.fromMillisecondsSinceEpoch(startMs).toLocal();
+      final start = DateTime.fromMillisecondsSinceEpoch(startMs);
       final end = todo.dueDate!.toLocal();
-      if (!end.isAfter(start)) return false;
-      if (!_isSameLocalDay(start, end)) return false;
-      return _isSameLocalDay(start, day);
-    }).toList()
-      ..sort((a, b) => _TodayScheduleItem._todoStartMs(a)
-          .compareTo(_TodayScheduleItem._todoStartMs(b)));
+      if (!end.isAfter(start)) continue;
+      if (!_isSameLocalDay(start, end)) continue;
+      if (_isSameLocalDay(start, today)) todayTodos.add(todo);
+      if (_isSameLocalDay(start, tomorrow)) tomorrowTodos.add(todo);
+    }
+
+    int compareTodoStart(TodoItem a, TodoItem b) =>
+        _TodayScheduleItem._todoStartMs(a)
+            .compareTo(_TodayScheduleItem._todoStartMs(b));
+    todayTodos.sort(compareTodoStart);
+    tomorrowTodos.sort(compareTodoStart);
+    return (today: todayTodos, tomorrow: tomorrowTodos);
   }
 
   bool _isSameLocalDay(DateTime a, DateTime b) {
-    final left = a.toLocal();
-    final right = b.toLocal();
-    return left.year == right.year &&
-        left.month == right.month &&
-        left.day == right.day;
+    return a.year == b.year && a.month == b.month && a.day == b.day;
   }
 }
 
@@ -672,9 +694,7 @@ class _EndedScheduleSummary extends StatelessWidget {
       fallbackDecoration: BoxDecoration(
         color: colorScheme.surface.withValues(alpha: isLight ? 0.78 : 0.48),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: colorScheme.outline.withValues(alpha: 0.10),
-        ),
+        border: Border.all(color: colorScheme.outline.withValues(alpha: 0.10)),
       ),
       child: Material(
         color: Colors.transparent,
@@ -808,8 +828,9 @@ class _DeviceCalendarCompactCardState
     final accent = widget.event.colorValue == null
         ? colors.tertiary
         : Color(widget.event.colorValue!);
-    final timeStart = DateFormat('HH:mm').format(widget.event.start);
-    final timeEnd = DateFormat('HH:mm').format(widget.event.end);
+    final timeFormat = _courseSectionDateFormat('HH:mm');
+    final timeStart = timeFormat.format(widget.event.start);
+    final timeEnd = timeFormat.format(widget.event.end);
     return OptionalLiquidGlassCard(
       key: _cardKey,
       margin: const EdgeInsets.only(bottom: 6),
@@ -865,8 +886,11 @@ class _DeviceCalendarCompactCardState
                     children: [
                       Row(
                         children: [
-                          Icon(Icons.phone_android_rounded,
-                              size: 14, color: accent),
+                          Icon(
+                            Icons.phone_android_rounded,
+                            size: 14,
+                            color: accent,
+                          ),
                           const SizedBox(width: 5),
                           Expanded(
                             child: Text(
@@ -889,7 +913,9 @@ class _DeviceCalendarCompactCardState
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                              fontSize: 11, color: colors.onSurfaceVariant),
+                            fontSize: 11,
+                            color: colors.onSurfaceVariant,
+                          ),
                         ),
                       ],
                     ],
@@ -898,8 +924,10 @@ class _DeviceCalendarCompactCardState
                 const SizedBox(width: 4),
                 Text(
                   '手机日历',
-                  style:
-                      TextStyle(fontSize: 10, color: colors.onSurfaceVariant),
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: colors.onSurfaceVariant,
+                  ),
                 ),
               ],
             ),
@@ -924,30 +952,30 @@ class _FixedScheduleCompactCard extends StatelessWidget {
   final void Function(GlobalKey cardKey) onTap;
 
   String _recurrenceLabel() => switch (item.recurrence) {
-        RecurrenceType.none => '',
-        RecurrenceType.daily => '每天重复',
-        RecurrenceType.weekly => '每周重复',
-        RecurrenceType.monthly => '每月重复',
-        RecurrenceType.yearly => '每年重复',
-        RecurrenceType.weekdays => '工作日重复',
-        RecurrenceType.customDays => '自定义重复',
-      };
+    RecurrenceType.none => '',
+    RecurrenceType.daily => '每天重复',
+    RecurrenceType.weekly => '每周重复',
+    RecurrenceType.monthly => '每月重复',
+    RecurrenceType.yearly => '每年重复',
+    RecurrenceType.weekdays => '工作日重复',
+    RecurrenceType.customDays => '自定义重复',
+  };
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final startLabel = item.startTime == null
         ? '时间待定'
-        : DateFormat('HH:mm').format(
+        : _courseSectionDateFormat('HH:mm').format(
             DateTime.fromMillisecondsSinceEpoch(item.startTime!).toLocal(),
           );
     final endLabel = item.startTime == null
         ? null
         : item.endTime == null
-            ? '结束待定'
-            : DateFormat('HH:mm').format(
-                DateTime.fromMillisecondsSinceEpoch(item.endTime!).toLocal(),
-              );
+        ? '结束待定'
+        : _courseSectionDateFormat('HH:mm').format(
+            DateTime.fromMillisecondsSinceEpoch(item.endTime!).toLocal(),
+          );
     final supportingText = [
       if (_recurrenceLabel().isNotEmpty) _recurrenceLabel(),
       if (item.teamUuid?.trim().isNotEmpty == true) '团队日程',
@@ -962,9 +990,7 @@ class _FixedScheduleCompactCard extends StatelessWidget {
       fallbackDecoration: BoxDecoration(
         color: colors.surface.withValues(alpha: isLight ? 0.97 : 0.75),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: colors.primary.withValues(alpha: 0.18),
-        ),
+        border: Border.all(color: colors.primary.withValues(alpha: 0.18)),
       ),
       child: Material(
         color: Colors.transparent,
@@ -1090,12 +1116,14 @@ class _CourseCompactCardState extends State<_CourseCompactCard> {
       borderRadius: 14,
       tint: colorScheme.primary.withValues(alpha: 0.16),
       fallbackDecoration: BoxDecoration(
-        color:
-            colorScheme.surface.withValues(alpha: widget.isLight ? 0.97 : 0.75),
+        color: colorScheme.surface.withValues(
+          alpha: widget.isLight ? 0.97 : 0.75,
+        ),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: colorScheme.outline
-              .withValues(alpha: widget.isLight ? 0.06 : 0.12),
+          color: colorScheme.outline.withValues(
+            alpha: widget.isLight ? 0.06 : 0.12,
+          ),
           width: 1,
         ),
         boxShadow: widget.isLight
@@ -1104,7 +1132,7 @@ class _CourseCompactCardState extends State<_CourseCompactCard> {
                   color: Colors.black.withValues(alpha: 0.03),
                   blurRadius: 6,
                   offset: const Offset(0, 2),
-                )
+                ),
               ]
             : [],
       ),
@@ -1115,7 +1143,11 @@ class _CourseCompactCardState extends State<_CourseCompactCard> {
           borderRadius: BorderRadius.circular(14),
           onTap: () => widget.onTap(_cardKey),
           onLongPress: () => VersionHistorySheet.show(
-              context, widget.course.uuid, 'courses', widget.course.courseName),
+            context,
+            widget.course.uuid,
+            'courses',
+            widget.course.courseName,
+          ),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
             child: Row(
@@ -1183,7 +1215,9 @@ class _CourseCompactCardState extends State<_CourseCompactCard> {
                             const SizedBox(width: 6),
                             Container(
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: 6, vertical: 2),
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
                               decoration: BoxDecoration(
                                 color: colorScheme.secondaryContainer
                                     .withValues(alpha: 0.8),
@@ -1204,10 +1238,11 @@ class _CourseCompactCardState extends State<_CourseCompactCard> {
                       const SizedBox(height: 3),
                       Row(
                         children: [
-                          Icon(Icons.location_on_rounded,
-                              size: 11,
-                              color:
-                                  colorScheme.onSurface.withValues(alpha: 0.4)),
+                          Icon(
+                            Icons.location_on_rounded,
+                            size: 11,
+                            color: colorScheme.onSurface.withValues(alpha: 0.4),
+                          ),
                           const SizedBox(width: 3),
                           Expanded(
                             child: Text(
@@ -1216,8 +1251,9 @@ class _CourseCompactCardState extends State<_CourseCompactCard> {
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
                                 fontSize: 11,
-                                color: colorScheme.onSurface
-                                    .withValues(alpha: 0.45),
+                                color: colorScheme.onSurface.withValues(
+                                  alpha: 0.45,
+                                ),
                                 height: 1.2,
                               ),
                             ),
@@ -1228,9 +1264,11 @@ class _CourseCompactCardState extends State<_CourseCompactCard> {
                   ),
                 ),
                 const SizedBox(width: 4),
-                Icon(Icons.chevron_right_rounded,
-                    size: 16,
-                    color: colorScheme.onSurface.withValues(alpha: 0.25)),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  size: 16,
+                  color: colorScheme.onSurface.withValues(alpha: 0.25),
+                ),
               ],
             ),
           ),
@@ -1254,10 +1292,13 @@ class _PlanCompactCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final start = DateFormat('HH:mm')
-        .format(DateTime.fromMillisecondsSinceEpoch(block.startTime));
-    final end = DateFormat('HH:mm')
-        .format(DateTime.fromMillisecondsSinceEpoch(block.endTime));
+    final timeFormat = _courseSectionDateFormat('HH:mm');
+    final start = timeFormat.format(
+      DateTime.fromMillisecondsSinceEpoch(block.startTime),
+    );
+    final end = timeFormat.format(
+      DateTime.fromMillisecondsSinceEpoch(block.endTime),
+    );
     final statusColor = _statusColor(block.status);
 
     return OptionalLiquidGlassCard(
@@ -1277,7 +1318,7 @@ class _PlanCompactCard extends StatelessWidget {
                   color: Colors.black.withValues(alpha: 0.03),
                   blurRadius: 6,
                   offset: const Offset(0, 2),
-                )
+                ),
               ]
             : [],
       ),
@@ -1358,10 +1399,11 @@ class _PlanCompactCard extends StatelessWidget {
                       const SizedBox(height: 3),
                       Row(
                         children: [
-                          Icon(Icons.event_note_rounded,
-                              size: 11,
-                              color:
-                                  colorScheme.onSurface.withValues(alpha: 0.4)),
+                          Icon(
+                            Icons.event_note_rounded,
+                            size: 11,
+                            color: colorScheme.onSurface.withValues(alpha: 0.4),
+                          ),
                           const SizedBox(width: 3),
                           Expanded(
                             child: Text(
@@ -1370,8 +1412,9 @@ class _PlanCompactCard extends StatelessWidget {
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
                                 fontSize: 11,
-                                color: colorScheme.onSurface
-                                    .withValues(alpha: 0.45),
+                                color: colorScheme.onSurface.withValues(
+                                  alpha: 0.45,
+                                ),
                                 height: 1.2,
                               ),
                             ),
@@ -1382,9 +1425,11 @@ class _PlanCompactCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 4),
-                Icon(Icons.chevron_right_rounded,
-                    size: 16,
-                    color: colorScheme.onSurface.withValues(alpha: 0.25)),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  size: 16,
+                  color: colorScheme.onSurface.withValues(alpha: 0.25),
+                ),
               ],
             ),
           ),
@@ -1465,8 +1510,9 @@ class _TodoCompactCardState extends State<_TodoCompactCard> {
       borderRadius: 14,
       tint: statusColor.withValues(alpha: 0.16),
       fallbackDecoration: BoxDecoration(
-        color:
-            colorScheme.surface.withValues(alpha: widget.isLight ? 0.97 : 0.75),
+        color: colorScheme.surface.withValues(
+          alpha: widget.isLight ? 0.97 : 0.75,
+        ),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: statusColor.withValues(alpha: widget.isLight ? 0.16 : 0.24),
@@ -1478,7 +1524,7 @@ class _TodoCompactCardState extends State<_TodoCompactCard> {
                   color: Colors.black.withValues(alpha: 0.03),
                   blurRadius: 6,
                   offset: const Offset(0, 2),
-                )
+                ),
               ]
             : [],
       ),
@@ -1489,7 +1535,11 @@ class _TodoCompactCardState extends State<_TodoCompactCard> {
           borderRadius: BorderRadius.circular(14),
           onTap: () => widget.onTap(_cardKey),
           onLongPress: () => VersionHistorySheet.show(
-              context, widget.todo.id, 'todos', widget.todo.title),
+            context,
+            widget.todo.id,
+            'todos',
+            widget.todo.title,
+          ),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
             child: Row(
@@ -1510,7 +1560,7 @@ class _TodoCompactCardState extends State<_TodoCompactCard> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        DateFormat('HH:mm').format(start),
+                        _courseSectionDateFormat('HH:mm').format(start),
                         style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.bold,
@@ -1519,7 +1569,7 @@ class _TodoCompactCardState extends State<_TodoCompactCard> {
                         ),
                       ),
                       Text(
-                        DateFormat('HH:mm').format(end),
+                        _courseSectionDateFormat('HH:mm').format(end),
                         style: TextStyle(
                           fontSize: 10.5,
                           color: statusColor.withValues(alpha: 0.58),
@@ -1566,10 +1616,11 @@ class _TodoCompactCardState extends State<_TodoCompactCard> {
                       const SizedBox(height: 3),
                       Row(
                         children: [
-                          Icon(Icons.schedule_rounded,
-                              size: 11,
-                              color:
-                                  colorScheme.onSurface.withValues(alpha: 0.4)),
+                          Icon(
+                            Icons.schedule_rounded,
+                            size: 11,
+                            color: colorScheme.onSurface.withValues(alpha: 0.4),
+                          ),
                           const SizedBox(width: 3),
                           Expanded(
                             child: Text(
@@ -1578,8 +1629,9 @@ class _TodoCompactCardState extends State<_TodoCompactCard> {
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
                                 fontSize: 11,
-                                color: colorScheme.onSurface
-                                    .withValues(alpha: 0.45),
+                                color: colorScheme.onSurface.withValues(
+                                  alpha: 0.45,
+                                ),
                                 height: 1.2,
                               ),
                             ),
@@ -1590,9 +1642,11 @@ class _TodoCompactCardState extends State<_TodoCompactCard> {
                   ),
                 ),
                 const SizedBox(width: 4),
-                Icon(Icons.chevron_right_rounded,
-                    size: 16,
-                    color: colorScheme.onSurface.withValues(alpha: 0.25)),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  size: 16,
+                  color: colorScheme.onSurface.withValues(alpha: 0.25),
+                ),
               ],
             ),
           ),

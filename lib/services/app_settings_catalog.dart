@@ -86,10 +86,13 @@ abstract final class AppSettingsCatalog {
       if (item.availableOn(platform, debug: debug)) item,
   ];
   static const destinations = <AiSettingsDestination>[
-    AiSettingsDestination(id: 'weekly_plan_availability', title: '每周可安排时间',
+    AiSettingsDestination(
+      id: 'weekly_plan_availability',
+      title: '每周可安排时间',
       path: '规划中心 > 更多 > 每周可安排时间',
       description: '每周 周一至周日 作息 工作时间 可安排范围 推荐时段 本机规则',
-      page: SettingsPageId.weeklyPlanAvailability),
+      page: SettingsPageId.weeklyPlanAvailability,
+    ),
     AiSettingsDestination(
       id: 'account',
       title: '账户管理',

@@ -248,17 +248,16 @@ Future<void> islandMain(List<String> args) async {
       final hwnd = getSmallestFlutterWindow();
       if (hwnd == null) return;
 
-      if (!isWindowValid(hwnd)) {
-        timer.cancel();
+      if (enableNativeChrome) {
+        ensureIslandFrameless(hwnd: hwnd);
+      }
+
+      final rect = getWindowRect(hwnd: hwnd);
+      if (rect == null) {
+        if (!isWindowValid(hwnd)) timer.cancel();
         return;
       }
-
-      if (enableNativeChrome) {
-        ensureIslandFrameless();
-      }
-
-      final rect = getWindowRect();
-      if (rect != null && boundsSaveEnabled && boundsSaveReady && !isDragging) {
+      if (boundsSaveEnabled && boundsSaveReady && !isDragging) {
         if (lastReportedBounds == null ||
             _boundsChanged(lastReportedBounds!, rect)) {
           lastReportedBounds = rect;

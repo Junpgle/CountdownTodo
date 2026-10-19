@@ -14,6 +14,7 @@ import '../models/finance_models.dart';
 /// 该类不依赖用户名参数：DatabaseHelper 会根据当前登录用户打开隔离的
 /// `uni_sync_<username>.db`，因此记账数据天然按账号隔离。
 abstract final class FinanceStorage {
+  static final RegExp _monthKeyPattern = RegExp(r'^\d{4}-(0[1-9]|1[0-2])$');
   static const int _maxDateTimeMillis = 8640000000000000;
   static const int _maxFinanceTimezoneOffsetMinutes = 14 * 60;
   static const int _maxTemplateUseCount = 0x7fffffff;
@@ -227,7 +228,8 @@ abstract final class FinanceStorage {
       rows.addAll(
         await db.query(
           'finance_transactions',
-          where: 'is_deleted = 0 AND payment_method_uuid IN '
+          where:
+              'is_deleted = 0 AND payment_method_uuid IN '
               '(${List.filled(batch.length, '?').join(',')}) AND '
               'transaction_date < ? AND '
               '(transaction_date >= ? OR created_at > ?)',
@@ -330,11 +332,7 @@ abstract final class FinanceStorage {
       );
     }
     if (!transaction.isDeleted && !_hasValidInstallmentFields(transaction)) {
-      throw ArgumentError.value(
-        transaction,
-        'transaction',
-        '分期期数或总金额无效',
-      );
+      throw ArgumentError.value(transaction, 'transaction', '分期期数或总金额无效');
     }
     if (!isSafeFinanceAmountMinor(transaction.amountMinor) ||
         transaction.amountMinor == 0) {
@@ -467,14 +465,16 @@ abstract final class FinanceStorage {
         final current = FinanceTransaction.fromMap(row);
         currentByUuid[current.uuid] = current;
       }
-      final staleGroup = existing.length != currentByUuid.length ||
+      final staleGroup =
+          existing.length != currentByUuid.length ||
           existing.any((baseline) {
             final current = currentByUuid[baseline.uuid];
             return current == null ||
                 current.version != baseline.version ||
                 current.updatedAt != baseline.updatedAt;
           });
-      final staleEditedItem = original != null &&
+      final staleEditedItem =
+          original != null &&
           (currentByUuid[original.uuid]?.version != original.version ||
               currentByUuid[original.uuid]?.updatedAt != original.updatedAt);
       if (staleGroup || staleEditedItem) {
@@ -513,7 +513,8 @@ abstract final class FinanceStorage {
           previousOccurrence = oldOccurrence;
         } else {
           final transactionOccurrence = transaction.occurrenceLocalTime;
-          previousOccurrence = transactionOccurrence != null &&
+          previousOccurrence =
+              transactionOccurrence != null &&
                   dateKey(transactionOccurrence) == transaction.transactionDate
               ? transactionOccurrence
               : null;
@@ -533,15 +534,15 @@ abstract final class FinanceStorage {
         final occurrenceAt = localOccurrence == null
             ? null
             : DateTime.utc(
-                localOccurrence.year,
-                localOccurrence.month,
-                localOccurrence.day,
-                localOccurrence.hour,
-                localOccurrence.minute,
-                localOccurrence.second,
-                localOccurrence.millisecond,
-              ).millisecondsSinceEpoch -
-                timezoneOffsetMinutes * 60000;
+                    localOccurrence.year,
+                    localOccurrence.month,
+                    localOccurrence.day,
+                    localOccurrence.hour,
+                    localOccurrence.minute,
+                    localOccurrence.second,
+                    localOccurrence.millisecond,
+                  ).millisecondsSinceEpoch -
+                  timezoneOffsetMinutes * 60000;
         final item = FinanceTransaction(
           uuid: old?.uuid ?? (allocation.index == 1 ? transaction.uuid : null),
           type: transaction.type,
@@ -564,7 +565,8 @@ abstract final class FinanceStorage {
           installmentTotalMinor: totalAmountMinor,
           // 保留组内单独删除的期次。若该期次仅因旧计划缩短而删除，
           // 当前有效期数会小于它的序号；扩期时再将它恢复。
-          isDeleted: old?.isDeleted == true &&
+          isDeleted:
+              old?.isDeleted == true &&
               (currentActiveInstallmentCount == null ||
                   allocation.index <= currentActiveInstallmentCount),
           version: old?.version ?? 1,
@@ -750,6 +752,8 @@ abstract final class FinanceStorage {
   static Future<List<FinanceLoanInstallment>> getLoanInstallments(
     String loanUuid, {
     bool includeDeleted = false,
+    String? fromDueDate,
+    String? toDueDate,
   }) async {
     await ensureReady();
     final db = await _database;
@@ -764,6 +768,14 @@ abstract final class FinanceStorage {
         ..add('installment_index <= ?');
       args.add(loan.termMonths);
     }
+    if (fromDueDate != null) {
+      where.add('due_date >= ?');
+      args.add(fromDueDate);
+    }
+    if (toDueDate != null) {
+      where.add('due_date < ?');
+      args.add(toDueDate);
+    }
     final rows = await db.query(
       'finance_loan_installments',
       where: where.join(' AND '),
@@ -771,6 +783,48 @@ abstract final class FinanceStorage {
       orderBy: 'installment_index ASC, due_date ASC',
     );
     return rows.map(FinanceLoanInstallment.fromMap).toList();
+  }
+
+  /// Loads scheduled installments for all active loans with one indexed join.
+  /// The term bound matches [getLoanInstallments]' default behavior.
+  static Future<Map<String, List<FinanceLoanInstallment>>>
+  getLoanInstallmentsForActiveLoans({
+    String? fromDueDate,
+    String? toDueDate,
+  }) async {
+    await ensureReady();
+    final db = await _database;
+    final where = <String>[
+      'loan.is_deleted = 0',
+      'installment.is_deleted = 0',
+      'installment.installment_index <= loan.term_months',
+    ];
+    final args = <Object?>[];
+    if (fromDueDate != null) {
+      where.add('installment.due_date >= ?');
+      args.add(fromDueDate);
+    }
+    if (toDueDate != null) {
+      where.add('installment.due_date < ?');
+      args.add(toDueDate);
+    }
+    final rows = await db.rawQuery('''
+      SELECT installment.*
+      FROM finance_loan_installments AS installment
+      JOIN finance_loans AS loan ON loan.uuid = installment.loan_uuid
+      WHERE ${where.join(' AND ')}
+      ORDER BY installment.loan_uuid ASC,
+        installment.installment_index ASC,
+        installment.due_date ASC
+    ''', args);
+    final installmentsByLoan = <String, List<FinanceLoanInstallment>>{};
+    for (final row in rows) {
+      final installment = FinanceLoanInstallment.fromMap(row);
+      installmentsByLoan
+          .putIfAbsent(installment.loanUuid, () => <FinanceLoanInstallment>[])
+          .add(installment);
+    }
+    return installmentsByLoan;
   }
 
   static Future<FinanceLoanInstallment?> getLoanInstallment(
@@ -826,7 +880,9 @@ abstract final class FinanceStorage {
       final existingInstallments = existing == null
           ? <FinanceLoanInstallment>[]
           : await _loanInstallmentsInTransaction(txn, loan.uuid);
-      final hasPaidInstallment = existingInstallments.any((item) => item.isPaid);
+      final hasPaidInstallment = existingInstallments.any(
+        (item) => item.isPaid,
+      );
       if (existing != null &&
           hasPaidInstallment &&
           _loanTermsDiffer(existing, loan)) {
@@ -942,7 +998,8 @@ abstract final class FinanceStorage {
     DatabaseExecutor db,
     String transactionUuid,
   ) async {
-    final rows = await db.rawQuery('''
+    final rows = await db.rawQuery(
+      '''
       SELECT installment.* FROM finance_loan_installments AS installment
       WHERE installment.interest_transaction_uuid = ?
         OR installment.uuid = (
@@ -950,7 +1007,9 @@ abstract final class FinanceStorage {
         )
       ORDER BY CASE WHEN installment.interest_transaction_uuid = ? THEN 0 ELSE 1 END
       LIMIT 1
-    ''', [transactionUuid, transactionUuid, transactionUuid]);
+    ''',
+      [transactionUuid, transactionUuid, transactionUuid],
+    );
     return rows.isEmpty ? null : FinanceLoanInstallment.fromMap(rows.single);
   }
 
@@ -1418,7 +1477,11 @@ abstract final class FinanceStorage {
           limit: 1,
         );
         if (parentRows.isEmpty) {
-          throw ArgumentError.value(category.parentUuid, 'parentUuid', '上级大类不存在');
+          throw ArgumentError.value(
+            category.parentUuid,
+            'parentUuid',
+            '上级大类不存在',
+          );
         }
         final parent = FinanceCategory.fromMap(parentRows.first);
         if (parent.type != category.type ||
@@ -1459,7 +1522,6 @@ abstract final class FinanceStorage {
         _localValues(category.toMap()),
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
-
     });
     _notifyChanged();
   }
@@ -1685,7 +1747,8 @@ abstract final class FinanceStorage {
       var itemToSave = FinancePaymentMethod.fromMap(method.toMap());
       if (existingRows.isNotEmpty) {
         final existing = FinancePaymentMethod.fromMap(existingRows.first);
-        final baselineChanged = original != null &&
+        final baselineChanged =
+            original != null &&
             (existing.version != original.version ||
                 existing.updatedAt != original.updatedAt);
         if (baselineChanged) {
@@ -1850,7 +1913,7 @@ abstract final class FinanceStorage {
         budget.isPaymentMethod ? '余额不能为负数' : '预算金额必须大于 0',
       );
     }
-    if (!RegExp(r'^\d{4}-(0[1-9]|1[0-2])$').hasMatch(budget.monthKey)) {
+    if (!_monthKeyPattern.hasMatch(budget.monthKey)) {
       throw ArgumentError.value(budget.monthKey, 'monthKey', '月份格式无效');
     }
     if (budget.categoryUuid != null && budget.paymentMethodUuid != null) {
@@ -1873,11 +1936,7 @@ abstract final class FinanceStorage {
     final db = await _database;
     await db.transaction((txn) async {
       if (!await _hasValidBudgetScope(txn, budget)) {
-        throw ArgumentError.value(
-          budget,
-          'budget',
-          '预算必须关联有效的支出分类或付款方式',
-        );
+        throw ArgumentError.value(budget, 'budget', '预算必须关联有效的支出分类或付款方式');
       }
       final existingByUuid = await _findByUuid(
         txn,
@@ -1890,7 +1949,8 @@ abstract final class FinanceStorage {
       if (current != null) {
         final changesDeletedState =
             original != null && budget.isDeleted != original.isDeleted;
-        final baselineChanged = original != null &&
+        final baselineChanged =
+            original != null &&
             (current.version != original.version ||
                 current.updatedAt != original.updatedAt);
         if (baselineChanged) {
@@ -2144,7 +2204,8 @@ abstract final class FinanceStorage {
             (original == null || rule.isDeleted == original.isDeleted)) {
           throw StateError('周期账单已删除，请重新加载后再编辑');
         }
-        final baselineChanged = original != null &&
+        final baselineChanged =
+            original != null &&
             (existing.version != original.version ||
                 existing.updatedAt != original.updatedAt);
         if (baselineChanged) {
@@ -2227,7 +2288,8 @@ abstract final class FinanceStorage {
       final current = FinanceRecurringRule.fromMap(rows.first);
       current.lastGeneratedPeriod = current.effectiveLastGeneratedPeriod;
       final expectedDueAt = current.dueDateFor(dueAt.year, dueAt.month);
-      final expectedPeriod = current.frequency == FinanceRecurringFrequency.yearly
+      final expectedPeriod =
+          current.frequency == FinanceRecurringFrequency.yearly
           ? '${dueAt.year}'
           : financeMonthKey(dueAt);
       if (current.isDeleted ||
@@ -2430,10 +2492,9 @@ abstract final class FinanceStorage {
   static String _recurringPeriodKeyFor(
     FinanceRecurringRule rule,
     DateTime dueAt,
-  ) =>
-      rule.frequency == FinanceRecurringFrequency.yearly
-          ? dueAt.year.toString()
-          : financeMonthKey(dueAt);
+  ) => rule.frequency == FinanceRecurringFrequency.yearly
+      ? dueAt.year.toString()
+      : financeMonthKey(dueAt);
 
   static FinanceRecurringRule _mergeRecurringRuleEdits(
     FinanceRecurringRule current,
@@ -3123,7 +3184,11 @@ abstract final class FinanceStorage {
           skipped++;
           continue;
         }
-        final existing = await _findByUuid(db, 'finance_transactions', item.uuid);
+        final existing = await _findByUuid(
+          db,
+          'finance_transactions',
+          item.uuid,
+        );
         if (existing != null &&
             item.updatedAt <= FinanceTransaction.fromMap(existing).updatedAt) {
           skipped++;
@@ -3208,9 +3273,8 @@ abstract final class FinanceStorage {
       final scopeRows = await _findAllBudgetsByScope(db, item);
       final current = scopeRows.isEmpty
           ? null
-          : _latestBudgetsByScope(
-              scopeRows.map(FinanceBudget.fromMap).toList(),
-            ).single;
+          : _latestBudgetsByScope(scopeRows.map(FinanceBudget.fromMap).toList())
+                .single;
       if (current != null && !_isIncomingBudgetWinner(item, current)) {
         // Repair duplicates left by older importers without overwriting the
         // newest local value with a stale backup.
@@ -3242,11 +3306,7 @@ abstract final class FinanceStorage {
     final loanMaps = loanInput.maps;
     for (final map in loanMaps) {
       if (!_hasRawFinanceUuid(map) ||
-          !_hasSafeRawFinanceAmount(
-            map,
-            'principal_minor',
-            'principalMinor',
-          ) ||
+          !_hasSafeRawFinanceAmount(map, 'principal_minor', 'principalMinor') ||
           !_hasSafeRawLoanInterestRate(map) ||
           !_hasValidRawLoanRepaymentMethod(map) ||
           !_hasValidRawFinanceName(map) ||
@@ -3258,7 +3318,13 @@ abstract final class FinanceStorage {
             FinanceLoanCalculator.minTermMonths,
             FinanceLoanCalculator.maxTermMonths,
           ) ||
-          !_hasSafeRawIntegerRange(map, 'repayment_day', 'repaymentDay', 1, 31)) {
+          !_hasSafeRawIntegerRange(
+            map,
+            'repayment_day',
+            'repaymentDay',
+            1,
+            31,
+          )) {
         skipped++;
         continue;
       }
@@ -3293,16 +3359,25 @@ abstract final class FinanceStorage {
       }
     }
 
-    final loanInstallmentInput = _importListOfMaps(
-      bundle,
-      'loan_installments',
-    );
+    final loanInstallmentInput = _importListOfMaps(bundle, 'loan_installments');
     skipped += loanInstallmentInput.invalidCount;
     final loanInstallmentMaps = loanInstallmentInput.maps
       ..sort(_compareRawLoanInstallmentMaps);
     final seenActiveLoanInstallments = <String>{};
-    final loanScheduleCache =
-        <String, List<FinanceLoanScheduleAllocation>>{};
+    final loanScheduleCache = <String, List<FinanceLoanScheduleAllocation>>{};
+    final loadedLoanInstallmentSchedules = <String>{};
+    final activeInstallmentUuidsByLoanAndIndex =
+        <String, Map<num, Set<Object?>>>{};
+    void removeCachedActiveInstallment(FinanceLoanInstallment installment) {
+      final byIndex =
+          activeInstallmentUuidsByLoanAndIndex[installment.loanUuid];
+      final uuids = byIndex?[installment.installmentIndex];
+      uuids?.remove(installment.uuid);
+      if (uuids?.isEmpty == true) {
+        byIndex?.remove(installment.installmentIndex);
+      }
+    }
+
     for (final map in loanInstallmentMaps) {
       if (!_hasRawFinanceUuid(map) ||
           !_hasSafeRawLoanInstallmentAmounts(map) ||
@@ -3318,18 +3393,13 @@ abstract final class FinanceStorage {
         item.interestTransactionUuid,
         remap,
       );
-      item.paymentMethodUuid = _remapNullable(
-        item.paymentMethodUuid,
-        remap,
-      );
+      item.paymentMethodUuid = _remapNullable(item.paymentMethodUuid, remap);
       if (!_isValidLoanInstallment(item)) {
         skipped++;
         continue;
       }
       final parentLoan = await _findByUuid(db, 'finance_loans', item.loanUuid);
-      final loan = parentLoan == null
-          ? null
-          : FinanceLoan.fromMap(parentLoan);
+      final loan = parentLoan == null ? null : FinanceLoan.fromMap(parentLoan);
       if (loan == null ||
           (loan.isDeleted && !item.isDeleted) ||
           (!item.isDeleted &&
@@ -3347,14 +3417,27 @@ abstract final class FinanceStorage {
         continue;
       }
       if (!item.isDeleted) {
-        final duplicateSchedules = await db.query(
-          'finance_loan_installments',
-          columns: ['uuid'],
-          where:
-              'loan_uuid = ? AND installment_index = ? AND is_deleted = 0',
-          whereArgs: [item.loanUuid, item.installmentIndex],
-        );
-        if (duplicateSchedules.any((row) => row['uuid'] != item.uuid)) {
+        if (loadedLoanInstallmentSchedules.add(item.loanUuid)) {
+          final existingSchedules = await db.query(
+            'finance_loan_installments',
+            columns: ['uuid', 'installment_index'],
+            where: 'loan_uuid = ? AND is_deleted = 0',
+            whereArgs: [item.loanUuid],
+          );
+          final byIndex = activeInstallmentUuidsByLoanAndIndex.putIfAbsent(
+            item.loanUuid,
+            () => <num, Set<Object?>>{},
+          );
+          for (final row in existingSchedules) {
+            final index = row['installment_index'];
+            if (index is! num) continue;
+            (byIndex[index] ??= <Object?>{}).add(row['uuid']);
+          }
+        }
+        final duplicateUuids =
+            activeInstallmentUuidsByLoanAndIndex[item.loanUuid]?
+                [item.installmentIndex];
+        if (duplicateUuids?.any((uuid) => uuid != item.uuid) ?? false) {
           skipped++;
           continue;
         }
@@ -3364,6 +3447,7 @@ abstract final class FinanceStorage {
         'finance_loan_installments',
         item.uuid,
       );
+      FinanceLoanInstallment? currentForSchedule;
       if (existing == null) {
         await db.insert(
           'finance_loan_installments',
@@ -3372,6 +3456,7 @@ abstract final class FinanceStorage {
         imported++;
       } else {
         final current = FinanceLoanInstallment.fromMap(existing);
+        currentForSchedule = current;
         if (item.updatedAt <= current.updatedAt ||
             (current.isPaid && !_sameLoanInstallmentSchedule(current, item))) {
           skipped++;
@@ -3384,6 +3469,21 @@ abstract final class FinanceStorage {
           whereArgs: [item.uuid],
         );
         updated++;
+      }
+      if (currentForSchedule != null &&
+          !currentForSchedule.isDeleted &&
+          loadedLoanInstallmentSchedules.contains(
+            currentForSchedule.loanUuid,
+          )) {
+        removeCachedActiveInstallment(currentForSchedule);
+      }
+      if (!item.isDeleted &&
+          loadedLoanInstallmentSchedules.contains(item.loanUuid)) {
+        final byIndex = activeInstallmentUuidsByLoanAndIndex.putIfAbsent(
+          item.loanUuid,
+          () => <num, Set<Object?>>{},
+        );
+        (byIndex[item.installmentIndex] ??= <Object?>{}).add(item.uuid);
       }
     }
 
@@ -3469,7 +3569,8 @@ abstract final class FinanceStorage {
     );
     final recurringRules = _listOfMaps(bundle['recurring_rules'])
         .where(
-          (map) => _hasRawFinanceUuid(map) &&
+          (map) =>
+              _hasRawFinanceUuid(map) &&
               _hasValidRawFinanceName(map) &&
               _hasSafeRawFinanceAmount(map, 'amount_minor', 'amountMinor') &&
               _hasValidRawOptionalTransactionType(map) &&
@@ -3483,7 +3584,8 @@ abstract final class FinanceStorage {
         .toList(growable: false);
     final templates = _listOfMaps(bundle['templates'])
         .where(
-          (map) => _hasRawFinanceUuid(map) &&
+          (map) =>
+              _hasRawFinanceUuid(map) &&
               _hasValidRawFinanceName(map) &&
               _hasSafeRawFinanceAmount(map, 'amount_minor', 'amountMinor') &&
               _hasSafeRawTemplateUseCount(map) &&
@@ -3512,7 +3614,13 @@ abstract final class FinanceStorage {
                 FinanceLoanCalculator.minTermMonths,
                 FinanceLoanCalculator.maxTermMonths,
               ) &&
-              _hasSafeRawIntegerRange(map, 'repayment_day', 'repaymentDay', 1, 31),
+              _hasSafeRawIntegerRange(
+                map,
+                'repayment_day',
+                'repaymentDay',
+                1,
+                31,
+              ),
         )
         .map(FinanceLoan.fromMap)
         .where(_isValidLoan)
@@ -3579,9 +3687,8 @@ abstract final class FinanceStorage {
         forceRemoteKeys: forceRemoteKeys,
       );
     });
-    final repairedLegacyRefunds = !transactions.any(
-      (item) => item.type == FinanceTransactionType.refund,
-    )
+    final repairedLegacyRefunds =
+        !transactions.any((item) => item.type == FinanceTransactionType.refund)
         ? 0
         : await _repairLegacyRefundCategories(db);
     changed += repairedLegacyRefunds;
@@ -3957,41 +4064,261 @@ abstract final class FinanceStorage {
     var changed = 0;
     final changedOriginalUuids = <String>{};
     final duplicateInstallmentKeys = _duplicateInstallmentIndexKeys(items);
-    final orderedItems = items
-      .where((item) {
-        final key = _installmentIndexKey(item);
-        return item.isDeleted ||
-            key == null ||
-            !duplicateInstallmentKeys.contains(key);
-      })
-      .toList()
-      ..sort((left, right) {
-        // Create/restore originals before active refunds, but remove refunds
-        // before deleting or changing the type of their originals.
-        return _transactionMergePriority(left)
-            .compareTo(_transactionMergePriority(right));
-      });
+    final orderedItems =
+        items.where((item) {
+          final key = _installmentIndexKey(item);
+          return item.isDeleted ||
+              key == null ||
+              !duplicateInstallmentKeys.contains(key);
+        }).toList()..sort((left, right) {
+          // Create/restore originals before active refunds, but remove refunds
+          // before deleting or changing the type of their originals.
+          return _transactionMergePriority(left)
+              .compareTo(_transactionMergePriority(right));
+        });
+    // Batch the initial reads, then update these caches after each accepted
+    // write so later dependency rounds see the transaction's current state.
+    const batchSize = 400;
+    const scheduleBatchSize = 300;
+    final transactionUuids = <String>{
+      for (final item in orderedItems) item.uuid,
+      for (final item in orderedItems)
+        if (item.type == FinanceTransactionType.refund &&
+            !item.isDeleted &&
+            item.relatedTransactionUuid?.trim().isNotEmpty == true)
+          item.relatedTransactionUuid!.trim(),
+    }.toList();
+    final targetInstallmentKeys = orderedItems
+        .where(
+          (item) =>
+              !item.isDeleted &&
+              item.isInstallment &&
+              item.installmentGroupUuid != null &&
+              item.installmentIndex != null,
+        )
+        .map(
+          (item) => (
+            groupUuid: item.installmentGroupUuid!,
+            installmentIndex: item.installmentIndex!,
+          ),
+        )
+        .toSet()
+        .toList(growable: false);
+    final existingTransactionsByUuid = <String, FinanceTransaction>{};
+    final activeInstallmentUuidsByGroupAndIndex =
+        <String, Map<num, Set<Object?>>>{};
+    final activeRefundsByOriginalUuid =
+        <String, Map<String, FinanceTransaction>>{};
+
+    for (var offset = 0; offset < transactionUuids.length; offset += batchSize) {
+      final nextOffset = offset + batchSize;
+      final end = nextOffset < transactionUuids.length
+          ? nextOffset
+          : transactionUuids.length;
+      final batch = transactionUuids.sublist(offset, end);
+      final placeholders = List.filled(batch.length, '?').join(',');
+      final rows = await db.query(
+        'finance_transactions',
+        where: 'uuid IN ($placeholders) OR '
+            "(type = 'refund' AND is_deleted = 0 AND "
+            'related_transaction_uuid IN ($placeholders))',
+        whereArgs: [...batch, ...batch],
+      );
+      for (final row in rows) {
+        final transaction = FinanceTransaction.fromMap(row);
+        existingTransactionsByUuid[transaction.uuid] = transaction;
+        final rawRelatedUuid = row['related_transaction_uuid'];
+        if (row['type'] == FinanceTransactionType.refund.name &&
+            row['is_deleted'] == 0 &&
+            rawRelatedUuid is String) {
+          (activeRefundsByOriginalUuid[rawRelatedUuid] ??=
+                  <String, FinanceTransaction>{})[transaction.uuid] =
+              transaction;
+        }
+      }
+    }
+
+    for (
+      var offset = 0;
+      offset < targetInstallmentKeys.length;
+      offset += scheduleBatchSize
+    ) {
+      final nextOffset = offset + scheduleBatchSize;
+      final end = nextOffset < targetInstallmentKeys.length
+          ? nextOffset
+          : targetInstallmentKeys.length;
+      final batch = targetInstallmentKeys.sublist(offset, end);
+      final schedulePredicates = List.filled(
+        batch.length,
+        '(installment_group_uuid = ? AND installment_index = ?)',
+      ).join(' OR ');
+      final scheduleArgs = <Object?>[];
+      for (final key in batch) {
+        scheduleArgs
+          ..add(key.groupUuid)
+          ..add(key.installmentIndex);
+      }
+      final rows = await db.query(
+        'finance_transactions',
+        columns: ['uuid', 'installment_group_uuid', 'installment_index'],
+        where: 'is_deleted = 0 AND ($schedulePredicates)',
+        whereArgs: scheduleArgs,
+      );
+      for (final row in rows) {
+        final groupUuid = row['installment_group_uuid'];
+        final installmentIndex = row['installment_index'];
+        if (groupUuid is! String || installmentIndex is! num) continue;
+        final byIndex = activeInstallmentUuidsByGroupAndIndex.putIfAbsent(
+          groupUuid,
+          () => <num, Set<Object?>>{},
+        );
+        (byIndex[installmentIndex] ??= <Object?>{}).add(row['uuid']);
+      }
+    }
+
+    void removeCachedActiveInstallment(FinanceTransaction transaction) {
+      if (transaction.isDeleted) return;
+      final groupUuid = transaction.installmentGroupUuid;
+      final installmentIndex = transaction.installmentIndex;
+      if (groupUuid == null || installmentIndex == null) return;
+      final byIndex = activeInstallmentUuidsByGroupAndIndex[groupUuid];
+      final uuids = byIndex?[installmentIndex];
+      uuids?.remove(transaction.uuid);
+      if (uuids?.isEmpty == true) byIndex?.remove(installmentIndex);
+    }
+
+    bool hasInstallmentIndexConflict(FinanceTransaction item) {
+      final groupUuid = item.installmentGroupUuid;
+      final installmentIndex = item.installmentIndex;
+      if (item.isDeleted ||
+          !item.isInstallment ||
+          groupUuid == null ||
+          installmentIndex == null) {
+        return false;
+      }
+      final uuids =
+          activeInstallmentUuidsByGroupAndIndex[groupUuid]?[installmentIndex];
+      return uuids?.any((uuid) => uuid != item.uuid) ?? false;
+    }
+
+    int activeRefundedMinor(
+      String originalUuid, {
+      String? excludingRefundUuid,
+    }) {
+      final refunds = activeRefundsByOriginalUuid[originalUuid]?.values;
+      if (refunds == null) return 0;
+      var total = 0;
+      for (final refund in refunds) {
+        if (refund.uuid != excludingRefundUuid) {
+          total += refund.amountMinor;
+        }
+      }
+      return total;
+    }
+
+    void validateTransactionRefundState(FinanceTransaction transaction) {
+      final originalUuid = transaction.relatedTransactionUuid?.trim();
+      if (transaction.type == FinanceTransactionType.refund &&
+          !transaction.isDeleted &&
+          originalUuid?.isNotEmpty == true) {
+        if (originalUuid == transaction.uuid) {
+          throw StateError('退款账单不能绑定自己');
+        }
+        final original = existingTransactionsByUuid[originalUuid!];
+        if (original == null) throw StateError('原账单不存在');
+        if (original.isDeleted ||
+            original.type != FinanceTransactionType.expense) {
+          throw StateError('只能对未删除的支出账单发起退款');
+        }
+        if (_refundPrecedesOriginal(transaction, original)) {
+          throw StateError('退款时间不能早于原支出时间');
+        }
+        final refunded = activeRefundedMinor(
+          original.uuid,
+          excludingRefundUuid: transaction.uuid,
+        );
+        final remaining = original.amountMinor - refunded;
+        if (transaction.amountMinor > remaining) {
+          final remainingMinor = remaining.clamp(0, original.amountMinor).toInt();
+          throw StateError('退款金额超过剩余可退金额 $remainingMinor 分');
+        }
+      }
+
+      final activeRefunded = activeRefundedMinor(transaction.uuid);
+      if (activeRefunded > 0 &&
+          (transaction.isDeleted ||
+              transaction.type != FinanceTransactionType.expense ||
+              transaction.amountMinor < activeRefunded)) {
+        throw StateError('该账单已关联退款，请先处理退款记录');
+      }
+      if (activeRefunded > 0 &&
+          transaction.type == FinanceTransactionType.expense) {
+        final refunds = activeRefundsByOriginalUuid[transaction.uuid]?.values;
+        if (refunds?.any(
+              (refund) => _refundPrecedesOriginal(refund, transaction),
+            ) ??
+            false) {
+          throw StateError('原支出时间不能晚于关联退款时间');
+        }
+      }
+    }
+
+    void updateCachedTransaction(
+      FinanceTransaction item, {
+      FinanceTransaction? previous,
+    }) {
+      if (previous != null) removeCachedActiveInstallment(previous);
+      if (previous != null &&
+          !previous.isDeleted &&
+          previous.type == FinanceTransactionType.refund &&
+          previous.relatedTransactionUuid != null) {
+        final refunds =
+            activeRefundsByOriginalUuid[previous.relatedTransactionUuid!];
+        refunds?.remove(previous.uuid);
+        if (refunds?.isEmpty == true) {
+          activeRefundsByOriginalUuid.remove(previous.relatedTransactionUuid);
+        }
+      }
+      existingTransactionsByUuid[item.uuid] = item;
+      if (!item.isDeleted &&
+          item.type == FinanceTransactionType.refund &&
+          item.relatedTransactionUuid != null) {
+        (activeRefundsByOriginalUuid[item.relatedTransactionUuid!] ??=
+                <String, FinanceTransaction>{})[
+          item.uuid
+        ] = item;
+      }
+      if (item.isDeleted) return;
+      final groupUuid = item.installmentGroupUuid;
+      final installmentIndex = item.installmentIndex;
+      if (groupUuid == null || installmentIndex == null) return;
+      final byIndex = activeInstallmentUuidsByGroupAndIndex.putIfAbsent(
+        groupUuid,
+        () => <num, Set<Object?>>{},
+      );
+      (byIndex[installmentIndex] ??= <Object?>{}).add(item.uuid);
+    }
+
     var pending = orderedItems;
     while (pending.isNotEmpty) {
       final deferred = <FinanceTransaction>[];
       final changedBeforeRound = changed;
       for (final item in pending) {
-        if (await _hasInstallmentIndexConflict(db, item)) continue;
-        final existing = await _findByUuid(db, 'finance_transactions', item.uuid);
+        if (hasInstallmentIndexConflict(item)) continue;
+        final existing = existingTransactionsByUuid[item.uuid];
         if (existing != null) {
-          final current = FinanceTransaction.fromMap(existing);
           if (!forceRemoteKeys.contains('transactions:${item.uuid}') &&
               !_isIncomingWinner(
                 item.updatedAt,
                 item.version,
-                current.updatedAt,
-                current.version,
+                existing.updatedAt,
+                existing.version,
               )) {
             continue;
           }
         }
         try {
-          await _validateTransactionRefundState(db, item, alignCategory: false);
+          validateTransactionRefundState(item);
         } on StateError {
           deferred.add(item);
           continue;
@@ -4006,6 +4333,7 @@ abstract final class FinanceStorage {
             whereArgs: [item.uuid],
           );
         }
+        updateCachedTransaction(item, previous: existing);
         changedOriginalUuids.add(item.uuid);
         if (item.type == FinanceTransactionType.refund &&
             item.relatedTransactionUuid != null) {
@@ -4048,14 +4376,63 @@ abstract final class FinanceStorage {
     Set<String> forceRemoteKeys = const {},
   }) async {
     var changed = 0;
+    const batchSize = 400;
+    final loanUuids = items.map((item) => item.uuid).toSet().toList();
+    final loansByUuid = <String, FinanceLoan>{};
+    for (var offset = 0; offset < loanUuids.length; offset += batchSize) {
+      final nextOffset = offset + batchSize;
+      final end = nextOffset < loanUuids.length
+          ? nextOffset
+          : loanUuids.length;
+      final batch = loanUuids.sublist(offset, end);
+      final placeholders = List.filled(batch.length, '?').join(',');
+      final rows = await db.query(
+        'finance_loans',
+        where: 'uuid IN ($placeholders)',
+        whereArgs: batch,
+      );
+      for (final row in rows) {
+        final loan = FinanceLoan.fromMap(row);
+        loansByUuid[loan.uuid] = loan;
+      }
+    }
+
+    final loansWithChangedTerms = <String>{};
+    final potentialCurrentByUuid = Map<String, FinanceLoan>.of(loansByUuid);
     for (final item in items) {
-      final existing = await _findByUuid(db, 'finance_loans', item.uuid);
-      if (existing == null) {
+      final current = potentialCurrentByUuid[item.uuid];
+      if (current != null && _loanTermsDiffer(current, item)) {
+        loansWithChangedTerms.add(item.uuid);
+      }
+      potentialCurrentByUuid[item.uuid] = item;
+    }
+    final paidLoanUuids = <String>{};
+    final paidCheckUuids = loansWithChangedTerms.toList(growable: false);
+    for (var offset = 0; offset < paidCheckUuids.length; offset += batchSize) {
+      final nextOffset = offset + batchSize;
+      final end = nextOffset < paidCheckUuids.length
+          ? nextOffset
+          : paidCheckUuids.length;
+      final batch = paidCheckUuids.sublist(offset, end);
+      final placeholders = List.filled(batch.length, '?').join(',');
+      final rows = await db.query(
+        'finance_loan_installments',
+        columns: ['loan_uuid'],
+        distinct: true,
+        where: 'is_paid = 1 AND loan_uuid IN ($placeholders)',
+        whereArgs: batch,
+      );
+      paidLoanUuids.addAll(rows.map((row) => row['loan_uuid'] as String));
+    }
+
+    for (final item in items) {
+      final current = loansByUuid[item.uuid];
+      if (current == null) {
         await db.insert('finance_loans', _remoteValues(item.toMap()));
+        loansByUuid[item.uuid] = item;
         changed++;
         continue;
       }
-      final current = FinanceLoan.fromMap(existing);
       if (!forceRemoteKeys.contains('loans:${item.uuid}') &&
           !_isIncomingWinner(
             item.updatedAt,
@@ -4065,8 +4442,7 @@ abstract final class FinanceStorage {
           )) {
         continue;
       }
-      if (_loanTermsDiffer(current, item) &&
-          await _hasPaidLoanInstallments(db, item.uuid)) {
+      if (_loanTermsDiffer(current, item) && paidLoanUuids.contains(item.uuid)) {
         continue;
       }
       await db.update(
@@ -4075,6 +4451,7 @@ abstract final class FinanceStorage {
         where: 'uuid = ?',
         whereArgs: [item.uuid],
       );
+      loansByUuid[item.uuid] = item;
       changed++;
     }
     return changed;
@@ -4086,13 +4463,129 @@ abstract final class FinanceStorage {
     Set<String> forceRemoteKeys = const {},
   }) async {
     var changed = 0;
-    final loanScheduleCache =
-        <String, List<FinanceLoanScheduleAllocation>>{};
+    final loanScheduleCache = <String, List<FinanceLoanScheduleAllocation>>{};
+    const batchSize = 400;
+    const scheduleBatchSize = 300;
+    final loanUuids = items.map((item) => item.loanUuid).toSet().toList();
+    final installmentUuids = items.map((item) => item.uuid).toSet().toList();
+    final targetScheduleKeys = items
+        .where((item) => !item.isDeleted)
+        .map(
+          (item) => (
+            loanUuid: item.loanUuid,
+            installmentIndex: item.installmentIndex,
+          ),
+        )
+        .toSet()
+        .toList(growable: false);
+    final loansByUuid = <String, FinanceLoan>{};
+    final installmentsByUuid = <String, FinanceLoanInstallment>{};
+    final activeInstallmentUuidsByLoanAndIndex =
+        <String, Map<num, Set<Object?>>>{};
+
+    for (var offset = 0; offset < loanUuids.length; offset += batchSize) {
+      final nextOffset = offset + batchSize;
+      final end = nextOffset < loanUuids.length
+          ? nextOffset
+          : loanUuids.length;
+      final batch = loanUuids.sublist(offset, end);
+      final placeholders = List.filled(batch.length, '?').join(',');
+      final loanRows = await db.query(
+        'finance_loans',
+        where: 'uuid IN ($placeholders)',
+        whereArgs: batch,
+      );
+      for (final row in loanRows) {
+        final loan = FinanceLoan.fromMap(row);
+        loansByUuid[loan.uuid] = loan;
+      }
+    }
+
+    for (
+      var offset = 0;
+      offset < targetScheduleKeys.length;
+      offset += scheduleBatchSize
+    ) {
+      final nextOffset = offset + scheduleBatchSize;
+      final end = nextOffset < targetScheduleKeys.length
+          ? nextOffset
+          : targetScheduleKeys.length;
+      final batch = targetScheduleKeys.sublist(offset, end);
+      final schedulePredicates = List.filled(
+        batch.length,
+        '(loan_uuid = ? AND installment_index = ?)',
+      ).join(' OR ');
+      final scheduleArgs = <Object?>[];
+      for (final key in batch) {
+        scheduleArgs
+          ..add(key.loanUuid)
+          ..add(key.installmentIndex);
+      }
+      final scheduleRows = await db.query(
+        'finance_loan_installments',
+        columns: ['uuid', 'loan_uuid', 'installment_index'],
+        where: 'is_deleted = 0 AND ($schedulePredicates)',
+        whereArgs: scheduleArgs,
+      );
+      for (final row in scheduleRows) {
+        final loanUuid = row['loan_uuid'];
+        final index = row['installment_index'];
+        if (loanUuid is! String || index is! num) continue;
+        final byIndex = activeInstallmentUuidsByLoanAndIndex.putIfAbsent(
+          loanUuid,
+          () => <num, Set<Object?>>{},
+        );
+        (byIndex[index] ??= <Object?>{}).add(row['uuid']);
+      }
+    }
+
+    for (var offset = 0; offset < installmentUuids.length; offset += batchSize) {
+      final nextOffset = offset + batchSize;
+      final end = nextOffset < installmentUuids.length
+          ? nextOffset
+          : installmentUuids.length;
+      final batch = installmentUuids.sublist(offset, end);
+      final placeholders = List.filled(batch.length, '?').join(',');
+      final existingRows = await db.query(
+        'finance_loan_installments',
+        where: 'uuid IN ($placeholders)',
+        whereArgs: batch,
+      );
+      for (final row in existingRows) {
+        final installment = FinanceLoanInstallment.fromMap(row);
+        installmentsByUuid[installment.uuid] = installment;
+      }
+    }
+
+    void removeCachedActiveInstallment(FinanceLoanInstallment installment) {
+      final byIndex =
+          activeInstallmentUuidsByLoanAndIndex[installment.loanUuid];
+      final uuids = byIndex?[installment.installmentIndex];
+      uuids?.remove(installment.uuid);
+      if (uuids?.isEmpty == true) {
+        byIndex?.remove(installment.installmentIndex);
+      }
+    }
+
+    void updateCachedInstallment(
+      FinanceLoanInstallment item, {
+      FinanceLoanInstallment? previous,
+    }) {
+      if (previous != null && !previous.isDeleted) {
+        removeCachedActiveInstallment(previous);
+      }
+      installmentsByUuid[item.uuid] = item;
+      if (!item.isDeleted) {
+        final byIndex = activeInstallmentUuidsByLoanAndIndex.putIfAbsent(
+          item.loanUuid,
+          () => <num, Set<Object?>>{},
+        );
+        (byIndex[item.installmentIndex] ??= <Object?>{}).add(item.uuid);
+      }
+    }
+
     for (final item in items) {
-      final parentLoan = await _findByUuid(db, 'finance_loans', item.loanUuid);
-      final loan = parentLoan == null
-          ? null
-          : FinanceLoan.fromMap(parentLoan);
+      final loan = loansByUuid[item.loanUuid];
       if (loan == null ||
           (loan.isDeleted && !item.isDeleted) ||
           (!item.isDeleted &&
@@ -4104,38 +4597,31 @@ abstract final class FinanceStorage {
         continue;
       }
       if (!item.isDeleted) {
-        final duplicateSchedules = await db.query(
-          'finance_loan_installments',
-          columns: ['uuid'],
-          where:
-              'loan_uuid = ? AND installment_index = ? AND is_deleted = 0',
-          whereArgs: [item.loanUuid, item.installmentIndex],
-        );
-        if (duplicateSchedules.any((row) => row['uuid'] != item.uuid)) {
+        final duplicateUuids =
+            activeInstallmentUuidsByLoanAndIndex[item.loanUuid]?
+                [item.installmentIndex];
+        if (duplicateUuids?.any((uuid) => uuid != item.uuid) ?? false) {
           continue;
         }
       }
-      final existing = await _findByUuid(
-        db,
-        'finance_loan_installments',
-        item.uuid,
-      );
+      final existing = installmentsByUuid[item.uuid];
       if (existing == null) {
         await db.insert(
           'finance_loan_installments',
           _remoteValues(item.toMap()),
         );
+        updateCachedInstallment(item);
         changed++;
         continue;
       }
-      final current = FinanceLoanInstallment.fromMap(existing);
+      final current = existing;
       if (!forceRemoteKeys.contains('loan_installments:${item.uuid}') &&
           !_isIncomingWinner(
             item.updatedAt,
             item.version,
             current.updatedAt,
             current.version,
-      )) {
+          )) {
         continue;
       }
       if (current.isPaid && !_sameLoanInstallmentSchedule(current, item)) {
@@ -4147,6 +4633,7 @@ abstract final class FinanceStorage {
         where: 'uuid = ?',
         whereArgs: [item.uuid],
       );
+      updateCachedInstallment(item, previous: current);
       changed++;
     }
     return changed;
@@ -4158,18 +4645,132 @@ abstract final class FinanceStorage {
     Set<String> forceRemoteKeys = const {},
   }) async {
     var changed = 0;
+    const uuidBatchSize = 400;
+    const scopeBatchSize = 300;
+
+    Future<List<Map<String, dynamic>>> queryRowsByUuid(
+      String table,
+      List<String> uuids, {
+      List<String>? columns,
+    }) async {
+      final result = <Map<String, dynamic>>[];
+      for (var offset = 0; offset < uuids.length; offset += uuidBatchSize) {
+        final nextOffset = offset + uuidBatchSize;
+        final end = nextOffset < uuids.length ? nextOffset : uuids.length;
+        final batch = uuids.sublist(offset, end);
+        final placeholders = List.filled(batch.length, '?').join(',');
+        result.addAll(
+          await db.query(
+            table,
+            columns: columns,
+            where: 'uuid IN ($placeholders)',
+            whereArgs: batch,
+          ),
+        );
+      }
+      return result;
+    }
+
+    final categoryUuids = items
+        .map((item) => item.categoryUuid)
+        .whereType<String>()
+        .toSet()
+        .toList(growable: false);
+    final paymentMethodUuids = items
+        .where((item) => item.categoryUuid == null)
+        .map((item) => item.paymentMethodUuid)
+        .whereType<String>()
+        .toSet()
+        .toList(growable: false);
+    final expenseCategoryUuids = <String>{};
+    for (final row in await queryRowsByUuid(
+      'finance_categories',
+      categoryUuids,
+      columns: const ['uuid', 'type'],
+    )) {
+      final category = FinanceCategory.fromMap(row);
+      if (category.type == FinanceCategoryType.expense) {
+        expenseCategoryUuids.add(category.uuid);
+      }
+    }
+    final existingPaymentMethodUuids = (await queryRowsByUuid(
+      'finance_payment_methods',
+      paymentMethodUuids,
+      columns: const ['uuid'],
+    )).map((row) => row['uuid'] as String).toSet();
+
+    bool hasValidScope(FinanceBudget budget) {
+      final categoryUuid = budget.categoryUuid;
+      if (categoryUuid != null) {
+        return expenseCategoryUuids.contains(categoryUuid);
+      }
+      final paymentMethodUuid = budget.paymentMethodUuid;
+      return paymentMethodUuid == null ||
+          existingPaymentMethodUuids.contains(paymentMethodUuid);
+    }
+
+    final uniqueScopes = <String, FinanceBudget>{};
     for (final item in items) {
-      if (!await _hasValidBudgetScope(db, item)) continue;
-      final scopeRows = await _findAllBudgetsByScope(db, item);
+      if (hasValidScope(item)) {
+        uniqueScopes.putIfAbsent(_budgetScopeKey(item), () => item);
+      }
+    }
+    final scopeBudgetsByKey = <String, List<FinanceBudget>>{};
+    final scopes = uniqueScopes.values.toList(growable: false);
+    for (var offset = 0; offset < scopes.length; offset += scopeBatchSize) {
+      final nextOffset = offset + scopeBatchSize;
+      final end = nextOffset < scopes.length ? nextOffset : scopes.length;
+      final whereParts = <String>[];
+      final whereArgs = <Object?>[];
+      for (final budget in scopes.sublist(offset, end)) {
+        if (budget.paymentMethodUuid != null) {
+          whereParts.add(
+            'month_key = ? AND category_uuid IS NULL AND payment_method_uuid = ?',
+          );
+          whereArgs
+            ..add(budget.monthKey)
+            ..add(budget.paymentMethodUuid);
+        } else if (budget.categoryUuid == null) {
+          whereParts.add(
+            'month_key = ? AND category_uuid IS NULL AND payment_method_uuid IS NULL',
+          );
+          whereArgs.add(budget.monthKey);
+        } else {
+          whereParts.add(
+            'month_key = ? AND category_uuid = ? AND payment_method_uuid IS NULL',
+          );
+          whereArgs
+            ..add(budget.monthKey)
+            ..add(budget.categoryUuid);
+        }
+      }
+      if (whereParts.isEmpty) continue;
+      final rows = await db.query(
+        'finance_budgets',
+        where: whereParts.map((part) => '($part)').join(' OR '),
+        whereArgs: whereArgs,
+      );
+      for (final row in rows) {
+        final budget = FinanceBudget.fromMap(row);
+        scopeBudgetsByKey
+            .putIfAbsent(_budgetScopeKey(budget), () => <FinanceBudget>[])
+            .add(budget);
+      }
+    }
+
+    for (final item in items) {
+      if (!hasValidScope(item)) continue;
+      final scopeKey = _budgetScopeKey(item);
+      final scopeRows = scopeBudgetsByKey[scopeKey] ?? const <FinanceBudget>[];
       if (scopeRows.isEmpty) {
         await db.insert('finance_budgets', _remoteValues(item.toMap()));
+        scopeBudgetsByKey[scopeKey] = [item];
         changed++;
         continue;
       }
 
-      var current = FinanceBudget.fromMap(scopeRows.first);
-      for (final row in scopeRows.skip(1)) {
-        final candidate = FinanceBudget.fromMap(row);
+      var current = scopeRows.first;
+      for (final candidate in scopeRows.skip(1)) {
         if (_isIncomingBudgetWinner(candidate, current)) {
           current = candidate;
         }
@@ -4180,12 +4781,11 @@ abstract final class FinanceStorage {
           current.updatedAt == item.updatedAt &&
           current.version == item.version;
       final incomingWins =
-          forceIncoming ||
-          sameWinner ||
-          _isIncomingBudgetWinner(item, current);
+          forceIncoming || sameWinner || _isIncomingBudgetWinner(item, current);
       if (!incomingWins) {
         if (scopeRows.length > 1) {
           await _deleteOtherBudgetsInScope(db, current);
+          scopeBudgetsByKey[scopeKey] = [current];
           changed++;
         }
         continue;
@@ -4193,6 +4793,7 @@ abstract final class FinanceStorage {
       _preserveBalanceSnapshotForUnchangedAmount(item, current);
       await _deleteBudgetsInScope(db, item);
       await db.insert('finance_budgets', _remoteValues(item.toMap()));
+      scopeBudgetsByKey[scopeKey] = [item];
       changed++;
     }
     return changed;
@@ -4362,8 +4963,7 @@ abstract final class FinanceStorage {
         count <= FinanceLoanCalculator.maxTermMonths &&
         index <= count &&
         (total == null ||
-            (isSafeFinanceAmountMinor(total) &&
-                total >= item.amountMinor));
+            (isSafeFinanceAmountMinor(total) && total >= item.amountMinor));
   }
 
   static bool _hasValidRawInstallmentFields(Map<String, dynamic> raw) {
@@ -4375,7 +4975,8 @@ abstract final class FinanceStorage {
     final countValue = raw['installment_count'] ?? raw['installmentCount'];
     final totalValue =
         raw['installment_total_minor'] ?? raw['installmentTotalMinor'];
-    final hasGroupValue = groupValue != null &&
+    final hasGroupValue =
+        groupValue != null &&
         (groupValue is! String || groupValue.trim().isNotEmpty);
     if (!hasGroupValue &&
         indexValue == null &&
@@ -4441,7 +5042,8 @@ abstract final class FinanceStorage {
     final rows = await db.query(
       'finance_transactions',
       columns: ['uuid'],
-      where: 'installment_group_uuid = ? AND installment_index = ? '
+      where:
+          'installment_group_uuid = ? AND installment_index = ? '
           'AND uuid != ? AND is_deleted = 0',
       whereArgs: [groupUuid, installmentIndex, item.uuid],
       limit: 1,
@@ -4462,7 +5064,10 @@ abstract final class FinanceStorage {
     // Older Android SQLite builds allow only 999 bound variables per query.
     for (var offset = 0; offset < uuids.length; offset += 500) {
       final end = offset + 500;
-      final chunk = uuids.sublist(offset, end > uuids.length ? uuids.length : end);
+      final chunk = uuids.sublist(
+        offset,
+        end > uuids.length ? uuids.length : end,
+      );
       final placeholders = List.filled(chunk.length, '?').join(',');
       final rows = await db.rawQuery('''
       SELECT refund.*, original.category_uuid AS original_category_uuid,
@@ -4522,7 +5127,8 @@ abstract final class FinanceStorage {
   ) async {
     final rows = await db.query(
       'finance_transactions',
-      where: "type = 'refund' AND related_transaction_uuid = ? "
+      where:
+          "type = 'refund' AND related_transaction_uuid = ? "
           'AND is_deleted = 0',
       whereArgs: [originalUuid],
     );
@@ -4662,9 +5268,7 @@ abstract final class FinanceStorage {
     });
   }
 
-  static bool _hasValidRawOptionalTransactionType(
-    Map<String, dynamic> raw,
-  ) {
+  static bool _hasValidRawOptionalTransactionType(Map<String, dynamic> raw) {
     final value = raw['type'];
     return value == null || _isValidRawTransactionType(raw);
   }
@@ -4740,9 +5344,10 @@ abstract final class FinanceStorage {
     try {
       for (final timestamp in [createdAt, occurredAt]) {
         if (timestamp == null || timestamp <= 0) continue;
-        DateTime.fromMillisecondsSinceEpoch(timestamp, isUtc: true).add(
-          Duration(minutes: timezoneOffset),
-        );
+        DateTime.fromMillisecondsSinceEpoch(
+          timestamp,
+          isUtc: true,
+        ).add(Duration(minutes: timezoneOffset));
       }
     } catch (_) {
       return false;
@@ -4756,8 +5361,7 @@ abstract final class FinanceStorage {
   }) {
     final timestamp = _rawFinanceInteger(value);
     if (timestamp != null) {
-      return timestamp >= -_maxDateTimeMillis &&
-              timestamp <= _maxDateTimeMillis
+      return timestamp >= -_maxDateTimeMillis && timestamp <= _maxDateTimeMillis
           ? timestamp
           : null;
     }
@@ -4839,8 +5443,7 @@ abstract final class FinanceStorage {
 
   static bool _hasValidRawFinanceMonthKey(Map<String, dynamic> map) {
     final value = map['month_key'] ?? map['monthKey'];
-    return value is String &&
-        RegExp(r'^\d{4}-(0[1-9]|1[0-2])$').hasMatch(value);
+    return value is String && _monthKeyPattern.hasMatch(value);
   }
 
   static bool _hasSafeRawIntegerRange(
@@ -4855,9 +5458,7 @@ abstract final class FinanceStorage {
     return parsed != null && parsed >= minimum && parsed <= maximum;
   }
 
-  static bool _hasValidRawRecurringScheduleFields(
-    Map<String, dynamic> map,
-  ) {
+  static bool _hasValidRawRecurringScheduleFields(Map<String, dynamic> map) {
     return _hasSafeOptionalRawIntegerRange(
           map,
           'day_of_month',
@@ -4915,30 +5516,37 @@ abstract final class FinanceStorage {
     Map<String, dynamic> left,
     Map<String, dynamic> right,
   ) {
-    final leftLoan =
-        (left['loan_uuid'] ?? left['loanUuid'])?.toString() ?? '';
+    final leftLoan = (left['loan_uuid'] ?? left['loanUuid'])?.toString() ?? '';
     final rightLoan =
         (right['loan_uuid'] ?? right['loanUuid'])?.toString() ?? '';
     final byLoan = leftLoan.compareTo(rightLoan);
     if (byLoan != 0) return byLoan;
 
-    final leftIndex = _rawFinanceInteger(
-      left['installment_index'] ?? left['installmentIndex'],
-    ) ?? 0;
-    final rightIndex = _rawFinanceInteger(
-      right['installment_index'] ?? right['installmentIndex'],
-    ) ?? 0;
+    final leftIndex =
+        _rawFinanceInteger(
+          left['installment_index'] ?? left['installmentIndex'],
+        ) ??
+        0;
+    final rightIndex =
+        _rawFinanceInteger(
+          right['installment_index'] ?? right['installmentIndex'],
+        ) ??
+        0;
     final byIndex = leftIndex.compareTo(rightIndex);
     if (byIndex != 0) return byIndex;
 
-    final leftUpdatedAt = _rawFinanceTimestampMillis(
-      left['updated_at'] ?? left['updatedAt'],
-      allowDateString: true,
-    ) ?? 0;
-    final rightUpdatedAt = _rawFinanceTimestampMillis(
-      right['updated_at'] ?? right['updatedAt'],
-      allowDateString: true,
-    ) ?? 0;
+    final leftUpdatedAt =
+        _rawFinanceTimestampMillis(
+          left['updated_at'] ?? left['updatedAt'],
+          allowDateString: true,
+        ) ??
+        0;
+    final rightUpdatedAt =
+        _rawFinanceTimestampMillis(
+          right['updated_at'] ?? right['updatedAt'],
+          allowDateString: true,
+        ) ??
+        0;
     final byUpdatedAt = rightUpdatedAt.compareTo(leftUpdatedAt);
     if (byUpdatedAt != 0) return byUpdatedAt;
 
@@ -5007,8 +5615,7 @@ abstract final class FinanceStorage {
     Map<String, dynamic> map,
     String snakeCaseKey,
     String camelCaseKey,
-  ) =>
-      _isSafeRawFinanceAmount(map[snakeCaseKey] ?? map[camelCaseKey]);
+  ) => _isSafeRawFinanceAmount(map[snakeCaseKey] ?? map[camelCaseKey]);
 
   static bool _hasSafeRawLoanInterestRate(Map<String, dynamic> map) {
     final value =
@@ -5096,8 +5703,7 @@ abstract final class FinanceStorage {
         item.paymentMinor == item.principalMinor + item.interestMinor &&
         isSafeFinanceAmountMinor(item.remainingPrincipalMinor) &&
         (paidAt == null || paidAt <= DateTime.now().millisecondsSinceEpoch) &&
-        (item.paymentMethodUuid == null ||
-            (item.isPaid && (paidAt ?? 0) > 0));
+        (item.paymentMethodUuid == null || (item.isPaid && (paidAt ?? 0) > 0));
   }
 
   static Future<bool> _hasPaidLoanInstallments(
@@ -5149,8 +5755,7 @@ abstract final class FinanceStorage {
         installment.paymentMinor == expected.paymentMinor &&
         installment.principalMinor == expected.principalMinor &&
         installment.interestMinor == expected.interestMinor &&
-        installment.remainingPrincipalMinor ==
-            expected.remainingPrincipalMinor;
+        installment.remainingPrincipalMinor == expected.remainingPrincipalMinor;
   }
 
   static bool _loanTermsDiffer(FinanceLoan left, FinanceLoan right) {
@@ -5205,21 +5810,18 @@ abstract final class FinanceStorage {
               (balanceSnapshotAt > 0 &&
                   balanceSnapshotAt <= _maxDateTimeMillis &&
                   balanceSnapshotAt <= now &&
-                  _isBalanceSnapshotForMonth(
-                    item.monthKey,
-                    balanceSnapshotAt,
-                  ))
+                  _isBalanceSnapshotForMonth(item.monthKey, balanceSnapshotAt))
         : balanceSnapshotAt == null;
     return item.uuid.trim().isNotEmpty &&
         !(item.categoryUuid != null && item.paymentMethodUuid != null) &&
         isSafeFinanceAmountMinor(item.amountMinor) &&
         (item.isPaymentMethod ? item.amountMinor >= 0 : item.amountMinor > 0) &&
         hasValidBalanceSnapshot &&
-        RegExp(r'^\d{4}-(0[1-9]|1[0-2])$').hasMatch(item.monthKey);
+        _monthKeyPattern.hasMatch(item.monthKey);
   }
 
   static bool _isBalanceSnapshotForMonth(String monthKey, int snapshotAt) {
-    if (!RegExp(r'^\d{4}-(0[1-9]|1[0-2])$').hasMatch(monthKey)) return false;
+    if (!_monthKeyPattern.hasMatch(monthKey)) return false;
     final parts = monthKey.split('-');
     final year = int.parse(parts[0]);
     final month = int.parse(parts[1]);

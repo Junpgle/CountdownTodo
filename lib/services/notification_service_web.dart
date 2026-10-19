@@ -52,8 +52,10 @@ class NotificationService {
     try {
       final bridge = _browserBridge;
       if (bridge == null) return 'unsupported';
-      final result =
-          bridge.callMethodVarArgs<JSAny?>('permission'.toJS, <JSAny?>[]);
+      final result = bridge.callMethodVarArgs<JSAny?>(
+        'permission'.toJS,
+        <JSAny?>[],
+      );
       return _jsString(result);
     } catch (_) {
       return 'unsupported';
@@ -177,7 +179,8 @@ class NotificationService {
 
   static Future<bool> showUpcomingTodoNotification(TodoItem todo) async {
     final todoType = ItemSemanticsService.specialTodoTypeForTitle(todo.title);
-    final isSpecialTodo = todoType != 'default' ||
+    final isSpecialTodo =
+        todoType != 'default' ||
         ItemSemanticsService.domainKindForTodo(todo) == TodoDomainKind.pickup;
     if (isSpecialTodo) {
       if (!await AppSettingsStorage.isSpecialTodoNotificationEnabled()) {
@@ -235,27 +238,41 @@ class NotificationService {
     await cancelReminder(notifId);
   }
 
-  static Future<void> removePlanReminders(Set<String> ids, {
+  static Future<void> removePlanReminders(
+    Set<String> ids, {
     required Future<void> Function() ensureCurrent,
   }) {
     final operation = _scheduleQueue.then<void>((_) async {
       await ensureCurrent();
       final existing = await getScheduledReminders();
-      final remaining = ScheduledReminderRegistry.withoutPlanBlocks(existing, ids)
-          .where((r) => ScheduledReminderRegistry.sourceOf(r) == ScheduledReminderSources.reminderSchedule).toList();
+      final remaining =
+          ScheduledReminderRegistry.withoutPlanBlocks(existing, ids)
+              .where(
+                (r) =>
+                    ScheduledReminderRegistry.sourceOf(r) ==
+                    ScheduledReminderSources.reminderSchedule,
+              )
+              .toList();
       await ensureCurrent();
-      await _scheduleReminders(remaining, clearFirst: false, forceReschedule: true,
-        replaceSource: ScheduledReminderSources.reminderSchedule, ensureCurrent: ensureCurrent);
+      await _scheduleReminders(
+        remaining,
+        clearFirst: false,
+        forceReschedule: true,
+        replaceSource: ScheduledReminderSources.reminderSchedule,
+        ensureCurrent: ensureCurrent,
+      );
       await ensureCurrent();
     });
     _scheduleQueue = operation.then<void>((_) {}, onError: (_, _) {});
     return operation;
   }
 
-  static Future<void> scheduleReminders(List<Map<String, dynamic>> reminders,
-      {bool clearFirst = true,
-      bool forceReschedule = false,
-      String? replaceSource}) {
+  static Future<void> scheduleReminders(
+    List<Map<String, dynamic>> reminders, {
+    bool clearFirst = true,
+    bool forceReschedule = false,
+    String? replaceSource,
+  }) {
     final operation = _scheduleQueue.then<void>(
       (_) => _scheduleReminders(
         reminders,
@@ -299,7 +316,9 @@ class NotificationService {
     }
   }
 
-  static Future<List<Map<String, dynamic>>> getScheduledReminders({bool strict = false}) async {
+  static Future<List<Map<String, dynamic>>> getScheduledReminders({
+    bool strict = false,
+  }) async {
     final reminders = _scheduledReminders.values
         .map((reminder) => Map<String, dynamic>.from(reminder))
         .toList();
@@ -339,9 +358,7 @@ class NotificationService {
     );
   }
 
-  static Future<void> showTodoRecognizeSuccess({
-    required int todoCount,
-  }) async {
+  static Future<void> showTodoRecognizeSuccess({required int todoCount}) async {
     if (!await AppSettingsStorage.isLiveActivityNotificationEnabled()) return;
     if (!await AppSettingsStorage.isTodoRecognizeNotificationEnabled()) return;
     await _showLiveActivityNotification(
@@ -356,13 +373,10 @@ class NotificationService {
   }) async {
     if (!await AppSettingsStorage.isLiveActivityNotificationEnabled()) return;
     if (!await AppSettingsStorage.isTodoRecognizeNotificationEnabled()) return;
-    final body =
-        errorMsg.length > 80 ? '${errorMsg.substring(0, 80)}...' : errorMsg;
-    await _showLiveActivityNotification(
-      '图片识别失败',
-      body,
-      tag: 'todo-recognize',
-    );
+    final body = errorMsg.length > 80
+        ? '${errorMsg.substring(0, 80)}...'
+        : errorMsg;
+    await _showLiveActivityNotification('图片识别失败', body, tag: 'todo-recognize');
   }
 
   static Future<void> cancelTodoRecognizeNotification() async {
@@ -446,37 +460,39 @@ class NotificationService {
     final pomodoroEndEnabled =
         await AppSettingsStorage.isPomodoroEndNotificationEnabled();
 
-    return PlanReminderGuard.filterSchedulablePlanReminders(reminders
-        .where((reminder) {
-          final source = ScheduledReminderRegistry.sourceOf(reminder);
-          final type = reminder['type']?.toString();
-          if (FocusDoNotDisturbService.isActive &&
-              source != ScheduledReminderSources.pomodoro &&
-              type != 'pomodoro' &&
-              type != 'pomodoro_end') {
-            return false;
-          }
-          if (source == ScheduledReminderSources.pomodoro ||
-              type == 'pomodoro' ||
-              type == 'pomodoro_end') {
-            return pomodoroEndEnabled;
-          }
-          if (!reminderEnabled) return false;
-          switch (type) {
-            case 'course':
-              return liveActivityEnabled && courseEnabled;
-            case 'upcoming_todo':
-              return liveActivityEnabled && todoLiveEnabled;
-            case 'special_todo':
-              return liveActivityEnabled && specialTodoEnabled;
-            case 'finance_recurring':
-              return financeEnabled;
-            default:
-              return true;
-          }
-        })
-        .map(Map<String, dynamic>.from)
-        .toList(growable: false));
+    return PlanReminderGuard.filterSchedulablePlanReminders(
+      reminders
+          .where((reminder) {
+            final source = ScheduledReminderRegistry.sourceOf(reminder);
+            final type = reminder['type']?.toString();
+            if (FocusDoNotDisturbService.isActive &&
+                source != ScheduledReminderSources.pomodoro &&
+                type != 'pomodoro' &&
+                type != 'pomodoro_end') {
+              return false;
+            }
+            if (source == ScheduledReminderSources.pomodoro ||
+                type == 'pomodoro' ||
+                type == 'pomodoro_end') {
+              return pomodoroEndEnabled;
+            }
+            if (!reminderEnabled) return false;
+            switch (type) {
+              case 'course':
+                return liveActivityEnabled && courseEnabled;
+              case 'upcoming_todo':
+                return liveActivityEnabled && todoLiveEnabled;
+              case 'special_todo':
+                return liveActivityEnabled && specialTodoEnabled;
+              case 'finance_recurring':
+                return financeEnabled;
+              default:
+                return true;
+            }
+          })
+          .map(Map<String, dynamic>.from)
+          .toList(growable: false),
+    );
   }
 
   static int? _readInt(dynamic value) {

@@ -199,43 +199,7 @@ class PreferenceSection extends StatelessWidget {
         _buildTile(
           context: context,
           targetId: 'llm_config',
-          child: ListTile(
-            leading:
-                Icon(Icons.psychology_outlined, color: colorScheme.primary),
-            title: const Text('模型与 API 配置'),
-            subtitle: FutureBuilder<LLMConfig?>(
-              future: LLMService.getConfig(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Text('加载中...', style: TextStyle(fontSize: 12));
-                }
-                final config = snapshot.data;
-                if (config == null || !config.isConfigured) {
-                  return Text(
-                    '未配置，用于 AI 对话与智能识别',
-                    style:
-                        TextStyle(fontSize: 12, color: colorScheme.cdtWarning),
-                  );
-                }
-                return Text(
-                  '已配置: ${config.model}',
-                  style: TextStyle(fontSize: 12, color: colorScheme.cdtSuccess),
-                );
-              },
-            ),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () async {
-              final result = await Navigator.push<bool>(
-                context,
-                PageTransitions.slideHorizontal(
-                  const LLMConfigPage(),
-                ),
-              );
-              if (result == true) {
-                (context as Element).markNeedsBuild();
-              }
-            },
-          ),
+          child: _LlmConfigPreferenceTile(colorScheme: colorScheme),
         ),
         const AppSettingsDivider(),
         _buildTile(
@@ -387,6 +351,66 @@ class PreferenceSection extends StatelessWidget {
       icon: icon,
       value: value,
       onChanged: (value) => onChanged(value),
+    );
+  }
+}
+
+class _LlmConfigPreferenceTile extends StatefulWidget {
+  const _LlmConfigPreferenceTile({required this.colorScheme});
+
+  final ColorScheme colorScheme;
+
+  @override
+  State<_LlmConfigPreferenceTile> createState() =>
+      _LlmConfigPreferenceTileState();
+}
+
+class _LlmConfigPreferenceTileState extends State<_LlmConfigPreferenceTile> {
+  late Future<LLMConfig?> _configFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _configFuture = LLMService.getConfig();
+  }
+
+  Future<void> _openConfig() async {
+    final result = await Navigator.push<bool>(
+      context,
+      PageTransitions.slideHorizontal(const LLMConfigPage()),
+    );
+    if (result == true && mounted) {
+      setState(() => _configFuture = LLMService.getConfig());
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = widget.colorScheme;
+    return ListTile(
+      leading: Icon(Icons.psychology_outlined, color: colorScheme.primary),
+      title: const Text('模型与 API 配置'),
+      subtitle: FutureBuilder<LLMConfig?>(
+        future: _configFuture,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Text('加载中...', style: TextStyle(fontSize: 12));
+          }
+          final config = snapshot.data;
+          if (config == null || !config.isConfigured) {
+            return Text(
+              '未配置，用于 AI 对话与智能识别',
+              style: TextStyle(fontSize: 12, color: colorScheme.cdtWarning),
+            );
+          }
+          return Text(
+            '已配置: ${config.model}',
+            style: TextStyle(fontSize: 12, color: colorScheme.cdtSuccess),
+          );
+        },
+      ),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: _openConfig,
     );
   }
 }

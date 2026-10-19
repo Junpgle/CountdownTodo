@@ -44,8 +44,8 @@ class HabitAdaptationPanel extends StatelessWidget {
     final displayUnit = (targetUnitOverride ?? adaptation.targetUnit).trim();
     final progress =
         currentValue != null && targetValue != null && targetValue! > 0
-            ? (currentValue! / targetValue!).clamp(0.0, 1.0)
-            : null;
+        ? (currentValue! / targetValue!).clamp(0.0, 1.0)
+        : null;
 
     return Container(
       width: double.infinity,
@@ -53,9 +53,7 @@ class HabitAdaptationPanel extends StatelessWidget {
       decoration: BoxDecoration(
         color: colorScheme.tertiaryContainer,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: colorScheme.tertiary.withValues(alpha: 0.25),
-        ),
+        border: Border.all(color: colorScheme.tertiary.withValues(alpha: 0.25)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -78,8 +76,11 @@ class HabitAdaptationPanel extends StatelessWidget {
                 tooltip: '查看参考文献',
                 visualDensity: VisualDensity.compact,
                 onPressed: () => showHabitCitations(context, adaptation),
-                icon: Icon(Icons.menu_book_outlined,
-                    size: 19, color: colorScheme.onTertiaryContainer),
+                icon: Icon(
+                  Icons.menu_book_outlined,
+                  size: 19,
+                  color: colorScheme.onTertiaryContainer,
+                ),
               ),
             ],
           ),
@@ -216,8 +217,9 @@ class HabitPushUpGuide extends StatelessWidget {
     final target = targetValue > 0 ? targetValue : 24;
     final setCount = target <= 12 ? 1 : math.min(5, (target / 12).ceil());
     final repsPerSet = (target / setCount).ceil();
-    final frequency =
-        periodType == HabitPeriodType.weekdays ? '当前：按指定训练日' : '建议：每周 2–3 天';
+    final frequency = periodType == HabitPeriodType.weekdays
+        ? '当前：按指定训练日'
+        : '建议：每周 2–3 天';
 
     return Container(
       width: double.infinity,
@@ -232,8 +234,11 @@ class HabitPushUpGuide extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(Icons.fitness_center_rounded,
-                  size: 19, color: colorScheme.primary),
+              Icon(
+                Icons.fitness_center_rounded,
+                size: 19,
+                color: colorScheme.primary,
+              ),
               const SizedBox(width: 8),
               Text(
                 '训练安排',
@@ -317,18 +322,9 @@ class _PushUpFaq extends StatelessWidget {
       '一次做得越多越好吗？',
       '不一定。俯卧撑的有效训练取决于动作质量、总训练量和持续性，不是单次硬撑到最大数量。出现塌腰、耸肩或动作幅度明显变小，就应停止这一组或降低难度。',
     ),
-    (
-      '需要每天做吗？',
-      '不需要。模板默认安排每周 2–3 个训练日，让同一肌群有恢复时间；其他日子可以休息，或训练下肢、背部等不同肌群。',
-    ),
-    (
-      '做不到标准俯卧撑怎么办？',
-      '可以先从斜板俯卧撑、跪姿俯卧撑或更高支撑面开始。选择能保持身体稳定和完整控制的版本，比勉强做标准动作更合适。',
-    ),
-    (
-      '每组都要做到力竭吗？',
-      '不需要。保留动作质量比做到完全力竭更重要；当下一次重复可能破坏姿势时结束这一组，之后再逐步增加次数或难度。',
-    ),
+    ('需要每天做吗？', '不需要。模板默认安排每周 2–3 个训练日，让同一肌群有恢复时间；其他日子可以休息，或训练下肢、背部等不同肌群。'),
+    ('做不到标准俯卧撑怎么办？', '可以先从斜板俯卧撑、跪姿俯卧撑或更高支撑面开始。选择能保持身体稳定和完整控制的版本，比勉强做标准动作更合适。'),
+    ('每组都要做到力竭吗？', '不需要。保留动作质量比做到完全力竭更重要；当下一次重复可能破坏姿势时结束这一组，之后再逐步增加次数或难度。'),
     (
       '肌肉酸痛还能继续做吗？',
       '轻微延迟性酸痛可以先休息或降低训练量；关节疼痛、刺痛、明显肿胀，或伴随胸闷头晕时不要硬练，应停止并视情况咨询专业人士。',
@@ -339,17 +335,20 @@ class _PushUpFaq extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     return Theme(
-      data: Theme.of(context).copyWith(
-        dividerColor: colorScheme.outlineVariant.withValues(alpha: 0),
-      ),
+      data: Theme.of(
+        context,
+      ).copyWith(dividerColor: colorScheme.outlineVariant.withValues(alpha: 0)),
       child: Material(
         color: Colors.transparent,
         child: ExpansionTile(
           initiallyExpanded: false,
           tilePadding: EdgeInsets.zero,
           childrenPadding: const EdgeInsets.only(bottom: 2),
-          leading: Icon(Icons.help_outline_rounded,
-              size: 19, color: colorScheme.primary),
+          leading: Icon(
+            Icons.help_outline_rounded,
+            size: 19,
+            color: colorScheme.primary,
+          ),
           title: Text(
             '常见问题',
             style: TextStyle(
@@ -537,7 +536,8 @@ class HabitRunningGuide extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     final target = targetValue > 0 ? targetValue : 30;
     final normalizedUnit = (unit ?? '分钟').trim().toLowerCase();
-    final isDurationUnit = normalizedUnit.isEmpty ||
+    final isDurationUnit =
+        normalizedUnit.isEmpty ||
         normalizedUnit == '分钟' ||
         normalizedUnit == 'minute' ||
         normalizedUnit == 'minutes' ||
@@ -546,15 +546,16 @@ class HabitRunningGuide extends StatelessWidget {
     final sessions = _sessionsPerWeek();
     final weeklyMinutes = isDurationUnit
         ? isWeeklyTarget
-            ? target
-            : sessions == null
-                ? null
-                : target * sessions
+              ? target
+              : sessions == null
+              ? null
+              : target * sessions
         : null;
     final schedule = _scheduleLabel(sessions);
     final targetLabel = isWeeklyTarget ? '$target 分钟/周' : '$target 分钟/次';
-    final weeklyLabel =
-        weeklyMinutes == null ? '切换为分钟后计算' : '$weeklyMinutes 分钟/周';
+    final weeklyLabel = weeklyMinutes == null
+        ? '切换为分钟后计算'
+        : '$weeklyMinutes 分钟/周';
 
     return Container(
       width: double.infinity,
@@ -569,8 +570,11 @@ class HabitRunningGuide extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(Icons.directions_run_rounded,
-                  size: 19, color: colorScheme.primary),
+              Icon(
+                Icons.directions_run_rounded,
+                size: 19,
+                color: colorScheme.primary,
+              ),
               const SizedBox(width: 8),
               Text(
                 '跑步安排',
@@ -717,8 +721,9 @@ class HabitReadingGuide extends StatelessWidget {
     final focus = math.min(defaultFocusMinutes ?? 25, target);
     final schedule = _scheduleLabel();
     final pace = _paceLabel(target, focus);
-    final targetLabel =
-        periodType == HabitPeriodType.weekly ? '$target 分钟/周' : '$target 分钟/天';
+    final targetLabel = periodType == HabitPeriodType.weekly
+        ? '$target 分钟/周'
+        : '$target 分钟/天';
 
     return Container(
       width: double.infinity,
@@ -733,8 +738,11 @@ class HabitReadingGuide extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(Icons.menu_book_rounded,
-                  size: 19, color: colorScheme.primary),
+              Icon(
+                Icons.menu_book_rounded,
+                size: 19,
+                color: colorScheme.primary,
+              ),
               const SizedBox(width: 8),
               Text(
                 '阅读安排',
@@ -850,39 +858,30 @@ class _ReadingFaq extends StatelessWidget {
       '一定要每天读 30 分钟吗？',
       '不一定。30 分钟只是可编辑起点，没有适合所有人的统一阅读处方。先选择能长期坚持的时长，比一开始定得很高更重要。',
     ),
-    (
-      '读得越久、页数越多越好吗？',
-      '不一定。阅读还包括理解和回忆；如果注意力已经明显下降，可以先停下来休息或拆成两个阅读块。',
-    ),
-    (
-      '只读不做笔记可以吗？',
-      '可以。笔记不是必需品，但读完后用自己的话回忆一句或说出 3 个要点，通常比被动重读更能检验理解。',
-    ),
-    (
-      '纸书和电子书应该选哪个？',
-      '优先选择更容易持续、眼睛和姿势更舒服的载体。屏幕阅读时注意远眺、眨眼和亮度，出现持续不适就减少屏幕时长。',
-    ),
-    (
-      '今天读不下去怎么办？',
-      '把目标降到 10–15 分钟，换成更容易进入状态的章节，或者只完成“读一小节并复述一句”；先保留节奏，再逐步增加。',
-    ),
+    ('读得越久、页数越多越好吗？', '不一定。阅读还包括理解和回忆；如果注意力已经明显下降，可以先停下来休息或拆成两个阅读块。'),
+    ('只读不做笔记可以吗？', '可以。笔记不是必需品，但读完后用自己的话回忆一句或说出 3 个要点，通常比被动重读更能检验理解。'),
+    ('纸书和电子书应该选哪个？', '优先选择更容易持续、眼睛和姿势更舒服的载体。屏幕阅读时注意远眺、眨眼和亮度，出现持续不适就减少屏幕时长。'),
+    ('今天读不下去怎么办？', '把目标降到 10–15 分钟，换成更容易进入状态的章节，或者只完成“读一小节并复述一句”；先保留节奏，再逐步增加。'),
   ];
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     return Theme(
-      data: Theme.of(context).copyWith(
-        dividerColor: colorScheme.outlineVariant.withValues(alpha: 0),
-      ),
+      data: Theme.of(
+        context,
+      ).copyWith(dividerColor: colorScheme.outlineVariant.withValues(alpha: 0)),
       child: Material(
         color: Colors.transparent,
         child: ExpansionTile(
           initiallyExpanded: false,
           tilePadding: EdgeInsets.zero,
           childrenPadding: const EdgeInsets.only(bottom: 2),
-          leading: Icon(Icons.help_outline_rounded,
-              size: 19, color: colorScheme.primary),
+          leading: Icon(
+            Icons.help_outline_rounded,
+            size: 19,
+            color: colorScheme.primary,
+          ),
           title: Text(
             '常见问题',
             style: TextStyle(
@@ -1007,7 +1006,8 @@ class _HabitDomainGuide extends StatelessWidget {
               for (var i = 0; i < metrics.length; i++) ...[
                 if (i > 0) const SizedBox(width: 10),
                 Expanded(
-                    child: _HabitGuideMetric.fromData(metrics[i], colorScheme)),
+                  child: _HabitGuideMetric.fromData(metrics[i], colorScheme),
+                ),
               ],
             ],
           ),
@@ -1286,14 +1286,15 @@ class HabitSleepTimingGuide extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final isWake = adaptation.kind == HabitAdaptationKind.earlyWake;
-    final counterpartMinute =
-        isWake ? targetMinute - 8 * 60 : targetMinute + 8 * 60;
+    final counterpartMinute = isWake
+        ? targetMinute - 8 * 60
+        : targetMinute + 8 * 60;
     final counterpartLabel = isWake ? '建议入睡' : '建议起床';
     final counterpartRange = isWake
         ? '${_formatMinute(targetMinute - 9 * 60)}–'
-            '${_formatMinute(targetMinute - 7 * 60)}'
+              '${_formatMinute(targetMinute - 7 * 60)}'
         : '${_formatMinute(targetMinute + 7 * 60)}–'
-            '${_formatMinute(targetMinute + 9 * 60)}';
+              '${_formatMinute(targetMinute + 9 * 60)}';
 
     return Container(
       width: double.infinity,
@@ -1308,8 +1309,11 @@ class HabitSleepTimingGuide extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(Icons.bedtime_outlined,
-                  size: 19, color: colorScheme.primary),
+              Icon(
+                Icons.bedtime_outlined,
+                size: 19,
+                color: colorScheme.primary,
+              ),
               const SizedBox(width: 8),
               Text(
                 '睡眠时间反推',
@@ -1389,10 +1393,12 @@ class HabitSleepPairSuggestionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final targetLabel =
-        suggestion.targetKind == HabitAdaptationKind.earlyWake ? '早起' : '早睡';
-    final sourceLabel =
-        suggestion.sourceKind == HabitAdaptationKind.earlyWake ? '早起' : '早睡';
+    final targetLabel = suggestion.targetKind == HabitAdaptationKind.earlyWake
+        ? '早起'
+        : '早睡';
+    final sourceLabel = suggestion.sourceKind == HabitAdaptationKind.earlyWake
+        ? '早起'
+        : '早睡';
     final applied = currentTargetMinute == suggestion.recommendedMinute;
 
     return Container(
@@ -1408,8 +1414,11 @@ class HabitSleepPairSuggestionCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(Icons.sync_alt_rounded,
-                  size: 19, color: colorScheme.onSecondaryContainer),
+              Icon(
+                Icons.sync_alt_rounded,
+                size: 19,
+                color: colorScheme.onSecondaryContainer,
+              ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
@@ -1422,8 +1431,11 @@ class HabitSleepPairSuggestionCard extends StatelessWidget {
                 ),
               ),
               if (applied)
-                Icon(Icons.check_circle_rounded,
-                    size: 18, color: colorScheme.onSecondaryContainer),
+                Icon(
+                  Icons.check_circle_rounded,
+                  size: 18,
+                  color: colorScheme.onSecondaryContainer,
+                ),
             ],
           ),
           const SizedBox(height: 8),
@@ -1452,8 +1464,9 @@ class HabitSleepPairSuggestionCard extends StatelessWidget {
           Align(
             alignment: Alignment.centerRight,
             child: FilledButton.tonalIcon(
-              onPressed:
-                  applied ? null : () => onApply(suggestion.recommendedMinute),
+              onPressed: applied
+                  ? null
+                  : () => onApply(suggestion.recommendedMinute),
               icon: Icon(
                 applied ? Icons.check_rounded : Icons.auto_awesome_rounded,
                 size: 16,
@@ -1517,32 +1530,32 @@ class _HabitSleepClockState extends State<HabitSleepClock> {
       children: [
         Semantics(
           container: true,
-          label: '${widget.goalLabel} $goalText，'
+          label:
+              '${widget.goalLabel} $goalText，'
               '${widget.counterpartLabel} $counterpartText'
               '${widget.counterpartRangeLabel == null ? '' : '，建议窗口 ${widget.counterpartRangeLabel}'}',
           child: Align(
             alignment: Alignment.center,
             child: ConstrainedBox(
-              constraints: const BoxConstraints(
-                maxWidth: 320,
-                maxHeight: 320,
-              ),
+              constraints: const BoxConstraints(maxWidth: 320, maxHeight: 320),
               child: AspectRatio(
                 aspectRatio: 1,
                 child: LayoutBuilder(
                   builder: (context, constraints) {
-                    final size =
-                        Size(constraints.maxWidth, constraints.maxHeight);
+                    final size = Size(
+                      constraints.maxWidth,
+                      constraints.maxHeight,
+                    );
                     return GestureDetector(
                       behavior: HitTestBehavior.opaque,
                       onPanStart: widget.onTargetChanged == null
                           ? null
                           : (details) =>
-                              _startDrag(details.localPosition, size),
+                                _startDrag(details.localPosition, size),
                       onPanUpdate: widget.onTargetChanged == null
                           ? null
                           : (details) =>
-                              _updateDrag(details.localPosition, size),
+                                _updateDrag(details.localPosition, size),
                       onPanEnd: widget.onTargetChanged == null
                           ? null
                           : (_) => setState(() => _dragMode = null),
@@ -1587,10 +1600,7 @@ class _HabitSleepClockState extends State<HabitSleepClock> {
           const SizedBox(height: 4),
           Text(
             '建议窗口 ${widget.counterpartRangeLabel}',
-            style: TextStyle(
-              fontSize: 11,
-              color: colorScheme.onSurfaceVariant,
-            ),
+            style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
           ),
         ],
       ],
@@ -1600,11 +1610,14 @@ class _HabitSleepClockState extends State<HabitSleepClock> {
   void _startDrag(Offset position, Size size) {
     final geometry = _SleepClockGeometry.fromSize(size);
     final points = <_SleepClockDragMode, Offset>{
-      _SleepClockDragMode.hour:
-          geometry.handTip(widget.goalMinute, geometry.hourHandLength),
+      _SleepClockDragMode.hour: geometry.handTip(
+        widget.goalMinute,
+        geometry.hourHandLength,
+      ),
       _SleepClockDragMode.minute: geometry.minuteHandTip(widget.goalMinute),
-      _SleepClockDragMode.counterpart:
-          geometry.timeMarker(widget.counterpartMinute),
+      _SleepClockDragMode.counterpart: geometry.timeMarker(
+        widget.counterpartMinute,
+      ),
     };
     final nearest = points.entries.reduce(
       (a, b) => (position - a.value).distance <= (position - b.value).distance
@@ -1772,7 +1785,8 @@ class _SleepClockGeometry {
   }
 
   static double angleFromTop(Offset position, Offset center) {
-    var angle = math.atan2(position.dy - center.dy, position.dx - center.dx) +
+    var angle =
+        math.atan2(position.dy - center.dy, position.dx - center.dx) +
         math.pi / 2;
     if (angle < 0) angle += 2 * math.pi;
     return angle;
@@ -1828,11 +1842,17 @@ class _SleepScheduleClockPainter extends CustomPainter {
   ) {
     final startMinute = goalIsSleep ? goalMinute : counterpartMinute;
     final endMinute = goalIsSleep ? counterpartMinute : goalMinute;
-    final start = _SleepClockGeometry.angleFromTop(
-            geometry.timeMarker(startMinute), geometry.center) -
+    final start =
+        _SleepClockGeometry.angleFromTop(
+          geometry.timeMarker(startMinute),
+          geometry.center,
+        ) -
         math.pi / 2;
-    final end = _SleepClockGeometry.angleFromTop(
-            geometry.timeMarker(endMinute), geometry.center) -
+    final end =
+        _SleepClockGeometry.angleFromTop(
+          geometry.timeMarker(endMinute),
+          geometry.center,
+        ) -
         math.pi / 2;
     var sweep = end - start;
     if (sweep < 0) sweep += 2 * math.pi;
@@ -1841,8 +1861,10 @@ class _SleepScheduleClockPainter extends CustomPainter {
       ..strokeWidth = 7
       ..strokeCap = StrokeCap.round
       ..color = secondary.withValues(alpha: 0.35);
-    final rect =
-        Rect.fromCircle(center: geometry.center, radius: geometry.radius - 7);
+    final rect = Rect.fromCircle(
+      center: geometry.center,
+      radius: geometry.radius - 7,
+    );
     canvas.drawArc(rect, start, sweep, false, arc);
   }
 
@@ -1853,8 +1875,9 @@ class _SleepScheduleClockPainter extends CustomPainter {
       final outer = geometry.radius - 4;
       final inner = geometry.radius - (major ? 16 : 10);
       final tick = Paint()
-        ..color =
-            major ? colorScheme.onSurfaceVariant : colorScheme.outlineVariant
+        ..color = major
+            ? colorScheme.onSurfaceVariant
+            : colorScheme.outlineVariant
         ..strokeWidth = major ? 2 : 1
         ..strokeCap = StrokeCap.round;
       canvas.drawLine(
@@ -1901,13 +1924,12 @@ class _SleepScheduleClockPainter extends CustomPainter {
   ) {
     final marker = geometry.timeMarker(counterpartMinute);
     final markerPaint = Paint()..color = color;
-    canvas.drawCircle(marker,
-        activeMode == _SleepClockDragMode.counterpart ? 14 : 11, markerPaint);
     canvas.drawCircle(
       marker,
-      4,
-      Paint()..color = colorScheme.onTertiary,
+      activeMode == _SleepClockDragMode.counterpart ? 14 : 11,
+      markerPaint,
     );
+    canvas.drawCircle(marker, 4, Paint()..color = colorScheme.onTertiary);
   }
 
   void _drawTargetHands(
@@ -1917,10 +1939,22 @@ class _SleepScheduleClockPainter extends CustomPainter {
   ) {
     final hourTip = geometry.handTip(goalMinute, geometry.hourHandLength);
     final minuteTip = geometry.minuteHandTip(goalMinute);
-    _drawHand(canvas, geometry.center, hourTip, color, 6,
-        activeMode == _SleepClockDragMode.hour);
-    _drawHand(canvas, geometry.center, minuteTip, color, 3.5,
-        activeMode == _SleepClockDragMode.minute);
+    _drawHand(
+      canvas,
+      geometry.center,
+      hourTip,
+      color,
+      6,
+      activeMode == _SleepClockDragMode.hour,
+    );
+    _drawHand(
+      canvas,
+      geometry.center,
+      minuteTip,
+      color,
+      3.5,
+      activeMode == _SleepClockDragMode.minute,
+    );
     canvas.drawCircle(geometry.center, 7, Paint()..color = color);
     canvas.drawCircle(
       geometry.center,
@@ -1963,8 +1997,10 @@ Future<void> showHabitCitations(
     builder: (dialogContext) => AlertDialog(
       title: Row(
         children: [
-          Icon(Icons.menu_book_outlined,
-              color: Theme.of(dialogContext).colorScheme.primary),
+          Icon(
+            Icons.menu_book_outlined,
+            color: Theme.of(dialogContext).colorScheme.primary,
+          ),
           const SizedBox(width: 8),
           const Expanded(child: Text('参考文献')),
         ],
@@ -2021,16 +2057,27 @@ class _CitationTile extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(citation.title,
-                style: const TextStyle(fontWeight: FontWeight.w700)),
+            Text(
+              citation.title,
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
             const SizedBox(height: 3),
-            Text(citation.publisher,
-                style: TextStyle(
-                    fontSize: 11.5, color: colorScheme.onSurfaceVariant)),
+            Text(
+              citation.publisher,
+              style: TextStyle(
+                fontSize: 11.5,
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
             const SizedBox(height: 7),
-            Text(citation.takeaway,
-                style: TextStyle(
-                    fontSize: 12, height: 1.45, color: colorScheme.onSurface)),
+            Text(
+              citation.takeaway,
+              style: TextStyle(
+                fontSize: 12,
+                height: 1.45,
+                color: colorScheme.onSurface,
+              ),
+            ),
             const SizedBox(height: 4),
             Align(
               alignment: Alignment.centerRight,
@@ -2038,8 +2085,9 @@ class _CitationTile extends StatelessWidget {
                 onPressed: () => _open(context),
                 icon: const Icon(Icons.open_in_new_rounded, size: 15),
                 label: const Text('打开原文'),
-                style:
-                    TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                style: TextButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                ),
               ),
             ),
           ],

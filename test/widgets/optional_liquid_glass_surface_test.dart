@@ -27,8 +27,9 @@ void main() {
 
   tearDown(GlassPerformanceMonitor.stop);
 
-  testWidgets('keeps the existing surface when Liquid Glass is disabled',
-      (tester) async {
+  testWidgets('keeps the existing surface when Liquid Glass is disabled', (
+    tester,
+  ) async {
     await LiquidGlassEffectService.setEnabled(false);
     await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
 
@@ -60,9 +61,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(
-      const MaterialApp(home: AnimationSettingsPage()),
-    );
+    await tester.pumpWidget(const MaterialApp(home: AnimationSettingsPage()));
     await tester.pumpAndSettle();
 
     expect(find.text('Liquid Glass'), findsOneWidget);
@@ -78,94 +77,93 @@ void main() {
   });
 
   testWidgets(
-      'power saver shows effective core effects without losing preferences',
-      (tester) async {
-    SharedPreferences.setMockInitialValues({
-      'enable_animations': true,
-      'enable_lazy_load': true,
-      'enable_screen_radius': true,
-      'enable_predictive_back': true,
-      'enable_motion_blur': true,
-      'enable_layer_blur': true,
-    });
-    await LiquidGlassEffectService.setPowerSaveMode(true);
-    await LiquidGlassEffectService.setEnabled(true);
-    await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.enhanced);
-    addTearDown(() async {
-      await LiquidGlassEffectService.setEnabled(false);
-      await LiquidGlassEffectService.setPowerSaveMode(false);
-      await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
-    });
-    tester.view.physicalSize = const Size(1200, 1600);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
+    'power saver shows effective core effects without losing preferences',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({
+        'enable_animations': true,
+        'enable_lazy_load': true,
+        'enable_screen_radius': true,
+        'enable_predictive_back': true,
+        'enable_motion_blur': true,
+        'enable_layer_blur': true,
+      });
+      await LiquidGlassEffectService.setPowerSaveMode(true);
+      await LiquidGlassEffectService.setEnabled(true);
+      await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.enhanced);
+      addTearDown(() async {
+        await LiquidGlassEffectService.setEnabled(false);
+        await LiquidGlassEffectService.setPowerSaveMode(false);
+        await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
+      });
+      tester.view.physicalSize = const Size(1200, 1600);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(
-      const MaterialApp(
-        home: AnimationSettingsPage(powerSaveModeOverride: true),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    LiquidGlassSwitch effectSwitch(String key) {
-      return tester.widget<LiquidGlassSwitch>(
-        find.byKey(ValueKey<String>(key)),
-      );
-    }
-
-    for (final key in const [
-      'animation-settings-page-animation-switch',
-      'animation-settings-screen-radius-switch',
-      'animation-settings-predictive-back-switch',
-      'animation-settings-motion-blur-switch',
-      'animation-settings-layer-blur-switch',
-      'animation-settings-liquid-glass-switch',
-    ]) {
-      final widget = effectSwitch(key);
-      expect(widget.value, isFalse, reason: key);
-      expect(widget.onChanged, isNull, reason: key);
-    }
-
-    final lazyLoad = effectSwitch('animation-settings-lazy-load-switch');
-    expect(lazyLoad.value, isTrue);
-    expect(lazyLoad.onChanged, isNotNull);
-    expect(
-      find.byKey(
-        const ValueKey<String>(
-          'animation-settings-power-save-effective-note',
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: AnimationSettingsPage(powerSaveModeOverride: true),
         ),
-      ),
-      findsOneWidget,
-    );
-    expect(find.textContaining('省电模式下已暂停；退出后恢复增强模式'), findsOneWidget);
+      );
+      await tester.pumpAndSettle();
 
-    expect(LiquidGlassEffectService.preferredConfiguration.enabled, isTrue);
-    expect(LiquidGlassEffectService.preferredConfiguration.mode,
-        LiquidGlassEffectMode.enhanced);
-    final prefs = await SharedPreferences.getInstance();
-    expect(prefs.getBool('enable_liquid_glass'), isTrue);
-  });
+      LiquidGlassSwitch effectSwitch(String key) {
+        return tester.widget<LiquidGlassSwitch>(
+          find.byKey(ValueKey<String>(key)),
+        );
+      }
 
-  testWidgets('does not add safe-area gaps inside animation grids',
-      (tester) async {
+      for (final key in const [
+        'animation-settings-page-animation-switch',
+        'animation-settings-screen-radius-switch',
+        'animation-settings-predictive-back-switch',
+        'animation-settings-motion-blur-switch',
+        'animation-settings-layer-blur-switch',
+        'animation-settings-liquid-glass-switch',
+      ]) {
+        final widget = effectSwitch(key);
+        expect(widget.value, isFalse, reason: key);
+        expect(widget.onChanged, isNull, reason: key);
+      }
+
+      final lazyLoad = effectSwitch('animation-settings-lazy-load-switch');
+      expect(lazyLoad.value, isTrue);
+      expect(lazyLoad.onChanged, isNotNull);
+      expect(
+        find.byKey(
+          const ValueKey<String>(
+            'animation-settings-power-save-effective-note',
+          ),
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining('省电模式下已暂停；退出后恢复增强模式'), findsOneWidget);
+
+      expect(LiquidGlassEffectService.preferredConfiguration.enabled, isTrue);
+      expect(
+        LiquidGlassEffectService.preferredConfiguration.mode,
+        LiquidGlassEffectMode.enhanced,
+      );
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getBool('enable_liquid_glass'), isTrue);
+    },
+  );
+
+  testWidgets('does not add safe-area gaps inside animation grids', (
+    tester,
+  ) async {
     tester.view.physicalSize = const Size(824, 1830);
     tester.view.devicePixelRatio = 2;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(
-      const MaterialApp(home: AnimationSettingsPage()),
-    );
+    await tester.pumpWidget(const MaterialApp(home: AnimationSettingsPage()));
     await tester.pumpAndSettle();
 
     final presetHeading = tester.getTopLeft(find.text('性能预设')).dy;
     final presetCard = tester
         .getTopLeft(
-          find.ancestor(
-            of: find.text('极致流畅'),
-            matching: find.byType(Card),
-          ),
+          find.ancestor(of: find.text('极致流畅'), matching: find.byType(Card)),
         )
         .dy;
     final toggleHeading = tester.getTopLeft(find.text('核心特效开关')).dy;
@@ -182,8 +180,9 @@ void main() {
     expect(toggleCard - toggleHeading, lessThan(40));
   });
 
-  testWidgets('uses static glass material for repeated settings surfaces',
-      (tester) async {
+  testWidgets('uses static glass material for repeated settings surfaces', (
+    tester,
+  ) async {
     await LiquidGlassEffectService.setEnabled(true);
     await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
     await tester.pumpWidget(
@@ -201,17 +200,16 @@ void main() {
 
     expect(find.byType(OptionalLiquidGlassPanel), findsOneWidget);
     expect(
-      find.byKey(
-        const ValueKey<String>('optional-liquid-glass-static-panel'),
-      ),
+      find.byKey(const ValueKey<String>('optional-liquid-glass-static-panel')),
       findsOneWidget,
     );
     expect(find.byType(GlassContainer), findsNothing);
     expect(find.text('Shared settings content'), findsOneWidget);
   });
 
-  testWidgets('scroll optimizer keeps descendants mounted during a gesture',
-      (tester) async {
+  testWidgets('scroll optimizer keeps descendants mounted during a gesture', (
+    tester,
+  ) async {
     const glassChild = Key('glass-scroll-child');
     await tester.pumpWidget(
       MaterialApp(
@@ -240,8 +238,9 @@ void main() {
     await gesture.up();
     await tester.pumpAndSettle();
   });
-  testWidgets('enhanced cards keep their live grouped glass while scrolling',
-      (tester) async {
+  testWidgets('enhanced cards keep their live grouped glass while scrolling', (
+    tester,
+  ) async {
     // Premium warm-up loads real shader assets that the test asset bundle
     // does not ship; silence those environment-only reports.
     final previousErrorHandler = FlutterError.onError;
@@ -294,8 +293,9 @@ void main() {
     expect(find.byKey(staticKey), findsNothing);
   });
 
-  testWidgets('enhanced bottom bar renders one consistent frosted glass',
-      (tester) async {
+  testWidgets('enhanced bottom bar renders one consistent frosted glass', (
+    tester,
+  ) async {
     // Premium warm-up loads real shader assets that the test asset bundle
     // does not ship; silence those environment-only reports.
     final previousErrorHandler = FlutterError.onError;
@@ -344,8 +344,9 @@ void main() {
     expect(border.top.color, Colors.white.withValues(alpha: 0.62));
   });
 
-  testWidgets('standard bottom bar keeps the lightweight shader container',
-      (tester) async {
+  testWidgets('standard bottom bar keeps the lightweight shader container', (
+    tester,
+  ) async {
     await LiquidGlassEffectService.setEnabled(true);
     await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
 
@@ -366,15 +367,17 @@ void main() {
     );
     await tester.pump(const Duration(milliseconds: 16));
 
-    final container =
-        tester.widget<GlassContainer>(find.byType(GlassContainer));
+    final container = tester.widget<GlassContainer>(
+      find.byType(GlassContainer),
+    );
     expect(container.quality, GlassQuality.standard);
     expect(find.byType(BackdropFilter), findsNothing);
     expect(find.text('Bottom bar'), findsOneWidget);
   });
 
-  testWidgets('bottom bar can paint elevated controls above its glass shell',
-      (tester) async {
+  testWidgets('bottom bar can paint elevated controls above its glass shell', (
+    tester,
+  ) async {
     await LiquidGlassEffectService.setEnabled(true);
     await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
 
@@ -405,52 +408,53 @@ void main() {
       ),
       findsNothing,
     );
-    final overflowStack =
-        tester.widgetList<Stack>(find.byType(Stack)).firstWhere(
-              (stack) => stack.clipBehavior == Clip.none,
-            );
+    final overflowStack = tester
+        .widgetList<Stack>(find.byType(Stack))
+        .firstWhere((stack) => stack.clipBehavior == Clip.none);
     expect(overflowStack.fit, StackFit.expand);
   });
 
   testWidgets(
-      'wallpaper cards use a translucent dark material in standard mode',
-      (tester) async {
-    await LiquidGlassEffectService.setEnabled(true);
-    await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
-    final colorScheme = ColorScheme.fromSeed(seedColor: Colors.indigo);
+    'wallpaper cards use a translucent dark material in standard mode',
+    (tester) async {
+      await LiquidGlassEffectService.setEnabled(true);
+      await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
+      final colorScheme = ColorScheme.fromSeed(seedColor: Colors.indigo);
 
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: ThemeData(colorScheme: colorScheme, useMaterial3: true),
-        home: Scaffold(
-          body: OptionalLiquidGlassCard(
-            isDark: true,
-            tint: colorScheme.scrim.withValues(alpha: 0.16),
-            fallbackDecoration: const BoxDecoration(),
-            child: const Text('Wallpaper card'),
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData(colorScheme: colorScheme, useMaterial3: true),
+          home: Scaffold(
+            body: OptionalLiquidGlassCard(
+              isDark: true,
+              tint: colorScheme.scrim.withValues(alpha: 0.16),
+              fallbackDecoration: const BoxDecoration(),
+              child: const Text('Wallpaper card'),
+            ),
           ),
         ),
-      ),
-    );
-    await tester.pump(const Duration(milliseconds: 16));
+      );
+      await tester.pump(const Duration(milliseconds: 16));
 
-    final container = tester.widget<Container>(
-      find.byKey(
-        const ValueKey<String>('optional-liquid-glass-static-panel'),
-      ),
-    );
-    final decoration = container.decoration! as BoxDecoration;
-    final gradient = decoration.gradient! as LinearGradient;
+      final container = tester.widget<Container>(
+        find.byKey(
+          const ValueKey<String>('optional-liquid-glass-static-panel'),
+        ),
+      );
+      final decoration = container.decoration! as BoxDecoration;
+      final gradient = decoration.gradient! as LinearGradient;
 
-    expect(gradient.colors, hasLength(2));
-    for (final color in gradient.colors) {
-      expect(color.computeLuminance(), lessThan(0.08));
-      expect(color.a, lessThan(0.5));
-    }
-  });
+      expect(gradient.colors, hasLength(2));
+      for (final color in gradient.colors) {
+        expect(color.computeLuminance(), lessThan(0.08));
+        expect(color.a, lessThan(0.5));
+      }
+    },
+  );
 
-  testWidgets('wallpaper dashboard cards share one dark glass treatment',
-      (tester) async {
+  testWidgets('wallpaper dashboard cards share one dark glass treatment', (
+    tester,
+  ) async {
     await LiquidGlassEffectService.setEnabled(true);
     await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
     final colorScheme = ColorScheme.fromSeed(seedColor: Colors.green);
@@ -468,11 +472,7 @@ void main() {
                 onOpenSettings: () {},
                 onViewDetail: () {},
               ),
-              MathStatsCard(
-                stats: const {},
-                isLight: true,
-                onTap: () {},
-              ),
+              MathStatsCard(stats: const {}, isLight: true, onTap: () {}),
             ],
           ),
         ),
@@ -496,16 +496,15 @@ void main() {
       expect(gradient.colors.last.a, lessThan(0.5));
     }
 
-    final screenTimeTitle = tester.widget<Text>(
-      find.text('未开启屏幕时间统计'),
-    );
+    final screenTimeTitle = tester.widget<Text>(find.text('未开启屏幕时间统计'));
     final mathTitle = tester.widget<Text>(find.text('今日还未完成测验'));
     expect(screenTimeTitle.style?.color, colorScheme.onPrimary);
     expect(mathTitle.style?.color, colorScheme.onPrimary);
   });
 
-  testWidgets('folder header taps keep toggling expand and collapse',
-      (tester) async {
+  testWidgets('folder header taps keep toggling expand and collapse', (
+    tester,
+  ) async {
     VisibilityDetectorController.instance.updateInterval = Duration.zero;
 
     Future<void> verifyToggling(LiquidGlassEffectMode mode) async {
@@ -523,21 +522,21 @@ void main() {
       var toggles = 0;
       final group = TodoGroup(id: 'folder-toggle-${mode.name}', name: '工作');
       Widget buildFolder() => MaterialApp(
-            home: Scaffold(
-              body: TodoGroupWidget(
-                group: group,
-                groupTodos: const [],
-                isLight: false,
-                teamRoles: const {},
-                onToggle: () => toggles++,
-                onTodoToggle: (_) {},
-                onTodoDropped: (_) {},
-                onDelete: () {},
-                onTodoTap: (_) {},
-                onTodoDelete: (_) {},
-              ),
-            ),
-          );
+        home: Scaffold(
+          body: TodoGroupWidget(
+            group: group,
+            groupTodos: const [],
+            isLight: false,
+            teamRoles: const {},
+            onToggle: () => toggles++,
+            onTodoToggle: (_) {},
+            onTodoDropped: (_) {},
+            onDelete: () {},
+            onTodoTap: (_) {},
+            onTodoDelete: (_) {},
+          ),
+        ),
+      );
 
       await tester.pumpWidget(buildFolder());
       await tester.pump(const Duration(milliseconds: 16));
@@ -572,22 +571,22 @@ void main() {
     VisibilityDetectorController.instance.updateInterval = Duration.zero;
 
     Widget buildFolder({required bool expanded}) => MaterialApp(
-          home: Scaffold(
-            body: TodoGroupWidget(
-              group: TodoGroup(id: 'folder-glass', name: '工作')
-                ..isExpanded = expanded,
-              groupTodos: const [],
-              isLight: false,
-              teamRoles: const {},
-              onToggle: () {},
-              onTodoToggle: (_) {},
-              onTodoDropped: (_) {},
-              onDelete: () {},
-              onTodoTap: (_) {},
-              onTodoDelete: (_) {},
-            ),
-          ),
-        );
+      home: Scaffold(
+        body: TodoGroupWidget(
+          group: TodoGroup(id: 'folder-glass', name: '工作')
+            ..isExpanded = expanded,
+          groupTodos: const [],
+          isLight: false,
+          teamRoles: const {},
+          onToggle: () {},
+          onTodoToggle: (_) {},
+          onTodoDropped: (_) {},
+          onDelete: () {},
+          onTodoTap: (_) {},
+          onTodoDelete: (_) {},
+        ),
+      ),
+    );
 
     BoxDecoration folderDecoration() {
       final container = tester.widget<Container>(
@@ -628,55 +627,62 @@ void main() {
     expect(find.text('工作'), findsOneWidget);
   });
 
-  testWidgets('date-only folder todo stays due today with partial-day progress',
-      (tester) async {
-    VisibilityDetectorController.instance.updateInterval = Duration.zero;
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final todo = TodoItem(
-      id: 'date-only-today',
-      title: '当天完成',
-      createdDate:
-          today.subtract(const Duration(days: 1)).millisecondsSinceEpoch,
-      dueDate: today,
-      isAllDay: true,
-    );
+  testWidgets(
+    'date-only folder todo stays due today with partial-day progress',
+    (tester) async {
+      VisibilityDetectorController.instance.updateInterval = Duration.zero;
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      final todo = TodoItem(
+        id: 'date-only-today',
+        title: '当天完成',
+        createdDate: today
+            .subtract(const Duration(days: 1))
+            .millisecondsSinceEpoch,
+        dueDate: today,
+        isAllDay: true,
+      );
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: SingleChildScrollView(
-            child: TodoGroupWidget(
-              group: TodoGroup(
-                  id: 'date-only-folder', name: '今日', isExpanded: true),
-              groupTodos: [todo],
-              isLight: false,
-              teamRoles: const {},
-              onToggle: () {},
-              onTodoToggle: (_) {},
-              onTodoDropped: (_) {},
-              onDelete: () {},
-              onTodoTap: (_) {},
-              onTodoDelete: (_) {},
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: TodoGroupWidget(
+                group: TodoGroup(
+                  id: 'date-only-folder',
+                  name: '今日',
+                  isExpanded: true,
+                ),
+                groupTodos: [todo],
+                isLight: false,
+                teamRoles: const {},
+                onToggle: () {},
+                onTodoToggle: (_) {},
+                onTodoDropped: (_) {},
+                onDelete: () {},
+                onTodoTap: (_) {},
+                onTodoDelete: (_) {},
+              ),
             ),
           ),
         ),
-      ),
-    );
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 1300));
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 1300));
 
-    expect(find.text('今天截止'), findsOneWidget);
-    expect(find.text('已逾期'), findsNothing);
-    final progressWidths = tester
-        .widgetList<FractionallySizedBox>(find.byType(FractionallySizedBox))
-        .map((bar) => bar.widthFactor)
-        .whereType<double>();
-    expect(progressWidths.any((width) => width > 0 && width < 1), isTrue);
-  });
+      expect(find.text('今天截止'), findsOneWidget);
+      expect(find.text('已逾期'), findsNothing);
+      final progressWidths = tester
+          .widgetList<FractionallySizedBox>(find.byType(FractionallySizedBox))
+          .map((bar) => bar.widthFactor)
+          .whereType<double>();
+      expect(progressWidths.any((width) => width > 0 && width < 1), isTrue);
+    },
+  );
 
-  testWidgets('wallpaper cards keep fallback foregrounds when glass is off',
-      (tester) async {
+  testWidgets('wallpaper cards keep fallback foregrounds when glass is off', (
+    tester,
+  ) async {
     await LiquidGlassEffectService.setEnabled(false);
     await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
     final colorScheme = ColorScheme.fromSeed(seedColor: Colors.green);
@@ -694,11 +700,7 @@ void main() {
                 onOpenSettings: () {},
                 onViewDetail: () {},
               ),
-              MathStatsCard(
-                stats: const {},
-                isLight: true,
-                onTap: () {},
-              ),
+              MathStatsCard(stats: const {}, isLight: true, onTap: () {}),
             ],
           ),
         ),
@@ -707,16 +709,15 @@ void main() {
     await tester.pump(const Duration(milliseconds: 16));
 
     expect(find.byType(GlassContainer), findsNothing);
-    final screenTimeTitle = tester.widget<Text>(
-      find.text('未开启屏幕时间统计'),
-    );
+    final screenTimeTitle = tester.widget<Text>(find.text('未开启屏幕时间统计'));
     final mathTitle = tester.widget<Text>(find.text('今日还未完成测验'));
     expect(screenTimeTitle.style?.color, colorScheme.onPrimary);
     expect(mathTitle.style?.color, colorScheme.onSurface);
   });
 
-  testWidgets('math fallback keeps its rounded outline in dark mode',
-      (tester) async {
+  testWidgets('math fallback keeps its rounded outline in dark mode', (
+    tester,
+  ) async {
     await LiquidGlassEffectService.setEnabled(false);
     final colorScheme = ColorScheme.fromSeed(
       seedColor: Colors.green,
@@ -728,10 +729,7 @@ void main() {
       MaterialApp(
         theme: theme,
         home: Scaffold(
-          body: MathStatsCard(
-            stats: const {},
-            onTap: () {},
-          ),
+          body: MathStatsCard(stats: const {}, onTap: () {}),
         ),
       ),
     );
@@ -746,8 +744,9 @@ void main() {
     expect(border.top.color, theme.dividerColor.withValues(alpha: 0.5));
   });
 
-  testWidgets('course cards use the shared optional glass shell',
-      (tester) async {
+  testWidgets('course cards use the shared optional glass shell', (
+    tester,
+  ) async {
     await LiquidGlassEffectService.setEnabled(true);
     await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
 
@@ -779,43 +778,38 @@ void main() {
 
     expect(find.byType(OptionalLiquidGlassCard), findsOneWidget);
     expect(
-      find.byKey(
-        const ValueKey<String>('optional-liquid-glass-static-panel'),
-      ),
+      find.byKey(const ValueKey<String>('optional-liquid-glass-static-panel')),
       findsOneWidget,
     );
     expect(find.text('高等数学'), findsOneWidget);
   });
 
-  testWidgets('detail header avoids the black first-frame glass layer',
-      (tester) async {
+  testWidgets('detail header avoids the black first-frame glass layer', (
+    tester,
+  ) async {
     await LiquidGlassEffectService.setEnabled(true);
     await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
 
     await tester.pumpWidget(
       const MaterialApp(
         home: Scaffold(
-          body: AppDetailHeader(
-            icon: Icons.class_rounded,
-            title: '高等数学',
-          ),
+          body: AppDetailHeader(icon: Icons.class_rounded, title: '高等数学'),
         ),
       ),
     );
     await tester.pump(const Duration(milliseconds: 16));
 
     expect(
-      find.byKey(
-        const ValueKey<String>('optional-liquid-glass-static-panel'),
-      ),
+      find.byKey(const ValueKey<String>('optional-liquid-glass-static-panel')),
       findsOneWidget,
     );
     expect(find.byType(GlassContainer), findsNothing);
     expect(find.text('高等数学'), findsOneWidget);
   });
 
-  testWidgets('detail screen fades content beneath its top bar',
-      (tester) async {
+  testWidgets('detail screen fades content beneath its top bar', (
+    tester,
+  ) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -828,10 +822,7 @@ void main() {
           icon: Icons.info_outline,
           title: '示例详情',
           sections: [
-            AppDetailSection(
-              title: '信息',
-              children: [SizedBox(height: 700)],
-            ),
+            AppDetailSection(title: '信息', children: [SizedBox(height: 700)]),
           ],
         ),
       ),
@@ -885,10 +876,7 @@ void main() {
       glass.segmentedButtonTheme.style,
     ]) {
       expect(style?.backgroundBuilder, isNotNull);
-      expect(
-        style?.side?.resolve(const <WidgetState>{}),
-        BorderSide.none,
-      );
+      expect(style?.side?.resolve(const <WidgetState>{}), BorderSide.none);
     }
   });
 
@@ -995,10 +983,12 @@ void main() {
     expect(LiquidGlassEffectService.configuration.enabled, isFalse);
     expect(prefs.getBool('enable_liquid_glass'), isFalse);
 
-    final enhancing =
-        LiquidGlassEffectService.setMode(LiquidGlassEffectMode.enhanced);
-    final standardizing =
-        LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
+    final enhancing = LiquidGlassEffectService.setMode(
+      LiquidGlassEffectMode.enhanced,
+    );
+    final standardizing = LiquidGlassEffectService.setMode(
+      LiquidGlassEffectMode.standard,
+    );
     await Future.wait([enhancing, standardizing]);
 
     prefs = await SharedPreferences.getInstance();

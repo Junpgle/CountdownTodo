@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+
 import '../../../models.dart';
 import '../../../storage_service.dart';
 import '../../../services/pomodoro_service.dart';
@@ -27,6 +28,17 @@ class _MonthlyPomodoroSummary {
   }
 }
 
+final Map<(String?, String), DateFormat> _pomodoroStatsDateFormatters = {};
+
+DateFormat _pomodoroStatsDateFormat(String pattern, [String? locale]) {
+  final effectiveLocale = locale ?? Intl.defaultLocale;
+  final key = (effectiveLocale, pattern);
+  return _pomodoroStatsDateFormatters[key] ??= DateFormat(
+    pattern,
+    effectiveLocale,
+  );
+}
+
 class PomodoroStats extends StatefulWidget {
   final String username;
   final bool isCompact;
@@ -47,8 +59,13 @@ class PomodoroStatsState extends State<PomodoroStats> {
   DateTime _selected = DateTime.now();
   List<PomodoroSession> _sessions = [];
   List<PomodoroTag> _tags = [];
+  Map<String, PomodoroTag> _tagsByUuid = {};
+  int _sessionTotalSeconds = 0;
+  Map<String, int> _sessionFocusByTag = {};
+  int _completedSessionCount = 0;
   List<TodoItem> _todos = [];
   List<TodoGroup> _todoGroups = [];
+  Map<String, String> _todoGroupNamesById = {};
   List<_MonthlyPomodoroSummary> _yearlyMonthlySummaries = [];
   Map<int, int> _yearlyFocusSeconds = {};
   Map<String, int> _yearlyTagSeconds = {};
@@ -146,7 +163,9 @@ class PomodoroStatsState extends State<PomodoroStats> {
               tagsTo: detailRange.end,
             )
           : PomodoroService.getSessionsInRange(
-              chartRange.start, chartRange.end),
+              chartRange.start,
+              chartRange.end,
+            ),
     ]);
 
     // 🚀 核心优化：等待 300ms 让进入页面的过渡动画彻底完成
@@ -167,16 +186,19 @@ class PomodoroStatsState extends State<PomodoroStats> {
     var yearlyCompletedCount = 0;
 
     if (isYearly) {
-      monthlySummaries =
-          List.generate(12, (index) => _MonthlyPomodoroSummary(index + 1));
+      monthlySummaries = List.generate(
+        12,
+        (index) => _MonthlyPomodoroSummary(index + 1),
+      );
       final summaries = results[3] as List<PomodoroSessionSummary>;
       final detailStartMs = detailRange.start.millisecondsSinceEpoch;
       final detailEndMs = detailRange.end.millisecondsSinceEpoch;
 
       for (final summary in summaries) {
-        final localStart =
-            DateTime.fromMillisecondsSinceEpoch(summary.startTime, isUtc: true)
-                .toLocal();
+        final localStart = DateTime.fromMillisecondsSinceEpoch(
+          summary.startTime,
+          isUtc: true,
+        ).toLocal();
         yearlyFocusSeconds.update(
           localStart.year,
           (seconds) => seconds + summary.effectiveDuration,
@@ -212,11 +234,53 @@ class PomodoroStatsState extends State<PomodoroStats> {
             session.startTime < detailRange.end.millisecondsSinceEpoch;
       }).toList();
     }
+    sessions.sort((a, b) => b.startTime.compareTo(a.startTime));
+
+    final tagsByUuid = <String, PomodoroTag>{};
+    for (final tag in tags) {
+      tagsByUuid.putIfAbsent(tag.uuid, () => tag);
+    }
+    var sessionTotalSeconds = 0;
+    var completedSessionCount = 0;
+    final sessionFocusByTag = <String, int>{};
+    for (final session in sessions) {
+      final duration = session.effectiveDuration;
+      sessionTotalSeconds += duration;
+      if (session.isCompleted) completedSessionCount++;
+      if (session.tagUuids.isEmpty) {
+        sessionFocusByTag.update(
+          '__none__',
+          (seconds) => seconds + duration,
+          ifAbsent: () => duration,
+        );
+      } else {
+        for (final uuid in session.tagUuids) {
+          sessionFocusByTag.update(
+            uuid,
+            (seconds) => seconds + duration,
+            ifAbsent: () => duration,
+          );
+        }
+      }
+    }
+
+    final todoGroups = groups.where((g) => !g.isDeleted).toList();
+    final todoGroupNamesById = <String, String>{};
+    for (final group in todoGroups) {
+      if (!todoGroupNamesById.containsKey(group.id)) {
+        todoGroupNamesById[group.id] = group.name;
+      }
+    }
 
     setState(() {
       _tags = tags;
+      _tagsByUuid = tagsByUuid;
+      _sessionTotalSeconds = sessionTotalSeconds;
+      _sessionFocusByTag = sessionFocusByTag;
+      _completedSessionCount = completedSessionCount;
       _todos = allTodos.where((t) => !t.isDeleted).toList();
-      _todoGroups = groups.where((g) => !g.isDeleted).toList();
+      _todoGroups = todoGroups;
+      _todoGroupNamesById = todoGroupNamesById;
       _chartSessions = chartSessions;
       _sessions = sessions;
       _yearlyMonthlySummaries = monthlySummaries;
@@ -269,15 +333,19 @@ class PomodoroStatsState extends State<PomodoroStats> {
   }
 
   String _rangeLabel() {
-    if (_dimension == 0) return DateFormat('yyyy年MM月dd日').format(_selected);
+    if (_dimension == 0) {
+      return _pomodoroStatsDateFormat('yyyy年MM月dd日').format(_selected);
+    }
     if (_dimension == 1) {
       final range = _getRange();
-      final startStr = DateFormat('MM/dd').format(range.start);
-      final endStr = DateFormat('MM/dd')
+      final startStr = _pomodoroStatsDateFormat('MM/dd').format(range.start);
+      final endStr = _pomodoroStatsDateFormat('MM/dd')
           .format(range.end.subtract(const Duration(seconds: 1)));
       return '$startStr - $endStr';
     }
-    if (_dimension == 2) return DateFormat('yyyy年MM月').format(_selected);
+    if (_dimension == 2) {
+      return _pomodoroStatsDateFormat('yyyy年MM月').format(_selected);
+    }
     return '${_selected.year}年';
   }
 
@@ -314,7 +382,8 @@ class PomodoroStatsState extends State<PomodoroStats> {
   @override
   Widget build(BuildContext context) {
     if (_loading) return _buildSkeleton();
-    final bool isDesktop = !kIsWeb &&
+    final bool isDesktop =
+        !kIsWeb &&
         (defaultTargetPlatform == TargetPlatform.windows ||
             defaultTargetPlatform == TargetPlatform.linux ||
             defaultTargetPlatform == TargetPlatform.macOS);
@@ -322,20 +391,22 @@ class PomodoroStatsState extends State<PomodoroStats> {
 
     final totalSecs = _dimension == 3
         ? _yearlyTotalSeconds
-        : PomodoroService.totalFocusSeconds(_sessions);
-    final byTag = _dimension == 3
-        ? _yearlyTagSeconds
-        : PomodoroService.focusByTag(_sessions);
+        : _sessionTotalSeconds;
+    final byTag = _dimension == 3 ? _yearlyTagSeconds : _sessionFocusByTag;
     final completedCount = _dimension == 3
         ? _yearlyCompletedCount
-        : _sessions.where((s) => s.isCompleted).length;
+        : _completedSessionCount;
 
     return MediaQuery.removePadding(
       context: context,
       removeTop: true,
       child: SingleChildScrollView(
-        padding: EdgeInsets.fromLTRB(widget.isCompact ? 16 : 20,
-            widget.isCompact ? 4 : 12, widget.isCompact ? 16 : 20, 24),
+        padding: EdgeInsets.fromLTRB(
+          widget.isCompact ? 16 : 20,
+          widget.isCompact ? 4 : 12,
+          widget.isCompact ? 16 : 20,
+          24,
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -351,9 +422,13 @@ class PomodoroStatsState extends State<PomodoroStats> {
                       icon: const Icon(Icons.arrow_back),
                       onPressed: () => Navigator.maybePop(context),
                     ),
-                    const Text('专注统计',
-                        style: TextStyle(
-                            fontSize: 18, fontWeight: FontWeight.bold)),
+                    const Text(
+                      '专注统计',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -363,25 +438,35 @@ class PomodoroStatsState extends State<PomodoroStats> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 IconButton.filledTonal(
-                    visualDensity:
-                        widget.isCompact ? VisualDensity.compact : null,
-                    icon: Icon(Icons.chevron_left,
-                        size: widget.isCompact ? 18 : 24),
-                    onPressed: _prev),
+                  visualDensity: widget.isCompact
+                      ? VisualDensity.compact
+                      : null,
+                  icon: Icon(
+                    Icons.chevron_left,
+                    size: widget.isCompact ? 18 : 24,
+                  ),
+                  onPressed: _prev,
+                ),
                 InkWell(
                   onTap: () => setState(
-                      () => _showDimensionPicker = !_showDimensionPicker),
+                    () => _showDimensionPicker = !_showDimensionPicker,
+                  ),
                   borderRadius: BorderRadius.circular(8),
                   child: Padding(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(_rangeLabel(),
-                            style: TextStyle(
-                                fontSize: widget.isCompact ? 14 : 18,
-                                fontWeight: FontWeight.bold)),
+                        Text(
+                          _rangeLabel(),
+                          style: TextStyle(
+                            fontSize: widget.isCompact ? 14 : 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                         if (widget.isCompact) ...[
                           const SizedBox(width: 4),
                           Icon(
@@ -397,11 +482,15 @@ class PomodoroStatsState extends State<PomodoroStats> {
                   ),
                 ),
                 IconButton.filledTonal(
-                    visualDensity:
-                        widget.isCompact ? VisualDensity.compact : null,
-                    icon: Icon(Icons.chevron_right,
-                        size: widget.isCompact ? 18 : 24),
-                    onPressed: _next),
+                  visualDensity: widget.isCompact
+                      ? VisualDensity.compact
+                      : null,
+                  icon: Icon(
+                    Icons.chevron_right,
+                    size: widget.isCompact ? 18 : 24,
+                  ),
+                  onPressed: _next,
+                ),
               ],
             ),
 
@@ -411,29 +500,41 @@ class PomodoroStatsState extends State<PomodoroStats> {
                 child: SegmentedButton<int>(
                   segments: [
                     ButtonSegment(
-                        value: 0,
-                        label: Padding(
-                            padding: EdgeInsets.symmetric(
-                                horizontal: widget.isCompact ? 4 : 12),
-                            child: const Text('日'))),
+                      value: 0,
+                      label: Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: widget.isCompact ? 4 : 12,
+                        ),
+                        child: const Text('日'),
+                      ),
+                    ),
                     ButtonSegment(
-                        value: 1,
-                        label: Padding(
-                            padding: EdgeInsets.symmetric(
-                                horizontal: widget.isCompact ? 4 : 8),
-                            child: const Text('周'))),
+                      value: 1,
+                      label: Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: widget.isCompact ? 4 : 8,
+                        ),
+                        child: const Text('周'),
+                      ),
+                    ),
                     ButtonSegment(
-                        value: 2,
-                        label: Padding(
-                            padding: EdgeInsets.symmetric(
-                                horizontal: widget.isCompact ? 4 : 12),
-                            child: const Text('月'))),
+                      value: 2,
+                      label: Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: widget.isCompact ? 4 : 12,
+                        ),
+                        child: const Text('月'),
+                      ),
+                    ),
                     ButtonSegment(
-                        value: 3,
-                        label: Padding(
-                            padding: EdgeInsets.symmetric(
-                                horizontal: widget.isCompact ? 4 : 12),
-                            child: const Text('年'))),
+                      value: 3,
+                      label: Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: widget.isCompact ? 4 : 12,
+                        ),
+                        child: const Text('年'),
+                      ),
+                    ),
                   ],
                   selected: {_dimension},
                   onSelectionChanged: (s) {
@@ -455,11 +556,14 @@ class PomodoroStatsState extends State<PomodoroStats> {
             const SizedBox(height: 20),
 
             RepaintBoundary(
-                child: _buildSummaryCard(totalSecs, completedCount)),
+              child: _buildSummaryCard(totalSecs, completedCount),
+            ),
 
             const SizedBox(height: 20),
-            const Text('标签分布',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            const Text(
+              '标签分布',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
             const SizedBox(height: 12),
             RepaintBoundary(child: _buildTagDistribution(byTag, totalSecs)),
 
@@ -467,14 +571,19 @@ class PomodoroStatsState extends State<PomodoroStats> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(_dimension == 3 ? '逐月概览' : '详细记录',
-                    style: const TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.bold)),
+                Text(
+                  _dimension == 3 ? '逐月概览' : '详细记录',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
                 if (_syncing)
                   const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2))
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
                 else if (showDesktopActions)
                   TextButton.icon(
                     onPressed: _syncAndRefresh,
@@ -505,52 +614,83 @@ class PomodoroStatsState extends State<PomodoroStats> {
   }
 
   Widget _buildTrendChart() {
-    // Generate 7 data points for the last 7 units
-    List<ChartData> dataPoints = [];
+    // Prepare seven adjacent bucket starts, then aggregate each session once.
     final chartRange = _getChartRange();
+    final bucketStarts = List<DateTime>.generate(7, (index) {
+      if (_dimension == 0) {
+        return CalendarDateMath.addDays(chartRange.start, index);
+      }
+      if (_dimension == 1) {
+        return CalendarDateMath.addDays(chartRange.start, index * 7);
+      }
+      if (_dimension == 2) {
+        return DateTime(
+          chartRange.start.year,
+          chartRange.start.month + index,
+          1,
+        );
+      }
+      return DateTime(chartRange.start.year + index, 1, 1);
+    }, growable: false);
+    final bucketStartEpochs = bucketStarts
+        .map((start) => start.millisecondsSinceEpoch)
+        .toList(growable: false);
+    final focusSecondsByBucket = List<int>.filled(7, 0);
+    final chartEndEpoch = chartRange.end.millisecondsSinceEpoch;
+    if (_dimension != 3) {
+      for (final session in _chartSessions) {
+        final startEpoch = session.startTime;
+        if (startEpoch < bucketStartEpochs.first ||
+            startEpoch >= chartEndEpoch) {
+          continue;
+        }
+
+        var low = 0;
+        var high = bucketStartEpochs.length;
+        while (low < high) {
+          final middle = (low + high) >> 1;
+          if (bucketStartEpochs[middle] <= startEpoch) {
+            low = middle + 1;
+          } else {
+            high = middle;
+          }
+        }
+        final bucketIndex = low - 1;
+        if (bucketIndex >= 0) {
+          focusSecondsByBucket[bucketIndex] += session.effectiveDuration;
+        }
+      }
+    }
+
+    final selectedWeekRange = _dimension == 1 ? _getRange() : null;
+    final dataPoints = <ChartData>[];
 
     for (int i = 0; i < 7; i++) {
-      DateTime start, end;
+      final start = bucketStarts[i];
       String label;
       bool isSelected = false;
 
       if (_dimension == 0) {
-        // Day
-        start = CalendarDateMath.addDays(chartRange.start, i);
-        end = CalendarDateMath.addDays(start, 1);
-        label = DateFormat('MM/dd').format(start);
-        isSelected = start.year == _selected.year &&
+        label = _pomodoroStatsDateFormat('MM/dd').format(start);
+        isSelected =
+            start.year == _selected.year &&
             start.month == _selected.month &&
             start.day == _selected.day;
       } else if (_dimension == 1) {
-        // Week
-        start = CalendarDateMath.addDays(chartRange.start, i * 7);
-        end = CalendarDateMath.addDays(start, 7);
-        label = DateFormat('MM/dd').format(start);
-        final selRange = _getRange();
-        isSelected = start.isAtSameMomentAs(selRange.start);
+        label = _pomodoroStatsDateFormat('MM/dd').format(start);
+        isSelected = start.isAtSameMomentAs(selectedWeekRange!.start);
       } else if (_dimension == 2) {
-        // Month
-        start = DateTime(chartRange.start.year, chartRange.start.month + i, 1);
-        end = DateTime(start.year, start.month + 1, 1);
-        label = DateFormat('MM月').format(start);
+        label = _pomodoroStatsDateFormat('MM月').format(start);
         isSelected =
             start.year == _selected.year && start.month == _selected.month;
       } else {
-        // Year
-        start = DateTime(chartRange.start.year + i, 1, 1);
-        end = DateTime(start.year + 1, 1, 1);
         label = '${start.year}';
         isSelected = start.year == _selected.year;
       }
 
       final focusSecs = _dimension == 3
           ? (_yearlyFocusSeconds[start.year] ?? 0)
-          : _chartSessions
-              .where((s) =>
-                  s.startTime >= start.millisecondsSinceEpoch &&
-                  s.startTime < end.millisecondsSinceEpoch)
-              .fold(0, (sum, s) => sum + s.effectiveDuration);
+          : focusSecondsByBucket[i];
       dataPoints.add(ChartData(label, focusSecs, isSelected, start));
     }
 
@@ -576,7 +716,7 @@ class PomodoroStatsState extends State<PomodoroStats> {
         gradient: LinearGradient(
           colors: [
             colorScheme.primaryContainer,
-            colorScheme.surfaceContainerHighest
+            colorScheme.surfaceContainerHighest,
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -594,20 +734,27 @@ class PomodoroStatsState extends State<PomodoroStats> {
                 RichText(
                   text: TextSpan(
                     style: TextStyle(
-                        color: colorScheme.onSurface,
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold),
+                      color: colorScheme.onSurface,
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                    ),
                     children: [
                       TextSpan(text: '$h'),
                       const TextSpan(
-                          text: ' 小时 ',
-                          style: TextStyle(
-                              fontSize: 14, fontWeight: FontWeight.normal)),
+                        text: ' 小时 ',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.normal,
+                        ),
+                      ),
                       TextSpan(text: '$m'),
                       const TextSpan(
-                          text: ' 分钟',
-                          style: TextStyle(
-                              fontSize: 14, fontWeight: FontWeight.normal)),
+                        text: ' 分钟',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.normal,
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -622,11 +769,14 @@ class PomodoroStatsState extends State<PomodoroStats> {
             ),
             child: Column(
               children: [
-                Text('$completedCount',
-                    style: TextStyle(
-                        color: colorScheme.primary,
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold)),
+                Text(
+                  '$completedCount',
+                  style: TextStyle(
+                    color: colorScheme.primary,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
                 const Text('完成番茄', style: TextStyle(fontSize: 11)),
               ],
             ),
@@ -642,9 +792,7 @@ class PomodoroStatsState extends State<PomodoroStats> {
         height: 100,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: Theme.of(context)
-              .colorScheme
-              .surfaceContainerHighest
+          color: Theme.of(context).colorScheme.surfaceContainerHighest
               .withValues(alpha: 0.3),
           borderRadius: BorderRadius.circular(16),
         ),
@@ -657,9 +805,7 @@ class PomodoroStatsState extends State<PomodoroStats> {
 
     return Column(
       children: sorted.map((e) {
-        final tag = _tags
-            .cast<PomodoroTag?>()
-            .firstWhere((t) => t?.uuid == e.key, orElse: () => null);
+        final tag = _tagsByUuid[e.key];
         final name = tag?.name ?? '未知';
         final color = AppColorUtils.parseHex(tag?.color ?? '#9E9E9E');
         final pct = totalSecs > 0 ? e.value / totalSecs : 0.0;
@@ -672,10 +818,14 @@ class PomodoroStatsState extends State<PomodoroStats> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(name,
-                      style: const TextStyle(fontWeight: FontWeight.w500)),
-                  Text(PomodoroService.formatDuration(e.value),
-                      style: const TextStyle(color: Colors.grey)),
+                  Text(
+                    name,
+                    style: const TextStyle(fontWeight: FontWeight.w500),
+                  ),
+                  Text(
+                    PomodoroService.formatDuration(e.value),
+                    style: const TextStyle(color: Colors.grey),
+                  ),
                 ],
               ),
               const SizedBox(height: 6),
@@ -696,40 +846,60 @@ class PomodoroStatsState extends State<PomodoroStats> {
   }
 
   List<Widget> _buildSessionList() {
-    final sorted = List<PomodoroSession>.from(_sessions)
-      ..sort((a, b) => b.startTime.compareTo(a.startTime));
+    final timeFormatter = _pomodoroStatsDateFormat('HH:mm');
 
     if (_dimension == 0) {
-      return sorted.map((s) => _buildSessionCard(s, showDate: false)).toList();
+      return _sessions.map((session) {
+        final localStart = DateTime.fromMillisecondsSinceEpoch(
+          session.startTime,
+          isUtc: true,
+        ).toLocal();
+        return _buildSessionCard(
+          session,
+          startLocal: localStart,
+          timeFormatter: timeFormatter,
+        );
+      }).toList();
     }
 
-    final Map<String, List<PomodoroSession>> groups = {};
-    for (final s in sorted) {
-      final local =
-          DateTime.fromMillisecondsSinceEpoch(s.startTime, isUtc: true)
-              .toLocal();
-      final key = DateFormat('yyyy-MM-dd').format(local);
-      groups.putIfAbsent(key, () => []).add(s);
-    }
-    final sortedKeys = groups.keys.toList()..sort((a, b) => b.compareTo(a));
-
+    final dayLabelFormatter = (_dimension == 1 || _dimension == 2)
+        ? _pomodoroStatsDateFormat('MM月dd日')
+        : _pomodoroStatsDateFormat('yyyy年MM月dd日');
     final widgets = <Widget>[];
-    for (final key in sortedKeys) {
-      final dayDate = DateTime.parse(key);
-      final dayLabel = (_dimension == 1 || _dimension == 2)
-          ? DateFormat('MM月dd日').format(dayDate)
-          : DateFormat('yyyy年MM月dd日').format(dayDate);
-      widgets.add(Padding(
-        padding: const EdgeInsets.only(top: 16, bottom: 8),
-        child: Text(dayLabel,
-            style: TextStyle(
+    DateTime? previousDay;
+    for (final session in _sessions) {
+      final localStart = DateTime.fromMillisecondsSinceEpoch(
+        session.startTime,
+        isUtc: true,
+      ).toLocal();
+      final isNewDay =
+          previousDay == null ||
+          previousDay.year != localStart.year ||
+          previousDay.month != localStart.month ||
+          previousDay.day != localStart.day;
+      if (isNewDay) {
+        widgets.add(
+          Padding(
+            padding: const EdgeInsets.only(top: 16, bottom: 8),
+            child: Text(
+              dayLabelFormatter.format(localStart),
+              style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
-                color: Theme.of(context).colorScheme.onSurfaceVariant)),
-      ));
-      for (final s in groups[key]!) {
-        widgets.add(_buildSessionCard(s, showDate: false));
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+        );
       }
+      widgets.add(
+        _buildSessionCard(
+          session,
+          startLocal: localStart,
+          timeFormatter: timeFormatter,
+        ),
+      );
+      previousDay = localStart;
     }
     return widgets;
   }
@@ -814,8 +984,9 @@ class PomodoroStatsState extends State<PomodoroStats> {
                       child: LinearProgressIndicator(
                         value: ratio,
                         minHeight: 4,
-                        backgroundColor:
-                            colorScheme.primary.withValues(alpha: 0.1),
+                        backgroundColor: colorScheme.primary.withValues(
+                          alpha: 0.1,
+                        ),
                         color: colorScheme.primary,
                       ),
                     ),
@@ -837,91 +1008,115 @@ class PomodoroStatsState extends State<PomodoroStats> {
     _loadLocal();
   }
 
-  Widget _buildSessionCard(PomodoroSession s, {required bool showDate}) {
-    final startLocal =
-        DateTime.fromMillisecondsSinceEpoch(s.startTime, isUtc: true).toLocal();
+  Widget _buildSessionCard(
+    PomodoroSession s, {
+    required DateTime startLocal,
+    required DateFormat timeFormatter,
+  }) {
     final tagNames = s.tagUuids.isNotEmpty
-        ? s.tagUuids
-            .map((uuid) =>
-                _tags
-                    .cast<PomodoroTag?>()
-                    .firstWhere((t) => t?.uuid == uuid, orElse: () => null)
-                    ?.name ??
-                uuid)
-            .join(', ')
+        ? s.tagUuids.map((uuid) => _tagsByUuid[uuid]?.name ?? uuid).join(', ')
         : null;
-    final timeLabel = showDate
-        ? DateFormat('MM-dd HH:mm').format(startLocal)
-        : DateFormat('HH:mm').format(startLocal);
+    final timeLabel = timeFormatter.format(startLocal);
     final cardKey = GlobalKey();
 
     final content = widget.isCompact
-        ? Row(children: [
-            Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: s.isCompleted
-                    ? const Color(0xFF4ECDC4).withValues(alpha: 0.2)
-                    : const Color(0xFFFF6B6B).withValues(alpha: 0.2),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
+        ? Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: s.isCompleted
+                      ? const Color(0xFF4ECDC4).withValues(alpha: 0.2)
+                      : const Color(0xFFFF6B6B).withValues(alpha: 0.2),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
                   s.isCompleted
                       ? Icons.check_circle_rounded
                       : Icons.timer_off_rounded,
                   color: s.isCompleted
                       ? const Color(0xFF4ECDC4)
                       : const Color(0xFFFF6B6B),
-                  size: 14),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
+                  size: 14,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
                 child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                  Text(s.todoTitle ?? '自由专注',
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      s.todoTitle ?? '自由专注',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                          fontWeight: FontWeight.w600, fontSize: 13)),
-                  const SizedBox(height: 2),
-                  Row(children: [
-                    Text(timeLabel,
-                        style:
-                            const TextStyle(fontSize: 10, color: Colors.grey)),
-                    if (tagNames != null) ...[
-                      const SizedBox(width: 6),
-                      Flexible(
-                          child: Text(tagNames,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        Text(
+                          timeLabel,
+                          style: const TextStyle(
+                            fontSize: 10,
+                            color: Colors.grey,
+                          ),
+                        ),
+                        if (tagNames != null) ...[
+                          const SizedBox(width: 6),
+                          Flexible(
+                            child: Text(
+                              tagNames,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
-                                  fontSize: 10, color: Colors.grey)))
-                    ],
-                  ]),
-                  if (s.note != null && s.note!.isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    Text(s.note!,
+                                fontSize: 10,
+                                color: Colors.grey,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    if (s.note != null && s.note!.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        s.note!,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style:
-                            const TextStyle(fontSize: 10, color: Colors.grey)),
+                        style: const TextStyle(
+                          fontSize: 10,
+                          color: Colors.grey,
+                        ),
+                      ),
+                    ],
                   ],
-                ])),
-            const SizedBox(width: 8),
-            Text(PomodoroService.formatDuration(s.effectiveDuration),
-                style:
-                    const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-            IconButton(
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                PomodoroService.formatDuration(s.effectiveDuration),
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                ),
+              ),
+              IconButton(
                 icon: const Icon(Icons.more_vert, size: 16),
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(),
-                onPressed: () => _editSession(s)),
-          ])
+                onPressed: () => _editSession(s),
+              ),
+            ],
+          )
         : ListTile(
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 4,
+            ),
             leading: Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
@@ -931,61 +1126,82 @@ class PomodoroStatsState extends State<PomodoroStats> {
                 shape: BoxShape.circle,
               ),
               child: Icon(
-                  s.isCompleted
-                      ? Icons.check_circle_rounded
-                      : Icons.timer_off_rounded,
-                  color: s.isCompleted
-                      ? const Color(0xFF4ECDC4)
-                      : const Color(0xFFFF6B6B)),
+                s.isCompleted
+                    ? Icons.check_circle_rounded
+                    : Icons.timer_off_rounded,
+                color: s.isCompleted
+                    ? const Color(0xFF4ECDC4)
+                    : const Color(0xFFFF6B6B),
+              ),
             ),
-            title: Text(s.todoTitle ?? '自由专注',
-                style: const TextStyle(fontWeight: FontWeight.w600)),
+            title: Text(
+              s.todoTitle ?? '自由专注',
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
             subtitle: Padding(
               padding: const EdgeInsets.only(top: 4),
               child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(children: [
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
                       Text(timeLabel, style: const TextStyle(fontSize: 13)),
                       if (tagNames != null) ...[
                         const SizedBox(width: 8),
                         Flexible(
-                            child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
                               color: Theme.of(context)
                                   .colorScheme
                                   .surfaceContainerHighest,
-                              borderRadius: BorderRadius.circular(4)),
-                          child: Text(tagNames,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              tagNames,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(fontSize: 11)),
-                        ))
+                              style: const TextStyle(fontSize: 11),
+                            ),
+                          ),
+                        ),
                       ],
-                    ]),
-                    if (s.note != null && s.note!.isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Text(s.note!,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                              fontSize: 11, color: Colors.grey)),
                     ],
-                  ]),
+                  ),
+                  if (s.note != null && s.note!.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      s.note!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 11, color: Colors.grey),
+                    ),
+                  ],
+                ],
+              ),
             ),
-            trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-              Text(PomodoroService.formatDuration(s.effectiveDuration),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  PomodoroService.formatDuration(s.effectiveDuration),
                   style: const TextStyle(
-                      fontWeight: FontWeight.bold, fontSize: 16)),
-              const SizedBox(width: 4),
-              IconButton(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                IconButton(
                   icon: const Icon(Icons.more_vert, size: 20),
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(),
-                  onPressed: () => _editSession(s)),
-            ]),
+                  onPressed: () => _editSession(s),
+                ),
+              ],
+            ),
           );
 
     return OptionalLiquidGlassCard(
@@ -993,9 +1209,7 @@ class PomodoroStatsState extends State<PomodoroStats> {
       borderRadius: widget.isCompact ? 12 : 16,
       margin: const EdgeInsets.only(bottom: 8),
       fallbackDecoration: BoxDecoration(
-        color: Theme.of(context)
-            .colorScheme
-            .surfaceContainerHighest
+        color: Theme.of(context).colorScheme.surfaceContainerHighest
             .withValues(alpha: 0.3),
         borderRadius: BorderRadius.circular(widget.isCompact ? 12 : 16),
       ),
@@ -1004,20 +1218,19 @@ class PomodoroStatsState extends State<PomodoroStats> {
         onTap: () {
           PageTransitions.pushFromRect(
             context: context,
-            page: PomodoroDetailScreen(
-              record: s,
-              tags: _tags,
-            ),
+            page: PomodoroDetailScreen(record: s, tags: _tags),
             sourceKey: cardKey,
-            sourceBorderRadius:
-                BorderRadius.circular(widget.isCompact ? 12 : 16),
+            sourceBorderRadius: BorderRadius.circular(
+              widget.isCompact ? 12 : 16,
+            ),
           );
         },
         child: Padding(
-            padding: widget.isCompact
-                ? const EdgeInsets.symmetric(horizontal: 10, vertical: 8)
-                : EdgeInsets.zero,
-            child: content),
+          padding: widget.isCompact
+              ? const EdgeInsets.symmetric(horizontal: 10, vertical: 8)
+              : EdgeInsets.zero,
+          child: content,
+        ),
       ),
     );
   }
@@ -1045,37 +1258,43 @@ class PomodoroStatsState extends State<PomodoroStats> {
 
     String? currentHeader;
     if (matchingTodos.isEmpty) {
-      items.add(Padding(
-        padding: const EdgeInsets.symmetric(vertical: 24),
-        child: Center(
-          child: Text(query.isEmpty ? '暂无可绑定的待办' : '没有找到匹配的任务'),
+      items.add(
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 24),
+          child: Center(child: Text(query.isEmpty ? '暂无可绑定的待办' : '没有找到匹配的任务')),
         ),
-      ));
+      );
     }
     for (final todo in matchingTodos) {
       final header = '${todo.isDone ? "已完成" : "未完成"} · ${_todoGroupName(todo)}';
       if (header != currentHeader) {
         currentHeader = header;
-        items.add(Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-          child: Text(
-            header,
-            style: TextStyle(
-              color: Theme.of(dialogContext).colorScheme.primary,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
+        items.add(
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+            child: Text(
+              header,
+              style: TextStyle(
+                color: Theme.of(dialogContext).colorScheme.primary,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
-        ));
+        );
       }
-      items.add(ListTile(
-        title: Text(todo.title),
-        subtitle: _todoPickerSubtitle(todo),
-        leading: Icon(todo.isDone
-            ? Icons.check_circle_outline
-            : Icons.radio_button_unchecked),
-        onTap: () => Navigator.pop(dialogContext, todo),
-      ));
+      items.add(
+        ListTile(
+          title: Text(todo.title),
+          subtitle: _todoPickerSubtitle(todo),
+          leading: Icon(
+            todo.isDone
+                ? Icons.check_circle_outline
+                : Icons.radio_button_unchecked,
+          ),
+          onTap: () => Navigator.pop(dialogContext, todo),
+        ),
+      );
     }
     return items;
   }
@@ -1089,12 +1308,21 @@ class PomodoroStatsState extends State<PomodoroStats> {
   }
 
   List<TodoItem> _sortTodosForPicker(
-      List<TodoItem> todos, List<TodoGroup> groups) {
+    List<TodoItem> todos,
+    List<TodoGroup> groups,
+  ) {
+    final groupIndices = <String, int>{};
+    for (var index = 0; index < groups.length; index++) {
+      final groupId = groups[index].id;
+      if (!groupIndices.containsKey(groupId)) {
+        groupIndices[groupId] = index;
+      }
+    }
+
     int groupRank(TodoItem todo) {
       final groupId = todo.groupId;
       if (groupId == null || groupId.isEmpty) return 1 << 30;
-      final idx = groups.indexWhere((group) => group.id == groupId);
-      return idx == -1 ? (1 << 30) - 1 : idx;
+      return groupIndices[groupId] ?? (1 << 30) - 1;
     }
 
     int urgencyMs(TodoItem todo) {
@@ -1105,25 +1333,20 @@ class PomodoroStatsState extends State<PomodoroStats> {
       return 1 << 62;
     }
 
-    return List<TodoItem>.from(todos)
-      ..sort((a, b) {
-        if (a.isDone != b.isDone) return a.isDone ? 1 : -1;
-        final groupCompare = groupRank(a).compareTo(groupRank(b));
-        if (groupCompare != 0) return groupCompare;
-        final urgencyCompare = urgencyMs(a).compareTo(urgencyMs(b));
-        if (urgencyCompare != 0) return urgencyCompare;
-        return a.title.compareTo(b.title);
-      });
+    return List<TodoItem>.from(todos)..sort((a, b) {
+      if (a.isDone != b.isDone) return a.isDone ? 1 : -1;
+      final groupCompare = groupRank(a).compareTo(groupRank(b));
+      if (groupCompare != 0) return groupCompare;
+      final urgencyCompare = urgencyMs(a).compareTo(urgencyMs(b));
+      if (urgencyCompare != 0) return urgencyCompare;
+      return a.title.compareTo(b.title);
+    });
   }
 
   String _todoGroupName(TodoItem todo) {
     final groupId = todo.groupId;
     if (groupId == null || groupId.isEmpty) return '未分类';
-    return _todoGroups
-            .cast<TodoGroup?>()
-            .firstWhere((group) => group?.id == groupId, orElse: () => null)
-            ?.name ??
-        '未知分类';
+    return _todoGroupNamesById[groupId] ?? '未知分类';
   }
 
   Future<void> _editSession(PomodoroSession session) async {
@@ -1160,15 +1383,17 @@ class PomodoroStatsState extends State<PomodoroStats> {
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, sd) {
           return Padding(
             padding: EdgeInsets.only(
-                bottom: MediaQuery.of(ctx).viewInsets.bottom,
-                left: 20,
-                right: 20,
-                top: 20),
+              bottom: MediaQuery.of(ctx).viewInsets.bottom,
+              left: 20,
+              right: 20,
+              top: 20,
+            ),
             child: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -1177,88 +1402,117 @@ class PomodoroStatsState extends State<PomodoroStats> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('编辑专注记录',
-                          style: TextStyle(
-                              fontSize: 18, fontWeight: FontWeight.bold)),
+                      const Text(
+                        '编辑专注记录',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                       IconButton(
-                          icon: const Icon(Icons.delete_outline,
-                              color: Colors.red),
-                          onPressed: () async {
-                            Navigator.pop(ctx);
-                            await _deleteSession(session);
-                          }),
+                        icon: const Icon(
+                          Icons.delete_outline,
+                          color: Colors.red,
+                        ),
+                        onPressed: () async {
+                          Navigator.pop(ctx);
+                          await _deleteSession(session);
+                        },
+                      ),
                     ],
                   ),
                   const Divider(),
                   const SizedBox(height: 8),
-                  const Text('专注开始时间',
-                      style: TextStyle(
-                          fontWeight: FontWeight.w600, color: Colors.grey)),
+                  const Text(
+                    '专注开始时间',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey,
+                    ),
+                  ),
                   const SizedBox(height: 4),
-                  Text(DateFormat('yyyy-MM-dd HH:mm:ss').format(
-                      DateTime.fromMillisecondsSinceEpoch(editSession.startTime,
-                              isUtc: true)
-                          .toLocal())),
+                  Text(
+                    _pomodoroStatsDateFormat('yyyy-MM-dd HH:mm:ss').format(
+                      DateTime.fromMillisecondsSinceEpoch(
+                        editSession.startTime,
+                        isUtc: true,
+                      ).toLocal(),
+                    ),
+                  ),
                   const SizedBox(height: 16),
-                  const Text('专注结束时间',
-                      style: TextStyle(fontWeight: FontWeight.w600)),
+                  const Text(
+                    '专注结束时间',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
                   const SizedBox(height: 8),
                   InkWell(
                     borderRadius: BorderRadius.circular(12),
                     onTap: () async {
                       final currentEnd = DateTime.fromMillisecondsSinceEpoch(
-                              editSession.endTime ?? editSession.startTime,
-                              isUtc: true)
-                          .toLocal();
+                        editSession.endTime ?? editSession.startTime,
+                        isUtc: true,
+                      ).toLocal();
                       final pickedTime = await showAppTimePicker(
-                          context: ctx,
-                          initialTime: TimeOfDay.fromDateTime(currentEnd));
+                        context: ctx,
+                        initialTime: TimeOfDay.fromDateTime(currentEnd),
+                      );
                       if (pickedTime != null) {
                         final newEnd = DateTime(
-                            currentEnd.year,
-                            currentEnd.month,
-                            currentEnd.day,
-                            pickedTime.hour,
-                            pickedTime.minute);
+                          currentEnd.year,
+                          currentEnd.month,
+                          currentEnd.day,
+                          pickedTime.hour,
+                          pickedTime.minute,
+                        );
                         if (newEnd.millisecondsSinceEpoch <=
                             editSession.startTime) {
                           if (ctx.mounted) {
-                            AppSnackBars.showSnackBar(ctx,
-                                const SnackBar(content: Text('结束时间必须晚于开始时间')));
+                            AppSnackBars.showSnackBar(
+                              ctx,
+                              const SnackBar(content: Text('结束时间必须晚于开始时间')),
+                            );
                           }
                           return;
                         }
                         sd(() {
-                          editSession.endTime =
-                              newEnd.toUtc().millisecondsSinceEpoch;
+                          editSession.endTime = newEnd
+                              .toUtc()
+                              .millisecondsSinceEpoch;
                           final totalSeconds =
                               ((editSession.endTime! - editSession.startTime) /
                                       1000)
                                   .round();
-                          editSession.actualDuration = (totalSeconds -
-                                  (editSession.totalPauseSeconds ?? 0))
-                              .clamp(0, totalSeconds);
+                          editSession.actualDuration =
+                              (totalSeconds -
+                                      (editSession.totalPauseSeconds ?? 0))
+                                  .clamp(0, totalSeconds);
                         });
                       }
                     },
                     child: Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                          color:
-                              Theme.of(ctx).colorScheme.surfaceContainerHighest,
-                          borderRadius: BorderRadius.circular(12)),
-                      child: Row(children: [
-                        const Icon(Icons.access_time, size: 18),
-                        const SizedBox(width: 8),
-                        Text(DateFormat('HH:mm').format(
-                            DateTime.fromMillisecondsSinceEpoch(
-                                    editSession.endTime ??
-                                        editSession.startTime,
-                                    isUtc: true)
-                                .toLocal())),
-                        const Spacer(),
-                        const Icon(Icons.edit_outlined, size: 18),
-                      ]),
+                        color: Theme.of(ctx)
+                            .colorScheme
+                            .surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.access_time, size: 18),
+                          const SizedBox(width: 8),
+                          Text(
+                            _pomodoroStatsDateFormat('HH:mm').format(
+                              DateTime.fromMillisecondsSinceEpoch(
+                                editSession.endTime ?? editSession.startTime,
+                                isUtc: true,
+                              ).toLocal(),
+                            ),
+                          ),
+                          const Spacer(),
+                          const Icon(Icons.edit_outlined, size: 18),
+                        ],
+                      ),
                     ),
                   ),
                   // 暂停信息
@@ -1267,8 +1521,10 @@ class PomodoroStatsState extends State<PomodoroStats> {
                     const SizedBox(height: 16),
                     Row(
                       children: [
-                        const Text('暂停时长',
-                            style: TextStyle(fontWeight: FontWeight.w600)),
+                        const Text(
+                          '暂停时长',
+                          style: TextStyle(fontWeight: FontWeight.w600),
+                        ),
                         const Spacer(),
                         Text(
                           formatDurationChinese(editSession.totalPauseSeconds!),
@@ -1306,12 +1562,17 @@ class PomodoroStatsState extends State<PomodoroStats> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            for (int i = 0;
-                                i < editSession.pauseIntervals!.length;
-                                i++) ...[
+                            for (
+                              int i = 0;
+                              i < editSession.pauseIntervals!.length;
+                              i++
+                            ) ...[
                               if (i > 0) const SizedBox(height: 4),
                               _buildPauseIntervalRow(
-                                  ctx, i + 1, editSession.pauseIntervals![i]),
+                                ctx,
+                                i + 1,
+                                editSession.pauseIntervals![i],
+                              ),
                             ],
                           ],
                         ),
@@ -1319,8 +1580,10 @@ class PomodoroStatsState extends State<PomodoroStats> {
                     ],
                   ],
                   const SizedBox(height: 16),
-                  const Text('绑定任务',
-                      style: TextStyle(fontWeight: FontWeight.w600)),
+                  const Text(
+                    '绑定任务',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
                   const SizedBox(height: 8),
                   InkWell(
                     borderRadius: BorderRadius.circular(12),
@@ -1337,7 +1600,8 @@ class PomodoroStatsState extends State<PomodoroStats> {
                             title: const Text('选择任务'),
                             content: SizedBox(
                               width: double.maxFinite,
-                              height: (MediaQuery.sizeOf(dctx).height -
+                              height:
+                                  (MediaQuery.sizeOf(dctx).height -
                                       MediaQuery.viewInsetsOf(dctx).bottom) *
                                   0.55,
                               child: Column(
@@ -1384,21 +1648,27 @@ class PomodoroStatsState extends State<PomodoroStats> {
                     child: Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                          color:
-                              Theme.of(ctx).colorScheme.surfaceContainerHighest,
-                          borderRadius: BorderRadius.circular(12)),
-                      child: Row(children: [
-                        const Icon(Icons.task_alt_outlined, size: 18),
-                        const SizedBox(width: 8),
-                        Text(editTodoTitle ?? '自由专注（点击选择）'),
-                        const Spacer(),
-                        const Icon(Icons.chevron_right, size: 18),
-                      ]),
+                        color: Theme.of(ctx)
+                            .colorScheme
+                            .surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.task_alt_outlined, size: 18),
+                          const SizedBox(width: 8),
+                          Text(editTodoTitle ?? '自由专注（点击选择）'),
+                          const Spacer(),
+                          const Icon(Icons.chevron_right, size: 18),
+                        ],
+                      ),
                     ),
                   ),
                   const SizedBox(height: 16),
-                  const Text('标签',
-                      style: TextStyle(fontWeight: FontWeight.w600)),
+                  const Text(
+                    '标签',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
                   const SizedBox(height: 8),
                   if (_tags.isEmpty)
                     const Text('暂无标签', style: TextStyle(color: Colors.grey))
@@ -1410,15 +1680,19 @@ class PomodoroStatsState extends State<PomodoroStats> {
                         final sel = editTags.contains(tag.uuid);
                         final color = AppColorUtils.parseHex(tag.color);
                         return FilterChip(
-                          label: Text(tag.name,
-                              style: const TextStyle(fontSize: 13)),
+                          label: Text(
+                            tag.name,
+                            style: const TextStyle(fontSize: 13),
+                          ),
                           selected: sel,
                           showCheckmark: false,
                           selectedColor: color.withValues(alpha: 0.2),
                           side: BorderSide(
-                              color: sel ? color : Colors.grey.shade300),
+                            color: sel ? color : Colors.grey.shade300,
+                          ),
                           shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(20)),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
                           onSelected: (v) => sd(() {
                             if (v) {
                               editTags.add(tag.uuid);
@@ -1430,8 +1704,10 @@ class PomodoroStatsState extends State<PomodoroStats> {
                       }).toList(),
                     ),
                   const SizedBox(height: 16),
-                  const Text('备注',
-                      style: TextStyle(fontWeight: FontWeight.w600)),
+                  const Text(
+                    '备注',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
                   const SizedBox(height: 8),
                   InkWell(
                     borderRadius: BorderRadius.circular(12),
@@ -1453,11 +1729,13 @@ class PomodoroStatsState extends State<PomodoroStats> {
                           ),
                           actions: [
                             TextButton(
-                                onPressed: () => Navigator.pop(dctx),
-                                child: const Text('取消')),
+                              onPressed: () => Navigator.pop(dctx),
+                              child: const Text('取消'),
+                            ),
                             FilledButton(
-                                onPressed: () => Navigator.pop(dctx, ctrl.text),
-                                child: const Text('保存')),
+                              onPressed: () => Navigator.pop(dctx, ctrl.text),
+                              child: const Text('保存'),
+                            ),
                           ],
                         ),
                       );
@@ -1469,26 +1747,29 @@ class PomodoroStatsState extends State<PomodoroStats> {
                       width: double.infinity,
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color:
-                            Theme.of(ctx).colorScheme.surfaceContainerHighest,
+                        color: Theme.of(ctx)
+                            .colorScheme
+                            .surfaceContainerHighest,
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: Row(children: [
-                        const Icon(Icons.note_outlined, size: 18),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            editNote.isEmpty ? '点击添加备注' : editNote,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: editNote.isEmpty ? Colors.grey : null,
+                      child: Row(
+                        children: [
+                          const Icon(Icons.note_outlined, size: 18),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              editNote.isEmpty ? '点击添加备注' : editNote,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: editNote.isEmpty ? Colors.grey : null,
+                              ),
                             ),
                           ),
-                        ),
-                        const Icon(Icons.edit_outlined, size: 18),
-                      ]),
+                          const Icon(Icons.edit_outlined, size: 18),
+                        ],
+                      ),
                     ),
                   ),
                   const SizedBox(height: 24),
@@ -1534,15 +1815,24 @@ class PomodoroStatsState extends State<PomodoroStats> {
   }
 
   Widget _buildPauseIntervalRow(
-      BuildContext ctx, int index, PauseInterval interval) {
-    final startStr = DateFormat('HH:mm:ss').format(
-        DateTime.fromMillisecondsSinceEpoch(interval.startMs, isUtc: true)
-            .toLocal());
+    BuildContext ctx,
+    int index,
+    PauseInterval interval,
+  ) {
+    final startStr = _pomodoroStatsDateFormat('HH:mm:ss').format(
+      DateTime.fromMillisecondsSinceEpoch(
+        interval.startMs,
+        isUtc: true,
+      ).toLocal(),
+    );
     final endStr = interval.isOngoing
         ? '进行中'
-        : DateFormat('HH:mm:ss').format(
-            DateTime.fromMillisecondsSinceEpoch(interval.endMs!, isUtc: true)
-                .toLocal());
+        : _pomodoroStatsDateFormat('HH:mm:ss').format(
+            DateTime.fromMillisecondsSinceEpoch(
+              interval.endMs!,
+              isUtc: true,
+            ).toLocal(),
+          );
     final durationStr = interval.isOngoing
         ? ''
         : formatDurationChinese(interval.durationSeconds);
@@ -1586,12 +1876,14 @@ class PomodoroStatsState extends State<PomodoroStats> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('取消')),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
           FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: Colors.red),
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('删除')),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('删除'),
+          ),
         ],
       ),
     );
@@ -1604,8 +1896,9 @@ class PomodoroStatsState extends State<PomodoroStats> {
   // 🚀 骨架屏：模拟趋势图和统计卡片
   Widget _buildSkeleton() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final baseColor =
-        isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05);
+    final baseColor = isDark
+        ? Colors.white10
+        : Colors.black.withValues(alpha: 0.05);
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
@@ -1617,21 +1910,29 @@ class PomodoroStatsState extends State<PomodoroStats> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Container(
-                  width: 40,
-                  height: 40,
-                  decoration:
-                      BoxDecoration(color: baseColor, shape: BoxShape.circle)),
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: baseColor,
+                  shape: BoxShape.circle,
+                ),
+              ),
               Container(
-                  width: 120,
-                  height: 24,
-                  decoration: BoxDecoration(
-                      color: baseColor,
-                      borderRadius: BorderRadius.circular(12))),
+                width: 120,
+                height: 24,
+                decoration: BoxDecoration(
+                  color: baseColor,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
               Container(
-                  width: 40,
-                  height: 40,
-                  decoration:
-                      BoxDecoration(color: baseColor, shape: BoxShape.circle)),
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: baseColor,
+                  shape: BoxShape.circle,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 20),
@@ -1639,26 +1940,32 @@ class PomodoroStatsState extends State<PomodoroStats> {
           Container(
             height: 220,
             decoration: BoxDecoration(
-                color: baseColor, borderRadius: BorderRadius.circular(24)),
+              color: baseColor,
+              borderRadius: BorderRadius.circular(24),
+            ),
           ),
           const SizedBox(height: 20),
           // 概览卡片骨架
           Container(
             height: 100,
             decoration: BoxDecoration(
-                color: baseColor, borderRadius: BorderRadius.circular(20)),
+              color: baseColor,
+              borderRadius: BorderRadius.circular(20),
+            ),
           ),
           const SizedBox(height: 24),
           // 列表骨架
           ...List.generate(
-              3,
-              (i) => Container(
-                    height: 70,
-                    margin: const EdgeInsets.only(bottom: 12),
-                    decoration: BoxDecoration(
-                        color: baseColor,
-                        borderRadius: BorderRadius.circular(16)),
-                  )),
+            3,
+            (i) => Container(
+              height: 70,
+              margin: const EdgeInsets.only(bottom: 12),
+              decoration: BoxDecoration(
+                color: baseColor,
+                borderRadius: BorderRadius.circular(16),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -1677,8 +1984,11 @@ class PomodoroTrendChart extends StatelessWidget {
   final List<ChartData> data;
   final Function(DateTime) onSelect;
 
-  const PomodoroTrendChart(
-      {super.key, required this.data, required this.onSelect});
+  const PomodoroTrendChart({
+    super.key,
+    required this.data,
+    required this.onSelect,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1695,9 +2005,10 @@ class PomodoroTrendChart extends StatelessWidget {
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withValues(alpha: 0.05),
-              blurRadius: 10,
-              offset: const Offset(0, 4)),
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
         ],
       ),
       child: Row(
@@ -1725,13 +2036,17 @@ class PomodoroTrendChart extends StatelessWidget {
                               colors: d.isSelected
                                   ? [
                                       colorScheme.primary,
-                                      colorScheme.primary.withValues(alpha: 0.7)
+                                      colorScheme.primary.withValues(
+                                        alpha: 0.7,
+                                      ),
                                     ]
                                   : [
-                                      colorScheme.secondary
-                                          .withValues(alpha: 0.3),
-                                      colorScheme.secondary
-                                          .withValues(alpha: 0.1)
+                                      colorScheme.secondary.withValues(
+                                        alpha: 0.3,
+                                      ),
+                                      colorScheme.secondary.withValues(
+                                        alpha: 0.1,
+                                      ),
                                     ],
                               begin: Alignment.topCenter,
                               end: Alignment.bottomCenter,
@@ -1740,10 +2055,12 @@ class PomodoroTrendChart extends StatelessWidget {
                             boxShadow: d.isSelected
                                 ? [
                                     BoxShadow(
-                                        color: colorScheme.primary
-                                            .withValues(alpha: 0.3),
-                                        blurRadius: 8,
-                                        offset: const Offset(0, 2)),
+                                      color: colorScheme.primary.withValues(
+                                        alpha: 0.3,
+                                      ),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, 2),
+                                    ),
                                   ]
                                 : null,
                           ),
@@ -1756,8 +2073,9 @@ class PomodoroTrendChart extends StatelessWidget {
                     d.label,
                     style: TextStyle(
                       fontSize: 10,
-                      fontWeight:
-                          d.isSelected ? FontWeight.bold : FontWeight.normal,
+                      fontWeight: d.isSelected
+                          ? FontWeight.bold
+                          : FontWeight.normal,
                       color: d.isSelected
                           ? colorScheme.primary
                           : colorScheme.onSurfaceVariant.withValues(alpha: 0.6),

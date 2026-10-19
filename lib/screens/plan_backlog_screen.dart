@@ -15,6 +15,27 @@ import 'pomodoro_screen.dart';
 import 'plan_editor_drafts_screen.dart';
 import 'plan_cleanup_screen.dart';
 
+String? _planBacklogDateLocale;
+final _planBacklogDateFormatters = <String, DateFormat>{};
+
+DateFormat _planBacklogDateFormat(String pattern) {
+  final locale = Intl.defaultLocale;
+  if (_planBacklogDateLocale != locale) {
+    _planBacklogDateLocale = locale;
+    _planBacklogDateFormatters.clear();
+  }
+  return _planBacklogDateFormatters.putIfAbsent(
+    pattern,
+    () => DateFormat(pattern, locale),
+  );
+}
+
+class _PlanBacklogSectionHeader {
+  const _PlanBacklogSectionHeader(this.group);
+
+  final int group;
+}
+
 class PlanBacklogScreen extends StatefulWidget {
   const PlanBacklogScreen({
     super.key,
@@ -39,6 +60,8 @@ class _PlanBacklogScreenState extends State<PlanBacklogScreen>
   PlanTodoIdentity? _identity;
   PlanBacklogPage? _page;
   List<PlanBacklogRow> _rows = [];
+  List<Object> _displayRows = [];
+  Map<String, String> _groupNamesById = const {};
   bool _scheduled = false,
       _loading = true,
       _opening = false,
@@ -103,7 +126,10 @@ class _PlanBacklogScreenState extends State<PlanBacklogScreen>
     setState(() {
       _loading = true;
       _error = null;
-      if (!more) _rows = [];
+      if (!more) {
+        _rows = [];
+        _displayRows = [];
+      }
     });
     try {
       await _identity?.check();
@@ -118,10 +144,19 @@ class _PlanBacklogScreenState extends State<PlanBacklogScreen>
       if (!mounted || sequence != _sequence || !_foreground) return;
       await _identity?.check();
       if (!mounted || sequence != _sequence) return;
+      final nextRows = more && !page.restarted
+          ? [..._rows, ...page.rows]
+          : page.rows;
+      final displayRows = _buildDisplayRows(nextRows);
+      final groupNamesById = {
+        for (final group in page.groups) group.id: group.name,
+      };
       _identity ??= page.identity;
       setState(() {
-        _rows = more && !page.restarted ? [..._rows, ...page.rows] : page.rows;
+        _rows = nextRows;
+        _displayRows = displayRows;
         _page = page;
+        _groupNamesById = groupNamesById;
         _loading = false;
       });
       final delay = page.nextBoundary.difference(_now);
@@ -138,6 +173,7 @@ class _PlanBacklogScreenState extends State<PlanBacklogScreen>
           _loading = false;
           _page = null;
           _rows = [];
+          _displayRows = [];
         });
       }
     }
@@ -243,8 +279,11 @@ class _PlanBacklogScreenState extends State<PlanBacklogScreen>
           clock: widget.clock,
           backlogContext: saveContext,
           draftOrigin: 'backlog',
-          onManageDrafts: () => openPlanEditorDrafts(context, widget.username,
-            onSaved: () => saved = true),
+          onManageDrafts: () => openPlanEditorDrafts(
+            context,
+            widget.username,
+            onSaved: () => saved = true,
+          ),
           onViewExisting: () => _viewExistingDuringDraft(row),
           onSaved: () => saved = true,
         ),
@@ -300,11 +339,24 @@ class _PlanBacklogScreenState extends State<PlanBacklogScreen>
   }
 
   String _heading(int group) => switch (group) {
-    0 => '截止早于 ${DateFormat('M月d日').format(_date)}',
-    1 => '${DateFormat('M月d日').format(_date)} 到期',
+    0 => '截止早于 ${_planBacklogDateFormat('M月d日').format(_date)}',
+    1 => '${_planBacklogDateFormat('M月d日').format(_date)} 到期',
     2 => '之后到期',
     _ => '未设截止',
   };
+
+  List<Object> _buildDisplayRows(List<PlanBacklogRow> rows) {
+    final displayRows = <Object>[];
+    for (var index = 0; index < rows.length; index++) {
+      final row = rows[index];
+      if (index == 0 || rows[index - 1].sortGroup != row.sortGroup) {
+        displayRows.add(_PlanBacklogSectionHeader(row.sortGroup));
+      }
+      displayRows.add(row);
+    }
+    return displayRows;
+  }
+
   String _details(PlanBacklogRow row) {
     if (row.needsReview) {
       return '安排需检查 · 请查看待办处理';
@@ -313,27 +365,39 @@ class _PlanBacklogScreenState extends State<PlanBacklogScreen>
       return row.paused ? '已暂停 · 查看当前专注' : '正在专注 · 查看当前专注';
     }
     if (row.legacy) {
-      return '旧式时间安排 · ${DateFormat('M/d HH:mm').format(row.todo.effectiveStartTime)}';
+      final start = _planBacklogDateFormat('M/d HH:mm').format(
+        row.todo.effectiveStartTime,
+      );
+      return '旧式时间安排 · $start';
     }
     if (row.planCount > 0) {
-      return '${DateFormat('M/d HH:mm').format(DateTime.fromMillisecondsSinceEpoch(row.nextStart!))}—${DateFormat('M/d HH:mm').format(DateTime.fromMillisecondsSinceEpoch(row.nextEnd!))}${row.planCount > 1 ? ' · 另有 ${row.planCount - 1} 项安排' : ''}';
+      final dateTimeFormat = _planBacklogDateFormat('M/d HH:mm');
+      final start = dateTimeFormat.format(
+        DateTime.fromMillisecondsSinceEpoch(row.nextStart!),
+      );
+      final end = dateTimeFormat.format(
+        DateTime.fromMillisecondsSinceEpoch(row.nextEnd!),
+      );
+      final additionalPlanText = row.planCount > 1
+          ? ' · 另有 ${row.planCount - 1} 项安排'
+          : '';
+      return '$start—$end$additionalPlanText';
     }
     final due = row.todo.dueDate;
     if (due == null) return '选择合适的时间开始';
     if (due.isBefore(_date)) return '截止早于目标日期 · 请先查看待办';
     if (_cannotPlanOnTargetDay(row.todo)) return '已截止 · 请先查看待办';
-    return '${DateFormat(row.todo.isDateOnly ? 'M月d日' : 'M月d日 HH:mm').format(due)} 前完成';
+    final duePattern = row.todo.isDateOnly ? 'M月d日' : 'M月d日 HH:mm';
+    final dueText = _planBacklogDateFormat(duePattern).format(due);
+    return '$dueText 前完成';
   }
 
   Widget _row(PlanBacklogRow row) {
     final cs = Theme.of(context).colorScheme;
     final expired = _cannotPlanOnTargetDay(row.todo);
-    final group =
-        (_page?.groups ?? [])
-            .where((g) => g.id == row.todo.groupId)
-            .firstOrNull
-            ?.name ??
-        '未分组';
+    final group = row.todo.groupId == null
+        ? '未分组'
+        : _groupNamesById[row.todo.groupId] ?? '未分组';
     final info = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -348,7 +412,12 @@ class _PlanBacklogScreenState extends State<PlanBacklogScreen>
       ],
     );
     final buttons = <Widget>[
-      if (row.focusing && !row.needsReview)
+      if (row.needsReview)
+        OutlinedButton(
+          onPressed: () => _view(row),
+          child: const Text('核对待办'),
+        )
+      else if (row.focusing)
         FilledButton.tonal(
           onPressed: () => _viewFocus(row),
           child: const Text('查看专注'),
@@ -408,6 +477,118 @@ class _PlanBacklogScreenState extends State<PlanBacklogScreen>
   @override
   Widget build(BuildContext context) {
     final groups = _page?.groups ?? const <TodoGroup>[];
+    final theme = Theme.of(context);
+    final headerChildren = <Widget>[
+      Wrap(
+        alignment: WrapAlignment.spaceBetween,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: 12,
+        runSpacing: 8,
+        children: [
+          Text('把未安排的事，放进合适的时间', style: theme.textTheme.titleMedium),
+          OutlinedButton.icon(
+            onPressed: _pickDate,
+            icon: const Icon(Icons.calendar_today_rounded, size: 18),
+            label: Text(
+              '目标：${_planBacklogDateFormat('M月d日').format(_date)}',
+            ),
+          ),
+        ],
+      ),
+      if (_normalized)
+        const Padding(
+          padding: EdgeInsets.symmetric(vertical: 8),
+          child: Text('原规划日期已过去，目标日期已切换到今天'),
+        ),
+      const SizedBox(height: 16),
+      TextField(
+        controller: _search,
+        decoration: const InputDecoration(
+          prefixIcon: Icon(Icons.search_rounded),
+          hintText: '搜索待办标题',
+          border: OutlineInputBorder(),
+        ),
+        onChanged: (_) {
+          _debounce?.cancel();
+          _sequence++;
+          _debounce = Timer(const Duration(milliseconds: 250), () => _load());
+        },
+      ),
+      const SizedBox(height: 12),
+      Wrap(
+        spacing: 12,
+        runSpacing: 10,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          SegmentedButton<bool>(
+            segments: const [
+              ButtonSegment(value: false, label: Text('待安排')),
+              ButtonSegment(value: true, label: Text('已有安排')),
+            ],
+            selected: {_scheduled},
+            onSelectionChanged: (value) {
+              setState(() => _scheduled = value.single);
+              _load();
+            },
+          ),
+          PopupMenuButton<String>(
+            tooltip: '筛选文件夹',
+            initialValue: _folder ?? '__all',
+            onSelected: (value) {
+              setState(() => _folder = value == '__all' ? null : value);
+              _load();
+            },
+            itemBuilder: (_) => [
+              const PopupMenuItem(value: '__all', child: Text('全部文件夹')),
+              const PopupMenuItem(value: '', child: Text('未分组')),
+              for (final group in groups)
+                PopupMenuItem(value: group.id, child: Text(group.name)),
+            ],
+            child: Padding(
+              padding: const EdgeInsets.all(10),
+              child: Text(
+                '文件夹：${_folder == null ? '全部' : groups.where((g) => g.id == _folder).firstOrNull?.name ?? '未分组'} ▾',
+              ),
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: 16),
+      if (_error != null)
+        Column(
+          children: [
+            Text('清单读取失败：$_error'),
+            TextButton(onPressed: () => _load(), child: const Text('重试')),
+          ],
+        )
+      else ...[
+        if (_page != null && (!_loading || _rows.isNotEmpty))
+          Text(
+            '${_scheduled ? '已有安排' : '待安排'} ${_page!.total} 项',
+            style: theme.textTheme.labelLarge,
+          ),
+        if (!_loading && _rows.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 48),
+            child: Column(
+              children: [
+                const Icon(Icons.event_available_rounded, size: 40),
+                const SizedBox(height: 12),
+                Text(
+                  _search.text.trim().isNotEmpty || _folder != null
+                      ? '没有符合筛选条件的待办'
+                      : _scheduled
+                      ? '还没有有效安排'
+                      : '目前没有待安排的任务',
+                ),
+                const SizedBox(height: 8),
+                const Text('完成、删除的待办不会出现在这里', textAlign: TextAlign.center),
+              ],
+            ),
+          ),
+      ],
+    ];
+    final hasFooter = _error == null && (_loading || _page?.next != null);
     return Scaffold(
       appBar: AppBar(
         title: const Text('待规划'),
@@ -423,18 +604,26 @@ class _PlanBacklogScreenState extends State<PlanBacklogScreen>
               try {
                 await _identity?.check();
                 if (!mounted) return;
-                await navigator.push(MaterialPageRoute<void>(
-                  builder: (_) => PlanCleanupScreen(username: widget.username),
-                ));
+                await navigator.push(
+                  MaterialPageRoute<void>(
+                    builder: (_) =>
+                        PlanCleanupScreen(username: widget.username),
+                  ),
+                );
               } catch (error) {
-                if (mounted) messenger.showSnackBar(SnackBar(content: Text(_message(error))));
+                if (mounted) {
+                  messenger.showSnackBar(
+                    SnackBar(content: Text(_message(error))),
+                  );
+                }
               } finally {
                 _opening = false;
                 if (mounted) await _load();
               }
             },
-            itemBuilder: (_) => const [PopupMenuItem(value: 'cleanup',
-              child: Text('已完成待办的剩余规划'))],
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'cleanup', child: Text('已完成待办的剩余规划')),
+            ],
           ),
           IconButton(
             tooltip: '刷新清单',
@@ -447,152 +636,42 @@ class _PlanBacklogScreenState extends State<PlanBacklogScreen>
         alignment: Alignment.topCenter,
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 860),
-          child: ListView(
+          child: ListView.builder(
             padding: const EdgeInsets.all(16),
             keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-            children: [
-              Wrap(
-                alignment: WrapAlignment.spaceBetween,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                spacing: 12,
-                runSpacing: 8,
-                children: [
-                  Text(
-                    '把未安排的事，放进合适的时间',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: _pickDate,
-                    icon: const Icon(Icons.calendar_today_rounded, size: 18),
-                    label: Text('目标：${DateFormat('M月d日').format(_date)}'),
-                  ),
-                ],
-              ),
-              if (_normalized)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 8),
-                  child: Text('原规划日期已过去，目标日期已切换到今天'),
-                ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: _search,
-                decoration: const InputDecoration(
-                  prefixIcon: Icon(Icons.search_rounded),
-                  hintText: '搜索待办标题',
-                  border: OutlineInputBorder(),
-                ),
-                onChanged: (_) {
-                  _debounce?.cancel();
-                  _sequence++;
-                  _debounce = Timer(
-                    const Duration(milliseconds: 250),
-                    () => _load(),
+            itemCount:
+                headerChildren.length +
+                (_error == null ? _displayRows.length : 0) +
+                (hasFooter ? 1 : 0),
+            itemBuilder: (context, index) {
+              if (index < headerChildren.length) return headerChildren[index];
+              final rowIndex = index - headerChildren.length;
+              if (_error == null && rowIndex < _displayRows.length) {
+                final row = _displayRows[rowIndex];
+                if (row is _PlanBacklogSectionHeader) {
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    child: Text(
+                      _heading(row.group),
+                      style: theme.textTheme.titleSmall,
+                    ),
                   );
-                },
-              ),
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 12,
-                runSpacing: 10,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  SegmentedButton<bool>(
-                    segments: const [
-                      ButtonSegment(value: false, label: Text('待安排')),
-                      ButtonSegment(value: true, label: Text('已有安排')),
-                    ],
-                    selected: {_scheduled},
-                    onSelectionChanged: (value) {
-                      setState(() => _scheduled = value.single);
-                      _load();
-                    },
+                }
+                return _row(row as PlanBacklogRow);
+              }
+              if (_loading) {
+                return const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(24),
+                    child: CircularProgressIndicator(),
                   ),
-                  PopupMenuButton<String>(
-                    tooltip: '筛选文件夹',
-                    initialValue: _folder ?? '__all',
-                    onSelected: (v) {
-                      setState(() => _folder = v == '__all' ? null : v);
-                      _load();
-                    },
-                    itemBuilder: (_) => [
-                      const PopupMenuItem(value: '__all', child: Text('全部文件夹')),
-                      const PopupMenuItem(value: '', child: Text('未分组')),
-                      for (final group in groups)
-                        PopupMenuItem(value: group.id, child: Text(group.name)),
-                    ],
-                    child: Padding(
-                      padding: const EdgeInsets.all(10),
-                      child: Text(
-                        '文件夹：${_folder == null ? '全部' : groups.where((g) => g.id == _folder).firstOrNull?.name ?? '未分组'} ▾',
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              if (_error != null)
-                Column(
-                  children: [
-                    Text('清单读取失败：$_error'),
-                    TextButton(
-                      onPressed: () => _load(),
-                      child: const Text('重试'),
-                    ),
-                  ],
-                )
-              else ...[
-                if (_page != null && (!_loading || _rows.isNotEmpty))
-                  Text(
-                    '${_scheduled ? '已有安排' : '待安排'} ${_page!.total} 项',
-                    style: Theme.of(context).textTheme.labelLarge,
-                  ),
-                if (!_loading && _rows.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 48),
-                    child: Column(
-                      children: [
-                        const Icon(Icons.event_available_rounded, size: 40),
-                        const SizedBox(height: 12),
-                        Text(
-                          _search.text.trim().isNotEmpty || _folder != null
-                              ? '没有符合筛选条件的待办'
-                              : _scheduled
-                              ? '还没有有效安排'
-                              : '目前没有待安排的任务',
-                        ),
-                        const SizedBox(height: 8),
-                        const Text(
-                          '完成、删除的待办不会出现在这里',
-                          textAlign: TextAlign.center,
-                        ),
-                      ],
-                    ),
-                  ),
-                for (var i = 0; i < _rows.length; i++) ...[
-                  if (i == 0 || _rows[i - 1].sortGroup != _rows[i].sortGroup)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      child: Text(
-                        _heading(_rows[i].sortGroup),
-                        style: Theme.of(context).textTheme.titleSmall,
-                      ),
-                    ),
-                  _row(_rows[i]),
-                ],
-                if (_loading)
-                  const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(24),
-                      child: CircularProgressIndicator(),
-                    ),
-                  )
-                else if (_page?.next != null)
-                  TextButton(
-                    onPressed: () => _load(more: true),
-                    child: const Text('加载更多'),
-                  ),
-              ],
-            ],
+                );
+              }
+              return TextButton(
+                onPressed: () => _load(more: true),
+                child: const Text('加载更多'),
+              );
+            },
           ),
         ),
       ),

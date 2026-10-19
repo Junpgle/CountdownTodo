@@ -29,9 +29,7 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
-        home: Scaffold(
-          body: HabitTimePointChart(data: data),
-        ),
+        home: Scaffold(body: HabitTimePointChart(data: data)),
       ),
     );
 

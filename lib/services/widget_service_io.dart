@@ -14,15 +14,26 @@ import '../utils/calendar_date_math.dart';
 import '../utils/todo_widget_visibility.dart';
 import '../utils/widget_recurrence_series.dart';
 import '../utils/android_energy_policy.dart';
+import '../features/habits/models/habit_checkin.dart';
+import '../features/habits/models/habit_goal.dart';
+import '../features/habits/models/habit_goal_rule.dart';
 import '../features/habits/repositories/habit_repository.dart';
 import '../features/habits/services/habit_progress_calculator.dart';
 import '../features/habits/services/habit_rule_resolver.dart';
+import '../features/habits/services/habit_source_resolver.dart';
 import '../features/habits/services/habit_widget_checkin.dart';
 import '../features/finance/models/finance_models.dart';
 import '../features/finance/services/finance_repository.dart';
 import 'course_service.dart';
 import 'pomodoro_service.dart';
 import 'power_save_mode_service.dart';
+
+typedef _PlannedWidgetHabit = ({
+  HabitGoal goal,
+  List<HabitGoalRuleRevision> rules,
+  HabitGoalRuleRevision rule,
+  DateTime logicalDate,
+});
 
 @pragma('vm:entry-point')
 Future<void> widgetBackgroundCallback(Uri? uri) async {
@@ -32,20 +43,12 @@ Future<void> widgetBackgroundCallback(Uri? uri) async {
     if (id != null) {
       final username = await StorageService.getCurrentUsername();
       if (username != null && username.isNotEmpty) {
-        List<TodoItem> todos = await StorageService.getTodos(username);
-        bool changed = false;
-        for (var t in todos) {
-          if (t.id == id) {
-            t.isDone = !t.isDone;
-            t.markAsChanged();
-            changed = true;
-            break;
-          }
-        }
-        if (changed) {
-          todos.sort((a, b) => a.isDone == b.isDone ? 0 : (a.isDone ? 1 : -1));
-          await StorageService.saveTodos(username, todos);
-          await WidgetService._updateCurrentUserWidgets(todos: todos);
+        final todo = await StorageService.getTodoByUuid(username, id);
+        if (todo != null && !todo.isDeleted) {
+          todo.isDone = !todo.isDone;
+          todo.markAsChanged();
+          await StorageService.updateSingleTodo(username, todo);
+          await WidgetService._updateCurrentUserWidgets();
         }
       }
     }
@@ -90,8 +93,9 @@ class WidgetService {
   static bool _periodicRefreshConfigured = false;
   static bool _powerSaveListenerRegistered = false;
 
-  static const MethodChannel _macOSWidgetChannel =
-      MethodChannel('com.countdowntodo/widget');
+  static const MethodChannel _macOSWidgetChannel = MethodChannel(
+    'com.countdowntodo/widget',
+  );
 
   static Future<void> dispose() async {
     _periodicTimer?.cancel();
@@ -101,8 +105,9 @@ class WidgetService {
     _periodicRefreshConfigured = false;
     _initialized = false;
     if (_powerSaveListenerRegistered) {
-      PowerSaveModeService.enabledListenable
-          .removeListener(_onPowerSaveModeChanged);
+      PowerSaveModeService.enabledListenable.removeListener(
+        _onPowerSaveModeChanged,
+      );
       _powerSaveListenerRegistered = false;
     }
   }
@@ -123,18 +128,61 @@ class WidgetService {
   /// 由 [StorageService.onDataChangedHook] 触发，600ms 防抖合并
   /// 同步 / 批量操作期间的多次变更；失败时静默等待周期刷新兜底。
   static Timer? _widgetRefreshDebouncer;
+  static Future<void>? _widgetRefreshInFlight;
+  static bool _widgetRefreshRequestedWhileRunning = false;
 
   /// 读取当前登录用户并刷新其 Widget 数据。
   ///
   /// 调用方可以传入已经加载好的 Todo，避免同一业务流程重复读取；
   /// 未传入时统一从当前用户的存储中加载。
-  static Future<void> _updateCurrentUserWidgets({
+  static Future<void> _updateCurrentUserWidgets({List<TodoItem>? todos}) {
+    final inFlight = _widgetRefreshInFlight;
+    if (inFlight != null) {
+      _widgetRefreshRequestedWhileRunning = true;
+      return inFlight;
+    }
+
+    final completer = Completer<void>();
+    final refresh = completer.future;
+    _widgetRefreshInFlight = refresh;
+    unawaited(_drainCurrentUserWidgetRefreshes(completer, todos));
+    return refresh;
+  }
+
+  static Future<void> _drainCurrentUserWidgetRefreshes(
+    Completer<void> completer,
+    List<TodoItem>? initialTodos,
+  ) async {
+    var todos = initialTodos;
+    try {
+      do {
+        _widgetRefreshRequestedWhileRunning = false;
+        try {
+          await _performCurrentUserWidgetRefresh(todos: todos);
+        } catch (_) {
+          if (!_widgetRefreshRequestedWhileRunning) rethrow;
+        }
+        // A refresh requested during the current pass reloads persisted data,
+        // so the final widget snapshot includes every intervening mutation.
+        todos = null;
+      } while (_widgetRefreshRequestedWhileRunning);
+      completer.complete();
+    } catch (error, stackTrace) {
+      completer.completeError(error, stackTrace);
+    } finally {
+      if (identical(_widgetRefreshInFlight, completer.future)) {
+        _widgetRefreshInFlight = null;
+      }
+    }
+  }
+
+  static Future<void> _performCurrentUserWidgetRefresh({
     List<TodoItem>? todos,
   }) async {
     if (!await _hasInstalledWidgets()) return;
     final username = await StorageService.getCurrentUsername();
     if (username == null || username.isEmpty) return;
-    final items = todos ?? await StorageService.getTodos(username);
+    final items = todos ?? await StorageService.getTodosForWidget(username);
     await updateAllWidgetData(username, items);
   }
 
@@ -151,12 +199,14 @@ class WidgetService {
 
   static Future<void> _refreshWidgetsAfterDataChange() async {
     _widgetRefreshDebouncer?.cancel();
-    _widgetRefreshDebouncer =
-        Timer(const Duration(milliseconds: 600), () async {
-      try {
-        await _updateCurrentUserWidgets();
-      } catch (_) {}
-    });
+    _widgetRefreshDebouncer = Timer(
+      const Duration(milliseconds: 600),
+      () async {
+        try {
+          await _updateCurrentUserWidgets();
+        } catch (_) {}
+      },
+    );
   }
 
   static Future<void> init() async {
@@ -166,10 +216,11 @@ class WidgetService {
     if (Platform.isAndroid || Platform.isIOS) {
       try {
         await HomeWidget.registerInteractivityCallback(
-            widgetBackgroundCallback);
+          widgetBackgroundCallback,
+        );
         _initialized = true;
       } catch (e) {
-//         print('WidgetBackground 注册失败: $e');
+        //         print('WidgetBackground 注册失败: $e');
       }
     } else if (Platform.isMacOS) {
       _initialized = true;
@@ -185,8 +236,9 @@ class WidgetService {
     // when the process is not running.
     _periodicRefreshConfigured = true;
     if (Platform.isAndroid && !_powerSaveListenerRegistered) {
-      PowerSaveModeService.enabledListenable
-          .addListener(_onPowerSaveModeChanged);
+      PowerSaveModeService.enabledListenable.addListener(
+        _onPowerSaveModeChanged,
+      );
       _powerSaveListenerRegistered = true;
     }
     _startPeriodicRefresh();
@@ -195,7 +247,7 @@ class WidgetService {
     try {
       await _updateCurrentUserWidgets();
     } catch (e) {
-//       print('Widget initial update error: $e');
+      //       print('Widget initial update error: $e');
     }
   }
 
@@ -236,21 +288,34 @@ class WidgetService {
   }
 
   static Future<void> updateAllWidgetData(
-      String username, List<TodoItem> todos) async {
+    String username,
+    List<TodoItem> todos,
+  ) async {
     if (!Platform.isAndroid && !Platform.isIOS && !Platform.isMacOS) return;
     if (_widgetUpdateDisabled) return;
     DateTime now = DateTime.now();
     DateTime today = DateTime(now.year, now.month, now.day);
+    final tomorrow = DateTime(today.year, today.month, today.day + 1);
+    final courseRangeEnd = DateTime(today.year, today.month, today.day + 15);
+    final courseDateFormat = DateFormat('yyyy-MM-dd');
 
     final results = await Future.wait([
       Future.value(todos),
-      CourseService.getAllCourses(username),
-      StorageService.getCountdowns(username),
-      StorageService.getTimeLogs(username),
+      CourseService.getCoursesForDateRange(
+        username,
+        from: today,
+        to: courseRangeEnd,
+      ),
+      StorageService.getCountdowns(username, from: today),
+      StorageService.getTimeLogs(username, from: today, to: tomorrow),
       PomodoroService.getTodayRecords(),
       PomodoroService.getTags(),
       _buildFinanceWidgetSummary(),
-      StorageService.getFixedSchedules(username),
+      StorageService.getFixedSchedulesByDateRange(
+        username,
+        from: today,
+        to: courseRangeEnd,
+      ),
     ]);
 
     final List<TodoItem> allTodos = results[0] as List<TodoItem>;
@@ -263,26 +328,25 @@ class WidgetService {
         results[6] as WidgetFinanceSummary;
     final List<FixedScheduleItem> fixedSchedulesRaw =
         results[7] as List<FixedScheduleItem>;
-    final widgetTodos = selectTodosForWidget(
-      allTodos,
-      now: now,
-    );
+    final widgetTodos = selectTodosForWidget(allTodos, now: now);
 
     // 🛡️ OOM 修复：在主线程对数据做预过滤和字段裁剪，只把轻量 Map 传给 compute()
     // 避免将全量 Dart 对象列表序列化后跨 Isolate 边界导致内存溢出（数据用久后可达 100MB+）
 
     // 1. 待办：只保留未完成未删除的条目，且只取 Isolate 实际用到的字段
     final List<Map<String, dynamic>> slimTodos = widgetTodos
-        .map((t) => {
-              'title': t.title,
-              'isDone': t.isDone,
-              'id': t.id,
-              'dueDate': t.dueDate?.millisecondsSinceEpoch,
-              'createdDate': t.createdDate,
-              'createdAt': t.createdAt,
-              'visibleUntil':
-                  recurringTodoWidgetVisibleUntil(t)?.millisecondsSinceEpoch,
-            })
+        .map(
+          (t) => {
+            'title': t.title,
+            'isDone': t.isDone,
+            'id': t.id,
+            'dueDate': t.dueDate?.millisecondsSinceEpoch,
+            'createdDate': t.createdDate,
+            'createdAt': t.createdAt,
+            'visibleUntil': recurringTodoWidgetVisibleUntil(t)
+                ?.millisecondsSinceEpoch,
+          },
+        )
         .toList();
 
     // 2. 课程：只保留未来 14 天内的
@@ -290,108 +354,123 @@ class WidgetService {
     final List<Map<String, dynamic>> slimCourses = allCourses
         .where((c) {
           try {
-            final cDate = DateFormat('yyyy-MM-dd').parse(c.date);
+            final cDate = courseDateFormat.parse(c.date);
             final cEnd = cDate.add(
-                Duration(hours: c.endTime ~/ 100, minutes: c.endTime % 100));
+              Duration(hours: c.endTime ~/ 100, minutes: c.endTime % 100),
+            );
             return cEnd.isAfter(now) && cDate.isBefore(courseLimit);
           } catch (_) {
             return false;
           }
         })
-        .map((c) => {
-              'date': c.date,
-              'courseName': c.courseName,
-              'startTime': c.startTime,
-              'endTime': c.endTime,
-              'roomName': c.roomName,
-              'formattedStartTime': c.formattedStartTime,
-              'formattedEndTime': c.formattedEndTime,
-            })
+        .map(
+          (c) => {
+            'date': c.date,
+            'courseName': c.courseName,
+            'startTime': c.startTime,
+            'endTime': c.endTime,
+            'roomName': c.roomName,
+            'formattedStartTime': c.formattedStartTime,
+            'formattedEndTime': c.formattedEndTime,
+          },
+        )
         .toList();
 
     // 2. 固定日程：只保留未来 14 天内且尚未结束的日程。
     // 固定日程与课表共用 Android 小部件的“日程”列表，但保留自己的
     // 时间待定、结束待定和地点语义。
     final DateTime scheduleLimit = now.add(const Duration(days: 14));
-    final List<Map<String, dynamic>> slimFixedSchedules =
-        fixedSchedulesRaw.where((item) {
-      if (item.title.trim().isEmpty) return false;
-      final date = DateTime.tryParse(item.date)?.toLocal();
-      if (date == null) return false;
-      final day = DateTime(date.year, date.month, date.day);
-      if (day.isBefore(today) || !day.isBefore(scheduleLimit)) {
-        return false;
-      }
-      final phase = item.phaseAt(now);
-      return phase != FixedSchedulePhase.ended &&
-          phase != FixedSchedulePhase.cancelled;
-    }).map((item) {
-      final start = item.startTime == null
-          ? null
-          : DateTime.fromMillisecondsSinceEpoch(item.startTime!).toLocal();
-      return <String, dynamic>{
-        'id': item.id,
-        'title': item.title,
-        'date': item.date,
-        'startAtMs': item.startTime,
-        'startSort': start == null ? 2400 : start.hour * 100 + start.minute,
-        'timeText': _formatFixedScheduleTime(item),
-        'location': item.location?.trim() ?? '',
-      };
-    }).toList();
+    final List<Map<String, dynamic>> slimFixedSchedules = fixedSchedulesRaw
+        .where((item) {
+          if (item.title.trim().isEmpty) return false;
+          final date = DateTime.tryParse(item.date)?.toLocal();
+          if (date == null) return false;
+          final day = DateTime(date.year, date.month, date.day);
+          if (day.isBefore(today) || !day.isBefore(scheduleLimit)) {
+            return false;
+          }
+          final phase = item.phaseAt(now);
+          return phase != FixedSchedulePhase.ended &&
+              phase != FixedSchedulePhase.cancelled;
+        })
+        .map((item) {
+          final start = item.startTime == null
+              ? null
+              : DateTime.fromMillisecondsSinceEpoch(item.startTime!).toLocal();
+          return <String, dynamic>{
+            'id': item.id,
+            'title': item.title,
+            'date': item.date,
+            'startAtMs': item.startTime,
+            'startSort': start == null ? 2400 : start.hour * 100 + start.minute,
+            'timeText': _formatFixedScheduleTime(item),
+            'location': item.location?.trim() ?? '',
+          };
+        })
+        .toList();
 
     // 3. 倒数日：只保留未删除且未过期的
     final List<Map<String, dynamic>> slimCountdowns = countdownsRaw
         .where(
-        (c) => !c.isDeleted &&
-            CalendarDateMath.daysBetween(today, c.targetDate) >= 0)
-        .map((c) => {
-              'title': c.title,
-              'targetDateMs': c.targetDate.millisecondsSinceEpoch,
-            })
+          (c) =>
+              !c.isDeleted &&
+              CalendarDateMath.daysBetween(today, c.targetDate) >= 0,
+        )
+        .map(
+          (c) => {
+            'title': c.title,
+            'targetDateMs': c.targetDate.millisecondsSinceEpoch,
+          },
+        )
         .toList();
 
     // 4. 时间日志：只保留今日未删除的条目，且只取 Isolate 用到的字段
     final Map<String, String> tagNameByUuid = {
-      for (var t in allTags) t.uuid: t.name
+      for (var t in allTags) t.uuid: t.name,
     };
     final List<Map<String, dynamic>> slimTimeLogs = tlogsRaw
         .where((l) {
           if (l.isDeleted) return false;
-          final d =
-              DateTime.fromMillisecondsSinceEpoch(l.startTime, isUtc: true)
-                  .toLocal();
+          final d = DateTime.fromMillisecondsSinceEpoch(
+            l.startTime,
+            isUtc: true,
+          ).toLocal();
           return d.year == today.year &&
               d.month == today.month &&
               d.day == today.day;
         })
-        .map((l) => {
-              'title': l.title,
-              'startTime': l.startTime,
-              'endTime': l.endTime,
-              'tagNames': l.tagUuids.map((u) => tagNameByUuid[u] ?? u).toList(),
-            })
+        .map(
+          (l) => {
+            'title': l.title,
+            'startTime': l.startTime,
+            'endTime': l.endTime,
+            'tagNames': l.tagUuids.map((u) => tagNameByUuid[u] ?? u).toList(),
+          },
+        )
         .toList();
 
     // 5. 番茄钟：只保留今日未删除的条目
     final List<Map<String, dynamic>> slimPoms = pomsRaw
         .where((p) {
           if (p.isDeleted) return false;
-          final d =
-              DateTime.fromMillisecondsSinceEpoch(p.startTime, isUtc: true)
-                  .toLocal();
+          final d = DateTime.fromMillisecondsSinceEpoch(
+            p.startTime,
+            isUtc: true,
+          ).toLocal();
           return d.year == today.year &&
               d.month == today.month &&
               d.day == today.day;
         })
-        .map((p) => {
-              'todoTitle': p.todoTitle,
-              'startTime': p.startTime,
-              'endTime': p.endTime,
-              'actualDuration': p.actualDuration,
-              'plannedDuration': p.plannedDuration,
-              'tagNames': p.tagUuids.map((u) => tagNameByUuid[u] ?? u).toList(),
-            })
+        .map(
+          (p) => {
+            'todoTitle': p.todoTitle,
+            'startTime': p.startTime,
+            'endTime': p.endTime,
+            'actualDuration': p.actualDuration,
+            'plannedDuration': p.plannedDuration,
+            'tagNames': p.tagUuids.map((u) => tagNameByUuid[u] ?? u).toList(),
+          },
+        )
         .toList();
 
     // 只传轻量的 primitive Map 给 Isolate，彻底避免大对象序列化
@@ -408,28 +487,33 @@ class WidgetService {
     // 6. 习惯：SQLite 只能在主线程读取，先算好今日进度再 slim 化
     final habitItems = await _buildTodayHabitItems();
     final List<Map<String, dynamic>> slimHabits = habitItems
-        .map((h) => {
-              'habitId': h.habitId,
-              'title': h.title,
-              'icon': h.icon,
-              'sourceType': h.sourceType,
-              'currentValue': h.currentValue,
-              'targetValue': h.targetValue,
-              'unit': h.unit,
-              'goalMet': h.goalMet,
-              'quickValues': h.quickValues,
-            })
+        .map(
+          (h) => {
+            'habitId': h.habitId,
+            'title': h.title,
+            'icon': h.icon,
+            'sourceType': h.sourceType,
+            'currentValue': h.currentValue,
+            'targetValue': h.targetValue,
+            'unit': h.unit,
+            'goalMet': h.goalMet,
+            'quickValues': h.quickValues,
+          },
+        )
         .toList();
     rawInput['habits'] = slimHabits;
 
-    final Map<String, dynamic> widgetData =
-        await compute(_prepareWidgetDataIsolate, rawInput);
+    final Map<String, dynamic> widgetData = await compute(
+      _prepareWidgetDataIsolate,
+      rawInput,
+    );
     widgetData.addAll(financeSummary.toAndroidWidgetData());
 
     if (Platform.isAndroid) {
       final recurrenceSeries = buildWidgetRecurrenceSeries(allTodos, now: now);
       widgetData['recurrence_series_json'] = jsonEncode(
-          recurrenceSeries.map((series) => series.toJson()).toList());
+        recurrenceSeries.map((series) => series.toJson()).toList(),
+      );
       widgetData['recurrence_updated_at_ms'] = now.millisecondsSinceEpoch;
     }
 
@@ -445,6 +529,7 @@ class WidgetService {
         allTodos,
         allCourses,
         countdownsRaw,
+        pomsRaw,
         now,
         today,
         habitItems: habitItems,
@@ -479,23 +564,19 @@ class WidgetService {
   }) {
     final entries = transactions.toList(growable: false);
     final asOfAt = now.millisecondsSinceEpoch;
-    final occurredTransactions = entries
-        .where((transaction) => transaction.balanceEventAt() <= asOfAt)
-        .toList(growable: false);
-    final latest = occurredTransactions.isEmpty
-        ? null
-        : occurredTransactions.reduce(
-            (latest, transaction) =>
-                transaction.balanceEventAt() > latest.balanceEventAt() ||
-                    (transaction.balanceEventAt() == latest.balanceEventAt() &&
-                        transaction.updatedAt > latest.updatedAt)
-                ? transaction
-                : latest,
-          );
-    final summary = FinanceSummary.fromTransactions(
-      entries,
-      asOfAt: asOfAt,
-    );
+    FinanceTransaction? latest;
+    var latestEventAt = 0;
+    for (final transaction in entries) {
+      final eventAt = transaction.balanceEventAt();
+      if (eventAt > asOfAt) continue;
+      if (latest == null ||
+          eventAt > latestEventAt ||
+          (eventAt == latestEventAt && transaction.updatedAt > latest.updatedAt)) {
+        latest = transaction;
+        latestEventAt = eventAt;
+      }
+    }
+    final summary = FinanceSummary.fromTransactions(entries, asOfAt: asOfAt);
     final latestTitle = latest?.merchant?.trim().isNotEmpty == true
         ? latest!.merchant!.trim()
         : latest?.type.label ?? '';
@@ -517,9 +598,8 @@ class WidgetService {
     if (startMs == null) return '时间待定';
 
     String format(int millisecondsSinceEpoch) {
-      final date = DateTime.fromMillisecondsSinceEpoch(
-        millisecondsSinceEpoch,
-      ).toLocal();
+      final date = DateTime.fromMillisecondsSinceEpoch(millisecondsSinceEpoch)
+          .toLocal();
       return '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
     }
 
@@ -537,31 +617,113 @@ class WidgetService {
       final goals = await HabitRepository.getActiveGoals();
       if (goals.isEmpty) return const [];
       final now = DateTime.now();
-      final items = <WidgetHabitItem>[];
+      final rules = await HabitRepository.getRulesForHabits(
+        goals.map((goal) => goal.uuid),
+      );
+      final rulesByHabit = <String, List<HabitGoalRuleRevision>>{};
+      for (final rule in rules) {
+        (rulesByHabit[rule.habitUuid] ??= <HabitGoalRuleRevision>[]).add(rule);
+      }
+      final plannedHabits = <_PlannedWidgetHabit>[];
       for (final goal in goals) {
-        final rules = await HabitRepository.getRules(habitUuid: goal.uuid);
-        final rule = HabitRuleResolver.effectiveRule(rules, now);
+        final goalRules = rulesByHabit[goal.uuid] ?? const [];
+        final rule = HabitRuleResolver.effectiveRule(goalRules, now);
         if (rule == null) continue;
-        final logicalDate =
-            HabitRuleResolver.logicalDateFor(now, rule.dayBoundaryMinute);
+        final logicalDate = HabitRuleResolver.logicalDateFor(
+          now,
+          rule.dayBoundaryMinute,
+        );
         if (!HabitRuleResolver.isPlannedDay(rule, logicalDate)) continue;
+        plannedHabits.add((
+          goal: goal,
+          rules: goalRules,
+          rule: rule,
+          logicalDate: logicalDate,
+        ));
+      }
+      if (plannedHabits.isEmpty) return const [];
+
+      final logicalDates =
+          plannedHabits
+              .map((habit) => HabitRuleResolver.dayKey(habit.logicalDate))
+              .toSet()
+              .toList()
+            ..sort();
+      final checkIns = await HabitRepository.getCheckInsForHabits(
+        plannedHabits.map((habit) => habit.goal.uuid),
+        fromDate: logicalDates.first,
+        toDate: logicalDates.last,
+      );
+      final checkInsByHabitAndDate =
+          <String, Map<String, List<HabitCheckIn>>>{};
+      for (final checkIn in checkIns) {
+        final byDate = checkInsByHabitAndDate.putIfAbsent(
+          checkIn.habitUuid,
+          () => <String, List<HabitCheckIn>>{},
+        );
+        (byDate[checkIn.logicalDate] ??= <HabitCheckIn>[]).add(checkIn);
+      }
+      final recordsByHabit = await HabitSourceResolver.recordsForPeriods(
+        plannedHabits
+            .where(
+              (habit) => habit.goal.sourceType == HabitSourceType.pomodoroTag,
+            )
+            .map(
+              (habit) => (
+                habitUuid: habit.goal.uuid,
+                tagUuids: habit.goal.sourceIds,
+                logicalDate: habit.logicalDate,
+              ),
+            ),
+      );
+      final todosByHabit = await HabitSourceResolver.todosForHabitSources(
+        plannedHabits
+            .where(
+              (habit) => habit.goal.sourceType == HabitSourceType.recurringTodo,
+            )
+            .map(
+              (habit) =>
+                  (habitUuid: habit.goal.uuid, seriesIds: habit.goal.sourceIds),
+            ),
+      );
+
+      final items = <WidgetHabitItem>[];
+      for (final habit in plannedHabits) {
+        final goal = habit.goal;
+        final logicalDate = habit.logicalDate;
+        final todos = todosByHabit?[goal.uuid];
         final progress = await HabitProgressCalculator.computePeriod(
           habit: goal,
-          rules: rules,
+          rules: habit.rules,
           logicalDate: logicalDate,
           now: now,
+          todos: goal.sourceType == HabitSourceType.recurringTodo
+              ? todos
+              : null,
+          records: goal.sourceType == HabitSourceType.pomodoroTag
+              ? recordsByHabit[goal.uuid] ?? const []
+              : null,
+          checkIns:
+              checkInsByHabitAndDate[goal.uuid]?[HabitRuleResolver.dayKey(
+                logicalDate,
+              )] ??
+              const [],
         );
-        items.add(WidgetHabitItem(
-          habitId: goal.uuid,
-          title: goal.name,
-          icon: goal.icon,
-          sourceType: goal.sourceType.name,
-          currentValue: progress.currentValue,
-          targetValue: progress.targetValue,
-          unit: rule.unit,
-          goalMet: progress.goalMet,
-          quickValues: rule.quickValues.map((v) => v.toDouble()).toList(),
-        ));
+        items.add(
+          WidgetHabitItem(
+            habitId: goal.uuid,
+            title: goal.name,
+            icon: goal.icon,
+            sourceType: goal.sourceType.name,
+            currentValue: progress.currentValue,
+            targetValue: progress.targetValue,
+            unit: habit.rule.unit,
+            goalMet: progress.goalMet,
+            quickValues: habit.rule.quickValues
+                .map((v) => v.toDouble())
+                .toList(),
+          ),
+        );
       }
       items.sort((a, b) {
         if (a.goalMet != b.goalMet) return a.goalMet ? 1 : -1;
@@ -578,98 +740,107 @@ class WidgetService {
     List<TodoItem> allTodos,
     List<CourseItem> allCourses,
     List<CountdownItem> countdownsRaw,
+    List<PomodoroRecord> todayPomodoroRecords,
     DateTime now,
     DateTime today, {
     List<WidgetHabitItem> habitItems = const [],
     WidgetFinanceSummary finance = const WidgetFinanceSummary(),
   }) async {
+    final dateFormat = DateFormat('yyyy-MM-dd');
+
     // 1. 倒数日：未删除、未过期，按目标日期排序
-    final countdownItems = countdownsRaw
-        .where((c) => !c.isDeleted && !c.isCompleted)
-        .map((c) {
-          final diffDays = CalendarDateMath.daysBetween(today, c.targetDate);
-          return WidgetCountdownItem(
-            title: c.title,
-            daysLeft: diffDays,
-            dateText: DateFormat('yyyy-MM-dd').format(c.targetDate),
-          );
-        })
-        .where((c) => c.daysLeft >= 0)
-        .toList()
-      ..sort((a, b) => a.daysLeft.compareTo(b.daysLeft));
+    final countdownItems = <WidgetCountdownItem>[];
+    for (final countdown in countdownsRaw) {
+      if (countdown.isDeleted || countdown.isCompleted) continue;
+      final diffDays = CalendarDateMath.daysBetween(
+        today,
+        countdown.targetDate,
+      );
+      if (diffDays < 0) continue;
+      countdownItems.add(
+        WidgetCountdownItem(
+          title: countdown.title,
+          daysLeft: diffDays,
+          dateText: dateFormat.format(countdown.targetDate),
+        ),
+      );
+    }
+    countdownItems.sort((a, b) => a.daysLeft.compareTo(b.daysLeft));
 
     // 2. 待办：未完成、未删除，按紧急度排序
-    final todoItems = actionableTodos
-        .where((t) => !t.isDone && !t.isDeleted)
-        .map((t) {
-      String? timeText;
-      int priority = 0;
-      if (t.dueDate != null) {
-        final diffDays = CalendarDateMath.daysBetween(today, t.dueDate!);
-        if (diffDays < 0) {
-          timeText = '已逾期';
-          priority = 3;
-        } else if (diffDays == 0) {
-          timeText =
-              '今天 ${t.dueDate!.hour.toString().padLeft(2, '0')}:${t.dueDate!.minute.toString().padLeft(2, '0')}';
-          priority = 2;
-        } else if (diffDays == 1) {
-          timeText = '明天';
-          priority = 1;
-        } else {
-          timeText = '$diffDays天后';
-        }
-      }
-      return WidgetTodoItem(
-        title: t.title,
-        timeText: timeText,
-        priority: priority,
-        isDone: t.isDone,
-        visibleUntilMs:
-            recurringTodoWidgetVisibleUntil(t)?.millisecondsSinceEpoch,
-      );
-    }).toList()
-      ..sort((a, b) {
-        if (a.isDone != b.isDone) return a.isDone ? 1 : -1;
-        if (a.priority != b.priority) return b.priority.compareTo(a.priority);
-        return 0;
-      });
+    final todoItems =
+        actionableTodos.where((t) => !t.isDone && !t.isDeleted).map((t) {
+          String? timeText;
+          int priority = 0;
+          if (t.dueDate != null) {
+            final diffDays = CalendarDateMath.daysBetween(today, t.dueDate!);
+            if (diffDays < 0) {
+              timeText = '已逾期';
+              priority = 3;
+            } else if (diffDays == 0) {
+              timeText =
+                  '今天 ${t.dueDate!.hour.toString().padLeft(2, '0')}:${t.dueDate!.minute.toString().padLeft(2, '0')}';
+              priority = 2;
+            } else if (diffDays == 1) {
+              timeText = '明天';
+              priority = 1;
+            } else {
+              timeText = '$diffDays天后';
+            }
+          }
+          return WidgetTodoItem(
+            title: t.title,
+            timeText: timeText,
+            priority: priority,
+            isDone: t.isDone,
+            visibleUntilMs: recurringTodoWidgetVisibleUntil(t)
+                ?.millisecondsSinceEpoch,
+          );
+        }).toList()..sort((a, b) {
+          if (a.isDone != b.isDone) return a.isDone ? 1 : -1;
+          if (a.priority != b.priority) return b.priority.compareTo(a.priority);
+          return 0;
+        });
 
     // 3. 课程：今日课程，按时间排序
-    final todayStr = DateFormat('yyyy-MM-dd').format(now);
+    final todayStr = dateFormat.format(now);
     final courseItems =
         allCourses.where((c) => !c.isDeleted && c.date == todayStr).map((c) {
-      String? statusText;
-      final startH = c.startTime ~/ 100;
-      final startM = c.startTime % 100;
-      final endH = c.endTime ~/ 100;
-      final endM = c.endTime % 100;
-      final courseStart =
-          DateTime(now.year, now.month, now.day, startH, startM);
-      final courseEnd = DateTime(now.year, now.month, now.day, endH, endM);
+          String? statusText;
+          final startH = c.startTime ~/ 100;
+          final startM = c.startTime % 100;
+          final endH = c.endTime ~/ 100;
+          final endM = c.endTime % 100;
+          final courseStart = DateTime(
+            now.year,
+            now.month,
+            now.day,
+            startH,
+            startM,
+          );
+          final courseEnd = DateTime(now.year, now.month, now.day, endH, endM);
 
-      if (now.isAfter(courseStart) && now.isBefore(courseEnd)) {
-        final remaining = courseEnd.difference(now).inMinutes;
-        statusText = '正在上课 · 还剩$remaining分钟';
-      } else if (now.isBefore(courseStart)) {
-        final diff = courseStart.difference(now).inMinutes;
-        if (diff <= 30) {
-          statusText = '即将开始 · $diff分钟后';
-        } else {
-          statusText = '待上';
-        }
-      } else {
-        statusText = '已结束';
-      }
+          if (now.isAfter(courseStart) && now.isBefore(courseEnd)) {
+            final remaining = courseEnd.difference(now).inMinutes;
+            statusText = '正在上课 · 还剩$remaining分钟';
+          } else if (now.isBefore(courseStart)) {
+            final diff = courseStart.difference(now).inMinutes;
+            if (diff <= 30) {
+              statusText = '即将开始 · $diff分钟后';
+            } else {
+              statusText = '待上';
+            }
+          } else {
+            statusText = '已结束';
+          }
 
-      return WidgetCourseItem(
-        title: c.courseName,
-        timeText: '${c.formattedStartTime} - ${c.formattedEndTime}',
-        location: c.roomName,
-        statusText: statusText,
-      );
-    }).toList()
-          ..sort((a, b) => a.timeText.compareTo(b.timeText));
+          return WidgetCourseItem(
+            title: c.courseName,
+            timeText: '${c.formattedStartTime} - ${c.formattedEndTime}',
+            location: c.roomName,
+            statusText: statusText,
+          );
+        }).toList()..sort((a, b) => a.timeText.compareTo(b.timeText));
 
     // 4. 专注状态
     int todayMinutes = 0;
@@ -685,9 +856,9 @@ class WidgetService {
         final elapsed = runState.isPaused
             ? (runState.accumulatedMs ~/ 1000)
             : (DateTime.now().millisecondsSinceEpoch -
-                        runState.sessionStartMs) ~/
-                    1000 +
-                (runState.accumulatedMs ~/ 1000);
+                          runState.sessionStartMs) ~/
+                      1000 +
+                  (runState.accumulatedMs ~/ 1000);
         final planned = runState.plannedFocusSeconds;
         if (planned > 0) {
           remainingSeconds = (planned - elapsed).clamp(0, planned);
@@ -695,16 +866,13 @@ class WidgetService {
       }
     } catch (_) {}
 
-    try {
-      final todayRecords = await PomodoroService.getTodayRecords();
-      for (final r in todayRecords) {
-        final end = r.endTime;
-        final start = r.startTime;
-        if (!r.isDeleted && end != null && end > 0 && start > 0) {
-          todayMinutes += ((end - start) ~/ 60000);
-        }
+    for (final r in todayPomodoroRecords) {
+      final end = r.endTime;
+      final start = r.startTime;
+      if (!r.isDeleted && end != null && end > 0 && start > 0) {
+        todayMinutes += ((end - start) ~/ 60000);
       }
-    } catch (_) {}
+    }
 
     final focusState = WidgetFocusState(
       isRunning: isRunning,
@@ -727,7 +895,8 @@ class WidgetService {
   }
 
   static Future<void> _updateAndroidWidgets(
-      Map<String, dynamic> widgetData) async {
+    Map<String, dynamic> widgetData,
+  ) async {
     try {
       final List<Future<void>> widgetWrites = [];
       widgetData.forEach((key, value) {
@@ -739,63 +908,61 @@ class WidgetService {
       try {
         await Future.wait([
           HomeWidget.updateWidget(
-                  qualifiedAndroidName: '$_widgetPackage.$androidWidgetName')
-              .catchError((e) {
-//             debugPrint(
-//                 '⚠️ [WidgetService] Failed to update $androidWidgetName: $e');
+            qualifiedAndroidName: '$_widgetPackage.$androidWidgetName',
+          ).catchError((e) {
+            //             debugPrint(
+            //                 '⚠️ [WidgetService] Failed to update $androidWidgetName: $e');
             return false;
           }),
           HomeWidget.updateWidget(
-                  qualifiedAndroidName: '$_widgetPackage.$todoOnlyWidgetName')
-              .catchError((e) {
-//             debugPrint(
-//                 '⚠️ [WidgetService] Failed to update $todoOnlyWidgetName: $e');
+            qualifiedAndroidName: '$_widgetPackage.$todoOnlyWidgetName',
+          ).catchError((e) {
+            //             debugPrint(
+            //                 '⚠️ [WidgetService] Failed to update $todoOnlyWidgetName: $e');
             return false;
           }),
           HomeWidget.updateWidget(
-                  qualifiedAndroidName: '$_widgetPackage.$courseOnlyWidgetName')
-              .catchError((e) {
-//             debugPrint(
-//                 '⚠️ [WidgetService] Failed to update $courseOnlyWidgetName: $e');
+            qualifiedAndroidName: '$_widgetPackage.$courseOnlyWidgetName',
+          ).catchError((e) {
+            //             debugPrint(
+            //                 '⚠️ [WidgetService] Failed to update $courseOnlyWidgetName: $e');
             return false;
           }),
           HomeWidget.updateWidget(
-                  qualifiedAndroidName:
-                      '$_widgetPackage.$countdownOnlyWidgetName')
-              .catchError((e) {
-//             debugPrint(
-//                 '⚠️ [WidgetService] Failed to update $countdownOnlyWidgetName: $e');
+            qualifiedAndroidName: '$_widgetPackage.$countdownOnlyWidgetName',
+          ).catchError((e) {
+            //             debugPrint(
+            //                 '⚠️ [WidgetService] Failed to update $countdownOnlyWidgetName: $e');
             return false;
           }),
           HomeWidget.updateWidget(
-                  qualifiedAndroidName: '$_widgetPackage.$focusOnlyWidgetName')
-              .catchError((e) {
-//             debugPrint(
-//                 '⚠️ [WidgetService] Failed to update $focusOnlyWidgetName: $e');
+            qualifiedAndroidName: '$_widgetPackage.$focusOnlyWidgetName',
+          ).catchError((e) {
+            //             debugPrint(
+            //                 '⚠️ [WidgetService] Failed to update $focusOnlyWidgetName: $e');
             return false;
           }),
           HomeWidget.updateWidget(
-                  qualifiedAndroidName: '$_widgetPackage.$recurrenceWidgetName')
-              .catchError((e) {
+            qualifiedAndroidName: '$_widgetPackage.$recurrenceWidgetName',
+          ).catchError((e) {
             return false;
           }),
           HomeWidget.updateWidget(
-                  qualifiedAndroidName: '$_widgetPackage.$habitWidgetName')
-              .catchError((e) {
+            qualifiedAndroidName: '$_widgetPackage.$habitWidgetName',
+          ).catchError((e) {
             return false;
           }),
           HomeWidget.updateWidget(
-                  qualifiedAndroidName:
-                      '$_widgetPackage.$financeOnlyWidgetName')
-              .catchError((e) {
+            qualifiedAndroidName: '$_widgetPackage.$financeOnlyWidgetName',
+          ).catchError((e) {
             return false;
           }),
         ]);
       } catch (e) {
-//         debugPrint('⚠️ [WidgetService] Android Widget update suppressed: $e');
+        //         debugPrint('⚠️ [WidgetService] Android Widget update suppressed: $e');
       }
     } catch (e) {
-//       debugPrint('⚠️ [WidgetService] Android Widget write error: $e');
+      //       debugPrint('⚠️ [WidgetService] Android Widget write error: $e');
     }
   }
 
@@ -805,7 +972,7 @@ class WidgetService {
         'json': snapshot.toJsonString(),
       });
     } catch (e) {
-//       debugPrint('⚠️ [WidgetService] macOS Widget update failed: $e');
+      //       debugPrint('⚠️ [WidgetService] macOS Widget update failed: $e');
     }
   }
 
@@ -814,49 +981,33 @@ class WidgetService {
   @visibleForTesting
   static Map<String, dynamic> prepareWidgetDataForTesting(
     Map<String, dynamic> input,
-  ) =>
-      _prepareWidgetDataIsolate(input);
+  ) => _prepareWidgetDataIsolate(input);
 
   static Map<String, dynamic> _prepareWidgetDataIsolate(
-      Map<String, dynamic> input) {
+    Map<String, dynamic> input,
+  ) {
     final now = DateTime.fromMillisecondsSinceEpoch(input['now'] as int);
     final today = DateTime(now.year, now.month, now.day);
-    final List<Map<String, dynamic>> allTodos =
-        (input['todos'] as List).cast<Map<String, dynamic>>();
-    final List<Map<String, dynamic>> allCourses =
-        (input['courses'] as List).cast<Map<String, dynamic>>();
+    final List<Map<String, dynamic>> allTodos = (input['todos'] as List)
+        .cast<Map<String, dynamic>>();
+    final List<Map<String, dynamic>> allCourses = (input['courses'] as List)
+        .cast<Map<String, dynamic>>();
     final List<Map<String, dynamic>> fixedSchedules =
         (input['fixedSchedules'] as List?)?.cast<Map<String, dynamic>>() ??
-            const [];
+        const [];
     final List<Map<String, dynamic>> countdownsRaw =
         (input['countdowns'] as List).cast<Map<String, dynamic>>();
-    final List<Map<String, dynamic>> tlogsRaw =
-        (input['timelogs'] as List).cast<Map<String, dynamic>>();
-    final List<Map<String, dynamic>> pomsRaw =
-        (input['poms'] as List).cast<Map<String, dynamic>>();
+    final List<Map<String, dynamic>> tlogsRaw = (input['timelogs'] as List)
+        .cast<Map<String, dynamic>>();
+    final List<Map<String, dynamic>> pomsRaw = (input['poms'] as List)
+        .cast<Map<String, dynamic>>();
 
     final Map<String, dynamic> resultData = {};
 
-    // 1. 待办事项处理（主线程已过滤掉 isDone/isDeleted，这里直接分组排序）
+    // 1. 待办事项处理（主线程已过滤掉 isDone/isDeleted，保留每组最紧急的 8 条）
     final List<Map<String, dynamic>> pastTodos = [];
     final List<Map<String, dynamic>> todayTodos = [];
     final List<Map<String, dynamic>> futureTodos = [];
-    for (final t in allTodos) {
-      final dueDateMs = t['dueDate'] as int?;
-      if (dueDateMs != null) {
-        final d = DateTime.fromMillisecondsSinceEpoch(dueDateMs);
-        final dDay = DateTime(d.year, d.month, d.day);
-        if (dDay.isBefore(today)) {
-          pastTodos.add(t);
-        } else if (dDay.isAfter(today)) {
-          futureTodos.add(t);
-        } else {
-          todayTodos.add(t);
-        }
-      } else {
-        todayTodos.add(t);
-      }
-    }
     int startMs(Map<String, dynamic> t) =>
         (t['createdDate'] as int?) ?? (t['createdAt'] as int? ?? 0);
     int compareUrgency(Map<String, dynamic> a, Map<String, dynamic> b) {
@@ -868,12 +1019,46 @@ class WidgetService {
       return startMs(a).compareTo(startMs(b));
     }
 
-    pastTodos.sort(compareUrgency);
-    todayTodos.sort(compareUrgency);
-    futureTodos.sort(compareUrgency);
-    final displayTodos = [...pastTodos, ...todayTodos, ...futureTodos]
-        .take(maxWidgetItems)
-        .toList();
+    void keepMostUrgent(
+      List<Map<String, dynamic>> bucket,
+      Map<String, dynamic> todo,
+    ) {
+      var low = 0;
+      var high = bucket.length;
+      while (low < high) {
+        final middle = (low + high) ~/ 2;
+        if (compareUrgency(bucket[middle], todo) <= 0) {
+          low = middle + 1;
+        } else {
+          high = middle;
+        }
+      }
+      if (low >= maxWidgetItems) return;
+      bucket.insert(low, todo);
+      if (bucket.length > maxWidgetItems) bucket.removeLast();
+    }
+
+    for (final t in allTodos) {
+      final dueDateMs = t['dueDate'] as int?;
+      if (dueDateMs != null) {
+        final d = DateTime.fromMillisecondsSinceEpoch(dueDateMs);
+        final dDay = DateTime(d.year, d.month, d.day);
+        if (dDay.isBefore(today)) {
+          keepMostUrgent(pastTodos, t);
+        } else if (dDay.isAfter(today)) {
+          keepMostUrgent(futureTodos, t);
+        } else {
+          keepMostUrgent(todayTodos, t);
+        }
+      } else {
+        keepMostUrgent(todayTodos, t);
+      }
+    }
+    final displayTodos = [
+      ...pastTodos,
+      ...todayTodos,
+      ...futureTodos,
+    ].take(maxWidgetItems).toList(growable: false);
 
     for (int i = 1; i <= maxWidgetItems; i++) {
       resultData['todo_$i'] = '';
@@ -890,7 +1075,8 @@ class WidgetService {
       if (dueDateMs != null) {
         dueDate = DateTime.fromMillisecondsSinceEpoch(dueDateMs);
       }
-      final isDueToday = dueDate == null ||
+      final isDueToday =
+          dueDate == null ||
           !DateTime(dueDate.year, dueDate.month, dueDate.day).isAfter(today);
       if (isDueToday) title = '<b>$title</b>';
       resultData['todo_${i + 1}'] = title;
@@ -914,40 +1100,76 @@ class WidgetService {
       resultData['course_id_$i'] = '';
     }
     try {
-      final scheduleEntries = <Map<String, dynamic>>[
-        ...allCourses.map((course) => <String, dynamic>{
-              'id':
-                  '${course['courseName']}_${course['date']}_${course['startTime']}',
-              'title': course['courseName'],
-              'date': course['date'],
-              'startSort': course['startTime'],
-              'startAtMs': null,
-              'timeText':
-                  '${course['formattedStartTime']} - ${course['formattedEndTime']}',
-              'location': course['roomName'],
-            }),
-        ...fixedSchedules.map((schedule) => <String, dynamic>{
-              'id': schedule['id'],
-              'title': schedule['title'],
-              'date': schedule['date'],
-              'startSort': schedule['startSort'],
-              'startAtMs': schedule['startAtMs'],
-              'timeText': schedule['timeText'],
-              'location': schedule['location'],
-            }),
-      ];
-      final sortedSchedules = scheduleEntries
-        ..sort((a, b) {
-          final dateCmp = (a['date'] as String).compareTo(b['date'] as String);
-          if (dateCmp != 0) return dateCmp;
-          return (a['startSort'] as int).compareTo(b['startSort'] as int);
+      final displaySchedules = <Map<String, dynamic>>[];
+      void keepEarliestSchedule({
+        required Object? id,
+        required Object? title,
+        required Object? date,
+        required Object? startSort,
+        required Object? startAtMs,
+        required Object? timeText,
+        required Object? location,
+      }) {
+        var low = 0;
+        var high = displaySchedules.length;
+        while (low < high) {
+          final middle = (low + high) ~/ 2;
+          final current = displaySchedules[middle];
+          final dateCmp = (current['date'] as String).compareTo(date as String);
+          final comparison = dateCmp != 0
+              ? dateCmp
+              : (current['startSort'] as int).compareTo(startSort as int);
+          if (comparison <= 0) {
+            low = middle + 1;
+          } else {
+            high = middle;
+          }
+        }
+        if (low >= maxWidgetItems) return;
+        displaySchedules.insert(low, {
+          'id': id,
+          'title': title,
+          'date': date,
+          'startSort': startSort,
+          'startAtMs': startAtMs,
+          'timeText': timeText,
+          'location': location,
         });
-      final displaySchedules = sortedSchedules.take(maxWidgetItems).toList();
+        if (displaySchedules.length > maxWidgetItems) {
+          displaySchedules.removeLast();
+        }
+      }
+
+      for (final course in allCourses) {
+        keepEarliestSchedule(
+          id: '${course['courseName']}_${course['date']}_${course['startTime']}',
+          title: course['courseName'],
+          date: course['date'],
+          startSort: course['startTime'],
+          startAtMs: null,
+          timeText:
+              '${course['formattedStartTime']} - ${course['formattedEndTime']}',
+          location: course['roomName'],
+        );
+      }
+      for (final schedule in fixedSchedules) {
+        keepEarliestSchedule(
+          id: schedule['id'],
+          title: schedule['title'],
+          date: schedule['date'],
+          startSort: schedule['startSort'],
+          startAtMs: schedule['startAtMs'],
+          timeText: schedule['timeText'],
+          location: schedule['location'],
+        );
+      }
+
       for (int i = 0; i < displaySchedules.length; i++) {
         final schedule = displaySchedules[i];
         final rawDate = schedule['date'] as String?;
-        final courseDate =
-            rawDate == null ? null : DateTime.tryParse(rawDate)?.toLocal();
+        final courseDate = rawDate == null
+            ? null
+            : DateTime.tryParse(rawDate)?.toLocal();
         if (courseDate == null) continue;
         final diffDays = CalendarDateMath.daysBetween(today, courseDate);
         final String dayLabel = diffDays == 0
@@ -966,18 +1188,18 @@ class WidgetService {
         resultData['course_time_${i + 1}'] =
             schedule['timeText'] as String? ?? '';
         final location = (schedule['location'] as String? ?? '').trim();
-        resultData['course_room_${i + 1}'] =
-            location.isEmpty ? '' : '@$location';
+        resultData['course_room_${i + 1}'] = location.isEmpty
+            ? ''
+            : '@$location';
         resultData['course_id_${i + 1}'] = cId;
         if (urgentCourseId.isEmpty) {
           final startAtMs = schedule['startAtMs'] as int?;
           final startSort = schedule['startSort'] as int;
           if (startAtMs == null && startSort == 2400) continue;
           final cStart = startAtMs == null
-              ? courseDate.add(Duration(
-                  hours: startSort ~/ 100,
-                  minutes: startSort % 100,
-                ))
+              ? courseDate.add(
+                  Duration(hours: startSort ~/ 100, minutes: startSort % 100),
+                )
               : DateTime.fromMillisecondsSinceEpoch(startAtMs).toLocal();
           if (cStart.isAfter(now) && cStart.difference(now).inMinutes <= 30) {
             urgentCourseId = cId;
@@ -988,17 +1210,35 @@ class WidgetService {
     resultData['urgent_course_id'] = urgentCourseId;
 
     // 3. 倒数日（主线程已过滤未过期）
-    final sortedCountdowns = List<Map<String, dynamic>>.from(countdownsRaw)
-      ..sort((a, b) =>
-          (a['targetDateMs'] as int).compareTo(b['targetDateMs'] as int));
+    final displayCountdowns = <Map<String, dynamic>>[];
+    for (final countdown in countdownsRaw) {
+      final targetDateMs = countdown['targetDateMs'] as int;
+      var low = 0;
+      var high = displayCountdowns.length;
+      while (low < high) {
+        final middle = (low + high) ~/ 2;
+        if ((displayCountdowns[middle]['targetDateMs'] as int) <=
+            targetDateMs) {
+          low = middle + 1;
+        } else {
+          high = middle;
+        }
+      }
+      if (low >= maxWidgetItems) continue;
+      displayCountdowns.insert(low, countdown);
+      if (displayCountdowns.length > maxWidgetItems) {
+        displayCountdowns.removeLast();
+      }
+    }
     for (int i = 1; i <= maxWidgetItems; i++) {
       resultData['cd_title_$i'] = '';
       resultData['cd_days_$i'] = '';
     }
-    for (int i = 0; i < sortedCountdowns.length && i < maxWidgetItems; i++) {
-      final cd = sortedCountdowns[i];
-      final targetDate =
-          DateTime.fromMillisecondsSinceEpoch(cd['targetDateMs'] as int);
+    for (int i = 0; i < displayCountdowns.length; i++) {
+      final cd = displayCountdowns[i];
+      final targetDate = DateTime.fromMillisecondsSinceEpoch(
+        cd['targetDateMs'] as int,
+      );
       final diff = CalendarDateMath.daysBetween(today, targetDate);
       final title = cd['title'] as String? ?? '';
       resultData['cd_title_${i + 1}'] = diff == 0 ? '<b>$title</b>' : title;
@@ -1013,8 +1253,9 @@ class WidgetService {
         final end = l['endTime'] as int? ?? 0;
         if (end <= start) continue;
         merged.add({
-          'title':
-              ((l['title'] as String? ?? '').isNotEmpty) ? l['title'] : '专注任务',
+          'title': ((l['title'] as String? ?? '').isNotEmpty)
+              ? l['title']
+              : '专注任务',
           'start': start,
           'minutes': (end - start) ~/ 60000,
           'tagNames': (l['tagNames'] as List<dynamic>?) ?? [],
@@ -1022,7 +1263,8 @@ class WidgetService {
       }
       for (final p in pomsRaw) {
         final start = p['startTime'] as int;
-        final end = p['endTime'] as int? ??
+        final end =
+            p['endTime'] as int? ??
             (start +
                 ((p['actualDuration'] as int?) ??
                         (p['plannedDuration'] as int? ?? 0)) *
@@ -1036,8 +1278,10 @@ class WidgetService {
         });
       }
       merged.sort((a, b) => (b['start'] as int).compareTo(a['start'] as int));
-      final totalMins =
-          merged.fold<int>(0, (s, e) => s + (e['minutes'] as int));
+      final totalMins = merged.fold<int>(
+        0,
+        (s, e) => s + (e['minutes'] as int),
+      );
       resultData['tl_total'] = '今日总专注: $totalMins 分钟';
 
       final Map<String, double> tagMinutes = {};
@@ -1077,8 +1321,8 @@ class WidgetService {
     resultData['widget_mode'] = urgentCourseId.isNotEmpty ? 'course' : 'todo';
 
     // 6. 习惯（主线程已算好今日进度并按达标排序，最多 5 条）
-    final List<Map<String, dynamic>> habits =
-        (input['habits'] as List).cast<Map<String, dynamic>>();
+    final List<Map<String, dynamic>> habits = (input['habits'] as List)
+        .cast<Map<String, dynamic>>();
     for (int i = 1; i <= 5; i++) {
       resultData['habit_title_$i'] = '';
       resultData['habit_icon_$i'] = '';
@@ -1101,8 +1345,8 @@ class WidgetService {
       if (source == 'quantityCheckIn' || source == 'pomodoroTag') {
         progress = target > 0
             ? (met
-                ? '已达标 ${formatHabitNumber(current)}$unit'
-                : '${formatHabitNumber(current)} / ${formatHabitNumber(target)}$unit')
+                  ? '已达标 ${formatHabitNumber(current)}$unit'
+                  : '${formatHabitNumber(current)} / ${formatHabitNumber(target)}$unit')
             : '${formatHabitNumber(current)}$unit';
       } else {
         progress = met ? '已达标' : '待完成';
@@ -1113,8 +1357,9 @@ class WidgetService {
       resultData['habit_met_${i + 1}'] = met;
       resultData['habit_id_${i + 1}'] = h['habitId'] as String? ?? '';
       resultData['habit_source_${i + 1}'] = source;
-      resultData['habit_pct_${i + 1}'] =
-          target > 0 ? ((current / target).clamp(0.0, 1.0) * 100).round() : 0;
+      resultData['habit_pct_${i + 1}'] = target > 0
+          ? ((current / target).clamp(0.0, 1.0) * 100).round()
+          : 0;
       resultData['habit_quick_${i + 1}'] =
           ((h['quickValues'] as List?) ?? const [])
               .map((v) => (v as num).toString())

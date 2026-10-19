@@ -17,10 +17,7 @@ void main() {
       final end = DateTime(2026, 3, 10);
 
       expect(end.difference(start), const Duration(hours: 47));
-      expect(
-        TimelineService.isSingleCalendarDayRange(start, end),
-        isFalse,
-      );
+      expect(TimelineService.isSingleCalendarDayRange(start, end), isFalse);
     });
 
     test('keeps a transaction at the last hour of the fall-back day', () {

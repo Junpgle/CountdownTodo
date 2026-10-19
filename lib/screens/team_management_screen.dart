@@ -26,6 +26,19 @@ import '../utils/page_transitions.dart';
 import '../widgets/floating_glass_control.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
 
+final Map<(String?, String), DateFormat> _teamManagementDateFormats = {};
+
+DateFormat _teamManagementDateFormat(String pattern) {
+  final locale = Intl.defaultLocale;
+  return _teamManagementDateFormats.putIfAbsent(
+    (locale, pattern),
+    () => DateFormat(pattern, locale),
+  );
+}
+
+final RegExp _teamInviteCopyCodePattern =
+    RegExp(r'邀请码：\[([a-zA-Z0-9]+)\]');
+
 String? normalizeInviteCode(String? code) {
   final value = code?.trim();
   if (value == null || value.isEmpty || value.toLowerCase() == 'null') {
@@ -60,6 +73,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
   String? _activeCacheOwnerKey;
   final GlobalKey _panoramaActionKey = GlobalKey();
   final GlobalKey _conflictActionKey = GlobalKey();
+  final GlobalKey _messageCenterActionKey = GlobalKey();
 
   @override
   void initState() {
@@ -238,8 +252,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
       if (data != null && data.text != null) {
         String text = data.text!;
         // 匹配格式：邀请您加入「XXX」团队。复制此消息后打开App即可加入。邀请码：[ABCDEF]
-        RegExp regExp = RegExp(r'邀请码：\[([a-zA-Z0-9]+)\]');
-        Match? match = regExp.firstMatch(text);
+        Match? match = _teamInviteCopyCodePattern.firstMatch(text);
 
         if (match != null && match.groupCount >= 1) {
           String inviteCode = match.group(1)!;
@@ -581,8 +594,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
         controller: controller,
         onChanged: (text) {
           // 🚀 实时监听：如果用户直接粘贴了整段邀请长文案，自动提取并替换为纯邀请码
-          RegExp regExp = RegExp(r'邀请码：\[([a-zA-Z0-9]+)\]');
-          Match? match = regExp.firstMatch(text);
+          Match? match = _teamInviteCopyCodePattern.firstMatch(text);
           if (match != null && match.groupCount >= 1) {
             final extractedCode = match.group(1)!;
             controller.value = TextEditingValue(
@@ -611,8 +623,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
         if (code.isEmpty) return;
 
         // 🚀 双重防线：提交前再次确保提取的是纯邀请码
-        RegExp regExp = RegExp(r'邀请码：\[([a-zA-Z0-9]+)\]');
-        Match? match = regExp.firstMatch(code);
+        Match? match = _teamInviteCopyCodePattern.firstMatch(code);
         if (match != null && match.groupCount >= 1) {
           code = match.group(1)!;
         }
@@ -732,17 +743,10 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
         alignment: Alignment.center,
         children: [
           IconButton(
+            key: _messageCenterActionKey,
             icon: const Icon(Icons.notifications_none_rounded),
             tooltip: '消息中心',
-            onPressed: () {
-              final managedTeams =
-                  _teams.where((t) => t.userRole == TeamRole.admin).toList();
-              Navigator.push(
-                  context,
-                  PageTransitions.material(
-                      builder: (_) =>
-                          TeamMessageCenterScreen(managedTeams: managedTeams)));
-            },
+            onPressed: _openMessageCenter,
           ),
           if (totalPending > 0)
             Positioned(
@@ -765,6 +769,19 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
             ),
         ],
       ),
+    );
+  }
+
+  Future<void> _openMessageCenter() async {
+    final managedTeams =
+        _teams.where((t) => t.userRole == TeamRole.admin).toList();
+    await PageTransitions.pushFromRect<void>(
+      context: context,
+      page: TeamMessageCenterScreen(managedTeams: managedTeams),
+      sourceKey: _messageCenterActionKey,
+      sourceColor: Theme.of(context).colorScheme.surface,
+      sourceBorderRadius: BorderRadius.circular(24),
+      placeholderIcon: Icons.notifications_none_rounded,
     );
   }
 
@@ -1614,7 +1631,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
                         ),
                       const SizedBox(height: 4),
                       Text(
-                          '创建于 ${DateFormat('yyyy年MM月dd日').format(DateTime.fromMillisecondsSinceEpoch(team.createdAt))}',
+                          '创建于 ${_teamManagementDateFormat('yyyy年MM月dd日').format(DateTime.fromMillisecondsSinceEpoch(team.createdAt))}',
                           style: TextStyle(
                               fontSize: 12, color: Colors.grey.shade500),
                           maxLines: 1,
@@ -2313,7 +2330,7 @@ class _TeamDetailViewState extends State<_TeamDetailView>
                                 fontSize: 24, fontWeight: FontWeight.bold)),
                         const SizedBox(height: 4),
                         Text(
-                            '创建于 ${DateFormat('yyyy-MM-dd').format(DateTime.fromMillisecondsSinceEpoch(widget.team.createdAt))}',
+                            '创建于 ${_teamManagementDateFormat('yyyy-MM-dd').format(DateTime.fromMillisecondsSinceEpoch(widget.team.createdAt))}',
                             style: TextStyle(
                                 color: Colors.grey.shade500, fontSize: 13)),
                       ],
@@ -2397,6 +2414,12 @@ class _TeamDetailViewState extends State<_TeamDetailView>
 
   Widget _buildHeaderActions() {
     final isAdmin = widget.team.userRole == TeamRole.admin;
+    final colorScheme = Theme.of(context).colorScheme;
+    final actionShape =
+        RoundedRectangleBorder(borderRadius: BorderRadius.circular(16));
+    const actionPadding = EdgeInsets.symmetric(horizontal: 16, vertical: 10);
+    const actionMinimumSize = Size(0, 48);
+
     return Row(
       children: [
         IconButton(
@@ -2408,15 +2431,13 @@ class _TeamDetailViewState extends State<_TeamDetailView>
         if (isAdmin)
           OutlinedButton.icon(
             style: OutlinedButton.styleFrom(
-              foregroundColor: Theme.of(context).colorScheme.primary,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
+              foregroundColor: colorScheme.primary,
+              padding: actionPadding,
+              minimumSize: actionMinimumSize,
+              shape: actionShape,
               side: BorderSide(
-                  color: Theme.of(context)
-                      .colorScheme
-                      .primary
-                      .withValues(alpha: 0.3)),
+                color: colorScheme.primary.withValues(alpha: 0.3),
+              ),
             ),
             onPressed: () => Navigator.push(
               context,
@@ -2428,14 +2449,11 @@ class _TeamDetailViewState extends State<_TeamDetailView>
             label: const Text('分享'),
           ),
         const SizedBox(width: 8),
-        ElevatedButton.icon(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Theme.of(context).colorScheme.secondary,
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            elevation: 0,
+        FilledButton.icon(
+          style: FilledButton.styleFrom(
+            padding: actionPadding,
+            minimumSize: actionMinimumSize,
+            shape: actionShape,
           ),
           onPressed: () => unawaited(widget.copyInviteText(widget.team)),
           icon: const Icon(Icons.person_add_rounded, size: 20),
@@ -2537,7 +2555,7 @@ class _TeamAnnouncementViewState extends State<_TeamAnnouncementView> {
                         date = DateTime.tryParse(rawDate?.toString() ?? '') ??
                             DateTime.now();
                       }
-                      return Text(DateFormat('MM-dd HH:mm').format(date),
+                      return Text(_teamManagementDateFormat('MM-dd HH:mm').format(date),
                           style: TextStyle(
                               fontSize: 12, color: Colors.grey.shade500));
                     }),
@@ -2778,6 +2796,12 @@ class __TeamMembersViewState extends State<_TeamMembersView> {
 
   @override
   Widget build(BuildContext context) {
+    final requestCount = _requests.length;
+    final hasRequests = requestCount > 0;
+    final memberHeaderIndex = hasRequests ? requestCount + 3 : 0;
+    final memberStartIndex = memberHeaderIndex + 1;
+    final listItemCount = memberStartIndex + _members.length + 1;
+
     return Column(
       children: [
         const SizedBox(height: 12),
@@ -2808,32 +2832,56 @@ class __TeamMembersViewState extends State<_TeamMembersView> {
         Expanded(
           child: _loading
               ? const Center(child: CircularProgressIndicator())
-              : ListView(
+              : ListView.builder(
                   controller: widget.scrollController,
                   padding: const EdgeInsets.symmetric(horizontal: 16),
-                  children: [
-                    if (_requests.isNotEmpty) ...[
-                      Padding(
-                        padding:
-                            EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                        child: Text('待审批申请',
+                  itemCount: listItemCount,
+                  itemBuilder: (context, index) {
+                    if (hasRequests) {
+                      if (index == 0) {
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 8,
+                          ),
+                          child: Text(
+                            '待审批申请',
                             style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color:
-                                    Theme.of(context).colorScheme.secondary)),
-                      ),
-                      ..._requests.map((r) => _buildRequestItem(r)),
-                      const SizedBox(height: 16),
-                      const Divider(),
-                    ],
-                    const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                      child: Text('团队成员',
-                          style: TextStyle(fontWeight: FontWeight.bold)),
-                    ),
-                    ..._members.map((m) => _buildMemberItem(m)),
-                    const SizedBox(height: 40),
-                  ],
+                              fontWeight: FontWeight.bold,
+                              color: Theme.of(context).colorScheme.secondary,
+                            ),
+                          ),
+                        );
+                      }
+                      if (index <= requestCount) {
+                        return _buildRequestItem(_requests[index - 1]);
+                      }
+                      if (index == requestCount + 1) {
+                        return const SizedBox(height: 16);
+                      }
+                      if (index == requestCount + 2) {
+                        return const Divider();
+                      }
+                    }
+
+                    if (index == memberHeaderIndex) {
+                      return const Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 8,
+                        ),
+                        child: Text(
+                          '团队成员',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                      );
+                    }
+                    final memberIndex = index - memberStartIndex;
+                    if (memberIndex < _members.length) {
+                      return _buildMemberItem(_members[memberIndex]);
+                    }
+                    return const SizedBox(height: 40);
+                  },
                 ),
         ),
       ],

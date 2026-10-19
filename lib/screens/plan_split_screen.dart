@@ -1,7 +1,7 @@
 import '../models/plan_weekly_availability.dart';
 import '../services/plan_weekly_availability_preferences.dart';
+
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../models.dart';
 import '../storage_service.dart';
@@ -12,6 +12,7 @@ import '../models/plan_split.dart';
 import '../services/plan_availability_preferences.dart';
 import '../services/plan_availability_repository.dart';
 import '../services/plan_split_service.dart';
+import '../utils/time_utils.dart';
 import '../widgets/plan_availability_panel.dart';
 
 /// Restoring a draft never restores permission to relax calendar/avoidance checks.
@@ -25,13 +26,20 @@ Future<PlanSplitQuery> splitWithCurrentDefaults(
   if (prefs.bufferError != null) {
     throw PlanAvailabilityException(prefs.bufferError!);
   }
-  final weekly = useWeekly ? await PlanWeeklyAvailabilityPreferences.load(b.username) : null;
-  if(weekly?.error != null && !(b.weekly?.ignored ?? false)) {
+  final weekly = useWeekly
+      ? await PlanWeeklyAvailabilityPreferences.load(b.username)
+      : null;
+  if (weekly?.error != null && !(b.weekly?.ignored ?? false)) {
     throw PlanAvailabilityException(weekly!.error!);
   }
   return query.configure(
     base: PlanAvailabilityQuery(
-      weekly: useWeekly ? PlanWeeklyContext(weekly?.rules,ignored:b.weekly?.ignored ?? false) : null,
+      weekly: useWeekly
+          ? PlanWeeklyContext(
+              weekly?.rules,
+              ignored: b.weekly?.ignored ?? false,
+            )
+          : null,
       username: b.username,
       todoId: b.todoId,
       date: b.date,
@@ -74,7 +82,7 @@ String splitTimeLabel(PlanTimeSlot s) {
   final zones = s.start.timeZoneOffset == s.end.timeZoneOffset
       ? offset(s.start)
       : '${offset(s.start)} → ${offset(s.end)}';
-  return '${DateFormat('M/d HH:mm').format(s.start)}–${DateFormat(endFormat).format(s.end)} · ${s.minutes}分钟 ($zones)';
+  return '${AppTimeFormats.format(s.start, 'M/d HH:mm')}–${AppTimeFormats.format(s.end, endFormat)} · ${s.minutes}分钟 ($zones)';
 }
 
 class PlanSplitScreen extends StatefulWidget {
@@ -375,13 +383,15 @@ class _PlanSplitScreenState extends State<PlanSplitScreen>
                     children: [
                       Text('共${q.total}分钟 · 每段15–${q.maximum}分钟 · 最多6段'),
                       Text(
-                        '从${DateFormat('M月d日').format(q.base.date)}起${q.days}天 · 每天${q.base.windowStart ~/ 60}:${(q.base.windowStart % 60).toString().padLeft(2, '0')}–${q.base.windowEnd ~/ 60}:${(q.base.windowEnd % 60).toString().padLeft(2, '0')}',
+                        '从${AppTimeFormats.format(q.base.date, 'M月d日')}起${q.days}天 · 每天${q.base.windowStart ~/ 60}:${(q.base.windowStart % 60).toString().padLeft(2, '0')}–${q.base.windowEnd ~/ 60}:${(q.base.windowEnd % 60).toString().padLeft(2, '0')}',
                       ),
                       Text(
                         '${q.base.bufferSummary}；避让${q.base.avoidWindows.map((w) => w.label).join('、').isEmpty ? '无' : q.base.avoidWindows.map((w) => w.label).join('、')}',
                       ),
-                      if(q.base.weekly?.active == true) const Text('按每周可安排时间推荐'),
-                      if(q.base.weekly?.ignored == true) const Text('本次不使用每周规则'),
+                      if (q.base.weekly?.active == true)
+                        const Text('按每周可安排时间推荐'),
+                      if (q.base.weekly?.ignored == true)
+                        const Text('本次不使用每周规则'),
                       TextButton.icon(
                         key: const ValueKey('split-criteria'),
                         onPressed: _loading ? null : _criteria,

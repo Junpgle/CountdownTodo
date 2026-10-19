@@ -8,6 +8,7 @@ import '../services/plan_availability_preferences.dart';
 import '../services/plan_availability_repository.dart';
 import '../services/plan_availability_service.dart';
 import '../services/plan_continuous_range_service.dart';
+import '../services/conflict_visibility_service.dart';
 import '../services/plan_todo_guard.dart';
 import '../services/plan_weekly_availability_preferences.dart';
 import '../storage_service.dart';
@@ -19,6 +20,16 @@ class PlanExplanationResult {
   const PlanExplanationResult.action(this.action) : selection = null;
   final PlanAvailabilitySelection? selection;
   final PlanExplanationAction? action;
+}
+
+class _PlanExplanationDerivedData {
+  const _PlanExplanationDerivedData({
+    required this.diagnostic,
+    required this.fragments,
+  });
+
+  final PlanAvailabilityDiagnostics diagnostic;
+  final List<PlanTimeSlot> fragments;
 }
 
 class PlanAvailabilityExplanationScreen extends StatefulWidget {
@@ -53,8 +64,29 @@ class _PlanAvailabilityExplanationScreenState
   bool _busy = false, _stale = false;
   int _sequence = 0;
   String? _error;
+  String? _dateFormatLocale;
+  DateFormat? _dateFormatter;
+  DateFormat? _timeFormatter;
+  PlanAvailabilityQuery? _derivedQuery;
+  PlanAvailabilitySnapshot? _derivedSnapshot;
+  DateTime? _derivedToday;
+  DateTime? _derivedCurrentMinute;
+  _PlanExplanationDerivedData? _cachedDerivedData;
   DateTime get _now => widget.clock?.call() ?? DateTime.now();
   PlanAvailabilityQuery get _query => widget.query;
+
+  void _ensureDateFormatters() {
+    final locale = Intl.defaultLocale;
+    if (_dateFormatLocale == locale &&
+        _dateFormatter != null &&
+        _timeFormatter != null) {
+      return;
+    }
+    _dateFormatLocale = locale;
+    _dateFormatter = DateFormat('MM月dd日', locale);
+    _timeFormatter = DateFormat('HH:mm', locale);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -196,6 +228,7 @@ class _PlanAvailabilityExplanationScreenState
       await identity.check();
       await PlanAvailabilityPreferences.validateQueryDefaults(_query);
       if (!mounted || sequence != _sequence) return;
+      _cachedDerivedData = null;
       setState(() {
         _snapshot = current;
         _range = result;
@@ -237,7 +270,7 @@ class _PlanAvailabilityExplanationScreenState
             selected.query,
             requireCalendar: selected.snapshot.deviceCalendarIncluded,
           );
-      if (fresh.todo.hasConflict ||
+      if (ConflictVisibilityService.blocksTodoPlanning(fresh.todo) ||
           !PlanAvailabilityService.accepts(selected, fresh, now: _now)) {
         throw const PlanAvailabilityException('该时段已变化，请重新查找后采用');
       }
@@ -267,17 +300,58 @@ class _PlanAvailabilityExplanationScreenState
     }
   }
 
-  String _date(DateTime d) => DateFormat('MM月dd日').format(d);
-  String _time(DateTime d) => DateFormat('HH:mm').format(d);
+  String _date(DateTime d) {
+    _ensureDateFormatters();
+    return _dateFormatter!.format(d);
+  }
+
+  String _time(DateTime d) {
+    _ensureDateFormatters();
+    return _timeFormatter!.format(d);
+  }
+
+  _PlanExplanationDerivedData _derivedDataFor(DateTime now) {
+    final query = _query;
+    final snapshot = _snapshot;
+    final today = DateTime(now.year, now.month, now.day);
+    final currentMinute = PlanAvailabilityService.minuteCeiling(now);
+    final cachedData = _cachedDerivedData;
+    if (cachedData != null &&
+        identical(_derivedQuery, query) &&
+        identical(_derivedSnapshot, snapshot) &&
+        _derivedToday == today &&
+        _derivedCurrentMinute == currentMinute) {
+      return cachedData;
+    }
+
+    final diagnostic = PlanAvailabilityService.diagnose(
+      query,
+      snapshot,
+      now: now,
+    );
+    final fragments = diagnostic.fragments.where((s) => s.minutes > 0).toList()
+      ..sort((a, b) {
+        final comparison = b.minutes.compareTo(a.minutes);
+        return comparison != 0 ? comparison : a.start.compareTo(b.start);
+      });
+    final derivedData = _PlanExplanationDerivedData(
+      diagnostic: diagnostic,
+      fragments: fragments,
+    );
+    _derivedQuery = query;
+    _derivedSnapshot = snapshot;
+    _derivedToday = today;
+    _derivedCurrentMinute = currentMinute;
+    _cachedDerivedData = derivedData;
+    return derivedData;
+  }
+
   String _minute(int m) =>
       '${(m ~/ 60).toString().padLeft(2, '0')}:${(m % 60).toString().padLeft(2, '0')}';
   @override
   Widget build(BuildContext context) {
-    final diagnostic = PlanAvailabilityService.diagnose(
-      _query,
-      _snapshot,
-      now: _now,
-    );
+    final derivedData = _derivedDataFor(_now);
+    final diagnostic = derivedData.diagnostic;
     final due = PlanAvailabilityService.deadline(_snapshot.todo);
     final next = DateTime(
       _query.date.year,
@@ -285,11 +359,7 @@ class _PlanAvailabilityExplanationScreenState
       _query.date.day + 1,
     );
     final canFollow = diagnostic.valid && (due == null || due.isAfter(next));
-    final fragments = diagnostic.fragments.where((s) => s.minutes > 0).toList()
-      ..sort((a, b) {
-        final c = b.minutes.compareTo(a.minutes);
-        return c != 0 ? c : a.start.compareTo(b.start);
-      });
+    final fragments = derivedData.fragments;
     final colors = Theme.of(context).colorScheme;
     final range = _range;
     final theme = Theme.of(context);

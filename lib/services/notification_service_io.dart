@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
+
 import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:intl/intl.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
+
 import '../models.dart';
 import '../storage_service.dart';
 import 'storage/app_settings_storage.dart';
@@ -21,8 +23,9 @@ class NotificationService {
   static const int financeBudgetAlertNotificationBaseId = 61000;
   static const int financeBudgetAlertNotificationRange = 9000;
 
-  static const MethodChannel _channel =
-      MethodChannel('com.math_quiz.junpgle.com.math_quiz_app/notifications');
+  static const MethodChannel _channel = MethodChannel(
+    'com.math_quiz.junpgle.com.math_quiz_app/notifications',
+  );
 
   static final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
@@ -35,7 +38,7 @@ class NotificationService {
   static final Set<String> _sentPomodoroEndAlertKeys = {};
   static final Set<String> _shownUpdateNotificationKeys = {};
   static StreamSubscription<MacIslandReminderAction>?
-      _macReminderActionSubscription;
+  _macReminderActionSubscription;
 
   // 集中式事件分发：所有原生 MethodChannel 调用统一由此广播
   static final StreamController<MethodCall> _eventCtrl =
@@ -94,12 +97,21 @@ class NotificationService {
 
   // Dedupe keys for Windows all-day todo notifications: "todoId@yyyy-MM-dd"
   static final Set<String> _windowsTodoNotificationKeys = <String>{};
+  static final Map<(String?, String), DateFormat>
+  _todoNotificationDateFormatters = {};
+
+  static DateFormat _todoNotificationDateFormat(String pattern) {
+    final locale = Intl.defaultLocale;
+    return _todoNotificationDateFormatters.putIfAbsent((locale, pattern), () {
+      return DateFormat(pattern, locale);
+    });
+  }
 
   static const NotificationDetails _desktopNotificationDetails =
       NotificationDetails(
-    windows: WindowsNotificationDetails(),
-    macOS: DarwinNotificationDetails(),
-  );
+        windows: WindowsNotificationDetails(),
+        macOS: DarwinNotificationDetails(),
+      );
 
   static bool get _isDesktopSupported => Platform.isWindows || Platform.isMacOS;
 
@@ -135,35 +147,34 @@ class NotificationService {
 
     const WindowsInitializationSettings initializationSettingsWindows =
         WindowsInitializationSettings(
-      appName: 'MathQuizApp',
-      appUserModelId: 'com.math_quiz.junpgle.com.math_quiz_app',
-      guid: 'a1b2c3d4-e5f6-7a8b-9c0d-e1f2a3b4c5d6',
-    );
+          appName: 'MathQuizApp',
+          appUserModelId: 'com.math_quiz.junpgle.com.math_quiz_app',
+          guid: 'a1b2c3d4-e5f6-7a8b-9c0d-e1f2a3b4c5d6',
+        );
 
     const DarwinInitializationSettings initializationSettingsDarwin =
         DarwinInitializationSettings(
-      requestAlertPermission: true,
-      requestBadgePermission: true,
-      requestSoundPermission: true,
-    );
+          requestAlertPermission: true,
+          requestBadgePermission: true,
+          requestSoundPermission: true,
+        );
 
     const InitializationSettings initializationSettings =
         InitializationSettings(
-      android: initializationSettingsAndroid,
-      iOS: initializationSettingsDarwin,
-      windows: initializationSettingsWindows,
-      macOS: initializationSettingsDarwin,
-    );
+          android: initializationSettingsAndroid,
+          iOS: initializationSettingsDarwin,
+          windows: initializationSettingsWindows,
+          macOS: initializationSettingsDarwin,
+        );
 
     try {
       await _plugin.initialize(settings: initializationSettings);
       _initialized = true;
       if (Platform.isMacOS) {
         await MacPomodoroStatusBarService.init();
-        _macReminderActionSubscription ??=
-            MacPomodoroStatusBarService.onReminderAction.listen(
-          _handleMacIslandReminderAction,
-        );
+        _macReminderActionSubscription ??= MacPomodoroStatusBarService
+            .onReminderAction
+            .listen(_handleMacIslandReminderAction);
         final stored = await StorageService.getWindowsScheduledReminders();
         await MacPomodoroStatusBarService.scheduleIslandReminders(
           stored,
@@ -179,7 +190,8 @@ class NotificationService {
   }
 
   static Future<void> _handleMacIslandReminderAction(
-      MacIslandReminderAction event) async {
+    MacIslandReminderAction event,
+  ) async {
     final notifId = (event.reminder['notifId'] as num?)?.toInt();
     if (notifId == null) return;
 
@@ -344,9 +356,7 @@ class NotificationService {
       );
       return true;
     } else if (Platform.isIOS) {
-      const details = NotificationDetails(
-        iOS: DarwinNotificationDetails(),
-      );
+      const details = NotificationDetails(iOS: DarwinNotificationDetails());
       await _plugin.show(
         id: id,
         title: title,
@@ -407,32 +417,43 @@ class NotificationService {
     await ensureInitialized();
 
     final DateTime now = DateTime.now();
-    final List<TodoItem> todayAllDayTodos = todos.where((t) {
-      if (t.dueDate == null) return false;
-      final todoType = ItemSemanticsService.specialTodoTypeForTitle(t.title);
-      if (todoType != 'default') return false;
-      DateTime localDueDate = t.dueDate!.toLocal();
-      if (!AppTimeFormats.isSameDay(localDueDate, now)) return false;
-      DateTime startDate = DateTime.fromMillisecondsSinceEpoch(
-              t.createdDate ?? t.createdAt,
-              isUtc: true)
-          .toLocal();
-      return startDate.hour == 0 &&
-          startDate.minute == 0 &&
-          localDueDate.hour == 23 &&
-          localDueDate.minute == 59;
-    }).toList();
+    var totalCount = 0;
+    var completedCount = 0;
+    final pendingItems = <TodoItem>[];
+    for (final todo in todos) {
+      final dueDate = todo.dueDate;
+      if (dueDate == null) continue;
+      final localDueDate = dueDate.toLocal();
+      if (!AppTimeFormats.isSameDay(localDueDate, now)) continue;
+      final todoType = ItemSemanticsService.specialTodoTypeForTitle(
+        todo.title,
+      );
+      if (todoType != 'default') continue;
+      final startDate = DateTime.fromMillisecondsSinceEpoch(
+        todo.createdDate ?? todo.createdAt,
+        isUtc: true,
+      ).toLocal();
+      if (startDate.hour != 0 ||
+          startDate.minute != 0 ||
+          localDueDate.hour != 23 ||
+          localDueDate.minute != 59) {
+        continue;
+      }
 
-    final int totalCount = todayAllDayTodos.length;
-    if (totalCount == 0 || todayAllDayTodos.every((t) => t.isDone)) {
+      totalCount++;
+      if (todo.isDone) {
+        completedCount++;
+      } else if (pendingItems.length < 5) {
+        pendingItems.add(todo);
+      }
+    }
+
+    if (totalCount == 0 || totalCount == completedCount) {
       await cancelSpecialTodoNotification(12345);
       return;
     }
 
-    final int completedCount = todayAllDayTodos.where((t) => t.isDone).length;
     final int pendingCount = totalCount - completedCount;
-    final List<TodoItem> pendingItems =
-        todayAllDayTodos.where((t) => !t.isDone).take(5).toList();
 
     try {
       await _channel.invokeMethod('showOngoingNotification', {
@@ -441,11 +462,12 @@ class NotificationService {
         'completedCount': completedCount,
         'pendingCount': pendingCount,
         'pendingTitles': pendingItems.map((t) => t.title).toList(),
-        'pendingRemarks':
-            pendingItems.map((t) => t.remark?.trim() ?? '').toList(),
+        'pendingRemarks': pendingItems
+            .map((t) => t.remark?.trim() ?? '')
+            .toList(),
       });
     } catch (e) {
-//       debugPrint("更新今日待办通知失败: $e");
+      //       debugPrint("更新今日待办通知失败: $e");
     }
   }
 
@@ -458,7 +480,8 @@ class NotificationService {
     required bool isSpecialTodo,
   }) {
     if (isSpecialTodo) return '${todo.id}@pickup-v${todo.version}';
-    final dayStr = DateFormat('yyyy-MM-dd').format(todo.dueDate!.toLocal());
+    final dayStr = _todoNotificationDateFormat('yyyy-MM-dd')
+        .format(todo.dueDate!.toLocal());
     return '${todo.id}@$dayStr';
   }
 
@@ -472,7 +495,8 @@ class NotificationService {
     }
 
     final todoType = ItemSemanticsService.specialTodoTypeForTitle(todo.title);
-    final isSpecialTodo = todoType != 'default' ||
+    final isSpecialTodo =
+        todoType != 'default' ||
         ItemSemanticsService.domainKindForTodo(todo) == TodoDomainKind.pickup;
     final displayTitle = isSpecialTodo
         ? ItemSemanticsService.maskPickupSensitiveText(
@@ -519,17 +543,17 @@ class NotificationService {
     } else if (isAllDayTodo) {
       timeStr = '当天内完成';
     } else {
-      timeStr = '${DateFormat('HH:mm').format(dueDate!)}前完成';
+      timeStr = '${_todoNotificationDateFormat('HH:mm').format(dueDate!)}前完成';
     }
     final notifId = todo.id.hashCode;
 
-//     debugPrint(
-//         "🔔 showUpcomingTodoNotification: title=${todo.title}, todoId=${todo.id}, hashCode=${todo.id.hashCode}, todoType=$todoType, isSpecialTodo=$isSpecialTodo, notifId=$notifId");
+    //     debugPrint(
+    //         "🔔 showUpcomingTodoNotification: title=${todo.title}, todoId=${todo.id}, hashCode=${todo.id.hashCode}, todoType=$todoType, isSpecialTodo=$isSpecialTodo, notifId=$notifId");
 
     if (_isDesktopSupported) {
       if (isAllDayTodo) {
         final todaySuffix =
-            '@${DateFormat('yyyy-MM-dd').format(DateTime.now())}';
+            '@${_todoNotificationDateFormat('yyyy-MM-dd').format(DateTime.now())}';
         _windowsTodoNotificationKeys.removeWhere(
           (key) => !key.contains('@pickup-v') && !key.endsWith(todaySuffix),
         );
@@ -541,7 +565,7 @@ class NotificationService {
           isSpecialTodo: isSpecialTodo,
         );
         if (_windowsTodoNotificationKeys.contains(dedupeKey)) {
-//           debugPrint('⏭️ 跳过重复的桌面端全天待办通知: $dedupeKey');
+          //           debugPrint('⏭️ 跳过重复的桌面端全天待办通知: $dedupeKey');
           return true;
         }
         _windowsTodoNotificationKeys.add(dedupeKey);
@@ -578,10 +602,10 @@ class NotificationService {
         'originalText': todo.originalText,
       });
       return true;
-//       debugPrint(
-//           "✅ 通知发送成功: type=${isSpecialTodo ? 'special_todo' : 'upcoming_todo'}, title=${todo.title}, notifId=$notifId");
+      //       debugPrint(
+      //           "✅ 通知发送成功: type=${isSpecialTodo ? 'special_todo' : 'upcoming_todo'}, title=${todo.title}, notifId=$notifId");
     } catch (e) {
-//       debugPrint("更新即将开始的待办通知失败: $e");
+      //       debugPrint("更新即将开始的待办通知失败: $e");
       return false;
     }
   }
@@ -665,7 +689,7 @@ class NotificationService {
         'isBreak': isBreak,
       });
     } catch (e) {
-//       debugPrint('番茄钟结束提醒失败: $e');
+      //       debugPrint('番茄钟结束提醒失败: $e');
     }
   }
 
@@ -695,24 +719,38 @@ class NotificationService {
       return;
     }
     try {
-      await _channel.invokeMethod(
-          'cancelSpecialTodoNotification', {'notificationId': notifId});
+      await _channel.invokeMethod('cancelSpecialTodoNotification', {
+        'notificationId': notifId,
+      });
     } catch (_) {
       // Native notification calls are best-effort.
     }
   }
 
-  static Future<void> removePlanReminders(Set<String> ids, {
+  static Future<void> removePlanReminders(
+    Set<String> ids, {
     required Future<void> Function() ensureCurrent,
   }) {
     final operation = _scheduleQueue.then<void>((_) async {
       await ensureCurrent();
       final existing = await getScheduledReminders(strict: true);
-      final remaining = ScheduledReminderRegistry.withoutPlanBlocks(existing, ids)
-          .where((r) => ScheduledReminderRegistry.sourceOf(r) == ScheduledReminderSources.reminderSchedule).toList();
+      final remaining =
+          ScheduledReminderRegistry.withoutPlanBlocks(existing, ids)
+              .where(
+                (r) =>
+                    ScheduledReminderRegistry.sourceOf(r) ==
+                    ScheduledReminderSources.reminderSchedule,
+              )
+              .toList();
       await ensureCurrent();
-      await _scheduleReminders(remaining, clearFirst: false, forceReschedule: true,
-        replaceSource: ScheduledReminderSources.reminderSchedule, strictErrors: true, ensureCurrent: ensureCurrent);
+      await _scheduleReminders(
+        remaining,
+        clearFirst: false,
+        forceReschedule: true,
+        replaceSource: ScheduledReminderSources.reminderSchedule,
+        strictErrors: true,
+        ensureCurrent: ensureCurrent,
+      );
       await ensureCurrent();
     });
     _scheduleQueue = operation.then<void>((_) {}, onError: (_, _) {});
@@ -771,9 +809,11 @@ class NotificationService {
 
     if (_isDesktopSupported) {
       final finalIds = merged
-          .where((reminder) =>
-              !FocusDoNotDisturbService.isActive ||
-              _isPomodoroReminder(reminder))
+          .where(
+            (reminder) =>
+                !FocusDoNotDisturbService.isActive ||
+                _isPomodoroReminder(reminder),
+          )
           .map(ScheduledReminderRegistry.notifIdOf)
           .whereType<int>()
           .toSet();
@@ -793,9 +833,11 @@ class NotificationService {
 
       final now = DateTime.now();
       final desktopReminders = merged
-          .where((reminder) =>
-              !FocusDoNotDisturbService.isActive ||
-              _isPomodoroReminder(reminder))
+          .where(
+            (reminder) =>
+                !FocusDoNotDisturbService.isActive ||
+                _isPomodoroReminder(reminder),
+          )
           .toList(growable: false);
       for (final reminder in desktopReminders) {
         await ensureCurrent?.call();
@@ -884,35 +926,37 @@ class NotificationService {
     final pomodoroEndEnabled =
         await AppSettingsStorage.isPomodoroEndNotificationEnabled();
 
-    return PlanReminderGuard.filterSchedulablePlanReminders(reminders
-        .where((reminder) {
-          final source = ScheduledReminderRegistry.sourceOf(reminder);
-          final type = reminder['type']?.toString();
-          if (FocusDoNotDisturbService.isActive &&
-              !_isPomodoroReminder(reminder)) {
-            return false;
-          }
-          if (source == ScheduledReminderSources.pomodoro ||
-              type == 'pomodoro' ||
-              type == 'pomodoro_end') {
-            return pomodoroEndEnabled;
-          }
-          if (!reminderEnabled) return false;
-          switch (type) {
-            case 'course':
-              return liveActivityEnabled && courseEnabled;
-            case 'upcoming_todo':
-              return liveActivityEnabled && todoLiveEnabled;
-            case 'special_todo':
-              return liveActivityEnabled && specialTodoEnabled;
-            case 'finance_recurring':
-              return financeEnabled;
-            default:
-              return true;
-          }
-        })
-        .map(Map<String, dynamic>.from)
-        .toList(growable: false));
+    return PlanReminderGuard.filterSchedulablePlanReminders(
+      reminders
+          .where((reminder) {
+            final source = ScheduledReminderRegistry.sourceOf(reminder);
+            final type = reminder['type']?.toString();
+            if (FocusDoNotDisturbService.isActive &&
+                !_isPomodoroReminder(reminder)) {
+              return false;
+            }
+            if (source == ScheduledReminderSources.pomodoro ||
+                type == 'pomodoro' ||
+                type == 'pomodoro_end') {
+              return pomodoroEndEnabled;
+            }
+            if (!reminderEnabled) return false;
+            switch (type) {
+              case 'course':
+                return liveActivityEnabled && courseEnabled;
+              case 'upcoming_todo':
+                return liveActivityEnabled && todoLiveEnabled;
+              case 'special_todo':
+                return liveActivityEnabled && specialTodoEnabled;
+              case 'finance_recurring':
+                return financeEnabled;
+              default:
+                return true;
+            }
+          })
+          .map(Map<String, dynamic>.from)
+          .toList(growable: false),
+    );
   }
 
   static bool _isPomodoroReminder(Map<String, dynamic> reminder) {
@@ -974,7 +1018,8 @@ class NotificationService {
 
     try {
       await _plugin.zonedSchedule(
-        id: ScheduledReminderRegistry.notifIdOf(reminder) ??
+        id:
+            ScheduledReminderRegistry.notifIdOf(reminder) ??
             triggerAtMs.hashCode,
         scheduledDate: tz.TZDateTime.from(triggerAt, tz.local),
         notificationDetails: _desktopNotificationDetails,
@@ -993,7 +1038,9 @@ class NotificationService {
     return int.tryParse(value?.toString() ?? '');
   }
 
-  static Future<List<Map<String, dynamic>>> getScheduledReminders({bool strict = false}) async {
+  static Future<List<Map<String, dynamic>>> getScheduledReminders({
+    bool strict = false,
+  }) async {
     if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported) {
       return [];
     }
@@ -1003,15 +1050,16 @@ class NotificationService {
     }
 
     try {
-      final jsonStr =
-          await _channel.invokeMethod<String>('getScheduledReminders');
+      final jsonStr = await _channel.invokeMethod<String>(
+        'getScheduledReminders',
+      );
       if (jsonStr == null || jsonStr.isEmpty) return [];
 
       final List<dynamic> list = jsonDecode(jsonStr);
       return list.map((item) => Map<String, dynamic>.from(item)).toList();
     } catch (e) {
       if (strict) rethrow;
-//       debugPrint('Error getting scheduled reminders: $e');
+      //       debugPrint('Error getting scheduled reminders: $e');
       return [];
     }
   }
@@ -1090,8 +1138,9 @@ class NotificationService {
     }
 
     try {
-      final progress =
-          maxAttempts > 0 ? (currentAttempt * 100) ~/ maxAttempts : 0;
+      final progress = maxAttempts > 0
+          ? (currentAttempt * 100) ~/ maxAttempts
+          : 0;
       await _channel.invokeMethod('showOngoingNotification', {
         'type': 'todo_recognize_progress',
         'currentAttempt': currentAttempt,
@@ -1101,15 +1150,13 @@ class NotificationService {
         'progress': progress,
       });
     } catch (e) {
-//       debugPrint("更新图片识别进度通知失败: $e");
+      //       debugPrint("更新图片识别进度通知失败: $e");
     }
   }
 
   /// 显示图片识别成功通知（实时通知，点击进入确认页面）
   /// [todoCount] 识别到的事项数量（参数名为旧接口兼容保留）
-  static Future<void> showTodoRecognizeSuccess({
-    required int todoCount,
-  }) async {
+  static Future<void> showTodoRecognizeSuccess({required int todoCount}) async {
     if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported) return;
     // 先撤掉 ongoing 进度通知，再发送可点击的普通结果通知；否则系统/小岛
     // 会继续把上一条“识别中”当作活动任务保留在顶部。
@@ -1139,7 +1186,7 @@ class NotificationService {
         'notificationId': NOTIF_ID_TODO_RECOGNIZE,
       });
     } catch (e) {
-//       debugPrint("发送图片识别成功通知失败: $e");
+      //       debugPrint("发送图片识别成功通知失败: $e");
     }
   }
 
@@ -1156,8 +1203,9 @@ class NotificationService {
     await ensureInitialized();
 
     final title = '❌ 图片识别失败';
-    final body =
-        errorMsg.length > 50 ? '${errorMsg.substring(0, 50)}...' : errorMsg;
+    final body = errorMsg.length > 50
+        ? '${errorMsg.substring(0, 50)}...'
+        : errorMsg;
 
     if (_isDesktopSupported) {
       await _plugin.show(
@@ -1176,7 +1224,7 @@ class NotificationService {
         'notificationId': NOTIF_ID_TODO_RECOGNIZE,
       });
     } catch (e) {
-//       debugPrint("发送图片识别失败通知失败: $e");
+      //       debugPrint("发送图片识别失败通知失败: $e");
     }
   }
 
@@ -1229,7 +1277,7 @@ class NotificationService {
         'content': updateContent,
       });
     } catch (e) {
-//       debugPrint("发送版本更新通知失败: $e");
+      //       debugPrint("发送版本更新通知失败: $e");
     }
   }
 
@@ -1245,7 +1293,8 @@ class NotificationService {
 
     try {
       await _channel.invokeMethod(
-          'cancelNotification'); // cancelNotification 会清除 UPDATE_NOTIFICATION_ID
+        'cancelNotification',
+      ); // cancelNotification 会清除 UPDATE_NOTIFICATION_ID
     } catch (_) {
       // Native notification calls are best-effort.
     }

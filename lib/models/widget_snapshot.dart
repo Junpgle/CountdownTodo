@@ -85,6 +85,9 @@ class WidgetSnapshot {
 /// 金额统一使用人民币分，平台侧只负责展示，录入和数据变更仍由 Flutter
 /// 记账模块处理。
 class WidgetFinanceSummary {
+  static final RegExp _amountGroupingPattern =
+      RegExp(r'(?<=\d)(?=(\d{3})+$)');
+
   final String monthLabel;
   final int incomeMinor;
   final int netExpenseMinor;
@@ -163,7 +166,7 @@ class WidgetFinanceSummary {
     final parts = amount.split('.');
     final whole = parts.first;
     final grouped = whole.replaceAllMapped(
-      RegExp(r'(?<=\d)(?=(\d{3})+$)'),
+      _amountGroupingPattern,
       (match) => ',',
     );
     return '¥$grouped.${parts.last}';

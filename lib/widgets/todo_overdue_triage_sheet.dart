@@ -11,6 +11,21 @@ import '../utils/calendar_date_math.dart';
 import '../utils/app_dialogs.dart';
 import 'optional_liquid_glass_surface.dart';
 
+String? _todoOverdueTriageDateLocale;
+final _todoOverdueTriageDateFormatters = <String, DateFormat>{};
+
+DateFormat _todoOverdueTriageDateFormat(String pattern) {
+  final locale = Intl.defaultLocale;
+  if (_todoOverdueTriageDateLocale != locale) {
+    _todoOverdueTriageDateLocale = locale;
+    _todoOverdueTriageDateFormatters.clear();
+  }
+  return _todoOverdueTriageDateFormatters.putIfAbsent(
+    pattern,
+    () => DateFormat(pattern, locale),
+  );
+}
+
 class TodoOverdueTriageSheet extends StatefulWidget {
   final String username;
   final List<TodoItem> initialOverdueTodos;
@@ -165,7 +180,7 @@ class _TodoOverdueTriageSheetState extends State<TodoOverdueTriageSheet> {
         context,
         SnackBar(
           content: Text(
-            '已为 "${todo.title}" 安排规划：${DateFormat('HH:mm').format(slot.start)}–${DateFormat('HH:mm').format(slot.end)}',
+            '已为 "${todo.title}" 安排规划：${_todoOverdueTriageDateFormat('HH:mm').format(slot.start)}–${_todoOverdueTriageDateFormat('HH:mm').format(slot.end)}',
           ),
           behavior: SnackBarBehavior.floating,
         ),
@@ -181,13 +196,16 @@ class _TodoOverdueTriageSheetState extends State<TodoOverdueTriageSheet> {
     }
   }
 
-  String _formatOverdueTime(DateTime due) {
-    final now = widget.service.clock();
-    final today = DateTime(now.year, now.month, now.day);
+  String _formatOverdueTime(
+    DateTime due,
+    DateTime today,
+    DateFormat timeFormat,
+    DateFormat dateFormat,
+  ) {
     final dueDate = DateTime(due.year, due.month, due.day);
     final daysDiff = CalendarDateMath.daysBetween(dueDate, today);
 
-    final timeStr = DateFormat('HH:mm').format(due);
+    final timeStr = timeFormat.format(due);
     if (daysDiff == 0) {
       return '今天 $timeStr 已过期';
     } else if (daysDiff == 1) {
@@ -195,7 +213,7 @@ class _TodoOverdueTriageSheetState extends State<TodoOverdueTriageSheet> {
     } else if (daysDiff == 2) {
       return '前天 $timeStr 逾期';
     } else {
-      return '$daysDiff 天前逾期 (${DateFormat('MM-dd').format(due)})';
+      return '$daysDiff 天前逾期 (${dateFormat.format(due)})';
     }
   }
 
@@ -204,6 +222,10 @@ class _TodoOverdueTriageSheetState extends State<TodoOverdueTriageSheet> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
+    final now = widget.service.clock();
+    final today = DateTime(now.year, now.month, now.day);
+    final overdueTimeFormat = _todoOverdueTriageDateFormat('HH:mm');
+    final overdueDateFormat = _todoOverdueTriageDateFormat('MM-dd');
 
     final isAllSelected =
         _selectedIds.length == _overdueTodos.length && _overdueTodos.isNotEmpty;
@@ -455,6 +477,9 @@ class _TodoOverdueTriageSheetState extends State<TodoOverdueTriageSheet> {
                                                     Text(
                                                       _formatOverdueTime(
                                                         todo.dueDate!,
+                                                        today,
+                                                        overdueTimeFormat,
+                                                        overdueDateFormat,
                                                       ),
                                                       style: TextStyle(
                                                         fontSize: 11,
@@ -523,12 +548,12 @@ class _TodoOverdueTriageSheetState extends State<TodoOverdueTriageSheet> {
                                           children: slots.map((slot) {
                                             final isToday =
                                                 slot.start.day ==
-                                                widget.service.clock().day;
+                                                now.day;
                                             final prefix = isToday
                                                 ? '今天'
                                                 : '明天';
                                             final timeStr =
-                                                '$prefix ${DateFormat('HH:mm').format(slot.start)}–${DateFormat('HH:mm').format(slot.end)} (${slot.minutes}分)';
+                                                '$prefix ${overdueTimeFormat.format(slot.start)}–${overdueTimeFormat.format(slot.end)} (${slot.minutes}分)';
                                             return ActionChip(
                                               avatar: const Icon(
                                                 Icons.add_task_rounded,

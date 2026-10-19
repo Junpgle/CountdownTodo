@@ -24,6 +24,13 @@ class ClipboardConfig {
 /// Uses Win32 API for direct clipboard access on Windows.
 class ClipboardService {
   static final ClipboardService _instance = ClipboardService._internal();
+  static final RegExp _urlSchemePattern = RegExp(
+    r'^[a-zA-Z][a-zA-Z0-9+\-.]*://',
+  );
+  static final RegExp _ipv4HostPattern = RegExp(r'^\d{1,3}(\.\d{1,3}){3}$');
+  static final RegExp _domainHostPattern = RegExp(
+    r'^[a-zA-Z0-9\-]+(\.[a-zA-Z0-9\-]+)+$',
+  );
 
   factory ClipboardService() => _instance;
 
@@ -31,6 +38,7 @@ class ClipboardService {
 
   Timer? _pollTimer;
   String? _lastClipboardContent;
+  int? _lastClipboardSequenceNumber;
   final _urlController = StreamController<String>.broadcast();
   bool _initialized = false;
 
@@ -51,7 +59,7 @@ class ClipboardService {
     }
 
     // Add scheme if missing before parsing
-    final hasScheme = RegExp(r'^[a-zA-Z][a-zA-Z0-9+\-.]*://').hasMatch(trimmed);
+    final hasScheme = _urlSchemePattern.hasMatch(trimmed);
     final toParse = hasScheme ? trimmed : 'https://$trimmed';
 
     final uri = Uri.tryParse(toParse);
@@ -82,8 +90,8 @@ class ClipboardService {
 
     // Valid hosts: localhost, IPv4, or domain with at least one dot
     final isValidHost = host == 'localhost' ||
-        RegExp(r'^\d{1,3}(\.\d{1,3}){3}$').hasMatch(host) ||
-        RegExp(r'^[a-zA-Z0-9\-]+(\.[a-zA-Z0-9\-]+)+$').hasMatch(host);
+        _ipv4HostPattern.hasMatch(host) ||
+        _domainHostPattern.hasMatch(host);
 
     if (!isValidHost) {
 //       debugPrint('[ClipboardService] Invalid host: $host');
@@ -93,8 +101,8 @@ class ClipboardService {
   }
 
   /// Get text from Windows clipboard using Win32 API
-  String? _getClipboardText() {
-    if (!IsClipboardFormatAvailable(CF_UNICODETEXT).value) {
+  String? _getClipboardText({bool formatAvailable = false}) {
+    if (!formatAvailable && !IsClipboardFormatAvailable(CF_UNICODETEXT).value) {
       return null;
     }
     if (!OpenClipboard(null).value) {
@@ -123,6 +131,7 @@ class ClipboardService {
     if (_initialized) return;
     _initialized = true;
     try {
+      _lastClipboardSequenceNumber = GetClipboardSequenceNumber();
       _lastClipboardContent = _getClipboardText()?.trim();
 //       debugPrint('[ClipboardService] Initialized');
     } catch (e) {
@@ -141,8 +150,21 @@ class ClipboardService {
     _pollTimer?.cancel();
     _pollTimer = Timer.periodic(ClipboardConfig.pollInterval, (_) {
       try {
-        final content = _getClipboardText()?.trim();
-        if (content == null || content.isEmpty) return;
+        final sequenceNumber = GetClipboardSequenceNumber();
+        // Zero means the sequence API cannot observe this window station.
+        if (sequenceNumber != 0 &&
+            sequenceNumber == _lastClipboardSequenceNumber) {
+          return;
+        }
+        if (!IsClipboardFormatAvailable(CF_UNICODETEXT).value) {
+          _lastClipboardSequenceNumber = sequenceNumber;
+          return;
+        }
+
+        final content = _getClipboardText(formatAvailable: true)?.trim();
+        if (content == null) return;
+        _lastClipboardSequenceNumber = sequenceNumber;
+        if (content.isEmpty) return;
 
         final isNew = content != _lastClipboardContent;
         if (!isNew) return;
@@ -171,6 +193,7 @@ class ClipboardService {
 
   /// Reset the last known clipboard content (useful after URL is processed)
   void resetLastContent() {
+    _lastClipboardSequenceNumber = GetClipboardSequenceNumber();
     _lastClipboardContent = _getClipboardText()?.trim();
   }
 

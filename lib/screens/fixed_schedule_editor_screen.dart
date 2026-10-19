@@ -1,6 +1,6 @@
 import '../widgets/floating_glass_control.dart';
+
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models.dart';
@@ -12,6 +12,7 @@ import '../services/schedule_conflict_service.dart';
 import '../storage_service.dart';
 import '../utils/app_dialogs.dart';
 import '../utils/semester_week_context.dart';
+import '../utils/time_utils.dart';
 
 class FixedScheduleEditorScreen extends StatefulWidget {
   const FixedScheduleEditorScreen({
@@ -165,8 +166,9 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
       context: context,
       firstDate: _date,
       lastDate: DateTime(_date.year + 5, 12, 31),
-      initialDate:
-          _recurrenceEndDate.isBefore(_date) ? _date : _recurrenceEndDate,
+      initialDate: _recurrenceEndDate.isBefore(_date)
+          ? _date
+          : _recurrenceEndDate,
       semesterWeekContext: _semesterWeekContext,
     );
     if (picked != null && mounted) {
@@ -189,10 +191,7 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
       ApiService.fetchTeams(),
       SharedPreferences.getInstance(),
       if (_editing)
-        StorageService.getFixedSchedules(
-          widget.username,
-          includeDeleted: true,
-        ),
+        StorageService.getFixedSchedules(widget.username, includeDeleted: true),
     ]);
     if (!mounted) return;
 
@@ -212,12 +211,13 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
             seriesId.isNotEmpty &&
             item.recurrenceSeriesId == seriesId;
       }).toList();
-      final activeDates = seriesItems
-          .where((item) => !item.isDeleted)
-          .map((item) => DateTime.tryParse(item.date)?.toLocal())
-          .whereType<DateTime>()
-          .toList()
-        ..sort();
+      final activeDates =
+          seriesItems
+              .where((item) => !item.isDeleted)
+              .map((item) => DateTime.tryParse(item.date)?.toLocal())
+              .whereType<DateTime>()
+              .toList()
+            ..sort();
       if (_recurrence != RecurrenceType.none && activeDates.isNotEmpty) {
         _date = activeDates.first;
         _recurrenceEndDate = activeDates.last;
@@ -225,9 +225,7 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
       if (_recurrence == RecurrenceType.customDays &&
           current.customIntervalDays == null) {
         final inferredInterval =
-            FixedScheduleRecurrenceService.inferCustomIntervalDays(
-          activeDates,
-        );
+            FixedScheduleRecurrenceService.inferCustomIntervalDays(activeDates);
         if (inferredInterval != null) {
           _customIntervalController.text = inferredInterval.toString();
         }
@@ -237,21 +235,17 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
     setState(() {
       _teams = teams;
       _seriesItems = seriesItems;
-      _currentUserId =
-          (results[1] as SharedPreferences).getInt('current_user_id');
+      _currentUserId = (results[1] as SharedPreferences).getInt(
+        'current_user_id',
+      );
       final item = widget.item;
       _canChangeTeam = item == null || item.canChangeTeamFor(_currentUserId);
       _loadingContext = false;
     });
   }
 
-  DateTime _atTime(TimeOfDay time) => DateTime(
-        _date.year,
-        _date.month,
-        _date.day,
-        time.hour,
-        time.minute,
-      );
+  DateTime _atTime(TimeOfDay time) =>
+      DateTime(_date.year, _date.month, _date.day, time.hour, time.minute);
 
   Future<void> _save() async {
     final title = _titleController.text.trim();
@@ -280,8 +274,9 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
       );
       return;
     }
-    final customIntervalDays =
-        int.tryParse(_customIntervalController.text.trim());
+    final customIntervalDays = int.tryParse(
+      _customIntervalController.text.trim(),
+    );
     if (_recurrence == RecurrenceType.customDays &&
         (customIntervalDays == null || customIntervalDays < 1)) {
       AppSnackBars.showSnackBar(
@@ -292,16 +287,17 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
     }
 
     setState(() => _saving = true);
+    final dateText = AppTimeFormats.date(_date);
     final existing = widget.item;
     final item = existing == null
         ? FixedScheduleItem(
             title: title,
-            date: DateFormat('yyyy-MM-dd').format(_date),
+            date: dateText,
           )
         : FixedScheduleItem.fromJson(existing.toJson());
     item
       ..title = title
-      ..date = DateFormat('yyyy-MM-dd').format(_date)
+      ..date = dateText
       ..startTime = start?.millisecondsSinceEpoch
       ..endTime = end?.millisecondsSinceEpoch
       ..location = _locationController.text.trim().isEmpty
@@ -313,27 +309,30 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
       ..reminderMinutes = (_reminderMinutes.toList()
         ..sort((left, right) => right.compareTo(left)))
       ..timezone = DateTime.now().timeZoneName
-      ..customIntervalDays =
-          _recurrence == RecurrenceType.customDays ? customIntervalDays : null
+      ..customIntervalDays = _recurrence == RecurrenceType.customDays
+          ? customIntervalDays
+          : null
       ..teamUuid = _selectedTeamUuid
       ..ownerUserId = existing?.ownerUserId ?? _currentUserId
       ..status = _cancelled
           ? FixedScheduleStatus.cancelled
           : existing?.status == FixedScheduleStatus.finished
-              ? FixedScheduleStatus.finished
-              : FixedScheduleStatus.scheduled;
+          ? FixedScheduleStatus.finished
+          : FixedScheduleStatus.scheduled;
 
     late final ({
       List<FixedScheduleItem> active,
       List<FixedScheduleItem> changes,
-    }) series;
+    })
+    series;
     try {
       series = FixedScheduleRecurrenceService.rebuildSeries(
         template: item,
         existingSeries: _seriesItems,
         recurrence: _recurrence,
-        recurrenceEndDate:
-            _recurrence == RecurrenceType.none ? _date : _recurrenceEndDate,
+        recurrenceEndDate: _recurrence == RecurrenceType.none
+            ? _date
+            : _recurrenceEndDate,
         customIntervalDays: customIntervalDays ?? 1,
       );
     } on FixedScheduleRecurrenceLimitException catch (error) {
@@ -374,10 +373,11 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
       CourseService.getAllCourses(widget.username),
     ]);
     final candidateIds = timedCandidates.map((item) => item.id).toSet();
-    final schedules = (results[0] as List<FixedScheduleItem>)
-        .where((item) => !candidateIds.contains(item.id))
-        .toList()
-      ..addAll(timedCandidates);
+    final schedules =
+        (results[0] as List<FixedScheduleItem>)
+            .where((item) => !candidateIds.contains(item.id))
+            .toList()
+          ..addAll(timedCandidates);
     return ScheduleConflictService.detect(
       fixedSchedules: schedules,
       planBlocks: results[1] as List<TodoPlanBlock>,
@@ -426,7 +426,9 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
                 if (hardCount > 0) Text('$hardCount 个硬冲突不会被系统自动移动。'),
                 if (softCount > 0) Text('$softCount 个规划块可以稍后调整。'),
                 const SizedBox(height: 12),
-                ...conflicts.take(3).map(
+                ...conflicts
+                    .take(3)
+                    .map(
                       (item) => Padding(
                         padding: const EdgeInsets.only(bottom: 8),
                         child: Text('• ${item.message}'),
@@ -474,8 +476,9 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
       ),
     );
     if (confirmed != true) return;
-    final activeSeries =
-        _seriesItems.where((entry) => !entry.isDeleted).toList();
+    final activeSeries = _seriesItems
+        .where((entry) => !entry.isDeleted)
+        .toList();
     final targets = activeSeries.isEmpty ? [item] : activeSeries;
     final tombstones = targets.map((entry) {
       final copy = FixedScheduleItem.fromJson(entry.toJson())..isDeleted = true;
@@ -495,19 +498,21 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
   }
 
   String _recurrenceLabel(RecurrenceType type) => switch (type) {
-        RecurrenceType.none => '不重复',
-        RecurrenceType.daily => '每天',
-        RecurrenceType.weekly => '每周',
-        RecurrenceType.monthly => '每月',
-        RecurrenceType.yearly => '每年',
-        RecurrenceType.weekdays => '工作日',
-        RecurrenceType.customDays => '自定义',
-      };
+    RecurrenceType.none => '不重复',
+    RecurrenceType.daily => '每天',
+    RecurrenceType.weekly => '每周',
+    RecurrenceType.monthly => '每月',
+    RecurrenceType.yearly => '每年',
+    RecurrenceType.weekdays => '工作日',
+    RecurrenceType.customDays => '自定义',
+  };
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final topBarHeight = floatingGlassTopBarHeight(context);
+    final dateText = AppTimeFormats.date(_date);
+    final recurrenceEndDateText = AppTimeFormats.date(_recurrenceEndDate);
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: FloatingGlassAppBar(
@@ -560,10 +565,12 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
                     title: Text(
                       _recurrence == RecurrenceType.none ? '日期' : '首次日期',
                     ),
-                    subtitle: Text(_dateWithSemesterWeek(
-                      _date,
-                      DateFormat('yyyy-MM-dd').format(_date),
-                    )),
+                    subtitle: Text(
+                      _dateWithSemesterWeek(
+                        _date,
+                        dateText,
+                      ),
+                    ),
                     onTap: _pickDate,
                   ),
                   LiquidGlassSwitchListTile(
@@ -608,14 +615,18 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
                       labelText: '重复规则',
                       prefixIcon: Icon(Icons.repeat_rounded),
                       border: InputBorder.none,
-                      contentPadding:
-                          EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
                     ),
                     items: _supportedRecurrences
-                        .map((type) => DropdownMenuItem(
-                              value: type,
-                              child: Text(_recurrenceLabel(type)),
-                            ))
+                        .map(
+                          (type) => DropdownMenuItem(
+                            value: type,
+                            child: Text(_recurrenceLabel(type)),
+                          ),
+                        )
                         .toList(),
                     onChanged: (value) {
                       if (value == null) return;
@@ -625,13 +636,14 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
                             !_recurrenceEndDate.isAfter(_date)) {
                           _recurrenceEndDate =
                               FixedScheduleRecurrenceService.defaultEndDate(
-                            startDate: _date,
-                            recurrence: value,
-                            customIntervalDays: int.tryParse(
-                                  _customIntervalController.text.trim(),
-                                ) ??
-                                1,
-                          );
+                                startDate: _date,
+                                recurrence: value,
+                                customIntervalDays:
+                                    int.tryParse(
+                                      _customIntervalController.text.trim(),
+                                    ) ??
+                                    1,
+                              );
                         }
                       });
                     },
@@ -643,7 +655,7 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
                       subtitle: Text(
                         _dateWithSemesterWeek(
                           _recurrenceEndDate,
-                          DateFormat('yyyy-MM-dd').format(_recurrenceEndDate),
+                          recurrenceEndDateText,
                         ),
                       ),
                       onTap: _pickRecurrenceEndDate,
@@ -674,10 +686,7 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
                 helperText: '关联团队后，团队成员可同步看到该日程系列',
               ),
               items: [
-                const DropdownMenuItem(
-                  value: '',
-                  child: Text('个人私有（仅自己可见）'),
-                ),
+                const DropdownMenuItem(value: '', child: Text('个人私有（仅自己可见）')),
                 if (_selectedTeamUuid != null &&
                     !_teams.any((team) => team.uuid == _selectedTeamUuid))
                   DropdownMenuItem(
@@ -693,9 +702,10 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
               ],
               onChanged: _canChangeTeam
                   ? (value) => setState(() {
-                        _selectedTeamUuid =
-                            value == null || value.isEmpty ? null : value;
-                      })
+                      _selectedTeamUuid = value == null || value.isEmpty
+                          ? null
+                          : value;
+                    })
                   : null,
             ),
             if (!_canChangeTeam)

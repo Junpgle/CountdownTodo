@@ -45,20 +45,42 @@ class MedalBanditService {
 
   /// Get total observation count for a medal (alpha + beta - 2, minus initial prior)
   Future<int> getObservationCount(String medalId) async {
+    final counts = await getObservationCounts([medalId]);
+    return counts[medalId] ?? 0;
+  }
+
+  /// Reads observation counts for several medals with a bounded number of
+  /// database queries.
+  Future<Map<String, int>> getObservationCounts(List<String> medalIds) async {
+    final counts = <String, int>{for (final id in medalIds) id: 0};
+    if (counts.isEmpty) return counts;
+
     try {
       final db = await DatabaseHelper.instance.database;
-      final records = await db.query(
-        'medal_recommendations',
-        where: 'medal_id = ?',
-        whereArgs: [medalId],
-      );
-      if (records.isEmpty) return 0;
-      final alpha = (records.first['alpha'] as num?)?.toDouble() ?? 1.0;
-      final beta = (records.first['beta_'] as num?)?.toDouble() ?? 1.0;
-      return max(0, (alpha + beta - 2).toInt());
+      const chunkSize = 900;
+      final uniqueIds = counts.keys.toList(growable: false);
+      for (var offset = 0; offset < uniqueIds.length; offset += chunkSize) {
+        final end = offset + chunkSize < uniqueIds.length
+            ? offset + chunkSize
+            : uniqueIds.length;
+        final ids = uniqueIds.sublist(offset, end);
+        final records = await db.query(
+          'medal_recommendations',
+          columns: const ['medal_id', 'alpha', 'beta_'],
+          where: 'medal_id IN (${List.filled(ids.length, '?').join(', ')})',
+          whereArgs: ids,
+        );
+        for (final record in records) {
+          final id = record['medal_id'] as String;
+          final alpha = (record['alpha'] as num?)?.toDouble() ?? 1.0;
+          final beta = (record['beta_'] as num?)?.toDouble() ?? 1.0;
+          counts[id] = max(0, (alpha + beta - 2).toInt());
+        }
+      }
     } catch (e) {
-      return 0;
+      // Keep missing or failed reads at the prior observation count of zero.
     }
+    return counts;
   }
 
   /// Update bandit parameters based on whether recommended medals were earned
@@ -70,6 +92,7 @@ class MedalBanditService {
       final ninetyDaysAgo = now - _staleResetDays * 24 * 3600 * 1000;
 
       final records = await db.query('medal_recommendations');
+      Map<String, MedalProgress>? progressByMedalId;
 
       for (final record in records) {
         final medalId = record['medal_id'] as String;
@@ -97,8 +120,9 @@ class MedalBanditService {
         // Only process if shown after last outcome check
         if (lastShownAt <= lastOutcomeAt) continue;
 
-        final progress =
-            allProgresses.where((p) => p.medal.id == medalId).firstOrNull;
+        final progressIndex =
+            progressByMedalId ??= _indexProgresses(allProgresses);
+        final progress = progressIndex[medalId];
         if (progress == null) continue;
 
         double alphaDelta = 0;
@@ -134,20 +158,46 @@ class MedalBanditService {
     }
   }
 
+  Map<String, MedalProgress> _indexProgresses(
+    List<MedalProgress> progresses,
+  ) {
+    final byId = <String, MedalProgress>{};
+    for (final progress in progresses) {
+      byId.putIfAbsent(progress.medal.id, () => progress);
+    }
+    return byId;
+  }
+
   /// Record that these medals were shown as recommendations
   Future<void> recordImpressions(List<String> medalIds) async {
+    if (medalIds.isEmpty) return;
+
     try {
       final db = await DatabaseHelper.instance.database;
       final now = DateTime.now().millisecondsSinceEpoch;
+      final uniqueIds = medalIds.toSet().toList(growable: false);
+      final existingById = <String, Map<String, Object?>>{};
+      const queryChunkSize = 500;
+      for (var start = 0; start < uniqueIds.length; start += queryChunkSize) {
+        final end = start + queryChunkSize < uniqueIds.length
+            ? start + queryChunkSize
+            : uniqueIds.length;
+        final ids = uniqueIds.sublist(start, end);
+        final rows = await db.query(
+          'medal_recommendations',
+          columns: const ['medal_id', 'impression_count'],
+          where: 'medal_id IN (${List.filled(ids.length, '?').join(', ')})',
+          whereArgs: ids,
+        );
+        for (final row in rows) {
+          final id = row['medal_id']?.toString();
+          if (id != null) existingById[id] = row;
+        }
+      }
 
       for (final id in medalIds) {
-        final existing = await db.query(
-          'medal_recommendations',
-          where: 'medal_id = ?',
-          whereArgs: [id],
-        );
-
-        if (existing.isEmpty) {
+        final existing = existingById[id];
+        if (existing == null) {
           await db.insert('medal_recommendations', {
             'medal_id': id,
             'alpha': 1.0,
@@ -159,17 +209,23 @@ class MedalBanditService {
             'feature_score_cache': 0.0,
             'updated_at': now,
           });
+          existingById[id] = {'impression_count': 1};
         } else {
+          final impressionCount =
+              (existing['impression_count'] as int) + 1;
           await db.update(
               'medal_recommendations',
               {
-                'impression_count':
-                    (existing.first['impression_count'] as int) + 1,
+                'impression_count': impressionCount,
                 'last_shown_at': now,
                 'updated_at': now,
               },
               where: 'medal_id = ?',
               whereArgs: [id]);
+          existingById[id] = {
+            ...existing,
+            'impression_count': impressionCount,
+          };
         }
       }
     } catch (e) {

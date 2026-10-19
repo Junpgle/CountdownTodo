@@ -1,4 +1,5 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../models.dart';
@@ -105,49 +106,108 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
   ];
 
   static const _templates = <_HabitTemplate>[
-    _HabitTemplate('喝水', '💧', HabitSourceType.quantityCheckIn,
-        targetValue: 1600,
-        unit: 'ml',
-        quickValues: [200, 300, 500],
-        adaptationKind: HabitAdaptationKind.hydration),
-    _HabitTemplate('早起', '🌅', HabitSourceType.timeCheckIn,
-        targetTimeMinute: 7 * 60,
-        adaptationKind: HabitAdaptationKind.earlyWake),
-    _HabitTemplate('早睡', '🌙', HabitSourceType.timeCheckIn,
-        targetTimeMinute: 23 * 60 + 30,
-        crossMidnight: true,
-        adaptationKind: HabitAdaptationKind.earlySleep),
-    _HabitTemplate('睡眠时长', '🛌', HabitSourceType.durationCheckIn,
-        targetValue: 8 * 60 * 60,
-        adaptationKind: HabitAdaptationKind.sleepDuration),
+    _HabitTemplate(
+      '喝水',
+      '💧',
+      HabitSourceType.quantityCheckIn,
+      targetValue: 1600,
+      unit: 'ml',
+      quickValues: [200, 300, 500],
+      adaptationKind: HabitAdaptationKind.hydration,
+    ),
+    _HabitTemplate(
+      '早起',
+      '🌅',
+      HabitSourceType.timeCheckIn,
+      targetTimeMinute: 7 * 60,
+      adaptationKind: HabitAdaptationKind.earlyWake,
+    ),
+    _HabitTemplate(
+      '早睡',
+      '🌙',
+      HabitSourceType.timeCheckIn,
+      targetTimeMinute: 23 * 60 + 30,
+      crossMidnight: true,
+      adaptationKind: HabitAdaptationKind.earlySleep,
+    ),
+    _HabitTemplate(
+      '睡眠时长',
+      '🛌',
+      HabitSourceType.durationCheckIn,
+      targetValue: 8 * 60 * 60,
+      adaptationKind: HabitAdaptationKind.sleepDuration,
+    ),
     _HabitTemplate('每日签到', '✅', HabitSourceType.recurringTodo),
-    _HabitTemplate('俯卧撑', '💪', HabitSourceType.quantityCheckIn,
-        targetValue: 24,
-        unit: '个',
-        quickValues: [8, 12, 16],
-        adaptationKind: HabitAdaptationKind.pushUp),
-    _HabitTemplate('阅读', '📖', HabitSourceType.pomodoroTag,
-        targetValue: 30 * 60, adaptationKind: HabitAdaptationKind.reading),
-    _HabitTemplate('运动', '🏃', HabitSourceType.pomodoroTag,
-        targetValue: 30 * 60),
-    _HabitTemplate('学习', '📚', HabitSourceType.pomodoroTag,
-        targetValue: 45 * 60, adaptationKind: HabitAdaptationKind.learning),
-    _HabitTemplate('冥想', '🧘', HabitSourceType.pomodoroTag,
-        targetValue: 10 * 60, adaptationKind: HabitAdaptationKind.meditation),
-    _HabitTemplate('维生素', '💊', HabitSourceType.quantityCheckIn,
-        targetValue: 1, unit: '粒', quickValues: [1]),
-    _HabitTemplate('整理', '🧹', HabitSourceType.quantityCheckIn,
-        targetValue: 1, unit: '次', quickValues: [1]),
-    _HabitTemplate('单词', '🔤', HabitSourceType.quantityCheckIn,
-        targetValue: 30,
-        unit: '个',
-        quickValues: [10, 20, 30],
-        adaptationKind: HabitAdaptationKind.vocabulary),
-    _HabitTemplate('跑步', '🏃', HabitSourceType.quantityCheckIn,
-        targetValue: 30,
-        unit: '分钟',
-        quickValues: [20, 30, 45],
-        adaptationKind: HabitAdaptationKind.running),
+    _HabitTemplate(
+      '俯卧撑',
+      '💪',
+      HabitSourceType.quantityCheckIn,
+      targetValue: 24,
+      unit: '个',
+      quickValues: [8, 12, 16],
+      adaptationKind: HabitAdaptationKind.pushUp,
+    ),
+    _HabitTemplate(
+      '阅读',
+      '📖',
+      HabitSourceType.pomodoroTag,
+      targetValue: 30 * 60,
+      adaptationKind: HabitAdaptationKind.reading,
+    ),
+    _HabitTemplate(
+      '运动',
+      '🏃',
+      HabitSourceType.pomodoroTag,
+      targetValue: 30 * 60,
+    ),
+    _HabitTemplate(
+      '学习',
+      '📚',
+      HabitSourceType.pomodoroTag,
+      targetValue: 45 * 60,
+      adaptationKind: HabitAdaptationKind.learning,
+    ),
+    _HabitTemplate(
+      '冥想',
+      '🧘',
+      HabitSourceType.pomodoroTag,
+      targetValue: 10 * 60,
+      adaptationKind: HabitAdaptationKind.meditation,
+    ),
+    _HabitTemplate(
+      '维生素',
+      '💊',
+      HabitSourceType.quantityCheckIn,
+      targetValue: 1,
+      unit: '粒',
+      quickValues: [1],
+    ),
+    _HabitTemplate(
+      '整理',
+      '🧹',
+      HabitSourceType.quantityCheckIn,
+      targetValue: 1,
+      unit: '次',
+      quickValues: [1],
+    ),
+    _HabitTemplate(
+      '单词',
+      '🔤',
+      HabitSourceType.quantityCheckIn,
+      targetValue: 30,
+      unit: '个',
+      quickValues: [10, 20, 30],
+      adaptationKind: HabitAdaptationKind.vocabulary,
+    ),
+    _HabitTemplate(
+      '跑步',
+      '🏃',
+      HabitSourceType.quantityCheckIn,
+      targetValue: 30,
+      unit: '分钟',
+      quickValues: [20, 30, 45],
+      adaptationKind: HabitAdaptationKind.running,
+    ),
   ];
 
   /// 深度适配模板优先展示，普通模板保持原有相对顺序。
@@ -155,7 +215,8 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
     final adapted = <_HabitTemplate>[];
     final standard = <_HabitTemplate>[];
     for (final template in _templates) {
-      final hasAdaptation = template.adaptationKind != null ||
+      final hasAdaptation =
+          template.adaptationKind != null ||
           HabitAdaptationService.forDraft(
                 sourceType: template.type,
                 name: template.name,
@@ -196,11 +257,15 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
   Future<void> _loadRuleForEdit(HabitGoal goal) async {
     try {
       final allRules = await HabitRepository.getRules(habitUuid: goal.uuid);
-      final rule = allRules
+      final rule =
+          allRules
               .where((r) => r.uuid == goal.currentRuleUuid && !r.isDeleted)
               .firstOrNull ??
           HabitRuleResolver.currentRule(
-              allRules, HabitRuleResolver.defaultDayBoundaryMinute, null);
+            allRules,
+            HabitRuleResolver.defaultDayBoundaryMinute,
+            null,
+          );
       if (rule == null || !mounted) return;
 
       final fixedTimes = rule.reminderPolicy.fixedTimes
@@ -232,7 +297,8 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
             break;
         }
         _crossMidnightBoundary = rule.dayBoundaryMinute > 0;
-        _reminderEnabled = rule.reminderPolicy.fixedTimes.isNotEmpty ||
+        _reminderEnabled =
+            rule.reminderPolicy.fixedTimes.isNotEmpty ||
             rule.reminderPolicy.progressReminder ||
             rule.reminderPolicy.nearEndReminder ||
             rule.reminderPolicy.dailySummaryReminder;
@@ -298,13 +364,19 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
           continue;
         }
         final rules = await HabitRepository.getRules(habitUuid: goal.uuid);
-        final rule = rules
-                .where((candidate) =>
-                    candidate.uuid == goal.currentRuleUuid &&
-                    !candidate.isDeleted)
+        final rule =
+            rules
+                .where(
+                  (candidate) =>
+                      candidate.uuid == goal.currentRuleUuid &&
+                      !candidate.isDeleted,
+                )
                 .firstOrNull ??
             HabitRuleResolver.currentRule(
-                rules, HabitRuleResolver.defaultDayBoundaryMinute, null);
+              rules,
+              HabitRuleResolver.defaultDayBoundaryMinute,
+              null,
+            );
         final targetMinute = rule?.targetTimeMinute;
         if (targetMinute == null) continue;
         final anchor = _SleepPairAnchor(
@@ -619,20 +691,22 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
       habitUuid: widget.goal?.uuid ?? '',
       periodType: _periodType,
       weekdaysMask: _weekdaysMask,
-      customIntervalDays:
-          _periodType == HabitPeriodType.custom ? _customIntervalDays : null,
+      customIntervalDays: _periodType == HabitPeriodType.custom
+          ? _customIntervalDays
+          : null,
       targetValue: targetValue,
       unit: _sourceType == HabitSourceType.quantityCheckIn
           ? unit
           : _sourceType == HabitSourceType.durationCheckIn
-              ? '小时'
-              : '',
+          ? '小时'
+          : '',
       targetTimeMinute: _sourceType == HabitSourceType.timeCheckIn
           ? _targetTime.hour * 60 + _targetTime.minute
           : null,
       timeComparison: _timeComparison,
       timeToleranceMinutes: _toleranceMinutes,
-      dayBoundaryMinute: (_sourceType == HabitSourceType.timeCheckIn &&
+      dayBoundaryMinute:
+          (_sourceType == HabitSourceType.timeCheckIn &&
                   _crossMidnightBoundary) ||
               (_sourceType == HabitSourceType.durationCheckIn &&
                   HabitAdaptationService.forDraft(
@@ -657,10 +731,7 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
   Future<void> _save() async {
     final error = _validate();
     if (error != null) {
-      AppSnackBars.showSnackBar(
-        context,
-        SnackBar(content: Text(error)),
-      );
+      AppSnackBars.showSnackBar(context, SnackBar(content: Text(error)));
       return;
     }
     setState(() => _saving = true);
@@ -670,10 +741,10 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
       final goal = widget.goal;
       var recurringSourceIds =
           _selectedRecurringSeriesId == _autoCreateRecurringSeries
-              ? (goal?.sourceType == HabitSourceType.recurringTodo
-                  ? List<String>.from(goal!.sourceIds)
-                  : const <String>[])
-              : <String>[_selectedRecurringSeriesId];
+          ? (goal?.sourceType == HabitSourceType.recurringTodo
+                ? List<String>.from(goal!.sourceIds)
+                : const <String>[])
+          : <String>[_selectedRecurringSeriesId];
       if (goal != null &&
           goal.sourceType == HabitSourceType.recurringTodo &&
           recurringSourceIds.isEmpty) {
@@ -692,8 +763,8 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
           sourceIds: _sourceType == HabitSourceType.recurringTodo
               ? recurringSourceIds
               : _sourceType == HabitSourceType.pomodoroTag
-                  ? _selectedTagUuids
-                  : const <String>[],
+              ? _selectedTagUuids
+              : const <String>[],
           rule: rule,
           displayMode: _displayMode,
           defaultFocusMinutes: _sourceType == HabitSourceType.pomodoroTag
@@ -731,10 +802,7 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
       if (mounted) Navigator.of(context).pop(true);
     } catch (e) {
       if (!mounted) return;
-      AppSnackBars.showSnackBar(
-        context,
-        SnackBar(content: Text('保存失败: $e')),
-      );
+      AppSnackBars.showSnackBar(context, SnackBar(content: Text('保存失败: $e')));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -768,10 +836,7 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
               ),
             );
           },
-          child: KeyedSubtree(
-            key: ValueKey<int>(_step),
-            child: content,
-          ),
+          child: KeyedSubtree(key: ValueKey<int>(_step), child: content),
         );
 
         if (isWide) {
@@ -797,9 +862,7 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
                             padding: const EdgeInsets.all(24.0),
                             child: Text(
                               '设置进度',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .titleLarge
+                              style: Theme.of(context).textTheme.titleLarge
                                   ?.copyWith(fontWeight: FontWeight.bold),
                             ),
                           ),
@@ -815,11 +878,16 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
                         Expanded(
                           child: SingleChildScrollView(
                             padding: EdgeInsets.fromLTRB(
-                                40, topBarHeight + 24, 40, 24),
+                              40,
+                              topBarHeight + 24,
+                              40,
+                              24,
+                            ),
                             child: Center(
                               child: ConstrainedBox(
-                                constraints:
-                                    const BoxConstraints(maxWidth: 600),
+                                constraints: const BoxConstraints(
+                                  maxWidth: 600,
+                                ),
                                 child: formArea,
                               ),
                             ),
@@ -900,21 +968,29 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
                       boxShadow: isActive
                           ? [
                               BoxShadow(
-                                  color: colorScheme.primary
-                                      .withValues(alpha: 0.3),
-                                  blurRadius: 8)
+                                color: colorScheme.primary.withValues(
+                                  alpha: 0.3,
+                                ),
+                                blurRadius: 8,
+                              ),
                             ]
                           : null,
                     ),
                     child: isDone
-                        ? Icon(Icons.check_rounded,
-                            size: 18, color: colorScheme.onPrimary)
-                        : Text('${i + 1}',
+                        ? Icon(
+                            Icons.check_rounded,
+                            size: 18,
+                            color: colorScheme.onPrimary,
+                          )
+                        : Text(
+                            '${i + 1}',
                             style: TextStyle(
-                                color: isActive
-                                    ? colorScheme.onPrimary
-                                    : colorScheme.onSurfaceVariant,
-                                fontWeight: FontWeight.bold)),
+                              color: isActive
+                                  ? colorScheme.onPrimary
+                                  : colorScheme.onSurfaceVariant,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                   ),
                   if (i < steps.length - 1)
                     Container(
@@ -964,8 +1040,10 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
       decoration: BoxDecoration(
         color: colorScheme.surface,
         border: Border(
-            bottom: BorderSide(
-                color: colorScheme.outlineVariant.withValues(alpha: 0.5))),
+          bottom: BorderSide(
+            color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+          ),
+        ),
       ),
       child: Column(
         children: [
@@ -975,16 +1053,18 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
               Text(
                 steps[current],
                 style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                    color: colorScheme.onSurface),
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                  color: colorScheme.onSurface,
+                ),
               ),
               Text(
                 '${current + 1} / ${steps.length}',
                 style: TextStyle(
-                    fontSize: 13,
-                    color: colorScheme.primary,
-                    fontWeight: FontWeight.w600),
+                  fontSize: 13,
+                  color: colorScheme.primary,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ],
           ),
@@ -1018,7 +1098,11 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
 
     final child = Container(
       padding: EdgeInsets.fromLTRB(
-          16, 12, 16, isWide ? 12 : (bottomPadding > 0 ? bottomPadding : 12)),
+        16,
+        12,
+        16,
+        isWide ? 12 : (bottomPadding > 0 ? bottomPadding : 12),
+      ),
       decoration: useFloating
           ? null
           : BoxDecoration(
@@ -1045,10 +1129,13 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
               icon: const Icon(Icons.arrow_back_rounded, size: 18),
               label: const Text('上一步'),
               style: OutlinedButton.styleFrom(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 12,
+                ),
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
             )
           else
@@ -1063,10 +1150,12 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
                       final error = _validateStep(_step);
                       if (error != null) {
                         AppSnackBars.showSnackBar(
-                            context,
-                            SnackBar(
-                                content: Text(error),
-                                behavior: SnackBarBehavior.floating));
+                          context,
+                          SnackBar(
+                            content: Text(error),
+                            behavior: SnackBarBehavior.floating,
+                          ),
+                        );
                         return;
                       }
                       setState(() => _step++);
@@ -1074,10 +1163,13 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
               icon: const Icon(Icons.arrow_forward_rounded, size: 18),
               label: const Text('下一步'),
               style: FilledButton.styleFrom(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 12,
+                ),
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
             )
           else
@@ -1088,14 +1180,20 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
                       width: 18,
                       height: 18,
                       child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white))
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
                   : const Icon(Icons.check_rounded, size: 18),
               label: Text(_saving ? '保存中…' : '完成'),
               style: FilledButton.styleFrom(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 12,
+                ),
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
             ),
         ],
@@ -1143,10 +1241,7 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
         const SizedBox(height: 6),
         Text(
           '先确定习惯的起点，下一步再设置类型、周期和目标。',
-          style: TextStyle(
-            fontSize: 13,
-            color: colorScheme.onSurfaceVariant,
-          ),
+          style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
         ),
         const SizedBox(height: 16),
         _creationModeCard(
@@ -1213,36 +1308,43 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
-                color:
-                    selected ? colorScheme.primary : colorScheme.outlineVariant,
+                color: selected
+                    ? colorScheme.primary
+                    : colorScheme.outlineVariant,
                 width: selected ? 1.5 : 1,
               ),
             ),
             child: Row(
               children: [
-                Icon(icon,
-                    size: 24,
-                    color: selected
-                        ? colorScheme.primary
-                        : colorScheme.onSurfaceVariant),
+                Icon(
+                  icon,
+                  size: 24,
+                  color: selected
+                      ? colorScheme.primary
+                      : colorScheme.onSurfaceVariant,
+                ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(title,
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w800,
-                            color: colorScheme.onSurface,
-                          )),
+                      Text(
+                        title,
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          color: colorScheme.onSurface,
+                        ),
+                      ),
                       const SizedBox(height: 3),
-                      Text(subtitle,
-                          style: TextStyle(
-                            fontSize: 12,
-                            height: 1.4,
-                            color: colorScheme.onSurfaceVariant,
-                          )),
+                      Text(
+                        subtitle,
+                        style: TextStyle(
+                          fontSize: 12,
+                          height: 1.4,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -1314,16 +1416,19 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
                         border: Border.all(
                           color: isSelected
                               ? colorScheme.primary
-                              : colorScheme.outlineVariant
-                                  .withValues(alpha: 0.55),
+                              : colorScheme.outlineVariant.withValues(
+                                  alpha: 0.55,
+                                ),
                           width: isSelected ? 2 : 1,
                         ),
                       ),
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Text(template.icon,
-                              style: const TextStyle(fontSize: 26)),
+                          Text(
+                            template.icon,
+                            style: const TextStyle(fontSize: 26),
+                          ),
                           const SizedBox(height: 5),
                           Text(
                             template.name,
@@ -1371,10 +1476,7 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
         const SizedBox(height: 5),
         Text(
           subtitle,
-          style: TextStyle(
-            fontSize: 12,
-            color: colorScheme.onSurfaceVariant,
-          ),
+          style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
         ),
         const SizedBox(height: 10),
         Row(
@@ -1403,10 +1505,7 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
           const SizedBox(height: 8),
           Text(
             '已从关联循环待办带入名称和图标，可按需修改。',
-            style: TextStyle(
-              fontSize: 12,
-              color: colorScheme.onSurfaceVariant,
-            ),
+            style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
           ),
         ],
         if (widget.goal == null) ...[
@@ -1415,15 +1514,19 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
             onPressed: _creationMode == _HabitCreationMode.template
                 ? _startCustomCreation
                 : () => setState(() {
-                      _creationMode = _HabitCreationMode.template;
-                      _selectedTemplateName = null;
-                    }),
-            icon: Icon(_creationMode == _HabitCreationMode.template
-                ? Icons.tune_rounded
-                : Icons.auto_awesome_rounded),
-            label: Text(_creationMode == _HabitCreationMode.template
-                ? '改为手动自定义'
-                : '改为从模板创建'),
+                    _creationMode = _HabitCreationMode.template;
+                    _selectedTemplateName = null;
+                  }),
+            icon: Icon(
+              _creationMode == _HabitCreationMode.template
+                  ? Icons.tune_rounded
+                  : Icons.auto_awesome_rounded,
+            ),
+            label: Text(
+              _creationMode == _HabitCreationMode.template
+                  ? '改为手动自定义'
+                  : '改为从模板创建',
+            ),
           ),
         ],
       ],
@@ -1507,22 +1610,28 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
         ),
         const SizedBox(height: 10),
         if (isEdit)
-          _typeCard(
-            _sourceType,
-            selected: true,
-            enabled: false,
-          )
+          _typeCard(_sourceType, selected: true, enabled: false)
         else ...[
-          _typeCard(HabitSourceType.recurringTodo,
-              selected: _sourceType == HabitSourceType.recurringTodo),
-          _typeCard(HabitSourceType.pomodoroTag,
-              selected: _sourceType == HabitSourceType.pomodoroTag),
-          _typeCard(HabitSourceType.quantityCheckIn,
-              selected: _sourceType == HabitSourceType.quantityCheckIn),
-          _typeCard(HabitSourceType.timeCheckIn,
-              selected: _sourceType == HabitSourceType.timeCheckIn),
-          _typeCard(HabitSourceType.durationCheckIn,
-              selected: _sourceType == HabitSourceType.durationCheckIn),
+          _typeCard(
+            HabitSourceType.recurringTodo,
+            selected: _sourceType == HabitSourceType.recurringTodo,
+          ),
+          _typeCard(
+            HabitSourceType.pomodoroTag,
+            selected: _sourceType == HabitSourceType.pomodoroTag,
+          ),
+          _typeCard(
+            HabitSourceType.quantityCheckIn,
+            selected: _sourceType == HabitSourceType.quantityCheckIn,
+          ),
+          _typeCard(
+            HabitSourceType.timeCheckIn,
+            selected: _sourceType == HabitSourceType.timeCheckIn,
+          ),
+          _typeCard(
+            HabitSourceType.durationCheckIn,
+            selected: _sourceType == HabitSourceType.durationCheckIn,
+          ),
         ],
         const SizedBox(height: 20),
         _buildPeriodSection(),
@@ -1710,10 +1819,7 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
           const SizedBox(height: 12),
           Row(
             children: [
-              Text(
-                '每 ',
-                style: TextStyle(color: colorScheme.onSurface),
-              ),
+              Text('每 ', style: TextStyle(color: colorScheme.onSurface)),
               SizedBox(
                 width: 64,
                 child: TextFormField(
@@ -1729,10 +1835,7 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
                   ),
                 ),
               ),
-              Text(
-                ' 天',
-                style: TextStyle(color: colorScheme.onSurface),
-              ),
+              Text(' 天', style: TextStyle(color: colorScheme.onSurface)),
             ],
           ),
         ],
@@ -1765,26 +1868,26 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
         const SizedBox(height: 12),
         switch (_sourceType) {
           HabitSourceType.recurringTodo => Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: colorScheme.surfaceContainerLow,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    '完成型习惯：每天在待办中完成一次即可。提醒由关联的循环待办触发。',
-                    style: TextStyle(
-                      fontSize: 13,
-                      height: 1.5,
-                      color: colorScheme.onSurfaceVariant,
-                    ),
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: colorScheme.surfaceContainerLow,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  '完成型习惯：每天在待办中完成一次即可。提醒由关联的循环待办触发。',
+                  style: TextStyle(
+                    fontSize: 13,
+                    height: 1.5,
+                    color: colorScheme.onSurfaceVariant,
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
+          ),
           HabitSourceType.pomodoroTag => _buildDurationTarget(colorScheme),
           HabitSourceType.durationCheckIn => _buildDurationTarget(colorScheme),
           HabitSourceType.quantityCheckIn => _buildQuantityTarget(colorScheme),
@@ -1803,7 +1906,10 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
           const SizedBox(height: 10),
           _effectiveFromChip('today', '从今天开始', '关闭旧规则，新规则从今天生效'),
           _effectiveFromChip(
-              'nextPeriod', '从下一个周期开始', '如每周习惯从下周一、每月习惯从下月 1 号开始'),
+            'nextPeriod',
+            '从下一个周期开始',
+            '如每周习惯从下周一、每月习惯从下月 1 号开始',
+          ),
           _effectiveFromChip('all', '应用到全部历史', '覆盖所有历史版本的目标值（不改变历史打卡记录）'),
         ],
       ],
@@ -1828,8 +1934,9 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color:
-                    selected ? colorScheme.primary : colorScheme.outlineVariant,
+                color: selected
+                    ? colorScheme.primary
+                    : colorScheme.outlineVariant,
               ),
             ),
             child: Row(
@@ -1894,8 +2001,9 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color:
-                    selected ? colorScheme.primary : colorScheme.outlineVariant,
+                color: selected
+                    ? colorScheme.primary
+                    : colorScheme.outlineVariant,
               ),
             ),
             child: Row(
@@ -1974,9 +2082,8 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
           adaptation: adaptation,
           targetValue: targetHours,
           targetUnitOverride: '小时',
-          onTargetSelected: (hours) => setState(
-            () => _targetMinutes = hours * 60,
-          ),
+          onTargetSelected: (hours) =>
+              setState(() => _targetMinutes = hours * 60),
         ),
         const SizedBox(height: 14),
         Text(
@@ -2246,8 +2353,9 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
             Expanded(
               child: TextField(
                 controller: _targetController,
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
                 decoration: const InputDecoration(
                   labelText: '目标数量',
                   border: OutlineInputBorder(),
@@ -2293,8 +2401,10 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
   ) {
     if (adaptation == null) return const SizedBox.shrink();
     _ensureHydrationDefaults(adaptation);
-    final value =
-        (int.tryParse(_targetController.text.trim()) ?? 1600).clamp(500, 4000);
+    final value = (int.tryParse(_targetController.text.trim()) ?? 1600).clamp(
+      500,
+      4000,
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2304,10 +2414,7 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
           showTargetSuggestions: false,
         ),
         const SizedBox(height: 14),
-        HabitWaterTargetPicker(
-          value: value,
-          onChanged: _applyAdaptationTarget,
-        ),
+        HabitWaterTargetPicker(value: value, onChanged: _applyAdaptationTarget),
         const SizedBox(height: 12),
         Container(
           width: double.infinity,
@@ -2319,8 +2426,11 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
           ),
           child: Row(
             children: [
-              Icon(Icons.touch_app_outlined,
-                  size: 18, color: colorScheme.primary),
+              Icon(
+                Icons.touch_app_outlined,
+                size: 18,
+                color: colorScheme.primary,
+              ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
@@ -2430,10 +2540,7 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
           onTargetSelected: _applyAdaptationTarget,
         ),
         const SizedBox(height: 14),
-        HabitPushUpGuide(
-          targetValue: parsedTarget,
-          periodType: _periodType,
-        ),
+        HabitPushUpGuide(targetValue: parsedTarget, periodType: _periodType),
         const SizedBox(height: 14),
         Row(
           children: [
@@ -2703,10 +2810,12 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
     );
     final isSleepAdaptation =
         adaptation?.kind == HabitAdaptationKind.earlyWake ||
-            adaptation?.kind == HabitAdaptationKind.earlySleep;
-    final pairSuggestion =
-        widget.goal == null ? _sleepPairSuggestionFor(adaptation) : null;
-    final timeText = '${_targetTime.hour.toString().padLeft(2, '0')}:'
+        adaptation?.kind == HabitAdaptationKind.earlySleep;
+    final pairSuggestion = widget.goal == null
+        ? _sleepPairSuggestionFor(adaptation)
+        : null;
+    final timeText =
+        '${_targetTime.hour.toString().padLeft(2, '0')}:'
         '${_targetTime.minute.toString().padLeft(2, '0')}';
     final beforeLabel = isSleepAdaptation ? '不晚于 $timeText' : '早于 $timeText';
 
@@ -2716,8 +2825,8 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
         if (adaptation != null && isSleepAdaptation) ...[
           HabitAdaptationPanel(
             adaptation: adaptation,
-            targetValue:
-                (_targetTime.hour * 60 + _targetTime.minute).toDouble(),
+            targetValue: (_targetTime.hour * 60 + _targetTime.minute)
+                .toDouble(),
             onTargetSelected: _applyTimeAdaptationTarget,
           ),
           const SizedBox(height: 14),
@@ -2743,8 +2852,8 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
                 adaptation?.kind == HabitAdaptationKind.earlyWake
                     ? '目标起床时间'
                     : adaptation?.kind == HabitAdaptationKind.earlySleep
-                        ? '目标入睡时间'
-                        : '目标时间',
+                    ? '目标入睡时间'
+                    : '目标时间',
                 style: TextStyle(
                   fontSize: 13,
                   color: colorScheme.onSurfaceVariant,
@@ -2890,10 +2999,7 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
           const SizedBox(height: 4),
           Text(
             '完成型的进度和提醒都来自这条循环待办。',
-            style: TextStyle(
-              fontSize: 12,
-              color: colorScheme.onSurfaceVariant,
-            ),
+            style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
           ),
           const SizedBox(height: 10),
           DropdownButtonFormField<String>(
@@ -3073,8 +3179,8 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
     final title = adaptation?.kind == HabitAdaptationKind.earlySleep
         ? '启用早睡提醒'
         : adaptation?.kind == HabitAdaptationKind.earlyWake
-            ? '启用早起提醒'
-            : '启用目标提醒';
+        ? '启用早起提醒'
+        : '启用目标提醒';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -3115,10 +3221,7 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
         ),
         Text(
           '提醒是辅助，不代表需要为了赶上目标而牺牲睡眠时长。',
-          style: TextStyle(
-            fontSize: 12,
-            color: colorScheme.onSurfaceVariant,
-          ),
+          style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
         ),
       ],
     );

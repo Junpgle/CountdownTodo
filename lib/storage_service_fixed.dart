@@ -144,7 +144,7 @@ mixin _StorageFixed on _StorageServiceBase {
     String username,
     DateTime day,
   ) async {
-    final date = DateFormat('yyyy-MM-dd').format(day.toLocal());
+    final date = time_utils.AppTimeFormats.date(day.toLocal());
     try {
       final db = await DatabaseHelper.instance.databaseForUser(username);
       final maps = await db.query(
@@ -156,6 +156,37 @@ mixin _StorageFixed on _StorageServiceBase {
       return maps.map(FixedScheduleItem.fromJson).toList();
     } catch (error) {
       debugPrint('⚠️ FixedSchedules SQL 引擎异常: $error');
+      return const [];
+    }
+  }
+
+  Future<List<FixedScheduleItem>> getFixedSchedulesByDateRange(
+    String username, {
+    required DateTime from,
+    required DateTime to,
+  }) async {
+    final localFrom = from.toLocal();
+    final localTo = to.toLocal();
+    final startDate = DateTime(
+      localFrom.year,
+      localFrom.month,
+      localFrom.day,
+    );
+    final endDate = DateTime(localTo.year, localTo.month, localTo.day);
+    if (!endDate.isAfter(startDate)) return const [];
+
+    final dateFormat = time_utils.AppTimeFormats.dateFormatter('yyyy-MM-dd');
+    try {
+      final db = await DatabaseHelper.instance.databaseForUser(username);
+      final maps = await db.query(
+        'fixed_schedules',
+        where: 'is_deleted = 0 AND date >= ? AND date < ?',
+        whereArgs: [dateFormat.format(startDate), dateFormat.format(endDate)],
+        orderBy: 'date ASC, start_time ASC, updated_at DESC',
+      );
+      return maps.map(FixedScheduleItem.fromJson).toList();
+    } catch (error) {
+      debugPrint('⚠️ FixedSchedules SQL 范围读取异常: $error');
       return const [];
     }
   }
@@ -506,12 +537,30 @@ mixin _StorageFixed on _StorageServiceBase {
     return saved;
   }
 
-  Future<List<TodoPlanBlock>> getPlanBlocks(String username,
-      {bool includeDeleted = false}) async {
+  Future<List<TodoPlanBlock>> getPlanBlocks(
+    String username, {
+    bool includeDeleted = false,
+    DateTime? from,
+    DateTime? to,
+  }) async {
     try {
       final db = await DatabaseHelper.instance.databaseForUser(username);
-      final List<Map<String, dynamic>> maps = await db.query('todo_plan_blocks',
-          where: includeDeleted ? null : 'is_deleted = 0');
+      final where = <String>[];
+      final whereArgs = <Object?>[];
+      if (!includeDeleted) where.add('is_deleted = 0');
+      if (from != null) {
+        where.add('start_time >= ?');
+        whereArgs.add(from.millisecondsSinceEpoch);
+      }
+      if (to != null) {
+        where.add('start_time < ?');
+        whereArgs.add(to.millisecondsSinceEpoch);
+      }
+      final List<Map<String, dynamic>> maps = await db.query(
+        'todo_plan_blocks',
+        where: where.isEmpty ? null : where.join(' AND '),
+        whereArgs: whereArgs.isEmpty ? null : whereArgs,
+      );
 
       if (maps.isNotEmpty) {
         if (maps.length > 50) {
@@ -523,6 +572,60 @@ mixin _StorageFixed on _StorageServiceBase {
       debugPrint("⚠️ PlanBlocks SQL 引擎异常: $e");
     }
     return [];
+  }
+
+  Future<List<TodoPlanBlock>> getPlanBlocksForReminderWindow(
+    String username, {
+    required DateTime now,
+    required DateTime limit,
+  }) async {
+    try {
+      final db = await DatabaseHelper.instance.databaseForUser(username);
+      final maps = await db.query(
+        'todo_plan_blocks',
+        where: 'is_deleted = 0 '
+            'AND COALESCE(reminder_minutes, 5) > 0 '
+            'AND start_time > ? '
+            'AND start_time - COALESCE(reminder_minutes, 5) * 60000 < ?',
+        whereArgs: [
+          now.millisecondsSinceEpoch,
+          limit.millisecondsSinceEpoch,
+        ],
+      );
+      if (maps.length > 50) {
+        return await compute(_parsePlanBlockItemsIsolate, maps);
+      }
+      return maps.map(TodoPlanBlock.fromJson).toList();
+    } catch (e) {
+      debugPrint('⚠️ Plan block reminder window read failed: $e');
+      return [];
+    }
+  }
+
+  Future<List<TodoPlanBlock>> getDashboardPlanBlocks(
+    String username, {
+    required DateTime now,
+  }) async {
+    try {
+      final db = await DatabaseHelper.instance.databaseForUser(username);
+      final nowMs = now.millisecondsSinceEpoch;
+      final maps = await db.rawQuery('''
+        SELECT rowid AS _dashboard_rowid, * FROM todo_plan_blocks
+        WHERE is_deleted = 0 AND end_time >= ?
+        UNION ALL
+        SELECT rowid AS _dashboard_rowid, * FROM todo_plan_blocks
+        WHERE is_deleted = 0 AND status = ?
+          AND (end_time < ? OR end_time IS NULL)
+        ORDER BY _dashboard_rowid ASC
+      ''', [nowMs, TodoPlanStatus.focusing.index, nowMs]);
+      if (maps.length > 50) {
+        return await compute(_parsePlanBlockItemsIsolate, maps);
+      }
+      return maps.map(TodoPlanBlock.fromJson).toList();
+    } catch (e) {
+      debugPrint("⚠️ Dashboard PlanBlocks SQL read failed: $e");
+      return [];
+    }
   }
 
   Future<void> deletePlanBlockGlobally(

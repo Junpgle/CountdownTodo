@@ -122,8 +122,9 @@ int? _usableColorValue(Object? raw) {
 class DeviceCalendarReadService {
   DeviceCalendarReadService._();
 
-  static const MethodChannel _channel =
-      MethodChannel('countdown_todo/device_calendar_read');
+  static const MethodChannel _channel = MethodChannel(
+    'countdown_todo/device_calendar_read',
+  );
   static const String _enabledKey = 'device_calendar_read_enabled';
   static const String _guideOfferedKey = 'device_calendar_read_guide_offered';
 
@@ -213,7 +214,8 @@ class DeviceCalendarReadService {
 
   static Future<List<DeviceCalendarSource>> getSources() async {
     if (!isSupported || !await checkPermission()) return const [];
-    final raw = await _channel.invokeMethod<List<dynamic>>('getSources') ??
+    final raw =
+        await _channel.invokeMethod<List<dynamic>>('getSources') ??
         const <dynamic>[];
     return raw
         .whereType<Map>()
@@ -234,8 +236,9 @@ class DeviceCalendarReadService {
     }
     if (forceRefresh) _clearSessionReadCache();
     final generation = _cacheGeneration;
-    final cached =
-        _sessionReadRanges.where((range) => range.covers(start, end));
+    final cached = _sessionReadRanges.where(
+      (range) => range.covers(start, end),
+    );
     if (cached.isNotEmpty) return cached.first.eventsFor(start, end);
 
     final rangeKey =
@@ -259,20 +262,19 @@ class DeviceCalendarReadService {
     required DateTime end,
     required int generation,
   }) async {
-    final raw = await _channel.invokeMethod<List<dynamic>>(
-          'readEvents',
-          {
-            'startMs': start.millisecondsSinceEpoch,
-            'endMs': end.millisecondsSinceEpoch,
-          },
-        ) ??
+    final raw =
+        await _channel.invokeMethod<List<dynamic>>('readEvents', {
+          'startMs': start.millisecondsSinceEpoch,
+          'endMs': end.millisecondsSinceEpoch,
+        }) ??
         const <dynamic>[];
-    final events = raw
-        .whereType<Map>()
-        .map(DeviceCalendarEvent.fromPlatformMap)
-        .where((event) => event.id.isNotEmpty && event.overlaps(start, end))
-        .toList()
-      ..sort((a, b) => a.start.compareTo(b.start));
+    final events =
+        raw
+            .whereType<Map>()
+            .map(DeviceCalendarEvent.fromPlatformMap)
+            .where((event) => event.id.isNotEmpty && event.overlaps(start, end))
+            .toList()
+          ..sort((a, b) => a.start.compareTo(b.start));
     if (generation == _cacheGeneration) {
       _sessionReadRanges.add(
         _DeviceCalendarReadRange(start: start, end: end, events: events),
@@ -297,8 +299,9 @@ class _DeviceCalendarReadRange {
       !requestedStart.isBefore(start) && !requestedEnd.isAfter(end);
 
   List<DeviceCalendarEvent> eventsFor(
-          DateTime requestedStart, DateTime requestedEnd) =>
-      events
-          .where((event) => event.overlaps(requestedStart, requestedEnd))
-          .toList();
+    DateTime requestedStart,
+    DateTime requestedEnd,
+  ) => events
+      .where((event) => event.overlaps(requestedStart, requestedEnd))
+      .toList();
 }

@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
-import 'dart:ui';
 import '../services/api_service.dart';
 import '../services/pomodoro_sync_service.dart';
 import '../services/power_save_mode_service.dart';
 import '../utils/android_energy_policy.dart';
+import '../utils/app_image_filters.dart';
 import 'platform_backdrop_filter.dart';
 import '../utils/app_dialogs.dart';
 
@@ -31,7 +31,11 @@ class _SyncStatusBannerState extends State<SyncStatusBanner>
   Timer? _autoHideTimer;
   Timer? _showDelayTimer;
   bool _isForeground = true;
+  bool _tickerModeEnabled = true;
+  bool _hasReadTickerMode = false;
   bool _statusCheckInFlight = false;
+
+  bool get _canProbeStatus => _isForeground && _tickerModeEnabled;
 
   // 连接中断后延迟显示 banner 的时间（秒）
   static const int _showDelaySeconds = 5;
@@ -50,11 +54,6 @@ class _SyncStatusBannerState extends State<SyncStatusBanner>
     _wsConnSub = PomodoroSyncService.instance.onConnectionChanged
         .listen(_onWsStateChanged);
     PowerSaveModeService.enabledListenable.addListener(_onPowerSaveModeChanged);
-
-    // 🚀 初始化时立即评估一次当前连接状态，防止错过已处于连接状态的情况
-    final connectionState = PomodoroSyncService.instance.connectionState;
-    _evaluateStatus(connectionState);
-    _updateStatusProbe(connectionState);
   }
 
   @override
@@ -82,7 +81,26 @@ class _SyncStatusBannerState extends State<SyncStatusBanner>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     _isForeground = state == AppLifecycleState.resumed;
-    if (!_isForeground) {
+    if (!_canProbeStatus) {
+      _stopHeartbeat();
+      return;
+    }
+
+    final connectionState = PomodoroSyncService.instance.connectionState;
+    _evaluateStatus(connectionState);
+    _updateStatusProbe(connectionState);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final tickerModeEnabled = TickerMode.valuesOf(context).enabled;
+    if (_hasReadTickerMode && _tickerModeEnabled == tickerModeEnabled) return;
+
+    // Hidden routes keep their sync stream but do not poll HTTP for banner UI.
+    _hasReadTickerMode = true;
+    _tickerModeEnabled = tickerModeEnabled;
+    if (!_canProbeStatus) {
       _stopHeartbeat();
       return;
     }
@@ -93,7 +111,7 @@ class _SyncStatusBannerState extends State<SyncStatusBanner>
   }
 
   void _updateStatusProbe(SyncConnectionState state) {
-    if (!_isForeground || state == SyncConnectionState.connected) {
+    if (!_canProbeStatus || state == SyncConnectionState.connected) {
       _stopHeartbeat();
       return;
     }
@@ -101,7 +119,7 @@ class _SyncStatusBannerState extends State<SyncStatusBanner>
   }
 
   void _startHeartbeat({bool checkImmediately = true}) {
-    if (!_isForeground || _heartbeatTimer?.isActive == true) return;
+    if (!_canProbeStatus || _heartbeatTimer?.isActive == true) return;
     if (checkImmediately) unawaited(_checkRealStatus());
     // WebSocket 健康时不再额外轮询 HTTP；仅在断线期间低频区分
     // “无网络”和“服务异常”。
@@ -120,13 +138,13 @@ class _SyncStatusBannerState extends State<SyncStatusBanner>
     if (!mounted) return;
     _stopHeartbeat();
     final connectionState = PomodoroSyncService.instance.connectionState;
-    if (_isForeground && connectionState != SyncConnectionState.connected) {
+    if (_canProbeStatus && connectionState != SyncConnectionState.connected) {
       _startHeartbeat(checkImmediately: false);
     }
   }
 
   Future<void> _checkRealStatus() async {
-    if (!_isForeground || _statusCheckInFlight) return;
+    if (!_canProbeStatus || _statusCheckInFlight) return;
     // 先取当前 WS 状态（同步读取，无需 await）
     final wsState = PomodoroSyncService.instance.connectionState;
     if (wsState == SyncConnectionState.connected) {
@@ -139,7 +157,7 @@ class _SyncStatusBannerState extends State<SyncStatusBanner>
     try {
       // 🚀 核心逻辑：发起一个轻量级的健康检查
       final isAlive = await ApiService.ping();
-      if (!mounted || !_isForeground) return;
+      if (!mounted || !_canProbeStatus) return;
       final latestState = PomodoroSyncService.instance.connectionState;
       if (latestState == SyncConnectionState.connected) {
         _evaluateStatus(latestState);
@@ -153,7 +171,7 @@ class _SyncStatusBannerState extends State<SyncStatusBanner>
         updateStatus(SyncPathStatus.serverError, message: "同步服务器响应异常");
       }
     } catch (e) {
-      if (!mounted || !_isForeground) return;
+      if (!mounted || !_canProbeStatus) return;
       updateStatus(SyncPathStatus.offline, message: "网络连接已断开，进入离线模式");
     } finally {
       _statusCheckInFlight = false;
@@ -222,10 +240,13 @@ class _SyncStatusBannerState extends State<SyncStatusBanner>
       // 如果已经显示了非在线状态，直接更新
       if (_status != SyncPathStatus.online &&
           _status != SyncPathStatus.success) {
-        setState(() {
-          _status = status;
-          if (message != null) _detailMessage = message;
-        });
+        if (_status != status ||
+            (message != null && _detailMessage != message)) {
+          setState(() {
+            _status = status;
+            if (message != null) _detailMessage = message;
+          });
+        }
       } else if (!_isWaitingToShow) {
         // 首次断线，启动延迟计时器
         _isWaitingToShow = true;
@@ -247,10 +268,12 @@ class _SyncStatusBannerState extends State<SyncStatusBanner>
     _showDelayTimer?.cancel();
     _isWaitingToShow = false;
 
-    setState(() {
-      _status = status;
-      if (message != null) _detailMessage = message;
-    });
+    if (_status != status || (message != null && _detailMessage != message)) {
+      setState(() {
+        _status = status;
+        if (message != null) _detailMessage = message;
+      });
+    }
   }
 
   Color _getStatusColor() {
@@ -317,7 +340,7 @@ class _SyncStatusBannerState extends State<SyncStatusBanner>
                 ),
                 child: ClipRRect(
                   child: PlatformBackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                    filter: AppImageFilters.blur12,
                     child: Container(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 16, vertical: 8),

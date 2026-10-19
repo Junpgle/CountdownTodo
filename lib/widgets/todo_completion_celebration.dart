@@ -5,6 +5,16 @@ import 'package:flutter/material.dart';
 import '../services/todo_completion_celebration_service.dart';
 import 'optional_liquid_glass_surface.dart';
 
+const _confettiPalette = <Color>[
+  Color(0xFFFFD700), // 金黄
+  Color(0xFFFF6D00), // 珊瑚橙
+  Color(0xFF00E676), // 翡翠绿
+  Color(0xFF2979FF), // 亮蓝
+  Color(0xFFFF4081), // 霓虹粉
+  Color(0xFF7C4DFF), // 紫罗兰
+  Color(0xFF00B0FF), // 浅天蓝
+];
+
 /// 待办全清微粒子粒子模型
 class _ConfettiParticle {
   double x;
@@ -12,7 +22,7 @@ class _ConfettiParticle {
   double vx;
   double vy;
   double size;
-  Color color;
+  int paletteIndex;
   double rotation;
   double rotationSpeed;
   bool isCircle;
@@ -23,7 +33,7 @@ class _ConfettiParticle {
     required this.vx,
     required this.vy,
     required this.size,
-    required this.color,
+    required this.paletteIndex,
     required this.rotation,
     required this.rotationSpeed,
     required this.isCircle,
@@ -33,27 +43,37 @@ class _ConfettiParticle {
 /// 粒子画布绘制器
 class _ConfettiPainter extends CustomPainter {
   final List<_ConfettiParticle> particles;
-  final double progress;
+  final Animation<double> animation;
+  final Paint _paint = Paint()..style = PaintingStyle.fill;
+  final List<Color> _paintColors = List<Color>.filled(
+    _confettiPalette.length,
+    Colors.transparent,
+    growable: false,
+  );
 
-  _ConfettiPainter({required this.particles, required this.progress});
+  _ConfettiPainter({required this.particles, required this.animation})
+    : super(repaint: animation);
 
   @override
   void paint(Canvas canvas, Size size) {
+    final progress = animation.value;
     final double alpha = (1.0 - progress).clamp(0.0, 1.0);
     if (alpha <= 0.0) return;
 
-    final paint = Paint()..style = PaintingStyle.fill;
+    final particleAlpha = (alpha * 1.2).clamp(0.0, 1.0);
+    for (var i = 0; i < _confettiPalette.length; i++) {
+      _paintColors[i] = _confettiPalette[i].withValues(alpha: particleAlpha);
+    }
 
     for (final p in particles) {
-      final particleAlpha = (alpha * 1.2).clamp(0.0, 1.0);
-      paint.color = p.color.withValues(alpha: particleAlpha);
+      _paint.color = _paintColors[p.paletteIndex];
 
       canvas.save();
       canvas.translate(p.x, p.y);
       canvas.rotate(p.rotation);
 
       if (p.isCircle) {
-        canvas.drawCircle(Offset.zero, p.size / 2, paint);
+        canvas.drawCircle(Offset.zero, p.size / 2, _paint);
       } else {
         canvas.drawRect(
           Rect.fromCenter(
@@ -61,7 +81,7 @@ class _ConfettiPainter extends CustomPainter {
             width: p.size,
             height: p.size * 0.65,
           ),
-          paint,
+          _paint,
         );
       }
 
@@ -70,7 +90,8 @@ class _ConfettiPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _ConfettiPainter oldDelegate) => true;
+  bool shouldRepaint(covariant _ConfettiPainter oldDelegate) =>
+      oldDelegate.particles != particles || oldDelegate.animation != animation;
 }
 
 /// 今日待办全部达成庆祝弹层
@@ -94,16 +115,6 @@ class _TodoCelebrationOverlayState extends State<TodoCelebrationOverlay>
   final List<_ConfettiParticle> _particles = [];
   final math.Random _random = math.Random();
   double _lastElapsedSeconds = 0.0;
-
-  static const List<Color> _palette = [
-    Color(0xFFFFD700), // 金黄
-    Color(0xFFFF6D00), // 珊瑚橙
-    Color(0xFF00E676), // 翡翠绿
-    Color(0xFF2979FF), // 亮蓝
-    Color(0xFFFF4081), // 霓虹粉
-    Color(0xFF7C4DFF), // 紫罗兰
-    Color(0xFF00B0FF), // 浅天蓝
-  ];
 
   @override
   void initState() {
@@ -140,7 +151,7 @@ class _TodoCelebrationOverlayState extends State<TodoCelebrationOverlay>
           vx: vx,
           vy: vy,
           size: 7 + _random.nextDouble() * 7,
-          color: _palette[_random.nextInt(_palette.length)],
+          paletteIndex: _random.nextInt(_confettiPalette.length),
           rotation: _random.nextDouble() * math.pi * 2,
           rotationSpeed: (_random.nextDouble() - 0.5) * 12,
           isCircle: _random.nextBool(),
@@ -190,17 +201,12 @@ class _TodoCelebrationOverlayState extends State<TodoCelebrationOverlay>
             children: [
               // 粒子层
               RepaintBoundary(
-                child: AnimatedBuilder(
-                  animation: _controller,
-                  builder: (context, _) {
-                    return CustomPaint(
-                      size: size,
-                      painter: _ConfettiPainter(
-                        particles: _particles,
-                        progress: _controller.value,
-                      ),
-                    );
-                  },
+                child: CustomPaint(
+                  size: size,
+                  painter: _ConfettiPainter(
+                    particles: _particles,
+                    animation: _controller,
+                  ),
                 ),
               ),
 

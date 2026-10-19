@@ -2,18 +2,27 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_zoom_drawer/flutter_zoom_drawer.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+
 import 'dart:async';
+
+import '../widgets/home_dashboard_banner_layout.dart';
 import '../widgets/home_drawer_menu.dart';
+import '../widgets/ai_water_border.dart';
+
 import 'package:intl/intl.dart';
+
 import 'dart:math';
 import 'dart:convert';
+
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:palette_generator/palette_generator.dart';
+import 'package:palette_generator_plus/palette_generator_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+
 import '../services/search_service.dart';
 import '../utils/page_transitions.dart';
+import '../utils/pomodoro_display_tick_schedule.dart';
 
 // 引入服务和模型
 import '../models.dart';
@@ -43,7 +52,6 @@ import '../services/pomodoro_sync_service.dart';
 import '../services/focus_do_not_disturb_service.dart';
 import '../services/reminder_schedule_service.dart';
 import '../services/float_window_service.dart';
-import '../services/island_slot_provider.dart';
 import '../services/item_semantics_service.dart';
 import '../services/storage/app_settings_storage.dart';
 import '../services/conflict_visibility_service.dart';
@@ -86,10 +94,11 @@ import '../widgets/home_sections.dart';
 import '../widgets/home_app_bar.dart';
 import '../widgets/home_dashboard_scroll_section.dart';
 import '../widgets/countdown_section_widget.dart';
-import '../widgets/course_section_widget.dart';
 import '../widgets/todo_section_widget.dart';
 import '../widgets/pomodoro_today_section.dart';
 import '../widgets/plan_block_today_section.dart';
+import '../services/plan_review_repository.dart';
+import '../services/home_agenda_repository.dart';
 import '../features/habits/screens/habit_center_screen.dart';
 import '../features/finance/screens/finance_home_screen.dart';
 import '../features/finance/screens/finance_entry_screen.dart';
@@ -107,6 +116,7 @@ import '../widgets/conflict_alert_dialog.dart';
 import '../widgets/sync_status_banner.dart'; // 🚀 引入
 import '../widgets/sticky_announcement_banner.dart'; // 🚀 引入
 import 'pomodoro_screen.dart';
+import 'pomodoro/pomodoro_entry_intent.dart';
 import 'todo_plan_screen.dart';
 // 🚀 引入
 // 🚀 引入
@@ -137,10 +147,9 @@ const _homeFocusTabIndex = 4;
 
 class HomeDashboard extends StatefulWidget {
   final String username;
-  const HomeDashboard({
-    super.key,
-    required this.username,
-  });
+  final PlanReviewRepository? planReviewRepository;
+  final HomeAgendaRepository? agendaRepository;
+  const HomeDashboard({super.key, required this.username, this.planReviewRepository, this.agendaRepository});
 
   @override
   State<HomeDashboard> createState() => _HomeDashboardState();
@@ -152,6 +161,7 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
   final GitHubResourceService _githubResourceService = GitHubResourceService();
   // === 状态变量 ===
   List<CountdownItem> _countdowns = [];
+  int _countdownsDataRevision = 0;
   List<TodoItem> _todos = [];
   List<TodoGroup> _todoGroups = [];
   List<ConflictInfo> _latestSyncConflicts = [];
@@ -159,10 +169,10 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
   List<dynamic> _screenTimeStats = [];
   Map<String, dynamic> _dashboardCourseData = {
     'title': '课程提醒',
-    'courses': <CourseItem>[]
+    'courses': <CourseItem>[],
   };
+  int _dashboardCourseDataRefreshRevision = 0;
 
-  String _noCourseBehavior = 'keep';
   bool _hasUsagePermission = true;
   bool _isSyncing = false;
   String? _wallpaperUrl;
@@ -184,25 +194,22 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
   int? _currentSemesterWeek;
   Map<String, dynamic> _homeTextConfig = {};
 
-  List<String> _leftSections = ['courses', 'todos', 'math'];
-  List<String> _rightSections = [
-    'countdowns',
-    'screenTime',
-    'timeline',
-    'pomodoro',
-    'finance',
-  ];
-  List<String> _mobileHomeSections =
-      HomeLayoutService.defaultOrder(HomeLayoutTarget.mobileHome);
-  List<String> _mobileFocusSections =
-      HomeLayoutService.defaultOrder(HomeLayoutTarget.mobileFocus);
+  List<String> _leftSections = HomeLayoutService.defaultOrder(HomeLayoutTarget.wideLeft);
+  List<String> _rightSections = HomeLayoutService.defaultOrder(HomeLayoutTarget.wideRight);
+  List<String> _mobileHomeSections = HomeLayoutService.defaultOrder(
+    HomeLayoutTarget.mobileHome,
+  );
+  List<String> _mobileFocusSections = HomeLayoutService.defaultOrder(
+    HomeLayoutTarget.mobileFocus,
+  );
   int _habitDisplayLimit = HomeLayoutService.defaultHabitDisplayLimit;
 
   Map<String, bool> _sectionVisibility = {
-    'courses': true,
+    'agenda': true,
+    'agendaSchedules': true,
+    'agendaPlans': true,
     'countdowns': true,
     'todos': true,
-    'planBlocks': true,
     'screenTime': true,
     'math': true,
     'pomodoro': true,
@@ -247,10 +254,13 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
   final ValueNotifier<int> _timelineRevision = ValueNotifier<int>(0);
   final ValueNotifier<int> _pomodoroRevision = ValueNotifier<int>(0);
   final ValueNotifier<int> _habitsRevision = ValueNotifier<int>(0);
+  int _todoDataRevision = 0;
 
   Future<void> _extractColorFromProvider(
-      ImageProvider provider, String url) async {
-    if (_extractedWallpaperUrl == url) return;
+    ImageProvider provider,
+    String url,
+  ) async {
+    if (_extractedWallpaperUrl == url || _wallpaperUrl != url) return;
     _extractedWallpaperUrl = url;
     try {
       // 缩小图片尺寸可大幅提升解析速度，防止卡顿和 OOM 取色失败
@@ -258,11 +268,20 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
       final palette = await PaletteGenerator.fromImageProvider(
         resizedProvider,
         maximumColorCount: 16,
+        // 保持与原版 palette_generator 一致的取色结果。
+        quantizer: const LegacyQuantizer(),
       );
+      if (!mounted || _wallpaperUrl != url) {
+        if (mounted && _extractedWallpaperUrl == url) {
+          _extractedWallpaperUrl = null;
+        }
+        return;
+      }
       if (mounted) {
         setState(() {
           // 增加多级降级策略，确保一定能取到颜色
-          _wallpaperDominantColor = palette.dominantColor?.color ??
+          _wallpaperDominantColor =
+              palette.dominantColor?.color ??
               palette.vibrantColor?.color ??
               palette.mutedColor?.color ??
               palette.lightVibrantColor?.color ??
@@ -276,6 +295,10 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
       // debugPrint("Failed to extract color: $e");
     }
   }
+
+  ImageProvider<Object>? _localWallpaperProviderFor(String url);
+
+  void _scheduleWallpaperColorExtraction(ImageProvider provider, String url);
 
   int _selectedTabIndex = 0;
   bool _focusTabVisited = false;
@@ -292,6 +315,7 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
   CrossDevicePomodoroState? _remotePomodoro; // 其他设备正在进行的专注
   Timer? _remotePomodoroTicker;
   bool _isDashboardInForeground = true;
+  bool get _canRunDashboardPomodoroTickers;
   int _remotePomodoroRemaining = 0;
   StreamSubscription? _remotePomodoroSub;
   StreamSubscription? _connStateSub; // 🚀 兼容性修复：改为通配订阅类型
@@ -338,6 +362,7 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
   Timer? _todoWidgetDebouncer;
   Timer? _reminderScheduleDebouncer;
   final ValueNotifier<int> _pomodoroTickNotifier = ValueNotifier<int>(0);
+  final ValueNotifier<int> _pomodoroDisplayTickNotifier = ValueNotifier<int>(0);
 
   // 🚀 Granular Refresh Notifiers
   late final ValueNotifier<List<TodoItem>> _todosNotifier;
@@ -346,10 +371,10 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
   late final ValueNotifier<List<CountdownItem>> _countdownsNotifier;
   late final ValueNotifier<Map<String, dynamic>> _mathStatsNotifier;
 
-  final ValueNotifier<bool> _isGlobalLoadingNotifier =
-      ValueNotifier<bool>(false);
+  final ValueNotifier<bool> _isGlobalLoadingNotifier = ValueNotifier<bool>(
+    false,
+  );
   bool _isDashboardLoadInProgress = false;
-  final ValueNotifier<int> _todoUpdateSignalNotifier = ValueNotifier<int>(0);
 
   // 🚀 GlobalKeys for Zoom Animations
   final GlobalKey _searchButtonKey = GlobalKey();
@@ -385,7 +410,7 @@ class _HomeDashboardState extends _HomeDashboardStateBase
 /// 🚀 首页 Banner 事件模型
 class HomeBannerEvent {
   final String
-      type; // 'pomodoro', 'course', 'todo', 'special_todo', 'plan_block'
+  type; // 'pomodoro', 'course', 'todo', 'special_todo', 'plan_block'
   final String title;
   final String? subtitle; // 地点或备注
   final String label; // e.g. "正在进行的课程"
@@ -460,8 +485,9 @@ class _WallpaperNetworkImageState extends State<_WallpaperNetworkImage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       widget.onError();
-      widget.onImageProvider
-          ?.call(const AssetImage('assets/images/default_wallpaper.webp'));
+      widget.onImageProvider?.call(
+        const AssetImage('assets/images/default_wallpaper.webp'),
+      );
     });
   }
 
@@ -469,10 +495,14 @@ class _WallpaperNetworkImageState extends State<_WallpaperNetworkImage> {
   Widget build(BuildContext context) {
     final media = MediaQuery.sizeOf(context);
     final pixelRatio = MediaQuery.devicePixelRatioOf(context);
-    final cacheWidth =
-        (media.width * pixelRatio).round().clamp(1, 4096).toInt();
-    final cacheHeight =
-        (media.height * pixelRatio).round().clamp(1, 4096).toInt();
+    final cacheWidth = (media.width * pixelRatio)
+        .round()
+        .clamp(1, 4096)
+        .toInt();
+    final cacheHeight = (media.height * pixelRatio)
+        .round()
+        .clamp(1, 4096)
+        .toInt();
     return CachedNetworkImage(
       imageUrl: widget.url,
       cacheManager: WallpaperCacheService.cacheManager,
@@ -482,8 +512,7 @@ class _WallpaperNetworkImageState extends State<_WallpaperNetworkImage> {
       fadeInDuration: const Duration(milliseconds: 350),
       useOldImageOnUrlChange: true,
       httpHeaders: const {
-        'User-Agent':
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
       },
       imageBuilder: (context, provider) {
         _reportSuccess(provider);

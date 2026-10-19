@@ -426,10 +426,7 @@ void main() {
       );
 
       expect(
-        MacPomodoroStatusBarService.isUsableLocalState(
-          state,
-          nowMs: nowMs,
-        ),
+        MacPomodoroStatusBarService.isUsableLocalState(state, nowMs: nowMs),
         isFalse,
       );
     });
@@ -448,17 +445,11 @@ void main() {
       );
 
       expect(
-        MacPomodoroStatusBarService.isUsableLocalState(
-          paused,
-          nowMs: nowMs,
-        ),
+        MacPomodoroStatusBarService.isUsableLocalState(paused, nowMs: nowMs),
         isTrue,
       );
       expect(
-        MacPomodoroStatusBarService.isUsableLocalState(
-          countUp,
-          nowMs: nowMs,
-        ),
+        MacPomodoroStatusBarService.isUsableLocalState(countUp, nowMs: nowMs),
         isTrue,
       );
     });
@@ -579,10 +570,7 @@ void main() {
             title: '项目发布',
             targetDate: DateTime(2026, 7, 17),
           ),
-          CountdownItem(
-            title: '暑假',
-            targetDate: DateTime(2026, 7, 20),
-          ),
+          CountdownItem(title: '暑假', targetDate: DateTime(2026, 7, 20)),
         ],
         todayRecords: [
           PomodoroRecord(

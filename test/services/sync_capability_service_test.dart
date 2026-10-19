@@ -5,60 +5,53 @@ void main() {
   group('SyncCapabilityService', () {
     test('accepts the fixed schedule v1 capability', () {
       expect(
-        SyncCapabilityService.supportsFixedSchedules(
-          {'fixed_schedules': 1},
-        ),
+        SyncCapabilityService.supportsFixedSchedules({'fixed_schedules': 1}),
         isTrue,
       );
     });
 
     test('rejects old or missing server capabilities', () {
       expect(SyncCapabilityService.supportsFixedSchedules(null), isFalse);
+      expect(SyncCapabilityService.supportsFixedSchedules(const {}), isFalse);
       expect(
-        SyncCapabilityService.supportsFixedSchedules(const {}),
-        isFalse,
-      );
-      expect(
-        SyncCapabilityService.supportsFixedSchedules(
-          {'fixed_schedules': 0},
-        ),
+        SyncCapabilityService.supportsFixedSchedules({'fixed_schedules': 0}),
         isFalse,
       );
     });
 
     test('keeps compatibility with a capability name list', () {
       expect(
-        SyncCapabilityService.supportsFixedSchedules(
-          const ['fixed_schedules'],
-        ),
+        SyncCapabilityService.supportsFixedSchedules(const ['fixed_schedules']),
         isTrue,
       );
     });
 
-    test('acknowledges fixed-schedule oplogs only after an explicit handshake',
-        () {
-      expect(
-        SyncCapabilityService.shouldAcknowledgeFixedScheduleOps(
-          syncEnabled: true,
-          rawCapabilities: null,
-        ),
-        isFalse,
-      );
-      expect(
-        SyncCapabilityService.shouldAcknowledgeFixedScheduleOps(
-          syncEnabled: false,
-          rawCapabilities: const {'fixed_schedules': 1},
-        ),
-        isFalse,
-      );
-      expect(
-        SyncCapabilityService.shouldAcknowledgeFixedScheduleOps(
-          syncEnabled: true,
-          rawCapabilities: const {'fixed_schedules': 1},
-        ),
-        isTrue,
-      );
-    });
+    test(
+      'acknowledges fixed-schedule oplogs only after an explicit handshake',
+      () {
+        expect(
+          SyncCapabilityService.shouldAcknowledgeFixedScheduleOps(
+            syncEnabled: true,
+            rawCapabilities: null,
+          ),
+          isFalse,
+        );
+        expect(
+          SyncCapabilityService.shouldAcknowledgeFixedScheduleOps(
+            syncEnabled: false,
+            rawCapabilities: const {'fixed_schedules': 1},
+          ),
+          isFalse,
+        );
+        expect(
+          SyncCapabilityService.shouldAcknowledgeFixedScheduleOps(
+            syncEnabled: true,
+            rawCapabilities: const {'fixed_schedules': 1},
+          ),
+          isTrue,
+        );
+      },
+    );
 
     test('accepts the habits v1 capability', () {
       expect(SyncCapabilityService.supportsHabits({'habits': 1}), isTrue);
@@ -98,71 +91,52 @@ void main() {
 
     test('recognizes the independent habits sync cursor capability', () {
       expect(
-        SyncCapabilityService.supportsHabitSyncCursor(
-          {'habit_sync_cursor': 1},
-        ),
+        SyncCapabilityService.supportsHabitSyncCursor({'habit_sync_cursor': 1}),
         isTrue,
       );
       expect(
-        SyncCapabilityService.supportsHabitSyncCursor(
-          {'habit_sync_cursor': 0},
-        ),
+        SyncCapabilityService.supportsHabitSyncCursor({'habit_sync_cursor': 0}),
         isFalse,
       );
-      expect(
-        SyncCapabilityService.supportsHabitSyncCursor(null),
-        isFalse,
-      );
+      expect(SyncCapabilityService.supportsHabitSyncCursor(null), isFalse);
     });
 
     test('recognizes the independent finance v1 capability', () {
-      expect(
-        SyncCapabilityService.supportsFinance({'finance_v1': 1}),
-        isTrue,
-      );
-      expect(
-        SyncCapabilityService.supportsFinance({'finance_v1': 0}),
-        isFalse,
-      );
+      expect(SyncCapabilityService.supportsFinance({'finance_v1': 1}), isTrue);
+      expect(SyncCapabilityService.supportsFinance({'finance_v1': 0}), isFalse);
       expect(SyncCapabilityService.supportsFinance(null), isFalse);
     });
 
     test('recognizes the finance category name override capability', () {
       expect(
-        SyncCapabilityService.supportsFinanceCategoryNames(
-          {'finance_category_names_v1': 1},
-        ),
+        SyncCapabilityService.supportsFinanceCategoryNames({
+          'finance_category_names_v1': 1,
+        }),
         isTrue,
       );
       expect(
-        SyncCapabilityService.supportsFinanceCategoryNames(
-          {'finance_category_names_v1': 0},
-        ),
+        SyncCapabilityService.supportsFinanceCategoryNames({
+          'finance_category_names_v1': 0,
+        }),
         isFalse,
       );
-      expect(
-        SyncCapabilityService.supportsFinanceCategoryNames(null),
-        isFalse,
-      );
+      expect(SyncCapabilityService.supportsFinanceCategoryNames(null), isFalse);
     });
 
     test('recognizes the finance category icon override capability', () {
       expect(
-        SyncCapabilityService.supportsFinanceCategoryIcons(
-          {'finance_category_icons_v1': 1},
-        ),
+        SyncCapabilityService.supportsFinanceCategoryIcons({
+          'finance_category_icons_v1': 1,
+        }),
         isTrue,
       );
       expect(
-        SyncCapabilityService.supportsFinanceCategoryIcons(
-          {'finance_category_icons_v1': 0},
-        ),
+        SyncCapabilityService.supportsFinanceCategoryIcons({
+          'finance_category_icons_v1': 0,
+        }),
         isFalse,
       );
-      expect(
-        SyncCapabilityService.supportsFinanceCategoryIcons(null),
-        isFalse,
-      );
+      expect(SyncCapabilityService.supportsFinanceCategoryIcons(null), isFalse);
     });
 
     test('finance acknowledgement is gated by both switch and capability', () {

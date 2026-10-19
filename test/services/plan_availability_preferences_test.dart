@@ -89,7 +89,10 @@ void main() {
     await PlanAvailabilityPreferences.save(
       'a',
       stalePanel.options,
-      {for (final index in stalePanel.selectedIndices) stalePanel.options[index]},
+      {
+        for (final index in stalePanel.selectedIndices)
+          stalePanel.options[index],
+      },
       bufferBefore: 15,
       bufferAfter: 5,
       updateAvoidance: false,

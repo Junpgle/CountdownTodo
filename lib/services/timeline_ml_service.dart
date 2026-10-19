@@ -249,30 +249,29 @@ class TimelineMLService {
       final records =
           await PomodoroService.getRecordsInRange(ninetyDaysAgo, endDate);
 
-      // Group by day
-      final byDay = <String, List<PomodoroRecord>>{};
+      // Aggregate by day without retaining a separate record list per day.
+      final byDay = <String, _HistoricalDayAccumulator>{};
       for (final r in records) {
         final date = DateTime.fromMillisecondsSinceEpoch(r.createdAt);
         final key =
             '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
-        byDay.putIfAbsent(key, () => []).add(r);
+        final day = byDay.putIfAbsent(key, () => _HistoricalDayAccumulator());
+        day.focusSeconds += r.effectiveDuration;
+        day.totalSessions++;
+        if (r.status == PomodoroRecordStatus.completed) {
+          day.completedSessions++;
+        }
       }
 
       // Create snapshots
       for (final entry in byDay.entries) {
-        final dayRecords = entry.value;
-        final totalMinutes =
-            dayRecords.fold<int>(0, (sum, r) => sum + r.effectiveDuration) ~/
-                60;
-        final completedCount = dayRecords
-            .where((r) => r.status == PomodoroRecordStatus.completed)
-            .length;
+        final day = entry.value;
 
         snapshots.add(_HistoricalSnapshot(
           date: entry.key,
-          focusMinutes: totalMinutes,
-          completedSessions: completedCount,
-          totalSessions: dayRecords.length,
+          focusMinutes: day.focusSeconds ~/ 60,
+          completedSessions: day.completedSessions,
+          totalSessions: day.totalSessions,
         ));
       }
     } catch (e) {
@@ -709,4 +708,10 @@ class _HistoricalSnapshot {
     required this.completedSessions,
     required this.totalSessions,
   });
+}
+
+class _HistoricalDayAccumulator {
+  int focusSeconds = 0;
+  int completedSessions = 0;
+  int totalSessions = 0;
 }

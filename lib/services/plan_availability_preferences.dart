@@ -1,4 +1,5 @@
 import 'plan_weekly_availability_preferences.dart';
+
 import 'dart:async';
 import 'dart:convert';
 
@@ -89,7 +90,9 @@ class PlanAvailabilityPreferences {
 
     void readWindows(Object? value, {required int version}) {
       final data = value is String ? jsonDecode(value) : null;
-      if (data is! Map || data['version'] != version || data['windows'] is! List) {
+      if (data is! Map ||
+          data['version'] != version ||
+          data['windows'] is! List) {
         bufferError ??= '查找设置无法读取，请重置前后缓冲后再查找';
         return;
       }

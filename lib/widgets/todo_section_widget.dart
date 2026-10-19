@@ -3,6 +3,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+
 import '../screens/plan_editor_drafts_screen.dart';
 import '../screens/plan_cleanup_screen.dart';
 
@@ -43,6 +44,7 @@ import '../services/feature_tip_service.dart';
 import '../services/item_semantics_service.dart';
 import '../services/fixed_schedule_recurrence_service.dart';
 import '../services/todo_recurrence_date_service.dart';
+import '../services/conflict_visibility_service.dart';
 import '../services/reminder_schedule_service.dart';
 import '../services/recognized_todo_adapter.dart';
 import '../widgets/coach_mark_overlay.dart';
@@ -77,6 +79,9 @@ enum _QuickCaptureTarget { todo, fixedSchedule, cancel }
 
 class TodoSectionWidget extends StatefulWidget {
   final List<TodoItem> todos;
+  /// Monotonic revision for parent-owned in-place todo/group mutations.
+  /// When omitted, the widget keeps its content-signature fallback.
+  final int? dataRevision;
   final String username;
   final bool isLight;
   final Function(List<TodoItem>) onTodosChanged;
@@ -105,6 +110,7 @@ class TodoSectionWidget extends StatefulWidget {
   const TodoSectionWidget({
     super.key,
     required this.todos,
+    this.dataRevision,
     required this.username,
     required this.isLight,
     required this.onTodosChanged,
@@ -130,10 +136,41 @@ class TodoSectionWidget extends StatefulWidget {
 }
 
 Map<String, String> _buildRecurrenceSeriesRepresentativeIds(
-  Map<String, List<TodoItem>> seriesOccurrences,
-) {
+  Map<String, List<TodoItem>> seriesOccurrences, {
+  bool occurrencesSortedByStart = false,
+}) {
   final representativeIds = <String, String>{};
   for (final entry in seriesOccurrences.entries) {
+    if (occurrencesSortedByStart) {
+      // The main view sorts ascending first, so scan backward and stop after
+      // the newest active date; scanning equal-date entries preserves tie order.
+      final occurrences = entry.value;
+      int? latestStart;
+      TodoItem? latest;
+      int? latestActiveStart;
+      TodoItem? latestActive;
+      for (var i = occurrences.length - 1; i >= 0; i--) {
+        final occurrence = occurrences[i];
+        final start = occurrence.createdDate ?? occurrence.createdAt;
+        if (!occurrence.isDeleted) {
+          latestStart ??= start;
+          if (start == latestStart) latest = occurrence;
+
+          if (occurrence.recurrence != RecurrenceType.none) {
+            latestActiveStart ??= start;
+            if (start == latestActiveStart) latestActive = occurrence;
+          }
+        }
+        if (latestActiveStart != null && start < latestActiveStart) break;
+      }
+
+      final representative = latestActive ?? latest;
+      if (representative != null) {
+        representativeIds[entry.key] = representative.id;
+      }
+      continue;
+    }
+
     TodoItem? latest;
     TodoItem? latestActive;
     for (final occurrence in entry.value) {
@@ -207,14 +244,16 @@ _calculateRecurrenceSummary({
   required bool hasFixedEnd,
 }) {
   final summaryNodes = hasFixedEnd ? allNodes : historyNodes;
+  var completedCount = 0;
+  var overdueCount = 0;
+  for (final node in summaryNodes) {
+    if (node.state == TodoRecurrenceNodeState.completed) completedCount++;
+    if (node.state == TodoRecurrenceNodeState.overdue) overdueCount++;
+  }
   return (
-    completedCount: summaryNodes
-        .where((node) => node.state == TodoRecurrenceNodeState.completed)
-        .length,
+    completedCount: completedCount,
     totalCount: summaryNodes.length,
-    overdueCount: summaryNodes
-        .where((node) => node.state == TodoRecurrenceNodeState.overdue)
-        .length,
+    overdueCount: overdueCount,
   );
 }
 
@@ -234,16 +273,39 @@ abstract class _TodoSectionStateBase extends State<TodoSectionWidget>
   final Map<String, Key> _todoDismissKeys = {};
   final Map<String, AnimationController> _completingAnimations = {};
   final Map<String, bool> _isCompleting = {};
+  final Map<(String?, String), DateFormat> _dateFormatters = {};
   bool _inlineFolders = true;
   _TodoFolderDisplayMode _folderDisplayMode = _TodoFolderDisplayMode.inline;
   _TodoSectionViewModel? _cachedVm;
   int? _cachedVmSignature;
+  DateTime? _cachedVmSignatureDate;
+  Map<String, String>? _cachedTeamFilterMap;
+  int? _cachedTeamFilterSignature;
   Map<String, List<TodoItem>> _recurrenceSeriesOccurrences = const {};
+  final Map<String, _TodoRecurrenceDateStructure> _recurrenceDateStructures =
+      {};
+
+  void _invalidateTodoViewModel() {
+    _cachedVm = null;
+    _cachedVmSignature = null;
+    _cachedVmSignatureDate = null;
+    _cachedTeamFilterMap = null;
+    _cachedTeamFilterSignature = null;
+    _recurrenceDateStructures.clear();
+  }
 
   String? _selectedSubTeamUuid; // 🚀 内部视口：当前选择的团队 UUID
   final Map<String, String> _teamRoles = {}; // 🚀 缓存团队 ID -> 角色 (admin/member)
   List<Team> _teams = [];
   Set<String> _habitOnlyRecurringSeriesIds = <String>{};
+
+  DateFormat _cachedDateFormat(String pattern) {
+    final locale = Intl.defaultLocale;
+    return _dateFormatters.putIfAbsent(
+      (locale, pattern),
+      () => DateFormat(pattern, locale),
+    );
+  }
 
   bool _isAiGeneratedTodo(TodoItem todo) => isAiGeneratedTodo(todo);
 }
@@ -294,17 +356,31 @@ class _AiAssistantContext {
 
 class _TodoSectionViewModel {
   final DateTime today;
-  final List<TodoItem> activeTodos;
+  final int activeTodoCount;
   final Iterable<TodoGroup> activeGroups;
   final int undoneCount;
   final List<_SortedDisplayItem> pastItems;
   final List<_SortedDisplayItem> todayItems;
   final List<_SortedDisplayItem> futureItems;
   final List<_GroupDisplayData> separateGroupData;
+  late final List<TodoItem> overdueTodos = <TodoItem>[
+    ...pastItems.map((item) => item.todo).whereType<TodoItem>(),
+    ...pastItems.expand(
+      (item) => item.groupTodos ?? const <TodoItem>[],
+    ),
+  ].where((todo) => !todo.isDone && !todo.isDeleted && todo.dueDate != null)
+      .toList(growable: false);
+  late final int futureUndoneCount =
+      futureItems.where((item) => !item.isDone).length;
+  late final int todayDoneCount =
+      todayItems.where((item) => item.isDone).length;
+  late final int todayUndoneCount = todayItems.length - todayDoneCount;
+  late final bool allTodayDone =
+      todayItems.isNotEmpty && todayUndoneCount == 0;
 
   _TodoSectionViewModel({
     required this.today,
-    required this.activeTodos,
+    required this.activeTodoCount,
     required this.activeGroups,
     required this.undoneCount,
     required this.pastItems,

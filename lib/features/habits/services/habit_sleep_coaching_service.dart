@@ -53,9 +53,9 @@ class HabitSleepCoachingSnapshot {
   }
 
   int get maxStage => metrics.fold<int>(
-        0,
-        (value, metric) => value > metric.maxStage ? value : metric.maxStage,
-      );
+    0,
+    (value, metric) => value > metric.maxStage ? value : metric.maxStage,
+  );
 }
 
 /// 睡眠训练计划的读写与阶段推导。
@@ -89,7 +89,8 @@ abstract final class HabitSleepCoachingService {
     if (plan.timezoneOffsetMinutes == null) {
       // 兼容首个版本创建的计划：优先从已经同步的睡眠打卡推断原始偏移，
       // 这样两台设备首次打开旧计划时不会各自写入本机时区。
-      plan.timezoneOffsetMinutes = _inferredTimezoneOffset(goals, checkIns) ??
+      plan.timezoneOffsetMinutes =
+          _inferredTimezoneOffset(goals, checkIns) ??
           DateTime.now().timeZoneOffset.inMinutes;
       plan.markAsChanged();
       await HabitStorage.saveSleepCoachingPlans([plan]);
@@ -108,9 +109,9 @@ abstract final class HabitSleepCoachingService {
     HabitSleepCoachingPlan plan, {
     DateTime? now,
   }) {
-    final nowInPlanTimezone = (now ?? DateTime.now())
-        .toUtc()
-        .add(Duration(minutes: plan.timezoneOffsetMinutes ?? 0));
+    final nowInPlanTimezone = (now ?? DateTime.now()).toUtc().add(
+      Duration(minutes: plan.timezoneOffsetMinutes ?? 0),
+    );
     return DateTime(
       nowInPlanTimezone.year,
       nowInPlanTimezone.month,
@@ -122,9 +123,9 @@ abstract final class HabitSleepCoachingService {
     HabitSleepCoachingPlan plan, {
     DateTime? now,
   }) {
-    return (now ?? DateTime.now())
-        .toUtc()
-        .add(Duration(minutes: plan.timezoneOffsetMinutes ?? 0));
+    return (now ?? DateTime.now()).toUtc().add(
+      Duration(minutes: plan.timezoneOffsetMinutes ?? 0),
+    );
   }
 
   static int? _inferredTimezoneOffset(
@@ -147,15 +148,18 @@ abstract final class HabitSleepCoachingService {
       if (checkIn.isDeleted || !sleepGoalUuids.contains(checkIn.habitUuid)) {
         continue;
       }
-      final offset =
-          checkIn.timezoneOffsetMinutes.clamp(-14 * 60, 14 * 60).toInt();
+      final offset = checkIn.timezoneOffsetMinutes
+          .clamp(-14 * 60, 14 * 60)
+          .toInt();
       counts[offset] = (counts[offset] ?? 0) + 1;
     }
     if (counts.isEmpty) return null;
     final sorted = counts.entries.toList()
-      ..sort((a, b) => b.value != a.value
-          ? b.value.compareTo(a.value)
-          : a.key.compareTo(b.key));
+      ..sort(
+        (a, b) => b.value != a.value
+            ? b.value.compareTo(a.value)
+            : a.key.compareTo(b.key),
+      );
     return sorted.first.key;
   }
 
@@ -175,7 +179,8 @@ abstract final class HabitSleepCoachingService {
     final deviceId = await UserSessionStorage.getDeviceId();
     final now = DateTime.now();
     final existing = await getPlan(username);
-    final plan = existing ??
+    final plan =
+        existing ??
         HabitSleepCoachingPlan(
           uuid: HabitSleepCoachingPlan.stableUuidFor(username),
           deviceId: deviceId,
@@ -305,22 +310,46 @@ abstract final class HabitSleepCoachingService {
   }
 
   static Map<HabitAdaptationKind, _MetricInput> _metricInputs(
-      List<HabitGoal> goals,
-      List<HabitGoalRuleRevision> rules,
-      List<HabitCheckIn> checkIns,
-      {HabitSleepCoachingPlan? plan}) {
+    List<HabitGoal> goals,
+    List<HabitGoalRuleRevision> rules,
+    List<HabitCheckIn> checkIns, {
+    HabitSleepCoachingPlan? plan,
+  }) {
     final result = <HabitAdaptationKind, _MetricInput>{};
-    for (final kind in const [
+    const kinds = [
       HabitAdaptationKind.earlySleep,
       HabitAdaptationKind.earlyWake,
       HabitAdaptationKind.sleepDuration,
-    ]) {
+    ];
+    final goalsByKind = <HabitAdaptationKind, HabitGoal>{};
+    for (final kind in kinds) {
       final goal = HabitSleepGoalResolver.canonical(goals, kind);
+      if (goal != null) goalsByKind[kind] = goal;
+    }
+    if (goalsByKind.isEmpty) return result;
+    final sleepGoalUuids = goalsByKind.values.map((goal) => goal.uuid).toSet();
+    final rulesByHabit = <String, List<HabitGoalRuleRevision>>{};
+    for (final rule in rules) {
+      if (!sleepGoalUuids.contains(rule.habitUuid)) continue;
+      rulesByHabit.putIfAbsent(rule.habitUuid, () => []).add(rule);
+    }
+    final checkInsByHabit = <String, List<HabitCheckIn>>{};
+    for (final checkIn in checkIns) {
+      if (!sleepGoalUuids.contains(checkIn.habitUuid) ||
+          checkIn.isDeleted ||
+          checkIn.source == HabitCheckInSource.skip) {
+        continue;
+      }
+      checkInsByHabit.putIfAbsent(checkIn.habitUuid, () => []).add(checkIn);
+    }
+
+    for (final kind in kinds) {
+      final goal = goalsByKind[kind];
       if (goal == null) continue;
-      final goalRules =
-          rules.where((rule) => rule.habitUuid == goal.uuid).toList();
-      final referenceNow =
-          plan == null ? DateTime.now() : _nowInPlanTimezone(plan);
+      final goalRules = rulesByHabit[goal.uuid] ?? const [];
+      final referenceNow = plan == null
+          ? DateTime.now()
+          : _nowInPlanTimezone(plan);
       final finalRule = HabitRuleResolver.currentRule(
         goalRules,
         goalRules.isEmpty
@@ -328,32 +357,32 @@ abstract final class HabitSleepCoachingService {
             : _effectiveBoundary(goalRules.first.dayBoundaryMinute),
         referenceNow,
       );
-      final dayBoundaryMinute = finalRule?.dayBoundaryMinute ??
+      final dayBoundaryMinute =
+          finalRule?.dayBoundaryMinute ??
           HabitRuleResolver.defaultDayBoundaryMinute;
       final target = kind == HabitAdaptationKind.sleepDuration
           ? finalRule == null
-              ? null
-              : (finalRule.targetValue / 60).round()
+                ? null
+                : (finalRule.targetValue / 60).round()
           : finalRule?.targetTimeMinute == null
-              ? null
-              : _minuteFor(kind, finalRule!.targetTimeMinute!);
-      final records = checkIns
-          .where((checkIn) =>
-              checkIn.habitUuid == goal.uuid &&
-              !checkIn.isDeleted &&
-              checkIn.source != HabitCheckInSource.skip)
-          .toList()
-        ..sort((a, b) => a.occurredAt.compareTo(b.occurredAt));
+          ? null
+          : _minuteFor(kind, finalRule!.targetTimeMinute!);
+      final records = List<HabitCheckIn>.of(
+        checkInsByHabit[goal.uuid] ?? const [],
+      )..sort((a, b) => a.occurredAt.compareTo(b.occurredAt));
       final recentCutoff = DateTime.now()
           .subtract(const Duration(days: 14))
           .millisecondsSinceEpoch;
-      final baselineRecords =
-          records.where((record) => record.occurredAt >= recentCutoff).toList();
+      final baselineRecords = records
+          .where((record) => record.occurredAt >= recentCutoff)
+          .toList();
       final baseline = records.isEmpty
           ? target
-          : _median((baselineRecords.isEmpty ? records : baselineRecords)
-              .map((record) => _recordValue(kind, record))
-              .toList());
+          : _median(
+              (baselineRecords.isEmpty ? records : baselineRecords)
+                  .map((record) => _recordValue(kind, record))
+                  .toList(),
+            );
       result[kind] = _MetricInput(
         kind: kind,
         goalUuid: goal.uuid,
@@ -409,10 +438,10 @@ abstract final class HabitSleepCoachingService {
           : _recordValue(input.kind, input.records.last);
       final metricMaxStage =
           _distance(input.kind, input.baseline, input.target) <= 0
-              ? 0
-              : (_distance(input.kind, input.baseline, input.target) /
-                      plan.stepMinutes)
-                  .ceil();
+          ? 0
+          : (_distance(input.kind, input.baseline, input.target) /
+                    plan.stepMinutes)
+                .ceil();
       return HabitSleepCoachingMetric(
         kind: input.kind,
         currentValue: current,
@@ -441,8 +470,9 @@ abstract final class HabitSleepCoachingService {
     if (plan.paused) {
       return _Progression(
         stageIndex: (plan.pausedStageIndex ?? 0).clamp(0, maxStage).toInt(),
-        progressDays:
-            (plan.pausedProgressDays ?? 0).clamp(0, plan.stageDays).toInt(),
+        progressDays: (plan.pausedProgressDays ?? 0)
+            .clamp(0, plan.stageDays)
+            .toInt(),
       );
     }
     final start = HabitRuleResolver.parseDayKey(plan.startedLogicalDate ?? '');
@@ -464,17 +494,39 @@ abstract final class HabitSleepCoachingService {
         progressDays: progressDays.clamp(0, plan.stageDays).toInt(),
       );
     }
-    for (var day = firstDay;
-        !day.isAfter(today);
-        day = HabitRuleResolver.addCalendarDays(day, 1)) {
+    if (stage >= maxStage) {
+      return _Progression(
+        stageIndex: stage.clamp(0, maxStage).toInt(),
+        progressDays: progressDays,
+      );
+    }
+    final recordsByLogicalDate =
+        <HabitAdaptationKind, Map<String, HabitCheckIn>>{};
+    final firstDayKey = HabitRuleResolver.dayKey(firstDay);
+    final todayKey = HabitRuleResolver.dayKey(today);
+    // records 已按 occurredAt 升序；重复日期后写覆盖，保留原 lastOrNull 语义。
+    for (final input in inputs.values) {
+      final recordsForMetric = <String, HabitCheckIn>{};
+      for (final record in input.records) {
+        final logicalDate = _recordLogicalDateForPlan(record, input, plan);
+        if (logicalDate.compareTo(firstDayKey) < 0 ||
+            logicalDate.compareTo(todayKey) > 0) {
+          continue;
+        }
+        recordsForMetric[logicalDate] = record;
+      }
+      recordsByLogicalDate[input.kind] = recordsForMetric;
+    }
+    for (
+      var day = firstDay;
+      !day.isAfter(today);
+      day = HabitRuleResolver.addCalendarDays(day, 1)
+    ) {
       if (stage >= maxStage) break;
       final actuals = <HabitAdaptationKind, int>{};
+      final dayKey = HabitRuleResolver.dayKey(day);
       for (final input in inputs.values) {
-        final record = input.records
-            .where((candidate) =>
-                _recordLogicalDateForPlan(candidate, input, plan) ==
-                HabitRuleResolver.dayKey(day))
-            .lastOrNull;
+        final record = recordsByLogicalDate[input.kind]?[dayKey];
         if (record != null) {
           actuals[input.kind] = _recordValue(input.kind, record);
         }
@@ -548,11 +600,7 @@ abstract final class HabitSleepCoachingService {
     }
   }
 
-  static int _distance(
-    HabitAdaptationKind kind,
-    int? baseline,
-    int? target,
-  ) {
+  static int _distance(HabitAdaptationKind kind, int? baseline, int? target) {
     if (baseline == null || target == null) return 0;
     switch (kind) {
       case HabitAdaptationKind.earlySleep:
@@ -570,7 +618,9 @@ abstract final class HabitSleepCoachingService {
       return (record.value / 60).round();
     }
     return _minuteFor(
-        kind, record.localOccurredAt.hour * 60 + record.localOccurredAt.minute);
+      kind,
+      record.localOccurredAt.hour * 60 + record.localOccurredAt.minute,
+    );
   }
 
   static String _recordLogicalDateForPlan(
@@ -585,28 +635,25 @@ abstract final class HabitSleepCoachingService {
     final date = switch (input.kind) {
       // 凌晨入睡属于前一晚；dayBoundary=0 是旧规则的“未配置”写法。
       HabitAdaptationKind.earlySleep => HabitRuleResolver.logicalDateFor(
-          occurredInOriginalTimezone,
-          _effectiveBoundary(input.dayBoundaryMinute),
-        ),
+        occurredInOriginalTimezone,
+        _effectiveBoundary(input.dayBoundaryMinute),
+      ),
       // 起床打卡属于前一晚。只对中午前的起床做回退，避免凌晨起床被
       // 04:00 分界再额外回退一天。
       HabitAdaptationKind.earlyWake => DateTime(
-          occurredInOriginalTimezone.year,
-          occurredInOriginalTimezone.month,
-          occurredInOriginalTimezone.day,
-        ).subtract(
-            Duration(days: occurredInOriginalTimezone.hour < 12 ? 1 : 0)),
+        occurredInOriginalTimezone.year,
+        occurredInOriginalTimezone.month,
+        occurredInOriginalTimezone.day,
+      ).subtract(Duration(days: occurredInOriginalTimezone.hour < 12 ? 1 : 0)),
       // 自动生成的睡眠时长记录发生时刻沿用入睡时刻，因此与早睡使用
       // 同一夜间日期；手动记录也保持其保存时的本地日期语义。
       HabitAdaptationKind.sleepDuration => HabitRuleResolver.logicalDateFor(
-          occurredInOriginalTimezone,
-          _effectiveBoundary(input.dayBoundaryMinute),
-        ),
+        occurredInOriginalTimezone,
+        _effectiveBoundary(input.dayBoundaryMinute),
+      ),
       _ => occurredInOriginalTimezone,
     };
-    return HabitRuleResolver.dayKey(
-      date,
-    );
+    return HabitRuleResolver.dayKey(date);
   }
 
   static int _effectiveBoundary(int boundaryMinute) {
@@ -647,13 +694,13 @@ class _MetricInput {
   });
 
   _MetricInput copyWith({int? baseline}) => _MetricInput(
-        kind: kind,
-        goalUuid: goalUuid,
-        target: target,
-        baseline: baseline ?? this.baseline,
-        records: records,
-        dayBoundaryMinute: dayBoundaryMinute,
-      );
+    kind: kind,
+    goalUuid: goalUuid,
+    target: target,
+    baseline: baseline ?? this.baseline,
+    records: records,
+    dayBoundaryMinute: dayBoundaryMinute,
+  );
 }
 
 class _Progression {
@@ -661,8 +708,4 @@ class _Progression {
   final int progressDays;
 
   const _Progression({required this.stageIndex, required this.progressDays});
-}
-
-extension<T> on Iterable<T> {
-  T? get lastOrNull => isEmpty ? null : last;
 }

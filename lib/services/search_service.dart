@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../models.dart';
 import '../models/search_scope.dart';
 import '../screens/about_screen.dart';
@@ -9,7 +10,9 @@ import '../storage_service.dart';
 import 'database_helper.dart';
 import 'api_service.dart';
 import 'pomodoro_service.dart';
+
 import 'package:intl/intl.dart';
+
 import '../screens/home_settings_screen.dart';
 import '../utils/page_transitions.dart';
 import '../widgets/todo_section_widget.dart';
@@ -45,10 +48,37 @@ import 'app_settings_catalog.dart';
 import '../utils/ai_settings_navigation.dart';
 import '../utils/app_dialogs.dart';
 
+final RegExp _searchTermSeparatorPattern = RegExp(r'[\s,，;；]+');
+final RegExp _fullSearchDatePattern =
+    RegExp(r'^(\d{4})[./\-/年](\d{1,2})[./\-/月](\d{1,2})[日号]?$');
+final RegExp _shortSearchDatePattern =
+    RegExp(r'^(\d{1,2})[./\-/月](\d{1,2})[日号]?$');
+final Map<(String?, String), DateFormat> _searchDateFormats = {};
+
+DateFormat _searchDateFormat(String pattern) {
+  final locale = Intl.defaultLocale;
+  return _searchDateFormats.putIfAbsent(
+    (locale, pattern),
+    () => DateFormat(pattern, locale),
+  );
+}
+
 class SearchResultWithScore {
   final SearchResult result;
   final int score;
   SearchResultWithScore(this.result, this.score);
+}
+
+class _IndexedStaticSearchResult {
+  _IndexedStaticSearchResult(this.result)
+    : title = result.title.toLowerCase(),
+      subtitle = result.subtitle?.toLowerCase(),
+      breadcrumb = result.breadcrumb?.toLowerCase();
+
+  final SearchResult result;
+  final String title;
+  final String? subtitle;
+  final String? breadcrumb;
 }
 
 class SearchService {
@@ -61,11 +91,13 @@ class SearchService {
     required DateTime before,
   }) {
     return todos
-        .where((item) =>
-            !item.isDeleted &&
-            !item.isDone &&
-            item.isOverdueAt(before) &&
-            !excludedRecurrenceSeriesIds.contains(item.recurrenceSeriesId))
+        .where(
+          (item) =>
+              !item.isDeleted &&
+              !item.isDone &&
+              item.isOverdueAt(before) &&
+              !excludedRecurrenceSeriesIds.contains(item.recurrenceSeriesId),
+        )
         .toList();
   }
 
@@ -101,22 +133,23 @@ class SearchService {
     ).then<void>((_) {});
   }
 
-  // Settings are generated from the same directory used by AI navigation.
-  // Keep only non-settings feature/legacy entry points in the static list.
-  static Iterable<SearchResult> get _staticSettings sync* {
-    for (final item in AppSettingsCatalog.available) {
-      yield SearchResult(
-        id: 'setting_${item.id}',
-        title: item.title,
-        subtitle: item.description,
-        icon: Icons.settings_outlined,
-        type: SearchResultType.setting,
-        breadcrumb: item.path,
-        extraData: {'route': '/settings', 'target': item.id},
-      );
-    }
-    yield* _staticEntries;
-  }
+  // The platform-specific settings directory and feature entries are stable
+  // for the lifetime of the app, so build their search results once.
+  static final List<_IndexedStaticSearchResult> _staticSettings = [
+    for (final item in AppSettingsCatalog.available)
+      _IndexedStaticSearchResult(
+        SearchResult(
+          id: 'setting_${item.id}',
+          title: item.title,
+          subtitle: item.description,
+          icon: Icons.settings_outlined,
+          type: SearchResultType.setting,
+          breadcrumb: item.path,
+          extraData: {'route': '/settings', 'target': item.id},
+        ),
+      ),
+    ..._staticEntries.map(_IndexedStaticSearchResult.new),
+  ];
 
   static final List<SearchResult> _staticEntries = [
     SearchResult(
@@ -237,9 +270,13 @@ class SearchService {
     SearchScope scope = SearchScope.all,
     bool recordHistory = true,
     SearchSourceObserver? onSourceQueried,
+    bool Function()? shouldContinue,
   }) async {
+    if (shouldContinue?.call() == false) return const <SearchResult>[];
     if (query.trim().isEmpty) {
-      return scope == SearchScope.all ? await guessSearch() : [];
+      return scope == SearchScope.all
+          ? await guessSearch(shouldContinue: shouldContinue)
+          : [];
     }
     final q = query.toLowerCase().trim();
     final searchNow = DateTime.now();
@@ -253,6 +290,7 @@ class SearchService {
     }
 
     final searchTerms = _extractSearchTerms(q);
+    final usernameFuture = StorageService.getLoginSession();
     final scoredResults = <SearchResultWithScore>[];
     final featureSearch =
         scope.includesAny(const [
@@ -263,6 +301,7 @@ class SearchService {
             searchTerms,
             scope,
             onSourceQueried,
+            shouldContinue: shouldContinue,
           ).catchError((_) => <SearchResult>[])
         : Future.value(<SearchResult>[]);
     final databaseSearch =
@@ -280,46 +319,54 @@ class SearchService {
             searchTerms,
             scope,
             onSourceQueried,
+            usernameFuture: usernameFuture,
             targetDate: targetDate,
             now: searchNow,
+            shouldContinue: shouldContinue,
           ).catchError((_) => <SearchResult>[])
         : Future.value(<SearchResult>[]);
-    final username = await StorageService.getLoginSession() ?? 'default';
-    final extraSearch = GlobalSearchExtraService.search(
-      username,
-      searchTerms,
-      targetDate: targetDate,
-      scope: scope,
-      onSourceQueried: onSourceQueried,
-    ).catchError((_) => <SearchResult>[]);
+    final Future<List<SearchResult>> extraSearch = usernameFuture
+        .then<List<SearchResult>>((username) {
+          if (shouldContinue?.call() == false) return <SearchResult>[];
+          return GlobalSearchExtraService.search(
+            username ?? 'default',
+            searchTerms,
+            targetDate: targetDate,
+            scope: scope,
+            onSourceQueried: onSourceQueried,
+            shouldContinue: shouldContinue,
+          ).catchError((_) => <SearchResult>[]);
+        });
 
     // 1. 静态索引扫描
-    for (var s in _staticSettings.where(
-      (item) => scope.includes(item.type),
-    )) {
-      int score = _calculateScore(
-        s.title.toLowerCase(),
-        s.subtitle?.toLowerCase(),
-        s.breadcrumb?.toLowerCase(),
-        q,
+    for (final indexed in _staticSettings) {
+      final result = indexed.result;
+      if (!scope.includes(result.type)) continue;
+
+      final score = _calculateScore(
+        indexed.title,
+        indexed.subtitle,
+        indexed.breadcrumb,
         searchTerms,
       );
-      if (score > 0) scoredResults.add(SearchResultWithScore(s, score));
+      if (score > 0) {
+        scoredResults.add(SearchResultWithScore(result, score));
+      }
     }
 
     // 2. 习惯、挑战与数据库查询互不依赖，并行执行以缩短输入后的等待。
-    final searchResults = await Future.wait([
+    final searchResults = await Future.wait<List<SearchResult>>([
       featureSearch,
       databaseSearch,
       extraSearch,
     ]);
+    if (shouldContinue?.call() == false) return const <SearchResult>[];
 
     for (final item in searchResults[0]) {
       final score = _calculateScore(
         item.title.toLowerCase(),
         item.subtitle?.toLowerCase(),
         null,
-        q,
         searchTerms,
       );
       if (score > 0) {
@@ -336,7 +383,6 @@ class SearchService {
         item.title.toLowerCase(),
         item.subtitle?.toLowerCase(),
         null,
-        q,
         searchTerms,
       );
       // DB 已过滤，保底给 score=1，避免备注命中却被丢弃
@@ -350,7 +396,6 @@ class SearchService {
         item.title.toLowerCase(),
         item.subtitle?.toLowerCase(),
         null,
-        q,
         searchTerms,
       );
       scoredResults.add(
@@ -363,11 +408,8 @@ class SearchService {
     // 5. 强制去重：根据 ID 过滤重复项（防止数据库中存在冗余数据导致展示混乱）
     final seenIds = <String>{};
     final finalResults = <SearchResult>[];
-    for (var sr in scoredResults) {
-      if (!seenIds.contains(sr.result.id)) {
-        seenIds.add(sr.result.id);
-        finalResults.add(sr.result);
-      }
+    for (final sr in scoredResults) {
+      if (seenIds.add(sr.result.id)) finalResults.add(sr.result);
     }
 
     // 6. 动态动作注入
@@ -386,20 +428,23 @@ class SearchService {
       );
     }
 
-    return finalResults.where((item) => scope.includes(item.type)).toList();
+    return finalResults;
   }
 
   List<String> _extractSearchTerms(String query) {
     return query
-        .split(RegExp(r'[\s,，;；]+'))
-        .map((s) => s.trim())
+        .split(_searchTermSeparatorPattern)
+        .map((s) => s.trim().toLowerCase())
         .where((s) => s.isNotEmpty)
         .toList();
   }
 
   bool _matchesAllTerms(String text, List<String> terms) {
     final lower = text.toLowerCase();
-    return terms.every((term) => lower.contains(term.toLowerCase()));
+    for (final term in terms) {
+      if (!lower.contains(term)) return false;
+    }
+    return true;
   }
 
   DateTime? _parseDateQuery(String query, {DateTime? now}) {
@@ -427,12 +472,11 @@ class SearchService {
       case '大后天':
         return AppTimeFormats.localDayStartOffset(current, 3);
     }
-    final full = RegExp(r'^(\d{4})[./\-/年](\d{1,2})[./\-/月](\d{1,2})[日号]?$')
-        .firstMatch(query);
-    final short =
-        RegExp(r'^(\d{1,2})[./\-/月](\d{1,2})[日号]?$').firstMatch(query);
-    final year =
-        full == null ? current.year : int.tryParse(full.group(1)!) ?? 0;
+    final full = _fullSearchDatePattern.firstMatch(query);
+    final short = _shortSearchDatePattern.firstMatch(query);
+    final year = full == null
+        ? current.year
+        : int.tryParse(full.group(1)!) ?? 0;
     final month =
         int.tryParse((full ?? short)?.group(full == null ? 1 : 2) ?? '') ?? 0;
     final day =
@@ -451,23 +495,23 @@ class SearchService {
   @visibleForTesting
   static ({DateTime start, DateTime end}) dateRangeForSearch(DateTime date) {
     final start = AppTimeFormats.dayStart(date);
-    return (
-      start: start,
-      end: AppTimeFormats.localDayStartOffset(start, 1),
-    );
+    return (start: start, end: AppTimeFormats.localDayStartOffset(start, 1));
   }
 
   Future<List<SearchResult>> _searchHabitsAndChallenges(
     List<String> searchTerms,
     SearchScope scope,
-    SearchSourceObserver? onSourceQueried,
-  ) async {
+    SearchSourceObserver? onSourceQueried, {
+    bool Function()? shouldContinue,
+  }) async {
     final results = <SearchResult>[];
 
     if (scope.includes(SearchResultType.habit)) {
+      if (shouldContinue?.call() == false) return results;
       onSourceQueried?.call('habits');
       try {
         final goals = await HabitRepository.getGoals();
+        if (shouldContinue?.call() == false) return results;
         for (final goal in goals) {
           if (goal.isDeleted) continue;
           final sourceLabel = switch (goal.sourceType) {
@@ -497,12 +541,15 @@ class SearchService {
     }
 
     if (scope.includes(SearchResultType.challenge)) {
+      if (shouldContinue?.call() == false) return results;
       onSourceQueried?.call('challenges');
       try {
         // 未开始挑战时，静态“挑战中心”入口已经足够；避免每次输入关键词
         // 都为用户创建一份默认挑战状态。
         if (!await ThirtyDayChallengeRepository.hasStarted()) return results;
+        if (shouldContinue?.call() == false) return results;
         final state = await ThirtyDayChallengeRepository.load();
+        if (shouldContinue?.call() == false) return results;
         final taskTitles = state.tasks.map((task) => task.title).toList();
         final searchable = [
           state.challengeTitle,
@@ -513,13 +560,11 @@ class SearchService {
         ].join(' ');
 
         if (_matchesAllTerms(searchable, searchTerms)) {
-          final normalizedTerms = searchTerms.map((term) => term.toLowerCase());
           final matchedTasks = state.tasks
-              .where(
-                (task) => normalizedTerms.any(
-                  (term) => task.title.toLowerCase().contains(term),
-                ),
-              )
+              .where((task) {
+                final title = task.title.toLowerCase();
+                return searchTerms.any((term) => title.contains(term));
+              })
               .take(2)
               .map((task) => task.title)
               .join('、');
@@ -543,8 +588,12 @@ class SearchService {
     return results;
   }
 
-  int _calculateScore(String title, String? subtitle, String? breadcrumb,
-      String query, List<String> terms) {
+  int _calculateScore(
+    String title,
+    String? subtitle,
+    String? breadcrumb,
+    List<String> terms,
+  ) {
     if (terms.isEmpty) return 0;
     if (terms.length == 1) {
       final term = terms.first;
@@ -556,12 +605,13 @@ class SearchService {
       return 0;
     }
 
-    final haystack =
-        '$title ${subtitle ?? ''} ${breadcrumb ?? ''}'.toLowerCase();
-    if (!_matchesAllTerms(haystack, terms)) return 0;
-
     var score = 0;
     for (final term in terms) {
+      final matchesTitle = title.contains(term);
+      final matchesSubtitle = subtitle?.contains(term) ?? false;
+      final matchesBreadcrumb = breadcrumb?.contains(term) ?? false;
+      if (!matchesTitle && !matchesSubtitle && !matchesBreadcrumb) return 0;
+
       if (title == term) {
         score += 100;
       } else if (title.startsWith(term)) {
@@ -584,12 +634,16 @@ class SearchService {
     List<String> searchTerms,
     SearchScope scope,
     SearchSourceObserver? onSourceQueried, {
+    required Future<String?> usernameFuture,
     required DateTime? targetDate,
     required DateTime now,
+    bool Function()? shouldContinue,
   }) async {
     final dbItems = <SearchResult>[];
+    if (shouldContinue?.call() == false) return dbItems;
     final db = DatabaseHelper.instance;
-    final username = await StorageService.getLoginSession() ?? 'default';
+    final username = await usernameFuture ?? 'default';
+    if (shouldContinue?.call() == false) return dbItems;
     final q = query.toLowerCase().trim();
 
     final isDateQuery = targetDate != null;
@@ -606,36 +660,24 @@ class SearchService {
         targetDateValue.month == now.month &&
         targetDateValue.day == now.day;
     final dateQueryHint = isDateQuery && startOfDay != null
-        ? '搜索到${DateFormat('yyyy年M月d日').format(startOfDay)}的结果'
+        ? '搜索到${_searchDateFormat('yyyy年M月d日').format(startOfDay)}的结果'
         : null;
 
     if (scope.includes(SearchResultType.todo)) {
+      if (shouldContinue?.call() == false) return dbItems;
       onSourceQueried?.call('todos');
       // ── 待办事项 ──────────────────────────────────────────────────────────
       List<Map<String, dynamic>> todos = [];
       try {
         if (isDateQuery) {
-          // Date searches must use the storage facade so recurring series are
-          // materialized for the requested day before filtering.
-          final allTodos = await StorageService.getTodos(username);
-          final matchedTodos = allTodos.where((t) {
-            if (t.isDeleted) return false;
-            final dueDate = t.dueDate;
-            if (dueDate != null &&
-                !dueDate.isBefore(startOfDay!) &&
-                dueDate.isBefore(endOfDay!)) {
-              return true;
-            }
-            final createdDate = t.createdDate;
-            if (createdDate != null) {
-              final created = DateTime.fromMillisecondsSinceEpoch(createdDate);
-              if (!created.isBefore(startOfDay!) &&
-                  created.isBefore(endOfDay!)) {
-                return true;
-              }
-            }
-            return false;
-          }).toList();
+          // Keep recurrence behavior on a cold cache, then use indexed date
+          // columns once recurrence instances have already been materialized.
+          final matchedTodos = await StorageService.getTodosForSearchDateRange(
+            username,
+            from: startOfDay!,
+            to: endOfDay!,
+          );
+          if (shouldContinue?.call() == false) return dbItems;
           todos = matchedTodos
               .map(
                 (t) => {
@@ -651,18 +693,13 @@ class SearchService {
               )
               .toList();
         } else {
-          final todoMap = <String, Map<String, dynamic>>{};
-          for (final term in searchTerms) {
-            for (final row in await db.searchTodos(term)) {
-              todoMap[row['uuid'].toString()] = row;
-            }
-          }
-          todos = todoMap.values.where((t) {
-            final haystack = [
-              t['content']?.toString(),
-              t['remark']?.toString(),
-              t['team_name']?.toString(),
-            ].where((s) => s != null && s.isNotEmpty).join(' ').toLowerCase();
+          final candidates = await db.searchTodosByTerms(searchTerms);
+          if (shouldContinue?.call() == false) return dbItems;
+          todos = candidates.where((t) {
+            final content = t['content']?.toString() ?? '';
+            final remark = t['remark']?.toString() ?? '';
+            final teamName = t['team_name']?.toString() ?? '';
+            final haystack = '$content $remark $teamName';
             return _matchesAllTerms(haystack, searchTerms);
           }).toList();
         }
@@ -670,21 +707,28 @@ class SearchService {
         // debugPrint('Todo search error: $e');
       }
 
+      final todoDateFormat = _searchDateFormat('MM/dd');
       for (var t in todos) {
         // 构建副标题：备注（优先）+ 截止时间 + 归属团队
         // 🚀 修复：备注始终显示在副标题第一行，而非仅作兜底
         final metaParts = <String>[];
         final dueDateMs = t['due_date'];
         if (dueDateMs != null && dueDateMs != 0) {
-          metaParts.add(
-            '截止 ${DateFormat('MM/dd').format(DateTime.fromMillisecondsSinceEpoch(dueDateMs is int ? dueDateMs : int.tryParse(dueDateMs.toString()) ?? 0))}',
+          final dueDate = DateTime.fromMillisecondsSinceEpoch(
+            dueDateMs is int
+                ? dueDateMs
+                : int.tryParse(dueDateMs.toString()) ?? 0,
           );
+          metaParts.add('截止 ${todoDateFormat.format(dueDate)}');
         }
         final createdDateMs = t['created_date'];
         if (createdDateMs != null && createdDateMs != 0) {
-          metaParts.add(
-            '开始 ${DateFormat('MM/dd').format(DateTime.fromMillisecondsSinceEpoch(createdDateMs is int ? createdDateMs : int.tryParse(createdDateMs.toString()) ?? 0))}',
+          final createdDate = DateTime.fromMillisecondsSinceEpoch(
+            createdDateMs is int
+                ? createdDateMs
+                : int.tryParse(createdDateMs.toString()) ?? 0,
           );
+          metaParts.add('开始 ${todoDateFormat.format(createdDate)}');
         }
         if (t['team_name'] != null && (t['team_name'] as String).isNotEmpty) {
           metaParts.add('团队: ${t['team_name']}');
@@ -720,14 +764,19 @@ class SearchService {
     }
 
     if (scope.includes(SearchResultType.course)) {
+      if (shouldContinue?.call() == false) return dbItems;
       onSourceQueried?.call('courses');
       // ── 课程 ─────────────────────────────────────────────────────────────
       try {
         final courseMap = <String, Map<String, dynamic>>{};
         if (isDateQuery) {
-          final day = DateFormat('yyyy-MM-dd').format(startOfDay!);
-          for (final course in await CourseService.getAllCourses(username)) {
-            if (course.date != day) continue;
+          final dateCourses = await CourseService.getCoursesForDateRange(
+            username,
+            from: startOfDay!,
+            to: endOfDay!,
+          );
+          if (shouldContinue?.call() == false) return dbItems;
+          for (final course in dateCourses) {
             courseMap[course.uuid] = {
               'uuid': course.uuid,
               'course_name': course.courseName,
@@ -741,19 +790,18 @@ class SearchService {
             };
           }
         } else {
-          for (final term in searchTerms) {
-            for (final row in await db.searchCourses(term)) {
-              courseMap[row['uuid'].toString()] = row;
-            }
+          final rows = await db.searchCoursesByTerms(searchTerms);
+          if (shouldContinue?.call() == false) return dbItems;
+          for (final row in rows) {
+            courseMap[row['uuid'].toString()] = row;
           }
         }
         final courses = courseMap.values.where((c) {
           if (isDateQuery) return true;
-          final haystack = [c['course_name'], c['teacher_name'], c['room_name']]
-              .where((s) => s != null)
-              .map((s) => s.toString())
-              .join(' ')
-              .toLowerCase();
+          final courseName = c['course_name']?.toString() ?? '';
+          final teacherName = c['teacher_name']?.toString() ?? '';
+          final roomName = c['room_name']?.toString() ?? '';
+          final haystack = '$courseName $teacherName $roomName';
           return _matchesAllTerms(haystack, searchTerms);
         }).toList();
         for (var c in courses) {
@@ -806,33 +854,34 @@ class SearchService {
     }
 
     if (scope.includes(SearchResultType.countdown)) {
+      if (shouldContinue?.call() == false) return dbItems;
       onSourceQueried?.call('countdowns');
       // ── 倒计时 ────────────────────────────────────────────────────────────
       try {
         final countdownMap = <String, Map<String, dynamic>>{};
         if (isDateQuery) {
-          for (final item in await StorageService.getCountdowns(username)) {
-            if (item.isDeleted ||
-                item.targetDate.isBefore(startOfDay!) ||
-                !item.targetDate.isBefore(endOfDay!)) {
-              continue;
-            }
+          final items = await StorageService.getCountdowns(
+            username,
+            from: startOfDay!,
+            to: endOfDay!,
+          );
+          if (shouldContinue?.call() == false) return dbItems;
+          for (final item in items) {
+            if (item.isDeleted) continue;
             countdownMap[item.id] = item.toJson();
           }
         } else {
-          for (final term in searchTerms) {
-            for (final row in await db.searchCountdowns(term)) {
-              countdownMap[row['uuid'].toString()] = row;
-            }
+          final rows = await db.searchCountdownsByTerms(searchTerms);
+          if (shouldContinue?.call() == false) return dbItems;
+          for (final row in rows) {
+            countdownMap[row['uuid'].toString()] = row;
           }
         }
         final countdowns = countdownMap.values.where((cd) {
           if (isDateQuery) return true;
-          final haystack = [cd['title'], cd['team_name']]
-              .where((s) => s != null)
-              .map((s) => s.toString())
-              .join(' ')
-              .toLowerCase();
+          final title = cd['title']?.toString() ?? '';
+          final teamName = cd['team_name']?.toString() ?? '';
+          final haystack = '$title $teamName';
           return _matchesAllTerms(haystack, searchTerms);
         }).toList();
         for (var cd in countdowns) {
@@ -845,7 +894,7 @@ class SearchService {
                   : int.tryParse(targetMs.toString()) ?? 0,
             );
             final diff = CalendarDateMath.daysBetween(now, target);
-            final dateStr = DateFormat('yyyy/MM/dd').format(target);
+            final dateStr = _searchDateFormat('yyyy/MM/dd').format(target);
             subtitle = diff >= 0
                 ? '还有 $diff 天 · $dateStr'
                 : '已过 ${-diff} 天 · $dateStr';
@@ -876,34 +925,39 @@ class SearchService {
     }
 
     if (scope.includes(SearchResultType.log)) {
+      if (shouldContinue?.call() == false) return dbItems;
       onSourceQueried?.call('timeLogs');
       // ── 时间日志 ──────────────────────────────────────────────────────────
       try {
         // Keep the legacy SharedPreferences-to-SQL migration guarantee while
         // all actual search filtering stays inside SQLite.
         await _prepareTimeLogs();
+        if (shouldContinue?.call() == false) return dbItems;
         List<Map<String, dynamic>> matchedLogs;
         if (isDateQuery) {
           matchedLogs = await db.searchTimeLogsByDate(
             startOfDay!.millisecondsSinceEpoch,
             endOfDay!.millisecondsSinceEpoch,
           );
+          if (shouldContinue?.call() == false) return dbItems;
         } else {
           final logMap = <String, Map<String, dynamic>>{};
-          for (final term in searchTerms) {
-            for (final row in await db.searchTimeLogs(term)) {
-              logMap[row['uuid'].toString()] = row;
-            }
+          final rows = await db.searchTimeLogsByTerms(searchTerms);
+          if (shouldContinue?.call() == false) return dbItems;
+          for (final row in rows) {
+            logMap[row['uuid'].toString()] = row;
           }
           matchedLogs = logMap.values.where((log) {
-            final haystack = [
-              log['title'],
-              log['remark'],
-            ].whereType<String>().join(' ').toLowerCase();
+            final rawTitle = log['title'];
+            final rawRemark = log['remark'];
+            final title = rawTitle is String ? rawTitle : '';
+            final remark = rawRemark is String ? rawRemark : '';
+            final haystack = '$title $remark';
             return _matchesAllTerms(haystack, searchTerms);
           }).toList();
         }
 
+        final logDateFormat = _searchDateFormat('MM/dd HH:mm');
         for (final log in matchedLogs) {
           final startMs = (log['start_time'] as num?)?.toInt() ?? 0;
           final endMs = (log['end_time'] as num?)?.toInt() ?? startMs;
@@ -917,7 +971,7 @@ class SearchService {
               id: 'db_log_${log['uuid']}',
               title: title.isNotEmpty ? title : '未命名专注',
               subtitle:
-                  '$mins 分钟 · ${DateFormat('MM/dd HH:mm').format(start)}'
+                  '$mins 分钟 · ${logDateFormat.format(start)}'
                   '${remark?.isNotEmpty == true ? ' · $remark' : ''}',
               icon: Icons.history_edu_rounded,
               type: SearchResultType.log,
@@ -935,13 +989,15 @@ class SearchService {
     }
 
     if (scope.includes(SearchResultType.tag)) {
+      if (shouldContinue?.call() == false) return dbItems;
       onSourceQueried?.call('tags');
       // ── 时间日志标签 ─────────────────────────────────────────────────────
       // 搜索标签名，点击可跳转到该标签的折线图统计界面
       try {
         final allTags = await PomodoroService.getTags();
+        if (shouldContinue?.call() == false) return dbItems;
         final matchedTags = allTags.where(
-          (t) => _matchesAllTerms(t.name.toLowerCase(), searchTerms),
+          (t) => _matchesAllTerms(t.name, searchTerms),
         );
         for (var tag in matchedTags) {
           dbItems.add(
@@ -966,6 +1022,7 @@ class SearchService {
     }
 
     if (scope.includes(SearchResultType.app)) {
+      if (shouldContinue?.call() == false) return dbItems;
       onSourceQueried?.call('screenTime');
       // ── 屏幕使用时间 (App 搜索) ─────────────────────────────────────────
       // 日期查询时：直接展示目标日期的聚合屏幕时间；普通关键词查询时：按应用名匹配历史缓存。
@@ -986,7 +1043,7 @@ class SearchService {
               if (seenApps.contains(normalized)) continue;
 
               final matchesQuery =
-                  includeAll || _matchesAllTerms(normalized, searchTerms);
+                  includeAll || _matchesAllTerms(appName, searchTerms);
               if (!matchesQuery) continue;
 
               seenApps.add(normalized);
@@ -1011,13 +1068,17 @@ class SearchService {
           }
 
           final history = await StorageService.getScreenTimeHistory();
-          final targetDateKey = DateFormat('yyyy-MM-dd').format(startOfDay!);
+          if (shouldContinue?.call() == false) return dbItems;
+          final targetDateKey = _searchDateFormat('yyyy-MM-dd').format(
+            startOfDay!,
+          );
           final targetDayStats = history[targetDateKey];
 
           if (targetDayStats != null && targetDayStats.isNotEmpty) {
             addScreenTimeApps(targetDayStats, includeAll: true);
           } else if (isTodayQuery) {
             final screenTimeCache = await StorageService.getScreenTimeCache();
+            if (shouldContinue?.call() == false) return dbItems;
             if (screenTimeCache.isNotEmpty) {
               addScreenTimeApps(screenTimeCache, includeAll: true);
             }
@@ -1054,11 +1115,13 @@ class SearchService {
           }
 
           final screenTimeCache = await StorageService.getScreenTimeCache();
+          if (shouldContinue?.call() == false) return dbItems;
           if (screenTimeCache.isNotEmpty) {
             addScreenTimeApps(screenTimeCache);
           }
 
           final history = await StorageService.getScreenTimeHistory();
+          if (shouldContinue?.call() == false) return dbItems;
           for (final dayEntry in history.entries) {
             final dayStats = dayEntry.value;
             if (dayStats.isEmpty) continue;
@@ -1071,32 +1134,39 @@ class SearchService {
     }
 
     if (scope.includes(SearchResultType.log)) {
+      if (shouldContinue?.call() == false) return dbItems;
       onSourceQueried?.call('pomodoro');
       // ── 番茄钟 ──────────────────────────────────────────────────────────
       {
         try {
-          final allPoms = await PomodoroService.getRecords();
-          final tagNames = {
-            for (final tag in await PomodoroService.getTags())
-              tag.uuid: tag.name,
-          };
-          final matchedPoms = allPoms.where((p) {
-            if (isDateQuery) {
-              final start = DateTime.fromMillisecondsSinceEpoch(p.startTime);
-              return start.isAfter(
-                    startOfDay!.subtract(const Duration(milliseconds: 1)),
-                  ) &&
-                  start.isBefore(endOfDay!);
-            }
-            return _matchesAllTerms(
-              [
-                p.todoTitle,
-                p.note,
-                ...p.tagUuids.map((id) => tagNames[id]),
-              ].whereType<String>().join(' '),
-              searchTerms,
-            );
-          }).toList();
+          final matchingRange = isDateQuery
+              ? await PomodoroService.getRecordsInRange(startOfDay!, endOfDay!)
+              : await PomodoroService.getRecords();
+          if (shouldContinue?.call() == false) return dbItems;
+          final tagNames = isDateQuery
+              ? const <String, String>{}
+              : {
+                  for (final tag in await PomodoroService.getTags())
+                    tag.uuid: tag.name,
+                };
+          if (shouldContinue?.call() == false) return dbItems;
+          final matchedPoms = isDateQuery
+              ? matchingRange
+              : matchingRange.where((p) {
+                  final searchable = StringBuffer()
+                    ..write(p.todoTitle ?? '')
+                    ..write(' ')
+                    ..write(p.note ?? '');
+                  for (final tagUuid in p.tagUuids) {
+                    final tagName = tagNames[tagUuid];
+                    if (tagName == null) continue;
+                    searchable
+                      ..write(' ')
+                      ..write(tagName);
+                  }
+                  return _matchesAllTerms(searchable.toString(), searchTerms);
+                }).toList();
+          final pomodoroTimeFormat = _searchDateFormat('HH:mm');
           for (var p in matchedPoms) {
             final start = DateTime.fromMillisecondsSinceEpoch(p.startTime);
             final end = p.endTime != null
@@ -1108,7 +1178,8 @@ class SearchService {
                 id: 'db_pom_${p.uuid}',
                 title: p.todoTitle?.isNotEmpty == true ? p.todoTitle! : '专注记录',
                 subtitle:
-                    '$mins 分钟 · ${DateFormat('HH:mm').format(start)} - ${DateFormat('HH:mm').format(end)} · ${p.isCompleted ? "完成" : "中断"}',
+                    '$mins 分钟 · ${pomodoroTimeFormat.format(start)}'
+                    ' - ${pomodoroTimeFormat.format(end)} · ${p.isCompleted ? "完成" : "中断"}',
                 icon: Icons.timer_outlined,
                 type: SearchResultType.log, // 与时间日志归在一组
                 extraData: {
@@ -1126,21 +1197,20 @@ class SearchService {
     }
 
     if (scope.includes(SearchResultType.todoGroup)) {
+      if (shouldContinue?.call() == false) return dbItems;
       onSourceQueried?.call('todoGroups');
       // ── 待办文件夹 ────────────────────────────────────────────────────────
       try {
         final groupMap = <String, Map<String, dynamic>>{};
-        for (final term in searchTerms) {
-          for (final row in await db.searchTodoGroups(term)) {
-            groupMap[row['uuid'].toString()] = row;
-          }
+        final rows = await db.searchTodoGroupsByTerms(searchTerms);
+        if (shouldContinue?.call() == false) return dbItems;
+        for (final row in rows) {
+          groupMap[row['uuid'].toString()] = row;
         }
         final groups = groupMap.values.where((g) {
-          final haystack = [g['name'], g['team_name']]
-              .where((s) => s != null)
-              .map((s) => s.toString())
-              .join(' ')
-              .toLowerCase();
+          final name = g['name']?.toString() ?? '';
+          final teamName = g['team_name']?.toString() ?? '';
+          final haystack = '$name $teamName';
           return _matchesAllTerms(haystack, searchTerms);
         }).toList();
         for (var g in groups) {
@@ -1167,35 +1237,47 @@ class SearchService {
 
   /// 🚀 猜你想搜：非常轻量的启发式“小模型”
   /// 基于时间、任务紧急度、搜索历史、近期活动进行智能推荐
-  Future<List<SearchResult>> guessSearch() async {
+  Future<List<SearchResult>> guessSearch({
+    bool Function()? shouldContinue,
+  }) async {
     final suggestions = <SearchResult>[];
     final db = DatabaseHelper.instance;
     final now = DateTime.now();
     final username = await StorageService.getLoginSession() ?? 'default';
+    if (shouldContinue?.call() == false) return suggestions;
     // Start independent recommendation inputs together. Processing remains
     // ordered so the visible ranking is stable.
-    final coursesFuture =
-        CourseService.getAllCourses(username).catchError((_) => <CourseItem>[]);
+    final coursesFuture = CourseService.getAllCourses(username)
+        .catchError((_) => <CourseItem>[]);
     // Keep the recommendation count aligned with the todo list and filter
     // used by the result detail and the home screen.
-    final overdueTodosFuture = Future.wait<dynamic>([
-      StorageService.getTodos(username),
-      HabitRepository.getHabitOnlyRecurringTodoSeriesIds(),
-    ]).then((results) => _filterOverdueTodos(
-          todos: results[0] as List<TodoItem>,
-          excludedRecurrenceSeriesIds: results[1] as Set<String>,
-          before: now,
-        )).catchError((_) => <TodoItem>[]);
-    final overdueCountFuture =
-        overdueTodosFuture.then((overdueTodos) => overdueTodos.length);
+    final overdueTodosFuture =
+        Future.wait<dynamic>([
+              StorageService.getTodos(username),
+              HabitRepository.getHabitOnlyRecurringTodoSeriesIds(),
+            ])
+            .then(
+              (results) => shouldContinue?.call() == false
+                  ? <TodoItem>[]
+                  : _filterOverdueTodos(
+                      todos: results[0] as List<TodoItem>,
+                      excludedRecurrenceSeriesIds: results[1] as Set<String>,
+                      before: now,
+                    ),
+            )
+            .catchError((_) => <TodoItem>[]);
+    final overdueCountFuture = overdueTodosFuture.then(
+      (overdueTodos) => overdueTodos.length,
+    );
     final topHistoryFuture = db
         .getRecentSearches(limit: 1)
         .catchError((_) => <Map<String, dynamic>>[]);
     final recentHistoryFuture = db
         .getRecentSearches(limit: 5, currentHour: now.hour)
         .catchError((_) => <Map<String, dynamic>>[]);
-    final pomodoroFuture =
-        PomodoroService.getRecords().catchError((_) => <PomodoroRecord>[]);
+    final pomodoroFuture = PomodoroService.getLatestRecord().catchError(
+      (_) => null,
+    );
 
     // 1. 时间维度：根据时刻推荐
     final hour = now.hour;
@@ -1203,6 +1285,7 @@ class SearchService {
     // 🚀 新增：基于“最近”课程的推荐 (全量时间轴最近)
     try {
       final allCourses = await coursesFuture;
+      if (shouldContinue?.call() == false) return suggestions;
       if (allCourses.isNotEmpty) {
         CourseItem? nearestCourse;
         int minDiffSeconds = 0x7FFFFFFF; // 很大一个数
@@ -1214,17 +1297,19 @@ class SearchService {
             if (dateParts.length != 3) continue;
 
             final startDt = DateTime(
-                int.parse(dateParts[0]),
-                int.parse(dateParts[1]),
-                int.parse(dateParts[2]),
-                c.startTime ~/ 100,
-                c.startTime % 100);
+              int.parse(dateParts[0]),
+              int.parse(dateParts[1]),
+              int.parse(dateParts[2]),
+              c.startTime ~/ 100,
+              c.startTime % 100,
+            );
             final endDt = DateTime(
-                int.parse(dateParts[0]),
-                int.parse(dateParts[1]),
-                int.parse(dateParts[2]),
-                c.endTime ~/ 100,
-                c.endTime % 100);
+              int.parse(dateParts[0]),
+              int.parse(dateParts[1]),
+              int.parse(dateParts[2]),
+              c.endTime ~/ 100,
+              c.endTime % 100,
+            );
 
             // 1. 如果正在进行，优先级最高
             if (now.isAfter(startDt) && now.isBefore(endDt)) {
@@ -1248,119 +1333,138 @@ class SearchService {
         }
 
         if (nearestCourse != null) {
-          suggestions.add(SearchResult(
-            id: 'guess_recent_course',
-            title: nearestCourse.courseName,
-            subtitle: '🎓 $reason · ${nearestCourse.roomName}',
-            icon: Icons.school_rounded,
-            type: SearchResultType.recommend,
-            extraData: {
-              'action': 'apply_query',
-              'query': nearestCourse.courseName,
-            },
-          ));
+          suggestions.add(
+            SearchResult(
+              id: 'guess_recent_course',
+              title: nearestCourse.courseName,
+              subtitle: '🎓 $reason · ${nearestCourse.roomName}',
+              icon: Icons.school_rounded,
+              type: SearchResultType.recommend,
+              extraData: {
+                'action': 'apply_query',
+                'query': nearestCourse.courseName,
+              },
+            ),
+          );
         }
       }
     } catch (_) {}
 
     if (hour >= 6 && hour <= 10) {
-      suggestions.add(SearchResult(
-        id: 'guess_today_plan',
-        title: '查看今日课表与待办',
-        subtitle: '✨ 早安！开启高效的一天',
-        icon: Icons.wb_sunny_outlined,
-        type: SearchResultType.recommend,
-        extraData: {'action': 'navigate', 'route': '/course/weekly'},
-      ));
+      suggestions.add(
+        SearchResult(
+          id: 'guess_today_plan',
+          title: '查看今日课表与待办',
+          subtitle: '✨ 早安！开启高效的一天',
+          icon: Icons.wb_sunny_outlined,
+          type: SearchResultType.recommend,
+          extraData: {'action': 'navigate', 'route': '/course/weekly'},
+        ),
+      );
     } else if (hour >= 21 || hour <= 2) {
-      suggestions.add(SearchResult(
-        id: 'guess_today_stats',
-        title: '查看今日完成情况',
-        subtitle: '🌙 晚安！回顾今日成就，展望下周规划',
-        icon: Icons.insert_chart_outlined,
-        type: SearchResultType.recommend,
-        extraData: {
-          'action': 'navigate',
-          'route': '/personal_timeline',
-          'initialDimension': 0 // 🚀 1 代表周视图
-        },
-      ));
+      suggestions.add(
+        SearchResult(
+          id: 'guess_today_stats',
+          title: '查看今日完成情况',
+          subtitle: '🌙 晚安！回顾今日成就，展望下周规划',
+          icon: Icons.insert_chart_outlined,
+          type: SearchResultType.recommend,
+          extraData: {
+            'action': 'navigate',
+            'route': '/personal_timeline',
+            'initialDimension': 0, // 🚀 1 代表周视图
+          },
+        ),
+      );
     }
 
     // 2. 紧急维度：逾期任务探测 (权重最高)
     try {
       final overdueCount = await overdueCountFuture;
+      if (shouldContinue?.call() == false) return suggestions;
       if (overdueCount > 0) {
-        suggestions.add(SearchResult(
-          id: 'guess_overdue',
-          title: '处理逾期任务 ($overdueCount)',
-          subtitle: '⚠️ 发现已截止但未完成的任务，建议优先处理',
-          icon: Icons.priority_high_rounded,
-          type: SearchResultType.recommend,
-          extraData: {'action': 'filter_overdue'},
-        ));
+        suggestions.add(
+          SearchResult(
+            id: 'guess_overdue',
+            title: '处理逾期任务 ($overdueCount)',
+            subtitle: '⚠️ 发现已截止但未完成的任务，建议优先处理',
+            icon: Icons.priority_high_rounded,
+            type: SearchResultType.recommend,
+            extraData: {'action': 'filter_overdue'},
+          ),
+        );
       }
     } catch (_) {}
 
     // 3. 历史频率维度：最常搜索 (Top 1)
     try {
       final topHistory = await topHistoryFuture; // 不按时段，按绝对频率
+      if (shouldContinue?.call() == false) return suggestions;
       if (topHistory.isNotEmpty) {
         final h = topHistory.first;
-        suggestions.add(SearchResult(
-          id: 'guess_most_frequent',
-          title: h['query'],
-          subtitle: '💡 您最常搜索的内容',
-          icon: Icons.lightbulb_outline_rounded,
-          type: SearchResultType.recommend,
-          extraData: {'action': 'apply_query', 'query': h['query']},
-        ));
+        suggestions.add(
+          SearchResult(
+            id: 'guess_most_frequent',
+            title: h['query'],
+            subtitle: '💡 您最常搜索的内容',
+            icon: Icons.lightbulb_outline_rounded,
+            type: SearchResultType.recommend,
+            extraData: {'action': 'apply_query', 'query': h['query']},
+          ),
+        );
       }
     } catch (_) {}
 
     // 4. 历史时间维度：最近搜索 (时段敏感型，展示前 5 条)
     try {
       final history = await recentHistoryFuture;
+      if (shouldContinue?.call() == false) return suggestions;
       for (var h in history) {
         // 如果已经作为“最常搜索”推荐过了，就不再在历史里重复显示（可选）
-        suggestions.add(SearchResult(
-          id: 'history_${h['query']}',
-          title: h['query'],
-          subtitle: '最近搜过',
-          icon: Icons.history_rounded,
-          type: SearchResultType.history,
-          extraData: {'action': 'apply_query', 'query': h['query']},
-        ));
+        suggestions.add(
+          SearchResult(
+            id: 'history_${h['query']}',
+            title: h['query'],
+            subtitle: '最近搜过',
+            icon: Icons.history_rounded,
+            type: SearchResultType.history,
+            extraData: {'action': 'apply_query', 'query': h['query']},
+          ),
+        );
       }
     } catch (_) {}
 
     // 4. 活动维度：近期专注活动
     try {
-      final poms = await pomodoroFuture;
-      if (poms.isNotEmpty) {
-        final lastPom = poms.first;
+      final lastPom = await pomodoroFuture;
+      if (shouldContinue?.call() == false) return suggestions;
+      if (lastPom != null) {
         if (lastPom.todoTitle != null && lastPom.todoTitle!.isNotEmpty) {
-          suggestions.add(SearchResult(
-            id: 'guess_recent_focus',
-            title: '继续搜索: ${lastPom.todoTitle}',
-            subtitle: '🔥 您最近正在专注这项任务',
-            icon: Icons.local_fire_department_rounded,
-            type: SearchResultType.recommend,
-            extraData: {'action': 'ai_query', 'query': lastPom.todoTitle},
-          ));
+          suggestions.add(
+            SearchResult(
+              id: 'guess_recent_focus',
+              title: '继续搜索: ${lastPom.todoTitle}',
+              subtitle: '🔥 您最近正在专注这项任务',
+              icon: Icons.local_fire_department_rounded,
+              type: SearchResultType.recommend,
+              extraData: {'action': 'ai_query', 'query': lastPom.todoTitle},
+            ),
+          );
         }
       }
     } catch (_) {}
 
     // 5. 统计维度：今日屏幕时间
-    suggestions.add(SearchResult(
-      id: 'guess_screen_time',
-      title: '今日屏幕使用时长',
-      subtitle: '📊 看看今天在手机上花了多少时间',
-      icon: Icons.pie_chart_rounded,
-      type: SearchResultType.recommend,
-      extraData: {'action': 'navigate', 'route': '/screen_time'},
-    ));
+    suggestions.add(
+      SearchResult(
+        id: 'guess_screen_time',
+        title: '今日屏幕使用时长',
+        subtitle: '📊 看看今天在手机上花了多少时间',
+        icon: Icons.pie_chart_rounded,
+        type: SearchResultType.recommend,
+        extraData: {'action': 'navigate', 'route': '/screen_time'},
+      ),
+    );
 
     return suggestions;
   }
@@ -1383,10 +1487,12 @@ class SearchNavigationHandler {
       if ((action == 'ai_query' || action == 'apply_query') && query != null) {
         // 交给 UI 层处理：重新设置 Search Bar 的文本并触发搜索
         AppSnackBars.showSnackBar(
-            context,
-            SnackBar(
-                content: Text("正在搜索: $query"),
-                duration: const Duration(seconds: 1)));
+          context,
+          SnackBar(
+            content: Text("正在搜索: $query"),
+            duration: const Duration(seconds: 1),
+          ),
+        );
       } else if (action == 'new_todo') {
         await _executeAction(context, action, sourceKey);
       } else if (action == 'navigate') {
@@ -1404,23 +1510,22 @@ class SearchNavigationHandler {
         );
         if (!context.mounted) return;
         await _push(
-            context,
-            sourceKey,
-            SearchRecordDetailScreen(
-              result: SearchResult(
-                id: result.id,
-                title: result.title,
-                subtitle: '${overdue.length} 项待办逾期',
-                icon: result.icon,
-                type: result.type,
-                extraData: {
-                  'detail_label': '逾期待办',
-                  'fields': {
-                    '待办': overdue.map((item) => item.title).join('\n')
-                  },
-                },
-              ),
-            ));
+          context,
+          sourceKey,
+          SearchRecordDetailScreen(
+            result: SearchResult(
+              id: result.id,
+              title: result.title,
+              subtitle: '${overdue.length} 项待办逾期',
+              icon: result.icon,
+              type: result.type,
+              extraData: {
+                'detail_label': '逾期待办',
+                'fields': {'待办': overdue.map((item) => item.title).join('\n')},
+              },
+            ),
+          ),
+        );
       }
       return;
     }
@@ -1445,8 +1550,11 @@ class SearchNavigationHandler {
         if (!context.mounted) return;
         for (final record in records) {
           if (record.uuid == uuid) {
-            await _push(context, sourceKey,
-                PomodoroDetailScreen(record: record, tags: tags));
+            await _push(
+              context,
+              sourceKey,
+              PomodoroDetailScreen(record: record, tags: tags),
+            );
             return;
           }
         }
@@ -1457,7 +1565,10 @@ class SearchNavigationHandler {
         for (final log in logs) {
           if (log.id == uuid) {
             await _push(
-                context, sourceKey, TimeLogDetailScreen(log: log, tags: tags));
+              context,
+              sourceKey,
+              TimeLogDetailScreen(log: log, tags: tags),
+            );
             return;
           }
         }
@@ -1468,46 +1579,54 @@ class SearchNavigationHandler {
       final username = await StorageService.getLoginSession() ?? 'default';
       if (!context.mounted) return;
       await _push(
-          context,
-          sourceKey,
-          JournalDetailScreen(
-            accountId: username,
-            entry: data['record'] as JournalEntry,
-          ));
+        context,
+        sourceKey,
+        JournalDetailScreen(
+          accountId: username,
+          entry: data['record'] as JournalEntry,
+        ),
+      );
     } else if (result.type == SearchResultType.fixedSchedule &&
         data['record'] is FixedScheduleItem) {
       final username = await StorageService.getLoginSession() ?? 'default';
       if (!context.mounted) return;
       await _push(
-          context,
-          sourceKey,
-          FixedScheduleEditorScreen(
-            username: username,
-            item: data['record'] as FixedScheduleItem,
-            onSave: (item) =>
-                StorageService.saveFixedSchedules(username, [item]),
-          ));
+        context,
+        sourceKey,
+        FixedScheduleEditorScreen(
+          username: username,
+          item: data['record'] as FixedScheduleItem,
+          onSave: (item) => StorageService.saveFixedSchedules(username, [item]),
+        ),
+      );
     } else if (result.type == SearchResultType.finance &&
         data['record'] is FinanceTransaction) {
       await _push(
-          context,
-          sourceKey,
-          FinanceTransactionDetailScreen(
-            transaction: data['record'] as FinanceTransaction,
-            category: data['finance_category'] as FinanceCategory?,
-            paymentMethod: data['finance_payment'] as FinancePaymentMethod?,
-          ));
+        context,
+        sourceKey,
+        FinanceTransactionDetailScreen(
+          transaction: data['record'] as FinanceTransaction,
+          category: data['finance_category'] as FinanceCategory?,
+          paymentMethod: data['finance_payment'] as FinancePaymentMethod?,
+        ),
+      );
     } else if (result.type == SearchResultType.finance &&
         data['record'] is FinanceLoan) {
-      await _push(context, sourceKey,
-          FinanceLoanDetailScreen(loan: data['record'] as FinanceLoan));
+      await _push(
+        context,
+        sourceKey,
+        FinanceLoanDetailScreen(loan: data['record'] as FinanceLoan),
+      );
     } else if (result.type == SearchResultType.finance &&
         data['record'] is FinanceBudget) {
       final budget = data['record'] as FinanceBudget;
       final month = DateTime.tryParse('${budget.monthKey}-01');
       if (month != null) {
-        await _push(context, sourceKey,
-            FinanceBudgetEntryScreen(month: month, budget: budget));
+        await _push(
+          context,
+          sourceKey,
+          FinanceBudgetEntryScreen(month: month, budget: budget),
+        );
       }
     } else if (result.type == SearchResultType.todoGroup) {
       final username = await StorageService.getLoginSession() ?? 'default';
@@ -1516,26 +1635,30 @@ class SearchNavigationHandler {
       final groupId = data['uuid']?.toString();
       if (!context.mounted) return;
       await _push(
-          context,
-          sourceKey,
-          FolderManageScreen(
-            username: username,
-            todoGroups: groups,
-            allTodos: todos,
-            initialGroupId: groupId,
-            onGroupsChanged: (items) async =>
-                StorageService.saveTodoGroups(username, items),
-            onTodosChanged: (items) async =>
-                StorageService.saveTodos(username, items),
-          ));
+        context,
+        sourceKey,
+        FolderManageScreen(
+          username: username,
+          todoGroups: groups,
+          allTodos: todos,
+          initialGroupId: groupId,
+          onGroupsChanged: (items) async =>
+              StorageService.saveTodoGroups(username, items),
+          onTodosChanged: (items) async =>
+              StorageService.saveTodos(username, items),
+        ),
+      );
     } else {
       await _push(context, sourceKey, SearchRecordDetailScreen(result: result));
     }
   }
 
   static Future<void> _push(
-      BuildContext context, GlobalKey sourceKey, Widget page,
-      {RouteSettings? settings}) async {
+    BuildContext context,
+    GlobalKey sourceKey,
+    Widget page, {
+    RouteSettings? settings,
+  }) async {
     if (!context.mounted) return;
     await PageTransitions.pushFromRect(
       context: context,
@@ -1554,7 +1677,10 @@ class SearchNavigationHandler {
   }
 
   static Future<void> _handleTodoEdit(
-      BuildContext context, SearchResult result, GlobalKey sourceKey) async {
+    BuildContext context,
+    SearchResult result,
+    GlobalKey sourceKey,
+  ) async {
     try {
       final uuid = result.extraData?['uuid'];
       if (uuid == null) {
@@ -1615,10 +1741,11 @@ class SearchNavigationHandler {
 
       final allTodos = await StorageService.getTodos(username);
       final allGroups = await StorageService.getTodoGroups(username);
-      final canonicalTodo = allTodos.cast<TodoItem?>().firstWhere(
-                (candidate) => candidate?.id == todo.id,
-                orElse: () => null,
-              ) ??
+      final canonicalTodo =
+          allTodos.cast<TodoItem?>().firstWhere(
+            (candidate) => candidate?.id == todo.id,
+            orElse: () => null,
+          ) ??
           todo;
 
       if (context.mounted) {
@@ -1636,8 +1763,9 @@ class SearchNavigationHandler {
                 AppSnackBars.showSnackBar(
                   context,
                   const SnackBar(
-                      content: Text("待办已更新"),
-                      behavior: SnackBarBehavior.floating),
+                    content: Text("待办已更新"),
+                    behavior: SnackBarBehavior.floating,
+                  ),
                 );
               }
             },
@@ -1657,14 +1785,20 @@ class SearchNavigationHandler {
   }
 
   static Future<void> _handleCourseNavigation(
-      BuildContext context, SearchResult result, GlobalKey sourceKey) async {
+    BuildContext context,
+    SearchResult result,
+    GlobalKey sourceKey,
+  ) async {
     try {
       final username = await StorageService.getLoginSession() ?? 'default';
       final adjusted = result.extraData?['course_record'];
       if (adjusted is CourseItem) {
         if (!context.mounted) return;
-        await _push(context, sourceKey,
-            CourseDetailScreen(course: adjusted, username: username));
+        await _push(
+          context,
+          sourceKey,
+          CourseDetailScreen(course: adjusted, username: username),
+        );
         return;
       }
       final uuid = result.extraData?['uuid'];
@@ -1678,8 +1812,11 @@ class SearchNavigationHandler {
       if (!context.mounted) return;
       for (final course in courses) {
         if (course.uuid == uuid.toString()) {
-          await _push(context, sourceKey,
-              CourseDetailScreen(course: course, username: username));
+          await _push(
+            context,
+            sourceKey,
+            CourseDetailScreen(course: course, username: username),
+          );
           return;
         }
       }
@@ -1690,8 +1827,12 @@ class SearchNavigationHandler {
     }
   }
 
-  static Future<void> _navigateByRoute(BuildContext context, String route,
-      Map<String, dynamic> data, GlobalKey sourceKey) async {
+  static Future<void> _navigateByRoute(
+    BuildContext context,
+    String route,
+    Map<String, dynamic> data,
+    GlobalKey sourceKey,
+  ) async {
     final target = data['target'] as String?;
     Widget? page;
     final username = await StorageService.getLoginSession() ?? 'default';
@@ -1700,8 +1841,11 @@ class SearchNavigationHandler {
     if (route == '/time_log/tag') {
       final tagUuid = data['tag_uuid'];
       if (tagUuid != null) {
-        await _push(context, sourceKey,
-            TimeLogScreen(username: username, initialTagUuid: tagUuid));
+        await _push(
+          context,
+          sourceKey,
+          TimeLogScreen(username: username, initialTagUuid: tagUuid),
+        );
       }
       return;
     }
@@ -1710,7 +1854,7 @@ class SearchNavigationHandler {
       final appName = data['app_name'];
       if (appName != null) {
         final history = await StorageService.getScreenTimeHistory();
-        final todayKey = DateFormat('yyyy-MM-dd').format(DateTime.now());
+        final todayKey = _searchDateFormat('yyyy-MM-dd').format(DateTime.now());
         if (history[todayKey] == null || history[todayKey]!.isEmpty) {
           final cachedToday = await StorageService.getScreenTimeCache();
           if (cachedToday.isNotEmpty) {
@@ -1720,17 +1864,18 @@ class SearchNavigationHandler {
         if (!context.mounted) return;
         final searchDateMs = data['search_date_ms'] as int?;
         await _push(
-            context,
-            sourceKey,
-            AppDetailScreen(
-              appName: appName,
-              historyStats: history,
-              filter: DeviceFilter.all,
-              range: ScreenTimeRange.day,
-              anchorDate: searchDateMs == null
-                  ? DateTime.now()
-                  : DateTime.fromMillisecondsSinceEpoch(searchDateMs),
-            ));
+          context,
+          sourceKey,
+          AppDetailScreen(
+            appName: appName,
+            historyStats: history,
+            filter: DeviceFilter.all,
+            range: ScreenTimeRange.day,
+            anchorDate: searchDateMs == null
+                ? DateTime.now()
+                : DateTime.fromMillisecondsSinceEpoch(searchDateMs),
+          ),
+        );
       }
       return;
     }
@@ -1739,7 +1884,10 @@ class SearchNavigationHandler {
       case '/pomodoro/stats':
         final dim = data['initialDimension'] as int? ?? 0;
         page = PomodoroScreen(
-            username: username, initialTab: 1, initialDimension: dim);
+          username: username,
+          initialTab: 1,
+          initialDimension: dim,
+        );
         break;
       case '/personal_timeline':
         final dimIndex = data['initialDimension'] as int? ?? 0;
@@ -1760,11 +1908,13 @@ class SearchNavigationHandler {
           break;
         }
         final settingsPage = AiSettingsNavigation.pageFor(
-          target, username: username,
+          target,
+          username: username,
         );
         if (settingsPage == null) {
           AppSnackBars.showSnackBar(
-            context, const SnackBar(content: Text('这项设置当前不可用，请重新搜索')),
+            context,
+            const SnackBar(content: Text('这项设置当前不可用，请重新搜索')),
           );
           return;
         }
@@ -1772,7 +1922,9 @@ class SearchNavigationHandler {
           (item) => item.id == target,
         );
         await _push(
-          context, sourceKey, settingsPage,
+          context,
+          sourceKey,
+          settingsPage,
           settings: RouteSettings(name: destination.path),
         );
         return;
@@ -1856,27 +2008,31 @@ class SearchNavigationHandler {
   }
 
   static Future<void> _executeAction(
-      BuildContext context, String action, GlobalKey sourceKey) async {
+    BuildContext context,
+    String action,
+    GlobalKey sourceKey,
+  ) async {
     if (action == 'new_todo') {
       final username = await StorageService.getLoginSession() ?? 'default';
       final groups = await StorageService.getTodoGroups(username);
       if (!context.mounted) return;
       await _push(
-          context,
-          sourceKey,
-          AddTodoScreen(
-            todoGroups: groups,
-            onTodoAdded: (todo) async {
-              final todos = await StorageService.getTodos(username);
-              await StorageService.saveTodos(username, [...todos, todo]);
-            },
-            onTodosBatchAdded: (added) async {
-              final todos = await StorageService.getTodos(username);
-              await StorageService.saveTodos(username, [...todos, ...added]);
-            },
-            onFixedScheduleAdded: (item) =>
-                StorageService.saveFixedSchedules(username, [item]),
-          ));
+        context,
+        sourceKey,
+        AddTodoScreen(
+          todoGroups: groups,
+          onTodoAdded: (todo) async {
+            final todos = await StorageService.getTodos(username);
+            await StorageService.saveTodos(username, [...todos, todo]);
+          },
+          onTodosBatchAdded: (added) async {
+            final todos = await StorageService.getTodos(username);
+            await StorageService.saveTodos(username, [...todos, ...added]);
+          },
+          onFixedScheduleAdded: (item) =>
+              StorageService.saveFixedSchedules(username, [item]),
+        ),
+      );
     }
   }
 }

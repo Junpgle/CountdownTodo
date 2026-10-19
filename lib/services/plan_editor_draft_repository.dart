@@ -46,9 +46,9 @@ class PlanDraftFields {
     'origin': origin,
     'offset': offsetMinutes,
     if (split != null) 'split': split!.toJson(),
-    if(scheduleOrigin != 'legacy') 'scheduleOrigin':scheduleOrigin,
-    'weeklyKey':?weeklyKey,
-    if(weeklyIgnored) 'weeklyIgnored':true,
+    if (scheduleOrigin != 'legacy') 'scheduleOrigin': scheduleOrigin,
+    'weeklyKey': ?weeklyKey,
+    if (weeklyIgnored) 'weeklyIgnored': true,
   };
   String get fingerprint => jsonEncode(toJson());
 
@@ -70,17 +70,26 @@ class PlanDraftFields {
         ].every((k) => value[k] is int)) {
       throw const FormatException('草稿字段格式无效');
     }
-    if ((value.containsKey('scheduleOrigin') && !['manual','recommended','legacy'].contains(value['scheduleOrigin'])) ||
-        (value.containsKey('weeklyIgnored') && value['weeklyIgnored'] is! bool) ||
-        (value.containsKey('weeklyKey') && (value['weeklyKey'] is! String || (value['weeklyKey'] as String).length > 8192))) {
+    if ((value.containsKey('scheduleOrigin') &&
+            ![
+              'manual',
+              'recommended',
+              'legacy',
+            ].contains(value['scheduleOrigin'])) ||
+        (value.containsKey('weeklyIgnored') &&
+            value['weeklyIgnored'] is! bool) ||
+        (value.containsKey('weeklyKey') &&
+            (value['weeklyKey'] is! String ||
+                (value['weeklyKey'] as String).length > 8192))) {
       throw const FormatException('草稿推荐来源无效');
     }
-    if(value['weeklyKey'] != null) {
+    if (value['weeklyKey'] != null) {
       PlanWeeklyRules.fromJson(jsonDecode(value['weeklyKey']));
     }
     final f = PlanDraftFields(
-      scheduleOrigin:value['scheduleOrigin'] ?? 'legacy',
-      weeklyKey:value['weeklyKey'],weeklyIgnored:value['weeklyIgnored'] ?? false,
+      scheduleOrigin: value['scheduleOrigin'] ?? 'legacy',
+      weeklyKey: value['weeklyKey'],
+      weeklyIgnored: value['weeklyIgnored'] ?? false,
       todoId: value['todo'],
       title: value['title'],
       start: value['start'],
@@ -91,7 +100,9 @@ class PlanDraftFields {
       rounds: value['rounds'],
       origin: value['origin'],
       offsetMinutes: value['offset'],
-      split: value.containsKey('split') ? PlanSplitDraft.fromJson(value['split'], '', value['todo']) : null,
+      split: value.containsKey('split')
+          ? PlanSplitDraft.fromJson(value['split'], '', value['todo'])
+          : null,
     );
     if (f.todoId.trim().isEmpty ||
         f.title.trim().isEmpty ||
@@ -106,8 +117,9 @@ class PlanDraftFields {
         !['timeline', 'todo', 'backlog', 'reuse'].contains(f.origin)) {
       throw const FormatException('草稿内容无效');
     }
-    if (f.split != null && (f.split!.slots.first.start.millisecondsSinceEpoch != f.start ||
-        f.split!.slots.first.end.millisecondsSinceEpoch != f.end)) {
+    if (f.split != null &&
+        (f.split!.slots.first.start.millisecondsSinceEpoch != f.start ||
+            f.split!.slots.first.end.millisecondsSinceEpoch != f.end)) {
       throw const FormatException('分段草稿摘要不一致');
     }
     return f;
@@ -135,8 +147,11 @@ class PlanDraftSummary {
     this.start,
     this.end,
     this.updatedAt,
-    this.readable, {this.parts = 1, this.total = 0, this.lastEnd = 0,}
-  );
+    this.readable, {
+    this.parts = 1,
+    this.total = 0,
+    this.lastEnd = 0,
+  });
   final String id, title;
   final int revision, start, end, updatedAt;
   final bool readable;
@@ -203,14 +218,20 @@ class PlanEditorDraftRepository {
             _isReadableRow(r),
             parts: _splitSummary(r)?.slots.length ?? 1,
             total: _splitSummary(r)?.query.total ?? 0,
-            lastEnd: _splitSummary(r)?.slots.last.end.millisecondsSinceEpoch ?? 0,
+            lastEnd:
+                _splitSummary(r)?.slots.last.end.millisecondsSinceEpoch ?? 0,
           ),
         )
         .toList();
   }
 
   PlanSplitDraft? _splitSummary(Map<String, Object?> row) {
-    try { return PlanDraftFields.fromJson(jsonDecode(row['form_json'] as String)).split; } catch (_) { return null; }
+    try {
+      return PlanDraftFields.fromJson(jsonDecode(row['form_json'] as String))
+          .split;
+    } catch (_) {
+      return null;
+    }
   }
 
   bool _isReadableRow(Map<String, Object?> row) {
@@ -233,7 +254,8 @@ class PlanEditorDraftRepository {
         jsonDecode(row['form_json'] as String),
       );
       return row['format_version'] == (fields.split == null ? 1 : 2) &&
-          (fields.split == null || fields.split!.ids.first == row['target_uuid']) &&
+          (fields.split == null ||
+              fields.split!.ids.first == row['target_uuid']) &&
           row['todo_uuid'] == fields.todoId &&
           row['title'] == fields.title &&
           row['start_time'] == fields.start &&
@@ -271,7 +293,8 @@ class PlanEditorDraftRepository {
         jsonDecode(r['form_json'] as String),
       );
       if (r['format_version'] != (fields.split == null ? 1 : 2) ||
-          (fields.split != null && fields.split!.ids.first != r['target_uuid']) ||
+          (fields.split != null &&
+              fields.split!.ids.first != r['target_uuid']) ||
           r['todo_uuid'] != fields.todoId ||
           r['title'] != fields.title ||
           r['start_time'] != fields.start ||
@@ -303,7 +326,8 @@ class PlanEditorDraftRepository {
     if (utf8.encode(raw).length > maxPayloadBytes) {
       throw StateError('草稿内容过大，尚未保留；请先复制备注后缩短内容');
     }
-    if ((fields.split != null && fields.split!.ids.first != targetId) || targetId.isEmpty ||
+    if ((fields.split != null && fields.split!.ids.first != targetId) ||
+        targetId.isEmpty ||
         (previous != null && previous.targetId != targetId)) {
       throw StateError('草稿目标已变化，请重新打开');
     }
@@ -373,18 +397,41 @@ class PlanEditorDraftRepository {
     final db = await _db(identity);
     final f = draft.fields;
     final ids = f.split?.ids ?? [draft.targetId];
+    final rowsById = <String, Map<String, Object?>>{};
+    const queryChunkSize = 500;
+    for (var start = 0; start < ids.length; start += queryChunkSize) {
+      final end = start + queryChunkSize < ids.length
+          ? start + queryChunkSize
+          : ids.length;
+      final chunk = ids.sublist(start, end);
+      final rows = await db.query(
+        'todo_plan_blocks',
+        where: 'uuid IN (${List.filled(chunk.length, '?').join(', ')})',
+        whereArgs: chunk,
+      );
+      for (final row in rows) {
+        final id = row['uuid']?.toString();
+        if (id != null) rowsById.putIfAbsent(id, () => row);
+      }
+    }
+
     final saved = <TodoPlanBlock>[];
-    for (var i=0; i<ids.length; i++) {
-      final rows = await db.query('todo_plan_blocks', where: 'uuid=?', whereArgs: [ids[i]], limit: 1);
+    for (var i = 0; i < ids.length; i++) {
       await identity.check();
-      if (rows.isEmpty) continue;
-      final b = TodoPlanBlock.fromJson(rows.single);
+      final row = rowsById[ids[i]];
+      if (row == null) continue;
+      final b = TodoPlanBlock.fromJson(row);
       final start = f.split?.slots[i].start.millisecondsSinceEpoch ?? f.start;
       final end = f.split?.slots[i].end.millisecondsSinceEpoch ?? f.end;
-      if (rows.single['has_conflict'] == 1 || b.isDeleted || b.todoId != f.todoId ||
-          b.startTime != start || b.endTime != end ||
-          (b.remark ?? '') != f.remark || b.reminderMinutes != f.reminder ||
-          b.pomodoroMinutes != f.pomodoro || b.pomodoroRounds != f.rounds) {
+      if (row['has_conflict'] == 1 ||
+          b.isDeleted ||
+          b.todoId != f.todoId ||
+          b.startTime != start ||
+          b.endTime != end ||
+          (b.remark ?? '') != f.remark ||
+          b.reminderMinutes != f.reminder ||
+          b.pomodoroMinutes != f.pomodoro ||
+          b.pomodoroRounds != f.rounds) {
         throw StateError('这份草稿对应的规划已变化或删除，请查看最新安排');
       }
       saved.add(b);

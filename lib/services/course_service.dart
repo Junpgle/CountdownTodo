@@ -9,6 +9,7 @@ import '../services/course_legacy_recovery.dart';
 import '../services/course_calendar_adjustment_service.dart';
 import '../storage_service.dart';
 import '../utils/calendar_date_math.dart';
+import '../utils/time_utils.dart';
 import '../utils/text_file_reader.dart';
 
 // 引入不同高校的解析器
@@ -704,6 +705,162 @@ class CourseService {
     return [];
   }
 
+  /// Loads courses needed by a date range, including transfer source dates
+  /// whose adjusted copies may land inside the range.
+  static Future<List<CourseItem>> getCoursesForDateRange(
+    String username, {
+    required DateTime from,
+    required DateTime to,
+    bool applyCalendarAdjustments = true,
+  }) async {
+    final dateFormat = AppTimeFormats.dateFormatter('yyyy-MM-dd');
+    final startDate = CalendarDateMath.dateOnly(from);
+    final endDate = CalendarDateMath.dateOnly(to);
+    if (!endDate.isAfter(startDate)) return const <CourseItem>[];
+
+    final fromKey = dateFormat.format(startDate);
+    final toKey = dateFormat.format(endDate);
+    final adjustment = applyCalendarAdjustments
+        ? await CourseCalendarAdjustmentService.load()
+        : null;
+    final transferSourceDates = adjustment?.transfers
+            .map((transfer) => transfer.fromDate)
+            .toSet() ??
+        const <String>{};
+    final whereArgs = <Object?>[fromKey, toKey];
+    final dateConditions = <String>['(date >= ? AND date < ?)'];
+    if (transferSourceDates.isNotEmpty) {
+      dateConditions.add(
+        'date IN (${List<String>.filled(transferSourceDates.length, '?').join(', ')})',
+      );
+      whereArgs.addAll(transferSourceDates);
+    }
+
+    Future<List<Map<String, dynamic>>> queryRange() async {
+      final db = await DatabaseHelper.instance.databaseForUser(username);
+      return db.query(
+        'courses',
+        where:
+            'IFNULL(is_deleted, 0) = 0 AND (${dateConditions.join(' OR ')})',
+        whereArgs: whereArgs,
+        orderBy: 'date ASC, start_time ASC',
+      );
+    }
+
+    List<Map<String, dynamic>>? maps;
+    try {
+      maps = await queryRange();
+    } catch (error) {
+      if (_isDatabaseLocked(error)) {
+        await Future.delayed(const Duration(milliseconds: 300));
+        try {
+          maps = await queryRange();
+        } catch (retryError) {
+          if (_isDatabaseLocked(retryError)) {
+            return const <CourseItem>[];
+          }
+        }
+      }
+      if (maps == null) {
+        final allCourses = await getAllCourses(
+          username,
+          applyCalendarAdjustments: applyCalendarAdjustments,
+        );
+        return _filterCoursesForDateRange(
+          allCourses,
+          startDate,
+          endDate,
+          dateFormat,
+        );
+      }
+    }
+
+    if (maps.isEmpty) {
+      try {
+        final db = await DatabaseHelper.instance.databaseForUser(username);
+        final activeCourses = await db.rawQuery(
+          'SELECT 1 FROM courses WHERE IFNULL(is_deleted, 0) = 0 LIMIT 1',
+        );
+        if (activeCourses.isNotEmpty) return const <CourseItem>[];
+      } catch (_) {
+        // Let getAllCourses retain its existing recovery and migration path.
+      }
+
+      final allCourses = await getAllCourses(
+        username,
+        applyCalendarAdjustments: applyCalendarAdjustments,
+      );
+      return _filterCoursesForDateRange(
+        allCourses,
+        startDate,
+        endDate,
+        dateFormat,
+      );
+    }
+
+    final rawCourses = maps.map((map) => CourseItem.fromJson(map)).toList();
+    if (adjustment == null ||
+        adjustment.holidayDates.isEmpty && adjustment.transfers.isEmpty) {
+      return _filterCoursesForDateRange(
+        rawCourses,
+        startDate,
+        endDate,
+        dateFormat,
+      );
+    }
+
+    List<CourseItem>? fallbackCourses;
+    final hasTransferSource = rawCourses.any(
+      (course) => transferSourceDates.contains(course.date.trim()),
+    );
+    if (hasTransferSource) {
+      try {
+        final db = await DatabaseHelper.instance.databaseForUser(username);
+        final fallbackRows = await db.query(
+          'courses',
+          columns: const ['date', 'weekday', 'week_index', 'start_time'],
+          where: 'IFNULL(is_deleted, 0) = 0 AND date != ?',
+          whereArgs: const [''],
+          orderBy: 'date ASC, start_time ASC',
+        );
+        fallbackCourses = fallbackRows
+            .map((row) => CourseItem.fromJson({...row, 'uuid': ''}))
+            .toList();
+      } catch (_) {
+        // The range query still provides a local fallback if this probe fails.
+      }
+    }
+
+    final adjustedCourses =
+        await CourseCalendarAdjustmentService.applyToCourses(
+      rawCourses,
+      adjustment: adjustment,
+      fallbackCourses: fallbackCourses,
+    );
+    return _filterCoursesForDateRange(
+      adjustedCourses,
+      startDate,
+      endDate,
+      dateFormat,
+    );
+  }
+
+  static List<CourseItem> _filterCoursesForDateRange(
+    Iterable<CourseItem> courses,
+    DateTime startDate,
+    DateTime endDate,
+    DateFormat dateFormat,
+  ) {
+    return courses.where((course) {
+      try {
+        final date = dateFormat.parseStrict(course.date);
+        return !date.isBefore(startDate) && date.isBefore(endDate);
+      } catch (_) {
+        return false;
+      }
+    }).toList();
+  }
+
   static Future<List<CourseItem>> _recoverCoursesFromPrefs(
       String username, SharedPreferences prefs) async {
     final scopedKey = "${_keyCourseData}_$username";
@@ -788,13 +945,43 @@ class CourseService {
   static Future<Map<String, dynamic>> getDashboardCourses(
       String username) async {
     try {
+      final now = DateTime.now();
+      final todayNormalized = CalendarDateMath.dateOnly(now);
+      final dashboardDateFormat = AppTimeFormats.dateFormatter('yyyy-MM-dd');
+      final todayStr = dashboardDateFormat.format(now);
+      final tomorrowNormalized = CalendarDateMath.addDays(todayNormalized, 1);
+      final tomorrowStr = dashboardDateFormat.format(tomorrowNormalized);
+      final currentHHMM = now.hour * 100 + now.minute;
+
+      final nearTermCourses = await getCoursesForDateRange(
+        username,
+        from: todayNormalized,
+        to: CalendarDateMath.addDays(todayNormalized, 2),
+      );
+      final nearTermToday = nearTermCourses
+          .where((course) => course.date == todayStr)
+          .toList();
+      final nearTermTomorrow = nearTermCourses
+          .where((course) => course.date == tomorrowStr)
+          .toList();
+      if (nearTermToday.isNotEmpty) {
+        nearTermToday.sort((a, b) => a.startTime.compareTo(b.startTime));
+        final allFinished = nearTermToday.every(
+          (course) => course.endTime <= currentHHMM,
+        );
+        if (!allFinished) {
+          return {'title': '今日课程', 'courses': nearTermToday};
+        }
+        if (nearTermTomorrow.isNotEmpty) {
+          nearTermTomorrow.sort((a, b) => a.startTime.compareTo(b.startTime));
+          return {'title': '明日课程', 'courses': nearTermTomorrow};
+        }
+      }
+
+      // 周次/星期回退和后续课程发现依赖整张课表，只在精确日期不足时读取。
       final courses = await getAllCourses(username);
       if (courses.isEmpty) return {'title': '暂无课表', 'courses': <CourseItem>[]};
 
-      DateTime now = DateTime.now();
-      DateTime todayNormalized = CalendarDateMath.dateOnly(now);
-      String todayStr = DateFormat('yyyy-MM-dd').format(now);
-      int currentHHMM = now.hour * 100 + now.minute;
       final semesters = await StorageService.getSemesters();
       final semesterMondays = <String, DateTime>{
         for (final semester in semesters)
@@ -810,72 +997,72 @@ class CourseService {
       }
 
       DateTime? semesterMondayFor(CourseItem course) {
-        return semesterMondays[CourseScheduleSemantics.canonicalSemesterId(
-                course.semesterId)] ??
-            (CourseScheduleSemantics.canonicalSemesterId(course.semesterId) ==
-                    'default'
-                ? semesterMondays['default']
-                : null);
+        final semesterId = CourseScheduleSemantics.canonicalSemesterId(
+          course.semesterId,
+        );
+        return semesterMondays[semesterId] ??
+            (semesterId == 'default' ? semesterMondays['default'] : null);
       }
 
-      // 1. 尝试按日期精确筛选今天的课程
-      List<CourseItem> todayCourses =
-          courses.where((c) => c.date == todayStr).toList();
+      // 日期精确匹配在同一遍历中收集，避免今天为空时为明天再扫描一次。
+      final todayCourses = <CourseItem>[];
+      final tomorrowCourses = <CourseItem>[];
+      for (final course in courses) {
+        if (course.date == todayStr) todayCourses.add(course);
+        if (course.date == tomorrowStr) tomorrowCourses.add(course);
+      }
 
-      // 🚀 核心改进：如果没有按日期找到，尝试按“当前周次+星期”回退计算（支持动态修改开学日期的情况）
+      // 精确日期缺失时按学期周次与星期回退；同一学期的周次只算一次。
+      List<CourseItem> fallbackCoursesFor(DateTime target) {
+        final targetWeekday = target.weekday;
+        final weekByMonday = <int, int>{};
+        final fallbackCourses = <CourseItem>[];
+        for (final course in courses) {
+          if (course.weekday != targetWeekday) continue;
+          final monday = semesterMondayFor(course);
+          if (monday == null) continue;
+          final mondayKey = monday.millisecondsSinceEpoch;
+          final targetWeek = weekByMonday.putIfAbsent(
+            mondayKey,
+            () => CourseScheduleSemantics.weekIndexForDate(monday, target),
+          );
+          if (course.weekIndex == targetWeek) fallbackCourses.add(course);
+        }
+        return fallbackCourses;
+      }
+
       if (todayCourses.isEmpty) {
-        final todayWeekday = todayNormalized.weekday;
-        todayCourses = courses.where((c) {
-          final monday = semesterMondayFor(c);
-          if (monday == null) return false;
-          final todayWeek =
-              CourseScheduleSemantics.weekIndexForDate(monday, todayNormalized);
-          return c.weekIndex == todayWeek && c.weekday == todayWeekday;
-        }).toList();
+        todayCourses.addAll(fallbackCoursesFor(todayNormalized));
       }
 
-      // 如果今天有课，且“还没全部上完”，则展示今天的课程
+      // 如果今天有课，且“还没全部上完”，则展示今天的课程。
       if (todayCourses.isNotEmpty) {
         todayCourses.sort((a, b) => a.startTime.compareTo(b.startTime));
-        bool allFinished = todayCourses.every((c) => c.endTime <= currentHHMM);
+        final allFinished = todayCourses.every(
+          (course) => course.endTime <= currentHHMM,
+        );
         if (!allFinished) {
           return {'title': '今日课程', 'courses': todayCourses};
         }
       }
 
-      // 2. 今天的课没排，或者“今天的课都上完了”，找明天的
-      DateTime tomorrow = CalendarDateMath.addDays(todayNormalized, 1);
-      DateTime tomorrowNormalized = tomorrow;
-      String tomorrowStr = DateFormat('yyyy-MM-dd').format(tomorrow);
-      List<CourseItem> tomorrowCourses =
-          courses.where((c) => c.date == tomorrowStr).toList();
-
-      // 🚀 明天也同样支持回退计算
+      // 今天的课没排，或者今天的课都上完了，找明天的。
       if (tomorrowCourses.isEmpty) {
-        final tomorrowWeekday = tomorrowNormalized.weekday;
-        tomorrowCourses = courses.where((c) {
-          final monday = semesterMondayFor(c);
-          if (monday == null) return false;
-          final tomorrowWeek = CourseScheduleSemantics.weekIndexForDate(
-            monday,
-            tomorrowNormalized,
-          );
-          return c.weekIndex == tomorrowWeek && c.weekday == tomorrowWeekday;
-        }).toList();
+        tomorrowCourses.addAll(fallbackCoursesFor(tomorrowNormalized));
       }
-
       if (tomorrowCourses.isNotEmpty) {
         tomorrowCourses.sort((a, b) => a.startTime.compareTo(b.startTime));
         return {'title': '明日课程', 'courses': tomorrowCourses};
       }
 
-      final futureCourses = <MapEntry<DateTime, CourseItem>>[];
+      DateTime? nextDay;
+      final nextCourses = <CourseItem>[];
 
       for (final c in courses) {
         DateTime? courseDay;
         if (c.date.isNotEmpty) {
           try {
-            courseDay = DateFormat('yyyy-MM-dd').parseStrict(c.date);
+            courseDay = dashboardDateFormat.parseStrict(c.date);
           } catch (_) {
             courseDay = null;
           }
@@ -892,22 +1079,19 @@ class CourseService {
         final normalizedDay =
             DateTime(courseDay.year, courseDay.month, courseDay.day);
         if (normalizedDay.isAfter(tomorrowNormalized)) {
-          futureCourses.add(MapEntry(normalizedDay, c));
+          if (nextDay == null || normalizedDay.isBefore(nextDay)) {
+            nextDay = normalizedDay;
+            nextCourses
+              ..clear()
+              ..add(c);
+          } else if (normalizedDay.isAtSameMomentAs(nextDay)) {
+            nextCourses.add(c);
+          }
         }
       }
 
-      if (futureCourses.isNotEmpty) {
-        futureCourses.sort((a, b) {
-          final dayCompare = a.key.compareTo(b.key);
-          if (dayCompare != 0) return dayCompare;
-          return a.value.startTime.compareTo(b.value.startTime);
-        });
-        final nextDay = futureCourses.first.key;
-        final nextCourses = futureCourses
-            .where((entry) => entry.key.isAtSameMomentAs(nextDay))
-            .map((entry) => entry.value)
-            .toList()
-          ..sort((a, b) => a.startTime.compareTo(b.startTime));
+      if (nextDay != null) {
+        nextCourses.sort((a, b) => a.startTime.compareTo(b.startTime));
         final days = CalendarDateMath.daysBetween(todayNormalized, nextDay);
         return {'title': '$days天后课程', 'courses': nextCourses};
       }

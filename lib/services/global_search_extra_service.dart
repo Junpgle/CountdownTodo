@@ -16,19 +16,56 @@ import 'api_service.dart';
 import 'chat_storage_service.dart';
 import 'database_helper.dart';
 
+final RegExp _searchMessagePreviewWhitespacePattern = RegExp(r'\s+');
+final Map<(String?, String), DateFormat> _globalSearchExtraDateFormats = {};
+
+DateFormat _globalSearchExtraDateFormat(String pattern) {
+  final locale = Intl.defaultLocale;
+  return _globalSearchExtraDateFormats.putIfAbsent((
+    locale,
+    pattern,
+  ), () => DateFormat(pattern, locale));
+}
+
+class _IndexedRemoteSearchResult {
+  _IndexedRemoteSearchResult(this.result) : recordDate = _recordDateFor(result);
+
+  final SearchResult result;
+  final DateTime? recordDate;
+  late final String searchableText = _searchableTextFor(result);
+
+  static DateTime? _recordDateFor(SearchResult result) {
+    final timestamp = result.extraData?['search_timestamp'] as int?;
+    return timestamp == null
+        ? null
+        : DateTime.fromMillisecondsSinceEpoch(timestamp);
+  }
+
+  static String _searchableTextFor(SearchResult result) {
+    final fields = result.extraData?['fields'] as Map? ?? const {};
+    return [
+      result.title,
+      result.subtitle,
+      ...fields.values,
+    ].where((value) => value != null).join(' ').toLowerCase();
+  }
+}
+
 /// Search adapters for user records maintained outside the original search
 /// tables. Every result has a stable id and enough data to open a detail page.
 abstract final class GlobalSearchExtraService {
   static String? _remoteUsername;
   static DateTime? _remoteLoadedAt;
   static Future<void>? _remoteLoading;
-  static List<SearchResult> _remoteRecords = const [];
+  static List<_IndexedRemoteSearchResult> _remoteRecords =
+      const <_IndexedRemoteSearchResult>[];
 
   static String _money(int minor, String currency) =>
       '$currency ${(minor / 100).toStringAsFixed(2)}';
 
-  static String _day(int millis) => DateFormat('yyyy-MM-dd HH:mm')
-      .format(DateTime.fromMillisecondsSinceEpoch(millis));
+  static String _day(int millis) =>
+      _globalSearchExtraDateFormat('yyyy-MM-dd HH:mm')
+          .format(DateTime.fromMillisecondsSinceEpoch(millis));
 
   static bool _matches(
     List<String> terms,
@@ -43,7 +80,29 @@ abstract final class GlobalSearchExtraService {
           targetDate.day == recordDate.day;
     }
     final text = values.where((value) => value != null).join(' ').toLowerCase();
-    return terms.every((term) => text.contains(term));
+    return _matchesNormalizedTerms(terms, text);
+  }
+
+  static bool _matchesIndexedRemote(
+    List<String> terms,
+    _IndexedRemoteSearchResult record, {
+    DateTime? targetDate,
+  }) {
+    final recordDate = record.recordDate;
+    if (targetDate != null) {
+      return recordDate != null &&
+          targetDate.year == recordDate.year &&
+          targetDate.month == recordDate.month &&
+          targetDate.day == recordDate.day;
+    }
+    return _matchesNormalizedTerms(terms, record.searchableText);
+  }
+
+  static bool _matchesNormalizedTerms(List<String> terms, String text) {
+    for (final term in terms) {
+      if (!text.contains(term)) return false;
+    }
+    return true;
   }
 
   static SearchResult _result({
@@ -87,75 +146,176 @@ abstract final class GlobalSearchExtraService {
     DateTime? targetDate,
     SearchScope scope = SearchScope.all,
     SearchSourceObserver? onSourceQueried,
+    bool Function()? shouldContinue,
   }) async {
+    bool canContinue() => shouldContinue?.call() != false;
+
     Future<List<SearchResult>> run(
       String name,
       Future<List<SearchResult>> Function() search,
-    ) {
+    ) async {
+      if (!canContinue()) return const <SearchResult>[];
       onSourceQueried?.call(name);
-      return search();
+      final results = await search();
+      return canContinue() ? results : const <SearchResult>[];
     }
 
+    if (!canContinue()) return const <SearchResult>[];
     final sources = await Future.wait<List<SearchResult>>([
       if (scope.includes(SearchResultType.finance))
-        run('finance', () => searchFinance(terms, targetDate)),
+        run(
+          'finance',
+          () =>
+              searchFinance(terms, targetDate, shouldContinue: shouldContinue),
+        ),
       if (scope.includes(SearchResultType.journal))
-        run('journal', () => _journal(username, terms, targetDate)),
+        run(
+          'journal',
+          () => _journal(
+            username,
+            terms,
+            targetDate,
+            shouldContinue: shouldContinue,
+          ),
+        ),
       if (scope.includesAny(const [
         SearchResultType.fixedSchedule,
         SearchResultType.planBlock,
       ]))
-        _schedule(username, terms, targetDate, scope, onSourceQueried),
+        _schedule(
+          username,
+          terms,
+          targetDate,
+          scope,
+          onSourceQueried,
+          shouldContinue: shouldContinue,
+        ),
       if (scope.includes(SearchResultType.habitCheckIn))
-        run('habitCheckIns', () => _habitCheckIns(terms, targetDate)),
+        run(
+          'habitCheckIns',
+          () =>
+              _habitCheckIns(terms, targetDate, shouldContinue: shouldContinue),
+        ),
       if (scope.includes(SearchResultType.challengeTask))
-        run('challengeTasks', () => _challengeTasks(terms, targetDate)),
+        run(
+          'challengeTasks',
+          () => _challengeTasks(
+            terms,
+            targetDate,
+            shouldContinue: shouldContinue,
+          ),
+        ),
       if (scope.includes(SearchResultType.chat))
-        run('chat', () => _chat(terms, targetDate)),
+        run(
+          'chat',
+          () => _chat(terms, targetDate, shouldContinue: shouldContinue),
+        ),
       if (scope.includes(SearchResultType.team))
-        run('teams', () => _localTeams(username, terms, targetDate)),
+        run(
+          'teams',
+          () => _localTeams(
+            username,
+            terms,
+            targetDate,
+            shouldContinue: shouldContinue,
+          ),
+        ),
     ]);
+    if (!canContinue()) return const <SearchResult>[];
     final records = sources.expand((source) => source).toList();
     if (_remoteUsername == username) {
       records.addAll(
-        _remoteRecords.where((record) {
-          if (!scope.includes(record.type)) return false;
-          final data = record.extraData ?? const {};
-          final fields = data['fields'] as Map? ?? const {};
-          final timestamp = data['search_timestamp'] as int?;
-          return _matches(
-            terms,
-            [record.title, record.subtitle, ...fields.values],
-            targetDate: targetDate,
-            recordDate: timestamp == null
-                ? null
-                : DateTime.fromMillisecondsSinceEpoch(timestamp),
-          );
-        }),
+        _remoteRecords
+            .where((record) {
+              return scope.includes(record.result.type) &&
+                  _matchesIndexedRemote(terms, record, targetDate: targetDate);
+            })
+            .map((record) => record.result),
       );
     }
     return records.where((record) => scope.includes(record.type)).toList();
   }
 
   static Future<List<SearchResult>> searchFinance(
-      List<String> terms, DateTime? date) async {
+    List<String> terms,
+    DateTime? date, {
+    bool Function()? shouldContinue,
+  }) async {
     final results = <SearchResult>[];
+    if (shouldContinue?.call() == false) return results;
     try {
+      final transactionFrom = date == null
+          ? null
+          : DateTime(date.year, date.month, date.day);
+      final transactionTo = transactionFrom == null
+          ? null
+          : DateTime(
+              transactionFrom.year,
+              transactionFrom.month,
+              transactionFrom.day + 1,
+            );
+      final budgetMonth = date == null
+          ? null
+          : _globalSearchExtraDateFormat('yyyy-MM').format(date);
+      final installmentFromDate = transactionFrom == null
+          ? null
+          : _globalSearchExtraDateFormat('yyyy-MM-dd').format(transactionFrom);
+      final installmentToDate = transactionTo == null
+          ? null
+          : _globalSearchExtraDateFormat('yyyy-MM-dd').format(transactionTo);
+      final templatesFuture = date == null
+          ? FinanceRepository.getTemplates()
+          : Future.value(const <FinanceEntryTemplate>[]);
       final values = await Future.wait<dynamic>([
         _safeList(FinanceRepository.getCategories(includeArchived: true),
             'Finance categories'),
         _safeList(FinanceRepository.getPaymentMethods(includeArchived: true),
             'Finance payment methods'),
-        _safeList(FinanceRepository.getTransactions(), 'Finance transactions'),
-        _safeList(FinanceRepository.getBudgets(), 'Finance budgets'),
+        _safeList(
+          FinanceRepository.getTransactions(
+            from: transactionFrom,
+            to: transactionTo,
+          ),
+          'Finance transactions',
+        ),
+        _safeList(
+          FinanceRepository.getBudgets(monthKey: budgetMonth),
+          'Finance budgets',
+        ),
         _safeList(FinanceRepository.getRecurringRules(), 'Finance rules'),
-        _safeList(FinanceRepository.getTemplates(), 'Finance templates'),
+        _safeList(templatesFuture, 'Finance templates'),
         _safeList(FinanceRepository.getLoans(), 'Finance loans'),
       ]);
+      if (shouldContinue?.call() == false) return results;
       final categories = values[0] as List<FinanceCategory>;
       final payments = values[1] as List<FinancePaymentMethod>;
+      final loans = values[6] as List<FinanceLoan>;
       final categoryById = {for (final item in categories) item.uuid: item};
       final paymentById = {for (final item in payments) item.uuid: item};
+      var installmentsByLoan = <String, List<FinanceLoanInstallment>>{};
+      if (loans.isNotEmpty) {
+        try {
+          installmentsByLoan =
+              await FinanceRepository.getLoanInstallmentsForActiveLoans(
+            fromDueDate: installmentFromDate,
+            toDueDate: installmentToDate,
+          );
+          if (shouldContinue?.call() == false) return results;
+        } catch (error) {
+          debugPrint('Finance loan installment batch search failed: $error');
+          for (final loan in loans) {
+            if (shouldContinue?.call() == false) return results;
+            installmentsByLoan[loan.uuid] = await _safeList(
+              FinanceRepository.getLoanInstallments(
+                loan.uuid,
+                fromDueDate: installmentFromDate,
+                toDueDate: installmentToDate,
+              ),
+              'Finance loan installments',
+            );
+          }
+        }
+      }
 
       for (final item in values[2] as List<FinanceTransaction>) {
         final category = categoryById[item.categoryUuid];
@@ -237,8 +397,7 @@ abstract final class GlobalSearchExtraService {
             paymentById[item.paymentMethodUuid]?.name ??
             '总预算';
         final amount = _money(item.amountMinor, item.currencyCode);
-        final matchesMonth =
-            date != null && item.monthKey == DateFormat('yyyy-MM').format(date);
+        final matchesMonth = date != null && item.monthKey == budgetMonth;
         if (date != null
             ? !matchesMonth
             : !_matches(
@@ -325,7 +484,7 @@ abstract final class GlobalSearchExtraService {
           },
         ));
       }
-      for (final loan in values[6] as List<FinanceLoan>) {
+      for (final loan in loans) {
         final amount = _money(loan.principalMinor, loan.currencyCode);
         if (_matches(terms, [loan.name, loan.lender, loan.note, amount, '借款'],
             targetDate: date, recordDate: DateTime.tryParse(loan.startDate))) {
@@ -345,9 +504,8 @@ abstract final class GlobalSearchExtraService {
             },
           ));
         }
-        for (final installment in await _safeList(
-            FinanceRepository.getLoanInstallments(loan.uuid),
-            'Finance loan installments')) {
+        for (final installment in installmentsByLoan[loan.uuid] ??
+            const <FinanceLoanInstallment>[]) {
           if (!_matches(
               terms,
               [
@@ -383,20 +541,41 @@ abstract final class GlobalSearchExtraService {
   }
 
   static Future<List<SearchResult>> _journal(
-      String username, List<String> terms, DateTime? date) async {
+    String username,
+    List<String> terms,
+    DateTime? date, {
+    bool Function()? shouldContinue,
+  }) async {
     final results = <SearchResult>[];
     try {
       const pageSize = 40;
-      final contentTerm =
-          terms.where((term) => term != '日记' && term != '私密日记').firstOrNull;
+      final contentTerms = date == null
+          ? terms
+                .where(
+                  (term) =>
+                      term.isNotEmpty &&
+                      term != '日记' &&
+                      term != '私密日记',
+                )
+                .toSet()
+                .toList(growable: false)
+          : const <String>[];
+      final contentTerm = contentTerms.firstOrNull;
+      final additionalContentTerms = contentTerm == null
+          ? const <String>[]
+          : contentTerms.skip(1).toList(growable: false);
       var offset = 0;
       while (true) {
+        if (shouldContinue?.call() == false) return results;
         final page = await JournalStorage.instance.loadEntries(
           accountId: username,
           limit: pageSize,
           offset: offset,
-          searchQuery: date == null ? contentTerm : null,
+          searchQuery: contentTerm,
+          searchTerms: additionalContentTerms,
+          occurredOn: date,
         );
+        if (shouldContinue?.call() == false) return results;
         for (final item in page) {
           if (!_matches(terms, [item.title, item.content, '日记 私密日记'],
               targetDate: date, recordDate: item.occurredAt)) {
@@ -406,13 +585,15 @@ abstract final class GlobalSearchExtraService {
             id: 'journal_${item.id}',
             title:
                 item.title?.trim().isNotEmpty == true ? item.title! : '未命名日记',
-            subtitle: DateFormat('yyyy-MM-dd').format(item.occurredAt),
+            subtitle: _globalSearchExtraDateFormat('yyyy-MM-dd')
+                .format(item.occurredAt),
             icon: Icons.auto_stories_outlined,
             type: SearchResultType.journal,
             label: '私密日记',
             record: item,
             fields: {
-              '日期': DateFormat('yyyy-MM-dd').format(item.occurredAt),
+              '日期': _globalSearchExtraDateFormat('yyyy-MM-dd')
+                  .format(item.occurredAt),
               '正文': item.content
             },
           ));
@@ -431,13 +612,18 @@ abstract final class GlobalSearchExtraService {
     List<String> terms,
     DateTime? date,
     SearchScope scope,
-    SearchSourceObserver? onSourceQueried,
-  ) async {
+    SearchSourceObserver? onSourceQueried, {
+    bool Function()? shouldContinue,
+  }) async {
     final results = <SearchResult>[];
     try {
       if (scope.includes(SearchResultType.fixedSchedule)) {
+        if (shouldContinue?.call() == false) return results;
         onSourceQueried?.call('fixedSchedules');
-        final schedules = await StorageService.getFixedSchedules(username);
+        final schedules = date == null
+            ? await StorageService.getFixedSchedules(username)
+            : await StorageService.getFixedSchedulesByDay(username, date);
+        if (shouldContinue?.call() == false) return results;
         for (final item in schedules) {
           if (item.isDeleted ||
               !_matches(
@@ -468,8 +654,12 @@ abstract final class GlobalSearchExtraService {
         }
       }
       if (scope.includes(SearchResultType.planBlock)) {
+        if (shouldContinue?.call() == false) return results;
         onSourceQueried?.call('planBlocks');
-        final blocks = await StorageService.getPlanBlocks(username);
+        final blocks = date == null
+            ? await StorageService.getPlanBlocks(username)
+            : await StorageService.getPlanBlocksByDay(username, date);
+        if (shouldContinue?.call() == false) return results;
         for (final item in blocks) {
           if (item.isDeleted) continue;
           final start = DateTime.fromMillisecondsSinceEpoch(item.startTime);
@@ -510,12 +700,23 @@ abstract final class GlobalSearchExtraService {
   }
 
   static Future<List<SearchResult>> _habitCheckIns(
-      List<String> terms, DateTime? date) async {
+    List<String> terms,
+    DateTime? date, {
+    bool Function()? shouldContinue,
+  }) async {
     final results = <SearchResult>[];
     try {
       final goals = await HabitRepository.getGoals();
+      if (shouldContinue?.call() == false) return results;
       final names = {for (final goal in goals) goal.uuid: goal.name};
-      final checkIns = await HabitRepository.getCheckIns();
+      final dateKey = date == null
+          ? null
+          : _globalSearchExtraDateFormat('yyyy-MM-dd').format(date);
+      final checkIns = await HabitRepository.getCheckIns(
+        fromDate: dateKey,
+        toDate: dateKey,
+      );
+      if (shouldContinue?.call() == false) return results;
       for (final item in checkIns) {
         if (item.isDeleted) continue;
         final name = names[item.habitUuid] ?? '习惯';
@@ -548,11 +749,16 @@ abstract final class GlobalSearchExtraService {
   }
 
   static Future<List<SearchResult>> _challengeTasks(
-      List<String> terms, DateTime? date) async {
+    List<String> terms,
+    DateTime? date, {
+    bool Function()? shouldContinue,
+  }) async {
     final results = <SearchResult>[];
     try {
       if (!await ThirtyDayChallengeRepository.hasStarted()) return results;
+      if (shouldContinue?.call() == false) return results;
       final state = await ThirtyDayChallengeRepository.load();
+      if (shouldContinue?.call() == false) return results;
       for (final task in state.tasks) {
         if (!_matches(terms, [state.challengeTitle, task.title, task.feeling],
             targetDate: date, recordDate: task.completedAt)) {
@@ -571,7 +777,8 @@ abstract final class GlobalSearchExtraService {
             '状态': task.isCompleted ? '已完成' : '未完成',
             '完成时间': task.completedAt == null
                 ? ''
-                : DateFormat('yyyy-MM-dd HH:mm').format(task.completedAt!),
+                : _globalSearchExtraDateFormat('yyyy-MM-dd HH:mm')
+                      .format(task.completedAt!),
             '感受记录': task.feeling
           },
         ));
@@ -583,26 +790,35 @@ abstract final class GlobalSearchExtraService {
   }
 
   static Future<List<SearchResult>> _chat(
-      List<String> terms, DateTime? date) async {
+    List<String> terms,
+    DateTime? date, {
+    bool Function()? shouldContinue,
+  }) async {
     final results = <SearchResult>[];
     try {
       final sessions = await ChatStorageService.loadSessions();
+      if (shouldContinue?.call() == false) return results;
       for (final session in sessions) {
+        if (shouldContinue?.call() == false) return results;
         final history = await _safeList(
-            ChatStorageService.loadHistory(session.id), 'AI chat history');
+          ChatStorageService.loadHistory(session.id),
+          'AI chat history',
+        );
+        if (shouldContinue?.call() == false) return results;
         if (_matches(terms, [session.title, 'AI 对话'],
             targetDate: date, recordDate: session.updatedAt)) {
           results.add(_result(
             id: 'chat_session_${session.id}',
             title: session.title,
             subtitle:
-                'AI 历史对话 · ${DateFormat('yyyy-MM-dd').format(session.updatedAt)}',
+                'AI 历史对话 · ${_globalSearchExtraDateFormat('yyyy-MM-dd').format(session.updatedAt)}',
             icon: Icons.chat_bubble_outline_rounded,
             type: SearchResultType.chat,
             label: 'AI 历史对话',
             fields: {
               '会话标题': session.title,
-              '更新时间': DateFormat('yyyy-MM-dd HH:mm').format(session.updatedAt),
+              '更新时间': _globalSearchExtraDateFormat('yyyy-MM-dd HH:mm')
+                  .format(session.updatedAt),
               '对话内容': history
                   .map((message) => '${message.role.name}: ${message.content}')
                   .join('\n\n'),
@@ -615,7 +831,10 @@ abstract final class GlobalSearchExtraService {
               targetDate: date, recordDate: message.timestamp)) {
             continue;
           }
-          final preview = message.content.replaceAll(RegExp(r'\s+'), ' ');
+          final preview = message.content.replaceAll(
+            _searchMessagePreviewWhitespacePattern,
+            ' ',
+          );
           results.add(_result(
             id: 'chat_message_${session.id}_${message.id}',
             title: session.title,
@@ -626,7 +845,8 @@ abstract final class GlobalSearchExtraService {
             label: 'AI 对话消息',
             fields: {
               '会话': session.title,
-              '时间': DateFormat('yyyy-MM-dd HH:mm').format(message.timestamp),
+              '时间': _globalSearchExtraDateFormat('yyyy-MM-dd HH:mm')
+                  .format(message.timestamp),
               '内容': message.content
             },
             data: {'chat_session_id': session.id},
@@ -640,11 +860,16 @@ abstract final class GlobalSearchExtraService {
   }
 
   static Future<List<SearchResult>> _localTeams(
-      String username, List<String> terms, DateTime? date) async {
+    String username,
+    List<String> terms,
+    DateTime? date, {
+    bool Function()? shouldContinue,
+  }) async {
     final results = <SearchResult>[];
     try {
       final db = await DatabaseHelper.instance.databaseForUser(username);
       final rows = await db.query('teams');
+      if (shouldContinue?.call() == false) return results;
       for (final row in rows) {
         final team = Team.fromJson(row);
         if (!_matches(terms, [team.name],
@@ -679,7 +904,7 @@ abstract final class GlobalSearchExtraService {
     if (fresh) return Future.value();
     if (_remoteUsername != username) {
       _remoteUsername = username;
-      _remoteRecords = const [];
+      _remoteRecords = const <_IndexedRemoteSearchResult>[];
       _remoteLoading = null;
     }
     if (_remoteLoading != null) return _remoteLoading!;
@@ -814,7 +1039,9 @@ abstract final class GlobalSearchExtraService {
     }
     if (_remoteUsername == username) {
       if (remoteSourceAvailable) {
-        _remoteRecords = records;
+        _remoteRecords = records
+            .map(_IndexedRemoteSearchResult.new)
+            .toList(growable: false);
         _remoteLoadedAt = DateTime.now();
       } else {
         // Retain previously loaded results, but retry on the next search.

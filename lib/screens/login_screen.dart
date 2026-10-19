@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import '../services/api_service.dart';
@@ -152,6 +153,7 @@ class _Field extends StatelessWidget {
     this.obscure = false,
     this.enabled = true,
     this.keyboardType,
+    this.autofillHints,
   });
 
   final TextEditingController controller;
@@ -161,6 +163,7 @@ class _Field extends StatelessWidget {
   final bool obscure;
   final bool enabled;
   final TextInputType? keyboardType;
+  final Iterable<String>? autofillHints;
 
   @override
   Widget build(BuildContext context) {
@@ -183,6 +186,7 @@ class _Field extends StatelessWidget {
           obscureText: obscure,
           enabled: enabled,
           keyboardType: keyboardType,
+          autofillHints: autofillHints,
           style: TextStyle(
             fontSize: 15,
             color: t.textPri,
@@ -666,7 +670,7 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen>
-    with TickerProviderStateMixin {
+    with SingleTickerProviderStateMixin {
   final _userCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
   final _passCtrl = TextEditingController();
@@ -683,16 +687,15 @@ class _LoginScreenState extends State<LoginScreen>
   final _resetCodeCtrl = TextEditingController();
   final _newPassCtrl = TextEditingController();
   final _confirmPassCtrl = TextEditingController();
-  int _resetCodeCooldown = 0;
+  final ValueNotifier<int> _resetCodeCooldown = ValueNotifier<int>(0);
   Timer? _cooldownTimer;
 
   // 🔐 Turnstile 人机验证相关状态
   String? _turnstileToken;
   GlobalKey<State> _turnstileKey = GlobalKey();
 
-  late final AnimationController _fadeCtrl;
+  late final AnimationController _contentTransitionController;
   late final Animation<double> _fadeAnim;
-  late final AnimationController _slideCtrl;
   late final Animation<Offset> _slideAnim;
 
   // ── Lifecycle ────────────────────────────────
@@ -700,17 +703,22 @@ class _LoginScreenState extends State<LoginScreen>
   @override
   void initState() {
     super.initState();
-    _fadeCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 480));
-    _fadeAnim = CurvedAnimation(parent: _fadeCtrl, curve: Curves.easeOut);
-    _slideCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 480));
-    _slideAnim = Tween<Offset>(
-      begin: const Offset(0.15, 0.0),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(parent: _slideCtrl, curve: Curves.easeOutCubic));
-    _fadeCtrl.forward();
-    _slideCtrl.forward();
+    _contentTransitionController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 480),
+    );
+    _fadeAnim = CurvedAnimation(
+      parent: _contentTransitionController,
+      curve: Curves.easeOut,
+    );
+    _slideAnim = Tween<Offset>(begin: const Offset(0.15, 0.0), end: Offset.zero)
+        .animate(
+          CurvedAnimation(
+            parent: _contentTransitionController,
+            curve: Curves.easeOutCubic,
+          ),
+        );
+    _contentTransitionController.forward();
     _checkLocalLegacyAccount();
     _loadServerChoice();
   }
@@ -718,8 +726,8 @@ class _LoginScreenState extends State<LoginScreen>
   @override
   void dispose() {
     _cooldownTimer?.cancel();
-    _fadeCtrl.dispose();
-    _slideCtrl.dispose();
+    _resetCodeCooldown.dispose();
+    _contentTransitionController.dispose();
     _userCtrl.dispose();
     _emailCtrl.dispose();
     _passCtrl.dispose();
@@ -891,6 +899,7 @@ class _LoginScreenState extends State<LoginScreen>
         await _syncLocalDataToCloud(
             user['id'] as int, user['username'] as String);
       }
+      TextInput.finishAutofillContext(shouldSave: true);
       _finalizeLoginAndNavigate(user['username'] as String);
     } else {
       setState(() => _isLoading = false);
@@ -973,6 +982,7 @@ class _LoginScreenState extends State<LoginScreen>
         apiBaseUrl: ApiService.effectiveBaseUrl,
       );
       await _syncLocalDataToCloud(userInfo['id'] as int, username);
+      TextInput.finishAutofillContext(shouldSave: true);
       _finalizeLoginAndNavigate(username);
     } else {
       setState(() {
@@ -997,10 +1007,8 @@ class _LoginScreenState extends State<LoginScreen>
   }
 
   void _toggleMode() {
-    _fadeCtrl
-      ..reset()
-      ..forward();
-    _slideCtrl
+    TextInput.finishAutofillContext(shouldSave: false);
+    _contentTransitionController
       ..reset()
       ..forward();
     setState(() {
@@ -1047,6 +1055,7 @@ class _LoginScreenState extends State<LoginScreen>
   }
 
   void _openForgotPassword() {
+    TextInput.finishAutofillContext(shouldSave: false);
     _resetEmailCtrl.text = _emailCtrl.text.trim();
     _resetCodeCtrl.clear();
     _newPassCtrl.clear();
@@ -1055,7 +1064,7 @@ class _LoginScreenState extends State<LoginScreen>
   }
 
   void _handleSendResetCode() async {
-    if (_resetCodeCooldown > 0) return;
+    if (_resetCodeCooldown.value > 0) return;
     final email = _resetEmailCtrl.text.trim();
     if (email.isEmpty) {
       _snack('请输入邮箱地址');
@@ -1063,25 +1072,26 @@ class _LoginScreenState extends State<LoginScreen>
     }
     setState(() {
       _isLoading = true;
-      _resetCodeCooldown = 60;
+      _resetCodeCooldown.value = 60;
     });
     final result = await ApiService.forgotPassword(email);
     if (!mounted) return;
     setState(() => _isLoading = false);
     if (result['success'] == true) {
+      TextInput.finishAutofillContext(shouldSave: true);
       _snack(result['message']);
       setState(() => _forgotPasswordStep = 2);
       _cooldownTimer?.cancel();
       _cooldownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-        if (_resetCodeCooldown <= 0) {
+        if (_resetCodeCooldown.value <= 0) {
           timer.cancel();
           return;
         }
-        setState(() => _resetCodeCooldown--);
+        _resetCodeCooldown.value--;
       });
     } else {
       _snack(result['message']);
-      setState(() => _resetCodeCooldown = 0);
+      _resetCodeCooldown.value = 0;
     }
   }
 
@@ -1196,8 +1206,18 @@ class _LoginScreenState extends State<LoginScreen>
   }
 
   Widget _buildFormContent() {
-    if (_forgotPasswordStep > 0) return _buildForgotPasswordView();
-    return _awaitingVerification ? _buildVerifyView() : _buildMainForm();
+    final Widget child;
+    if (_forgotPasswordStep > 0) {
+      child = _buildForgotPasswordView();
+    } else if (_awaitingVerification) {
+      child = _buildVerifyView();
+    } else {
+      child = _buildMainForm();
+    }
+    return AutofillGroup(
+      onDisposeAction: AutofillContextAction.cancel,
+      child: child,
+    );
   }
 
   // ── Main form ────────────────────────────────
@@ -1230,6 +1250,7 @@ class _LoginScreenState extends State<LoginScreen>
             label: '用户名',
             hint: '设置你的用户名',
             icon: Icons.person_outline_rounded,
+            autofillHints: const [AutofillHints.newUsername],
           ),
           const SizedBox(height: 16),
         ],
@@ -1239,6 +1260,7 @@ class _LoginScreenState extends State<LoginScreen>
           hint: '输入邮箱地址',
           icon: Icons.mail_outline_rounded,
           keyboardType: TextInputType.emailAddress,
+          autofillHints: const [AutofillHints.email],
         ),
         const SizedBox(height: 16),
         _Field(
@@ -1247,6 +1269,9 @@ class _LoginScreenState extends State<LoginScreen>
           hint: _isRegisterMode ? '设置密码' : '输入密码',
           icon: Icons.lock_outline_rounded,
           obscure: true,
+          autofillHints: _isRegisterMode
+              ? const [AutofillHints.newPassword]
+              : const [AutofillHints.password],
         ),
         if (!_isRegisterMode)
           Align(
@@ -1426,35 +1451,42 @@ class _LoginScreenState extends State<LoginScreen>
             hint: '输入注册邮箱',
             icon: Icons.mail_outline_rounded,
             keyboardType: TextInputType.emailAddress,
+            autofillHints: const [AutofillHints.email],
           ),
           const SizedBox(height: 28),
           if (_isLoading)
             const _Spinner()
-          else if (_resetCodeCooldown > 0)
-            SizedBox(
-              width: double.infinity,
-              height: 52,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: t.textHint.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Center(
-                  child: Text(
-                    '$_resetCodeCooldown 秒后可重新发送',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: t.textHint,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ),
-              ),
-            )
           else
-            _PrimaryBtn(
-              label: '发送验证码',
-              onPressed: _handleSendResetCode,
+            ValueListenableBuilder<int>(
+              valueListenable: _resetCodeCooldown,
+              builder: (context, cooldown, child) {
+                if (cooldown > 0) {
+                  return SizedBox(
+                    width: double.infinity,
+                    height: 52,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: t.textHint.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Center(
+                        child: Text(
+                          '$cooldown 秒后可重新发送',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: t.textHint,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                }
+                return _PrimaryBtn(
+                  label: '发送验证码',
+                  onPressed: _handleSendResetCode,
+                );
+              },
             ),
         ] else ...[
           _Field(
@@ -1474,6 +1506,7 @@ class _LoginScreenState extends State<LoginScreen>
             hint: '设置新密码（至少6位）',
             icon: Icons.lock_outline_rounded,
             obscure: true,
+            autofillHints: const [AutofillHints.newPassword],
           ),
           const SizedBox(height: 16),
           _Field(
@@ -1482,6 +1515,7 @@ class _LoginScreenState extends State<LoginScreen>
             hint: '再次输入新密码',
             icon: Icons.lock_outline_rounded,
             obscure: true,
+            autofillHints: const [AutofillHints.newPassword],
           ),
           const SizedBox(height: 28),
           if (_isLoading)

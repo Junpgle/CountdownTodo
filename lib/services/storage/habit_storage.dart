@@ -125,6 +125,24 @@ abstract final class HabitStorage {
     }
   }
 
+  /// Loads one active habit by its unique UUID.
+  static Future<HabitGoal?> getActiveHabitGoalByUuid(String uuid) async {
+    try {
+      final db = await DatabaseHelper.instance.database;
+      final maps = await db.query(
+        tableGoals,
+        where: 'uuid = ? AND is_deleted = 0 AND is_archived = 0',
+        whereArgs: [uuid],
+        limit: 1,
+      );
+      if (maps.isEmpty) return null;
+      return HabitGoal.fromJson(maps.first);
+    } catch (e) {
+      debugPrint('⚠️ HabitStorage 按 UUID 读取习惯目标失败: $e');
+      return null;
+    }
+  }
+
   static Future<List<HabitGoalRuleRevision>> getRuleRevisions({
     String? habitUuid,
     bool includeDeleted = true,
@@ -149,6 +167,39 @@ abstract final class HabitStorage {
       return maps.map(HabitGoalRuleRevision.fromJson).toList();
     } catch (e) {
       debugPrint('⚠️ HabitStorage 读取习惯规则失败: $e');
+      return [];
+    }
+  }
+
+  /// Loads rule revisions for a set of habits without issuing one query per
+  /// habit. UUIDs are chunked below SQLite's bind-variable limit.
+  static Future<List<HabitGoalRuleRevision>> getRuleRevisionsForHabits(
+    Iterable<String> habitUuids, {
+    bool includeDeleted = true,
+  }) async {
+    final uuids = habitUuids.toSet().toList(growable: false);
+    if (uuids.isEmpty) return const [];
+    try {
+      final db = await DatabaseHelper.instance.database;
+      final rules = <HabitGoalRuleRevision>[];
+      for (var start = 0; start < uuids.length; start += 900) {
+        final end = start + 900 < uuids.length ? start + 900 : uuids.length;
+        final chunk = uuids.sublist(start, end);
+        final where = <String>[
+          'habit_uuid IN (${List.filled(chunk.length, '?').join(', ')})',
+        ];
+        if (!includeDeleted) where.add('is_deleted = 0');
+        final maps = await db.query(
+          tableRules,
+          where: where.join(' AND '),
+          whereArgs: chunk,
+          orderBy: 'effective_from_date ASC, created_at ASC',
+        );
+        rules.addAll(maps.map(HabitGoalRuleRevision.fromJson));
+      }
+      return rules;
+    } catch (e) {
+      debugPrint('⚠️ HabitStorage 批量读取习惯规则失败: $e');
       return [];
     }
   }
@@ -187,6 +238,49 @@ abstract final class HabitStorage {
       return maps.map(HabitCheckIn.fromJson).toList();
     } catch (e) {
       debugPrint('⚠️ HabitStorage 读取习惯打卡失败: $e');
+      return [];
+    }
+  }
+
+  /// Loads check-ins for several habits with bounded SQLite bind arguments.
+  static Future<List<HabitCheckIn>> getCheckInsForHabits(
+    Iterable<String> habitUuids, {
+    String? fromDate,
+    String? toDate,
+    bool includeDeleted = false,
+  }) async {
+    final uuids = habitUuids.toSet().toList(growable: false);
+    if (uuids.isEmpty) return const [];
+    try {
+      final db = await DatabaseHelper.instance.database;
+      final checkIns = <HabitCheckIn>[];
+      for (var start = 0; start < uuids.length; start += 900) {
+        final end = start + 900 < uuids.length ? start + 900 : uuids.length;
+        final chunk = uuids.sublist(start, end);
+        final where = <String>[
+          'habit_uuid IN (${List.filled(chunk.length, '?').join(', ')})',
+        ];
+        final args = <Object?>[...chunk];
+        if (!includeDeleted) where.add('is_deleted = 0');
+        if (fromDate != null) {
+          where.add('logical_date >= ?');
+          args.add(fromDate);
+        }
+        if (toDate != null) {
+          where.add('logical_date <= ?');
+          args.add(toDate);
+        }
+        final maps = await db.query(
+          tableCheckIns,
+          where: where.join(' AND '),
+          whereArgs: args,
+          orderBy: 'occurred_at DESC',
+        );
+        checkIns.addAll(maps.map(HabitCheckIn.fromJson));
+      }
+      return checkIns;
+    } catch (e) {
+      debugPrint('⚠️ HabitStorage 批量读取习惯打卡失败: $e');
       return [];
     }
   }

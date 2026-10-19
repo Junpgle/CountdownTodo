@@ -10,6 +10,16 @@ import '../utils/app_dialogs.dart';
 import '../utils/page_transitions.dart';
 import 'optional_liquid_glass_surface.dart';
 
+final Map<(String?, String), DateFormat> _planExecutionDateFormats = {};
+
+DateFormat _planExecutionDateFormat(String pattern) {
+  final locale = Intl.defaultLocale;
+  return _planExecutionDateFormats.putIfAbsent(
+    (locale, pattern),
+    () => DateFormat(pattern, locale),
+  );
+}
+
 /// Presentation only: actual records keep their identity and never become
 /// draggable plans or change the plan's linked focus duration.
 class PlanExecutionEntry {
@@ -65,7 +75,8 @@ class PlanExecutionEntry {
     final format = DateUtils.isSameDay(startDate, endDate)
         ? 'HH:mm'
         : 'MM-dd HH:mm';
-    return '${DateFormat(format).format(startDate)}–${DateFormat(format).format(endDate)}';
+    final dateFormat = _planExecutionDateFormat(format);
+    return '${dateFormat.format(startDate)}–${dateFormat.format(endDate)}';
   }
 
   void openDetail(
@@ -110,6 +121,7 @@ class PlanExecutionSummary extends StatelessWidget {
     BuildContext context,
     List<PlanExecutionEntry> entries,
   ) async {
+    final dateFormat = _planExecutionDateFormat('M月d日');
     ModalRoute<dynamic>? sheetRoute;
     final selected = await showAppModalBottomSheet<PlanExecutionEntry>(
       context: context,
@@ -137,7 +149,7 @@ class PlanExecutionSummary extends StatelessWidget {
                       children: [
                         Expanded(
                           child: Text(
-                            '${DateFormat('M月d日').format(date)} · 实际记录',
+                            '${dateFormat.format(date)} · 实际记录',
                             style: Theme.of(sheetContext).textTheme.titleLarge,
                           ),
                         ),
@@ -216,7 +228,37 @@ class PlanExecutionSummary extends StatelessWidget {
             onPressed: entries.isEmpty
                 ? null
                 : () => _showRecords(context, entries),
-            icon: const Icon(Icons.view_list_outlined, size: 16),
+            style: ButtonStyle(
+              backgroundBuilder: (context, states, child) =>
+                  child ?? const SizedBox.shrink(),
+              backgroundColor: WidgetStateProperty.resolveWith((states) {
+                return states.contains(WidgetState.disabled)
+                    ? colors.surfaceContainerLow.withValues(alpha: 0.5)
+                    : colors.secondaryContainer;
+              }),
+              foregroundColor: WidgetStateProperty.resolveWith((states) {
+                return states.contains(WidgetState.disabled)
+                    ? colors.onSurface.withValues(alpha: 0.38)
+                    : colors.onSecondaryContainer;
+              }),
+              overlayColor: WidgetStatePropertyAll(
+                colors.primary.withValues(alpha: 0.12),
+              ),
+              textStyle: WidgetStatePropertyAll(
+                Theme.of(context).textTheme.labelSmall,
+              ),
+              minimumSize: const WidgetStatePropertyAll(Size(0, 36)),
+              visualDensity: VisualDensity.compact,
+              shape: const WidgetStatePropertyAll(
+                RoundedRectangleBorder(
+                  borderRadius: BorderRadius.all(Radius.circular(10)),
+                ),
+              ),
+              padding: const WidgetStatePropertyAll(
+                EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              ),
+            ),
+            icon: const Icon(Icons.view_list_outlined, size: 14),
             label: const Text('时间轴记录'),
           ),
         ],

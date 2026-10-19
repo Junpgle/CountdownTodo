@@ -100,8 +100,9 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
     try {
       var granted = await CalendarSyncService.checkPermission();
       if (!granted) {
-        final result =
-            await _permissionCoordinator.request(AppPermissionKind.calendar);
+        final result = await _permissionCoordinator.request(
+          AppPermissionKind.calendar,
+        );
         granted = result.granted;
       }
       if (!granted) {
@@ -153,8 +154,9 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
   }
 
   Future<void> _writeSelected() async {
-    final selected =
-        _entries.where((entry) => _selectedIds.contains(entry.id)).toList();
+    final selected = _entries
+        .where((entry) => _selectedIds.contains(entry.id))
+        .toList();
     if (selected.isEmpty) {
       _showMessage('请至少选择一项');
       return;
@@ -188,8 +190,9 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
   }
 
   Future<void> _exportSelectedIcs() async {
-    final selected =
-        _entries.where((entry) => _selectedIds.contains(entry.id)).toList();
+    final selected = _entries
+        .where((entry) => _selectedIds.contains(entry.id))
+        .toList();
     if (selected.isEmpty) {
       _showMessage('请至少选择一项');
       return;
@@ -213,8 +216,9 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
   }
 
   Future<void> _previewSelected() async {
-    final selected =
-        _entries.where((entry) => _selectedIds.contains(entry.id)).toList();
+    final selected = _entries
+        .where((entry) => _selectedIds.contains(entry.id))
+        .toList();
     if (selected.isEmpty) {
       _showMessage('请至少选择一项');
       return;
@@ -280,9 +284,11 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
                         _writeSelected();
                       }
                     },
-                    icon: Icon(AppPlatform.isWeb
-                        ? Icons.download_outlined
-                        : Icons.event_available_outlined),
+                    icon: Icon(
+                      AppPlatform.isWeb
+                          ? Icons.download_outlined
+                          : Icons.event_available_outlined,
+                    ),
                     label: Text(AppPlatform.isWeb ? '确认导出' : '确认写入'),
                   ),
                 ),
@@ -341,8 +347,7 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
 
   void _showMessage(String message) {
     if (!mounted) return;
-    AppSnackBars.showSnackBar(
-        context, SnackBar(content: Text(message)));
+    AppSnackBars.showSnackBar(context, SnackBar(content: Text(message)));
   }
 
   @override
@@ -398,8 +403,8 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
                           onPressed: _working
                               ? null
                               : (AppPlatform.isWeb
-                                  ? _exportSelectedIcs
-                                  : _writeSelected),
+                                    ? _exportSelectedIcs
+                                    : _writeSelected),
                           icon: _working
                               ? const SizedBox(
                                   width: 18,
@@ -408,12 +413,16 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
                                     strokeWidth: 2,
                                   ),
                                 )
-                              : Icon(AppPlatform.isWeb
-                                  ? Icons.download_outlined
-                                  : Icons.event_available_outlined),
-                          label: Text(AppPlatform.isWeb
-                              ? '导出所选 ${_selectedIds.length} 项'
-                              : '写入所选 ${_selectedIds.length} 项'),
+                              : Icon(
+                                  AppPlatform.isWeb
+                                      ? Icons.download_outlined
+                                      : Icons.event_available_outlined,
+                                ),
+                          label: Text(
+                            AppPlatform.isWeb
+                                ? '导出所选 ${_selectedIds.length} 项'
+                                : '写入所选 ${_selectedIds.length} 项',
+                          ),
                         ),
                       ),
                     ],
@@ -447,13 +456,17 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
       children: [
         ListTile(
           contentPadding: EdgeInsets.zero,
-          leading: Icon(AppPlatform.isWeb
-              ? Icons.download_outlined
-              : Icons.event_available_outlined),
+          leading: Icon(
+            AppPlatform.isWeb
+                ? Icons.download_outlined
+                : Icons.event_available_outlined,
+          ),
           title: Text(AppPlatform.isWeb ? '选择导出内容' : '选择写入目标'),
-          subtitle: Text(AppPlatform.isWeb
-              ? '导出为 .ics 文件后，可导入 Apple 日历、Google Calendar、Outlook 等日历应用。'
-              : '下面列表会显示系统识别到的日历，当前只保留这一处选择入口'),
+          subtitle: Text(
+            AppPlatform.isWeb
+                ? '导出为 .ics 文件后，可导入 Apple 日历、Google Calendar、Outlook 等日历应用。'
+                : '下面列表会显示系统识别到的日历，当前只保留这一处选择入口',
+          ),
         ),
         if (!AppPlatform.isWeb)
           LiquidGlassSwitchListTile(
@@ -471,43 +484,45 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
         if (_calendars.isNotEmpty) ...[
           const Text('可用日历', style: TextStyle(fontWeight: FontWeight.w600)),
           const SizedBox(height: 8),
-          ..._calendars.map(
-            (calendar) {
-              final id = (calendar['id'] as num).toInt();
-              final selected = _calendarId == id;
-              return ListTile(
-                contentPadding: EdgeInsets.zero,
-                dense: true,
-                leading: Icon(
-                  calendar['writable'] == true
-                      ? Icons.edit_calendar_outlined
-                      : Icons.visibility_outlined,
-                ),
-                title: Text(calendar['name']?.toString() ?? '日历'),
-                subtitle: Text([
+          ..._calendars.map((calendar) {
+            final id = (calendar['id'] as num).toInt();
+            final selected = _calendarId == id;
+            return ListTile(
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              leading: Icon(
+                calendar['writable'] == true
+                    ? Icons.edit_calendar_outlined
+                    : Icons.visibility_outlined,
+              ),
+              title: Text(calendar['name']?.toString() ?? '日历'),
+              subtitle: Text(
+                [
                   if ((calendar['account']?.toString() ?? '').isNotEmpty)
                     calendar['account'].toString(),
                   if (calendar['writable'] == true) '可写' else '只读',
-                ].join(' · ')),
-                trailing: selected
-                    ? Icon(
-                        Icons.check_circle,
-                        color: Theme.of(context).colorScheme.primary,
-                      )
-                    : null,
-                onTap: _working ? null : () => setState(() => _calendarId = id),
-              );
-            },
-          ),
+                ].join(' · '),
+              ),
+              trailing: selected
+                  ? Icon(
+                      Icons.check_circle,
+                      color: Theme.of(context).colorScheme.primary,
+                    )
+                  : null,
+              onTap: _working ? null : () => setState(() => _calendarId = id),
+            );
+          }),
           const SizedBox(height: 8),
         ],
         if (_entries.isEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 48),
             child: Center(
-              child: Text(AppPlatform.isWeb
-                  ? '暂无可导出为日历的待办、课程、倒数日或规划块'
-                  : '暂无可写入日历的待办、课程、倒数日或规划块'),
+              child: Text(
+                AppPlatform.isWeb
+                    ? '暂无可导出为日历的待办、课程、倒数日或规划块'
+                    : '暂无可写入日历的待办、课程、倒数日或规划块',
+              ),
             ),
           )
         else
@@ -527,10 +542,10 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
           onPressed: _working
               ? null
               : () => setState(() {
-                    _selectedIds
-                      ..clear()
-                      ..addAll(_entries.map((entry) => entry.id));
-                  }),
+                  _selectedIds
+                    ..clear()
+                    ..addAll(_entries.map((entry) => entry.id));
+                }),
         ),
         ActionChip(
           avatar: const Icon(Icons.remove_done, size: 18),
@@ -550,7 +565,7 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
           onSelected: _working
               ? null
               : (selected) =>
-                  _toggleType(CalendarSyncEntryType.course, selected),
+                    _toggleType(CalendarSyncEntryType.course, selected),
         ),
         FilterChip(
           label: const Text('倒数日'),
@@ -558,7 +573,7 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
           onSelected: _working
               ? null
               : (selected) =>
-                  _toggleType(CalendarSyncEntryType.countdown, selected),
+                    _toggleType(CalendarSyncEntryType.countdown, selected),
         ),
         FilterChip(
           label: const Text('规划'),
@@ -566,7 +581,7 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
           onSelected: _working
               ? null
               : (selected) =>
-                  _toggleType(CalendarSyncEntryType.planBlock, selected),
+                    _toggleType(CalendarSyncEntryType.planBlock, selected),
         ),
       ],
     );

@@ -184,10 +184,7 @@ void main() {
       '餐饮',
     );
 
-    await _waitFor(
-      tester,
-      () => find.text('日常支出 - 餐饮').evaluate().isNotEmpty,
-    );
+    await _waitFor(tester, () => find.text('日常支出 - 餐饮').evaluate().isNotEmpty);
     expect(find.text('日常支出 - 食品'), findsNothing);
     expect(find.text('¥25.00'), findsNWidgets(2));
     await tester.tap(
@@ -248,10 +245,7 @@ void main() {
     );
     expect(mergedCount, greaterThan(0));
 
-    await _waitFor(
-      tester,
-      () => find.text('待删除分类（已删除）').evaluate().isNotEmpty,
-    );
+    await _waitFor(tester, () => find.text('待删除分类（已删除）').evaluate().isNotEmpty);
     expect(find.text('未分类'), findsNothing);
     expect(find.text('分类已删除或不可用'), findsNothing);
     expect(find.text('待删除分类（已删除）'), findsWidgets);
@@ -323,10 +317,7 @@ void main() {
       () => Future<void>.delayed(const Duration(seconds: 4)),
     );
     await tester.pump();
-    await _waitFor(
-      tester,
-      () => find.text('固定支出 - 网络费').evaluate().isNotEmpty,
-    );
+    await _waitFor(tester, () => find.text('固定支出 - 网络费').evaluate().isNotEmpty);
 
     expect(find.text('¥12.00'), findsNWidgets(2));
     expect(tester.takeException(), isNull);

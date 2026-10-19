@@ -37,12 +37,28 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
   List<FinanceTransaction> _balanceTransactions = const [];
   List<FinanceLoanInstallment> _loanRepayments = const [];
   Set<String> _loanInterestTransactionUuids = const {};
+  Map<String, int> _paymentMethodBalances = const {};
+  List<FinanceCategory>? _categoryCacheSource;
+  Map<String, FinanceCategory> _categoryMapCache = const {};
+  final Map<String, String> _categoryDisplayNames = {};
+  List<FinancePaymentMethod>? _paymentMethodCacheSource;
+  Map<String, FinancePaymentMethod> _paymentMethodMapCache = const {};
+  final Map<String, String> _paymentMethodDisplayNames = {};
+  final Map<(String?, String), DateFormat> _dateFormatters = {};
   bool? _balanceSyncSupported;
   FinanceSummary _summary = const FinanceSummary();
   bool _isLoading = true;
   String? _loadError;
   int _loadGeneration = 0;
   Timer? _balanceRefreshTimer;
+
+  DateFormat _cachedDateFormat(String pattern) {
+    final locale = Intl.defaultLocale;
+    return _dateFormatters.putIfAbsent(
+      (locale, pattern),
+      () => DateFormat(pattern, locale),
+    );
+  }
 
   @override
   void initState() {
@@ -62,9 +78,36 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
 
   void _onFinanceChanged() => _load(showLoading: false);
 
-  Map<String, FinanceCategory> get _categoryMap => {
-    for (final item in _categories) item.uuid: item,
-  };
+  void _ensureCategoryCaches() {
+    if (identical(_categoryCacheSource, _categories)) return;
+    _categoryCacheSource = _categories;
+    _categoryMapCache = {for (final item in _categories) item.uuid: item};
+    _categoryDisplayNames.clear();
+  }
+
+  Map<String, FinanceCategory> get _categoryMap {
+    _ensureCategoryCaches();
+    return _categoryMapCache;
+  }
+
+  String _categoryDisplayName(FinanceCategory category) {
+    _ensureCategoryCaches();
+    return _categoryDisplayNames.putIfAbsent(
+      category.uuid,
+      () => financeCategoryDisplayName(category, _categories),
+    );
+  }
+
+  void _ensurePaymentMethodCaches() {
+    if (identical(_paymentMethodCacheSource, _paymentMethods)) return;
+    _paymentMethodCacheSource = _paymentMethods;
+    _paymentMethodMapCache = {
+      for (final method in _paymentMethods) method.uuid: method,
+    };
+    _paymentMethodDisplayNames
+      ..clear()
+      ..addAll(financePaymentMethodDisplayNames(_paymentMethods));
+  }
 
   FinanceBudget? get _overallBudget {
     for (final budget in _budgets) {
@@ -82,9 +125,15 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
     return _latestPaymentSnapshots(_balanceSnapshots, _balanceAsOfAt);
   }
 
-  Map<String, FinancePaymentMethod> get _paymentMethodMap => {
-    for (final method in _paymentMethods) method.uuid: method,
-  };
+  Map<String, FinancePaymentMethod> get _paymentMethodMap {
+    _ensurePaymentMethodCaches();
+    return _paymentMethodMapCache;
+  }
+
+  String _paymentMethodDisplayName(FinancePaymentMethod method) {
+    _ensurePaymentMethodCaches();
+    return _paymentMethodDisplayNames[method.uuid] ?? method.name;
+  }
 
   bool get _isFutureMonth {
     final now = widget.clock();
@@ -97,7 +146,7 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
   }
 
   String get _monthLabel =>
-      _isCurrentMonth ? '本月' : DateFormat('yyyy年M月').format(_month);
+      _isCurrentMonth ? '本月' : _cachedDateFormat('yyyy年M月').format(_month);
 
   String get _paymentBalanceSectionTitle {
     if (_isCurrentMonth) return '付款方式实时余额';
@@ -179,6 +228,29 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
                   .toSet(),
             );
       if (!mounted || generation != _loadGeneration) return;
+      final loanRepayments = values[4] as List<FinanceLoanInstallment>;
+      final loanInterestTransactionUuids = loanRepayments
+          .map((item) => item.interestTransactionUuid)
+          .whereType<String>()
+          .toSet();
+      final balanceAsOfAt = _balanceAsOfAt;
+      final balanceNow = widget.clock();
+      final snapshotsForBalance = month.isAfter(
+        DateTime(balanceNow.year, balanceNow.month),
+      )
+          ? const <FinanceBudget>[]
+          : FinanceRepository.latestPaymentBalanceSnapshots(
+              balanceSnapshots,
+              asOfAt: balanceAsOfAt,
+              nowAt: balanceNow.millisecondsSinceEpoch,
+            );
+      final paymentMethodBalances = FinanceRepository.paymentMethodBalancesAt(
+        snapshots: snapshotsForBalance,
+        transactions: balanceTransactions,
+        loanRepayments: loanRepayments,
+        loanInterestTransactionUuids: loanInterestTransactionUuids,
+        asOfAt: balanceAsOfAt,
+      );
       setState(() {
         _budgets = allBudgets
             .where((budget) => budget.monthKey == financeMonthKey(month))
@@ -188,13 +260,11 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
         _paymentMethods = values[2] as List<FinancePaymentMethod>;
         _transactions = values[3] as List<FinanceTransaction>;
         _balanceTransactions = balanceTransactions;
-        _loanRepayments = values[4] as List<FinanceLoanInstallment>;
-        _loanInterestTransactionUuids = _loanRepayments
-            .map((item) => item.interestTransactionUuid)
-            .whereType<String>()
-            .toSet();
+        _loanRepayments = loanRepayments;
+        _loanInterestTransactionUuids = loanInterestTransactionUuids;
+        _paymentMethodBalances = paymentMethodBalances;
         _balanceSyncSupported = values[5] as bool?;
-        _summary = _summaryForCurrentView();
+        _summary = _summaryForCurrentView(balanceAsOfAt);
         _isLoading = false;
         _loadError = null;
       });
@@ -295,7 +365,24 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
         unawaited(_load(showLoading: false));
         return;
       }
-      setState(() => _summary = _summaryForCurrentView());
+      final balanceAsOfAt = _balanceAsOfAt;
+      final balanceNow = widget.clock();
+      final paymentMethodBalances = FinanceRepository.paymentMethodBalancesAt(
+        snapshots: FinanceRepository.latestPaymentBalanceSnapshots(
+          _balanceSnapshots,
+          asOfAt: balanceAsOfAt,
+          nowAt: balanceNow.millisecondsSinceEpoch,
+        ),
+        transactions: _balanceTransactions,
+        loanRepayments: _loanRepayments,
+        loanInterestTransactionUuids: _loanInterestTransactionUuids,
+        asOfAt: balanceAsOfAt,
+      );
+      final summary = _summaryForCurrentView(balanceAsOfAt);
+      setState(() {
+        _paymentMethodBalances = paymentMethodBalances;
+        _summary = summary;
+      });
       _scheduleBalanceRefresh();
     });
   }
@@ -337,6 +424,7 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
       );
       return;
     }
+    final displayNames = financePaymentMethodDisplayNames(methods);
     final paymentMethodUuid = await showAppModalBottomSheet<String>(
       context: context,
       builder: (context) => SafeArea(
@@ -354,7 +442,7 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
             for (final method in methods)
               ListTile(
                 leading: Text(method.icon),
-                title: Text(financePaymentMethodDisplayName(method, methods)),
+                title: Text(displayNames[method.uuid] ?? method.name),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => Navigator.of(context).pop(method.uuid),
               ),
@@ -448,8 +536,16 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
     await _load();
   }
 
-  int _usedFor(FinanceBudget budget) {
-    if (budget.paymentMethodUuid != null) {
+  int _usedFor(
+    FinanceBudget budget, {
+    Map<String, int>? budgetSpending,
+  }) {
+    final paymentMethodUuid = budget.paymentMethodUuid;
+    if (paymentMethodUuid != null) {
+      final balance = _paymentMethodBalances[paymentMethodUuid];
+      if (balance != null) return budget.amountMinor - balance;
+      // Keep a correct fallback if a newly eligible snapshot appears between
+      // loading data and the next screen refresh.
       return budget.amountMinor - FinanceRepository.paymentMethodBalanceAt(
         snapshot: budget,
         transactions: _balanceTransactions,
@@ -458,7 +554,8 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
         asOfAt: _balanceAsOfAt,
       );
     }
-    return _summary.spendingForBudget(budget, _categories);
+    return budgetSpending?[budget.uuid] ??
+        _summary.spendingForBudget(budget, _categories);
   }
 
   int _balanceEventTime(
@@ -484,17 +581,14 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
     if (budget.paymentMethodUuid != null) {
       final paymentMethod = _paymentMethodMap[budget.paymentMethodUuid];
       if (paymentMethod == null) return '已归档或未知付款方式';
-      final name = financePaymentMethodDisplayName(
-        paymentMethod,
-        _paymentMethods,
-      );
+      final name = _paymentMethodDisplayName(paymentMethod);
       final archivedLabel = paymentMethod.isArchived ? '（已归档）' : '';
       return '$name$archivedLabel';
     }
     final category = _categoryMap[budget.categoryUuid];
     return category == null
         ? '已归档或未知分类'
-        : '${financeCategoryDisplayName(category, _categories)}${category.isArchived ? '（已归档）' : ''}';
+        : '${_categoryDisplayName(category)}${category.isArchived ? '（已归档）' : ''}';
   }
 
   String _budgetIcon(FinanceBudget budget) {
@@ -509,6 +603,18 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final topBarHeight = floatingGlassTopBarHeight(context);
+    final hasContent = !_isLoading && _loadError == null;
+    final nonPaymentBudgets = hasContent
+        ? _budgets
+              .where((budget) => !budget.isPaymentMethod)
+              .toList(growable: false)
+        : const <FinanceBudget>[];
+    final paymentBudgets = hasContent
+        ? _paymentBudgets
+        : const <FinanceBudget>[];
+    final budgetSpending = hasContent
+        ? _summary.spendingForBudgets(nonPaymentBudgets, _categories)
+        : const <String, int>{};
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: FloatingGlassAppBar(
@@ -529,7 +635,11 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
                   children: [
                     _buildMonthBar(colorScheme),
                     const SizedBox(height: 8),
-                    _buildSummaryCard(colorScheme),
+                    _buildSummaryCard(
+                      colorScheme,
+                      hasPaymentBudgets: paymentBudgets.isNotEmpty,
+                      budgetSpending: budgetSpending,
+                    ),
                     const SizedBox(height: 24),
                     Row(
                       children: [
@@ -541,28 +651,27 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
                           ),
                         ),
                         Text(
-                          '${_budgets.where((budget) => !budget.isPaymentMethod).length} 项',
+                          '${nonPaymentBudgets.length} 项',
                           style: TextStyle(color: colorScheme.onSurfaceVariant),
                         ),
                       ],
                     ),
                     const SizedBox(height: 8),
-                    if (_budgets
-                        .where((budget) => !budget.isPaymentMethod)
-                        .isEmpty)
+                    if (nonPaymentBudgets.isEmpty)
                       _buildEmptyState(colorScheme)
                     else
                       FinanceAdaptiveFields(
                         minChildWidth: 330,
                         children: [
-                          for (final budget in _budgets.where(
-                            (budget) => !budget.isPaymentMethod,
-                          ))
-                            _buildBudgetCard(budget, colorScheme),
+                          for (final budget in nonPaymentBudgets)
+                            _buildBudgetCard(
+                              budget,
+                              colorScheme,
+                              budgetSpending: budgetSpending,
+                            ),
                         ],
                       ),
-                    if (_budgets.any((budget) => !budget.isPaymentMethod) &&
-                        _overallBudget == null)
+                    if (nonPaymentBudgets.isNotEmpty && _overallBudget == null)
                       Padding(
                         padding: const EdgeInsets.only(top: 4),
                         child: Text(
@@ -584,7 +693,7 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
                           ),
                         ),
                         Text(
-                          '${_paymentBudgets.length} 项',
+                          '${paymentBudgets.length} 项',
                           style: TextStyle(color: colorScheme.onSurfaceVariant),
                         ),
                         const SizedBox(width: 4),
@@ -608,14 +717,18 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
                       ),
                       const SizedBox(height: 8),
                     ],
-                    if (_paymentBudgets.isEmpty)
+                    if (paymentBudgets.isEmpty)
                       _buildPaymentEmptyState(colorScheme)
                     else
                       FinanceAdaptiveFields(
                         minChildWidth: 330,
                         children: [
-                          for (final budget in _paymentBudgets)
-                            _buildBudgetCard(budget, colorScheme),
+                          for (final budget in paymentBudgets)
+                            _buildBudgetCard(
+                              budget,
+                              colorScheme,
+                              budgetSpending: budgetSpending,
+                            ),
                         ],
                       ),
                   ],
@@ -676,7 +789,11 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
     );
   }
 
-  Widget _buildSummaryCard(ColorScheme colorScheme) {
+  Widget _buildSummaryCard(
+    ColorScheme colorScheme, {
+    required bool hasPaymentBudgets,
+    required Map<String, int> budgetSpending,
+  }) {
     final overall = _overallBudget;
     final categoryBudgets = _categoryBudgets;
     final summaryBudgets = FinanceBudget.nonOverlappingCategories(
@@ -687,8 +804,12 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
         overall?.amountMinor ??
         summaryBudgets.fold<int>(0, (sum, item) => sum + item.amountMinor);
     final used = overall == null
-        ? summaryBudgets.fold<int>(0, (sum, item) => sum + _usedFor(item))
-        : _usedFor(overall);
+        ? summaryBudgets.fold<int>(
+            0,
+            (sum, item) =>
+                sum + _usedFor(item, budgetSpending: budgetSpending),
+          )
+        : _usedFor(overall, budgetSpending: budgetSpending);
     final remaining = budgetTotal - used;
     final progress = budgetTotal == 0
         ? 0.0
@@ -761,7 +882,7 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
                   ?.copyWith(color: foreground.withValues(alpha: 0.75)),
             ),
           ],
-          if (_paymentBudgets.isNotEmpty) ...[
+          if (hasPaymentBudgets) ...[
             const SizedBox(height: 12),
             Text(
               _isCurrentMonth
@@ -776,8 +897,12 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
     );
   }
 
-  Widget _buildBudgetCard(FinanceBudget budget, ColorScheme colorScheme) {
-    final used = _usedFor(budget);
+  Widget _buildBudgetCard(
+    FinanceBudget budget,
+    ColorScheme colorScheme, {
+    required Map<String, int> budgetSpending,
+  }) {
+    final used = _usedFor(budget, budgetSpending: budgetSpending);
     final remaining = budget.amountMinor - used;
     final isOver = remaining < 0;
     final usageLabel = _isFutureMonth
@@ -792,6 +917,9 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
     final snapshotAt = DateTime.fromMillisecondsSinceEpoch(
       budget.effectiveBalanceSnapshotAt,
     );
+    final balanceSnapshotDateFormat = budget.isPaymentMethod
+        ? _cachedDateFormat('yyyy年M月d日 HH:mm')
+        : null;
     final progress = budget.amountMinor == 0
         ? 0.0
         : (used / budget.amountMinor).clamp(0.0, 1.0).toDouble();
@@ -845,7 +973,7 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
               ),
               _budgetMetric(
                 budget.isPaymentMethod
-                    ? '${DateFormat('yyyy年M月d日 HH:mm').format(snapshotAt)} 的余额'
+                    ? '${balanceSnapshotDateFormat!.format(snapshotAt)} 的余额'
                     : '预算额度',
                 budget.amountMinor,
               ),

@@ -5,6 +5,7 @@ import 'dart:ui';
 import 'island_config.dart';
 import 'island_state_stack.dart';
 import 'island_win32.dart';
+import '../utils/app_image_filters.dart';
 import '../services/system_control_service.dart';
 import '../utils/time_utils.dart';
 
@@ -45,6 +46,10 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
 
   // ── 动画控制器
   late AnimationController _splitController;
+  late Animation<double> _splitProgress;
+  late Animation<double> _splitRowOpacity;
+  late Animation<double> _splitCardTop;
+  late Animation<double> _splitCardScale;
   late AnimationController _sizeController;
   late Animation<Size> _sizeAnimation;
   late Animation<double> _radiusAnimation;
@@ -144,6 +149,22 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       vsync: this,
       duration: IslandConfig.transitionDuration,
     );
+    _splitProgress = CurvedAnimation(
+      parent: _splitController,
+      curve: Curves.easeOutCubic,
+    );
+    _splitRowOpacity = Tween<double>(
+      begin: 0.75,
+      end: 1.0,
+    ).animate(_splitProgress);
+    _splitCardTop = Tween<double>(
+      begin: 66.0,
+      end: 54.0,
+    ).animate(_splitProgress);
+    _splitCardScale = Tween<double>(
+      begin: 0.96,
+      end: 1.0,
+    ).animate(_splitProgress);
 
     _sizeController = AnimationController(
       vsync: this,
@@ -755,7 +776,37 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
         alignment: Alignment.topCenter,
         child: AnimatedBuilder(
           animation: _sizeController,
-          builder: (_, _) {
+          child: AnimatedSwitcher(
+            duration: IslandConfig.switchDuration,
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeInCubic,
+            layoutBuilder: (currentChild, previousChildren) => Stack(
+              alignment: Alignment.center,
+              children: [...previousChildren, ?currentChild],
+            ),
+            transitionBuilder: (child, anim) {
+              final curved = CurvedAnimation(
+                parent: anim,
+                curve: Curves.easeOutCubic,
+                reverseCurve: Curves.easeInCubic,
+              );
+              return FadeTransition(
+                opacity: curved,
+                child: ScaleTransition(
+                  scale: Tween<double>(
+                    begin: IslandConfig.switchScaleBegin,
+                    end: IslandConfig.switchScaleEnd,
+                  ).animate(curved),
+                  child: child,
+                ),
+              );
+            },
+            child: KeyedSubtree(
+              key: ValueKey(_contentKeyForCurrentState()),
+              child: _buildContent(),
+            ),
+          ),
+          builder: (_, child) {
             final double borderRadius = _radiusAnimation.value;
             return Container(
               width: _sizeAnimation.value.width,
@@ -774,7 +825,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                 borderRadius: BorderRadius.circular(borderRadius),
                 child: RepaintBoundary(
                   child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
+                    filter: AppImageFilters.blur6,
                     child: Container(
                       decoration: BoxDecoration(
                         color: isTransparent
@@ -789,40 +840,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                               ),
                       ),
                       clipBehavior: Clip.antiAlias,
-                      child: AnimatedSwitcher(
-                        duration: IslandConfig.switchDuration,
-                        switchInCurve: Curves.easeOutCubic,
-                        switchOutCurve: Curves.easeInCubic,
-                        layoutBuilder: (currentChild, previousChildren) =>
-                            Stack(
-                          alignment: Alignment.center,
-                          children: [
-                            ...previousChildren,
-                            ?currentChild,
-                          ],
-                        ),
-                        transitionBuilder: (child, anim) {
-                          final curved = CurvedAnimation(
-                            parent: anim,
-                            curve: Curves.easeOutCubic,
-                            reverseCurve: Curves.easeInCubic,
-                          );
-                          return FadeTransition(
-                            opacity: curved,
-                            child: ScaleTransition(
-                              scale: Tween<double>(
-                                begin: IslandConfig.switchScaleBegin,
-                                end: IslandConfig.switchScaleEnd,
-                              ).animate(curved),
-                              child: child,
-                            ),
-                          );
-                        },
-                        child: KeyedSubtree(
-                          key: ValueKey(_contentKeyForCurrentState()),
-                          child: _buildContent(),
-                        ),
-                      ),
+                      child: child!,
                     ),
                   ),
                 ),
@@ -2084,39 +2102,37 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
 
     final card =
         expanded == 'focusing' ? _expandedFocusing() : _expandedReminder();
-    return AnimatedBuilder(
-      animation: _splitController,
-      builder: (context, child) {
-        final progress = Curves.easeOutCubic.transform(_splitController.value);
-        return Stack(
-          clipBehavior: Clip.hardEdge,
-          children: [
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              height: 46,
-              child: Opacity(
-                opacity: lerpDouble(0.75, 1.0, progress)!,
-                child: Center(child: row),
-              ),
+    return Stack(
+      clipBehavior: Clip.hardEdge,
+      children: [
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          height: 46,
+          child: FadeTransition(
+            opacity: _splitRowOpacity,
+            child: Center(child: row),
+          ),
+        ),
+        AnimatedBuilder(
+          animation: _splitCardTop,
+          builder: (context, child) => Positioned(
+            top: _splitCardTop.value,
+            left: 8,
+            right: 8,
+            child: child!,
+          ),
+          child: FadeTransition(
+            opacity: _splitProgress,
+            child: ScaleTransition(
+              scale: _splitCardScale,
+              alignment: Alignment.topCenter,
+              child: card,
             ),
-            Positioned(
-              top: lerpDouble(66, 54, progress)!,
-              left: 8,
-              right: 8,
-              child: Opacity(
-                opacity: progress,
-                child: Transform.scale(
-                  alignment: Alignment.topCenter,
-                  scale: lerpDouble(0.96, 1.0, progress)!,
-                  child: card,
-                ),
-              ),
-            ),
-          ],
-        );
-      },
+          ),
+        ),
+      ],
     );
   }
 

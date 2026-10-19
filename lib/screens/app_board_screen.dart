@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+
 import '../models.dart';
 import '../storage_service.dart';
 import '../services/course_service.dart';
@@ -16,6 +18,16 @@ import '../widgets/optional_liquid_glass_surface.dart';
 const Color emerald = Color(0xFF10B981);
 const Color emeraldAccent = Color(0xFF34D399);
 
+final Map<(String?, String), DateFormat> _appBoardDateFormats = {};
+
+DateFormat _appBoardDateFormat(String pattern) {
+  final locale = Intl.defaultLocale;
+  return _appBoardDateFormats.putIfAbsent(
+    (locale, pattern),
+    () => DateFormat(pattern, locale),
+  );
+}
+
 class AppBoardScreen extends StatefulWidget {
   final String username;
   final VoidCallback? onBack;
@@ -29,6 +41,8 @@ class AppBoardScreen extends StatefulWidget {
 class _AppBoardScreenState extends State<AppBoardScreen>
     with TickerProviderStateMixin, WidgetsBindingObserver {
   List<TodoItem> _todos = [];
+  List<TodoItem> _ganttTodos = [];
+  int _completedTodoCount = 0;
   List<CountdownItem> _countdowns = [];
   List<CourseItem> _courses = [];
   DateTime? _semesterStart;
@@ -80,8 +94,9 @@ class _AppBoardScreenState extends State<AppBoardScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    PowerSaveModeService.enabledListenable
-        .removeListener(_onPowerSaveModeChanged);
+    PowerSaveModeService.enabledListenable.removeListener(
+      _onPowerSaveModeChanged,
+    );
     _stopTimers();
     _nowNotifier.dispose();
     _cdScrollController.dispose();
@@ -98,15 +113,34 @@ class _AppBoardScreenState extends State<AppBoardScreen>
   }
 
   void _startTimers() {
-    _timer ??= Timer.periodic(AndroidEnergyPolicy.visibleClockInterval, (_) {
+    if (_timer == null) {
+      _refreshCurrentTime();
+      _scheduleClockRefresh();
+    }
+    if (_shouldRunMarquee) _scheduleMarqueeTick(Duration.zero);
+  }
+
+  void _scheduleClockRefresh() {
+    if (!_shouldRunTimers) return;
+
+    final now = DateTime.now();
+    final nextMinute = DateTime(
+      now.year,
+      now.month,
+      now.day,
+      now.hour,
+      now.minute,
+    ).add(const Duration(minutes: 1));
+    final delay = nextMinute.difference(now);
+    _timer = Timer(delay, () {
+      _timer = null;
       if (!_shouldRunTimers) {
         _stopTimers();
         return;
       }
-      _now = DateTime.now();
-      _nowNotifier.value = _now;
+      _refreshCurrentTime();
+      _scheduleClockRefresh();
     });
-    if (_shouldRunMarquee) _scheduleMarqueeTick(Duration.zero);
   }
 
   void _stopTimers() {
@@ -148,9 +182,22 @@ class _AppBoardScreenState extends State<AppBoardScreen>
 
   void _onPowerSaveModeChanged() {
     _stopTimers();
-    _now = DateTime.now();
-    _nowNotifier.value = _now;
+    _refreshCurrentTime();
     _syncTimersWithVisibility();
+  }
+
+  void _refreshCurrentTime() {
+    final now = DateTime.now();
+    _now = now;
+
+    final displayedTime = _nowNotifier.value;
+    if (displayedTime.year != now.year ||
+        displayedTime.month != now.month ||
+        displayedTime.day != now.day ||
+        displayedTime.hour != now.hour ||
+        displayedTime.minute != now.minute) {
+      _nowNotifier.value = now;
+    }
   }
 
   int _calculateCurrentWeek() {
@@ -183,8 +230,20 @@ class _AppBoardScreenState extends State<AppBoardScreen>
           }
         }
 
+        final activeTodos = <TodoItem>[];
+        final ganttTodos = <TodoItem>[];
+        var completedTodoCount = 0;
+        for (final todo in todos) {
+          if (todo.isDeleted) continue;
+          activeTodos.add(todo);
+          if (todo.isDone) completedTodoCount++;
+          if (todo.dueDate != null) ganttTodos.add(todo);
+        }
+
         setState(() {
-          _todos = todos.where((t) => !t.isDeleted).toList();
+          _todos = activeTodos;
+          _ganttTodos = ganttTodos;
+          _completedTodoCount = completedTodoCount;
           _countdowns = countdowns
               .where((c) => !c.isDeleted && c.targetDate.isAfter(_now))
               .toList();
@@ -227,10 +286,12 @@ class _AppBoardScreenState extends State<AppBoardScreen>
                 child: _isLoading
                     ? Center(
                         child: CircularProgressIndicator(
-                            color: Theme.of(context).colorScheme.primary))
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      )
                     : isDesktop
-                        ? _buildDesktopLayout()
-                        : _buildMobileLayout(),
+                    ? _buildDesktopLayout()
+                    : _buildMobileLayout(),
               ),
               if (isDesktop) _buildFooter(),
               if (!isDesktop) _buildMobileNav(),
@@ -253,39 +314,43 @@ class _AppBoardScreenState extends State<AppBoardScreen>
       padding: EdgeInsets.symmetric(horizontal: isDesktop ? 40 : 16),
       decoration: BoxDecoration(
         border: Border(
-            bottom: BorderSide(color: Colors.white.withValues(alpha: 0.05))),
+          bottom: BorderSide(color: Colors.white.withValues(alpha: 0.05)),
+        ),
         color: Colors.black.withValues(alpha: 0.2),
       ),
       child: Row(
         children: [
           // Back Button
-          FloatingGlassControl(
-            height: 48,
-            borderRadius: 16,
-            tint: Theme.of(context)
-                .colorScheme
-                .surfaceContainerHighest
-                .withValues(alpha: 0.08),
-            isDark: true,
-            useTopBarGlass: true,
-            fallback: IconButton(
-              onPressed: onBack,
-              icon: const Icon(Icons.arrow_back, color: Colors.white70),
-              style: IconButton.styleFrom(
-                backgroundColor: Colors.white.withValues(alpha: 0.05),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16)),
-                side: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
+          SizedBox.square(
+            dimension: 48,
+            child: FloatingGlassControl(
+              height: 48,
+              borderRadius: 16,
+              tint: Theme.of(context).colorScheme.surfaceContainerHighest
+                  .withValues(alpha: 0.08),
+              isDark: true,
+              useTopBarGlass: true,
+              fallback: IconButton(
+                onPressed: onBack,
+                icon: const Icon(Icons.arrow_back, color: Colors.white70),
+                style: IconButton.styleFrom(
+                  backgroundColor: Colors.white.withValues(alpha: 0.05),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  side: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
+                ),
               ),
-            ),
-            child: IconButton(
-              onPressed: onBack,
-              icon: const Icon(Icons.arrow_back, color: Colors.white70),
-              style: IconButton.styleFrom(
-                backgroundColor: Colors.transparent,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16)),
-                side: BorderSide.none,
+              child: IconButton(
+                onPressed: onBack,
+                icon: const Icon(Icons.arrow_back, color: Colors.white70),
+                style: IconButton.styleFrom(
+                  backgroundColor: Colors.transparent,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  side: BorderSide.none,
+                ),
               ),
             ),
           ),
@@ -293,9 +358,9 @@ class _AppBoardScreenState extends State<AppBoardScreen>
           // Title
           if (isDesktop)
             ShaderMask(
-              shaderCallback: (bounds) => const LinearGradient(
-                colors: [Colors.white, Colors.white38],
-              ).createShader(bounds),
+              shaderCallback: (bounds) =>
+                  const LinearGradient(colors: [Colors.white, Colors.white38])
+                      .createShader(bounds),
               child: const Text(
                 '看板',
                 style: TextStyle(
@@ -339,24 +404,30 @@ class _AppBoardScreenState extends State<AppBoardScreen>
                     separatorBuilder: (_, _) => const SizedBox(width: 16),
                     itemBuilder: (context, index) {
                       final cd = _countdowns[index];
-                      final diff =
-                          CalendarDateMath.daysBetween(_now, cd.targetDate);
+                      final diff = CalendarDateMath.daysBetween(
+                        _now,
+                        cd.targetDate,
+                      );
                       final isUrgent = diff < 3;
                       return Container(
                         width: 140,
                         padding: const EdgeInsets.symmetric(
-                            vertical: 6, horizontal: 12),
+                          vertical: 6,
+                          horizontal: 12,
+                        ),
                         decoration: BoxDecoration(
-                          color: (isUrgent
-                                  ? Colors.red
-                                  : Theme.of(context).colorScheme.primary)
-                              .withValues(alpha: 0.1),
+                          color:
+                              (isUrgent
+                                      ? Colors.red
+                                      : Theme.of(context).colorScheme.primary)
+                                  .withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
-                            color: (isUrgent
-                                    ? Colors.red
-                                    : Theme.of(context).colorScheme.primary)
-                                .withValues(alpha: 0.2),
+                            color:
+                                (isUrgent
+                                        ? Colors.red
+                                        : Theme.of(context).colorScheme.primary)
+                                    .withValues(alpha: 0.2),
                           ),
                         ),
                         child: Column(
@@ -400,7 +471,7 @@ class _AppBoardScreenState extends State<AppBoardScreen>
             ValueListenableBuilder<DateTime>(
               valueListenable: _nowNotifier,
               builder: (context, now, _) => Text(
-                DateFormat('HH:mm').format(now),
+                _appBoardDateFormat('HH:mm').format(now),
                 style: TextStyle(
                   color: Colors.white.withValues(alpha: 0.8),
                   fontSize: 48,
@@ -418,102 +489,117 @@ class _AppBoardScreenState extends State<AppBoardScreen>
   Widget _buildDesktopLayout() {
     return Padding(
       padding: const EdgeInsets.all(24.0),
-      child: LayoutBuilder(builder: (context, constraints) {
-        final availableHeight = constraints.maxHeight;
-        final availableWidth = constraints.maxWidth;
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final availableHeight = constraints.maxHeight;
+          final availableWidth = constraints.maxWidth;
 
-        return Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Expanded(
-              flex: 3,
-              child: GlassCard(
-                title: '今日执行流',
-                child: TodayHourlyTimeline(
-                  todos: _todos,
-                  courses: _courses,
-                  semesterStart: _semesterStart,
-                  currentWeek: _calculateCurrentWeek(),
-                  itemHeight:
-                      availableHeight / 26, // Fit 24 hours + some padding
-                  onTaskClick: (task) => setState(() => _detailTask = task),
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                flex: 3,
+                child: GlassCard(
+                  title: '今日执行流',
+                  child: TodayHourlyTimeline(
+                    todos: _todos,
+                    courses: _courses,
+                    semesterStart: _semesterStart,
+                    currentWeek: _calculateCurrentWeek(),
+                    itemHeight:
+                        availableHeight / 26, // Fit 24 hours + some padding
+                    onTaskClick: (task) => setState(() => _detailTask = task),
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(width: 24),
-            Expanded(
-              flex: 6,
-              child: GlassCard(
-                title: '战略路线图',
-                headerExtra: Row(
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.zoom_out,
-                          color: Colors.white30, size: 18),
-                      onPressed: () => setState(
-                          () => _dayWidth = math.max(10, _dayWidth - 5)),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.zoom_in,
-                          color: Colors.white30, size: 18),
-                      onPressed: () => setState(
-                          () => _dayWidth = math.min(150, _dayWidth + 5)),
-                    ),
-                  ],
-                ),
-                child: GanttChart(
-                  todos: _todos.where((t) => t.dueDate != null).toList(),
-                  dayWidth: _dayWidth == 60.0
-                      ? (availableWidth * 0.5 / 37)
-                      : _dayWidth, // Default fit
-                  onTaskClick: (task) => setState(() => _detailTask = task),
+              const SizedBox(width: 24),
+              Expanded(
+                flex: 6,
+                child: GlassCard(
+                  title: '战略路线图',
+                  headerExtra: Row(
+                    children: [
+                      IconButton(
+                        icon: const Icon(
+                          Icons.zoom_out,
+                          color: Colors.white30,
+                          size: 18,
+                        ),
+                        onPressed: () => setState(
+                          () => _dayWidth = math.max(10, _dayWidth - 5),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(
+                          Icons.zoom_in,
+                          color: Colors.white30,
+                          size: 18,
+                        ),
+                        onPressed: () => setState(
+                          () => _dayWidth = math.min(150, _dayWidth + 5),
+                        ),
+                      ),
+                    ],
+                  ),
+                  child: GanttChart(
+                    todos: _ganttTodos,
+                    dayWidth: _dayWidth == 60.0
+                        ? (availableWidth * 0.5 / 37)
+                        : _dayWidth, // Default fit
+                    onTaskClick: (task) => setState(() => _detailTask = task),
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(width: 24),
-            Expanded(
-              flex: 3,
-              child: GlassCard(
-                title: '作战指挥中心',
-                headerExtra: Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    const Text('完成率',
+              const SizedBox(width: 24),
+              Expanded(
+                flex: 3,
+                child: GlassCard(
+                  title: '作战指挥中心',
+                  headerExtra: Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      const Text(
+                        '完成率',
                         style: TextStyle(
-                            color: Colors.white30,
-                            fontSize: 8,
-                            fontWeight: FontWeight.w900)),
-                    Text(
-                      '${_calculateCompletionRate()}%',
-                      style: const TextStyle(
+                          color: Colors.white30,
+                          fontSize: 8,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      Text(
+                        '${_calculateCompletionRate()}%',
+                        style: const TextStyle(
                           color: emeraldAccent,
                           fontSize: 12,
-                          fontWeight: FontWeight.w900),
-                    ),
-                  ],
-                ),
-                child: MissionControl(
-                  todos: _todos,
-                  activeTab: _missionTab,
-                  clock: () => _now,
-                  onTabChanged: (tab) => setState(() => _missionTab = tab),
-                  onTaskClick: (task) => setState(() => _detailTask = task),
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ],
+                  ),
+                  child: MissionControl(
+                    todos: _todos,
+                    activeTab: _missionTab,
+                    clock: () => _now,
+                    onTabChanged: (tab) => setState(() => _missionTab = tab),
+                    onTaskClick: (task) => setState(() => _detailTask = task),
+                  ),
                 ),
               ),
-            ),
-          ],
-        );
-      }),
+            ],
+          );
+        },
+      ),
     );
   }
 
   Widget _buildMobileLayout() {
     return Padding(
       padding: const EdgeInsets.all(16.0),
-      child: LayoutBuilder(builder: (context, constraints) {
-        final availableHeight = constraints.maxHeight;
-        return switch (_mobileTab) {
-          'stream' => GlassCard(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final availableHeight = constraints.maxHeight;
+          return switch (_mobileTab) {
+            'stream' => GlassCard(
               title: '今日执行流',
               child: TodayHourlyTimeline(
                 todos: _todos,
@@ -524,15 +610,15 @@ class _AppBoardScreenState extends State<AppBoardScreen>
                 onTaskClick: (task) => setState(() => _detailTask = task),
               ),
             ),
-          'roadmap' => GlassCard(
+            'roadmap' => GlassCard(
               title: '战略路线图',
               child: GanttChart(
-                todos: _todos.where((t) => t.dueDate != null).toList(),
+                todos: _ganttTodos,
                 dayWidth: _dayWidth,
                 onTaskClick: (task) => setState(() => _detailTask = task),
               ),
             ),
-          'mission' => GlassCard(
+            'mission' => GlassCard(
               title: '作战指挥中心',
               child: MissionControl(
                 todos: _todos,
@@ -542,9 +628,10 @@ class _AppBoardScreenState extends State<AppBoardScreen>
                 onTaskClick: (task) => setState(() => _detailTask = task),
               ),
             ),
-          _ => const SizedBox.shrink(),
-        };
-      }),
+            _ => const SizedBox.shrink(),
+          };
+        },
+      ),
     );
   }
 
@@ -553,8 +640,9 @@ class _AppBoardScreenState extends State<AppBoardScreen>
       height: 64,
       decoration: BoxDecoration(
         color: const Color(0xFF0F172A),
-        border:
-            Border(top: BorderSide(color: Colors.white.withValues(alpha: 0.1))),
+        border: Border(
+          top: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
+        ),
       ),
       child: Row(
         children: [
@@ -574,11 +662,13 @@ class _AppBoardScreenState extends State<AppBoardScreen>
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon,
-                color: isSelected
-                    ? Theme.of(context).colorScheme.primary
-                    : Colors.white24,
-                size: 20),
+            Icon(
+              icon,
+              color: isSelected
+                  ? Theme.of(context).colorScheme.primary
+                  : Colors.white24,
+              size: 20,
+            ),
             Text(
               label,
               style: TextStyle(
@@ -626,8 +716,7 @@ class _AppBoardScreenState extends State<AppBoardScreen>
 
   int _calculateCompletionRate() {
     if (_todos.isEmpty) return 0;
-    int completed = _todos.where((t) => t.isDone).length;
-    return (completed * 100 ~/ _todos.length);
+    return (_completedTodoCount * 100 ~/ _todos.length);
   }
 }
 
@@ -739,44 +828,50 @@ class _AnimatedBackgroundState extends State<AnimatedBackground>
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, child) {
-        return Stack(
-          children: [
-            Positioned(
-              top: -100 + (50 * _controller.value),
-              left: -100 + (30 * _controller.value),
-              child: Container(
-                width: 400,
-                height: 400,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Theme.of(context)
-                      .colorScheme
-                      .primary
-                      .withValues(alpha: 0.05 + (0.05 * _controller.value)),
-                ),
-              ),
-            ),
-            Positioned(
-              bottom: -50 - (40 * _controller.value),
-              right: -50 - (20 * _controller.value),
-              child: Container(
-                width: 350,
-                height: 350,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.indigo
-                      .withValues(alpha: 0.05 + (0.03 * _controller.value)),
-                ),
-              ),
-            ),
-          ],
-        );
-      },
+    return RepaintBoundary(
+      child: CustomPaint(
+        size: Size.infinite,
+        painter: _AnimatedBackgroundPainter(
+          animation: _controller,
+          primaryColor: Theme.of(context).colorScheme.primary,
+        ),
+      ),
     );
   }
+}
+
+class _AnimatedBackgroundPainter extends CustomPainter {
+  final Animation<double> animation;
+  final Color primaryColor;
+  final Paint _paint = Paint()..isAntiAlias = true;
+
+  _AnimatedBackgroundPainter({
+    required this.animation,
+    required this.primaryColor,
+  }) : super(repaint: animation);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final value = animation.value;
+    _paint.color = primaryColor.withValues(alpha: 0.05 + (0.05 * value));
+    canvas.drawCircle(
+      Offset(100 + (30 * value), 100 + (50 * value)),
+      200,
+      _paint,
+    );
+
+    _paint.color = Colors.indigo.withValues(alpha: 0.05 + (0.03 * value));
+    canvas.drawCircle(
+      Offset(size.width - 125 + (20 * value), size.height - 125 + (40 * value)),
+      175,
+      _paint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _AnimatedBackgroundPainter oldDelegate) =>
+      oldDelegate.animation != animation ||
+      oldDelegate.primaryColor != primaryColor;
 }
 
 class TodayHourlyTimeline extends StatelessWidget {
@@ -802,17 +897,28 @@ class TodayHourlyTimeline extends StatelessWidget {
     final now = DateTime.now();
     final todayStart = DateTime(now.year, now.month, now.day);
 
-    // Filter today's items
-    final todayCourses = courses.where((c) {
-      // Check weekday and weekIndex (if available)
-      return c.weekday == now.weekday &&
-          (c.weekIndex == 0 || c.weekIndex == currentWeek);
-    }).toList();
+    final coursesByHour = List<List<CourseItem>?>.filled(24, null);
+    for (final course in courses) {
+      if (course.weekday != now.weekday ||
+          (course.weekIndex != 0 && course.weekIndex != currentWeek)) {
+        continue;
+      }
+      final hour = course.startTime ~/ 100;
+      if (hour >= 0 && hour < coursesByHour.length) {
+        final hourCourses = coursesByHour[hour] ??= <CourseItem>[];
+        hourCourses.add(course);
+      }
+    }
 
-    final todayTasks = todos.where((t) {
-      if (t.dueDate == null) return false;
-      return DateUtils.isSameDay(t.dueDate, todayStart);
-    }).toList();
+    final tasksByHour = List<List<TodoItem>?>.filled(24, null);
+    for (final todo in todos) {
+      final dueDate = todo.dueDate;
+      if (dueDate == null || !DateUtils.isSameDay(dueDate, todayStart)) {
+        continue;
+      }
+      final hourTasks = tasksByHour[dueDate.hour] ??= <TodoItem>[];
+      hourTasks.add(todo);
+    }
 
     return ListView.builder(
       physics: itemHeight != null
@@ -822,17 +928,15 @@ class TodayHourlyTimeline extends StatelessWidget {
       itemCount: 24,
       itemBuilder: (context, hour) {
         final isCurrent = now.hour == hour;
-        final hCourses =
-            todayCourses.where((c) => c.startTime ~/ 100 == hour).toList();
-        final hTasks =
-            todayTasks.where((t) => t.dueDate!.hour == hour).toList();
+        final hCourses = coursesByHour[hour] ?? const <CourseItem>[];
+        final hTasks = tasksByHour[hour] ?? const <TodoItem>[];
 
         return Container(
           height: itemHeight ?? 60,
           decoration: BoxDecoration(
             border: Border(
-                bottom:
-                    BorderSide(color: Colors.white.withValues(alpha: 0.02))),
+              bottom: BorderSide(color: Colors.white.withValues(alpha: 0.02)),
+            ),
             color: isCurrent
                 ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.05)
                 : null,
@@ -860,77 +964,92 @@ class TodayHourlyTimeline extends StatelessWidget {
                   scrollDirection: Axis.horizontal,
                   child: Row(
                     children: [
-                      ...hCourses.map((c) => Container(
+                      ...hCourses.map(
+                        (c) => Container(
+                          margin: const EdgeInsets.only(right: 4),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 4,
+                            vertical: 1,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.indigo.withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(
+                              color: Colors.indigo.withValues(alpha: 0.1),
+                            ),
+                          ),
+                          child: Text(
+                            c.courseName,
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 8,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ),
+                      ...hTasks.map(
+                        (t) => GestureDetector(
+                          onTap: () => onTaskClick(t),
+                          child: Container(
                             margin: const EdgeInsets.only(right: 4),
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 4, vertical: 1),
+                              horizontal: 4,
+                              vertical: 1,
+                            ),
                             decoration: BoxDecoration(
-                              color: Colors.indigo.withValues(alpha: 0.2),
-                              borderRadius: BorderRadius.circular(4),
-                              border: Border.all(
-                                  color: Colors.indigo.withValues(alpha: 0.1)),
-                            ),
-                            child: Text(
-                              c.courseName,
-                              style: const TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: 8,
-                                  fontWeight: FontWeight.bold),
-                            ),
-                          )),
-                      ...hTasks.map((t) => GestureDetector(
-                            onTap: () => onTaskClick(t),
-                            child: Container(
-                              margin: const EdgeInsets.only(right: 4),
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 4, vertical: 1),
-                              decoration: BoxDecoration(
-                                color: (t.isDone
-                                        ? emerald
-                                        : Theme.of(context).colorScheme.primary)
-                                    .withValues(alpha: 0.2),
-                                borderRadius: BorderRadius.circular(4),
-                                border: Border.all(
-                                    color: (t.isDone
-                                            ? emerald
-                                            : Theme.of(context)
+                              color:
+                                  (t.isDone
+                                          ? emerald
+                                          : Theme.of(context)
                                                 .colorScheme
                                                 .primary)
-                                        .withValues(alpha: 0.1)),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Container(
-                                    width: 3,
-                                    height: 3,
-                                    decoration: BoxDecoration(
-                                      color: t.isDone
-                                          ? emeraldAccent
-                                          : Theme.of(context)
-                                              .colorScheme
-                                              .secondary,
-                                      shape: BoxShape.circle,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 2),
-                                  Text(
-                                    t.title,
-                                    style: TextStyle(
-                                      color: t.isDone
-                                          ? Colors.white30
-                                          : Colors.white,
-                                      fontSize: 8,
-                                      fontWeight: FontWeight.bold,
-                                      decoration: t.isDone
-                                          ? TextDecoration.lineThrough
-                                          : null,
-                                    ),
-                                  ),
-                                ],
+                                      .withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(
+                                color:
+                                    (t.isDone
+                                            ? emerald
+                                            : Theme.of(context)
+                                                  .colorScheme
+                                                  .primary)
+                                        .withValues(alpha: 0.1),
                               ),
                             ),
-                          )),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  width: 3,
+                                  height: 3,
+                                  decoration: BoxDecoration(
+                                    color: t.isDone
+                                        ? emeraldAccent
+                                        : Theme.of(context)
+                                              .colorScheme
+                                              .secondary,
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                                const SizedBox(width: 2),
+                                Text(
+                                  t.title,
+                                  style: TextStyle(
+                                    color: t.isDone
+                                        ? Colors.white30
+                                        : Colors.white,
+                                    fontSize: 8,
+                                    fontWeight: FontWeight.bold,
+                                    decoration: t.isDone
+                                        ? TextDecoration.lineThrough
+                                        : null,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -941,6 +1060,120 @@ class TodayHourlyTimeline extends StatelessWidget {
       },
     );
   }
+}
+
+class _GanttTaskLayoutInput {
+  const _GanttTaskLayoutInput({
+    required this.todo,
+    required this.isDone,
+    required this.createdAt,
+    required this.dueDateMicros,
+    required this.dueDateIsUtc,
+    required this.dueDateYear,
+    required this.dueDateMonth,
+    required this.dueDateDay,
+    required this.dueDateHour,
+    required this.dueDateMinute,
+    required this.dueDateOffsetSeconds,
+  });
+
+  factory _GanttTaskLayoutInput.from(TodoItem todo) {
+    final dueDate = todo.dueDate;
+    return _GanttTaskLayoutInput(
+      todo: todo,
+      isDone: todo.isDone,
+      createdAt: todo.createdAt,
+      dueDateMicros: dueDate?.microsecondsSinceEpoch,
+      dueDateIsUtc: dueDate?.isUtc,
+      dueDateYear: dueDate?.year,
+      dueDateMonth: dueDate?.month,
+      dueDateDay: dueDate?.day,
+      dueDateHour: dueDate?.hour,
+      dueDateMinute: dueDate?.minute,
+      dueDateOffsetSeconds: dueDate?.timeZoneOffset.inSeconds,
+    );
+  }
+
+  final TodoItem todo;
+  final bool isDone;
+  final int createdAt;
+  final int? dueDateMicros;
+  final bool? dueDateIsUtc;
+  final int? dueDateYear;
+  final int? dueDateMonth;
+  final int? dueDateDay;
+  final int? dueDateHour;
+  final int? dueDateMinute;
+  final int? dueDateOffsetSeconds;
+
+  bool matches(TodoItem candidate) {
+    final dueDate = candidate.dueDate;
+    return identical(todo, candidate) &&
+        isDone == candidate.isDone &&
+        createdAt == candidate.createdAt &&
+        dueDateMicros == dueDate?.microsecondsSinceEpoch &&
+        dueDateIsUtc == dueDate?.isUtc &&
+        dueDateYear == dueDate?.year &&
+        dueDateMonth == dueDate?.month &&
+        dueDateDay == dueDate?.day &&
+        dueDateHour == dueDate?.hour &&
+        dueDateMinute == dueDate?.minute &&
+        dueDateOffsetSeconds == dueDate?.timeZoneOffset.inSeconds;
+  }
+}
+
+class _GanttLayout {
+  const _GanttLayout({
+    required this.minDate,
+    required this.totalDays,
+    required this.startDates,
+    required this.activeRows,
+    required this.completedRows,
+  });
+
+  final DateTime minDate;
+  final int totalDays;
+  final Map<TodoItem, DateTime> startDates;
+  final List<List<TodoItem>> activeRows;
+  final List<List<TodoItem>> completedRows;
+}
+
+class _GanttDayGridPainter extends CustomPainter {
+  const _GanttDayGridPainter({
+    required this.dayCount,
+    required this.dayWidth,
+    required this.color,
+  });
+
+  final int dayCount;
+  final double dayWidth;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (dayCount <= 0 || size.height <= 0) return;
+
+    final grid = Path();
+    for (var day = 1; day <= dayCount; day++) {
+      final x = day * dayWidth - 0.5;
+      grid
+        ..moveTo(x, 0)
+        ..lineTo(x, size.height);
+    }
+    canvas.drawPath(
+      grid,
+      Paint()
+        ..color = color
+        ..strokeWidth = 1
+        ..style = PaintingStyle.stroke,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _GanttDayGridPainter oldDelegate) =>
+      dayCount != oldDelegate.dayCount ||
+      dayWidth != oldDelegate.dayWidth ||
+      color != oldDelegate.color;
 }
 
 class GanttChart extends StatefulWidget {
@@ -961,8 +1194,13 @@ class GanttChart extends StatefulWidget {
 
 class _GanttChartState extends State<GanttChart> {
   final ScrollController _scrollController = ScrollController();
+  final ValueNotifier<double> _horizontalOffset = ValueNotifier<double>(0);
   bool _hasScrolledToToday = false;
-  double _horizontalOffset = 0;
+  List<TodoItem>? _layoutTodoSource;
+  List<_GanttTaskLayoutInput>? _layoutInputs;
+  DateTime? _layoutToday;
+  int? _layoutTimeZoneOffsetSeconds;
+  _GanttLayout? _cachedLayout;
 
   @override
   void initState() {
@@ -983,14 +1221,13 @@ class _GanttChartState extends State<GanttChart> {
   void dispose() {
     _scrollController.removeListener(_handleHorizontalScroll);
     _scrollController.dispose();
+    _horizontalOffset.dispose();
     super.dispose();
   }
 
   void _handleHorizontalScroll() {
     if (!mounted) return;
-    setState(() {
-      _horizontalOffset = _scrollController.offset;
-    });
+    _horizontalOffset.value = _scrollController.offset;
   }
 
   void _scheduleScrollToToday(DateTime minDate, double dayWidth) {
@@ -1006,10 +1243,7 @@ class _GanttChartState extends State<GanttChart> {
       final viewportWidth = _scrollController.position.viewportDimension;
       final targetOffset = todayOffset - (viewportWidth / 2) + (dayWidth / 2);
       final clampedOffset = targetOffset
-          .clamp(
-            0.0,
-            _scrollController.position.maxScrollExtent,
-          )
+          .clamp(0.0, _scrollController.position.maxScrollExtent)
           .toDouble();
 
       _scrollController.jumpTo(clampedOffset);
@@ -1018,41 +1252,81 @@ class _GanttChartState extends State<GanttChart> {
   }
 
   List<List<TodoItem>> _packTasks(
-      List<TodoItem> tasks, DateTime minDate, DateTime maxDate) {
+    List<TodoItem> tasks,
+    Map<TodoItem, DateTime> startDates,
+    DateTime minDate,
+    DateTime maxDate,
+  ) {
     if (tasks.isEmpty) return [];
 
     final sorted = List<TodoItem>.from(tasks)
       ..sort((a, b) {
-        final startA = _taskStartDate(a);
-        final startB = _taskStartDate(b);
-        return startA.compareTo(startB);
+        return startDates[a]!.compareTo(startDates[b]!);
       });
 
     final List<List<TodoItem>> rows = [];
+    final rowHasValidIntervals = <bool>[];
+    const overlapPaddingMicroseconds = 2 * 60 * 60 * 1000000;
+
+    bool intervalsOverlap(
+      TodoItem existingTask,
+      int taskStartMicroseconds,
+      int taskEndMicroseconds,
+    ) {
+      final existingStartMicroseconds =
+          startDates[existingTask]!.microsecondsSinceEpoch;
+      final existingEndMicroseconds =
+          existingTask.dueDate!.microsecondsSinceEpoch;
+      return taskEndMicroseconds >
+              existingStartMicroseconds - overlapPaddingMicroseconds &&
+          taskStartMicroseconds <
+              existingEndMicroseconds + overlapPaddingMicroseconds;
+    }
+
     for (final task in sorted) {
-      final start = _taskStartDate(task);
+      final start = startDates[task]!;
       final end = task.dueDate!;
       if (end.isBefore(minDate) || start.isAfter(maxDate)) continue;
+      final startMicroseconds = start.microsecondsSinceEpoch;
+      final endMicroseconds = end.microsecondsSinceEpoch;
+      final hasValidInterval = !end.isBefore(start);
 
       bool placed = false;
-      for (final row in rows) {
-        bool overlaps = false;
-        for (final existingTask in row) {
-          final eStart = _taskStartDate(existingTask);
-          final eEnd = existingTask.dueDate!;
-          if (end.isAfter(eStart.subtract(const Duration(hours: 2))) &&
-              start.isBefore(eEnd.add(const Duration(hours: 2)))) {
-            overlaps = true;
-            break;
+      for (var rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+        final row = rows[rowIndex];
+        bool rowOverlaps = false;
+        // Rows are start-sorted and non-overlapping; for valid intervals only
+        // the latest task can conflict with this later-starting task.
+        if (hasValidInterval && rowHasValidIntervals[rowIndex]) {
+          rowOverlaps = intervalsOverlap(
+            row.last,
+            startMicroseconds,
+            endMicroseconds,
+          );
+        } else {
+          for (final existingTask in row) {
+            if (intervalsOverlap(
+              existingTask,
+              startMicroseconds,
+              endMicroseconds,
+            )) {
+              rowOverlaps = true;
+              break;
+            }
           }
         }
-        if (!overlaps) {
+        if (!rowOverlaps) {
           row.add(task);
+          rowHasValidIntervals[rowIndex] =
+              rowHasValidIntervals[rowIndex] && hasValidInterval;
           placed = true;
           break;
         }
       }
-      if (!placed) rows.add([task]);
+      if (!placed) {
+        rows.add([task]);
+        rowHasValidIntervals.add(hasValidInterval);
+      }
     }
 
     return rows;
@@ -1064,8 +1338,74 @@ class _GanttChartState extends State<GanttChart> {
         : task.dueDate!.subtract(const Duration(days: 3));
   }
 
+  _GanttLayout _layoutFor(List<TodoItem> todos, DateTime now) {
+    final today = CalendarDateMath.dateOnly(now);
+    final timeZoneOffsetSeconds = now.timeZoneOffset.inSeconds;
+    final cachedInputs = _layoutInputs;
+    final cachedLayout = _cachedLayout;
+    if (identical(_layoutTodoSource, todos) &&
+        _layoutToday == today &&
+        _layoutTimeZoneOffsetSeconds == timeZoneOffsetSeconds &&
+        cachedLayout != null &&
+        cachedInputs != null &&
+        cachedInputs.length == todos.length) {
+      var inputsUnchanged = true;
+      for (var index = 0; index < todos.length; index++) {
+        if (!cachedInputs[index].matches(todos[index])) {
+          inputsUnchanged = false;
+          break;
+        }
+      }
+      if (inputsUnchanged) return cachedLayout;
+    }
+
+    DateTime minDate = CalendarDateMath.addDays(today, -7);
+    DateTime maxDate = CalendarDateMath.addDays(today, 30);
+    final activeTodos = <TodoItem>[];
+    final completedTodos = <TodoItem>[];
+    final layoutInputs = <_GanttTaskLayoutInput>[];
+    final startDates = Map<TodoItem, DateTime>.identity();
+    for (final todo in todos) {
+      layoutInputs.add(_GanttTaskLayoutInput.from(todo));
+      if (todo.isDone) {
+        completedTodos.add(todo);
+      } else {
+        activeTodos.add(todo);
+      }
+
+      final start = _taskStartDate(todo);
+      startDates[todo] = start;
+      final end = todo.dueDate!;
+      if (start.isBefore(minDate)) minDate = start;
+      if (end.isAfter(maxDate)) maxDate = end;
+    }
+
+    minDate = CalendarDateMath.addDays(CalendarDateMath.dateOnly(minDate), -7);
+    maxDate = CalendarDateMath.addDays(CalendarDateMath.dateOnly(maxDate), 7);
+    final totalDays = CalendarDateMath.daysBetween(minDate, maxDate);
+    final layout = _GanttLayout(
+      minDate: minDate,
+      totalDays: totalDays,
+      startDates: startDates,
+      activeRows: _packTasks(activeTodos, startDates, minDate, maxDate),
+      completedRows: _packTasks(
+        completedTodos,
+        startDates,
+        minDate,
+        maxDate,
+      ),
+    );
+
+    _layoutTodoSource = todos;
+    _layoutToday = today;
+    _layoutTimeZoneOffsetSeconds = timeZoneOffsetSeconds;
+    _layoutInputs = layoutInputs;
+    return _cachedLayout = layout;
+  }
+
   Widget _buildTaskRow({
     required List<TodoItem> rowTasks,
+    required Map<TodoItem, DateTime> startDates,
     required DateTime minDate,
     required double effectiveDayWidth,
     required double rowHeight,
@@ -1076,7 +1416,7 @@ class _GanttChartState extends State<GanttChart> {
       height: rowHeight,
       child: Stack(
         children: rowTasks.map((task) {
-          final start = _taskStartDate(task);
+          final start = startDates[task]!;
           final end = task.dueDate!;
           final left = math.max(
             0.0,
@@ -1096,35 +1436,25 @@ class _GanttChartState extends State<GanttChart> {
               onTap: () => widget.onTaskClick(task),
               child: Container(
                 decoration: BoxDecoration(
-                  color: (task.teamUuid != null
-                          ? Theme.of(context).colorScheme.primary
-                          : emerald)
-                      .withValues(
-                    alpha: isCompleted ? 0.05 : 0.1,
-                  ),
+                  color:
+                      (task.teamUuid != null
+                              ? Theme.of(context).colorScheme.primary
+                              : emerald)
+                          .withValues(alpha: isCompleted ? 0.05 : 0.1),
                   borderRadius: BorderRadius.circular(4),
                   border: Border.all(
-                    color: (task.teamUuid != null
-                            ? Theme.of(context).colorScheme.primary
-                            : emerald)
-                        .withValues(
-                      alpha: isCompleted ? 0.16 : 0.3,
-                    ),
+                    color:
+                        (task.teamUuid != null
+                                ? Theme.of(context).colorScheme.primary
+                                : emerald)
+                            .withValues(alpha: isCompleted ? 0.16 : 0.3),
                   ),
                 ),
                 clipBehavior: Clip.hardEdge,
                 child: Stack(
                   children: [
-                    Positioned(
-                      left: (_horizontalOffset - left + 4)
-                          .clamp(
-                            4.0,
-                            math.max(4.0, width - 24),
-                          )
-                          .toDouble(),
-                      right: 4,
-                      top: 0,
-                      bottom: 0,
+                    ValueListenableBuilder<double>(
+                      valueListenable: _horizontalOffset,
                       child: Align(
                         alignment: Alignment.centerLeft,
                         child: Text(
@@ -1133,13 +1463,25 @@ class _GanttChartState extends State<GanttChart> {
                             color: isCompleted ? Colors.white38 : Colors.white,
                             fontSize: taskFontSize,
                             fontWeight: FontWeight.w900,
-                            decoration:
-                                isCompleted ? TextDecoration.lineThrough : null,
+                            decoration: isCompleted
+                                ? TextDecoration.lineThrough
+                                : null,
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
+                      builder: (context, horizontalOffset, child) {
+                        return Positioned(
+                          left: (horizontalOffset - left + 4)
+                              .clamp(4.0, math.max(4.0, width - 24))
+                              .toDouble(),
+                          right: 4,
+                          top: 0,
+                          bottom: 0,
+                          child: child!,
+                        );
+                      },
                     ),
                   ],
                 ),
@@ -1153,234 +1495,238 @@ class _GanttChartState extends State<GanttChart> {
 
   @override
   Widget build(BuildContext context) {
-    final activeTodos = widget.todos.where((t) => !t.isDone).toList();
-    final completedTodos = widget.todos.where((t) => t.isDone).toList();
-    final datedTodos = [...activeTodos, ...completedTodos];
-
-    if (datedTodos.isEmpty) {
+    if (widget.todos.isEmpty) {
       return const Center(
-          child: Text('暂无带日期的任务', style: TextStyle(color: Colors.white24)));
+        child: Text('暂无带日期的任务', style: TextStyle(color: Colors.white24)),
+      );
     }
 
     final now = DateTime.now();
 
-    // Calculate dynamic range based on tasks
-    final today = CalendarDateMath.dateOnly(now);
-    DateTime minDate = CalendarDateMath.addDays(today, -7);
-    DateTime maxDate = CalendarDateMath.addDays(today, 30);
+    final layout = _layoutFor(widget.todos, now);
+    final minDate = layout.minDate;
+    final totalDays = layout.totalDays;
+    final startDates = layout.startDates;
+    final activeRows = layout.activeRows;
+    final completedRows = layout.completedRows;
 
-    for (var t in datedTodos) {
-      final start = _taskStartDate(t);
-      final end = t.dueDate!;
-      if (start.isBefore(minDate)) minDate = start;
-      if (end.isAfter(maxDate)) maxDate = end;
-    }
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final availableWidth = constraints.maxWidth;
+        final effectiveDayWidth = widget.dayWidth <= 0
+            ? availableWidth / totalDays
+            : widget.dayWidth;
 
-    // Add buffers
-    minDate = CalendarDateMath.addDays(CalendarDateMath.dateOnly(minDate), -7);
-    maxDate = CalendarDateMath.addDays(CalendarDateMath.dateOnly(maxDate), 7);
+        final totalWidth = totalDays * effectiveDayWidth;
+        const taskTopOffset = 50.0;
+        final taskAreaHeight = math.max(
+          0.0,
+          constraints.maxHeight - taskTopOffset - 8,
+        );
+        final completedHeight = completedRows.isEmpty
+            ? 0.0
+            : activeRows.isEmpty
+            ? taskAreaHeight
+            : math.min(120.0, math.max(56.0, taskAreaHeight * 0.25));
+        final activeAreaHeight = math.max(
+          0.0,
+          taskAreaHeight -
+              completedHeight -
+              (completedRows.isEmpty || activeRows.isEmpty ? 0 : 10),
+        );
+        final activeRowGap = activeRows.length > 10 ? 1.0 : 4.0;
+        final activeRowHeight = activeRows.isEmpty
+            ? 0.0
+            : math.min(
+                28.0,
+                math.max(
+                  1.0,
+                  (activeAreaHeight -
+                          (activeRowGap * (activeRows.length - 1))) /
+                      activeRows.length,
+                ),
+              );
+        final activeFontSize = math.max(
+          5.0,
+          math.min(8.0, activeRowHeight * 0.55),
+        );
+        final completedRowHeight = math.min(
+          24.0,
+          math.max(14.0, completedHeight * 0.35),
+        );
+        final completedFontSize = math.max(
+          6.0,
+          math.min(8.0, completedRowHeight * 0.55),
+        );
+        _scheduleScrollToToday(minDate, effectiveDayWidth);
+        final weekdayFormatter = _appBoardDateFormat('E');
 
-    final totalDays = CalendarDateMath.daysBetween(minDate, maxDate);
-    final activeRows = _packTasks(activeTodos, minDate, maxDate);
-    final completedRows = _packTasks(completedTodos, minDate, maxDate);
-
-    return LayoutBuilder(builder: (context, constraints) {
-      final availableWidth = constraints.maxWidth;
-      final effectiveDayWidth =
-          widget.dayWidth <= 0 ? availableWidth / totalDays : widget.dayWidth;
-
-      final totalWidth = totalDays * effectiveDayWidth;
-      const taskTopOffset = 50.0;
-      final taskAreaHeight =
-          math.max(0.0, constraints.maxHeight - taskTopOffset - 8);
-      final completedHeight = completedRows.isEmpty
-          ? 0.0
-          : activeRows.isEmpty
-              ? taskAreaHeight
-              : math.min(120.0, math.max(56.0, taskAreaHeight * 0.25));
-      final activeAreaHeight = math.max(
-        0.0,
-        taskAreaHeight -
-            completedHeight -
-            (completedRows.isEmpty || activeRows.isEmpty ? 0 : 10),
-      );
-      final activeRowGap = activeRows.length > 10 ? 1.0 : 4.0;
-      final activeRowHeight = activeRows.isEmpty
-          ? 0.0
-          : math.min(
-              28.0,
-              math.max(
-                1.0,
-                (activeAreaHeight - (activeRowGap * (activeRows.length - 1))) /
-                    activeRows.length,
-              ),
-            );
-      final activeFontSize =
-          math.max(5.0, math.min(8.0, activeRowHeight * 0.55));
-      final completedRowHeight =
-          math.min(24.0, math.max(14.0, completedHeight * 0.35));
-      final completedFontSize =
-          math.max(6.0, math.min(8.0, completedRowHeight * 0.55));
-      _scheduleScrollToToday(minDate, effectiveDayWidth);
-
-      return SingleChildScrollView(
-        controller: _scrollController,
-        scrollDirection: Axis.horizontal,
-        physics: totalWidth <= availableWidth + 1
-            ? const NeverScrollableScrollPhysics()
-            : const BouncingScrollPhysics(),
-        child: SizedBox(
-          width: totalWidth,
-          child: Stack(
-            children: [
-              // Grid Lines & Header
-              Column(
-                children: [
-                  Row(
-                    children: List.generate(totalDays, (index) {
-                      final date = CalendarDateMath.addDays(minDate, index);
-                      final isToday = date.day == now.day &&
-                          date.month == now.month &&
-                          date.year == now.year;
-                      return Container(
-                        width: effectiveDayWidth,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          border: Border(
+        return SingleChildScrollView(
+          controller: _scrollController,
+          scrollDirection: Axis.horizontal,
+          physics: totalWidth <= availableWidth + 1
+              ? const NeverScrollableScrollPhysics()
+              : const BouncingScrollPhysics(),
+          child: SizedBox(
+            width: totalWidth,
+            child: Stack(
+              children: [
+                // Grid Lines & Header
+                Column(
+                  children: [
+                    Row(
+                      children: List.generate(totalDays, (index) {
+                        final date = CalendarDateMath.addDays(minDate, index);
+                        final isToday =
+                            date.day == now.day &&
+                            date.month == now.month &&
+                            date.year == now.year;
+                        return Container(
+                          width: effectiveDayWidth,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            border: Border(
                               right: BorderSide(
-                                  color: Colors.white.withValues(alpha: 0.05))),
-                        ),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              DateFormat('E').format(date).toUpperCase(),
-                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.05),
+                              ),
+                            ),
+                          ),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                weekdayFormatter.format(date).toUpperCase(),
+                                style: TextStyle(
                                   color: isToday
                                       ? Theme.of(context).colorScheme.primary
                                       : Colors.white12,
-                                  fontSize:
-                                      math.max(6.0, effectiveDayWidth / 5),
-                                  fontWeight: FontWeight.w900),
-                            ),
-                            Text(
-                              date.day.toString(),
-                              style: TextStyle(
-                                  color:
-                                      isToday ? Colors.white : Colors.white30,
-                                  fontSize:
-                                      math.max(8.0, effectiveDayWidth / 4),
-                                  fontWeight: FontWeight.bold),
-                            ),
-                          ],
-                        ),
-                      );
-                    }),
-                  ),
-                  Expanded(
-                    child: Row(
-                      children: List.generate(totalDays, (index) {
-                        return Container(
-                          width: effectiveDayWidth,
-                          decoration: BoxDecoration(
-                            border: Border(
-                                right: BorderSide(
-                                    color:
-                                        Colors.white.withValues(alpha: 0.02))),
+                                  fontSize: math.max(
+                                    6.0,
+                                    effectiveDayWidth / 5,
+                                  ),
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                              Text(
+                                date.day.toString(),
+                                style: TextStyle(
+                                  color: isToday
+                                      ? Colors.white
+                                      : Colors.white30,
+                                  fontSize: math.max(
+                                    8.0,
+                                    effectiveDayWidth / 4,
+                                  ),
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
                           ),
                         );
                       }),
                     ),
-                  ),
-                ],
-              ),
-              // Today Line
-              Positioned(
-                left: CalendarDateMath.dayOffset(minDate, now) *
-                    effectiveDayWidth,
-                top: 0,
-                bottom: 0,
-                child: Container(
-                  width: 1,
-                  color: Theme.of(context)
-                      .colorScheme
-                      .primary
-                      .withValues(alpha: 0.5),
-                ),
-              ),
-              // Task Rows
-              Positioned(
-                left: 0,
-                right: 0,
-                top: taskTopOffset,
-                child: Column(
-                  children: [
-                    ...List.generate(activeRows.length, (rowIndex) {
-                      final rowTasks = activeRows[rowIndex];
-                      return Padding(
-                        padding: EdgeInsets.only(
-                          bottom: rowIndex == activeRows.length - 1
-                              ? 0
-                              : activeRowGap,
+                    Expanded(
+                      child: CustomPaint(
+                        painter: _GanttDayGridPainter(
+                          dayCount: totalDays,
+                          dayWidth: effectiveDayWidth,
+                          color: Colors.white.withValues(alpha: 0.02),
                         ),
-                        child: _buildTaskRow(
-                          rowTasks: rowTasks,
-                          minDate: minDate,
-                          effectiveDayWidth: effectiveDayWidth,
-                          rowHeight: activeRowHeight,
-                          taskFontSize: activeFontSize,
-                          isCompleted: false,
-                        ),
-                      );
-                    }),
-                    if (activeRows.isEmpty)
-                      SizedBox(
-                        height: math.max(0.0, activeAreaHeight),
-                        child: const Center(
-                          child: Text(
-                            '暂无未完成日期任务',
-                            style: TextStyle(color: Colors.white24),
-                          ),
-                        ),
+                        child: const SizedBox.expand(),
                       ),
-                    if (completedRows.isNotEmpty && activeRows.isNotEmpty)
-                      const SizedBox(height: 10),
-                    if (completedRows.isNotEmpty)
-                      SizedBox(
-                        height: completedHeight,
-                        child: SingleChildScrollView(
-                          physics: const BouncingScrollPhysics(),
-                          child: Column(
-                            children:
-                                List.generate(completedRows.length, (rowIndex) {
-                              final rowTasks = completedRows[rowIndex];
-                              return Padding(
-                                padding: EdgeInsets.only(
-                                  bottom: rowIndex == completedRows.length - 1
-                                      ? 0
-                                      : 3,
-                                ),
-                                child: _buildTaskRow(
-                                  rowTasks: rowTasks,
-                                  minDate: minDate,
-                                  effectiveDayWidth: effectiveDayWidth,
-                                  rowHeight: completedRowHeight,
-                                  taskFontSize: completedFontSize,
-                                  isCompleted: true,
-                                ),
-                              );
-                            }),
-                          ),
-                        ),
-                      ),
+                    ),
                   ],
                 ),
-              ),
-            ],
+                // Today Line
+                Positioned(
+                  left:
+                      CalendarDateMath.dayOffset(minDate, now) *
+                      effectiveDayWidth,
+                  top: 0,
+                  bottom: 0,
+                  child: Container(
+                    width: 1,
+                    color: Theme.of(context).colorScheme.primary
+                        .withValues(alpha: 0.5),
+                  ),
+                ),
+                // Task Rows
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  top: taskTopOffset,
+                  child: Column(
+                    children: [
+                      ...List.generate(activeRows.length, (rowIndex) {
+                        final rowTasks = activeRows[rowIndex];
+                        return Padding(
+                          padding: EdgeInsets.only(
+                            bottom: rowIndex == activeRows.length - 1
+                                ? 0
+                                : activeRowGap,
+                          ),
+                          child: _buildTaskRow(
+                            rowTasks: rowTasks,
+                            startDates: startDates,
+                            minDate: minDate,
+                            effectiveDayWidth: effectiveDayWidth,
+                            rowHeight: activeRowHeight,
+                            taskFontSize: activeFontSize,
+                            isCompleted: false,
+                          ),
+                        );
+                      }),
+                      if (activeRows.isEmpty)
+                        SizedBox(
+                          height: math.max(0.0, activeAreaHeight),
+                          child: const Center(
+                            child: Text(
+                              '暂无未完成日期任务',
+                              style: TextStyle(color: Colors.white24),
+                            ),
+                          ),
+                        ),
+                      if (completedRows.isNotEmpty && activeRows.isNotEmpty)
+                        const SizedBox(height: 10),
+                      if (completedRows.isNotEmpty)
+                        SizedBox(
+                          height: completedHeight,
+                          child: SingleChildScrollView(
+                            physics: const BouncingScrollPhysics(),
+                            child: Column(
+                              children: List.generate(completedRows.length, (
+                                rowIndex,
+                              ) {
+                                final rowTasks = completedRows[rowIndex];
+                                return Padding(
+                                  padding: EdgeInsets.only(
+                                    bottom: rowIndex == completedRows.length - 1
+                                        ? 0
+                                        : 3,
+                                  ),
+                                  child: _buildTaskRow(
+                                    rowTasks: rowTasks,
+                                    startDates: startDates,
+                                    minDate: minDate,
+                                    effectiveDayWidth: effectiveDayWidth,
+                                    rowHeight: completedRowHeight,
+                                    taskFontSize: completedFontSize,
+                                    isCompleted: true,
+                                  ),
+                                );
+                              }),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
-      );
-    });
+        );
+      },
+    );
   }
 }
 
@@ -1402,10 +1748,13 @@ class MissionControl extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final activeTasks = todos.where((t) => !t.isDone).toList();
-    final completedTasks = todos.where((t) => t.isDone).toList();
-    final displayTasks = activeTab == 'active' ? activeTasks : completedTasks;
+    final showCompleted = activeTab != 'active';
+    final displayTasks = <TodoItem>[];
+    for (final todo in todos) {
+      if (todo.isDone == showCompleted) displayTasks.add(todo);
+    }
     final now = clock();
+    final dueTimeFormat = _appBoardDateFormat('HH:mm');
 
     return Column(
       children: [
@@ -1420,7 +1769,10 @@ class MissionControl extends StatelessWidget {
             child: Row(
               children: [
                 _buildTab(
-                    'active', '活跃任务', Theme.of(context).colorScheme.primary),
+                  'active',
+                  '活跃任务',
+                  Theme.of(context).colorScheme.primary,
+                ),
                 _buildTab('completed', '历史记录', emerald),
               ],
             ),
@@ -1446,9 +1798,10 @@ class MissionControl extends StatelessWidget {
                         : Colors.white.withValues(alpha: 0.02),
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
-                        color: isOverdue
-                            ? Colors.red.withValues(alpha: 0.2)
-                            : Colors.white.withValues(alpha: 0.05)),
+                      color: isOverdue
+                          ? Colors.red.withValues(alpha: 0.2)
+                          : Colors.white.withValues(alpha: 0.05),
+                    ),
                   ),
                   child: Row(
                     children: [
@@ -1481,7 +1834,7 @@ class MissionControl extends StatelessWidget {
                               overflow: TextOverflow.ellipsis,
                             ),
                             Text(
-                              '${task.creatorName ?? "用户"} · ${task.dueDate != null ? DateFormat('HH:mm').format(task.dueDate!) : "无时间"}',
+                              '${task.creatorName ?? "用户"} · ${task.dueDate != null ? dueTimeFormat.format(task.dueDate!) : "无时间"}',
                               style: TextStyle(
                                 color: Colors.white.withValues(alpha: 0.2),
                                 fontSize: 8,
@@ -1516,8 +1869,9 @@ class MissionControl extends StatelessWidget {
             boxShadow: isSelected
                 ? [
                     BoxShadow(
-                        color: activeColor.withValues(alpha: 0.3),
-                        blurRadius: 8)
+                      color: activeColor.withValues(alpha: 0.3),
+                      blurRadius: 8,
+                    ),
                   ]
                 : null,
           ),
@@ -1544,10 +1898,13 @@ class TaskDetailModal extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final double sheetWidth =
-        math.min(600, MediaQuery.of(context).size.width * 0.9);
-    final sheetConstraints =
-        BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.8);
+    final double sheetWidth = math.min(
+      600,
+      MediaQuery.of(context).size.width * 0.9,
+    );
+    final sheetConstraints = BoxConstraints(
+      maxHeight: MediaQuery.of(context).size.height * 0.8,
+    );
     final sheet = Stack(
       children: [
         Positioned(
@@ -1557,10 +1914,9 @@ class TaskDetailModal extends StatelessWidget {
           height: 6,
           child: Container(
             decoration: BoxDecoration(
-              gradient: LinearGradient(colors: [
-                Theme.of(context).colorScheme.primary,
-                Colors.indigo
-              ]),
+              gradient: LinearGradient(
+                colors: [Theme.of(context).colorScheme.primary, Colors.indigo],
+              ),
             ),
           ),
         ),
@@ -1575,18 +1931,23 @@ class TaskDetailModal extends StatelessWidget {
                   children: [
                     Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 4),
+                        horizontal: 12,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
-                        color: (task.teamUuid != null
-                                ? Theme.of(context).colorScheme.primary
-                                : emerald)
-                            .withValues(alpha: 0.2),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                            color: (task.teamUuid != null
+                        color:
+                            (task.teamUuid != null
                                     ? Theme.of(context).colorScheme.primary
                                     : emerald)
-                                .withValues(alpha: 0.3)),
+                                .withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color:
+                              (task.teamUuid != null
+                                      ? Theme.of(context).colorScheme.primary
+                                      : emerald)
+                                  .withValues(alpha: 0.3),
+                        ),
                       ),
                       child: Text(
                         task.teamName ?? '个人空间',
@@ -1617,24 +1978,35 @@ class TaskDetailModal extends StatelessWidget {
                 ),
                 const SizedBox(height: 32),
                 _buildInfoRow(
-                    Icons.access_time,
-                    '开始时间',
-                    DateFormat('yyyy-MM-dd HH:mm').format(
-                        DateTime.fromMillisecondsSinceEpoch(task.createdAt))),
+                  Icons.access_time,
+                  '开始时间',
+                  _appBoardDateFormat('yyyy-MM-dd HH:mm').format(
+                    DateTime.fromMillisecondsSinceEpoch(task.createdAt),
+                  ),
+                ),
                 _buildInfoRow(
-                    Icons.calendar_today,
-                    '截止时间',
-                    task.dueDate != null
-                        ? DateFormat('yyyy-MM-dd HH:mm').format(task.dueDate!)
-                        : '无截止日期'),
+                  Icons.calendar_today,
+                  '截止时间',
+                  task.dueDate != null
+                      ? _appBoardDateFormat('yyyy-MM-dd HH:mm').format(
+                          task.dueDate!,
+                        )
+                      : '无截止日期',
+                ),
                 _buildInfoRow(
-                    Icons.person_outline, '创建者', task.creatorName ?? '我'),
+                  Icons.person_outline,
+                  '创建者',
+                  task.creatorName ?? '我',
+                ),
                 const SizedBox(height: 24),
-                const Text('备注与详情',
-                    style: TextStyle(
-                        color: Colors.white24,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w900)),
+                const Text(
+                  '备注与详情',
+                  style: TextStyle(
+                    color: Colors.white24,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
                 const SizedBox(height: 12),
                 Container(
                   width: double.infinity,
@@ -1642,15 +2014,17 @@ class TaskDetailModal extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: Colors.white.withValues(alpha: 0.03),
                     borderRadius: BorderRadius.circular(20),
-                    border:
-                        Border.all(color: Colors.white.withValues(alpha: 0.05)),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.05),
+                    ),
                   ),
                   child: Text(
                     task.remark ?? '暂无详细备注说明。',
                     style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.7),
-                        fontSize: 14,
-                        height: 1.6),
+                      color: Colors.white.withValues(alpha: 0.7),
+                      fontSize: 14,
+                      height: 1.6,
+                    ),
                   ),
                 ),
               ],
@@ -1682,8 +2056,9 @@ class TaskDetailModal extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: const Color(0xFF0F172A),
                     borderRadius: BorderRadius.circular(32),
-                    border:
-                        Border.all(color: Colors.white.withValues(alpha: 0.1)),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.1),
+                    ),
                   ),
                   clipBehavior: Clip.antiAlias,
                   child: sheet,
@@ -1707,16 +2082,22 @@ class TaskDetailModal extends StatelessWidget {
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(label,
-                  style: const TextStyle(
-                      color: Colors.white24,
-                      fontSize: 8,
-                      fontWeight: FontWeight.w900)),
-              Text(value,
-                  style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold)),
+              Text(
+                label,
+                style: const TextStyle(
+                  color: Colors.white24,
+                  fontSize: 8,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              Text(
+                value,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ],
           ),
         ],

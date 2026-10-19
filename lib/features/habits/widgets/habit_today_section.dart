@@ -102,13 +102,14 @@ class _HabitTodaySectionState extends State<HabitTodaySection> {
   }
 
   Future<void> _startFocus(HabitGoal goal) => HabitFocusLauncher.open(
-        context: context,
-        username: widget.username,
-        goal: goal,
-        onReturned: () {
-          _loadData();
-        },
-      );
+    context: context,
+    username: widget.username,
+    goal: goal,
+    sourceKey: _cardKeyFor(goal),
+    onReturned: () {
+      _loadData();
+    },
+  );
 
   GlobalKey _cardKeyFor(HabitGoal goal) {
     return _cardKeys.putIfAbsent(goal.uuid, GlobalKey.new);
@@ -117,10 +118,7 @@ class _HabitTodaySectionState extends State<HabitTodaySection> {
   Future<void> _viewRecords(HabitGoal goal) async {
     await PageTransitions.pushFromRect(
       context: context,
-      page: HabitDetailScreen(
-        username: widget.username,
-        goal: goal,
-      ),
+      page: HabitDetailScreen(username: widget.username, goal: goal),
       sourceKey: _cardKeyFor(goal),
       placeholderBuilder: (_) => Text(
         goal.icon.isNotEmpty ? goal.icon : '🎯',
@@ -158,10 +156,11 @@ class _HabitTodaySectionState extends State<HabitTodaySection> {
                         : colorScheme.tertiary.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Icon(Icons.repeat_rounded,
-                      size: widget.compact ? 18 : 20,
-                      color:
-                          widget.isLight ? Colors.white : colorScheme.tertiary),
+                  child: Icon(
+                    Icons.repeat_rounded,
+                    size: widget.compact ? 18 : 20,
+                    color: widget.isLight ? Colors.white : colorScheme.tertiary,
+                  ),
                 ),
                 SizedBox(width: widget.compact ? 8 : 10),
                 Text(
@@ -225,10 +224,13 @@ class _HabitTodaySectionState extends State<HabitTodaySection> {
 
   /// 今日达标汇总徽章（如「2/3 达标」）。
   Widget _buildSummaryBadge(ColorScheme colorScheme) {
-    final progressList =
-        _snapshot!.progressByHabit.values.where((p) => p.isPlanned);
-    final planned = progressList.length;
-    final met = progressList.where((p) => p.goalMet).length;
+    var planned = 0;
+    var met = 0;
+    for (final progress in _snapshot!.progressByHabit.values) {
+      if (!progress.isPlanned) continue;
+      planned++;
+      if (progress.goalMet) met++;
+    }
     if (planned == 0) {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -243,8 +245,9 @@ class _HabitTodaySectionState extends State<HabitTodaySection> {
           style: TextStyle(
             fontSize: 11,
             fontWeight: FontWeight.w600,
-            color:
-                widget.isLight ? Colors.white : colorScheme.onTertiaryContainer,
+            color: widget.isLight
+                ? Colors.white
+                : colorScheme.onTertiaryContainer,
           ),
         ),
       );
@@ -255,8 +258,8 @@ class _HabitTodaySectionState extends State<HabitTodaySection> {
         color: widget.isLight
             ? Colors.white.withValues(alpha: 0.2)
             : met == planned
-                ? colorScheme.tertiaryContainer
-                : colorScheme.secondaryContainer,
+            ? colorScheme.tertiaryContainer
+            : colorScheme.secondaryContainer,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Text(
@@ -267,8 +270,8 @@ class _HabitTodaySectionState extends State<HabitTodaySection> {
           color: widget.isLight
               ? Colors.white
               : met == planned
-                  ? colorScheme.onTertiaryContainer
-                  : colorScheme.onSecondaryContainer,
+              ? colorScheme.onTertiaryContainer
+              : colorScheme.onSecondaryContainer,
         ),
       ),
     );
@@ -301,8 +304,11 @@ class _HabitTodaySectionState extends State<HabitTodaySection> {
       ),
       child: Column(
         children: [
-          Icon(Icons.auto_awesome_outlined,
-              size: 30, color: subColor.withValues(alpha: 0.5)),
+          Icon(
+            Icons.auto_awesome_outlined,
+            size: 30,
+            color: subColor.withValues(alpha: 0.5),
+          ),
           const SizedBox(height: 8),
           Text(
             '还没有习惯，去创建第一个吧',

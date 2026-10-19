@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../screens/plan_weekly_availability_screen.dart';
 
 import '../features/finance/screens/finance_automation_screen.dart';
@@ -110,7 +111,9 @@ abstract final class AiSettingsNavigation {
       SettingsPageId.band => const BandSyncScreen(),
       SettingsPageId.calendar => const CalendarSyncPage(),
       SettingsPageId.calendarRead => const DeviceCalendarReadPage(),
-      SettingsPageId.weeklyPlanAvailability => PlanWeeklyAvailabilityScreen(username: username),
+      SettingsPageId.weeklyPlanAvailability => PlanWeeklyAvailabilityScreen(
+        username: username,
+      ),
       SettingsPageId.batchTag => BatchTagPage(username: username),
       SettingsPageId.rebindTag => RebindTagPage(username: username),
       SettingsPageId.tags => Builder(

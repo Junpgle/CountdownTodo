@@ -4,6 +4,7 @@ mixin _TodoChatQueries on _TodoChatScreenStateBase {
   @override
   AiQueryToolService _createQueryToolService() => AiQueryToolService(
     loadAppData: _loadQueryAppData,
+    loadScreenTimeData: _loadQueryScreenTimeData,
     loadHabitData: _loadQueryHabitData,
   );
 
@@ -147,6 +148,64 @@ mixin _TodoChatQueries on _TodoChatScreenStateBase {
         },
     ];
   }
+
+  Future<List<Map<String, dynamic>>> _loadQueryScreenTimeData(
+    DateTime from,
+    DateTime toExclusive,
+  ) async {
+    final history = await StorageService.getScreenTimeHistory(
+      username: widget.username,
+      fromDate: _screenTimeDateKey(from),
+      toDate: _screenTimeDateKey(toExclusive),
+    );
+    final grouped = <(String, String, String, String, String), int>{};
+    for (final entry in history.entries) {
+      for (final raw in entry.value) {
+        if (raw is! Map) {
+          throw const FormatException('屏幕时间历史记录格式无效');
+        }
+        final rawDuration = raw['duration'];
+        if (rawDuration is! num || rawDuration < 0) {
+          throw const FormatException('屏幕时间历史时长无效，无法可靠汇总');
+        }
+        final appName = raw['app_name']?.toString().trim();
+        final packageName = raw['package_name']?.toString().trim() ?? '';
+        final deviceName = raw['device_name']?.toString().trim();
+        final category = raw['category']?.toString().trim();
+        final key = (
+          entry.key,
+          packageName,
+          appName?.isNotEmpty == true ? appName! : '未知应用',
+          deviceName?.isNotEmpty == true ? deviceName! : '未知设备',
+          category?.isNotEmpty == true ? category! : '未分类',
+        );
+        grouped.update(
+          key,
+          (value) => value + rawDuration.toInt(),
+          ifAbsent: () => rawDuration.toInt(),
+        );
+      }
+    }
+    return [
+      for (final entry in grouped.entries)
+        {
+          'id':
+              '${entry.key.$1}::${entry.key.$2}::${entry.key.$3}::'
+              '${entry.key.$4}::${entry.key.$5}',
+          'date': entry.key.$1,
+          'package_name': entry.key.$2,
+          'app_name': entry.key.$3,
+          'device_name': entry.key.$4,
+          'category': entry.key.$5,
+          'duration_seconds': entry.value,
+        },
+    ];
+  }
+
+  String _screenTimeDateKey(DateTime date) =>
+      '${date.year.toString().padLeft(4, '0')}-'
+      '${date.month.toString().padLeft(2, '0')}-'
+      '${date.day.toString().padLeft(2, '0')}';
 
   Future<List<Map<String, dynamic>>> _loadQueryHabitData(
     DateTime from,

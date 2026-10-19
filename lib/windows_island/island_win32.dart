@@ -9,10 +9,12 @@ import 'island_config.dart';
 
 /// Cached HWND for the island window
 HWND? _islandHwndCache;
+HWND? _framelessConfiguredHwnd;
 
 /// Clear the cached HWND (call on new window creation)
 void clearIslandHwndCache() {
   _islandHwndCache = null;
+  _framelessConfiguredHwnd = null;
 }
 
 /// Get the smallest Flutter window HWND owned by current process.
@@ -82,6 +84,7 @@ HWND? getSmallestFlutterWindow() {
 
     if (candidates.isNotEmpty) {
       HWND? bestHwnd;
+      bool bestFitsIslandSize = false;
       int minArea = 999999999;
       for (final h in candidates) {
         using((arena) {
@@ -94,12 +97,18 @@ HWND? getSmallestFlutterWindow() {
             if (area > 0 && area < minArea) {
               minArea = area;
               bestHwnd = h;
+              bestFitsIslandSize =
+                  w <= IslandConfig.detectionMaxWidth &&
+                  hSize <= IslandConfig.detectionMaxHeight;
             }
           }
         });
       }
-      // Cache the selected island HWND so each resize avoids another full window scan.
-      if (bestHwnd != null) _islandHwndCache = bestHwnd;
+      if (bestHwnd != null && bestFitsIslandSize) {
+        // Keep searching until the island has been resized, so the host
+        // window is not cached as the island during startup.
+        _islandHwndCache = bestHwnd;
+      }
       return bestHwnd;
     }
   } catch (e) {
@@ -131,31 +140,54 @@ void applyFramelessTransparent(HWND hwnd) {
     const wsMinimizebox = 0x00020000;
     const wsMaximizebox = 0x00010000;
 
-    var style = GetWindowLongPtr(hwnd, GWL_STYLE).value;
-    style &= ~wsCaption;
-    style &= ~wsThickframe;
-    style &= ~wsSysmenu;
-    style &= ~wsMinimizebox;
-    style &= ~wsMaximizebox;
-    SetWindowLongPtr(hwnd, GWL_STYLE, style);
+    final style = GetWindowLongPtr(hwnd, GWL_STYLE).value;
+    final framelessStyle =
+        style &
+        ~(wsCaption | wsThickframe | wsSysmenu | wsMinimizebox | wsMaximizebox);
+    final windowStyleChanged = framelessStyle != style;
+    if (windowStyleChanged) {
+      SetWindowLongPtr(hwnd, GWL_STYLE, framelessStyle);
+    }
 
-    var exStyle = GetWindowLongPtr(hwnd, GWL_EXSTYLE).value;
-    exStyle |= WS_EX_LAYERED | WS_EX_TOPMOST;
-    SetWindowLongPtr(hwnd, GWL_EXSTYLE, exStyle);
+    final exStyle = GetWindowLongPtr(hwnd, GWL_EXSTYLE).value;
+    final layeredTopmostStyle = exStyle | WS_EX_LAYERED | WS_EX_TOPMOST;
+    final extendedStyleChanged = layeredTopmostStyle != exStyle;
+    if (extendedStyleChanged) {
+      SetWindowLongPtr(hwnd, GWL_EXSTYLE, layeredTopmostStyle);
+    }
 
-    SetLayeredWindowAttributes(hwnd, COLORREF(0), 0, LWA_COLORKEY);
-    SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0,
-        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+    if (windowStyleChanged ||
+        extendedStyleChanged ||
+        _framelessConfiguredHwnd != hwnd) {
+      final transparencyApplied = SetLayeredWindowAttributes(
+        hwnd,
+        COLORREF(0),
+        0,
+        LWA_COLORKEY,
+      ).value;
+      final frameApplied = SetWindowPos(
+        hwnd,
+        HWND_TOPMOST,
+        0,
+        0,
+        0,
+        0,
+        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED,
+      ).value;
+      if (transparencyApplied && frameApplied) {
+        _framelessConfiguredHwnd = hwnd;
+      }
+    }
   } catch (e) {
     debugPrint('[IslandWin32] applyFramelessTransparent failed: $e');
   }
 }
 
-void ensureIslandFrameless() {
-  final hwnd = getSmallestFlutterWindow();
-  if (hwnd == null) return;
-  _islandHwndCache = hwnd;
-  applyFramelessTransparent(hwnd);
+void ensureIslandFrameless({HWND? hwnd}) {
+  final targetHwnd = hwnd ?? getSmallestFlutterWindow();
+  if (targetHwnd == null) return;
+  _islandHwndCache = targetHwnd;
+  applyFramelessTransparent(targetHwnd);
 }
 
 /// Initialize FFI: wait for HWND to appear and shrink, then apply transparency
@@ -247,14 +279,14 @@ void moveCurrentWindow(int targetX, int targetY) {
 }
 
 /// Get current window rect as a map
-Map<String, double>? getWindowRect() {
+Map<String, double>? getWindowRect({HWND? hwnd}) {
   try {
-    final hwnd = getSmallestFlutterWindow();
-    if (hwnd != null) {
+    final targetHwnd = hwnd ?? getSmallestFlutterWindow();
+    if (targetHwnd != null) {
       RECT? result;
       using((arena) {
         final rectPtr = arena<RECT>();
-        if (GetWindowRect(hwnd, rectPtr).value) {
+        if (GetWindowRect(targetHwnd, rectPtr).value) {
           result = rectPtr.ref;
         }
       });

@@ -1,6 +1,8 @@
 part of 'storage_service.dart';
 // ignore_for_file: annotate_overrides, unused_element, unused_element_parameter
 
+final RegExp _legacyHistoryScorePattern = RegExp(r'得分: (\d+)');
+
 mixin _StorageCore on _StorageServiceBase {
   void triggerRefresh([
     Set<DataRefreshDomain> domains = const {DataRefreshDomain.all},
@@ -149,7 +151,7 @@ mixin _StorageCore on _StorageServiceBase {
   }
 
   List<TodoItem> _cloneTodoItems(List<TodoItem> items) {
-    return items.map((item) => TodoItem.fromJson(item.toJson())).toList();
+    return items.map((item) => item.detachedCopy()).toList();
   }
 
   Future<void> _clearTodoPrefsMirror(String username) async {
@@ -278,12 +280,12 @@ mixin _StorageCore on _StorageServiceBase {
   Future<List<String>> getHistory(String username) async {
     final prefs = await SharedPreferences.getInstance();
     List<String> rawList = prefs.getStringList("history_$username") ?? [];
+    final timeFormat = DateFormat('yyyy-MM-dd HH:mm:ss');
     return rawList.map((item) {
       try {
         var map = jsonDecode(item);
         if (map is Map) {
-          String timeStr = DateFormat('yyyy-MM-dd HH:mm:ss')
-              .format(DateTime.parse(map['date']));
+          String timeStr = timeFormat.format(DateTime.parse(map['date']));
           return "时间: $timeStr\n得分: ${map['score']}\n用时: ${map['duration']}秒\n详情:\n${map['details']}\n-----------------";
         }
         return item;
@@ -318,8 +320,7 @@ mixin _StorageCore on _StorageServiceBase {
           if (duration < bestTime) bestTime = duration;
         }
       } catch (e) {
-        RegExp scoreReg = RegExp(r"得分: (\d+)");
-        var match = scoreReg.firstMatch(item);
+        var match = _legacyHistoryScorePattern.firstMatch(item);
         if (match != null) {
           int score = int.parse(match.group(1)!);
           totalQuestions += 10;
@@ -373,16 +374,27 @@ mixin _StorageCore on _StorageServiceBase {
         requestSync: requestSync,
         onCommitted: () {
           _inflightTodoRequests.clear();
+          _inflightTodoSearchDateRequests.clear();
+          _inflightTimelineTodoRequests.clear();
           triggerRefresh(const {DataRefreshDomain.countdowns});
         },
       );
-  Future<void> _clearGhostConflictFlags(dynamic db) =>
-      StorageConflictCleanup.clearGhostConflictFlags(db);
-  Future<List<CountdownItem>> getCountdowns(String username,
-          {bool includeDeleted = false}) =>
+  Future<void> _clearGhostConflictFlags(
+    dynamic db, {
+    Iterable<String> tables = const ['todos', 'todo_groups', 'countdowns'],
+  }) =>
+      StorageConflictCleanup.clearGhostConflictFlags(db, tables: tables);
+  Future<List<CountdownItem>> getCountdowns(
+    String username, {
+    bool includeDeleted = false,
+    DateTime? from,
+    DateTime? to,
+  }) =>
       CountdownStorage.getCountdowns(
         username,
         includeDeleted: includeDeleted,
+        from: from,
+        to: to,
         saveMigratedCountdowns: saveCountdowns,
       );
   Future<void> deleteCountdownGlobally(

@@ -2,6 +2,8 @@ part of 'storage_service.dart';
 // ignore_for_file: annotate_overrides, unused_element, unused_element_parameter
 
 mixin _StorageSync on _StorageServiceBase {
+  static const int _screenTimeHistoryWriteBatchSize = 30;
+
   Future<void> saveTimeLogs(String username, List<TimeLogItem> items,
           {bool sync = true}) async {
     await PomodoroStorage.saveTimeLogs(
@@ -12,10 +14,17 @@ mixin _StorageSync on _StorageServiceBase {
     );
     triggerRefresh({DataRefreshDomain.timeLogs});
   }
-  Future<List<TimeLogItem>> getTimeLogs(String username, {int? limit}) =>
+  Future<List<TimeLogItem>> getTimeLogs(
+    String username, {
+    int? limit,
+    DateTime? from,
+    DateTime? to,
+  }) =>
       PomodoroStorage.getTimeLogs(
         username,
         limit: limit,
+        from: from,
+        to: to,
         saveMigratedTimeLogs: saveTimeLogs,
       );
   Future<bool> deleteTimeLogGlobally(String username, String idToDelete) async {
@@ -95,7 +104,7 @@ mixin _StorageSync on _StorageServiceBase {
     final cacheKey = _scopedKey(keyScreenTimeCache, effectiveUsername);
     final syncKey = _scopedKey(keyLastScreenTimeSync, effectiveUsername);
     final now = DateTime.now();
-    final String today = DateFormat('yyyy-MM-dd').format(now);
+    final String today = time_utils.AppTimeFormats.date(now);
 
     // 1. 获取已有的历史记录
     String? histStr = prefs.getString(historyKey);
@@ -157,7 +166,15 @@ mixin _StorageSync on _StorageServiceBase {
     String date,
     List<dynamic> stats, {
     String? username,
+  }) =>
+      _saveScreenTimeHistoryBatchToSql({date: stats}, username: username);
+
+  Future<void> _saveScreenTimeHistoryBatchToSql(
+    Map<String, List<dynamic>> history, {
+    String? username,
   }) async {
+    if (history.isEmpty) return;
+
     final dbHelper = DatabaseHelper.instance;
     if (username != null) {
       await UserSessionStorage.ensureCurrentUsername(username);
@@ -165,24 +182,41 @@ mixin _StorageSync on _StorageServiceBase {
     final db = username == null
         ? await dbHelper.database
         : await dbHelper.databaseForUser(username);
-    final batch = db.batch();
 
-    // 覆盖写：先删除该日期的旧记录
-    batch.delete('screen_time', where: 'record_date = ?', whereArgs: [date]);
+    // History migration and cloud repair may cover many dates. Commit a
+    // bounded group together so each date does not open its own transaction.
+    final dates = history.keys.toList(growable: false);
+    for (var start = 0;
+        start < dates.length;
+        start += _screenTimeHistoryWriteBatchSize) {
+      final batch = db.batch();
+      final nextStart = start + _screenTimeHistoryWriteBatchSize;
+      final end = nextStart < dates.length ? nextStart : dates.length;
+      for (var index = start; index < end; index++) {
+        final date = dates[index];
+        // 覆盖写：先删除该日期的旧记录。
+        batch.delete(
+          'screen_time',
+          where: 'record_date = ?',
+          whereArgs: [date],
+        );
 
-    for (var stat in stats) {
-      batch.insert('screen_time', {
-        'record_date': date,
-        'package_name': stat['package_name']?.toString() ?? '',
-        'app_name': stat['app_name']?.toString() ?? '',
-        'device_name': stat['device_name']?.toString() ?? '',
-        'category': stat['category']?.toString() ?? '未分类',
-        'duration':
-            (stat['duration'] is num) ? (stat['duration'] as num).toInt() : 0,
-        'updated_at': DateTime.now().millisecondsSinceEpoch,
-      });
+        for (final stat in history[date]!) {
+          batch.insert('screen_time', {
+            'record_date': date,
+            'package_name': stat['package_name']?.toString() ?? '',
+            'app_name': stat['app_name']?.toString() ?? '',
+            'device_name': stat['device_name']?.toString() ?? '',
+            'category': stat['category']?.toString() ?? '未分类',
+            'duration': (stat['duration'] is num)
+                ? (stat['duration'] as num).toInt()
+                : 0,
+            'updated_at': DateTime.now().millisecondsSinceEpoch,
+          });
+        }
+      }
+      await batch.commit(noResult: true);
     }
-    await batch.commit(noResult: true);
   }
 
   Future<List<dynamic>> getScreenTimeCache() async {
@@ -227,6 +261,8 @@ mixin _StorageSync on _StorageServiceBase {
 
   Future<Map<String, List<dynamic>>> getScreenTimeHistory({
     String? username,
+    String? fromDate,
+    String? toDate,
   }) async {
     final prefs = await SharedPreferences.getInstance();
     final requestedUsername = username?.trim();
@@ -254,11 +290,24 @@ mixin _StorageSync on _StorageServiceBase {
           debugPrint("🚀 发现 ScreenTime 历史记录，正在执行 SQL 迁移...");
           try {
             Map<String, dynamic> history = jsonDecode(jsonStr);
+            final historiesToMigrate = <String, List<dynamic>>{};
             for (var entry in history.entries) {
               if (entry.value is List) {
+                historiesToMigrate[entry.key] = entry.value as List<dynamic>;
+              }
+            }
+            try {
+              await _saveScreenTimeHistoryBatchToSql(
+                historiesToMigrate,
+                username: effectiveUsername,
+              );
+            } catch (e) {
+              // Keep the old per-date recovery path if one batch cannot commit.
+              debugPrint("⚠️ ScreenTime 批量迁移失败，改为逐日期保存: $e");
+              for (final entry in historiesToMigrate.entries) {
                 await saveScreenTimeHistoryToSql(
                   entry.key,
-                  entry.value as List,
+                  entry.value,
                   username: effectiveUsername,
                 );
               }
@@ -276,9 +325,21 @@ mixin _StorageSync on _StorageServiceBase {
       final db = effectiveUsername == null || effectiveUsername.isEmpty
           ? await dbHelper.database
           : await dbHelper.databaseForUser(effectiveUsername);
-      // 2. 从 SQL 读取所有记录并按日期分组
+      final where = <String>[];
+      final whereArgs = <Object?>[];
+      if (fromDate != null) {
+        where.add('record_date >= ?');
+        whereArgs.add(fromDate);
+      }
+      if (toDate != null) {
+        where.add('record_date < ?');
+        whereArgs.add(toDate);
+      }
+      // 2. 按日期范围从 SQL 读取并分组
       final List<Map<String, dynamic>> maps = await db.query(
         'screen_time',
+        where: where.isEmpty ? null : where.join(' AND '),
+        whereArgs: whereArgs.isEmpty ? null : whereArgs,
         orderBy: 'record_date DESC',
       );
 
@@ -305,19 +366,50 @@ mixin _StorageSync on _StorageServiceBase {
             .map((entry) => entry.key)
             .toList();
 
-        for (final date in datesNeedingDeviceNames) {
-          try {
-            final cloudStats = await ApiService.fetchScreenTime(userId, date);
-            if (cloudStats.isNotEmpty) {
-              await saveScreenTimeHistoryToSql(
-                date,
-                cloudStats,
+        for (var start = 0;
+            start < datesNeedingDeviceNames.length;
+            start += _screenTimeHistoryWriteBatchSize) {
+          final nextStart = start + _screenTimeHistoryWriteBatchSize;
+          final end = nextStart < datesNeedingDeviceNames.length
+              ? nextStart
+              : datesNeedingDeviceNames.length;
+          final cloudHistoryToSave = <String, List<dynamic>>{};
+          for (var index = start; index < end; index++) {
+            final date = datesNeedingDeviceNames[index];
+            try {
+              final cloudStats = await ApiService.fetchScreenTime(userId, date);
+              if (cloudStats.isNotEmpty) {
+                cloudHistoryToSave[date] = cloudStats;
+              }
+            } catch (e) {
+              debugPrint("⚠️ ScreenTime History 云端补齐失败($date): $e");
+            }
+          }
+          if (cloudHistoryToSave.isNotEmpty) {
+            try {
+              await _saveScreenTimeHistoryBatchToSql(
+                cloudHistoryToSave,
                 username: effectiveUsername,
               );
-              result[date] = cloudStats;
+              result.addAll(cloudHistoryToSave);
+            } catch (e) {
+              // Retain per-date recovery so one malformed date cannot block others.
+              debugPrint("⚠️ ScreenTime 批量补齐失败，改为逐日期保存: $e");
+              for (final entry in cloudHistoryToSave.entries) {
+                try {
+                  await saveScreenTimeHistoryToSql(
+                    entry.key,
+                    entry.value,
+                    username: effectiveUsername,
+                  );
+                  result[entry.key] = entry.value;
+                } catch (saveError) {
+                  debugPrint(
+                    "⚠️ ScreenTime History 云端补齐保存失败(${entry.key}): $saveError",
+                  );
+                }
+              }
             }
-          } catch (e) {
-            debugPrint("⚠️ ScreenTime History 云端补齐失败($date): $e");
           }
         }
       }
@@ -332,8 +424,20 @@ mixin _StorageSync on _StorageServiceBase {
       if (jsonStr != null && jsonStr.isNotEmpty) {
         try {
           Map<String, dynamic> raw = jsonDecode(jsonStr);
-          return raw
-              .map((key, value) => MapEntry(key, List<dynamic>.from(value)));
+          return Map<String, List<dynamic>>.fromEntries(
+            raw.entries
+                .where(
+                  (entry) =>
+                      (fromDate == null || entry.key.compareTo(fromDate) >= 0) &&
+                      (toDate == null || entry.key.compareTo(toDate) < 0),
+                )
+                .map(
+                  (entry) => MapEntry(
+                    entry.key,
+                    List<dynamic>.from(entry.value),
+                  ),
+                ),
+          );
         } catch (_) {}
       }
     }
@@ -642,40 +746,52 @@ mixin _StorageSync on _StorageServiceBase {
       final List<HabitCheckIn> allLocalHabitCheckIns = localSnapshots[8];
       final List<HabitSleepCoachingPlan> allLocalHabitSleepCoachingPlans =
           localSnapshots[9];
+      final conflictedHabitGoalIds = syncHabits
+          ? <String>{}
+          : const <String>{};
       // 有些历史冲突只保存在本地 conflict_data，服务端后续同步不一定
       // 再把它放进 conflicts 或 server_habit_goals，因此这里也要登记快照。
       for (final goal in allLocalHabitGoals) {
-        if (!goal.hasConflict || goal.conflictData == null) continue;
+        if (!goal.hasConflict) continue;
+        conflictedHabitGoalIds.add(goal.uuid);
+        if (goal.conflictData == null) continue;
         staleHabitConflictSnapshots['habit_goals:${goal.uuid}'] =
             Map<String, dynamic>.from(goal.conflictData!);
       }
+      final conflictedHabitRuleIds = syncHabits
+          ? <String>{}
+          : const <String>{};
       for (final rule in allLocalHabitRules) {
-        if (!rule.hasConflict || rule.conflictData == null) continue;
+        if (!rule.hasConflict) continue;
+        conflictedHabitRuleIds.add(rule.uuid);
+        if (rule.conflictData == null) continue;
         staleHabitConflictSnapshots['habit_goal_rule_revisions:${rule.uuid}'] =
             Map<String, dynamic>.from(rule.conflictData!);
       }
+      final conflictRepairBaselines = {
+        for (final todo in allLocalTodos) todo.id: todo.detachedCopy(),
+      };
       final autoResolvedMigrationConflicts =
           _clearResolvedRecurrenceMigrationConflicts(allLocalTodos);
       if (autoResolvedMigrationConflicts.isNotEmpty) {
-        await saveTodos(
+        await _saveRecurrenceMaintenance(
           username,
-          autoResolvedMigrationConflicts,
-          sync: true,
-          recomputeScheduleConflicts: false,
+          allLocalTodos,
+          conflictRepairBaselines,
         );
         hasChanges = true;
         debugPrint(
             '🧹 [同步修复] 已自动消解 ${autoResolvedMigrationConflicts.length} 条仅由循环系列迁移产生的版本冲突');
       }
+      final localSeriesBaselines = {
+        for (final todo in allLocalTodos) todo.id: todo.detachedCopy(),
+      };
       final repairedLocalSeriesIds =
           await _repairLocalRecurrenceSeriesAliasesFromHistory(
         db,
         allLocalTodos,
       );
       if (repairedLocalSeriesIds.isNotEmpty) {
-        final versionsBeforeDedupe = {
-          for (final todo in allLocalTodos) todo.id: todo.version,
-        };
         final deletedBeforeDedupe = {
           for (final todo in allLocalTodos)
             if (todo.isDeleted) todo.id,
@@ -686,24 +802,14 @@ mixin _StorageSync on _StorageServiceBase {
                 todo.isDeleted && !deletedBeforeDedupe.contains(todo.id))
             .map((todo) => todo.id));
 
-        final repairedItems = allLocalTodos
-            .where((todo) => repairedLocalSeriesIds.contains(todo.id))
-            .toList();
-        for (final todo in repairedItems) {
-          // 去重分支已经提升过版本，只为单纯归并系列的实例补一次变更。
-          if (todo.version == versionsBeforeDedupe[todo.id]) {
-            todo.markAsChanged();
-          }
-        }
-        await saveTodos(
+        await _saveRecurrenceMaintenance(
           username,
-          repairedItems,
-          sync: true,
-          recomputeScheduleConflicts: false,
+          allLocalTodos,
+          localSeriesBaselines,
         );
         hasChanges = true;
         debugPrint(
-            '🧷 [同步修复] 根据本机同步历史将 ${repairedItems.length} 个被拆分的循环实例归回原系列');
+            '🧷 [同步修复] 根据本机同步历史将 ${repairedLocalSeriesIds.length} 个被拆分的循环实例归回原系列');
       }
       final localTodosById = {for (final item in allLocalTodos) item.id: item};
       final localGroupsById = {
@@ -721,7 +827,7 @@ mixin _StorageSync on _StorageServiceBase {
 
       // 按时间戳升序排列，这样 Map 的 putIfAbsent/赋值逻辑会自然保留最后一次更新
       final List<Map<String, dynamic>> pendingOps = await db.query('op_logs',
-          where: 'is_synced = 0', orderBy: 'timestamp ASC');
+          where: 'is_synced = 0', orderBy: 'timestamp ASC, id ASC');
       final requestOplogSnapshot = pendingOps
           .map(SyncOplogEntry.fromRow)
           .whereType<SyncOplogEntry>()
@@ -771,12 +877,18 @@ mixin _StorageSync on _StorageServiceBase {
           final localTodo = localTodosById[uuid];
           final hasLocalVersionConflict = localTodo != null &&
               localTodo.hasConflict &&
-              _hasVersionConflict(localTodo.serverVersionData);
+              ConflictVisibilityService.isVersionConflictData(
+                localTodo.serverVersionData,
+              );
           if (_payloadHasVersionConflict(data) || hasLocalVersionConflict) {
             if (opId != null) consumedConflictOpIds.add(opId);
             continue;
           }
-          dedupTodos[uuid] = _stripClientOnlyConflictForSync(data);
+          SyncOplogPolicy.collectTodoPayload(
+            dedupTodos,
+            uuid,
+            _stripClientOnlyConflictForSync(data),
+          );
         } else if (table == 'todo_groups' && syncTodos) {
           if (op['sync_error'] == 'server_conflict') {
             if (opId != null) consumedConflictOpIds.add(opId);
@@ -809,8 +921,7 @@ mixin _StorageSync on _StorageServiceBase {
             continue;
           }
           if (_payloadHasConflict(data) ||
-              (allLocalHabitGoals
-                  .any((g) => g.uuid == uuid && g.hasConflict))) {
+              conflictedHabitGoalIds.contains(uuid)) {
             if (opId != null) consumedConflictOpIds.add(opId);
             continue;
           }
@@ -821,8 +932,7 @@ mixin _StorageSync on _StorageServiceBase {
             continue;
           }
           if (_payloadHasConflict(data) ||
-              (allLocalHabitRules
-                  .any((r) => r.uuid == uuid && r.hasConflict))) {
+              conflictedHabitRuleIds.contains(uuid)) {
             if (opId != null) consumedConflictOpIds.add(opId);
             continue;
           }
@@ -871,7 +981,9 @@ mixin _StorageSync on _StorageServiceBase {
         for (final item in allLocalTodos) {
           if (item.updatedAt > lastSyncTime) {
             if (item.hasConflict &&
-                _hasVersionConflict(item.serverVersionData)) {
+                ConflictVisibilityService.isVersionConflictData(
+                  item.serverVersionData,
+                )) {
               continue;
             }
             final data = item.toJson();
@@ -881,7 +993,12 @@ mixin _StorageSync on _StorageServiceBase {
                 _recurrenceDedupeTombstoneIds.contains(item.id)) {
               data['_recurrence_delete_reason'] = 'dedupe';
             }
-            dedupTodos[item.id] = _stripClientOnlyConflictForSync(data);
+            // The pending payload can be newer than this earlier read snapshot,
+            // and can carry insert-only/maintenance semantics absent on models.
+            dedupTodos.putIfAbsent(
+              item.id,
+              () => _stripClientOnlyConflictForSync(data),
+            );
           }
         }
         dirtyTodos = dedupTodos.values.toList();
@@ -961,7 +1078,9 @@ mixin _StorageSync on _StorageServiceBase {
         if (syncTodos) {
           for (final item in allLocalTodos) {
             if (item.hasConflict &&
-                _hasVersionConflict(item.serverVersionData)) {
+                ConflictVisibilityService.isVersionConflictData(
+                  item.serverVersionData,
+                )) {
               continue;
             }
             final data = _stripClientOnlyConflictForSync(item.toJson());
@@ -1046,7 +1165,7 @@ mixin _StorageSync on _StorageServiceBase {
         try {
           // 如果没有记录日期（旧版本升级上来），退而求其次用今天
           final String finalDate =
-              recordDate ?? DateFormat('yyyy-MM-dd').format(DateTime.now());
+              recordDate ?? time_utils.AppTimeFormats.date(DateTime.now());
 
           screenPayload = {
             'device_name': friendlyName,
@@ -1403,7 +1522,7 @@ mixin _StorageSync on _StorageServiceBase {
         final currentPendingRows = await db.query(
           'op_logs',
           where: 'is_synced = 0',
-          orderBy: 'timestamp ASC',
+          orderBy: 'timestamp ASC, id ASC',
         );
         final currentPendingEntries = currentPendingRows
             .map(SyncOplogEntry.fromRow)
@@ -1430,7 +1549,10 @@ mixin _StorageSync on _StorageServiceBase {
           };
           for (var i = 0; i < allLocalTodos.length; i++) {
             final latest = latestById[allLocalTodos[i].id];
-            if (latest != null) allLocalTodos[i] = latest;
+            if (latest != null) {
+              allLocalTodos[i] = latest;
+              localTodosById[latest.id] = latest;
+            }
           }
         }
 
@@ -1440,6 +1562,52 @@ mixin _StorageSync on _StorageServiceBase {
         //debugPrint(
         //    '🧪 [SyncDiag][IndepCompletion] indCompletions=${indCompletions?.length ?? "null"}');
         if (indCompletions != null) {
+          final completionTodoUuids = <String>{};
+          for (final ic in indCompletions) {
+            if (ic is! Map) continue;
+            final todoUuid = ic['todo_uuid']?.toString();
+            if (todoUuid == null || todoUuid.isEmpty) continue;
+            if (SyncOplogPolicy.shouldProtectTodoMerge(
+              todoUuid,
+              forceFlushUuids: _forceFlushProtectedUuids,
+              inFlightMutationUuids: inFlightTodoMutationUuids,
+            )) {
+              continue;
+            }
+            completionTodoUuids.add(todoUuid);
+          }
+
+          final completionTodoUuidList =
+              completionTodoUuids.toList(growable: false);
+          final localCompletionsByTodoUuid =
+              <String, Map<String, Object?>>{};
+          const queryChunkSize = 500;
+          for (
+            var start = 0;
+            start < completionTodoUuidList.length;
+            start += queryChunkSize
+          ) {
+            final end = start + queryChunkSize < completionTodoUuidList.length
+                ? start + queryChunkSize
+                : completionTodoUuidList.length;
+            final chunk = completionTodoUuidList.sublist(start, end);
+            final placeholders = List.filled(chunk.length, '?').join(', ');
+            final completionRows = await db.query(
+              'todo_completions',
+              where: 'todo_uuid IN ($placeholders) AND user_id = ?',
+              whereArgs: [...chunk, userId],
+            );
+            for (final row in completionRows) {
+              final todoUuid = row['todo_uuid']?.toString();
+              if (todoUuid != null) {
+                localCompletionsByTodoUuid.putIfAbsent(
+                  todoUuid,
+                  () => row,
+                );
+              }
+            }
+          }
+
           final batch = db.batch();
           var independentCompletionChanged = false;
           for (var ic in indCompletions) {
@@ -1453,6 +1621,20 @@ mixin _StorageSync on _StorageServiceBase {
             )) {
               continue;
             }
+            if (!completionTodoUuids.contains(todoUuid)) {
+              // Protection may have been lifted while the batched read was
+              // awaiting SQLite; fetch this newly eligible row before merge.
+              final rows = await db.query(
+                'todo_completions',
+                where: 'todo_uuid = ? AND user_id = ?',
+                whereArgs: [todoUuid, userId],
+                limit: 1,
+              );
+              if (rows.isNotEmpty) {
+                localCompletionsByTodoUuid[todoUuid] = rows.first;
+              }
+              completionTodoUuids.add(todoUuid);
+            }
             final rawCompleted = ic['is_completed'];
             final isCompleted = rawCompleted == 1 ||
                 rawCompleted == true ||
@@ -1460,15 +1642,9 @@ mixin _StorageSync on _StorageServiceBase {
                 rawCompleted?.toString().toLowerCase() == 'true';
             final serverUpdatedAt =
                 int.tryParse(ic['updated_at']?.toString() ?? '') ?? 0;
-            final existing = await db.query(
-              'todo_completions',
-              where: 'todo_uuid = ? AND user_id = ?',
-              whereArgs: [todoUuid, userId],
-              limit: 1,
-            );
-            final localUpdatedAt = existing.isNotEmpty
-                ? (existing.first['updated_at'] as num?)?.toInt() ?? 0
-                : 0;
+            final existing = localCompletionsByTodoUuid[todoUuid];
+            final localUpdatedAt =
+                (existing?['updated_at'] as num?)?.toInt() ?? 0;
             // 🚀 时间戳比较修复：如果本地没有完成状态记录，判定为从未修改（localUpdatedAt=0），此时应接受服务端更新
             // 仅当本地有明确的更新时间且晚于服务端时，才跳过 DB 写入
             final hasLocalModification = localUpdatedAt > 0;
@@ -1476,16 +1652,14 @@ mixin _StorageSync on _StorageServiceBase {
                 serverUpdatedAt > 0 &&
                 serverUpdatedAt < localUpdatedAt) {
               // 本地有更新且晚于服务端，跳过 DB 写入，但仍需从 DB 读取正确值更新内存
-              final localIsCompleted = existing.isNotEmpty
-                  ? (existing.first['is_completed'] as int?) ?? 0
-                  : 0;
-              final localIdx =
-                  allLocalTodos.indexWhere((todo) => todo.id == todoUuid);
-              if (localIdx != -1 && allLocalTodos[localIdx].collabType == 1) {
-                if (allLocalTodos[localIdx].isDone != (localIsCompleted == 1)) {
-                  allLocalTodos[localIdx].isDone = localIsCompleted == 1;
+              final localIsCompleted =
+                  (existing?['is_completed'] as int?) ?? 0;
+              final localTodo = localTodosById[todoUuid];
+              if (localTodo != null && localTodo.collabType == 1) {
+                if (localTodo.isDone != (localIsCompleted == 1)) {
+                  localTodo.isDone = localIsCompleted == 1;
                   independentCompletionChanged = true;
-                  if (!allLocalTodos[localIdx].isDeleted) {
+                  if (!localTodo.isDeleted) {
                     updatedTodoIds.add(todoUuid);
                   }
                 }
@@ -1507,13 +1681,12 @@ mixin _StorageSync on _StorageServiceBase {
                       : DateTime.now().millisecondsSinceEpoch,
                 },
                 conflictAlgorithm: ConflictAlgorithm.replace);
-            final localIdx =
-                allLocalTodos.indexWhere((todo) => todo.id == todoUuid);
-            if (localIdx != -1 && allLocalTodos[localIdx].collabType == 1) {
-              if (allLocalTodos[localIdx].isDone != isCompleted) {
-                allLocalTodos[localIdx].isDone = isCompleted;
+            final localTodo = localTodosById[todoUuid];
+            if (localTodo != null && localTodo.collabType == 1) {
+              if (localTodo.isDone != isCompleted) {
+                localTodo.isDone = isCompleted;
                 independentCompletionChanged = true;
-                if (!allLocalTodos[localIdx].isDeleted) {
+                if (!localTodo.isDeleted) {
                   updatedTodoIds.add(todoUuid);
                 }
               }
@@ -1665,6 +1838,17 @@ mixin _StorageSync on _StorageServiceBase {
           item: TodoItem.fromJson(sanitizedServerRaw),
         ));
       }
+      final beforeRemoteRepair = {
+        for (final todo in allLocalTodos) todo.id: todo.detachedCopy(),
+      };
+      final remoteRecurrenceBaselines = {
+        for (final entry in remoteTodoEntries)
+          entry.item.id: entry.item.detachedCopy(),
+      };
+      final rejectedMaintenanceIds =
+          (response['todo_maintenance_rejected_uuids'] as List? ?? const [])
+              .map((id) => id.toString())
+              .toSet();
       final repairedRemoteTodoIds = _repairMissingRemoteRecurrenceSeriesIds(
         remoteTodoEntries.map((entry) => entry.item).toList(),
         allLocalTodos,
@@ -1700,6 +1884,7 @@ mixin _StorageSync on _StorageServiceBase {
           final usesStrictRecurringLww =
               _isRecurringTodoForLww(local) || _isRecurringTodoForLww(sItem);
           final serverWinsStrictRecurringLww =
+              rejectedMaintenanceIds.contains(sItem.id) ||
               TodoLwwService.shouldReplaceRecurringSnapshot(
             incomingUpdatedAt: sItem.updatedAt,
             incomingVersion: sItem.version,
@@ -1724,7 +1909,8 @@ mixin _StorageSync on _StorageServiceBase {
               '🔄 [合并对比] UUID: ${sItem.id}, Server(V:${sItem.version}, D:${sItem.isDeleted}), Local(V:${local.version}, D:${local.isDeleted})');
 
           // 防回滚：本地已删除且更”新”时，拒绝服务端旧的未删除数据复活
-          if (local.isDeleted &&
+          if (!rejectedMaintenanceIds.contains(sItem.id) &&
+              local.isDeleted &&
               !sItem.isDeleted &&
               local.updatedAt > sItem.updatedAt &&
               local.version >= sItem.version) {
@@ -2281,6 +2467,13 @@ mixin _StorageSync on _StorageServiceBase {
               todosIndexMap.containsKey(itemId)) {
             if (!conflictDetectionEnabled) continue;
             final todo = allLocalTodos[todosIndexMap[itemId]!];
+            if (ConflictVisibilityService.isAllDayTodo(todo)) {
+              if (ConflictVisibilityService
+                  .clearImpossibleTodoScheduleConflict(todo)) {
+                hasChanges = true;
+              }
+              continue;
+            }
             final peer = Map<String, dynamic>.from(serverVersion);
             if (_isSameRecurrenceSeriesPayload(todo, peer)) continue;
             final conflictKey = _scheduleConflictKeyFromPayload(todo, peer);
@@ -2288,21 +2481,11 @@ mixin _StorageSync on _StorageServiceBase {
                 ignoredScheduleConflictKeys.contains(conflictKey)) {
               continue;
             }
-            final data = {
-              'uuid': todo.id,
-              'id': todo.id,
-              'content': todo.title,
-              'team_uuid': todo.teamUuid,
-              'schedule_scope':
-                  (todo.teamUuid?.isNotEmpty ?? false) ? 'team' : 'personal',
-              'relation_type': 'personal_personal',
-              'conflict_kind': 'logic',
-              'conflict_type': 'local_schedule_conflict',
-              'source': 'server_detector',
-              'start_time': todo.createdDate ?? todo.createdAt,
-              'end_time': todo.dueDate?.millisecondsSinceEpoch,
-              'conflict_with': [peer],
-            };
+            final data = ConflictVisibilityService.scheduleConflictData(
+              todo: todo,
+              peers: [peer],
+              source: 'server_detector',
+            );
             if (!todo.hasConflict ||
                 jsonEncode(todo.serverVersionData) != jsonEncode(data)) {
               todo.hasConflict = true;
@@ -2432,7 +2615,9 @@ mixin _StorageSync on _StorageServiceBase {
         await UserSessionStorage.ensureCurrentSession(session);
         if (syncTodos) {
           await saveTodos(username, allLocalTodos,
-              sync: false, isSyncSource: true);
+              sync: false,
+              isSyncSource: true,
+              authoritativeTodoIds: rejectedMaintenanceIds);
           await saveTodoGroups(username, allLocalGroups,
               sync: false, isSyncSource: true);
         }
@@ -2481,29 +2666,68 @@ mixin _StorageSync on _StorageServiceBase {
         await PomodoroService.reconcilePlanBlockProgress(username);
       }
 
-      // 将从旧云端响应中恢复出的系列关系作为一次真实本地修复重新上传。
-      // 先完成同步源落库，再提升版本，确保 saveTodos 能生成待上传 oplog。
+      // Queue structural repairs without changing their user-write timestamps.
+      // Local CAS checks the just-persisted row; server CAS checks the original
+      // server snapshot, before series repair/dedupe changed its contents.
       if (repairedRemoteTodoIds.isNotEmpty) {
-        final repairIdsToUpload = repairedRemoteTodoIds.where((id) =>
-            recurrenceDedupeChangedIds.contains(id) ||
-            recurrenceBoundaryChangedIds.contains(id) ||
-            !_attemptedRecurrenceSeriesRepairUploads.contains('$username|$id'));
-        final repairedItems = allLocalTodos
+        final repairIdsToUpload = repairedRemoteTodoIds
+            .where(
+              (id) =>
+                  recurrenceDedupeChangedIds.contains(id) ||
+                  recurrenceBoundaryChangedIds.contains(id) ||
+                  !_attemptedRecurrenceSeriesRepairUploads.contains(
+                    '$username|$id',
+                  ),
+            )
+            .toSet();
+        final repairCandidates = allLocalTodos
             .where((todo) => repairIdsToUpload.contains(todo.id))
             .toList();
-        for (final todo in repairedItems) {
-          todo.markAsChanged();
+        final repairBaselines = <String, TodoItem>{};
+        final uploadBaselines = <String, TodoItem?>{};
+        final repairedItems = <TodoItem>[];
+        final persistedRepairItems = <String, TodoItem>{};
+        const repairChunkSize = 400;
+        for (var start = 0; start < repairCandidates.length; start += repairChunkSize) {
+          final rows = await DatabaseHelper.instance.getTodoMaps(
+            includeDeleted: true,
+            includeConflictData: true,
+            uuids: repairCandidates.skip(start).take(repairChunkSize)
+                .map((todo) => todo.id).toList(),
+            databaseOverride: db,
+          );
+          for (final row in rows) {
+            persistedRepairItems[row['uuid'].toString()] = TodoItem.fromSql(row);
+          }
+        }
+        for (final todo in repairCandidates) {
+          final current = persistedRepairItems[todo.id];
+          if (current == null ||
+              _hasSubstantialChange(
+                current.toJson(),
+                todo.toJson(),
+                _StorageTodos._todoSnapshotFields,
+              )) {
+            continue;
+          }
+          repairBaselines[todo.id] = current;
+          uploadBaselines[todo.id] =
+              remoteRecurrenceBaselines[todo.id] ?? beforeRemoteRepair[todo.id];
+          todo.markRecurrenceMaintenanceChanged();
+          repairedItems.add(todo);
         }
         if (repairedItems.isNotEmpty) {
-          await saveTodos(
+          final saved = await _saveRecurrenceMaintenance(
             username,
             repairedItems,
-            sync: true,
-            recomputeScheduleConflicts: false,
+            repairBaselines,
+            uploadBaselines: uploadBaselines,
           );
-          _attemptedRecurrenceSeriesRepairUploads.addAll(
-            repairedItems.map((todo) => '$username|${todo.id}'),
-          );
+          if (saved) {
+            _attemptedRecurrenceSeriesRepairUploads.addAll(
+              repairedItems.map((todo) => '$username|${todo.id}'),
+            );
+          }
           hasChanges = true;
           debugPrint('🧩 [同步修复] 已恢复并排队回传 ${repairedItems.length} 个循环实例的系列关系');
         }
@@ -2565,27 +2789,96 @@ mixin _StorageSync on _StorageServiceBase {
         triggerRefresh(scopedRefreshDomains);
       }
 
+      final shouldIndexConflictItems =
+          conflicts.length > 1 &&
+          allLocalTodos.length +
+                  allLocalHabitGoals.length +
+                  allLocalHabitRules.length >
+              64;
+      Map<String, TodoItem>? localTodosByConflictId;
+      Map<String, HabitGoal>? localHabitGoalsByConflictId;
+      Map<String, HabitGoalRuleRevision>? localHabitRulesByConflictId;
+      if (shouldIndexConflictItems) {
+        final conflictIds = <String>{};
+        var unresolvedConflictCount = 0;
+        for (final conflict in conflicts) {
+          final itemId =
+              (conflict.item['uuid'] ?? conflict.item['id'])?.toString();
+          if (itemId == null ||
+              itemId.isEmpty ||
+              autoResolvedHabitConflictIds.contains(itemId)) {
+            continue;
+          }
+          unresolvedConflictCount++;
+          conflictIds.add(itemId);
+        }
+        if (unresolvedConflictCount > 1) {
+          final todosById = <String, TodoItem>{};
+          for (final todo in allLocalTodos) {
+            if (conflictIds.contains(todo.id)) {
+              todosById.putIfAbsent(todo.id, () => todo);
+            }
+          }
+          localTodosByConflictId = todosById;
+
+          final goalsById = <String, HabitGoal>{};
+          for (final goal in allLocalHabitGoals) {
+            if (conflictIds.contains(goal.uuid)) {
+              goalsById.putIfAbsent(goal.uuid, () => goal);
+            }
+          }
+          localHabitGoalsByConflictId = goalsById;
+
+          final rulesById = <String, HabitGoalRuleRevision>{};
+          for (final rule in allLocalHabitRules) {
+            if (conflictIds.contains(rule.uuid)) {
+              rulesById.putIfAbsent(rule.uuid, () => rule);
+            }
+          }
+          localHabitRulesByConflictId = rulesById;
+        }
+      }
+
+      TodoItem? findLocalTodo(String id) {
+        final indexed = localTodosByConflictId;
+        if (indexed != null) return indexed[id];
+        for (final todo in allLocalTodos) {
+          if (todo.id == id) return todo;
+        }
+        return null;
+      }
+
+      HabitGoal? findLocalHabitGoal(String id) {
+        final indexed = localHabitGoalsByConflictId;
+        if (indexed != null) return indexed[id];
+        for (final goal in allLocalHabitGoals) {
+          if (goal.uuid == id) return goal;
+        }
+        return null;
+      }
+
+      HabitGoalRuleRevision? findLocalHabitRule(String id) {
+        final indexed = localHabitRulesByConflictId;
+        if (indexed != null) return indexed[id];
+        for (final rule in allLocalHabitRules) {
+          if (rule.uuid == id) return rule;
+        }
+        return null;
+      }
+
       conflicts.removeWhere((conflict) {
         final itemId =
             (conflict.item['uuid'] ?? conflict.item['id'])?.toString();
         if (itemId == null || itemId.isEmpty) return false;
         if (autoResolvedHabitConflictIds.contains(itemId)) return true;
-        TodoItem? local;
-        for (final todo in allLocalTodos) {
-          if (todo.id == itemId) {
-            local = todo;
-            break;
-          }
-        }
+        final local = findLocalTodo(itemId);
         if (local != null && (local.isDeleted || !local.hasConflict)) {
           return true;
         }
-        for (final goal in allLocalHabitGoals) {
-          if (goal.uuid == itemId) return goal.isDeleted || !goal.hasConflict;
-        }
-        for (final rule in allLocalHabitRules) {
-          if (rule.uuid == itemId) return rule.isDeleted || !rule.hasConflict;
-        }
+        final goal = findLocalHabitGoal(itemId);
+        if (goal != null) return goal.isDeleted || !goal.hasConflict;
+        final rule = findLocalHabitRule(itemId);
+        if (rule != null) return rule.isDeleted || !rule.hasConflict;
         return false;
       });
 
@@ -2734,21 +3027,25 @@ mixin _StorageSync on _StorageServiceBase {
     }));
 
     final resolvedIds = <String>{};
+    _SyncListIndex<HabitGoal>? goalIndex;
+    _SyncListIndex<HabitGoalRuleRevision>? ruleIndex;
     for (final result in results) {
       if (!result.resolved) continue;
       if (result.resolvedData != null) {
         if (result.candidate.table == 'habit_goals') {
-          final index = goals.indexWhere(
-            (goal) => goal.uuid == result.candidate.uuid,
-          );
-          if (index >= 0) {
+          final index = (goalIndex ??= _SyncListIndex(
+            goals,
+            (goal) => goal.uuid,
+          )).indexOf(result.candidate.uuid);
+          if (index != null) {
             goals[index] = HabitGoal.fromJson(result.resolvedData!);
           }
         } else {
-          final index = rules.indexWhere(
-            (rule) => rule.uuid == result.candidate.uuid,
-          );
-          if (index >= 0) {
+          final index = (ruleIndex ??= _SyncListIndex(
+            rules,
+            (rule) => rule.uuid,
+          )).indexOf(result.candidate.uuid);
+          if (index != null) {
             rules[index] = HabitGoalRuleRevision.fromJson(result.resolvedData!);
           }
         }
@@ -2766,5 +3063,39 @@ mixin _StorageSync on _StorageServiceBase {
       resolvedIds.add(result.candidate.uuid);
     }
     return resolvedIds;
+  }
+}
+
+final class _SyncListIndex<T> {
+  static const int _linearSearchLimit = 64;
+
+  _SyncListIndex(this._items, this._idOf);
+
+  final List<T> _items;
+  final String Function(T) _idOf;
+  Map<String, int>? _firstIndexById;
+  var _largeListLinearSearches = 0;
+
+  int? indexOf(String id) {
+    if (_items.length <= _linearSearchLimit) return _linearIndexOf(id);
+    if (_firstIndexById == null && _largeListLinearSearches == 0) {
+      _largeListLinearSearches++;
+      return _linearIndexOf(id);
+    }
+    final indexes = _firstIndexById ??= _buildFirstIndex();
+    return indexes[id];
+  }
+
+  int? _linearIndexOf(String id) {
+    final index = _items.indexWhere((item) => _idOf(item) == id);
+    return index < 0 ? null : index;
+  }
+
+  Map<String, int> _buildFirstIndex() {
+    final indexes = <String, int>{};
+    for (var index = 0; index < _items.length; index++) {
+      indexes.putIfAbsent(_idOf(_items[index]), () => index);
+    }
+    return indexes;
   }
 }

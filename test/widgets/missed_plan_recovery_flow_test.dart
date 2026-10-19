@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
+import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
@@ -371,16 +372,18 @@ void main() {
   });
 
   testWidgets('已有安排先显示，取消不打开草稿，明确仍新建才进入', (tester) async {
+    final followupStart = today
+        .add(const Duration(days: 1, hours: 10))
+        .millisecondsSinceEpoch;
+    final followupEnd = today
+        .add(const Duration(days: 1, hours: 11))
+        .millisecondsSinceEpoch;
     await fixture.block(
       TodoPlanBlock(
         id: 'followup',
         todoId: source.todoId,
-        startTime: today
-            .add(const Duration(days: 1, hours: 10))
-            .millisecondsSinceEpoch,
-        endTime: today
-            .add(const Duration(days: 1, hours: 11))
-            .millisecondsSinceEpoch,
+        startTime: followupStart,
+        endTime: followupEnd,
       ),
     );
     await tester.pumpWidget(
@@ -404,6 +407,14 @@ void main() {
     );
     await click(tester, key('open-flow'));
     expect(find.text('已有后续规划'), findsOneWidget);
+    final dateFormat = DateFormat('MM-dd HH:mm');
+    expect(
+      find.text(
+        '${dateFormat.format(DateTime.fromMillisecondsSinceEpoch(followupStart))}–'
+        '${dateFormat.format(DateTime.fromMillisecondsSinceEpoch(followupEnd))}',
+      ),
+      findsOneWidget,
+    );
     expect(find.byType(PlanBlockEditorSheet), findsNothing);
     await click(tester, find.text('取消'));
     expect(await fixture.db.query('op_logs'), isEmpty);

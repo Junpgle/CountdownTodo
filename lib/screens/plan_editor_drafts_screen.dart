@@ -45,6 +45,15 @@ class _PlanEditorDraftsScreenState extends State<PlanEditorDraftsScreen>
   String? _error;
   bool _loading = true, _opening = false;
   int _sequence = 0;
+  final Map<(String?, String), DateFormat> _dateFormatters = {};
+
+  DateFormat _cachedDateFormat(String pattern) {
+    final locale = Intl.defaultLocale;
+    return _dateFormatters.putIfAbsent(
+      (locale, pattern),
+      () => DateFormat(pattern, locale),
+    );
+  }
 
   @override
   void initState() {
@@ -113,10 +122,12 @@ class _PlanEditorDraftsScreenState extends State<PlanEditorDraftsScreen>
               ?reason,
               if (f != null) ...[
                 if (f.origin == 'reuse') '沿用规划设置',
-                if (f.split == null) '${_time(f.start)} — ${_time(f.end)}'
+                if (f.split == null)
+                  '${_time(f.start)} — ${_time(f.end)}'
                 else ...[
                   '${f.split!.slots.length}段 · 共${f.split!.query.total}分钟',
-                  for (final slot in f.split!.slots) '${_time(slot.start.millisecondsSinceEpoch)} — ${_time(slot.end.millisecondsSinceEpoch)} · ${slot.minutes}分钟',
+                  for (final slot in f.split!.slots)
+                    '${_time(slot.start.millisecondsSinceEpoch)} — ${_time(slot.end.millisecondsSinceEpoch)} · ${slot.minutes}分钟',
                 ],
                 '单轮番茄 ${f.pomodoro}分钟 · ${f.rounds == 0 ? '按规划时长' : '${f.rounds}轮'}',
                 f.reminder == 0 ? '不提醒' : '提前${f.reminder}分钟提醒',
@@ -233,7 +244,7 @@ class _PlanEditorDraftsScreenState extends State<PlanEditorDraftsScreen>
   }
 
   String _time(int value) =>
-      DateFormat('M月d日 HH:mm')
+      _cachedDateFormat('M月d日 HH:mm')
           .format(DateTime.fromMillisecondsSinceEpoch(value));
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -293,7 +304,11 @@ class _PlanEditorDraftsScreenState extends State<PlanEditorDraftsScreen>
                                 row.title,
                                 style: Theme.of(context).textTheme.titleMedium,
                               ),
-                              Text(row.parts > 1 ? '${row.parts}段 · 共${row.total}分钟 · 日期${DateFormat('M/d').format(DateTime.fromMillisecondsSinceEpoch(row.start))}至${DateFormat('M/d').format(DateTime.fromMillisecondsSinceEpoch(row.lastEnd))}' : '${_time(row.start)} — ${_time(row.end)}'),
+                              Text(
+                                row.parts > 1
+                                    ? '${row.parts}段 · 共${row.total}分钟 · 日期${_cachedDateFormat('M/d').format(DateTime.fromMillisecondsSinceEpoch(row.start))}至${_cachedDateFormat('M/d').format(DateTime.fromMillisecondsSinceEpoch(row.lastEnd))}'
+                                    : '${_time(row.start)} — ${_time(row.end)}',
+                              ),
                               Text('保留于 ${_time(row.updatedAt)}'),
                               if (!row.readable) const Text('草稿无法读取，格式暂不支持'),
                               Wrap(

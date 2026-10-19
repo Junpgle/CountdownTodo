@@ -39,9 +39,7 @@ abstract final class HabitSyncConflictService {
       if (value != null) fields[key] = value;
     }
     final sortedKeys = fields.keys.toList()..sort();
-    return <String, dynamic>{
-      for (final key in sortedKeys) key: fields[key],
-    };
+    return <String, dynamic>{for (final key in sortedKeys) key: fields[key]};
   }
 
   static dynamic _normalizeValue(dynamic value) {
@@ -80,6 +78,8 @@ abstract final class HabitSyncConflictService {
 
   static String _snakeCase(String value) => value
       .replaceAllMapped(
-          RegExp(r'[A-Z]'), (match) => '_${match[0]!.toLowerCase()}')
+        RegExp(r'[A-Z]'),
+        (match) => '_${match[0]!.toLowerCase()}',
+      )
       .replaceAll('__', '_');
 }

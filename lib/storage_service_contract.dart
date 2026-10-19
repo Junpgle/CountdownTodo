@@ -175,6 +175,10 @@ abstract class _StorageServiceBase {
   ValueNotifier<Color?> customThemeColorNotifier = ValueNotifier(null);
   ValueNotifier<Color?> appWallpaperColorNotifier = ValueNotifier(null);
   final Map<String, Future<List<TodoItem>>> _inflightTodoRequests = {};
+  final Map<(String, int, int), Future<List<TodoItem>>>
+      _inflightTodoSearchDateRequests = {};
+  final Map<(String, int, int), Future<List<TodoItem>>>
+      _inflightTimelineTodoRequests = {};
   final ValueNotifier<Map<String, dynamic>> conflictScanNotifier =
       ValueNotifier<Map<String, dynamic>>({
     'isScanning': false,
@@ -214,6 +218,11 @@ abstract class _StorageServiceBase {
     String username,
     DateTime day,
   );
+  Future<List<FixedScheduleItem>> getFixedSchedulesByDateRange(
+    String username, {
+    required DateTime from,
+    required DateTime to,
+  });
   Future<void> deleteFixedSchedule(
     String username,
     FixedScheduleItem item,
@@ -253,8 +262,21 @@ abstract class _StorageServiceBase {
     bool sync = true,
     TodoPlanStatus? newStatus,
   });
-  Future<List<TodoPlanBlock>> getPlanBlocks(String username,
-      {bool includeDeleted = false});
+  Future<List<TodoPlanBlock>> getPlanBlocks(
+    String username, {
+    bool includeDeleted = false,
+    DateTime? from,
+    DateTime? to,
+  });
+  Future<List<TodoPlanBlock>> getPlanBlocksForReminderWindow(
+    String username, {
+    required DateTime now,
+    required DateTime limit,
+  });
+  Future<List<TodoPlanBlock>> getDashboardPlanBlocks(
+    String username, {
+    required DateTime now,
+  });
   Future<void> deletePlanBlockGlobally(String username, String idToDelete);
   Future<List<TodoPlanBlock>> getPlanBlocksByTodo(
       String username, String todoId);
@@ -315,14 +337,31 @@ abstract class _StorageServiceBase {
   Future<List<Map<String, dynamic>>> getLeaderboard();
   Future<void> saveCountdowns(String username, List<CountdownItem> items,
       {bool sync = true, bool isSyncSource = false});
-  Future<void> _clearGhostConflictFlags(dynamic db);
-  Future<List<CountdownItem>> getCountdowns(String username,
-      {bool includeDeleted = false});
+  Future<void> _clearGhostConflictFlags(
+    dynamic db, {
+    Iterable<String> tables = const ['todos', 'todo_groups', 'countdowns'],
+  });
+  Future<List<CountdownItem>> getCountdowns(
+    String username, {
+    bool includeDeleted = false,
+    DateTime? from,
+    DateTime? to,
+  });
   Future<void> deleteCountdownGlobally(String username, String idToDelete);
   Future<void> saveTodos(String username, List<TodoItem> items,
       {bool sync = true,
       bool isSyncSource = false,
-      bool recomputeScheduleConflicts = true});
+      bool recomputeScheduleConflicts = true,
+      Set<String> authoritativeTodoIds = const {},
+      Map<String, TodoItem>? recurrenceBaselines,
+      Map<String, TodoItem?>? recurrenceUploadBaselines,
+      List<TodoItem>? bandSyncSnapshot});
+  Future<bool> _saveRecurrenceMaintenance(
+    String username,
+    List<TodoItem> todos,
+    Map<String, TodoItem> baselines, {
+    Map<String, TodoItem?>? uploadBaselines,
+  });
   bool _hasSubstantialChange(Map<String, dynamic> before,
       Map<String, dynamic> after, List<String> fields);
   Future<void> _refreshTodoScheduleConflicts(
@@ -353,8 +392,29 @@ abstract class _StorageServiceBase {
   Future<void> permanentlyDeleteCountdown(String username, String uuid);
   Future<List<TodoItem>> getTodos(String username,
       {bool includeDeleted = false, int? limit, int offset = 0});
+  Future<List<TodoItem>> getTodosForWidget(String username);
+  Future<List<TodoItem>> getTodosForSearchDateRange(
+    String username, {
+    required DateTime from,
+    required DateTime to,
+  });
+  Future<List<TodoItem>> getTodosForTimelineRange(
+    String username, {
+    required DateTime from,
+    required DateTime to,
+  });
+  Future<List<TodoItem>> _getTodosForTimelineRangeInternal(
+    String username, {
+    required int startMs,
+    required int endMs,
+  });
   Future<List<TodoItem>> _getTodosInternal(String username,
       {bool includeDeleted = false, int? limit, int offset = 0});
+  Future<List<TodoItem>> _getTodosForSearchDateRangeInternal(
+    String username, {
+    required int startMs,
+    required int endMs,
+  });
   Future<void> clearTeamItems(String teamUuid);
   Future<List<TodoItem>> _handleRecurrenceLogic(
       String username, List<TodoItem> todos);
@@ -452,7 +512,12 @@ abstract class _StorageServiceBase {
   Future<void> deleteTodoGroupGlobally(String username, String idToDelete);
   Future<void> saveTimeLogs(String username, List<TimeLogItem> items,
       {bool sync = true});
-  Future<List<TimeLogItem>> getTimeLogs(String username, {int? limit});
+  Future<List<TimeLogItem>> getTimeLogs(
+    String username, {
+    int? limit,
+    DateTime? from,
+    DateTime? to,
+  });
   Future<bool> deleteTimeLogGlobally(String username, String idToDelete);
   Future<void> saveLocalScreenTime(Map<dynamic, dynamic> stats,
       {String? username});
@@ -463,7 +528,11 @@ abstract class _StorageServiceBase {
   Future<void> saveScreenTimeHistoryToSql(String date, List<dynamic> stats,
       {String? username});
   Future<List<dynamic>> getScreenTimeCache();
-  Future<Map<String, List<dynamic>>> getScreenTimeHistory({String? username});
+  Future<Map<String, List<dynamic>>> getScreenTimeHistory({
+    String? username,
+    String? fromDate,
+    String? toDate,
+  });
   Future<void> updateLastScreenTimeSync({String? username});
   Future<DateTime?> getLastScreenTimeSync();
   Future<void> syncAppMappings();
@@ -512,7 +581,6 @@ abstract class _StorageServiceBase {
     TodoItem item,
     Map<String, dynamic> peer,
   );
-  bool _hasVersionConflict(Map<String, dynamic>? data);
   List<TodoItem> clearResolvedRecurrenceMigrationConflictsForTest(
     List<TodoItem> todos,
   );
@@ -521,7 +589,6 @@ abstract class _StorageServiceBase {
   );
   bool _payloadHasConflict(Map<String, dynamic> data);
   bool _payloadHasVersionConflict(Map<String, dynamic> data);
-  bool _isLocalScheduleConflict(Map<String, dynamic>? data);
   Map<String, dynamic> _stripClientOnlyConflictForSync(
       Map<String, dynamic> data);
   void _preserveLocalTodoSourceFields(TodoItem local, TodoItem incoming);
@@ -556,8 +623,6 @@ abstract class _StorageServiceBase {
     TodoItem candidate,
   );
   Map<String, dynamic> _conflictPeerSummary(_TodoInterval interval);
-  String _classifyScheduleRelation(
-      TodoItem current, List<Map<String, dynamic>> peers);
   String _localDayKey(int ms);
   Future<bool> syncScreenTimeAlone(String username, String deviceName,
       {int? expectedUserId});

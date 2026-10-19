@@ -18,6 +18,20 @@ double financeBottomContentPaddingFor(BuildContext context) {
 
 enum _FinanceOverviewView { month, week, day }
 
+typedef _FinanceOverviewPeriodCacheKey = ({
+  List<FinanceTransaction> transactions,
+  FinanceSummary summary,
+  Map<String, FinanceCategory> categories,
+  DateTime from,
+  DateTime to,
+  _FinanceOverviewView view,
+  DateTime Function() clock,
+  bool includesNow,
+  bool isPlanned,
+  bool selectedMonthIsCurrent,
+  bool focusedDateIsToday,
+});
+
 typedef FinanceCategorySelectionCallback = Future<void> Function(
   String categoryUuid,
   GlobalKey sourceKey,
@@ -71,6 +85,14 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
   late DateTime _focusedDate;
   int? _cumulativeBalanceMinor;
   final Map<String, GlobalKey> _categorySourceKeys = {};
+  Map<String, FinanceCategory>? _categoryDisplayNamesSource;
+  final Map<String, String> _categoryDisplayNames = {};
+  Map<String, FinanceCategory>? _categoryRootCacheSource;
+  Map<String, FinanceCategory> _categoryRootsByUuid = const {};
+  _FinanceOverviewPeriodCacheKey? _periodCacheKey;
+  _FinanceOverviewPeriod? _cachedPeriod;
+  _FinanceOverviewPeriod? _analyticsSourcePeriod;
+  _FinanceOverviewAnalytics? _cachedAnalytics;
 
   DateTime get month => widget.month;
   FinanceSummary get summary => widget.summary;
@@ -83,6 +105,20 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
   ValueChanged<DateTime>? get onMonthChanged => widget.onMonthChanged;
   FinanceCategorySelectionCallback? get onCategorySelected =>
       widget.onCategorySelected;
+
+  String _categoryDisplayName(String? categoryUuid) {
+    if (!identical(_categoryDisplayNamesSource, categories)) {
+      _categoryDisplayNamesSource = categories;
+      _categoryDisplayNames.clear();
+    }
+    return _categoryDisplayNames.putIfAbsent(
+      categoryUuid ?? '',
+      () => financeCategoryReferenceDisplayName(
+        categoryUuid,
+        categories.values,
+      ),
+    );
+  }
 
   @override
   void initState() {
@@ -130,8 +166,9 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final period = _currentPeriod;
-    final topCategories = _topExpenseCategories(period);
-    final categoryExpenseShares = _categoryExpenseShares(period);
+    final analytics = _overviewAnalytics(period);
+    final topCategories = analytics.topExpenseCategories;
+    final categoryExpenseShares = analytics.categoryExpenseShares;
     final maxCategory = topCategories.isEmpty ? 1 : topCategories.first.value;
     final bottomPadding = financeBottomContentPaddingFor(context);
 
@@ -190,7 +227,12 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
                 ),
               ),
             ),
-          _buildInsightCard(context, colorScheme, period),
+          _buildInsightCard(
+            context,
+            colorScheme,
+            period,
+            analytics.outflowTransactionCount,
+          ),
           const SizedBox(height: 24),
           Text(
             _spendingChartTitle(period),
@@ -201,7 +243,12 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
           Card(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(12, 16, 12, 12),
-              child: _buildSpendingChart(context, colorScheme, period),
+              child: _buildSpendingChart(
+                context,
+                colorScheme,
+                period,
+                analytics,
+              ),
             ),
           ),
           const SizedBox(height: 24),
@@ -226,23 +273,37 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
 
   _FinanceOverviewPeriod get _currentPeriod {
     final range = _periodRange;
-    final transactionsInRange = _transactionsInRange(range);
     final now = clock();
     final includesNow = !now.isBefore(range.from) && now.isBefore(range.to);
     final isPlanned = range.from.isAfter(now);
-    final periodTransactions = includesNow
-        ? transactionsInRange
-              .where(
-                (transaction) =>
-                    transaction.balanceEventAt() <= now.millisecondsSinceEpoch,
-              )
-              .toList(growable: false)
-        : transactionsInRange;
+    final selectedMonthIsCurrent =
+        now.year == month.year && now.month == month.month;
+    final focusedDateIsToday = dateKey(now) == dateKey(_focusedDate);
+    final cacheKey = (
+      transactions: transactions,
+      summary: summary,
+      categories: categories,
+      from: range.from,
+      to: range.to,
+      view: _view,
+      clock: clock,
+      includesNow: includesNow,
+      isPlanned: isPlanned,
+      selectedMonthIsCurrent: selectedMonthIsCurrent,
+      focusedDateIsToday: focusedDateIsToday,
+    );
+    final cachedPeriod = _cachedPeriod;
+    if (cachedPeriod != null && _periodCacheKey == cacheKey) {
+      return cachedPeriod;
+    }
+
+    final periodTransactions = _transactionsInRange(
+      range,
+      includedThrough: includesNow ? now.millisecondsSinceEpoch : null,
+    );
     final periodSummary = _view == _FinanceOverviewView.month && !includesNow
         ? summary
         : FinanceRepository.summarizeTransactions(periodTransactions);
-    final selectedMonthIsCurrent =
-        now.year == month.year && now.month == month.month;
     final title = switch (_view) {
       _FinanceOverviewView.month => '${month.year} 年 ${month.month} 月',
       _FinanceOverviewView.week => _formatFinanceDateRange(
@@ -257,11 +318,11 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
       _FinanceOverviewView.week =>
         includesNow ? '本周' : _formatFinanceDateRange(range.from, range.to),
       _FinanceOverviewView.day =>
-        dateKey(now) == dateKey(_focusedDate)
-            ? '今天'
-            : _formatFinanceDayLabel(dateKey(_focusedDate)),
+          focusedDateIsToday
+              ? '今天'
+              : _formatFinanceDayLabel(dateKey(_focusedDate)),
     };
-    return _FinanceOverviewPeriod(
+    final period = _FinanceOverviewPeriod(
       from: range.from,
       to: range.to,
       title: title,
@@ -270,6 +331,8 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
       transactions: periodTransactions,
       isPlanned: isPlanned,
     );
+    _periodCacheKey = cacheKey;
+    return _cachedPeriod = period;
   }
 
   String _spendingChartTitle(_FinanceOverviewPeriod period) {
@@ -324,16 +387,22 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
     return financeCalendarDayOffset(day, DateTime.monday - day.weekday);
   }
 
-  List<FinanceTransaction> _transactionsInRange(_FinanceDateRange range) {
+  List<FinanceTransaction> _transactionsInRange(
+    _FinanceDateRange range, {
+    int? includedThrough,
+  }) {
     final fromKey = dateKey(range.from);
     final toKey = dateKey(range.to);
     return transactions
-        .where(
-          (transaction) =>
-              transaction.transactionDate.compareTo(fromKey) >= 0 &&
-              transaction.transactionDate.compareTo(toKey) < 0,
-        )
-        .toList();
+        .where((transaction) {
+          if (transaction.transactionDate.compareTo(fromKey) < 0 ||
+              transaction.transactionDate.compareTo(toKey) >= 0) {
+            return false;
+          }
+          return includedThrough == null ||
+              transaction.balanceEventAt() <= includedThrough;
+        })
+        .toList(growable: includedThrough == null);
   }
 
   Widget _buildViewSelector(BuildContext context) {
@@ -749,10 +818,7 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
     final category = entry.categoryUuid == null
         ? null
         : categories[entry.categoryUuid];
-    final categoryName = financeCategoryReferenceDisplayName(
-      entry.categoryUuid,
-      categories.values,
-    );
+    final categoryName = _categoryDisplayName(entry.categoryUuid);
     final categoryLabel = category == null
         ? categoryName
         : '${category.isArchived ? '已归档 ' : ''}$categoryName';
@@ -938,10 +1004,7 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
   }
 
   String _categoryShareLabel(_FinanceCategoryTotal entry) {
-    return financeCategoryReferenceDisplayName(
-      entry.categoryUuid,
-      categories.values,
-    );
+    return _categoryDisplayName(entry.categoryUuid);
   }
 
   Color _categoryShareColor(
@@ -963,17 +1026,40 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
         .toColor();
   }
 
-  List<_FinanceCategoryTotal> _topExpenseCategories(
-    _FinanceOverviewPeriod period,
-  ) {
-    final totals = <String, int>{};
+  _FinanceOverviewAnalytics _overviewAnalytics(_FinanceOverviewPeriod period) {
+    final cached = _cachedAnalytics;
+    if (cached != null && identical(_analyticsSourcePeriod, period)) {
+      return cached;
+    }
+
+    final topTotals = <String, int>{};
+    final shareTotals = <String, int>{};
+    final hourlyNetExpenseMinor = _view == _FinanceOverviewView.day
+        ? List<int>.filled(25, 0)
+        : null;
+    var outflowTransactionCount = 0;
+
     for (final transaction in period.transactions) {
-      final amount = switch (transaction.type) {
+      if (transaction.isExpenseLike) outflowTransactionCount++;
+      if (hourlyNetExpenseMinor != null &&
+          transaction.type != FinanceTransactionType.income) {
+        final hour = _financeTransactionHour(transaction) ?? 24;
+        hourlyNetExpenseMinor[hour] +=
+            transaction.type == FinanceTransactionType.refund
+            ? -transaction.amountMinor
+            : transaction.amountMinor;
+      }
+
+      final topAmount = switch (transaction.type) {
         FinanceTransactionType.expense => transaction.amountMinor,
         FinanceTransactionType.refund => -transaction.amountMinor,
         FinanceTransactionType.income => 0,
       };
-      if (amount == 0) continue;
+      final includeInShares =
+          transaction.type == FinanceTransactionType.expense &&
+          transaction.amountMinor > 0;
+      if (topAmount == 0 && !includeInShares) continue;
+
       final categoryUuid = transaction.categoryUuid?.trim();
       final category = categoryUuid == null || categoryUuid.isEmpty
           ? null
@@ -981,60 +1067,61 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
       final rootUuid = category == null
           ? categoryUuid ?? ''
           : _rootCategory(category).uuid;
-      totals[rootUuid] = (totals[rootUuid] ?? 0) + amount;
+
+      if (topAmount != 0) {
+        topTotals[rootUuid] = (topTotals[rootUuid] ?? 0) + topAmount;
+      }
+      if (includeInShares) {
+        shareTotals[rootUuid] =
+            (shareTotals[rootUuid] ?? 0) + transaction.amountMinor;
+      }
     }
-    final result = [
-      for (final entry in totals.entries)
+
+    final topExpenseCategories = [
+      for (final entry in topTotals.entries)
         if (entry.value > 0)
           _FinanceCategoryTotal(
             categoryUuid: entry.key.isEmpty ? null : entry.key,
             value: entry.value,
           ),
-    ];
-    result.sort((a, b) => b.value.compareTo(a.value));
-    return result;
-  }
-
-  List<_FinanceCategoryTotal> _categoryExpenseShares(
-    _FinanceOverviewPeriod period,
-  ) {
-    final totals = <String, int>{};
-    for (final transaction in period.transactions) {
-      if (transaction.type != FinanceTransactionType.expense ||
-          transaction.amountMinor <= 0) {
-        continue;
-      }
-      final categoryUuid = transaction.categoryUuid?.trim();
-      final category = categoryUuid == null || categoryUuid.isEmpty
-          ? null
-          : categories[categoryUuid];
-      final rootUuid = category == null
-          ? categoryUuid ?? ''
-          : _rootCategory(category).uuid;
-      totals[rootUuid] = (totals[rootUuid] ?? 0) + transaction.amountMinor;
-    }
-    final result = [
-      for (final entry in totals.entries)
+    ]..sort((a, b) => b.value.compareTo(a.value));
+    final categoryExpenseShares = [
+      for (final entry in shareTotals.entries)
         _FinanceCategoryTotal(
           categoryUuid: entry.key.isEmpty ? null : entry.key,
           value: entry.value,
         ),
-    ];
-    result.sort((a, b) => b.value.compareTo(a.value));
-    return result;
+    ]..sort((a, b) => b.value.compareTo(a.value));
+
+    final analytics = _FinanceOverviewAnalytics(
+      topExpenseCategories: topExpenseCategories,
+      categoryExpenseShares: categoryExpenseShares,
+      outflowTransactionCount: outflowTransactionCount,
+      hourlyNetExpenseMinor: hourlyNetExpenseMinor,
+    );
+    _analyticsSourcePeriod = period;
+    return _cachedAnalytics = analytics;
   }
 
   FinanceCategory _rootCategory(FinanceCategory category) {
-    var current = category;
-    final visited = <String>{};
-    while (visited.add(current.uuid)) {
-      final parentUuid = current.parentUuid?.trim();
-      if (parentUuid == null || parentUuid.isEmpty) break;
-      final parent = categories[parentUuid];
-      if (parent == null || parent.type != current.type) break;
-      current = parent;
+    if (!identical(_categoryRootCacheSource, categories)) {
+      final rootsByUuid = <String, FinanceCategory>{};
+      for (final currentCategory in categories.values) {
+        var current = currentCategory;
+        final visited = <String>{};
+        while (visited.add(current.uuid)) {
+          final parentUuid = current.parentUuid?.trim();
+          if (parentUuid == null || parentUuid.isEmpty) break;
+          final parent = categories[parentUuid];
+          if (parent == null || parent.type != current.type) break;
+          current = parent;
+        }
+        rootsByUuid[currentCategory.uuid] = current;
+      }
+      _categoryRootCacheSource = categories;
+      _categoryRootsByUuid = rootsByUuid;
     }
-    return current;
+    return _categoryRootsByUuid[category.uuid] ?? category;
   }
 
   Future<void> _openCategoryDetail(
@@ -1059,7 +1146,8 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
       categories: categories,
       onCategorySelected: onCategorySelected == null
           ? null
-          : (categoryUuid, sourceKey, periodTransactions) => onCategorySelected!(
+          : (categoryUuid, sourceKey, periodTransactions) =>
+                onCategorySelected!(
                   categoryUuid,
                   sourceKey,
                   periodTransactions,
@@ -1082,12 +1170,10 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
     BuildContext context,
     ColorScheme colorScheme,
     _FinanceOverviewPeriod period,
+    _FinanceOverviewAnalytics analytics,
   ) {
     final spendingLabel = period.isPlanned ? '计划净支出' : '净支出';
-    final hasOutflowTransactions = period.transactions.any(
-      (transaction) => transaction.isExpenseLike,
-    );
-    final emptyMessage = hasOutflowTransactions
+    final emptyMessage = analytics.hasOutflowTransactions
         ? period.isPlanned
               ? '计划支出与退款相抵，计划净支出为 ${formatFinanceAmount(0)}'
               : '支出与退款相抵，净支出为 ${formatFinanceAmount(0)}'
@@ -1096,14 +1182,7 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
         : '${period.shortTitle}还没有净支出记录';
     if (_view == _FinanceOverviewView.day) {
       const unknownHourIndex = 24;
-      final values = List<int>.filled(unknownHourIndex + 1, 0);
-      for (final transaction in period.transactions) {
-        if (transaction.type == FinanceTransactionType.income) continue;
-        final hour = _financeTransactionHour(transaction) ?? unknownHourIndex;
-        values[hour] += transaction.type == FinanceTransactionType.refund
-            ? -transaction.amountMinor
-            : transaction.amountMinor;
-      }
+      final values = analytics.hourlyNetExpenseMinor!;
       return _buildBarChart(
         context,
         colorScheme,
@@ -1288,11 +1367,9 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
     BuildContext context,
     ColorScheme colorScheme,
     _FinanceOverviewPeriod period,
+    int outflowTransactionCount,
   ) {
     if (period.summary.transactionCount == 0) return const SizedBox.shrink();
-    final outflowTransactionCount = period.transactions
-        .where((transaction) => transaction.isExpenseLike)
-        .length;
     final average = outflowTransactionCount == 0
         ? 0
         : period.summary.netExpenseMinor ~/ outflowTransactionCount;
@@ -1352,6 +1429,33 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
   }
 }
 
+class _FinanceLedgerSearchEntry {
+  const _FinanceLedgerSearchEntry({
+    required this.transaction,
+    required this.eventAt,
+    required this.normalizedText,
+  });
+
+  final FinanceTransaction transaction;
+  final int eventAt;
+  final String normalizedText;
+}
+
+class _FinanceLedgerOrderEntry {
+  const _FinanceLedgerOrderEntry({
+    required this.transaction,
+    required this.eventAt,
+  });
+
+  final FinanceTransaction transaction;
+  final int eventAt;
+}
+
+typedef _FinanceLedgerFilterKey = ({
+  FinanceTransactionType? type,
+  String? categoryUuid,
+});
+
 class FinanceLedgerPanel extends StatefulWidget {
   final double topPadding;
   final DateTime? month;
@@ -1396,14 +1500,27 @@ class FinanceLedgerPanel extends StatefulWidget {
 
 class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
   final Map<String, GlobalKey> _cardKeys = {};
+  final Map<String, String> _categoryDisplayNameCache = {};
+  final Map<String, String> _paymentMethodDisplayNameCache = {};
   late final TextEditingController _keywordController;
+  late String _localKeyword;
+  FinanceTransactionType? _localFilterType;
+  String? _localCategoryUuid;
+  List<FinanceTransaction>? _searchSourceTransactions;
+  Map<String, FinanceCategory>? _searchSourceCategories;
+  Map<String, FinancePaymentMethod>? _searchSourcePaymentMethods;
+  List<_FinanceLedgerSearchEntry> _searchEntries = const [];
+  bool _searchEntriesBuilt = false;
+  List<FinanceTransaction>? _orderedSourceTransactions;
+  _FinanceLedgerFilterKey? _orderedFilterKey;
+  List<_FinanceLedgerOrderEntry> _orderedEntries = const [];
 
   List<FinanceTransaction> get transactions => widget.transactions;
   Map<String, FinanceCategory> get categories => widget.categories;
   Map<String, FinancePaymentMethod> get paymentMethods => widget.paymentMethods;
-  String get keyword => widget.keyword;
-  FinanceTransactionType? get filterType => widget.filterType;
-  String? get categoryUuid => widget.categoryUuid;
+  String get keyword => _localKeyword;
+  FinanceTransactionType? get filterType => _localFilterType;
+  String? get categoryUuid => _localCategoryUuid;
   void Function(FinanceTransaction, GlobalKey) get onOpenDetail =>
       widget.onOpenDetail;
   ValueChanged<String> get onKeywordChanged => widget.onKeywordChanged;
@@ -1421,18 +1538,27 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
   @override
   void initState() {
     super.initState();
+    _localKeyword = widget.keyword;
+    _localFilterType = widget.filterType;
+    _localCategoryUuid = widget.categoryUuid;
     _keywordController = TextEditingController(text: widget.keyword);
   }
 
   @override
   void didUpdateWidget(covariant FinanceLedgerPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.keyword != widget.keyword &&
-        _keywordController.text != widget.keyword) {
+    if (_localKeyword != widget.keyword) _localKeyword = widget.keyword;
+    if (_keywordController.text != widget.keyword) {
       _keywordController.value = TextEditingValue(
         text: widget.keyword,
         selection: TextSelection.collapsed(offset: widget.keyword.length),
       );
+    }
+    if (_localFilterType != widget.filterType) {
+      _localFilterType = widget.filterType;
+    }
+    if (_localCategoryUuid != widget.categoryUuid) {
+      _localCategoryUuid = widget.categoryUuid;
     }
   }
 
@@ -1442,52 +1568,219 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
     super.dispose();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final filtered = transactions.where((transaction) {
-      if (filterType != null && transaction.type != filterType) return false;
+  String _categoryDisplayName(String? categoryUuid) {
+    final cacheKey = categoryUuid ?? '';
+    return _categoryDisplayNameCache.putIfAbsent(
+      cacheKey,
+      () =>
+          financeCategoryReferenceDisplayName(categoryUuid, categories.values),
+    );
+  }
+
+  String _paymentMethodDisplayName(FinancePaymentMethod paymentMethod) {
+    return _paymentMethodDisplayNameCache.putIfAbsent(
+      paymentMethod.uuid,
+      () =>
+          financePaymentMethodDisplayName(paymentMethod, paymentMethods.values),
+    );
+  }
+
+  void _syncSearchInputs() {
+    final transactionsChanged =
+        !identical(_searchSourceTransactions, transactions);
+    if (!transactionsChanged &&
+        identical(_searchSourceCategories, categories) &&
+        identical(_searchSourcePaymentMethods, paymentMethods)) {
+      return;
+    }
+
+    _searchSourceTransactions = transactions;
+    _searchSourceCategories = categories;
+    _searchSourcePaymentMethods = paymentMethods;
+    if (transactionsChanged) {
+      _orderedSourceTransactions = null;
+      _orderedFilterKey = null;
+      _orderedEntries = const [];
+    }
+    _categoryDisplayNameCache.clear();
+    _paymentMethodDisplayNameCache.clear();
+    _searchEntries = const [];
+    _searchEntriesBuilt = false;
+  }
+
+  List<_FinanceLedgerOrderEntry> _ensureOrderedEntries({
+    required FinanceTransactionType? filterType,
+    required String? categoryUuid,
+  }) {
+    _syncSearchInputs();
+    final filterKey = (type: filterType, categoryUuid: categoryUuid);
+    if (identical(_orderedSourceTransactions, transactions) &&
+        _orderedFilterKey == filterKey) {
+      return _orderedEntries;
+    }
+
+    final entries = <_FinanceLedgerOrderEntry>[];
+    for (final transaction in transactions) {
+      if (filterType != null && transaction.type != filterType) continue;
       if (categoryUuid != null) {
         final matchesCategory =
             categoryUuid == financeUncategorizedCategoryFilterUuid
             ? transaction.categoryUuid == null ||
                   transaction.categoryUuid!.trim().isEmpty
             : transaction.categoryUuid == categoryUuid;
-        if (!matchesCategory) return false;
+        if (!matchesCategory) continue;
       }
-      if (keyword.trim().isEmpty) return true;
-      final query = keyword.trim().toLowerCase();
-      final category = categories[transaction.categoryUuid];
-      final payment = paymentMethods[transaction.paymentMethodUuid];
-      final paymentName = payment == null
-          ? null
-          : financePaymentMethodDisplayName(payment, paymentMethods.values);
-      final unknownPaymentLabel =
-          transaction.paymentMethodUuid?.trim().isNotEmpty == true
-          ? switch (transaction.type) {
-              FinanceTransactionType.expense => '已删除或未知付款方式',
-              FinanceTransactionType.income => '已删除或未知到账账户',
-              FinanceTransactionType.refund => '已删除或未知退款到账账户',
-            }
-          : null;
-      final categoryName = financeCategoryReferenceDisplayName(
-        transaction.categoryUuid,
-        categories.values,
+      entries.add(
+        _FinanceLedgerOrderEntry(
+          transaction: transaction,
+          eventAt: transaction.balanceEventAt(),
+        ),
       );
-      final content = [
-        transaction.merchant,
-        transaction.note,
-        categoryName,
-        payment?.name,
-        paymentName,
-        if (category?.isArchived == true || payment?.isArchived == true) '已归档',
-        unknownPaymentLabel,
-        if (unknownPaymentLabel != null) '已删除或未知付款方式',
-      ].whereType<String>().join(' ').toLowerCase();
-      return content.contains(query) ||
-          _matchesFinanceLedgerDate(transaction.transactionDate, query);
-    }).toList();
+    }
+    entries.sort((a, b) {
+      final dateComparison = b.transaction.transactionDate.compareTo(
+        a.transaction.transactionDate,
+      );
+      if (dateComparison != 0) return dateComparison;
+      final eventComparison = b.eventAt.compareTo(a.eventAt);
+      if (eventComparison != 0) return eventComparison;
+      final updatedComparison = b.transaction.updatedAt.compareTo(
+        a.transaction.updatedAt,
+      );
+      if (updatedComparison != 0) return updatedComparison;
+      return b.transaction.uuid.compareTo(a.transaction.uuid);
+    });
+    _orderedSourceTransactions = transactions;
+    _orderedFilterKey = filterKey;
+    _searchEntries = const [];
+    _searchEntriesBuilt = false;
+    return _orderedEntries = entries;
+  }
+
+  void _ensureSearchEntries(List<_FinanceLedgerOrderEntry> orderedEntries) {
+    if (_searchEntriesBuilt) return;
+
+    final entries = [
+      for (final orderedEntry in orderedEntries)
+        _FinanceLedgerSearchEntry(
+          transaction: orderedEntry.transaction,
+          eventAt: orderedEntry.eventAt,
+          normalizedText: _searchableTextFor(orderedEntry.transaction),
+        ),
+    ];
+    _searchEntries = entries;
+    _searchEntriesBuilt = true;
+  }
+
+  String _searchableTextFor(FinanceTransaction transaction) {
+    final category = categories[transaction.categoryUuid];
+    final payment = paymentMethods[transaction.paymentMethodUuid];
+    final paymentName = payment == null
+        ? null
+        : _paymentMethodDisplayName(payment);
+    final hasPaymentMethodUuid =
+        transaction.paymentMethodUuid?.trim().isNotEmpty == true;
+    final unknownPaymentLabel = hasPaymentMethodUuid
+        ? switch (transaction.type) {
+            FinanceTransactionType.expense => '已删除或未知付款方式',
+            FinanceTransactionType.income => '已删除或未知到账账户',
+            FinanceTransactionType.refund => '已删除或未知退款到账账户',
+          }
+        : null;
+
+    return [
+      transaction.merchant,
+      transaction.note,
+      _categoryDisplayName(transaction.categoryUuid),
+      payment?.name,
+      paymentName,
+      if (category?.isArchived == true || payment?.isArchived == true) '已归档',
+      unknownPaymentLabel,
+      if (hasPaymentMethodUuid) '已删除或未知付款方式',
+    ].whereType<String>().join(' ').toLowerCase();
+  }
+
+  void _updateKeyword(String value) {
+    if (_localKeyword != value) {
+      setState(() => _localKeyword = value);
+    }
+    onKeywordChanged(value);
+  }
+
+  void _updateFilterType(FinanceTransactionType? value) {
+    if (_localFilterType != value) {
+      setState(() => _localFilterType = value);
+    }
+    onFilterChanged(value);
+  }
+
+  void _updateCategoryFilter(String? value) {
+    if (_localCategoryUuid != value) {
+      setState(() => _localCategoryUuid = value);
+    }
+    onCategoryChanged?.call(value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final query = keyword.trim().toLowerCase();
+    final hasKeyword = query.isNotEmpty;
+    final orderedEntries = _ensureOrderedEntries(
+      filterType: filterType,
+      categoryUuid: categoryUuid,
+    );
+    if (hasKeyword) _ensureSearchEntries(orderedEntries);
+
+    final List<_FinanceLedgerOrderEntry> filtered;
+    if (!hasKeyword) {
+      filtered = orderedEntries;
+    } else {
+      filtered = <_FinanceLedgerOrderEntry>[];
+      final dateMatches = <String, bool>{};
+
+      for (final entry in _searchEntries) {
+        final transaction = entry.transaction;
+        final matchesDate = dateMatches.putIfAbsent(
+          transaction.transactionDate,
+          () => _matchesFinanceLedgerDate(transaction.transactionDate, query),
+        );
+        if (entry.normalizedText.contains(query) || matchesDate) {
+          filtered.add(
+            _FinanceLedgerOrderEntry(
+              transaction: transaction,
+              eventAt: entry.eventAt,
+            ),
+          );
+        }
+      }
+    }
     final nowAt = widget.clock().millisecondsSinceEpoch;
     final dayGroups = _groupFinanceTransactionsByDay(filtered, asOfAt: nowAt);
+    final ledgerRows = <_FinanceLedgerRow>[];
+    for (var groupIndex = 0; groupIndex < dayGroups.length; groupIndex++) {
+      final group = dayGroups[groupIndex];
+      ledgerRows.add(_FinanceLedgerRow.header(group));
+      for (
+        var transactionIndex = 0;
+        transactionIndex < group.transactions.length;
+        transactionIndex++
+      ) {
+        ledgerRows.add(
+          _FinanceLedgerRow.transaction(group.transactions[transactionIndex]),
+        );
+        if (transactionIndex + 1 < group.transactions.length ||
+            groupIndex + 1 < dayGroups.length) {
+          ledgerRows.add(const _FinanceLedgerRow.spacer());
+        }
+      }
+    }
+    final keyedRowIndices = <Key, int>{};
+    for (var rowIndex = 0; rowIndex < ledgerRows.length; rowIndex++) {
+      final transaction = ledgerRows[rowIndex].transaction;
+      if (transaction == null) continue;
+      final cardKey = _cardKeys[transaction.uuid];
+      if (cardKey != null) keyedRowIndices[cardKey] = rowIndex;
+    }
     final bottomPadding = financeBottomContentPaddingFor(context);
 
     return Column(
@@ -1496,14 +1789,14 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
           padding: EdgeInsets.fromLTRB(16, widget.topPadding + 12, 16, 4),
           child: TextField(
             controller: _keywordController,
-            onChanged: onKeywordChanged,
+            onChanged: _updateKeyword,
             decoration: InputDecoration(
               hintText: '搜索商家、备注、分类、关联账户或日期',
               prefixIcon: const Icon(Icons.search),
               suffixIcon: keyword.isEmpty
                   ? null
                   : IconButton(
-                      onPressed: () => onKeywordChanged(''),
+                      onPressed: () => _updateKeyword(''),
                       icon: const Icon(Icons.clear),
                     ),
               border: const OutlineInputBorder(),
@@ -1527,34 +1820,21 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
         Expanded(
           child: filtered.isEmpty
               ? _buildEmptyState(context)
-              : ListView(
+              : ListView.builder(
                   padding: EdgeInsets.fromLTRB(16, 4, 16, bottomPadding),
-                  children: [
-                    for (
-                      var groupIndex = 0;
-                      groupIndex < dayGroups.length;
-                      groupIndex++
-                    ) ...[
-                      _buildDayHeader(context, dayGroups[groupIndex]),
-                      for (
-                        var transactionIndex = 0;
-                        transactionIndex <
-                            dayGroups[groupIndex].transactions.length;
-                        transactionIndex++
-                      ) ...[
-                        _buildTransactionTile(
-                          context,
-                          dayGroups[groupIndex].transactions[transactionIndex],
-                          nowAt,
-                        ),
-                        if (transactionIndex + 1 <
-                            dayGroups[groupIndex].transactions.length)
-                          const SizedBox(height: 8),
-                      ],
-                      if (groupIndex + 1 < dayGroups.length)
-                        const SizedBox(height: 8),
-                    ],
-                  ],
+                  itemCount: ledgerRows.length,
+                  findChildIndexCallback: (key) => keyedRowIndices[key],
+                  itemBuilder: (context, index) {
+                    final row = ledgerRows[index];
+                    if (row.isSpacer) return const SizedBox(height: 8);
+                    final group = row.group;
+                    if (group != null) return _buildDayHeader(context, group);
+                    return _buildTransactionTile(
+                      context,
+                      row.transaction!,
+                      nowAt,
+                    );
+                  },
                 ),
         ),
       ],
@@ -1571,7 +1851,7 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
       child: ChoiceChip(
         label: Text(label),
         selected: filterType == type,
-        onSelected: (_) => onFilterChanged(type),
+        onSelected: (_) => _updateFilterType(type),
       ),
     );
   }
@@ -1584,10 +1864,7 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
         ? '分类 · 未分类'
         : categoryUuid == null
         ? '分类筛选'
-        : '分类 · ${financeCategoryReferenceDisplayName(
-            categoryUuid,
-            categories.values,
-          )}';
+        : '分类 · ${_categoryDisplayName(categoryUuid)}';
     return Padding(
       padding: const EdgeInsets.only(right: 8),
       child: FilterChip(
@@ -1597,7 +1874,7 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
         selected: true,
         onSelected: onCategoryChanged == null
             ? null
-            : (_) => onCategoryChanged?.call(null),
+            : (_) => _updateCategoryFilter(null),
       ),
     );
   }
@@ -1692,11 +1969,8 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
     final payment = paymentMethods[transaction.paymentMethodUuid];
     final paymentName = payment == null
         ? null
-        : financePaymentMethodDisplayName(payment, paymentMethods.values);
-    final categoryName = financeCategoryReferenceDisplayName(
-      transaction.categoryUuid,
-      categories.values,
-    );
+        : _paymentMethodDisplayName(payment);
+    final categoryName = _categoryDisplayName(transaction.categoryUuid);
     final title = transaction.merchant?.isNotEmpty == true
         ? transaction.merchant!
         : category == null &&
@@ -1707,10 +1981,7 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
     final subtitleParts = <String>[
       if (transaction.balanceEventAt() > asOfAt) '待发生',
       category == null
-          ? financeCategoryReferenceDisplayName(
-              transaction.categoryUuid,
-              categories.values,
-            )
+          ? categoryName
           : '${category.icon} $categoryName${category.isArchived ? '（已归档）' : ''}',
       if (payment != null)
         '${payment.icon} $paymentName${payment.isArchived ? '（已归档）' : ''}'
@@ -1810,9 +2081,7 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
           ),
           const SizedBox(height: 12),
           Text(
-            keyword.trim().isEmpty &&
-                filterType == null &&
-                categoryUuid == null
+            keyword.trim().isEmpty && filterType == null && categoryUuid == null
                 ? '$monthLabel还没有账单'
                 : '没有匹配的账单',
             style: TextStyle(color: colorScheme.onSurfaceVariant),
@@ -1848,6 +2117,22 @@ class _FinanceOverviewPeriod {
     required this.transactions,
     required this.isPlanned,
   });
+}
+
+class _FinanceOverviewAnalytics {
+  final List<_FinanceCategoryTotal> topExpenseCategories;
+  final List<_FinanceCategoryTotal> categoryExpenseShares;
+  final int outflowTransactionCount;
+  final List<int>? hourlyNetExpenseMinor;
+
+  const _FinanceOverviewAnalytics({
+    required this.topExpenseCategories,
+    required this.categoryExpenseShares,
+    required this.outflowTransactionCount,
+    required this.hourlyNetExpenseMinor,
+  });
+
+  bool get hasOutflowTransactions => outflowTransactionCount > 0;
 }
 
 class _FinanceCategoryTotal {
@@ -1966,67 +2251,61 @@ class _FinanceDayGroup {
   int get plannedNetExpenseMinor => plannedExpenseMinor - plannedRefundMinor;
 }
 
+class _FinanceLedgerRow {
+  final _FinanceDayGroup? group;
+  final FinanceTransaction? transaction;
+  final bool isSpacer;
+
+  const _FinanceLedgerRow.header(this.group)
+    : transaction = null,
+      isSpacer = false;
+
+  const _FinanceLedgerRow.transaction(this.transaction)
+    : group = null,
+      isSpacer = false;
+
+  const _FinanceLedgerRow.spacer()
+    : group = null,
+      transaction = null,
+      isSpacer = true;
+}
+
 List<_FinanceDayGroup> _groupFinanceTransactionsByDay(
-  Iterable<FinanceTransaction> transactions, {
+  Iterable<_FinanceLedgerOrderEntry> entries, {
   required int asOfAt,
 }) {
   final grouped = <String, List<FinanceTransaction>>{};
-  for (final transaction in transactions) {
-    grouped.putIfAbsent(transaction.transactionDate, () => []).add(transaction);
+  final totalsByDate = <String, List<int>>{};
+  for (final entry in entries) {
+    final transaction = entry.transaction;
+    final date = transaction.transactionDate;
+    final eventAt = entry.eventAt;
+    grouped.putIfAbsent(date, () => []).add(transaction);
+
+    final totals = totalsByDate.putIfAbsent(date, () => List<int>.filled(6, 0));
+    final metricOffset = eventAt > asOfAt ? 3 : 0;
+    final metricIndex = switch (transaction.type) {
+      FinanceTransactionType.expense => metricOffset,
+      FinanceTransactionType.refund => metricOffset + 1,
+      FinanceTransactionType.income => metricOffset + 2,
+    };
+    totals[metricIndex] += transaction.amountMinor;
   }
 
-  final dates = grouped.keys.toList()..sort((a, b) => b.compareTo(a));
   final result = <_FinanceDayGroup>[];
-  for (final date in dates) {
-    final items = List<FinanceTransaction>.of(grouped[date]!)
-      ..sort((a, b) {
-        final occurredComparison = b.balanceEventAt().compareTo(
-          a.balanceEventAt(),
-        );
-        if (occurredComparison != 0) return occurredComparison;
-        final updatedComparison = b.updatedAt.compareTo(a.updatedAt);
-        if (updatedComparison != 0) return updatedComparison;
-        return b.uuid.compareTo(a.uuid);
-      });
-    var expenseMinor = 0;
-    var refundMinor = 0;
-    var incomeMinor = 0;
-    var plannedExpenseMinor = 0;
-    var plannedRefundMinor = 0;
-    var plannedIncomeMinor = 0;
-    for (final item in items) {
-      final isPlanned = item.balanceEventAt() > asOfAt;
-      switch (item.type) {
-        case FinanceTransactionType.expense:
-          if (isPlanned) {
-            plannedExpenseMinor += item.amountMinor;
-          } else {
-            expenseMinor += item.amountMinor;
-          }
-        case FinanceTransactionType.refund:
-          if (isPlanned) {
-            plannedRefundMinor += item.amountMinor;
-          } else {
-            refundMinor += item.amountMinor;
-          }
-        case FinanceTransactionType.income:
-          if (isPlanned) {
-            plannedIncomeMinor += item.amountMinor;
-          } else {
-            incomeMinor += item.amountMinor;
-          }
-      }
-    }
+  for (final entry in grouped.entries) {
+    final date = entry.key;
+    final totals = totalsByDate[date]!;
     result.add(
       _FinanceDayGroup(
         date: date,
-        transactions: items,
-        expenseMinor: expenseMinor,
-        refundMinor: refundMinor,
-        incomeMinor: incomeMinor,
-        plannedExpenseMinor: plannedExpenseMinor,
-        plannedRefundMinor: plannedRefundMinor,
-        plannedIncomeMinor: plannedIncomeMinor,
+        transactions: entry.value,
+        expenseMinor: totals[0],
+        refundMinor: totals[1],
+        incomeMinor: totals[2],
+        plannedExpenseMinor: totals[3],
+        plannedRefundMinor: totals[4],
+        plannedIncomeMinor: totals[5],
       ),
     );
   }

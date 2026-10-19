@@ -598,29 +598,39 @@ abstract final class FinanceAiContextService {
                 item.transactionDate.compareTo(toKey) < 0,
           )
           .toList(growable: false);
-      final transactions = recentQuery == null
-          ? periodTransactions
-          : (await FinanceRepository.getTransactions(
-                  to: _recentTransactionQueryEndDate(asOfAt),
-                  type: recentQuery.type,
-                ))
-                .where((item) => item.balanceEventAt() <= asOfAt)
-                .toList()
-            ..sort((left, right) {
-              final eventOrder = right
-                  .balanceEventAt()
-                  .compareTo(left.balanceEventAt());
-              if (eventOrder != 0) return eventOrder;
-              final dateOrder = right.transactionDate.compareTo(
-                left.transactionDate,
-              );
-              return dateOrder != 0
-                  ? dateOrder
-                  : right.updatedAt.compareTo(left.updatedAt);
-            });
-      final selectedTransactions = recentQuery == null
-          ? transactions
-          : transactions.take(recentQuery.count).toList(growable: false);
+      final List<FinanceTransaction> selectedTransactions;
+      if (recentQuery == null) {
+        selectedTransactions = periodTransactions;
+      } else {
+        final recentValues = await FinanceRepository.getTransactions(
+          to: _recentTransactionQueryEndDate(asOfAt),
+          type: recentQuery.type,
+        );
+        final recentEvents =
+            <({FinanceTransaction transaction, int eventAt})>[];
+        for (final transaction in recentValues) {
+          final eventAt = transaction.balanceEventAt();
+          if (eventAt <= asOfAt) {
+            recentEvents.add((transaction: transaction, eventAt: eventAt));
+          }
+        }
+        recentEvents.sort((left, right) {
+          final eventOrder = right.eventAt.compareTo(left.eventAt);
+          if (eventOrder != 0) return eventOrder;
+          final dateOrder = right.transaction.transactionDate.compareTo(
+            left.transaction.transactionDate,
+          );
+          return dateOrder != 0
+              ? dateOrder
+              : right.transaction.updatedAt.compareTo(
+                  left.transaction.updatedAt,
+                );
+        });
+        selectedTransactions = recentEvents
+            .take(recentQuery.count)
+            .map((entry) => entry.transaction)
+            .toList(growable: false);
+      }
       final allBudgets = values[1] as List<FinanceBudget>;
       Map<String, int>? paymentMethodBalances;
       if (needsPaymentBalances) {
@@ -654,18 +664,13 @@ abstract final class FinanceAiContextService {
               .map((item) => item.interestTransactionUuid)
               .whereType<String>()
               .toSet();
-          for (final snapshot in snapshots) {
-            final paymentMethodUuid = snapshot.paymentMethodUuid!;
-            paymentMethodBalances[paymentMethodUuid] =
-                FinanceRepository.paymentMethodBalanceAt(
-                  snapshot: snapshot,
-                  transactions: balanceTransactions,
-                  loanRepayments: loanRepayments,
-                  loanInterestTransactionUuids:
-                      loanInterestTransactionUuids,
-                  asOfAt: balanceAsOfAt,
-                );
-          }
+          paymentMethodBalances = FinanceRepository.paymentMethodBalancesAt(
+            snapshots: snapshots,
+            transactions: balanceTransactions,
+            loanRepayments: loanRepayments,
+            loanInterestTransactionUuids: loanInterestTransactionUuids,
+            asOfAt: balanceAsOfAt,
+          );
         }
       }
       final budgets = allBudgets
@@ -679,12 +684,26 @@ abstract final class FinanceAiContextService {
       // Budget limits belong to full calendar months even when the ledger
       // question covers only one day/week or spans several different months.
       final currentMonthKey = financeMonthKey(nowValue);
+      final budgetMonthKeys = budgets.map((item) => item.monthKey).toSet();
+      final transactionsByBudgetMonth =
+          <String, List<FinanceTransaction>>{};
+      if (budgetMonthKeys.isNotEmpty) {
+        for (final transaction in monthTransactions) {
+          final transactionDate = transaction.transactionDate;
+          if (transactionDate.length < 8 || transactionDate[7] != '-') {
+            continue;
+          }
+          final monthKey = transactionDate.substring(0, 7);
+          if (!budgetMonthKeys.contains(monthKey)) continue;
+          (transactionsByBudgetMonth[monthKey] ??= <FinanceTransaction>[])
+              .add(transaction);
+        }
+      }
       final budgetSummaries = {
-        for (final month in budgets.map((item) => item.monthKey).toSet())
+        for (final month in budgetMonthKeys)
           month: FinanceSummary.fromTransactions(
-            monthTransactions.where(
-              (item) => item.transactionDate.startsWith('$month-'),
-            ),
+            transactionsByBudgetMonth[month] ??
+                const <FinanceTransaction>[],
             asOfAt: month.compareTo(currentMonthKey) > 0
                 ? null
                 : asOfAt,
@@ -694,7 +713,7 @@ abstract final class FinanceAiContextService {
         range: range,
         summary: FinanceSummary.fromTransactions(
           selectedTransactions,
-          asOfAt: asOfAt,
+          asOfAt: recentQuery == null ? asOfAt : null,
         ),
         transactions: selectedTransactions,
         categories: catalogData.categories,
@@ -1285,14 +1304,27 @@ abstract final class FinanceAiContextService {
       final currentMonthKey = financeMonthKey(
         DateTime.fromMillisecondsSinceEpoch(asOfAt),
       );
-      for (final budget in budgets.take(_maxContextBudgetDetails)) {
+      final displayedBudgets = budgets
+          .take(_maxContextBudgetDetails)
+          .toList(growable: false);
+      final spendingByBudget = <String, int>{};
+      for (final monthKey in displayedBudgets
+          .map((budget) => budget.monthKey)
+          .toSet()) {
+        spendingByBudget.addAll(
+          (budgetSummaries[monthKey] ?? const FinanceSummary())
+              .spendingForBudgets(
+                displayedBudgets.where((budget) => budget.monthKey == monthKey),
+                categories,
+              ),
+        );
+      }
+      for (final budget in displayedBudgets) {
         if (displayedMonth != budget.monthKey) {
           displayedMonth = budget.monthKey;
           lines.add('预算（${budget.monthKey}，整月）:');
         }
-        final used =
-            (budgetSummaries[budget.monthKey] ?? const FinanceSummary())
-                .spendingForBudget(budget, categories);
+        final used = spendingByBudget[budget.uuid] ?? 0;
         final remaining = budget.amountMinor - used;
         final scope = budget.categoryUuid == null
             ? '整体'

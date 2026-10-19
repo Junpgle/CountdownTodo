@@ -2,6 +2,7 @@ import 'dart:async' show TimeoutException, Timer, unawaited;
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:nativeapi/nativeapi.dart' as nativeapi;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:tray_manager/tray_manager.dart';
@@ -234,7 +235,9 @@ class WindowService extends WindowListener {
     trayIcon.icon = ImageAsset.fromAsset(
       Platform.isWindows ? 'assets/icon/app_icon.ico' : 'assets/icon/app_icon.png',
     );
-    if (Platform.isWindows) trayIcon.iconSize = const Size(18, 18);
+    if (Platform.isWindows) {
+      trayIcon.iconSize = const nativeapi.Size(width: 18, height: 18);
+    }
   }
 
   static void _createTrayMenu() {

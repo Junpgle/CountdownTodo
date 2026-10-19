@@ -12,7 +12,7 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
   }
 
   List<TodoItem> _cloneTodosForPersistence(List<TodoItem> todos) {
-    return todos.map((todo) => TodoItem.fromJson(todo.toJson())).toList();
+    return todos.map((todo) => todo.detachedCopy()).toList();
   }
 
   List<TodoItem> _mergePendingTodoSnapshots(List<TodoItem> loadedTodos) {
@@ -20,9 +20,15 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
       _persistingTodosSnapshot,
       _pendingTodosToPersist,
     ].whereType<List<TodoItem>>();
-    if (snapshots.isEmpty) return loadedTodos;
+    if (snapshots.isEmpty) {
+      if (!loadedTodos.any((todo) => todo.isDeleted)) return loadedTodos;
+      return loadedTodos.where((todo) => !todo.isDeleted).toList();
+    }
 
-    final byId = {for (final todo in loadedTodos) todo.id: todo};
+    final byId = <String, TodoItem>{};
+    for (final todo in loadedTodos) {
+      if (!todo.isDeleted) byId[todo.id] = todo;
+    }
     for (final snapshot in snapshots) {
       for (final pending in snapshot) {
         final existing = byId[pending.id];
@@ -36,22 +42,40 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
   }
 
   Future<void> _handleTodosChanged(List<TodoItem> newTodos) async {
-    final oldTodos = List<TodoItem>.from(_todos);
+    final oldTodos = _todos;
     final nextTodos = List<TodoItem>.from(newTodos);
 
     _todos = nextTodos;
+    _todoDataRevision++;
     _todosNotifier.value = List<TodoItem>.from(nextTodos);
-    _todoUpdateSignalNotifier.value++;
     _timelineRevision.value++;
     _pomodoroTickNotifier.value++;
 
-    for (var nt in nextTodos) {
-      if (nt.isDone) {
+    Map<String, bool>? oldTodoCompletionById;
+    var completedTodoCount = 0;
+    for (final nt in nextTodos) {
+      if (!nt.isDone) continue;
+      completedTodoCount++;
+
+      if (oldTodoCompletionById == null && completedTodoCount < 3) {
         final ot = oldTodos.firstWhere((t) => t.id == nt.id, orElse: () => nt);
         if (!ot.isDone) {
           // debugPrint("🧹 任务 ${nt.title} 已完成，尝试清除通知 ${nt.id.hashCode}");
           NotificationService.cancelSpecialTodoNotification(nt.id.hashCode);
         }
+        continue;
+      }
+
+      if (oldTodoCompletionById == null) {
+        final completionById = <String, bool>{};
+        for (final oldTodo in oldTodos) {
+          completionById.putIfAbsent(oldTodo.id, () => oldTodo.isDone);
+        }
+        oldTodoCompletionById = completionById;
+      }
+      if (oldTodoCompletionById[nt.id] == false) {
+        // debugPrint("🧹 任务 ${nt.title} 已完成，尝试清除通知 ${nt.id.hashCode}");
+        NotificationService.cancelSpecialTodoNotification(nt.id.hashCode);
       }
     }
 
@@ -83,17 +107,41 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
     _persistingTodosSnapshot = todosSnapshot;
     final allTodos = await StorageService.getTodos(widget.username);
     try {
-      for (var newT in todosSnapshot) {
-        int idx = allTodos.indexWhere((x) => x.id == newT.id);
-        if (idx != -1) {
-          if (newT.updatedAt >= allTodos[idx].updatedAt) {
-            allTodos[idx] = newT;
-          }
-        } else {
-          allTodos.add(newT);
+      final todosToPersistById = <String, TodoItem>{};
+      for (final todo in allTodos) {
+        if (todo.recurrence != RecurrenceType.none &&
+            (todo.recurrenceSeriesId == null ||
+                todo.recurrenceSeriesId!.isEmpty)) {
+          todo.recurrenceSeriesId = todo.id;
+          todosToPersistById[todo.id] = todo;
         }
       }
-      await StorageService.saveTodos(widget.username, allTodos);
+
+      final todoIndicesById = <String, int>{};
+      for (var index = 0; index < allTodos.length; index++) {
+        final id = allTodos[index].id;
+        if (!todoIndicesById.containsKey(id)) {
+          todoIndicesById[id] = index;
+        }
+      }
+      for (final newTodo in todosSnapshot) {
+        final index = todoIndicesById[newTodo.id];
+        if (index != null) {
+          if (newTodo.updatedAt >= allTodos[index].updatedAt) {
+            allTodos[index] = newTodo;
+            todosToPersistById[newTodo.id] = newTodo;
+          }
+        } else {
+          todoIndicesById[newTodo.id] = allTodos.length;
+          allTodos.add(newTodo);
+          todosToPersistById[newTodo.id] = newTodo;
+        }
+      }
+      await StorageService.saveTodos(
+        widget.username,
+        todosToPersistById.values.toList(growable: false),
+        bandSyncSnapshot: allTodos,
+      );
       await _saveTodosToSharedFile(allTodos);
 
       FloatWindowService.triggerReminderCheck();
@@ -102,8 +150,6 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
       _syncTodoNotification();
       _rescheduleAlarms();
       await WidgetService.updateTodoWidget(todosSnapshot);
-
-      _todoUpdateSignalNotifier.value++;
     } finally {
       if (identical(_persistingTodosSnapshot, todosSnapshot)) {
         _persistingTodosSnapshot = null;
