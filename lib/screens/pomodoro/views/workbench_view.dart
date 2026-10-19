@@ -850,9 +850,11 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     _userId = userIdInt.toString();
 
     _crossDeviceSub?.cancel();
-    _crossDeviceSub = _syncService.onStateChanged.listen(
-      _handleCrossDeviceSignal,
-    );
+    _crossDeviceSub = _syncService.onStateChanged
+        .asyncMap(_handleCrossDeviceSignal)
+        .listen((_) {}, onError: (Object error) {
+      debugPrint('[PomodoroWorkbench] 处理跨端消息失败: $error');
+    });
 
     _connSub?.cancel();
     _connSub = _syncService.onConnectionChanged.listen((state) {
@@ -872,7 +874,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
           (saved.phase != PomodoroPhase.focusing &&
               saved.phase != PomodoroPhase.breaking)) {
         // debugPrint('[工作台] 本地无运行中的专注，发送 CLEAR_FOCUS 清除云端残留');
-        _syncService.sendClearFocusSignal();
+        _syncService.sendClearFocusSignal(sessionUuid: state.sessionUuid);
       } else {
         // debugPrint('[工作台] 本地仍有运行中的专注，保留云端状态');
       }
@@ -889,7 +891,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     );
   }
 
-  void _handleCrossDeviceSignal(CrossDevicePomodoroState signal) async {
+  Future<void> _handleCrossDeviceSignal(CrossDevicePomodoroState signal) async {
     if (!mounted || _initializing) return;
 
     final myDeviceId = 'flutter_$_deviceId';
@@ -1160,7 +1162,11 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
             _currentSessionUuid != signal.sessionUuid) {
           break;
         }
-        if (signal.todoUuid != null && _boundTodo?.id != signal.todoUuid) break;
+        if (signal.sessionUuid == null &&
+            signal.todoUuid != null &&
+            _boundTodo?.id != signal.todoUuid) {
+          break;
+        }
 
         if (_phase == PomodoroPhase.idle || _phase == PomodoroPhase.finished) {
           break;

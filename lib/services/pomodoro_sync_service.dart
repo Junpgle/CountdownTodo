@@ -191,12 +191,34 @@ class CrossDevicePomodoroState {
 enum SyncConnectionState { disconnected, connecting, connected, error }
 
 class PomodoroSyncService {
-  static const Duration _heartbeatInterval = Duration(seconds: 30);
+  static const Duration _defaultHeartbeatInterval = Duration(seconds: 30);
 
   // ── 单例 ─────────────────────────────────────────────────
   static final PomodoroSyncService instance = PomodoroSyncService._();
   factory PomodoroSyncService() => instance;
-  PomodoroSyncService._();
+  PomodoroSyncService._()
+      : _connectChannel = WebSocketChannel.connect,
+        _fetchTeams = ApiService.fetchTeams,
+        _heartbeatInterval = _defaultHeartbeatInterval,
+        _stopDeliveryGrace = const Duration(seconds: 5);
+
+  @visibleForTesting
+  factory PomodoroSyncService.forTesting(
+    WebSocketChannel Function(Uri) connectChannel, {
+    Duration heartbeatInterval = _defaultHeartbeatInterval,
+    Duration stopDeliveryGrace = const Duration(seconds: 5),
+  }) => PomodoroSyncService._forTesting(
+        connectChannel, heartbeatInterval, stopDeliveryGrace,
+      );
+
+  PomodoroSyncService._forTesting(
+    this._connectChannel, this._heartbeatInterval, this._stopDeliveryGrace,
+  ) : _fetchTeams = (() async => <dynamic>[]);
+
+  final Duration _heartbeatInterval;
+  final Duration _stopDeliveryGrace;
+  final WebSocketChannel Function(Uri) _connectChannel;
+  final Future<List<dynamic>> Function() _fetchTeams;
 
   // ── 连接参数 ──────────────────────────────────────────────
   String? _userId;
@@ -211,6 +233,11 @@ class PomodoroSyncService {
   Timer? _heartbeatTimer;
   Future<void>? _transportSuspendFuture;
   bool _connecting = false;
+  final Map<String, Map<String, dynamic>> _pendingStops = {};
+  final Set<String> _endedSessions = {};
+  Timer? _stopDeliveryGraceTimer;
+  int _stopSequence = 0;
+  bool _supportsFocusEndAck = false;
   String? _focusSourceDevice;
   Set<String> _subscribedTeamUuids = <String>{};
   DateTime _lastMessageTime = DateTime.now(); // 记录最后一次收到消息的时间
@@ -228,6 +255,7 @@ class PomodoroSyncService {
   Function(CrossDevicePomodoroState state)? onStaleSyncFocus;
 
   void dispose() {
+    _stopDeliveryGraceTimer?.cancel();
     _reconnectTimer?.cancel();
     _heartbeatTimer?.cancel();
     _wsSub?.cancel();
@@ -246,7 +274,9 @@ class PomodoroSyncService {
   bool isFromCurrentDevice(String? sourceDevice) =>
       deviceIdsMatch(_deviceId, sourceDevice);
 
-  bool get _shouldSuspendTransport => shouldSuspendTransport(
+  bool get _shouldSuspendTransport =>
+      !(_stopDeliveryGraceTimer?.isActive ?? false) &&
+      shouldSuspendTransport(
         isInBackground: _isInBackground,
         isLocalFocusing: _isLocalFocusing,
       );
@@ -287,6 +317,11 @@ class PomodoroSyncService {
       // debugPrint('[PomodoroSync] 已连接，跳过重连');
       return;
     }
+    if (_userId != null && (_userId != userId || _deviceId != deviceId)) {
+      _pendingStops.clear();
+      _endedSessions.clear();
+      _stopDeliveryGraceTimer?.cancel();
+    }
     _userId = userId;
     _deviceId = deviceId;
     _focusSourceDevice = null;
@@ -299,6 +334,11 @@ class PomodoroSyncService {
     await _transportSuspendFuture;
     if (appVersion != null) _appVersion = appVersion;
     if (authToken != null) _authToken = authToken;
+    if (_userId != null && (_userId != userId || _deviceId != deviceId)) {
+      _pendingStops.clear();
+      _endedSessions.clear();
+      _stopDeliveryGraceTimer?.cancel();
+    }
     _userId = userId;
     _deviceId = deviceId;
     _focusSourceDevice = null;
@@ -355,6 +395,7 @@ class PomodoroSyncService {
   Future<void> _doConnect() async {
     if (_connecting || _shouldSuspendTransport) return;
     _connecting = true;
+    _supportsFocusEndAck = false;
 
     _reconnectTimer?.cancel();
     _heartbeatTimer?.cancel();
@@ -392,7 +433,7 @@ class PomodoroSyncService {
         '&version=${Uri.encodeComponent(versionParam)}',
       );
 
-      _channel = WebSocketChannel.connect(uri);
+      _channel = _connectChannel(uri);
 
       await _channel!.ready.timeout(
         const Duration(seconds: 10),
@@ -419,6 +460,7 @@ class PomodoroSyncService {
         cancelOnError: true,
       );
 
+      _flushPendingStops();
       _startHeartbeat();
       unawaited(_subscribeToTeams());
 
@@ -447,6 +489,23 @@ class PomodoroSyncService {
 
       // debugPrint('📥 [WS接收] 原始数据: $raw'); // 调试时开启
       final data = jsonDecode(raw.toString()) as Map<String, dynamic>;
+      if (data['action'] == 'FOCUS_SYNC_CAPABILITIES') {
+        _supportsFocusEndAck = data['end_ack'] == true;
+        _flushPendingStops();
+        _lastMessageTime = DateTime.now();
+        return;
+      }
+      if (data['action'] == 'FOCUS_END_ACK') {
+        _pendingStops.removeWhere(
+          (_, payload) => payload['request_id'] == data['request_id'],
+        );
+        if (_pendingStops.isEmpty) {
+          _stopDeliveryGraceTimer?.cancel();
+          unawaited(_suspendTransportIfIdle());
+        }
+        _lastMessageTime = DateTime.now();
+        return;
+      }
       final signal = CrossDevicePomodoroState.fromJson(data);
 
       if (signal.action == 'UPDATE_AVAILABLE') {
@@ -581,6 +640,7 @@ class PomodoroSyncService {
           _onDisconnected();
           return;
         }
+        _flushPendingStops();
         _send({'action': 'HEARTBEAT'});
       }
     });
@@ -609,6 +669,8 @@ class PomodoroSyncService {
     bool doNotDisturb = false,
     int? customTimestamp,
   }) {
+    // A reconnect callback may finish reading an old run after it has ended.
+    if (_endedSessions.contains(sessionUuid)) return;
     _send({
       'action': 'START',
       'session_uuid': sessionUuid,
@@ -646,6 +708,8 @@ class PomodoroSyncService {
     bool doNotDisturb = false,
     int? customTimestamp,
   }) {
+    // A reconnect callback may finish reading an old run after it has ended.
+    if (_endedSessions.contains(sessionUuid)) return;
     _send({
       'action': 'RECONNECT_SYNC',
       'session_uuid': sessionUuid,
@@ -666,11 +730,52 @@ class PomodoroSyncService {
     });
   }
 
-  void sendStopSignal({String? todoUuid, String? sessionUuid}) => _send({
-        'action': 'STOP',
-        'todo_uuid': ?todoUuid,
-        'session_uuid': ?sessionUuid,
-      });
+  void sendStopSignal({String? todoUuid, String? sessionUuid}) {
+    _sendFocusEnd({
+      'action': 'STOP',
+      'todo_uuid': ?todoUuid,
+      'session_uuid': ?sessionUuid,
+    });
+  }
+
+  void _sendFocusEnd(Map<String, dynamic> payload) {
+    final session = payload['session_uuid'] as String?;
+    // Only session-scoped messages are safe to replay after a new focus starts.
+    if (session == null || session.isEmpty) {
+      _send(payload);
+      return;
+    }
+    _endedSessions.add(session);
+    if (_endedSessions.length > 128) {
+      _endedSessions.remove(_endedSessions.first);
+    }
+    _pendingStops[session] = {
+      ...payload,
+      'request_id':
+          '${DateTime.now().microsecondsSinceEpoch}_${_stopSequence++}',
+    };
+    if (_pendingStops.length > 128) {
+      _pendingStops.remove(_pendingStops.keys.first);
+    }
+    _stopDeliveryGraceTimer?.cancel();
+    // Give background completion a short delivery window; older servers do not
+    // ACK, so lack of an ACK must not keep an idle app connected indefinitely.
+    _stopDeliveryGraceTimer = Timer(_stopDeliveryGrace, () {
+      _stopDeliveryGraceTimer = null;
+      unawaited(_suspendTransportIfIdle());
+    });
+    _send(_pendingStops[session]!);
+    unawaited(reconnectIfNeeded());
+  }
+
+  void _flushPendingStops() {
+    // Old servers clear focus without checking session IDs, so replay only
+    // after the server explicitly advertises safe end-message support.
+    if (!_supportsFocusEndAck) return;
+    for (final payload in _pendingStops.values) {
+      _send(payload);
+    }
+  }
 
   /// 🚀 新增：上报本地空闲状态（用于重连后的补擦除）
   void _reportIdleStatus() {
@@ -796,8 +901,8 @@ class PomodoroSyncService {
     });
   }
 
-  void sendClearFocusSignal() {
-    _send({'action': 'CLEAR_FOCUS'});
+  void sendClearFocusSignal({String? sessionUuid}) {
+    _sendFocusEnd({'action': 'CLEAR_FOCUS', 'session_uuid': ?sessionUuid});
   }
 
   void sendTeamUpdateSignal(String? teamUuid) {
@@ -811,7 +916,7 @@ class PomodoroSyncService {
   Future<void> _subscribeToTeams() async {
     if (_connState != SyncConnectionState.connected) return;
     try {
-      final teamsData = await ApiService.fetchTeams();
+      final teamsData = await _fetchTeams();
       if (_connState != SyncConnectionState.connected) return;
       final teamUuids = teamsData
           .map((t) => t['uuid']?.toString() ?? '')
@@ -840,6 +945,9 @@ class PomodoroSyncService {
   }
 
   Future<void> forceDisconnect() async {
+    _stopDeliveryGraceTimer?.cancel();
+    _pendingStops.clear();
+    _endedSessions.clear();
     _isInBackground = false;
     _reconnectTimer?.cancel();
     _heartbeatTimer?.cancel();

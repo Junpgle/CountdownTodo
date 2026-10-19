@@ -450,7 +450,6 @@ class PomodoroControlService {
       }
     }
 
-    PomodoroSyncService.instance.setLocalFocusing(false);
     if (sync) {
       if (ensureSyncConnection) {
         await _ensureSyncConnected(deviceId);
@@ -460,6 +459,7 @@ class PomodoroControlService {
         sessionUuid: state.sessionUuid,
       );
     }
+    PomodoroSyncService.instance.setLocalFocusing(false);
     if (updateFloat) {
       await FloatWindowService.update(endMs: 0, isLocal: true);
     }

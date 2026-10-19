@@ -9,8 +9,11 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
     if (userIdInt == null || _deviceId.isEmpty) return;
 
     _remotePomodoroSub?.cancel();
-    _remotePomodoroSub =
-        _syncService.onStateChanged.listen(_handleRemotePomodoroSignal);
+    _remotePomodoroSub = _syncService.onStateChanged
+        .asyncMap(_handleRemotePomodoroSignal)
+        .listen((_) {}, onError: (Object error) {
+      debugPrint('[HomePomodoro] 处理跨端消息失败: $error');
+    });
 
     // 🍅 发起端重连后，服务端回推了历史专注状态
     // 若本地已无对应状态（说明已被用户关闭/完成），则通知云端清除残留
@@ -21,7 +24,7 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
           (saved.phase != PomodoroPhase.focusing &&
               saved.phase != PomodoroPhase.breaking)) {
         // debugPrint('[首页] 本地无运行中的专注状态，发送 CLEAR_FOCUS 清除云端残留');
-        _syncService.sendClearFocusSignal();
+        _syncService.sendClearFocusSignal(sessionUuid: state.sessionUuid);
       } else {
         // debugPrint('[首页] 本地仍有运行中的专注，保留云端状态');
       }
@@ -220,7 +223,18 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
 
       case 'STOP':
       case 'INTERRUPT':
+      case 'FINISH':
+      case 'CLEAR_FOCUS':
       case 'FOCUS_DISCONNECTED':
+        if (signal.sessionUuid != null &&
+            signal.sessionUuid != _remotePomodoro?.sessionUuid) {
+          return;
+        }
+        if (signal.sessionUuid == null &&
+            signal.todoUuid != null &&
+            signal.todoUuid != _remotePomodoro?.todoUuid) {
+          return;
+        }
         final remoteSessionUuid =
             signal.sessionUuid ?? _remotePomodoro?.sessionUuid;
         await _setFocusDoNotDisturb(
